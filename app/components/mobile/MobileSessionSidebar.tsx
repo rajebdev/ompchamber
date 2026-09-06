@@ -29,6 +29,7 @@ interface MobileSessionSidebarProps {
   onNewSession: () => void;
   onCreateFolder: (name: string) => void;
   onClose: () => void;
+  appSettings?: Record<string, any>;
 }
 
 export function MobileSessionSidebar({
@@ -37,7 +38,8 @@ export function MobileSessionSidebar({
   onSelectSession,
   onNewSession,
   onCreateFolder,
-  onClose
+  onClose,
+  appSettings = {}
 }: MobileSessionSidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedFolders, setExpandedFolders] = useState<Record<number, boolean>>({
@@ -320,6 +322,7 @@ export function MobileSessionSidebar({
       <SettingsModal
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+        appSettings={appSettings}
       />
       <AboutModal
         isOpen={aboutOpen}

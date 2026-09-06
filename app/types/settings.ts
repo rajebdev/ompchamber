@@ -2,32 +2,28 @@ export type SettingsCategoryId =
   // OMPCHAMBER
   | 'general'
   | 'appearance'
-  | 'chat'
+  | 'chats'
   | 'notifications'
-  | 'sessions'
-  | 'shortcuts'
-  | 'voice'
-  | 'integrations'
   | 'usage'
-  | 'about'
   // WORKSPACE
   | 'projects'
-  | 'remote-instances'
-  | 'external-tunnel'
   | 'git'
   // OMP
   | 'providers'
   | 'agents'
   | 'behavior'
   | 'commands'
-  | 'mcp';
+  | 'mcp'
+  // LIBRARY
+  | 'skills'
+  | 'skills-catalog';
 
 export interface SettingsCategoryItem {
   id: SettingsCategoryId;
   label: string;
   iconName: string;
   badge?: string;
-  section: 'OMPCHAMBER' | 'WORKSPACE' | 'OMP';
+  section: 'OMPCHAMBER' | 'WORKSPACE' | 'OMP' | 'LIBRARY';
   description?: string;
 }
 
@@ -55,4 +51,5 @@ export interface SettingsState {
   activeProvider: string;
   autoApproveSafeCmds: boolean;
   autoPatchErrors: boolean;
+  followUpBehavior: 'queue' | 'steering';
 }

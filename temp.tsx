@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Group, Panel, Separator, type PanelImperativeHandle } from 'react-resizable-panels';
+import { Group, Panel, Separator, type ImperativePanelHandle } from 'react-resizable-panels';
 import { SessionSidebar } from '@/components/layout/SessionSidebar';
 import { RightActivityBar, type RightPanelType } from '@/components/layout/RightActivityBar';
 import { ChatTimeline } from '@/components/workspace/ChatTimeline';
@@ -45,9 +45,9 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
   
   const [openedFiles, setOpenedFiles] = useState<any[]>([]);
   const [activeFileId, setActiveFileId] = useState<number | null>(null);
-  const leftPanelRef = useRef<PanelImperativeHandle>(null);
-  const editorPanelRef = useRef<PanelImperativeHandle>(null);
-  const rightPanelRef = useRef<PanelImperativeHandle>(null);
+  const leftPanelRef = useRef<ImperativePanelHandle>(null);
+  const editorPanelRef = useRef<ImperativePanelHandle>(null);
+  const rightPanelRef = useRef<ImperativePanelHandle>(null);
 
   const shouldShowEditor = openedFiles.length > 0 && activeRightPanel !== 'search' && activeRightPanel !== 'git' && activeRightPanel !== 'terminal';
   const [userToggledEditor, setUserToggledEditor] = useState<boolean | null>(appSettings.userToggledEditor ?? null);
@@ -271,7 +271,7 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
           </div>
         )}
 
-        <Group 
+        <Group units="pixels" 
           orientation="horizontal" 
           id="ompchamber-layout"
           onLayoutChanged={(sizes) => {
@@ -300,7 +300,7 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
         >
           {showLeftPanel && (
             <>
-              <Panel panelRef={leftPanelRef} id="left-panel" defaultSize={initialLayoutSizes?.left ?? 268} minSize={200} maxSize={600} collapsible>
+              <Panel ref={leftPanelRef} id="left-panel" defaultSize={initialLayoutSizes?.left ?? 268} minSize={200} maxSize={600} collapsible>
                 <SessionSidebar className="w-full h-full" folders={folders} onClose={() => handleToggleLeftPanel(false)} appSettings={appSettings} />
               </Panel>
               <CustomResizeHandle />
@@ -314,7 +314,7 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
           {showEditor && (
             <>
               <CustomResizeHandle />
-              <Panel panelRef={editorPanelRef} id="editor-panel" defaultSize={initialLayoutSizes?.editor ?? 536} minSize={300}>
+              <Panel ref={editorPanelRef} id="editor-panel" defaultSize={initialLayoutSizes?.editor ?? 536} minSize={300}>
                 <Editor 
                   className="w-full h-full" 
                   openedFiles={openedFiles}
@@ -331,7 +331,7 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
           {showRightPanel && (
             <>
               <CustomResizeHandle />
-              <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={initialLayoutSizes?.right ?? (activeRightPanel === 'terminal' ? 536 : 268)} minSize={200} maxSize={800} collapsible>
+              <Panel ref={rightPanelRef} id="right-panel" defaultSize={initialLayoutSizes?.right ?? (activeRightPanel === 'terminal' ? 536 : 268)} minSize={200} maxSize={800} collapsible>
                 {activeRightPanel === 'files' && <FileExplorer className="w-full h-full" onOpenFile={handleOpenFile} refreshKey={refreshKey} onRefresh={handleRefreshWorkspace} />}
                 {activeRightPanel === 'search' && <SearchPanel className="w-full h-full" />}
                 {activeRightPanel === 'git' && <GitPanel className="w-full h-full" refreshKey={refreshKey} />}

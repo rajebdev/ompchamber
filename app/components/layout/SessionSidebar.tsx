@@ -4,7 +4,7 @@ import { useSearchParams } from '@remix-run/react';
 import { SettingsModal, AboutModal, NewWorkspaceModal, SchedulerModal } from './session-sidebar/SidebarModals';
 import { Category } from './session-sidebar/CategoryItem';
 
-export function SessionSidebar({ className = '', folders = [], onClose }: { className?: string, folders?: any[], onClose?: () => void }) {
+export function SessionSidebar({ className = '', folders = [], onClose, appSettings = {} }: { className?: string, folders?: any[], onClose?: () => void, appSettings?: Record<string, any> }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeSessionId = searchParams.get('sessionId') ? Number(searchParams.get('sessionId')) : null;
 
@@ -245,7 +245,7 @@ export function SessionSidebar({ className = '', folders = [], onClose }: { clas
       </aside>
 
       {/* Settings Modal */}
-      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} appSettings={appSettings} />
 
       {/* Info Modal */}
       <AboutModal isOpen={infoOpen} onClose={() => setInfoOpen(false)} />

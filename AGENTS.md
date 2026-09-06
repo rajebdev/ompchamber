@@ -80,3 +80,6 @@
   1. `npm run lint` (`tsc --noEmit`) without errors.
   2. Production build verification (`compile_applet`).
 
+### 7. Layout & Panel Resizing
+- **Panel Width**: Be aware that the width of the layout panels (like the sidebar or right sidebar) is considered and calculated in **pixels**. When handling layout persistence or default sizes, ensure they are treated as pixel values rather than just percentages, adapting library APIs (like `react-resizable-panels`) as needed to accommodate pixel-based design intent.
+

@@ -28,6 +28,21 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const db = await getDb();
   const folders = await db.all('SELECT * FROM workspace_folders ORDER BY id ASC');
   const sessions = await db.all('SELECT * FROM sessions ORDER BY id ASC');
+  
+  // Fetch app settings
+  let appSettings: Record<string, any> = {};
+  try {
+    const settingsRows = await db.all('SELECT * FROM app_settings');
+    for (const row of settingsRows) {
+      try {
+        appSettings[row.key] = JSON.parse(row.value);
+      } catch (e) {
+        appSettings[row.key] = row.value;
+      }
+    }
+  } catch (e) {
+    // app_settings table might not exist yet if just created
+  }
 
   const groupedFolders: WorkspaceFolderData[] = folders.map(folder => {
     const folderSessions = sessions.filter(s => s.folder_id === folder.id);
@@ -43,21 +58,26 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   return json({ 
     folders: groupedFolders,
-    initialIsMobile: isMobileUA
+    initialIsMobile: isMobileUA,
+    appSettings
   });
 }
 
 export default function App() {
-  const { folders, initialIsMobile } = useLoaderData<typeof loader>();
+  const { folders, initialIsMobile, appSettings } = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('sessionId');
 
   // Initialize with server-detected User-Agent to eliminate SSR flash
-  const [isMobileMode, setIsMobileMode] = useState<boolean>(initialIsMobile);
+  const [isMobileMode, setIsMobileMode] = useState<boolean>(
+    appSettings.omp_view_mode === 'mobile' ? true :
+    appSettings.omp_view_mode === 'desktop' ? false :
+    initialIsMobile
+  );
 
   useEffect(() => {
-    // 1. Check if user has an explicit manual preference in localStorage
-    const savedPreference = localStorage.getItem('omp_view_mode');
+    // 1. Check if user has an explicit manual preference in SQLite settings
+    const savedPreference = appSettings.omp_view_mode || localStorage.getItem('omp_view_mode');
     
     // 2. Comprehensive multi-factor device & screen check
     const checkIsMobileDevice = () => {
@@ -94,13 +114,23 @@ export default function App() {
     };
   }, []);
 
+  const saveSetting = (key: string, value: any) => {
+    fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [key]: value })
+    }).catch(console.error);
+  };
+
   const handleSwitchToDesktop = () => {
     localStorage.setItem('omp_view_mode', 'desktop');
+    saveSetting('omp_view_mode', 'desktop');
     setIsMobileMode(false);
   };
 
   const handleSwitchToMobile = () => {
     localStorage.setItem('omp_view_mode', 'mobile');
+    saveSetting('omp_view_mode', 'mobile');
     setIsMobileMode(true);
   };
 
@@ -108,7 +138,8 @@ export default function App() {
     return (
       <MobileLayoutWrapper 
         folders={folders} 
-        onDesktopToggle={handleSwitchToDesktop} 
+        onDesktopToggle={handleSwitchToDesktop}
+        appSettings={appSettings}
       />
     );
   }
@@ -118,6 +149,7 @@ export default function App() {
       folders={folders} 
       sessionId={sessionId} 
       onSwitchToMobile={handleSwitchToMobile} 
+      appSettings={appSettings}
     />
   );
 }

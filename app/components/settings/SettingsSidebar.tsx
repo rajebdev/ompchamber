@@ -5,15 +5,8 @@ import {
   Palette,
   MessageSquare,
   Bell,
-  Clock,
-  Command,
-  Mic,
-  Plug,
   BarChart3,
-  Info,
   FolderGit,
-  Server,
-  Radio,
   GitBranch,
   Cloud,
   Bot,
@@ -21,6 +14,8 @@ import {
   Terminal,
   Boxes,
   RefreshCw,
+  Library,
+  BookOpen,
   X
 } from 'lucide-react';
 import type { SettingsCategoryId } from '@/types';
@@ -29,7 +24,7 @@ export interface CategoryDef {
   id: SettingsCategoryId;
   label: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
-  section: 'OMPCHAMBER' | 'WORKSPACE' | 'OMP';
+  section: 'OMPCHAMBER' | 'WORKSPACE' | 'OMP' | 'LIBRARY';
   badge?: string;
   description: string;
 }
@@ -38,18 +33,11 @@ export const SETTINGS_CATEGORIES: CategoryDef[] = [
   // OMPCHAMBER
   { id: 'general', label: 'General', icon: SettingsIcon, section: 'OMPCHAMBER', description: 'App startup, security, connection, and privacy.' },
   { id: 'appearance', label: 'Appearance', icon: Palette, section: 'OMPCHAMBER', description: 'Custom themes, typography scale, and layout density.' },
-  { id: 'chat', label: 'Chat', icon: MessageSquare, section: 'OMPCHAMBER', description: 'Message streaming, thinking blocks, and tool view modes.' },
+  { id: 'chats', label: 'Chats', icon: MessageSquare, section: 'OMPCHAMBER', description: 'Message streaming, thinking blocks, and tool view modes.' },
   { id: 'notifications', label: 'Notifications', icon: Bell, section: 'OMPCHAMBER', description: 'Build failure alerts, sounds, and system popups.' },
-  { id: 'sessions', label: 'Sessions', icon: Clock, section: 'OMPCHAMBER', description: 'Session auto-save, retention limits, and storage.' },
-  { id: 'shortcuts', label: 'Shortcuts', icon: Command, section: 'OMPCHAMBER', description: 'Keyboard hotkeys and command triggers.' },
-  { id: 'voice', label: 'Voice', icon: Mic, section: 'OMPCHAMBER', description: 'Voice input dictation and speech synthesizer.' },
-  { id: 'integrations', label: 'Integrations', icon: Plug, section: 'OMPCHAMBER', description: 'GitHub, Bun runtime, and external services.' },
   { id: 'usage', label: 'Usage', icon: BarChart3, section: 'OMPCHAMBER', description: 'Build minutes quota, token telemetry, and cache.' },
-  { id: 'about', label: 'About', icon: Info, section: 'OMPCHAMBER', description: 'Version numbers, architecture, and credits.' },
   // WORKSPACE
   { id: 'projects', label: 'Projects', icon: FolderGit, section: 'WORKSPACE', description: 'Workspace directories, roots, and ignored paths.' },
-  { id: 'remote-instances', label: 'Remote Instances', icon: Server, section: 'WORKSPACE', description: 'SSH remotes, container bridges, and port forwarding.' },
-  { id: 'external-tunnel', label: 'External Tunnel', icon: Radio, section: 'WORKSPACE', badge: 'beta', description: 'Secure HTTPS public tunneling for local server.' },
   { id: 'git', label: 'Git', icon: GitBranch, section: 'WORKSPACE', description: 'Version control author identity, diffs, and sync.' },
   // OMP
   { id: 'providers', label: 'Providers', icon: Cloud, section: 'OMP', description: 'AI model engines, endpoints, and credentials.' },
@@ -57,6 +45,9 @@ export const SETTINGS_CATEGORIES: CategoryDef[] = [
   { id: 'behavior', label: 'Behavior', icon: Sliders, section: 'OMP', description: 'Permission gates, command approvals, and safety filters.' },
   { id: 'commands', label: 'Commands', icon: Terminal, section: 'OMP', description: 'Slash command macros and terminal shortcuts.' },
   { id: 'mcp', label: 'MCP', icon: Boxes, section: 'OMP', description: 'Model Context Protocol servers and dynamic tools.' },
+  // LIBRARY
+  { id: 'skills', label: 'Skills', icon: Library, section: 'LIBRARY', description: 'Manage downloaded skills and scripts.' },
+  { id: 'skills-catalog', label: 'Skills Catalog', icon: BookOpen, section: 'LIBRARY', description: 'Browse and install new skills.' },
 ];
 
 interface SettingsSidebarProps {
@@ -86,7 +77,7 @@ export function SettingsSidebar({
       cat.description.toLowerCase().includes(q);
   });
 
-  const sections: Array<'OMPCHAMBER' | 'WORKSPACE' | 'OMP'> = ['OMPCHAMBER', 'WORKSPACE', 'OMP'];
+  const sections: Array<'OMPCHAMBER' | 'WORKSPACE' | 'OMP' | 'LIBRARY'> = ['OMPCHAMBER', 'WORKSPACE', 'OMP', 'LIBRARY'];
 
   return (
     <div className={`flex flex-col h-full bg-[#f4f1ea] border-r border-[#141310]/10 text-[#141310] select-none ${className}`}>

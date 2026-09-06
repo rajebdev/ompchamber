@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ChevronLeft } from 'lucide-react';
+import { X, ChevronLeft, Check } from 'lucide-react';
 import type { SettingsCategoryId, SettingsState } from '@/types';
 import { SettingsSidebar, SETTINGS_CATEGORIES } from './SettingsSidebar';
 import { GeneralSettings } from './categories/GeneralSettings';
@@ -13,6 +13,7 @@ interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialCategory?: SettingsCategoryId;
+  appSettings?: Record<string, any>;
 }
 
 const DEFAULT_SETTINGS: SettingsState = {
@@ -38,17 +39,25 @@ const DEFAULT_SETTINGS: SettingsState = {
   tunnelSubdomain: 'omp-dev-preview',
   activeProvider: 'claude',
   autoApproveSafeCmds: true,
-  autoPatchErrors: true
+  autoPatchErrors: true,
+  followUpBehavior: 'queue'
 };
 
-export function SettingsModal({ isOpen, onClose, initialCategory = 'general' }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, initialCategory = 'general', appSettings = {} }: SettingsModalProps) {
   const [activeCategory, setActiveCategory] = useState<SettingsCategoryId>(initialCategory);
   const [searchQuery, setSearchQuery] = useState('');
   const [isReloading, setIsReloading] = useState(false);
   const [isMobileDrilled, setIsMobileDrilled] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Local persisted settings state
   const [settings, setSettings] = useState<SettingsState>(() => {
+    // Try SQLite injected appSettings first
+    if (appSettings.omp_chamber_settings) {
+      return { ...DEFAULT_SETTINGS, ...appSettings.omp_chamber_settings };
+    }
+    
+    // Fallback to localStorage
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('omp_chamber_settings');
@@ -71,11 +80,23 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'general' }: 
   const handleUpdateSettings = (updater: Partial<SettingsState> | ((prev: SettingsState) => SettingsState)) => {
     setSettings(prev => {
       const next = typeof updater === 'function' ? updater(prev) : { ...prev, ...updater };
+      
+      // Save to localStorage
       if (typeof window !== 'undefined') {
         localStorage.setItem('omp_chamber_settings', JSON.stringify(next));
       }
+      
+      // Save to SQLite
+      fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ omp_chamber_settings: next })
+      }).catch(console.error);
+      
       return next;
     });
+    setToastMessage('Setting was saved');
+    setTimeout(() => setToastMessage(null), 3000);
   };
 
   const handleReloadOmpEngine = () => {
@@ -100,11 +121,9 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'general' }: 
         return <GeneralSettings settings={settings} onUpdate={handleUpdateSettings} />;
       case 'appearance':
         return <AppearanceSettings settings={settings} onUpdate={handleUpdateSettings} />;
-      case 'chat':
+      case 'chats':
         return <ChatSettings settings={settings} onUpdate={handleUpdateSettings} />;
       case 'projects':
-      case 'remote-instances':
-      case 'external-tunnel':
       case 'git':
         return <WorkspaceSettings category={activeCategory} settings={settings} onUpdate={handleUpdateSettings} />;
       case 'providers':
@@ -113,6 +132,10 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'general' }: 
       case 'commands':
       case 'mcp':
         return <OmpSettings category={activeCategory} settings={settings} onUpdate={handleUpdateSettings} />;
+      case 'skills':
+      case 'skills-catalog':
+      case 'notifications':
+      case 'usage':
       default:
         return <OtherSettings category={activeCategory} settings={settings} onUpdate={handleUpdateSettings} />;
     }
@@ -210,6 +233,14 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'general' }: 
             />
           </div>
         </div>
+
+        {/* Toast Notification */}
+        {toastMessage && (
+          <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-[#141310] text-[#f4f1ea] px-4 py-2 rounded-lg text-xs font-semibold shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50 flex items-center space-x-2">
+            <Check size={14} className="text-emerald-400" />
+            <span>{toastMessage}</span>
+          </div>
+        )}
       </div>
     </div>
   );

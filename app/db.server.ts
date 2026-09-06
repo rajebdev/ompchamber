@@ -29,6 +29,11 @@ export async function getDb(): Promise<Database> {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (folder_id) REFERENCES workspace_folders (id)
       );
+
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
     `);
 
     // Attempt to add column to existing tables if it doesn't exist

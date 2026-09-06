@@ -11,11 +11,12 @@ import { getSessionData } from '@/data/chatMockData';
 interface MobileLayoutWrapperProps {
   folders: WorkspaceFolderData[];
   onDesktopToggle?: () => void;
+  appSettings?: Record<string, any>;
 }
 
 export type MobileScreen = 'main' | 'session' | 'right';
 
-export function MobileLayoutWrapper({ folders, onDesktopToggle }: MobileLayoutWrapperProps) {
+export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {} }: MobileLayoutWrapperProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const sessionId = searchParams.get('sessionId') ? Number(searchParams.get('sessionId')) : null;
   const folderId = searchParams.get('folderId') ? Number(searchParams.get('folderId')) : null;
@@ -277,6 +278,7 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle }: MobileLayoutWr
           onNewSession={handleNewSession}
           onCreateFolder={handleCreateFolder}
           onClose={() => setCurrentScreen('main')}
+          appSettings={appSettings}
         />
       </div>
 
