@@ -1,0 +1,82 @@
+# AGENTS.md — OMPChamber AI System Instructions & Protocols
+
+## Overview
+**OMPChamber** serves as the developer web view console and diagnostic chamber for **AI Oh-My-Pi** (`oh-my-pi`), integrated with **remisJS** and **bun** runtime environments.
+
+---
+
+## Architecture & Agent Roles
+
+### 1. The Oh-My-Pi Autonomous Agent (`oh-my-pi`)
+- **Primary Function**: Autonomous CI/CD pipeline monitoring, build log analysis, dependency resolution, and edge deployment verification.
+- **Runtime Target**: Bun v1.2.4 with native ESM and TypeScript striping.
+- **Framework Integration**: remisJS edge routes & build plugins.
+
+### 2. OMPChamber Web View Interface
+- **Sidebar**: Fixed ~240px e-ink paper navigation with environment status glyphs and build minute quota tracking.
+- **Navbar**: Deployment breadcrumb, All/Production/Preview segmented filter, and action triggers.
+- **Right Sidebar Double Panel**:
+  - **Panel 1 (`oh-my-pi`)**: Interactive assistant chamber for prompt evaluations, diagnostic commands, and real-time build patches.
+  - **Panel 2 (`inspector`)**: Deep telemetry matrix, stage-by-stage timing breakdowns, commit diffs, and environment configurations.
+- **Right Sidebar Button (`RightSidebarBtn`)**: Immediate toggle control embedded in the header bar.
+
+---
+
+## Agent Operational Workflows
+
+### Diagnostic Protocol on Build Failures
+1. **Log Scrape**: Scrape build output from bun runner (matching `exit 1` conditions).
+2. **Error Isolation**: Target the root failure point (e.g., missing package imports, type mismatch, or invalid asset clipping).
+3. **Patch Generation**: Formulate a runnable bun terminal command (e.g., `bun add @superdesign/svg-geometry@latest && bun run build`).
+4. **Execution in Chamber**: The user or agent triggers execution directly in the right sidebar chamber panel.
+
+### Code Style & Persistence Guidelines
+- Always preserve strict e-ink paper monochrome palette.
+- Do not inject rainbow status badges; use the ink glyph set (Ready, Building, Queued, Canceled, Failed).
+- The only allowable chroma is signal red `#c8321e` reserved for failures and error messages.
+
+---
+
+## Codebase Architecture & File Organization Rules
+
+### 1. File Size Ceiling
+- **Maximum 350 Lines Per File**: Every TypeScript and TSX file must strictly stay under 350 lines of code.
+- **Decomposition**: If a component approaches this threshold, decompose it immediately into sub-components, helper utilities, or domain modals rather than allowing monolithic files to grow.
+
+### 2. Symmetrical Folder Naming Conventions
+- Sub-component directories must mirror their parent component name in **kebab-case**:
+  - `ChatTimeline.tsx` ➔ `app/components/workspace/chat-timeline/`
+  - `FileExplorer.tsx` ➔ `app/components/workspace/file-explorer/`
+  - `GitPanel.tsx` ➔ `app/components/workspace/git-panel/`
+  - `SessionSidebar.tsx` ➔ `app/components/layout/session-sidebar/`
+- Reusable or cross-cutting components belong in `app/components/common/`.
+- No empty, abandoned, or ghost folders (`app/applet/`, duplicate `routes/api+`, etc.).
+
+### 3. Direct, Explicit Imports (No Barrel Clutter)
+- Avoid redundant `index.ts` barrel files inside `app/components/` to prevent editor fuzzy-search pollution and keep file origins crystal clear.
+- Consumers import components directly and explicitly via clean path aliases:
+  - `import { ChatTimeline } from '@/components/workspace/ChatTimeline';`
+  - `import { SessionSidebar } from '@/components/layout/SessionSidebar';`
+  - `import { PWAInstallButton } from '@/components/common/PWAInstallButton';`
+
+### 4. Pure UI Components & Semantic Separation
+- **`app/components/` is strictly for React UI (`.tsx`)**:
+  - No mixed `.ts` utility, data, or hook files inside component folders.
+- **Dedicated non-UI directories**:
+  - **Hooks (`app/hooks/`)**: Custom React hooks (e.g., `useOnClickOutside.ts`).
+  - **Data (`app/data/`)**: Mock or static datasets (e.g., `chatMockData.ts`).
+  - **Types (`app/types/`)**: Domain interfaces and types (`workspace.ts`, `fs.ts`, `git.ts`, `chat.ts`).
+
+### 5. Domain Types Architecture
+- Domain data models and shared TypeScript interfaces must be organized cleanly under `app/types/`:
+  - `workspace.ts` — folders, session entities, and sorting types
+  - `fs.ts` — file explorer node trees, opened files, and search result items
+  - `git.ts` — git changes, branch lists, and view mode states
+  - `chat.ts` — messages, agent actions, monologue, and attachments
+  - `index.ts` — central export barrel for all types (`import type { ... } from '@/types'`)
+
+### 6. Verification Requirements
+- Every change must pass:
+  1. `npm run lint` (`tsc --noEmit`) without errors.
+  2. Production build verification (`compile_applet`).
+

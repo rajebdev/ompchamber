@@ -1,0 +1,76 @@
+@import "tailwindcss";
+@import "@xterm/xterm/css/xterm.css";
+@plugin "@tailwindcss/typography";
+
+@layer base {
+  :root {
+    --paper-bg: #f4f1ea;
+    --paper-raised: #faf8f3;
+    --paper-card: #faf8f3;
+    --ink-primary: #141310;
+    --ink-secondary: rgba(20, 19, 16, 0.62);
+    --ink-muted: rgba(20, 19, 16, 0.42);
+    --ink-hairline: rgba(20, 19, 16, 0.14);
+    --signal-red: #c8321e;
+  }
+
+  body {
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background-color: var(--paper-bg);
+    color: var(--ink-primary);
+  }
+
+  .font-mono, code, pre, kbd, .tabular-nums {
+    font-family: 'IBM Plex Mono', monospace;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Dot grain texture for Hero production card */
+.dot-grain-texture {
+  background-image: radial-gradient(rgba(20, 19, 16, 0.06) 0.65px, transparent 0.65px);
+  background-size: 4px 4px;
+}
+
+/* Custom scrollbars matching e-ink monochrome */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f4f1ea;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(20, 19, 16, 0.2);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(20, 19, 16, 0.4);
+}
+
+/* Terminal xterm custom scrollbars */
+.xterm .xterm-viewport::-webkit-scrollbar {
+  width: 8px !important;
+  height: 8px !important;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-track {
+  background: #141310 !important;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(244, 241, 234, 0.25) !important;
+  border-radius: 4px !important;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(244, 241, 234, 0.45) !important;
+}
+
+.xterm .xterm-viewport {
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}

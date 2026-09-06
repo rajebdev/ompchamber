@@ -1,0 +1,31 @@
+{
+  "id": "/",
+  "name": "OMPChamber",
+  "short_name": "OMPChamber",
+  "description": "AI Studio developer web view console and diagnostic chamber.",
+  "display": "standalone",
+  "background_color": "#f4f1ea",
+  "theme_color": "#faf8f3",
+  "start_url": "/",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
