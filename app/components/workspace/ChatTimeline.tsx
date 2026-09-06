@@ -8,10 +8,11 @@ import { MinimapShortcuts } from './chat-timeline/MinimapShortcuts';
 import { EmptyWorkspacePrompt } from './chat-timeline/EmptyWorkspacePrompt';
 import { GeneratingIndicator } from './chat-timeline/GeneratingIndicator';
 import { QueueList } from './chat-timeline/QueueList';
+import { NewChatModal } from './chat-timeline/NewChatModal';
 import { getSessionData } from '@/data/chatMockData';
 
 export function ChatTimeline({ className = '', folders = [], appSettings = {} }: { className?: string, folders?: any[], appSettings?: Record<string, any> }) {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const sessionId = searchParams.get('sessionId');
   const folderId = searchParams.get('folderId');
 
@@ -244,10 +245,69 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {} }:
   const userMessages = localMessages.filter(m => m.role === 'user');
 
   const handleUndo = (msgId: string, content?: string) => {
+    if (isGenerating) {
+      if (generationTimeoutRef.current) {
+        clearTimeout(generationTimeoutRef.current);
+        generationTimeoutRef.current = null;
+      }
+      setIsGenerating(false);
+    }
+    
     if (content) {
       setInputValue(content);
     }
-    setLocalMessages(prev => prev.filter(m => m.id !== msgId));
+    
+    setLocalMessages(prev => {
+      const idx = prev.findIndex(m => m.id === msgId);
+      if (idx !== -1) {
+        return prev.slice(0, idx);
+      }
+      return prev;
+    });
+  };
+
+  const handleRetry = (msgId: string) => {
+    if (isGenerating) {
+      if (generationTimeoutRef.current) {
+        clearTimeout(generationTimeoutRef.current);
+        generationTimeoutRef.current = null;
+      }
+      setIsGenerating(false);
+    }
+
+    setLocalMessages(prev => {
+      const aiIdx = prev.findIndex(m => m.id === msgId);
+      if (aiIdx > 0 && prev[aiIdx - 1].role === 'user') {
+        const userMsg = prev[aiIdx - 1];
+        setTimeout(() => {
+          executeSend(userMsg.content, userMsg.attachments || []);
+        }, 0);
+        return prev.slice(0, aiIdx);
+      }
+      return prev;
+    });
+  };
+
+  const [newChatInitialContent, setNewChatInitialContent] = useState<string | null>(null);
+
+  const handleNewChatFromMessage = (content: string) => {
+    setNewChatInitialContent(content);
+  };
+
+  const submitNewChat = (text: string, attachments: any[]) => {
+    // Navigate to a new session in the same folder or simulate
+    // For now, simulate by clearing messages and sending
+    
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('sessionId', `session-${Date.now()}`);
+      return next;
+    }, { replace: false });
+    
+    setLocalMessages([]);
+    setTimeout(() => {
+      executeSend(text, attachments);
+    }, 0);
   };
 
   const handleScrollTo = (id: string) => {
@@ -310,6 +370,8 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {} }:
               msg={msg} 
               modelName={sessionData?.model} 
               onUndo={handleUndo}
+              onRetry={handleRetry}
+              onNewChat={handleNewChatFromMessage}
             />
           ))}
 
@@ -353,6 +415,15 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {} }:
           appSettings={appSettings}
         />
       </div>
+
+      {newChatInitialContent !== null && (
+        <NewChatModal
+          initialContent={newChatInitialContent}
+          onClose={() => setNewChatInitialContent(null)}
+          onSend={submitNewChat}
+          appSettings={appSettings}
+        />
+      )}
     </div>
   );
 }

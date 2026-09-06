@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { 
   RotateCcw, 
   Copy, 
@@ -7,7 +7,6 @@ import {
   Bot, 
   File as FileIcon,
   Check,
-  MoreHorizontal,
   Undo2
 } from 'lucide-react';
 import type { ChatMessageData } from '@/types';
@@ -15,21 +14,17 @@ import { ThinkingSection } from './ThinkingSection';
 import { ToolCallingSection } from './ToolCallingSection';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
 import { copyToClipboard } from '@/hooks/useClipboard';
-import { useOnClickOutside } from '@/hooks/useOnClickOutside';
 
 interface ChatMessageItemProps {
   msg: ChatMessageData | any;
   modelName?: string;
   onRetry?: (msgId: string) => void;
   onUndo?: (msgId: string, content?: string) => void;
+  onNewChat?: (content: string) => void;
 }
 
-export function ChatMessageItem({ msg, modelName, onRetry, onUndo }: ChatMessageItemProps) {
+export function ChatMessageItem({ msg, modelName, onRetry, onUndo, onNewChat }: ChatMessageItemProps) {
   const [copied, setCopied] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useOnClickOutside(menuRef, () => setMenuOpen(false));
 
   const isUser = msg.role === 'user';
 
@@ -41,19 +36,16 @@ export function ChatMessageItem({ msg, modelName, onRetry, onUndo }: ChatMessage
         setTimeout(() => setCopied(false), 2000);
       }
     }
-    setMenuOpen(false);
   };
 
   const handleNewChat = (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
-    setMenuOpen(false);
-    if (typeof window !== 'undefined') {
-      window.location.href = window.location.pathname;
+    if (onNewChat) {
+      onNewChat(msg.content);
     }
   };
 
   const handleRetry = () => {
-    setMenuOpen(false);
     if (onRetry) {
       onRetry(msg.id);
     } else {
@@ -204,6 +196,7 @@ export function ChatMessageItem({ msg, modelName, onRetry, onUndo }: ChatMessage
       </div>
       
       {/* Bottom AI Metadata & Actions Toolbar */}
+      {/* CRITICAL: Must use flex-nowrap. The model name container must have min-w-0 and shrink to allow ellipsis. Action buttons must have shrink-0 to prevent them from dropping down to the next line on mobile screens. */}
       <div className="w-full flex items-center flex-nowrap space-x-2.5 text-[11px] text-[#141310]/60 px-1 pt-0.5 font-mono min-w-0">
         
         {/* Model and Date / Time with truncation protection */}
@@ -211,85 +204,44 @@ export function ChatMessageItem({ msg, modelName, onRetry, onUndo }: ChatMessage
           <div className="w-4 h-4 rounded flex items-center justify-center bg-[#141310] text-[#f4f1ea] shadow-2xs shrink-0">
             <Bot size={10} />
           </div>
-          <span className="font-semibold text-[#141310] truncate">
+          <span className="font-semibold text-[#141310] truncate shrink">
             {currentModel}
           </span>
           <span className="text-[#141310]/40 shrink-0">•</span>
           <span className="text-[#141310]/60 shrink-0 whitespace-nowrap">{msg.date || msg.timestamp || 'Just now'}</span>
         </div>
 
-        {/* Action Buttons & Option Dropdown Menu */}
-        <div className="flex items-center space-x-1 shrink-0 relative" ref={menuRef}>
-          {/* Quick Copy Action */}
-          <button 
-            type="button"
-            className="flex items-center space-x-1 hover:text-[#141310] transition-colors px-1.5 py-0.5 rounded hover:bg-[#141310]/5 cursor-pointer whitespace-nowrap" 
-            title="Copy response"
-            onClick={handleCopy}
-          >
-            {copied ? <Check size={12} className="text-emerald-700" /> : <Copy size={12} />}
-            <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy'}</span>
-          </button>
-
+        {/* Action Buttons */}
+        <div className="flex items-center space-x-1 shrink-0">
           {/* Quick Retry Action */}
           <button 
             type="button"
-            className="hidden sm:flex items-center space-x-1 hover:text-[#141310] transition-colors px-1.5 py-0.5 rounded hover:bg-[#141310]/5 cursor-pointer whitespace-nowrap" 
+            className="flex items-center hover:text-[#141310] transition-colors p-1 rounded hover:bg-[#141310]/5 cursor-pointer" 
             title="Re-run / Retry generation"
             onClick={handleRetry}
           >
             <RotateCcw size={12} />
-            <span className="hidden sm:inline">Retry</span>
           </button>
 
-          {/* Option Menu Toggle Button */}
-          <button
+          {/* Quick Copy Action */}
+          <button 
             type="button"
-            onClick={() => setMenuOpen(prev => !prev)}
-            className={`p-1 rounded hover:bg-[#141310]/10 hover:text-[#141310] transition-colors cursor-pointer shrink-0 ${
-              menuOpen ? 'bg-[#141310]/10 text-[#141310]' : 'text-[#141310]/60'
-            }`}
-            title="Message options"
-            aria-expanded={menuOpen}
+            className="flex items-center hover:text-[#141310] transition-colors p-1 rounded hover:bg-[#141310]/5 cursor-pointer" 
+            title="Copy response"
+            onClick={handleCopy}
           >
-            <MoreHorizontal size={13} />
+            {copied ? <Check size={12} className="text-emerald-700" /> : <Copy size={12} />}
           </button>
 
-          {/* Contextual Options Dropdown */}
-          {menuOpen && (
-            <div className="absolute right-0 bottom-full mb-1.5 w-44 sm:w-48 bg-[#faf8f3] border border-[#141310]/20 rounded-lg shadow-lg py-1 z-30 font-sans text-xs animate-in fade-in zoom-in-95 duration-100 max-w-[calc(100vw-32px)]">
-              <div className="px-3 py-1.5 border-b border-[#141310]/10 text-[10px] font-mono text-[#141310]/50 truncate">
-                {currentModel}
-              </div>
-              
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="w-full flex items-center space-x-2 px-3 py-2 text-left hover:bg-[#141310]/5 text-[#141310] cursor-pointer"
-              >
-                {copied ? <Check size={13} className="text-emerald-700" /> : <Copy size={13} />}
-                <span>{copied ? 'Copied to Clipboard' : 'Copy Full Response'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleRetry}
-                className="w-full flex items-center space-x-2 px-3 py-2 text-left hover:bg-[#141310]/5 text-[#141310] cursor-pointer"
-              >
-                <RotateCcw size={13} />
-                <span>Retry Generation</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleNewChat}
-                className="w-full flex items-center space-x-2 px-3 py-2 text-left hover:bg-[#141310]/5 text-[#141310] cursor-pointer"
-              >
-                <MessageSquarePlus size={13} />
-                <span>New Chat from Here</span>
-              </button>
-            </div>
-          )}
+          {/* New Chat Action */}
+          <button 
+            type="button"
+            className="flex items-center hover:text-[#141310] transition-colors p-1 rounded hover:bg-[#141310]/5 cursor-pointer" 
+            title="New Chat from here"
+            onClick={handleNewChat}
+          >
+            <MessageSquarePlus size={12} />
+          </button>
         </div>
       </div>
     </div>
