@@ -26,6 +26,7 @@ export async function getDb(): Promise<Database> {
         folder_id INTEGER NOT NULL,
         title TEXT NOT NULL,
         is_active BOOLEAN DEFAULT 0,
+        queue_list TEXT DEFAULT '[]',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (folder_id) REFERENCES workspace_folders (id)
       );
@@ -39,6 +40,12 @@ export async function getDb(): Promise<Database> {
     // Attempt to add column to existing tables if it doesn't exist
     try {
       await db.exec('ALTER TABLE workspace_folders ADD COLUMN is_expanded BOOLEAN DEFAULT 0;');
+    } catch (err) {
+      // Column already exists, ignore
+    }
+    
+    try {
+      await db.exec("ALTER TABLE sessions ADD COLUMN queue_list TEXT DEFAULT '[]';");
     } catch (err) {
       // Column already exists, ignore
     }

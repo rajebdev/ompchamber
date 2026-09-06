@@ -11,6 +11,7 @@ import { MobileHeader } from './mobile-main-view/MobileHeader';
 import { MobileChatInput } from './mobile-main-view/MobileChatInput';
 import { ChatMessageItem } from '@/components/workspace/chat-timeline/ChatMessageItem';
 import { GeneratingIndicator } from '@/components/workspace/chat-timeline/GeneratingIndicator';
+import { QueueList } from '@/components/workspace/chat-timeline/QueueList';
 import { useOnClickOutside } from '@/hooks/useOnClickOutside';
 
 interface MobileMainViewProps {
@@ -23,8 +24,11 @@ interface MobileMainViewProps {
   onOpenSessionSidebar: () => void;
   onOpenRightSidebar: () => void;
   messages: any[];
-  onSendMessage: (text: string, attachments: Attachment[]) => void;
+  onSendMessage: (text: string, attachments: Attachment[], options?: { steering?: boolean }) => void;
   isGenerating?: boolean;
+  appSettings?: Record<string, any>;
+  messageQueue?: import('@/components/workspace/chat-timeline/QueueList').QueuedMessage[];
+  setMessageQueue?: React.Dispatch<React.SetStateAction<import('@/components/workspace/chat-timeline/QueueList').QueuedMessage[]>>;
 }
 
 export function MobileMainView({
@@ -38,9 +42,13 @@ export function MobileMainView({
   onOpenRightSidebar,
   messages,
   onSendMessage,
-  isGenerating = false
+  isGenerating = false,
+  appSettings = {},
+  messageQueue = [],
+  setMessageQueue = () => {}
 }: MobileMainViewProps) {
   const [inputValue, setInputValue] = useState('');
+  const [inputAttachments, setInputAttachments] = useState<Attachment[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   
@@ -80,9 +88,21 @@ export function MobileMainView({
     return folders.find(f => f.id === selectedFolderId);
   }, [folders, selectedFolderId]);
 
-  const handleSend = (attachments: Attachment[]) => {
-    onSendMessage(inputValue, attachments);
+  const handleSend = (attachments: Attachment[], options?: { steering?: boolean }) => {
+    onSendMessage(inputValue, attachments, options);
     setInputValue('');
+    setInputAttachments([]);
+  };
+
+  const handleEditQueueItem = (item: import('@/components/workspace/chat-timeline/QueueList').QueuedMessage) => {
+    setMessageQueue(q => q.filter(i => i.id !== item.id));
+    setInputValue(item.text);
+    setInputAttachments(item.attachments);
+  };
+
+  const handleSendNowQueueItem = (item: import('@/components/workspace/chat-timeline/QueueList').QueuedMessage) => {
+    setMessageQueue(q => q.filter(i => i.id !== item.id));
+    onSendMessage(item.text, item.attachments, { steering: true });
   };
 
   const promptSuggestions = [
@@ -229,12 +249,21 @@ export function MobileMainView({
           </div>
 
           {/* Chat Input Box */}
+          <QueueList 
+            queue={messageQueue} 
+            setQueue={setMessageQueue} 
+            onEdit={handleEditQueueItem} 
+            onSendNow={handleSendNowQueueItem}
+          />
           <MobileChatInput
             value={inputValue}
             onChange={setInputValue}
+            attachments={inputAttachments}
+            onAttachmentsChange={setInputAttachments}
             onSend={handleSend}
             isGenerating={isGenerating}
             disabled={!selectedFolderId}
+            appSettings={appSettings}
           />
         </div>
 

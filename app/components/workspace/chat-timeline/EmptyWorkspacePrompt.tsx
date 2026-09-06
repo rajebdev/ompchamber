@@ -11,8 +11,11 @@ interface EmptyWorkspacePromptProps {
   setSelectedFolderId: (id: number | null) => void;
   inputValue: string;
   setInputValue: (v: string) => void;
+  inputAttachments?: Attachment[];
+  setInputAttachments?: (atts: Attachment[]) => void;
   onSend: (attachments: Attachment[]) => void;
   isGenerating: boolean;
+  appSettings?: Record<string, any>;
 }
 
 export function EmptyWorkspacePrompt({
@@ -22,8 +25,11 @@ export function EmptyWorkspacePrompt({
   setSelectedFolderId,
   inputValue,
   setInputValue,
+  inputAttachments,
+  setInputAttachments,
   onSend,
-  isGenerating
+  isGenerating,
+  appSettings = {}
 }: EmptyWorkspacePromptProps) {
   const [showWorkspace, setShowWorkspace] = useState(false);
   const workspaceRef = useRef<HTMLDivElement>(null);
@@ -77,6 +83,8 @@ export function EmptyWorkspacePrompt({
         <ChatInput 
           value={inputValue}
           onChange={setInputValue}
+          attachments={inputAttachments}
+          onAttachmentsChange={setInputAttachments}
           onSend={(attachments) => {
             if (!selectedFolderId) {
               alert('Please select a workspace before prompting.');
@@ -87,6 +95,7 @@ export function EmptyWorkspacePrompt({
           isGenerating={isGenerating}
           disabled={!selectedFolderId}
           className="w-full"
+          appSettings={appSettings}
         />
       </div>
     </div>

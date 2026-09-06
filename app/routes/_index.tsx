@@ -45,7 +45,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 
   const groupedFolders: WorkspaceFolderData[] = folders.map(folder => {
-    const folderSessions = sessions.filter(s => s.folder_id === folder.id);
+    const folderSessions = sessions.filter(s => s.folder_id === folder.id).map(s => {
+      let queue_list;
+      try { queue_list = JSON.parse(s.queue_list); } catch (e) { queue_list = []; }
+      return { ...s, queue_list };
+    });
     return {
       id: folder.id,
       name: folder.name,

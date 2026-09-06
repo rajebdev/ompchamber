@@ -308,7 +308,7 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
           )}
 
           <Panel id="center-panel" defaultSize={initialLayoutSizes?.center ?? undefined} minSize={300}>
-            <ChatTimeline className="w-full h-full" folders={folders} />
+            <ChatTimeline className="w-full h-full" folders={folders} appSettings={appSettings} />
           </Panel>
 
           {showEditor && (

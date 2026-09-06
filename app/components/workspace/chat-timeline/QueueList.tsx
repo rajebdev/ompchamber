@@ -1,0 +1,81 @@
+import React, { useRef } from 'react';
+import { GripVertical, X, Pencil, Send } from 'lucide-react';
+import type { Attachment } from '@/types';
+
+export interface QueuedMessage {
+  id: string;
+  text: string;
+  attachments: Attachment[];
+}
+
+interface QueueListProps {
+  queue: QueuedMessage[];
+  setQueue: React.Dispatch<React.SetStateAction<QueuedMessage[]>>;
+  onEdit?: (item: QueuedMessage) => void;
+  onSendNow?: (item: QueuedMessage) => void;
+}
+
+export function QueueList({ queue, setQueue, onEdit, onSendNow }: QueueListProps) {
+  const dragItem = useRef<number | null>(null);
+  const dragOverItem = useRef<number | null>(null);
+
+  const handleSort = () => {
+    if (dragItem.current === null || dragOverItem.current === null) return;
+    const _queue = [...queue];
+    const draggedItemContent = _queue.splice(dragItem.current, 1)[0];
+    _queue.splice(dragOverItem.current, 0, draggedItemContent);
+    dragItem.current = null;
+    dragOverItem.current = null;
+    setQueue(_queue);
+  };
+
+  if (queue.length === 0) return null;
+
+  return (
+    <div className="max-h-[150px] overflow-y-auto mb-2 space-y-1">
+      {queue.map((item, index) => (
+        <div
+          key={item.id}
+          draggable
+          onDragStart={(e) => { dragItem.current = index; }}
+          onDragEnter={(e) => { dragOverItem.current = index; }}
+          onDragEnd={handleSort}
+          onDragOver={(e) => e.preventDefault()}
+          className="flex items-center gap-2 px-2 py-1.5 bg-[#faf8f3] border border-[#141310]/10 rounded shadow-sm text-xs group hover:border-[#141310]/30 transition-colors"
+        >
+          <div className="cursor-grab text-[#141310]/40 group-hover:text-[#141310]/80">
+            <GripVertical size={14} />
+          </div>
+          <div className="flex-1 truncate text-[#141310]/80 pr-2">
+            {item.text || (item.attachments.length > 0 ? `[${item.attachments.length} attachment${item.attachments.length > 1 ? 's' : ''}]` : 'Empty message')}
+          </div>
+          {onSendNow && (
+            <button
+              onClick={() => onSendNow(item)}
+              className="text-[#141310]/40 hover:text-[#141310]/80 opacity-0 group-hover:opacity-100 transition-opacity"
+              title="Send Now (Steering)"
+            >
+              <Send size={12} />
+            </button>
+          )}
+          {onEdit && (
+            <button
+              onClick={() => onEdit(item)}
+              className="text-[#141310]/40 hover:text-[#141310]/80 opacity-0 group-hover:opacity-100 transition-opacity"
+              title="Edit"
+            >
+              <Pencil size={12} />
+            </button>
+          )}
+          <button
+            onClick={() => setQueue(q => q.filter(i => i.id !== item.id))}
+            className="text-[#141310]/40 hover:text-[#c8321e] opacity-0 group-hover:opacity-100 transition-opacity"
+            title="Remove"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}

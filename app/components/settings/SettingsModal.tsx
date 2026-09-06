@@ -40,7 +40,10 @@ const DEFAULT_SETTINGS: SettingsState = {
   activeProvider: 'claude',
   autoApproveSafeCmds: true,
   autoPatchErrors: true,
-  followUpBehavior: 'queue'
+  followUpBehavior: 'queue',
+  keybindingSend: 'Enter',
+  keybindingNewLine: 'Shift + Enter',
+  keybindingSteering: 'Ctrl / Cmd + Enter'
 };
 
 export function SettingsModal({ isOpen, onClose, initialCategory = 'general', appSettings = {} }: SettingsModalProps) {

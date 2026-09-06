@@ -7,9 +7,10 @@ import { ChatMessageItem } from './chat-timeline/ChatMessageItem';
 import { MinimapShortcuts } from './chat-timeline/MinimapShortcuts';
 import { EmptyWorkspacePrompt } from './chat-timeline/EmptyWorkspacePrompt';
 import { GeneratingIndicator } from './chat-timeline/GeneratingIndicator';
+import { QueueList } from './chat-timeline/QueueList';
 import { getSessionData } from '@/data/chatMockData';
 
-export function ChatTimeline({ className = '', folders = [] }: { className?: string, folders?: any[] }) {
+export function ChatTimeline({ className = '', folders = [], appSettings = {} }: { className?: string, folders?: any[], appSettings?: Record<string, any> }) {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('sessionId');
   const folderId = searchParams.get('folderId');
@@ -45,6 +46,7 @@ export function ChatTimeline({ className = '', folders = [] }: { className?: str
   };
 
   const [inputValue, setInputValue] = useState('');
+  const [inputAttachments, setInputAttachments] = useState<Attachment[]>([]);
   const [localMessages, setLocalMessages] = useState<any[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingVerb, setGeneratingVerb] = useState('');
@@ -72,20 +74,61 @@ export function ChatTimeline({ className = '', folders = [] }: { className?: str
     });
   }, [sessionId, localMessages.length]);
 
-  const handleSend = (attachments: Attachment[]) => {
-    if (!inputValue.trim() && attachments.length === 0 || isGenerating) return;
+  const generationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const currentSession = useMemo(() => {
+    if (!sessionId) return null;
+    for (const folder of folders) {
+      const session = folder.sessions.find((s: any) => String(s.id) === sessionId);
+      if (session) return session;
+    }
+    return null;
+  }, [sessionId, folders]);
 
+  const [messageQueue, setMessageQueueLocal] = useState<import('./chat-timeline/QueueList').QueuedMessage[]>([]);
+
+  // Initialize queue from DB on mount or session change
+  useEffect(() => {
+    if (currentSession && currentSession.queue_list) {
+      setMessageQueueLocal(currentSession.queue_list);
+    } else {
+      setMessageQueueLocal([]);
+    }
+  }, [currentSession]);
+
+  const setMessageQueue = useCallback((updater: React.SetStateAction<import('./chat-timeline/QueueList').QueuedMessage[]>) => {
+    setMessageQueueLocal(prev => {
+      const newQueue = typeof updater === 'function' ? updater(prev) : updater;
+      if (sessionId) {
+        fetch(`/api/sessions/${sessionId}/queue`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ queue_list: newQueue })
+        }).catch(console.error);
+      }
+      return newQueue;
+    });
+  }, [sessionId]);
+
+  // Auto-process queue
+  useEffect(() => {
+    if (!isGenerating && messageQueue.length > 0) {
+      const nextMessage = messageQueue[0];
+      setMessageQueue(q => q.slice(1));
+      executeSend(nextMessage.text, nextMessage.attachments);
+    }
+  }, [isGenerating, messageQueue.length]);
+
+  const executeSend = (text: string, attachments: Attachment[]) => {
     const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     const newUserMsg = {
       id: `msg-${Date.now()}-user`,
       role: 'user',
       date: `Today, ${time}`,
-      content: inputValue.trim(),
+      content: text,
       attachments: attachments.map(a => ({ name: a.file.name, preview: a.preview }))
     };
 
     setLocalMessages(prev => [...prev, newUserMsg]);
-    setInputValue('');
     setIsGenerating(true);
     
     const verbs = [
@@ -102,7 +145,7 @@ export function ChatTimeline({ className = '', folders = [] }: { className?: str
     setTimeout(() => scrollToBottom('smooth'), 50);
 
     // Simulate realistic multi-step AI reasoning and tool calls
-    setTimeout(() => {
+    generationTimeoutRef.current = setTimeout(() => {
       const newAiMsg = {
         id: `msg-${Date.now()}-ai`,
         role: 'ai',
@@ -110,7 +153,7 @@ export function ChatTimeline({ className = '', folders = [] }: { className?: str
         thinking: {
           duration: "2.1s",
           summary: "Deconstruct prompt, execute workspace diagnostics, and formulate implementation patch.",
-          thought: `1. User requested: "${inputValue.trim()}".\n2. Inspecting project context and Bun runtime dependencies.\n3. Running diagnostic checks against active edge endpoints.\n4. Compiling resolution output.`
+          thought: `1. User requested: "${text}".\n2. Inspecting project context and Bun runtime dependencies.\n3. Running diagnostic checks against active edge endpoints.\n4. Compiling resolution output.`
         },
         toolCalls: [
           {
@@ -132,31 +175,70 @@ export function ChatTimeline({ className = '', folders = [] }: { className?: str
             output: 'Bun v1.2.4\n├── @remis/edge@1.0.4\n├── lucide-react@0.475.0\n└── tailwindcss@4.0.0',
             status: 'success' as const,
             duration: '85ms'
-          },
-          {
-            id: `tc-${Date.now()}-2`,
-            type: 'edit_file' as const,
-            title: 'Workspace Patch',
-            target: 'app/components/workspace/ChatTimeline.tsx',
-            command: 'edit_file app/components/workspace/ChatTimeline.tsx',
-            diff: {
-              file: 'app/components/workspace/ChatTimeline.tsx',
-              added: 8,
-              removed: 2,
-              diffText: `@@ -85,2 +85,8 @@\n+  // Verified runtime compatibility with bun v1.2.4\n+  const isReady = true;`
-            },
-            output: 'Successfully applied updates.',
-            status: 'success' as const,
-            duration: '140ms'
           }
         ],
-        content: `I've processed your request: "${inputValue.trim()}". The runtime environment is healthy and all diagnostics passed successfully.`,
+        content: `I've processed your request: "${text}". The runtime environment is healthy and all diagnostics passed successfully.`,
         summary: "Execution completed in 2.3s with 0 errors."
       };
       setLocalMessages(prev => [...prev, newAiMsg]);
       setIsGenerating(false);
+      generationTimeoutRef.current = null;
       setTimeout(() => scrollToBottom('smooth'), 50);
     }, 2500);
+  };
+
+  const handleSend = (attachments: Attachment[], options?: { steering?: boolean }) => {
+    const textToSend = inputValue.trim();
+    if (!textToSend && attachments.length === 0) return;
+
+    if (isGenerating) {
+      if (options?.steering) {
+        // Cancel current generation and execute immediately
+        if (generationTimeoutRef.current) {
+          clearTimeout(generationTimeoutRef.current);
+          generationTimeoutRef.current = null;
+        }
+        setIsGenerating(false);
+        setInputValue('');
+        
+        // Use a tiny timeout to let state settle before starting new generation
+        setTimeout(() => executeSend(textToSend, attachments), 0);
+        return;
+      } else {
+        // Add to queue
+        setMessageQueue(prev => [...prev, {
+          id: `queue-${Date.now()}`,
+          text: textToSend,
+          attachments: attachments
+        }]);
+        setInputValue('');
+        return;
+      }
+    }
+
+    setInputValue('');
+    executeSend(textToSend, attachments);
+  };
+
+  const handleEditQueueItem = (item: import('./chat-timeline/QueueList').QueuedMessage) => {
+    setMessageQueue(q => q.filter(i => i.id !== item.id));
+    setInputValue(item.text);
+    setInputAttachments(item.attachments);
+  };
+
+  const handleSendNowQueueItem = (item: import('./chat-timeline/QueueList').QueuedMessage) => {
+    setMessageQueue(q => q.filter(i => i.id !== item.id));
+    
+    if (isGenerating) {
+      if (generationTimeoutRef.current) {
+        clearTimeout(generationTimeoutRef.current);
+        generationTimeoutRef.current = null;
+      }
+      setIsGenerating(false);
+      setTimeout(() => executeSend(item.text, item.attachments), 0);
+    } else {
+      executeSend(item.text, item.attachments);
+    }
   };
 
   const userMessages = localMessages.filter(m => m.role === 'user');
@@ -184,8 +266,11 @@ export function ChatTimeline({ className = '', folders = [] }: { className?: str
         setSelectedFolderId={setSelectedFolderId}
         inputValue={inputValue}
         setInputValue={setInputValue}
+        inputAttachments={inputAttachments}
+        setInputAttachments={setInputAttachments}
         onSend={handleSend}
         isGenerating={isGenerating}
+        appSettings={appSettings}
       />
     );
   }
@@ -252,11 +337,20 @@ export function ChatTimeline({ className = '', folders = [] }: { className?: str
       
       {/* Input Area Footer */}
       <div className="p-4 bg-[#f4f1ea] border-t border-[#141310]/10 flex-shrink-0">
+        <QueueList 
+          queue={messageQueue} 
+          setQueue={setMessageQueue} 
+          onEdit={handleEditQueueItem} 
+          onSendNow={handleSendNowQueueItem}
+        />
         <ChatInput 
           value={inputValue}
           onChange={setInputValue}
+          attachments={inputAttachments}
+          onAttachmentsChange={setInputAttachments}
           onSend={handleSend}
           isGenerating={isGenerating}
+          appSettings={appSettings}
         />
       </div>
     </div>

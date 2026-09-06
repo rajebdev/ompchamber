@@ -52,4 +52,7 @@ export interface SettingsState {
   autoApproveSafeCmds: boolean;
   autoPatchErrors: boolean;
   followUpBehavior: 'queue' | 'steering';
+  keybindingSend: 'Enter' | 'Shift + Enter' | 'Ctrl / Cmd + Enter';
+  keybindingNewLine: 'Enter' | 'Shift + Enter' | 'Ctrl / Cmd + Enter';
+  keybindingSteering: 'Enter' | 'Shift + Enter' | 'Ctrl / Cmd + Enter';
 }

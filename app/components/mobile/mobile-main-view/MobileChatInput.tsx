@@ -17,9 +17,12 @@ import { useOnClickOutside } from '@/hooks/useOnClickOutside';
 interface MobileChatInputProps {
   value: string;
   onChange: (val: string) => void;
-  onSend: (attachments: Attachment[]) => void;
+  onSend: (attachments: Attachment[], options?: { steering?: boolean }) => void;
   isGenerating?: boolean;
   disabled?: boolean;
+  appSettings?: Record<string, any>;
+  attachments?: Attachment[];
+  onAttachmentsChange?: (attachments: Attachment[]) => void;
 }
 
 export function MobileChatInput({
@@ -27,10 +30,23 @@ export function MobileChatInput({
   onChange,
   onSend,
   isGenerating = false,
-  disabled = false
+  disabled = false,
+  appSettings = {},
+  attachments: externalAttachments,
+  onAttachmentsChange
 }: MobileChatInputProps) {
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [internalAttachments, setInternalAttachments] = useState<Attachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const attachments = externalAttachments !== undefined ? externalAttachments : internalAttachments;
+  const setAttachments = (updater: React.SetStateAction<Attachment[]>) => {
+    if (onAttachmentsChange) {
+      const newAtts = typeof updater === 'function' ? updater(attachments) : updater;
+      onAttachmentsChange(newAtts);
+    } else {
+      setInternalAttachments(updater);
+    }
+  };
 
   // Model Dropdown State (matching desktop)
   const [showModel, setShowModel] = useState(false);
@@ -99,10 +115,10 @@ export function MobileChatInput({
     });
   };
 
-  const handleSendClick = () => {
+  const handleSendClick = (options?: { steering?: boolean }) => {
     if (!value.trim() && attachments.length === 0) return;
-    if (isGenerating || disabled) return;
-    onSend(attachments);
+    if (disabled) return;
+    onSend(attachments, options);
     setAttachments([]);
   };
 
@@ -160,9 +176,36 @@ export function MobileChatInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
+          if (e.key !== 'Enter') return;
+
+          const sendBinding = appSettings.keybindingSend || 'Enter';
+          const newLineBinding = appSettings.keybindingNewLine || 'Shift + Enter';
+          const steeringBinding = appSettings.keybindingSteering || 'Ctrl / Cmd + Enter';
+          
+          const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+          const isCtrlOrCmd = isMac ? e.metaKey : e.ctrlKey;
+          const isShift = e.shiftKey;
+
+          const checkBinding = (binding: string) => {
+            if (binding === 'Enter' && !isShift && !isCtrlOrCmd && !e.altKey) return true;
+            if (binding === 'Shift + Enter' && isShift && !isCtrlOrCmd && !e.altKey) return true;
+            if (binding === 'Ctrl / Cmd + Enter' && !isShift && isCtrlOrCmd && !e.altKey) return true;
+            return false;
+          };
+
+          if (checkBinding(steeringBinding)) {
+            e.preventDefault();
+            if (!disabled) {
+              handleSendClick({ steering: true });
+            }
+          } else if (checkBinding(sendBinding)) {
             e.preventDefault();
             if (!disabled) handleSendClick();
+          } else if (checkBinding(newLineBinding)) {
+            // Allow default behavior (new line)
+          } else {
+            // Prevent default for other Enter combinations to avoid unwanted new lines
+            e.preventDefault();
           }
         }}
         onPaste={handlePaste}
@@ -295,7 +338,7 @@ export function MobileChatInput({
         {/* Send Button */}
         <button 
           type="button"
-          onClick={handleSendClick}
+          onClick={() => handleSendClick()}
           disabled={isGenerating || disabled || (!value.trim() && attachments.length === 0)}
           className="flex items-center justify-center w-7 h-7 rounded bg-[#141310] text-[#f4f1ea] hover:bg-[#141310]/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex-shrink-0"
           title="Send message"

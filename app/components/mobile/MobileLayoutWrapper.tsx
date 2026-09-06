@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from '@remix-run/react';
 import { Terminal } from 'lucide-react';
 import type { WorkspaceFolderData, GitChange, Attachment } from '@/types';
@@ -125,10 +125,50 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
     setSelectedFolderId(newId);
   };
 
-  // Send message in mobile chat
-  const handleSendMessage = (text: string, attachments: Attachment[]) => {
-    if (!text.trim() && attachments.length === 0) return;
+  const currentSession = useMemo(() => {
+    if (!sessionId) return null;
+    for (const folder of folders) {
+      const session = folder.sessions.find((s: any) => String(s.id) === String(sessionId));
+      if (session) return session;
+    }
+    return null;
+  }, [sessionId, folders]);
 
+  const [messageQueue, setMessageQueueLocal] = useState<import('@/components/workspace/chat-timeline/QueueList').QueuedMessage[]>([]);
+  const generationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Initialize queue from DB on mount or session change
+  useEffect(() => {
+    if (currentSession && currentSession.queue_list) {
+      setMessageQueueLocal(currentSession.queue_list);
+    } else {
+      setMessageQueueLocal([]);
+    }
+  }, [currentSession]);
+
+  const setMessageQueue = React.useCallback((updater: React.SetStateAction<import('@/components/workspace/chat-timeline/QueueList').QueuedMessage[]>) => {
+    setMessageQueueLocal(prev => {
+      const newQueue = typeof updater === 'function' ? updater(prev) : updater;
+      if (sessionId) {
+        fetch(`/api/sessions/${sessionId}/queue`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ queue_list: newQueue })
+        }).catch(console.error);
+      }
+      return newQueue;
+    });
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!isGenerating && messageQueue.length > 0) {
+      const nextMessage = messageQueue[0];
+      setMessageQueue(q => q.slice(1));
+      executeSendMessage(nextMessage.text, nextMessage.attachments);
+    }
+  }, [isGenerating, messageQueue.length]);
+
+  const executeSendMessage = (text: string, attachments: Attachment[]) => {
     const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     const userMsg = {
       id: `msg-${Date.now()}-user`,
@@ -149,7 +189,7 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
     setIsGenerating(true);
 
     // Realistic assistant reply with thinking and tool calling
-    setTimeout(() => {
+    generationTimeoutRef.current = setTimeout(() => {
       const assistantMsg = {
         id: `msg-${Date.now()}-assistant`,
         role: 'assistant',
@@ -177,7 +217,34 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
       };
       setMessages(prev => [...prev, assistantMsg]);
       setIsGenerating(false);
+      generationTimeoutRef.current = null;
     }, 1200);
+  };
+
+  // Send message in mobile chat
+  const handleSendMessage = (text: string, attachments: Attachment[], options?: { steering?: boolean }) => {
+    if (!text.trim() && attachments.length === 0) return;
+
+    if (isGenerating) {
+      if (options?.steering) {
+        if (generationTimeoutRef.current) {
+          clearTimeout(generationTimeoutRef.current);
+          generationTimeoutRef.current = null;
+        }
+        setIsGenerating(false);
+        setTimeout(() => executeSendMessage(text, attachments), 0);
+        return;
+      } else {
+        setMessageQueue(prev => [...prev, {
+          id: `queue-${Date.now()}`,
+          text,
+          attachments
+        }]);
+        return;
+      }
+    }
+
+    executeSendMessage(text, attachments);
   };
 
   // Git actions
@@ -266,6 +333,9 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
           messages={messages}
           onSendMessage={handleSendMessage}
           isGenerating={isGenerating}
+          appSettings={appSettings}
+          messageQueue={messageQueue}
+          setMessageQueue={setMessageQueue}
         />
       </div>
 
