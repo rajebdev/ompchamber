@@ -222,6 +222,7 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
         activeRepo={activeRepo}
         repos={repos}
         isLoading={isLoading}
+        rootPath={rootPath}
         onSelectRepo={(r) => loadRepo(r)}
         onRefresh={() => loadRepo(activeRepo)}
       />

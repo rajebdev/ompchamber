@@ -8,8 +8,15 @@ interface GitRepoHeaderProps {
   activeRepo: string;
   repos: string[];
   isLoading: boolean;
+  rootPath?: string;
   onSelectRepo: (repo: string) => void;
   onRefresh: () => void;
+}
+
+function workspaceFolderName(rootPath?: string): string {
+  if (!rootPath) return 'workspace root';
+  const parts = rootPath.replace(/\\/g, '/').split('/').filter(Boolean);
+  return parts.length > 0 ? parts[parts.length - 1] : 'workspace root';
 }
 
 export function GitRepoHeader({
@@ -19,15 +26,18 @@ export function GitRepoHeader({
   activeRepo,
   repos,
   isLoading,
+  rootPath,
   onSelectRepo,
   onRefresh,
 }: GitRepoHeaderProps) {
   const [repoQuery, setRepoQuery] = useState('');
+  const rootLabel = workspaceFolderName(rootPath);
+
+  const filterLabel = (r: string) => (r === '.' ? rootLabel : r);
 
   const filteredRepos = repos.filter(r => {
     if (!repoQuery.trim()) return true;
-    const label = r === '.' ? 'workspace root' : r;
-    return label.toLowerCase().includes(repoQuery.toLowerCase());
+    return filterLabel(r).toLowerCase().includes(repoQuery.toLowerCase());
   });
 
   return (
@@ -41,7 +51,7 @@ export function GitRepoHeader({
           <span className="flex items-center space-x-1 truncate max-w-[150px]">
             <span className="text-ink/50 font-normal uppercase tracking-wider text-[10px]">GIT</span>
             <span className="text-ink/30">•</span>
-            <span>{activeRepo === '.' ? 'workspace root' : activeRepo.split('/').pop()}</span>
+            <span>{activeRepo === '.' ? rootLabel : activeRepo.split('/').pop()}</span>
           </span>
           <ChevronDown size={12} className="text-ink/40" />
         </button>
@@ -82,10 +92,10 @@ export function GitRepoHeader({
                       setShowRepoMenu(false); 
                       setRepoQuery('');
                     }}
-                    title={r === '.' ? 'workspace root' : r}
+                    title={filterLabel(r)}
                     className="w-full text-left px-3 py-2 hover:bg-ink/5 flex items-center justify-between transition-colors"
                   >
-                    <span className="truncate">{r === '.' ? 'workspace root' : r}</span>
+                    <span className="truncate">{filterLabel(r)}</span>
                     {activeRepo === r && <Check size={12} className="text-ink" />}
                   </button>
                 ))
