@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from '@remix-run/react';
 import type { Attachment } from '@/types';
 import type { QueuedMessage } from '@/components/workspace/chat-timeline/QueueList';
-import { getSessionData } from '@/data/chatMockData';
 import { triggerChatCompletionSound } from '@/hooks/useNotificationSound';
 
 interface UseChatTimelineOptions {
@@ -18,50 +17,69 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
 
   useEffect(() => {
-    if (folderId) {
-      setSelectedFolderId(parseInt(folderId, 10));
-    } else {
-      setSelectedFolderId(null);
-    }
+    setSelectedFolderId(folderId ? parseInt(folderId, 10) : null);
   }, [folderId]);
 
-  // Scroll to bottom logic
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
 
   const handleScroll = useCallback(() => {
     if (!scrollRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
-    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-    setShowScrollBottom(!isNearBottom);
+    setShowScrollBottom(scrollHeight - scrollTop - clientHeight >= 100);
   }, []);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior,
-      });
-    }
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior });
   }, []);
 
   const [inputValue, setInputValue] = useState('');
   const [inputAttachments, setInputAttachments] = useState<Attachment[]>([]);
   const [localMessages, setLocalMessages] = useState<any[]>([]);
+  const [sessionData, setSessionData] = useState<{ id?: string; title?: string; model?: string; messages?: any[] } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingVerb, setGeneratingVerb] = useState('');
 
-  const sessionData = useMemo(() => {
-    return getSessionData(sessionId);
-  }, [sessionId]);
-
+  // Fetch session messages and details from API
   useEffect(() => {
-    if (sessionData) {
-      setLocalMessages(sessionData.messages);
+    let active = true;
+    if (sessionId) {
+      fetch(`/api/chat/${sessionId}`)
+        .then(res => res.json())
+        .then(data => {
+          if (!active) return;
+          if (data?.session) {
+            setSessionData(data.session);
+            setLocalMessages(data.session.messages || []);
+          } else {
+            setSessionData(null);
+            setLocalMessages([]);
+          }
+        })
+        .catch(err => {
+          console.error('Error loading session from API:', err);
+          if (active) {
+            setSessionData(null);
+            setLocalMessages([]);
+          }
+        });
     } else {
+      setSessionData(null);
       setLocalMessages([]);
     }
-  }, [sessionData]);
+    return () => {
+      active = false;
+    };
+  }, [sessionId]);
+
+  const persistMessages = useCallback((messagesToSave: any[]) => {
+    if (!sessionId) return;
+    fetch(`/api/chat/${sessionId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: messagesToSave }),
+    }).catch(err => console.error('Error persisting messages via API:', err));
+  }, [sessionId]);
 
   // Auto-scroll to bottom instantly when session changes
   useEffect(() => {
@@ -119,23 +137,17 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
       attachments: attachments.map(a => ({ name: a.file.name, preview: a.preview }))
     };
 
-    setLocalMessages(prev => [...prev, newUserMsg]);
+    setLocalMessages(prev => {
+      const next = [...prev, newUserMsg];
+      persistMessages(next);
+      return next;
+    });
     setIsGenerating(true);
 
-    const verbs = [
-      'Synthesizing solution',
-      'Deep reasoning',
-      'Architecting patch',
-      'Deconstructing AST',
-      'Compiling edge routes',
-      'Analyzing runtime context',
-      'Optimizing code structure'
-    ];
+    const verbs = ['Synthesizing solution', 'Deep reasoning', 'Architecting patch', 'Compiling edge routes'];
     setGeneratingVerb(verbs[Math.floor(Math.random() * verbs.length)]);
-
     setTimeout(() => scrollToBottom('smooth'), 50);
 
-    // Simulate realistic multi-step AI reasoning and tool calls
     generationTimeoutRef.current = setTimeout(() => {
       const newAiMsg = {
         id: `msg-${Date.now()}-ai`,
@@ -171,13 +183,17 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
         content: `I've processed your request: "${text}". The runtime environment is healthy and all diagnostics passed successfully.`,
         summary: "Execution completed in 2.3s with 0 errors."
       };
-      setLocalMessages(prev => [...prev, newAiMsg]);
+      setLocalMessages(prev => {
+        const next = [...prev, newAiMsg];
+        persistMessages(next);
+        return next;
+      });
       setIsGenerating(false);
       generationTimeoutRef.current = null;
       triggerChatCompletionSound(appSettings);
       setTimeout(() => scrollToBottom('smooth'), 50);
     }, 2500);
-  }, [appSettings, scrollToBottom]);
+  }, [appSettings, scrollToBottom, persistMessages]);
 
   // Auto-process queue
   useEffect(() => {
@@ -253,12 +269,11 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
 
     setLocalMessages(prev => {
       const idx = prev.findIndex(m => m.id === msgId);
-      if (idx !== -1) {
-        return prev.slice(0, idx);
-      }
-      return prev;
+      const next = idx !== -1 ? prev.slice(0, idx) : prev;
+      persistMessages(next);
+      return next;
     });
-  }, [isGenerating]);
+  }, [isGenerating, persistMessages]);
 
   const handleRetry = useCallback((msgId: string) => {
     if (isGenerating) {
@@ -276,11 +291,13 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
         setTimeout(() => {
           executeSend(userMsg.content, userMsg.attachments || []);
         }, 0);
-        return prev.slice(0, aiIdx);
+        const next = prev.slice(0, aiIdx);
+        persistMessages(next);
+        return next;
       }
       return prev;
     });
-  }, [isGenerating, executeSend]);
+  }, [isGenerating, executeSend, persistMessages]);
 
   const submitNewChat = useCallback((text: string, attachments: any[]) => {
     setSearchParams((prev) => {

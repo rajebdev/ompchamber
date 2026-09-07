@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { RefreshCw, ChevronDown, Check } from 'lucide-react';
 import type {
   SettingsState,
@@ -7,11 +7,6 @@ import type {
   BreakdownTab,
   ChartMetric,
 } from '@/types';
-import {
-  TIME_RANGES,
-  MOCK_RANGE_DATA,
-  BREAKDOWN_DATA,
-} from '@/data/tokenUsageMockData';
 import { TokenUsageMetricsGrid } from './token-usage-settings/TokenUsageMetricsGrid';
 import { TokenUsageBreakdown } from './token-usage-settings/TokenUsageBreakdown';
 
@@ -28,6 +23,10 @@ export function TokenUsageSettings({ settings: _settings, onUpdate: _onUpdate }:
   const [breakdownTab, setBreakdownTab] = useState<BreakdownTab>('model');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  const [timeRanges, setTimeRanges] = useState<any[]>([]);
+  const [activeMetrics, setActiveMetrics] = useState<any>(null);
+  const [activeBreakdownRows, setActiveBreakdownRows] = useState<any[]>([]);
+
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -40,14 +39,36 @@ export function TokenUsageSettings({ settings: _settings, onUpdate: _onUpdate }:
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleRefresh = () => {
+  const loadData = useCallback(() => {
     setIsRefreshing(true);
-    setTimeout(() => setIsRefreshing(false), 450);
+    fetch(`/api/telemetry/tokens?timeRange=${timeRange}&breakdownTab=${breakdownTab}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.timeRanges) setTimeRanges(data.timeRanges);
+        if (data.metrics) setActiveMetrics(data.metrics);
+        if (data.breakdownRows) setActiveBreakdownRows(data.breakdownRows);
+      })
+      .catch(err => console.error('Failed to load token telemetry:', err))
+      .finally(() => setIsRefreshing(false));
+  }, [timeRange, breakdownTab]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleRefresh = () => {
+    loadData();
   };
 
-  const selectedRangeObj = TIME_RANGES.find((r) => r.id === timeRange) || TIME_RANGES[2];
-  const activeMetrics = MOCK_RANGE_DATA[timeRange];
-  const activeBreakdownRows = BREAKDOWN_DATA[breakdownTab];
+  const selectedRangeObj = timeRanges.find((r) => r.id === timeRange) || timeRanges[0] || { id: timeRange, label: timeRange, dateRange: 'Current Period' };
+
+  if (!activeMetrics) {
+    return (
+      <div className="flex items-center justify-center p-8 text-ink/40 text-xs">
+        Loading token usage telemetry...
+      </div>
+    );
+  }
 
   return (
     <div className="w-full space-y-4 text-ink pb-2 text-xs">
@@ -97,7 +118,7 @@ export function TokenUsageSettings({ settings: _settings, onUpdate: _onUpdate }:
 
             {isDropdownOpen && (
               <div className="absolute right-0 top-full mt-1 w-44 bg-paper border border-ink/15 rounded-md shadow-lg z-30 py-1 text-[11px] divide-y divide-ink/5">
-                {TIME_RANGES.map((range) => (
+                {timeRanges.map((range) => (
                   <button
                     key={range.id}
                     onClick={() => {

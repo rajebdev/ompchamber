@@ -84,3 +84,17 @@
 ### 7. Layout & Panel Resizing
 - **Panel Width**: Be aware that the width of the layout panels (like the sidebar or right sidebar) is considered and calculated in **pixels**. When handling layout persistence or default sizes, ensure they are treated as pixel values rather than just percentages, adapting library APIs (like `react-resizable-panels`) as needed to accommodate pixel-based design intent.
 
+### 8. Route Organization & Domain Grouping
+- **Domain-Based Subdirectories**: Routes under `app/routes/` MUST be organized and grouped into subdirectories matching their functional domain (e.g., `app/routes/api/settings/`, `app/routes/api/chat/`, `app/routes/api/fs/`, `app/routes/api/terminal/`, `app/routes/api/telemetry/`, `app/routes/api/sessions/`, `app/routes/api/files/`, `app/routes/api/folders/`).
+- **No Monolithic Flat Folder Clutter**: Do NOT dump all API route endpoints loosely in the root of `app/routes/api/` as flat files. Group related child endpoints inside domain folders (e.g., `settings/route.ts`, `settings/agents.ts`, `settings/providers.ts`).
+- **Nested & Parametric Routes**: Parametric and dynamic routes follow Remix flat-routes directory nesting conventions (e.g., `chat/$sessionId.ts`, `sessions/$sessionId.queue.ts`).
+
+### 9. Environment Data Modes (`MOCK=true` vs `MOCK=false`)
+- **`MOCK=true` (Simulation & Demo Mode)**:
+  - All features and loaders utilize rich predefined datasets and presets from `app/data/` (simulated demo chats, token telemetry ranges, agent/project presets).
+  - Database seeding automatically injects sample workspace folders, demo commit sessions, and file structures.
+- **`MOCK=false` (Real Data Mode)**:
+  - The application operates strictly against real backend resources and real SQLite database persistence.
+  - No synthetic sample sessions, fake dialogues, or hardcoded mock files are auto-injected.
+  - Managed globally through `process.env.MOCK` and verified via `@/mock.server`.
+

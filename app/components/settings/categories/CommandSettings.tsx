@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import type { CommandItem, SettingsState } from '@/types';
-import { DEFAULT_COMMANDS_LIST } from '@/data/commandData';
 import { CommandSidebarList } from './command-settings/CommandSidebarList';
 import { CommandDetailPane } from './command-settings/CommandDetailPane';
 
@@ -9,35 +8,31 @@ interface CommandSettingsProps {
   onUpdate: (settings: SettingsState) => void;
 }
 
-const STORAGE_KEY = 'omp_commands_settings';
-
 export const CommandSettings: React.FC<CommandSettingsProps> = () => {
-  const [commands, setCommands] = useState<CommandItem[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch {
-      // fallback
-    }
-    return DEFAULT_COMMANDS_LIST;
-  });
-
-  const [selectedCommandId, setSelectedCommandId] = useState<string | null>(() => {
-    return DEFAULT_COMMANDS_LIST[0]?.id || null;
-  });
-
+  const [commands, setCommands] = useState<CommandItem[]>([]);
+  const [selectedCommandId, setSelectedCommandId] = useState<string | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [selectedProject, setSelectedProject] = useState('ompchamber');
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(commands));
-    } catch {
-      // ignore
-    }
-  }, [commands]);
+    let active = true;
+    fetch('/api/settings/commands')
+      .then(res => res.json())
+      .then(data => {
+        if (!active) return;
+        const list = data?.commands || [];
+        setCommands(list);
+        if (list.length > 0) {
+          setSelectedCommandId(list[0].id);
+        }
+      })
+      .catch(err => console.error('Failed to load commands from API:', err))
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
 
   const handleAddNewCommand = () => {
     setIsCreatingNew(true);
@@ -50,28 +45,46 @@ export const CommandSettings: React.FC<CommandSettingsProps> = () => {
   };
 
   const handleSaveCommand = (updated: CommandItem) => {
-    if (isCreatingNew) {
-      const newCmd: CommandItem = {
-        ...updated,
-        id: `cmd-${Date.now()}`,
-        isBuiltIn: false,
-      };
-      setCommands((prev) => [...prev, newCmd]);
-      setSelectedCommandId(newCmd.id);
-      setIsCreatingNew(false);
-    } else {
-      setCommands((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
-    }
+    const targetCmd: CommandItem = isCreatingNew
+      ? { ...updated, id: `cmd-${Date.now()}`, isBuiltIn: false }
+      : updated;
+
+    fetch('/api/settings/commands', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: targetCmd }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data?.commands) {
+          setCommands(data.commands);
+        } else {
+          setCommands(prev => {
+            const exists = prev.some(c => c.id === targetCmd.id);
+            return exists ? prev.map(c => c.id === targetCmd.id ? targetCmd : c) : [...prev, targetCmd];
+          });
+        }
+        setSelectedCommandId(targetCmd.id);
+        setIsCreatingNew(false);
+      })
+      .catch(err => console.error('Failed to save command via API:', err));
   };
 
   const handleDeleteCommand = (commandId: string) => {
-    const confirm = window.confirm('Are you sure you want to delete this command?');
-    if (!confirm) return;
-
-    setCommands((prev) => prev.filter((c) => c.id !== commandId));
-    if (selectedCommandId === commandId) {
-      setSelectedCommandId(commands[0]?.id || null);
-    }
+    fetch('/api/settings/commands', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deleteId: commandId }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        const nextList = data?.commands || commands.filter(c => c.id !== commandId);
+        setCommands(nextList);
+        if (selectedCommandId === commandId) {
+          setSelectedCommandId(nextList[0]?.id || null);
+        }
+      })
+      .catch(err => console.error('Failed to delete command via API:', err));
   };
 
   const selectedCommand = commands.find((c) => c.id === selectedCommandId) || commands[0];
@@ -86,6 +99,14 @@ export const CommandSettings: React.FC<CommandSettingsProps> = () => {
     template: 'Execute task: $ARGUMENTS',
     isBuiltIn: false,
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex h-full w-full items-center justify-center text-xs text-ink/40">
+        Loading commands from database...
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-paper">

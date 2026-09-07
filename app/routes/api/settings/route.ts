@@ -1,6 +1,25 @@
 import { json } from '@remix-run/node';
-import type { ActionFunctionArgs } from '@remix-run/node';
+import type { ActionFunctionArgs, LoaderFunctionArgs } from '@remix-run/node';
 import { getDb } from '@/db.server';
+import { isMockMode } from '@/mock.server';
+
+export async function loader({ request: _request }: LoaderFunctionArgs) {
+  try {
+    const db = await getDb();
+    const rows = await db.all('SELECT * FROM app_settings');
+    const settings: Record<string, any> = {};
+    for (const row of rows) {
+      try {
+        settings[row.key] = JSON.parse(row.value);
+      } catch {
+        settings[row.key] = row.value;
+      }
+    }
+    return json({ settings, isMock: isMockMode() });
+  } catch (error: any) {
+    return json({ error: error.message, settings: {}, isMock: isMockMode() }, { status: 500 });
+  }
+}
 
 export async function action({ request }: ActionFunctionArgs) {
   if (request.method !== 'POST') {

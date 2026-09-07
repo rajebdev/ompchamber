@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import type { SkillItem, SettingsState } from '@/types';
-import { DEFAULT_SKILLS } from '@/data/skillData';
 import { SkillSidebarList } from './skill-settings/SkillSidebarList';
 import { SkillDetailPane } from './skill-settings/SkillDetailPane';
 
@@ -11,29 +10,30 @@ interface SkillSettingsProps {
 }
 
 export function SkillSettings({ onNavigateToCatalog }: SkillSettingsProps) {
-  const [skills, setSkills] = useState<SkillItem[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('omp_skills');
-        if (saved) return JSON.parse(saved);
-      } catch (e) {
-        // fallback
-      }
-    }
-    return DEFAULT_SKILLS;
-  });
-
+  const [skills, setSkills] = useState<SkillItem[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState('ompchamber');
-  const [selectedSkillId, setSelectedSkillId] = useState<string | null>(() => {
-    return DEFAULT_SKILLS[0]?.id || null;
-  });
+  const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('omp_skills', JSON.stringify(skills));
-    }
-  }, [skills]);
+    let active = true;
+    fetch('/api/settings/skills')
+      .then(res => res.json())
+      .then(data => {
+        if (!active) return;
+        const list = data?.skills || [];
+        setSkills(list);
+        if (list.length > 0) {
+          setSelectedSkillId(list[0].id);
+        }
+      })
+      .catch(err => console.error('Failed to load skills from API:', err))
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
 
   const selectedSkill = skills.find((s) => s.id === selectedSkillId) || null;
 
@@ -48,35 +48,66 @@ export function SkillSettings({ onNavigateToCatalog }: SkillSettingsProps) {
   };
 
   const handleSaveSkill = (skillData: Partial<SkillItem>) => {
-    if (isCreatingNew) {
-      const newSkill: SkillItem = {
-        id: `skill-${Date.now()}`,
-        name: skillData.name || 'new-skill',
-        description: skillData.description || '',
-        location: skillData.location || 'user',
-        locationLabel: skillData.locationLabel || 'User / OpenCode',
-        instructions: skillData.instructions || '',
-        project: selectedProjectId,
-      };
-      setSkills((prev) => [...prev, newSkill]);
-      setSelectedSkillId(newSkill.id);
-      setIsCreatingNew(false);
-    } else if (selectedSkillId) {
-      setSkills((prev) =>
-        prev.map((s) => (s.id === selectedSkillId ? { ...s, ...skillData } : s))
-      );
-    }
+    const targetSkill: SkillItem = isCreatingNew
+      ? {
+          id: `skill-${Date.now()}`,
+          name: skillData.name || 'new-skill',
+          description: skillData.description || '',
+          location: skillData.location || 'user',
+          locationLabel: skillData.locationLabel || 'User / OpenCode',
+          instructions: skillData.instructions || '',
+          project: selectedProjectId,
+        }
+      : {
+          ...(selectedSkill || { id: selectedSkillId || `skill-${Date.now()}` }),
+          ...skillData,
+        } as SkillItem;
+
+    fetch('/api/settings/skills', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skill: targetSkill }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data?.skills) {
+          setSkills(data.skills);
+        } else {
+          setSkills(prev => {
+            const exists = prev.some(s => s.id === targetSkill.id);
+            return exists ? prev.map(s => s.id === targetSkill.id ? targetSkill : s) : [...prev, targetSkill];
+          });
+        }
+        setSelectedSkillId(targetSkill.id);
+        setIsCreatingNew(false);
+      })
+      .catch(err => console.error('Failed to save skill via API:', err));
   };
 
   const handleDeleteSkill = (id: string) => {
-    setSkills((prev) => {
-      const updated = prev.filter((s) => s.id !== id);
-      if (selectedSkillId === id) {
-        setSelectedSkillId(updated[0]?.id || null);
-      }
-      return updated;
-    });
+    fetch('/api/settings/skills', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deleteId: id }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        const nextList = data?.skills || skills.filter(s => s.id !== id);
+        setSkills(nextList);
+        if (selectedSkillId === id) {
+          setSelectedSkillId(nextList[0]?.id || null);
+        }
+      })
+      .catch(err => console.error('Failed to delete skill via API:', err));
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex h-full w-full items-center justify-center text-xs text-ink/40">
+        Loading skills from database...
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col md:flex-row h-full w-full overflow-hidden bg-paper">

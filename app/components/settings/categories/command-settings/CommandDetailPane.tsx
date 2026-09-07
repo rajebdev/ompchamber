@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Bot, PenTool, Trash2, Check, Copy, Terminal } from 'lucide-react';
-import type { CommandItem, CommandScope } from '@/types';
-import { DEFAULT_AGENTS_LIST } from '@/data/agentData';
+import type { CommandItem, CommandScope, AgentItem } from '@/types';
 
 interface CommandDetailPaneProps {
   command: CommandItem;
@@ -30,6 +29,16 @@ export const CommandDetailPane: React.FC<CommandDetailPaneProps> = ({
   const [formData, setFormData] = useState<CommandItem>(command);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [copiedTemplate, setCopiedTemplate] = useState(false);
+  const [availableAgents, setAvailableAgents] = useState<AgentItem[]>([]);
+
+  useEffect(() => {
+    fetch('/api/settings/agents')
+      .then(res => res.json())
+      .then(data => {
+        if (data?.agents) setAvailableAgents(data.agents);
+      })
+      .catch(console.error);
+  }, []);
 
   useEffect(() => {
     setFormData(command);
@@ -154,7 +163,7 @@ export const CommandDetailPane: React.FC<CommandDetailPaneProps> = ({
                 className="w-full text-xs py-2 pr-3 bg-transparent focus:outline-none cursor-pointer text-ink"
               >
                 <option value="Not selected">Not selected</option>
-                {DEFAULT_AGENTS_LIST.map((agent) => (
+                {availableAgents.map((agent) => (
                   <option key={agent.id} value={agent.name}>
                     @{agent.name}
                   </option>

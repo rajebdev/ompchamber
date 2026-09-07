@@ -1,16 +1,28 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, ChevronDown, Info, Check } from 'lucide-react';
-import { AVAILABLE_PROJECT_MODELS } from '@/data/projectData';
+
+const FALLBACK_MODELS = [
+  'Not selected',
+  'DeepSeek-V3',
+  'DeepSeek-R1',
+  'Claude 3.5 Sonnet',
+  'Claude 3.7 Sonnet',
+  'GPT-4o',
+  'Gemini 2.5 Pro',
+];
 
 interface ProjectModelDropdownProps {
   model: string;
   onSelectModel: (model: string) => void;
+  models?: string[];
 }
 
 export function ProjectModelDropdown({
   model,
   onSelectModel,
+  models = FALLBACK_MODELS,
 }: ProjectModelDropdownProps) {
+  const modelList = models && models.length > 0 ? models : FALLBACK_MODELS;
   const [isOpen, setIsOpen] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -68,7 +80,7 @@ export function ProjectModelDropdown({
 
           {isOpen && (
             <div className="absolute right-0 mt-1 w-52 bg-paper border border-ink/15 rounded-lg shadow-xl py-1 z-50 max-h-56 overflow-y-auto">
-              {AVAILABLE_PROJECT_MODELS.map((item) => (
+              {modelList.map((item) => (
                 <button
                   key={item}
                   type="button"

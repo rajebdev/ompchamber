@@ -52,3 +52,19 @@ Never use green, blue, or yellow. Semantic states are expressed purely in ink:
 - **Deployments Table**: Dense table with ~44px rows, branch chips, commit messages, and redeploy action.
 - **Bottom Split**: Last failed build log excerpt with signal red error lines + Deploys last 14 days stepped ink bar chart.
 - **Right Sidebar**: Double panel containing the **AI Oh-My-Pi Chamber** (interactive prompt/diagnostic assistant) and **Deployment Inspector** (runtime properties & stage breakdown).
+
+---
+
+## 6. Route Architecture & Domain Grouping
+
+- **Hierarchical Modular Routes**: All routes in `app/routes/` are strictly organized into logical domain subdirectories (`api/settings/`, `api/chat/`, `api/fs/`, `api/terminal/`, `api/telemetry/`, `api/sessions/`, `api/files/`, `api/folders/`) rather than residing in a flat, unorganized directory.
+- **Predictable REST Resource URI Mapping**: Nested endpoints reflect clean REST hierarchy (e.g., `/api/settings/agents`, `/api/settings/providers`, `/api/chat/:sessionId`, `/api/fs/git`).
+
+---
+
+## 7. Data Layer Architecture (Mock vs Real Mode)
+
+- **Environment-Controlled Toggle (`MOCK=true` / `MOCK=false`)**:
+  - **`MOCK=true`**: Provides sample simulation states (token graphs, chat monologue traces, preset agent configs, demo workspace sessions) for standalone previews and diagnostic demonstrations.
+  - **`MOCK=false`**: Connects directly to real SQLite tables and workspace files with zero synthetic demo sessions or fake commit data.
+

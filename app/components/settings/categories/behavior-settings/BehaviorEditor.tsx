@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Info, Copy, Check, RotateCcw, Save, ShieldCheck, Code } from 'lucide-react';
-import { DEFAULT_BEHAVIOR_RULES } from '@/data/behaviorData';
 
 interface BehaviorEditorProps {
   content: string;
@@ -16,6 +15,10 @@ export const BehaviorEditor: React.FC<BehaviorEditorProps> = ({
   const [editorValue, setEditorValue] = useState(content);
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setEditorValue(content);
+  }, [content]);
 
   const lines = editorValue.split('\n');
   const lineCount = lines.length;

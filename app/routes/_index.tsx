@@ -8,6 +8,7 @@ import { json } from '@remix-run/node';
 import type { MetaFunction, LoaderFunctionArgs } from '@remix-run/node';
 import { useLoaderData, useSearchParams } from '@remix-run/react';
 import { getDb } from '@/db.server';
+import { isMockMode } from '@/mock.server';
 import { DesktopLayout } from '@/components/layout/DesktopLayout';
 import { MobileLayoutWrapper } from '@/components/mobile/MobileLayoutWrapper';
 import type { WorkspaceFolderData } from '@/types';
@@ -63,7 +64,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
   return json({ 
     folders: groupedFolders,
     initialIsMobile: isMobileUA,
-    appSettings
+    appSettings,
+    isMock: isMockMode(),
   });
 }
 

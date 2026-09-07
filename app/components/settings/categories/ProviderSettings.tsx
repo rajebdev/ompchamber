@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import type { SettingsState, ProviderItem, ProviderModel } from '@/types';
-import { DEFAULT_PROVIDERS_LIST } from '@/data/providerData';
 import { ProviderSidebarList } from './provider-settings/ProviderSidebarList';
 import { ProviderHeader } from './provider-settings/ProviderHeader';
 import { ProviderAuthSection } from './provider-settings/ProviderAuthSection';
 import { ProviderModelsList } from './provider-settings/ProviderModelsList';
-import { AddProviderModal } from './provider-settings/AddProviderModal';
+import { AddProviderModal, type PresetProviderOption } from './provider-settings/AddProviderModal';
 import { ReconnectModal } from './provider-settings/ReconnectModal';
 import { ModelConfigModal } from './provider-settings/ModelConfigModal';
 import { ModelCapabilitiesModal } from './provider-settings/ModelCapabilitiesModal';
@@ -16,28 +15,11 @@ interface ProviderSettingsProps {
 }
 
 export function ProviderSettings({ settings, onUpdate }: ProviderSettingsProps) {
-  const [providers, setProviders] = useState<ProviderItem[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('omp_providers_config');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed;
-          }
-        }
-      } catch (e) {
-        // Fallback to default
-      }
-    }
-    return DEFAULT_PROVIDERS_LIST;
-  });
-
-  const [selectedProviderId, setSelectedProviderId] = useState<string>(() => {
-    return providers[0]?.id || 'provider-deepseek';
-  });
-
+  const [providers, setProviders] = useState<ProviderItem[]>([]);
+  const [presetProviders, setPresetProviders] = useState<PresetProviderOption[]>([]);
+  const [selectedProviderId, setSelectedProviderId] = useState<string>('provider-deepseek');
   const [currentProject, setCurrentProject] = useState('ompchamber');
+  const [isLoading, setIsLoading] = useState(true);
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -45,21 +27,37 @@ export function ProviderSettings({ settings, onUpdate }: ProviderSettingsProps) 
   const [configModel, setConfigModel] = useState<ProviderModel | null>(null);
   const [capabilitiesModel, setCapabilitiesModel] = useState<ProviderModel | null>(null);
 
+  useEffect(() => {
+    let active = true;
+    fetch('/api/settings/providers')
+      .then(res => res.json())
+      .then(data => {
+        if (!active) return;
+        if (data?.providers && Array.isArray(data.providers)) {
+          setProviders(data.providers);
+          if (data.providers.length > 0) {
+            setSelectedProviderId(data.providers[0].id);
+          }
+        }
+        if (data?.presetProviders) {
+          setPresetProviders(data.presetProviders);
+        }
+      })
+      .catch(err => console.error('Failed to load providers from API:', err))
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
+
   // Persistence helper
   const persistProviders = (updated: ProviderItem[]) => {
     setProviders(updated);
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem('omp_providers_config', JSON.stringify(updated));
-        fetch('/api/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ omp_providers_config: updated }),
-        }).catch(() => {});
-      } catch (e) {
-        // Silent error
-      }
-    }
+    fetch('/api/settings/providers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ providers: updated }),
+    }).catch(err => console.error('Failed to save providers via API:', err));
   };
 
   const selectedProvider =
@@ -207,6 +205,7 @@ export function ProviderSettings({ settings, onUpdate }: ProviderSettingsProps) 
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onAddProvider={handleAddProvider}
+        presets={presetProviders}
       />
 
       {selectedProvider && (

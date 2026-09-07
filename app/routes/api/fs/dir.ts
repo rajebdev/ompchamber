@@ -1,6 +1,7 @@
 import { json, type LoaderFunctionArgs } from '@remix-run/node';
 import fs from 'fs';
 import path from 'path';
+import { isMockMode } from '@/mock.server';
 
 function buildTree(dirPath: string, rootPath: string): any {
   const stats = fs.statSync(dirPath);
@@ -9,7 +10,7 @@ function buildTree(dirPath: string, rootPath: string): any {
 
   if (stats.isDirectory()) {
     const children = fs.readdirSync(dirPath)
-      .filter(child => !child.startsWith('.') && child !== 'node_modules') // simple ignore
+      .filter(child => !child.startsWith('.') && child !== 'node_modules' && child !== '.git' && child !== 'dist' && child !== 'build')
       .map(child => buildTree(path.join(dirPath, child), rootPath));
     
     // Sort directories first, then files
@@ -39,22 +40,25 @@ function buildTree(dirPath: string, rootPath: string): any {
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
-  const rootDir = path.join(process.cwd(), 'examples');
-  const targetPath = url.searchParams.get('path') || rootDir;
-  const fullPath = path.resolve(rootDir, targetPath);
+  const mock = isMockMode();
+  const baseDir = mock && fs.existsSync(path.join(process.cwd(), 'examples'))
+    ? path.join(process.cwd(), 'examples')
+    : process.cwd();
+
+  const targetPath = url.searchParams.get('path') || baseDir;
+  const fullPath = path.resolve(baseDir, targetPath);
 
   // Security check to prevent traversing outside the project
-  if (!fullPath.startsWith(rootDir)) {
+  if (!fullPath.startsWith(process.cwd())) {
     return json({ error: 'Invalid path' }, { status: 403 });
   }
 
   try {
-    const tree = buildTree(fullPath, rootDir);
-    // If we request root, tree is the root folder. FileExplorer usually expects a list of files/folders
+    const tree = buildTree(fullPath, baseDir);
     const files = tree.children || [];
-    return json({ files });
+    return json({ files, isMock: mock });
   } catch (error) {
     console.error(error);
-    return json({ error: 'Failed to read directory' }, { status: 500 });
+    return json({ error: 'Failed to read directory', isMock: mock }, { status: 500 });
   }
 }

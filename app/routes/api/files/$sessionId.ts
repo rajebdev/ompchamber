@@ -1,6 +1,6 @@
 import { json } from '@remix-run/node';
 import type { LoaderFunctionArgs } from '@remix-run/node';
-import { getDb } from '~/db.server';
+import { getDb } from '@/db.server';
 
 export async function loader({ params }: LoaderFunctionArgs) {
   const db = await getDb();

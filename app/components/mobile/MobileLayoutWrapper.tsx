@@ -6,7 +6,7 @@ import { MobileMainView } from './MobileMainView';
 import { MobileSessionSidebar } from './MobileSessionSidebar';
 import { MobileRightSidebar } from './MobileRightSidebar';
 import { MobileFullEditor } from './mobile-right-sidebar/MobileFullEditor';
-import { getSessionData } from '@/data/chatMockData';
+import { MobileScreenSwitcher } from './MobileScreenSwitcher';
 import { triggerChatCompletionSound } from '@/hooks/useNotificationSound';
 
 interface MobileLayoutWrapperProps {
@@ -26,29 +26,42 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(folderId || (folders[0]?.id ?? null));
   const [mobileEditorFile, setMobileEditorFile] = useState<{ name: string; path?: string; content?: string } | null>(null);
 
-  // Chat message state
   const [messages, setMessages] = useState<any[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // Git state
   const [gitChanges, setGitChanges] = useState<GitChange[]>([]);
   const [branch, setBranch] = useState('main');
   const [branches, setBranches] = useState<string[]>(['main', 'feat/mobile-ui', 'fix/dr-smpp']);
   const [syncCount, setSyncCount] = useState(40);
 
-  // Load session messages when sessionId changes
+  // Load session messages via API
   useEffect(() => {
+    let active = true;
     if (sessionId) {
-      const data = getSessionData(sessionId.toString());
-      if (data && data.messages) {
-        setMessages(data.messages);
-      } else {
-        setMessages([]);
-      }
+      fetch(`/api/chat/${sessionId}`)
+        .then(res => res.json())
+        .then(data => {
+          if (!active) return;
+          setMessages(data?.session?.messages || []);
+        })
+        .catch(err => {
+          console.error('Mobile chat API error:', err);
+          if (active) setMessages([]);
+        });
     } else {
       setMessages([]);
     }
+    return () => { active = false; };
   }, [sessionId]);
+
+  const persistMessages = (nextMessages: any[]) => {
+    if (!sessionId) return;
+    fetch(`/api/chat/${sessionId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: nextMessages }),
+    }).catch(console.error);
+  };
 
   // Load git data
   useEffect(() => {
@@ -177,19 +190,16 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
       timestamp: time,
       date: time,
       content: text,
-      attachments: attachments.map(a => ({
-        id: a.id,
-        name: a.file.name,
-        type: a.file.type,
-        size: a.file.size,
-        preview: a.preview
-      }))
+      attachments: attachments.map(a => ({ id: a.id, name: a.file.name, type: a.file.type, size: a.file.size, preview: a.preview }))
     };
 
-    setMessages(prev => [...prev, userMsg]);
+    setMessages(prev => {
+      const next = [...prev, userMsg];
+      persistMessages(next);
+      return next;
+    });
     setIsGenerating(true);
 
-    // Realistic assistant reply with thinking and tool calling
     generationTimeoutRef.current = setTimeout(() => {
       const assistantMsg = {
         id: `msg-${Date.now()}-assistant`,
@@ -199,7 +209,7 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
         thinking: {
           duration: '1.6s',
           summary: 'Inspect mobile workspace context, verify bun edge adapter and bundle telemetry.',
-          thought: `1. User prompt: "${text}".\n2. Target workspace: ${folders.find(f => f.id === selectedFolderId)?.name || 'Workspace'}.\n3. Verifying edge route signatures and bun runtime health.\n4. Formatting response for mobile viewport.`
+          thought: `1. User prompt: "${text}".\n2. Target workspace: ${folders.find(f => f.id === selectedFolderId)?.name || 'Workspace'}.\n3. Verifying edge route signatures and bun runtime health.`
         },
         toolCalls: [
           {
@@ -216,7 +226,11 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
         content: `I've analyzed your request: "${text}".\n\n- Target project: **${folders.find(f => f.id === selectedFolderId)?.name || 'Workspace'}**\n- Runtime: Bun v1.2.4 with remisJS edge adapter\n- CI/CD telemetry status: Ready.`,
         summary: 'Workspace verification complete.'
       };
-      setMessages(prev => [...prev, assistantMsg]);
+      setMessages(prev => {
+        const next = [...prev, assistantMsg];
+        persistMessages(next);
+        return next;
+      });
       setIsGenerating(false);
       generationTimeoutRef.current = null;
       triggerChatCompletionSound(appSettings);
@@ -249,27 +263,15 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
     executeSendMessage(text, attachments);
   };
 
-  // Git actions
   const handleGitAction = (actionType: string, file?: string) => {
-    const matchesTarget = (changeFile: string, targetPath: string) => {
-      return changeFile === targetPath || changeFile.startsWith(targetPath.endsWith('/') ? targetPath : `${targetPath}/`);
-    };
-
-    if (actionType === 'revert') {
-      setGitChanges(prev => prev.filter(c => !(file ? matchesTarget(c.file, file) : true)));
-    } else if (actionType === 'revert_all') {
-      setGitChanges(prev => prev.filter(c => c.staged));
-    } else if (actionType === 'stage') {
-      setGitChanges(prev => prev.map(c => (!file || matchesTarget(c.file, file)) ? { ...c, staged: true } : c));
-    } else if (actionType === 'stage_all') {
-      setGitChanges(prev => prev.map(c => ({ ...c, staged: true })));
-    } else if (actionType === 'unstage') {
-      setGitChanges(prev => prev.map(c => (!file || matchesTarget(c.file, file)) ? { ...c, staged: false } : c));
-    } else if (actionType === 'unstage_all') {
-      setGitChanges(prev => prev.map(c => ({ ...c, staged: false })));
-    } else if (actionType === 'push') {
-      setSyncCount(0);
-    }
+    const match = (f: string, t: string) => f === t || f.startsWith(t.endsWith('/') ? t : `${t}/`);
+    if (actionType === 'revert') setGitChanges(prev => prev.filter(c => !(file ? match(c.file, file) : true)));
+    else if (actionType === 'revert_all') setGitChanges(prev => prev.filter(c => c.staged));
+    else if (actionType === 'stage') setGitChanges(prev => prev.map(c => (!file || match(c.file, file)) ? { ...c, staged: true } : c));
+    else if (actionType === 'stage_all') setGitChanges(prev => prev.map(c => ({ ...c, staged: true })));
+    else if (actionType === 'unstage') setGitChanges(prev => prev.map(c => (!file || match(c.file, file)) ? { ...c, staged: false } : c));
+    else if (actionType === 'unstage_all') setGitChanges(prev => prev.map(c => ({ ...c, staged: false })));
+    else if (actionType === 'push') setSyncCount(0);
   };
 
   const handleCommit = (message: string) => {
@@ -279,47 +281,11 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-canvas text-ink font-sans selection:bg-ink selection:text-canvas relative">
-      
-      {/* Mobile Top Visual Mode Indicator (helps user know which screen is shown and switch if desired) */}
-      <div className="hidden sm:flex items-center justify-between px-3 py-1 bg-ink text-canvas text-[11px] z-50">
-        <div className="flex items-center space-x-2">
-          <span className="font-semibold">Mobile UI Preview</span>
-          <span className="text-canvas/60">•</span>
-          <span>Screen: {currentScreen === 'main' ? 'Gambar 1 (Main UI)' : currentScreen === 'session' ? 'Gambar 2 (Session Sidebar)' : 'Gambar 3 (Right Sidebar)'}</span>
-        </div>
-        <div className="flex items-center space-x-1.5">
-          <button
-            type="button"
-            onClick={() => setCurrentScreen('main')}
-            className={`px-2 py-0.5 rounded text-[10px] ${currentScreen === 'main' ? 'bg-paper/20 font-bold' : 'hover:bg-paper/10'}`}
-          >
-            Gambar 1
-          </button>
-          <button
-            type="button"
-            onClick={() => setCurrentScreen('session')}
-            className={`px-2 py-0.5 rounded text-[10px] ${currentScreen === 'session' ? 'bg-paper/20 font-bold' : 'hover:bg-paper/10'}`}
-          >
-            Gambar 2
-          </button>
-          <button
-            type="button"
-            onClick={() => setCurrentScreen('right')}
-            className={`px-2 py-0.5 rounded text-[10px] ${currentScreen === 'right' ? 'bg-paper/20 font-bold' : 'hover:bg-paper/10'}`}
-          >
-            Gambar 3
-          </button>
-          {onDesktopToggle && (
-            <button
-              type="button"
-              onClick={onDesktopToggle}
-              className="ml-2 px-2 py-0.5 bg-orange-600 hover:bg-orange-700 text-white rounded text-[10px]"
-            >
-              Desktop View
-            </button>
-          )}
-        </div>
-      </div>
+      <MobileScreenSwitcher
+        currentScreen={currentScreen}
+        onSelectScreen={setCurrentScreen}
+        onDesktopToggle={onDesktopToggle}
+      />
 
       {/* Screen 1: Main UI (Gambar 1) */}
       <div className={`h-full w-full ${currentScreen === 'main' ? 'block' : 'hidden'}`}>

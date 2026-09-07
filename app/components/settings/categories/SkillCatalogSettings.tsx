@@ -11,7 +11,6 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { SkillCatalogSource, CatalogSkillItem, SkillItem } from '@/types';
-import { DEFAULT_CATALOG_SOURCES, DEFAULT_CATALOG_SKILLS, DEFAULT_SKILLS } from '@/data/skillData';
 import { AddSourceModal } from './skill-catalog/AddSourceModal';
 
 interface SkillCatalogSettingsProps {
@@ -19,28 +18,31 @@ interface SkillCatalogSettingsProps {
 }
 
 export function SkillCatalogSettings({ onNavigateToSkills }: SkillCatalogSettingsProps) {
-  const [sources, setSources] = useState<SkillCatalogSource[]>(DEFAULT_CATALOG_SOURCES);
+  const [sources, setSources] = useState<SkillCatalogSource[]>([]);
+  const [catalogSkills, setCatalogSkills] = useState<CatalogSkillItem[]>([]);
+  const [userSkills, setUserSkills] = useState<SkillItem[]>([]);
   const [selectedSourceId, setSelectedSourceId] = useState<string>('anthropic');
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isAddSourceModalOpen, setIsAddSourceModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Installed skills state from localStorage
-  const [installedSkillIds, setInstalledSkillIds] = useState<Set<string>>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('omp_skills');
-        if (saved) {
-          const parsed: SkillItem[] = JSON.parse(saved);
-          return new Set(parsed.map((s) => s.name));
-        }
-      } catch (e) {
-        // fallback
-      }
-    }
-    return new Set(DEFAULT_SKILLS.map((s) => s.name));
-  });
+  const loadData = () => {
+    fetch('/api/settings/skills')
+      .then(res => res.json())
+      .then(data => {
+        if (data?.catalogSources) setSources(data.catalogSources);
+        if (data?.catalogSkills) setCatalogSkills(data.catalogSkills);
+        if (data?.skills) setUserSkills(data.skills);
+      })
+      .catch(console.error);
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const installedSkillIds = new Set(userSkills.map((s) => s?.name).filter(Boolean));
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -49,39 +51,37 @@ export function SkillCatalogSettings({ onNavigateToSkills }: SkillCatalogSetting
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    setTimeout(() => {
-      setIsRefreshing(false);
-      showToast('Catalog index synchronized');
-    }, 600);
+    fetch('/api/settings/skills')
+      .then(res => res.json())
+      .then(data => {
+        if (data?.catalogSources) setSources(data.catalogSources);
+        if (data?.catalogSkills) setCatalogSkills(data.catalogSkills);
+        if (data?.skills) setUserSkills(data.skills);
+        showToast('Catalog index synchronized');
+      })
+      .catch(console.error)
+      .finally(() => setIsRefreshing(false));
   };
 
   const handleInstallToggle = (skill: CatalogSkillItem) => {
-    const isInstalled = installedSkillIds.has(skill.name);
+    const existing = userSkills.find((s) => s.name === skill.name);
 
-    let currentSkills: SkillItem[] = [];
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('omp_skills');
-        currentSkills = saved ? JSON.parse(saved) : DEFAULT_SKILLS;
-      } catch (e) {
-        currentSkills = DEFAULT_SKILLS;
-      }
-    }
-
-    if (isInstalled) {
-      // Uninstall
-      const updated = currentSkills.filter((s) => s.name !== skill.name);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('omp_skills', JSON.stringify(updated));
-      }
-      setInstalledSkillIds((prev) => {
-        const next = new Set(prev);
-        next.delete(skill.name);
-        return next;
-      });
-      showToast(`Uninstalled skill "${skill.name}"`);
+    if (existing) {
+      // Uninstall via API
+      fetch('/api/settings/skills', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deleteId: existing.id }),
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data?.skills) setUserSkills(data.skills);
+          else setUserSkills(prev => prev.filter(s => s.id !== existing.id));
+          showToast(`Uninstalled skill "${skill.name}"`);
+        })
+        .catch(console.error);
     } else {
-      // Install
+      // Install via API
       const newSkill: SkillItem = {
         id: `skill-cat-${Date.now()}`,
         name: skill.name,
@@ -93,23 +93,35 @@ export function SkillCatalogSettings({ onNavigateToSkills }: SkillCatalogSetting
         isInstalledFromCatalog: true,
         catalogSource: skill.sourceId,
       };
-      const updated = [...currentSkills, newSkill];
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('omp_skills', JSON.stringify(updated));
-      }
-      setInstalledSkillIds((prev) => new Set(prev).add(skill.name));
-      showToast(`Installed skill "${skill.name}"`);
+
+      fetch('/api/settings/skills', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skill: newSkill }),
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data?.skills) setUserSkills(data.skills);
+          else setUserSkills(prev => [...prev, newSkill]);
+          showToast(`Installed skill "${skill.name}"`);
+        })
+        .catch(console.error);
     }
   };
 
   const handleAddSource = (newSource: SkillCatalogSource) => {
-    setSources((prev) => [...prev, newSource]);
+    const nextSources = [...sources, newSource];
+    setSources(nextSources);
     setSelectedSourceId(newSource.id);
+    fetch('/api/settings/skills', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ catalogSources: nextSources }),
+    }).catch(console.error);
     showToast(`Added source "${newSource.name}"`);
   };
 
-  // Filter skills by selected source or search query
-  const filteredSkills = DEFAULT_CATALOG_SKILLS.filter((item) => {
+  const filteredSkills = catalogSkills.filter((item) => {
     const matchesSearch =
       !searchQuery.trim() ||
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -119,11 +131,10 @@ export function SkillCatalogSettings({ onNavigateToSkills }: SkillCatalogSetting
     if (searchQuery.trim()) {
       return matchesSearch;
     }
-
     return item.sourceId === selectedSourceId;
   });
 
-  const activeSource = sources.find((s) => s.id === selectedSourceId) || sources[0];
+  const activeSource = sources.find((s) => s.id === selectedSourceId) || sources[0] || null;
 
   return (
     <div className="flex-1 flex flex-col h-full w-full overflow-y-auto bg-paper text-ink p-6 md:p-8 space-y-6">
@@ -220,7 +231,9 @@ export function SkillCatalogSettings({ onNavigateToSkills }: SkillCatalogSetting
         <div className="flex items-center justify-between pb-3">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold uppercase tracking-wider text-ink">
-              {searchQuery.trim() ? 'Search Results' : activeSource.name.toUpperCase()}
+              {searchQuery.trim()
+                ? 'Search Results'
+                : (activeSource?.name ? activeSource.name.toUpperCase() : 'SKILL CATALOG')}
             </span>
             <span className="text-xs text-ink/50">
               {filteredSkills.length} skill(s) found

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import type { AgentItem, SettingsState } from '@/types';
-import { DEFAULT_AGENTS_LIST } from '@/data/agentData';
 import { AgentSidebarList } from './agent-settings/AgentSidebarList';
 import { AgentDetailPane } from './agent-settings/AgentDetailPane';
 
@@ -9,35 +8,32 @@ interface AgentSettingsProps {
   onUpdate: (settings: SettingsState) => void;
 }
 
-const STORAGE_KEY = 'omp_agents_settings';
-
 export const AgentSettings: React.FC<AgentSettingsProps> = () => {
-  const [agents, setAgents] = useState<AgentItem[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch {
-      // Fallback to default
-    }
-    return DEFAULT_AGENTS_LIST;
-  });
-
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(() => {
-    return DEFAULT_AGENTS_LIST[0]?.id || null;
-  });
-
+  const [agents, setAgents] = useState<AgentItem[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [selectedProject, setSelectedProject] = useState('ompchamber');
+  const [isLoading, setIsLoading] = useState(true);
 
+  // Load from API
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(agents));
-    } catch {
-      // Handle storage quota error silently
-    }
-  }, [agents]);
+    let active = true;
+    fetch('/api/settings/agents')
+      .then(res => res.json())
+      .then(data => {
+        if (!active) return;
+        const list = data?.agents || [];
+        setAgents(list);
+        if (list.length > 0) {
+          setSelectedAgentId(list[0].id);
+        }
+      })
+      .catch(err => console.error('Failed to load agents from API:', err))
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
 
   const handleAddNewAgent = () => {
     setIsCreatingNew(true);
@@ -50,28 +46,46 @@ export const AgentSettings: React.FC<AgentSettingsProps> = () => {
   };
 
   const handleSaveAgent = (updated: AgentItem) => {
-    if (isCreatingNew) {
-      const newAgent: AgentItem = {
-        ...updated,
-        id: `agent-${Date.now()}`,
-        isBuiltIn: false,
-      };
-      setAgents((prev) => [...prev, newAgent]);
-      setSelectedAgentId(newAgent.id);
-      setIsCreatingNew(false);
-    } else {
-      setAgents((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
-    }
+    const targetAgent: AgentItem = isCreatingNew
+      ? { ...updated, id: `agent-${Date.now()}`, isBuiltIn: false }
+      : updated;
+
+    fetch('/api/settings/agents', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent: targetAgent }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data?.agents) {
+          setAgents(data.agents);
+        } else {
+          setAgents(prev => {
+            const exists = prev.some(a => a.id === targetAgent.id);
+            return exists ? prev.map(a => a.id === targetAgent.id ? targetAgent : a) : [...prev, targetAgent];
+          });
+        }
+        setSelectedAgentId(targetAgent.id);
+        setIsCreatingNew(false);
+      })
+      .catch(err => console.error('Failed to save agent via API:', err));
   };
 
   const handleDeleteAgent = (agentId: string) => {
-    const confirm = window.confirm('Are you sure you want to delete this agent?');
-    if (!confirm) return;
-
-    setAgents((prev) => prev.filter((a) => a.id !== agentId));
-    if (selectedAgentId === agentId) {
-      setSelectedAgentId(agents[0]?.id || null);
-    }
+    fetch('/api/settings/agents', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deleteId: agentId }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        const nextList = data?.agents || agents.filter(a => a.id !== agentId);
+        setAgents(nextList);
+        if (selectedAgentId === agentId) {
+          setSelectedAgentId(nextList[0]?.id || null);
+        }
+      })
+      .catch(err => console.error('Failed to delete agent via API:', err));
   };
 
   const selectedAgent = agents.find((a) => a.id === selectedAgentId) || agents[0];
@@ -89,6 +103,14 @@ export const AgentSettings: React.FC<AgentSettingsProps> = () => {
     systemPrompt: 'You are a specialized assistant...',
     isBuiltIn: false,
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex h-full w-full items-center justify-center text-xs text-ink/40">
+        Loading agents from database...
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-paper">

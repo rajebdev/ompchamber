@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import type { McpServerItem, SettingsState } from '@/types';
-import { DEFAULT_MCP_SERVERS } from '@/data/mcpData';
 import { McpSidebarList } from './mcp-settings/McpSidebarList';
 import { McpDetailPane } from './mcp-settings/McpDetailPane';
 import { McpImportModal } from './mcp-settings/McpImportModal';
@@ -10,36 +9,32 @@ interface McpSettingsProps {
   onUpdate: (settings: SettingsState) => void;
 }
 
-const STORAGE_KEY = 'omp_mcp_servers';
-
 export const McpSettings: React.FC<McpSettingsProps> = () => {
-  const [servers, setServers] = useState<McpServerItem[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch {
-      // fallback
-    }
-    return DEFAULT_MCP_SERVERS;
-  });
-
-  const [selectedServerId, setSelectedServerId] = useState<string | null>(() => {
-    return DEFAULT_MCP_SERVERS[0]?.id || null;
-  });
-
+  const [servers, setServers] = useState<McpServerItem[]>([]);
+  const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState('ompchamber');
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(servers));
-    } catch {
-      // ignore
-    }
-  }, [servers]);
+    let active = true;
+    fetch('/api/settings/mcp')
+      .then(res => res.json())
+      .then(data => {
+        if (!active) return;
+        const list = data?.servers || [];
+        setServers(list);
+        if (list.length > 0) {
+          setSelectedServerId(list[0].id);
+        }
+      })
+      .catch(err => console.error('Failed to load MCP servers from API:', err))
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
 
   const handleAddNewServer = () => {
     setIsCreatingNew(true);
@@ -52,33 +47,50 @@ export const McpSettings: React.FC<McpSettingsProps> = () => {
   };
 
   const handleSaveServer = (updated: McpServerItem) => {
-    if (isCreatingNew) {
-      const newServer: McpServerItem = {
-        ...updated,
-        id: `mcp-${Date.now()}`,
-      };
-      setServers((prev) => [...prev, newServer]);
-      setSelectedServerId(newServer.id);
-      setIsCreatingNew(false);
-    } else {
-      setServers((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
-    }
+    const targetServer: McpServerItem = isCreatingNew
+      ? { ...updated, id: `mcp-${Date.now()}` }
+      : updated;
+
+    fetch('/api/settings/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ server: targetServer }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data?.servers) {
+          setServers(data.servers);
+        } else {
+          setServers(prev => {
+            const exists = prev.some(s => s.id === targetServer.id);
+            return exists ? prev.map(s => s.id === targetServer.id ? targetServer : s) : [...prev, targetServer];
+          });
+        }
+        setSelectedServerId(targetServer.id);
+        setIsCreatingNew(false);
+      })
+      .catch(err => console.error('Failed to save MCP server via API:', err));
   };
 
   const handleDeleteServer = (serverId: string) => {
-    const confirm = window.confirm('Are you sure you want to delete this MCP server?');
-    if (!confirm) return;
-
-    setServers((prev) => prev.filter((s) => s.id !== serverId));
-    if (selectedServerId === serverId) {
-      setSelectedServerId(servers[0]?.id || null);
-    }
+    fetch('/api/settings/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deleteId: serverId }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        const nextList = data?.servers || servers.filter(s => s.id !== serverId);
+        setServers(nextList);
+        if (selectedServerId === serverId) {
+          setSelectedServerId(nextList[0]?.id || null);
+        }
+      })
+      .catch(err => console.error('Failed to delete MCP server via API:', err));
   };
 
   const handleImportServer = (imported: McpServerItem) => {
-    setServers((prev) => [...prev, imported]);
-    setSelectedServerId(imported.id);
-    setIsCreatingNew(false);
+    handleSaveServer(imported);
   };
 
   const selectedServer = servers.find((s) => s.id === selectedServerId) || servers[0];
@@ -93,6 +105,14 @@ export const McpSettings: React.FC<McpSettingsProps> = () => {
     envVars: [],
     status: 'active',
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex h-full w-full items-center justify-center text-xs text-ink/40">
+        Loading MCP servers from database...
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-paper">

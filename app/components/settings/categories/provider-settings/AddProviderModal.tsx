@@ -1,20 +1,40 @@
 import React, { useState } from 'react';
 import { X, Check, Globe, Key, Layers } from 'lucide-react';
 import type { ProviderItem } from '@/types';
-import { PRESET_NEW_PROVIDERS } from '@/data/providerData';
 import { ProviderIcon } from './ProviderIcons';
+
+export interface PresetProviderOption {
+  id: string;
+  name: string;
+  slug: string;
+  icon: string;
+  defaultUrl: string;
+}
+
+const FALLBACK_PRESETS: PresetProviderOption[] = [
+  { id: 'openai', name: 'OpenAI', slug: 'openai', icon: 'openai', defaultUrl: 'https://api.openai.com/v1' },
+  { id: 'anthropic', name: 'Anthropic', slug: 'anthropic', icon: 'claude', defaultUrl: 'https://api.anthropic.com/v1' },
+  { id: 'google', name: 'Google Gemini', slug: 'google', icon: 'gemini', defaultUrl: 'https://generativelanguage.googleapis.com/v1beta' },
+  { id: 'groq', name: 'Groq Cloud', slug: 'groq', icon: 'groq', defaultUrl: 'https://api.groq.com/openai/v1' },
+  { id: 'mistral', name: 'Mistral AI', slug: 'mistral', icon: 'mistral', defaultUrl: 'https://api.mistral.ai/v1' },
+  { id: 'ollama', name: 'Ollama (Local)', slug: 'ollama', icon: 'ollama', defaultUrl: 'http://localhost:11434/v1' },
+  { id: 'custom', name: 'Custom OpenAI-Compatible', slug: 'custom', icon: 'custom', defaultUrl: 'https://' },
+];
 
 interface AddProviderModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddProvider: (newProvider: ProviderItem) => void;
+  presets?: PresetProviderOption[];
 }
 
 export function AddProviderModal({
   isOpen,
   onClose,
   onAddProvider,
+  presets = FALLBACK_PRESETS,
 }: AddProviderModalProps) {
+  const presetList = presets && presets.length > 0 ? presets : FALLBACK_PRESETS;
   const [selectedPresetId, setSelectedPresetId] = useState('openai');
   const [name, setName] = useState('OpenAI');
   const [baseUrl, setBaseUrl] = useState('https://api.openai.com/v1');
@@ -22,7 +42,7 @@ export function AddProviderModal({
 
   if (!isOpen) return null;
 
-  const handleSelectPreset = (preset: typeof PRESET_NEW_PROVIDERS[0]) => {
+  const handleSelectPreset = (preset: PresetProviderOption) => {
     setSelectedPresetId(preset.id);
     setName(preset.name);
     setBaseUrl(preset.defaultUrl);
@@ -32,7 +52,7 @@ export function AddProviderModal({
     e.preventDefault();
     if (!name.trim()) return;
 
-    const preset = PRESET_NEW_PROVIDERS.find((p) => p.id === selectedPresetId);
+    const preset = presetList.find((p) => p.id === selectedPresetId);
     const newProvider: ProviderItem = {
       id: `provider-${Date.now()}`,
       name: name.trim(),
@@ -99,7 +119,7 @@ export function AddProviderModal({
               Provider Preset
             </label>
             <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto pr-1">
-              {PRESET_NEW_PROVIDERS.map((preset) => {
+              {presetList.map((preset) => {
                 const isSelected = preset.id === selectedPresetId;
                 return (
                   <button
