@@ -1,16 +1,43 @@
 import sqlite3 from 'sqlite3';
 import { open, Database } from 'sqlite';
 import path from 'path';
+import os from 'os';
+import fs from 'fs';
 import { isMockMode } from '@/mock.server';
 
 let dbPromise: Promise<Database> | null = null;
+
+export function getDatabasePath(): string {
+  if (isMockMode()) {
+    return path.join(process.cwd(), 'workspace.db');
+  }
+
+  const customPath = process.env.OMPCHAMBER_DB_PATH || process.env.DB_PATH;
+  if (customPath) {
+    const resolvedPath = customPath.startsWith('~')
+      ? path.join(os.homedir(), customPath.slice(1))
+      : path.resolve(customPath);
+    const dir = path.dirname(resolvedPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    return resolvedPath;
+  }
+
+  const defaultDir = path.join(os.homedir(), '.ompchamber');
+  if (!fs.existsSync(defaultDir)) {
+    fs.mkdirSync(defaultDir, { recursive: true });
+  }
+  return path.join(defaultDir, 'db.sqlite');
+}
 
 export async function getDb(): Promise<Database> {
   if (dbPromise) return dbPromise;
   
   dbPromise = (async () => {
+    const dbPath = getDatabasePath();
     const db = await open({
-      filename: path.join(process.cwd(), 'workspace.db'),
+      filename: dbPath,
       driver: sqlite3.Database
     });
 
