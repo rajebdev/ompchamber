@@ -276,34 +276,34 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#f4f1ea] text-[#141310] font-sans selection:bg-[#141310] selection:text-[#f4f1ea] relative">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-canvas text-ink font-sans selection:bg-ink selection:text-canvas relative">
       
       {/* Mobile Top Visual Mode Indicator (helps user know which screen is shown and switch if desired) */}
-      <div className="hidden sm:flex items-center justify-between px-3 py-1 bg-[#141310] text-[#f4f1ea] text-[11px] z-50">
+      <div className="hidden sm:flex items-center justify-between px-3 py-1 bg-ink text-canvas text-[11px] z-50">
         <div className="flex items-center space-x-2">
           <span className="font-semibold">Mobile UI Preview</span>
-          <span className="text-[#f4f1ea]/60">•</span>
+          <span className="text-canvas/60">•</span>
           <span>Screen: {currentScreen === 'main' ? 'Gambar 1 (Main UI)' : currentScreen === 'session' ? 'Gambar 2 (Session Sidebar)' : 'Gambar 3 (Right Sidebar)'}</span>
         </div>
         <div className="flex items-center space-x-1.5">
           <button
             type="button"
             onClick={() => setCurrentScreen('main')}
-            className={`px-2 py-0.5 rounded text-[10px] ${currentScreen === 'main' ? 'bg-white/20 font-bold' : 'hover:bg-white/10'}`}
+            className={`px-2 py-0.5 rounded text-[10px] ${currentScreen === 'main' ? 'bg-paper/20 font-bold' : 'hover:bg-paper/10'}`}
           >
             Gambar 1
           </button>
           <button
             type="button"
             onClick={() => setCurrentScreen('session')}
-            className={`px-2 py-0.5 rounded text-[10px] ${currentScreen === 'session' ? 'bg-white/20 font-bold' : 'hover:bg-white/10'}`}
+            className={`px-2 py-0.5 rounded text-[10px] ${currentScreen === 'session' ? 'bg-paper/20 font-bold' : 'hover:bg-paper/10'}`}
           >
             Gambar 2
           </button>
           <button
             type="button"
             onClick={() => setCurrentScreen('right')}
-            className={`px-2 py-0.5 rounded text-[10px] ${currentScreen === 'right' ? 'bg-white/20 font-bold' : 'hover:bg-white/10'}`}
+            className={`px-2 py-0.5 rounded text-[10px] ${currentScreen === 'right' ? 'bg-paper/20 font-bold' : 'hover:bg-paper/10'}`}
           >
             Gambar 3
           </button>

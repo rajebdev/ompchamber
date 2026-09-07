@@ -65,7 +65,7 @@ export const PWAInstallButton: React.FC = () => {
     return (
       <button
         onClick={install}
-        className="p-1.5 rounded hover:bg-[#141310]/10 transition-colors text-[#141310]/60 hover:text-[#141310]"
+        className="p-1.5 rounded hover:bg-ink/10 transition-colors text-ink/60 hover:text-ink"
         title="Install OMPChamber"
       >
         <Download size={16} />
@@ -78,14 +78,14 @@ export const PWAInstallButton: React.FC = () => {
       <>
         <button
           onClick={() => setShowIOSGuide(true)}
-          className="p-1.5 rounded hover:bg-[#141310]/10 transition-colors text-[#141310]/60 hover:text-[#141310]"
+          className="p-1.5 rounded hover:bg-ink/10 transition-colors text-ink/60 hover:text-ink"
           title="Install on iOS"
         >
           <Download size={16} />
         </button>
         {showIOSGuide && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#141310]/20 p-4">
-            <div className="w-full max-w-sm rounded bg-[#faf8f3] border border-[#141310]/10 p-6 shadow-xl text-[#141310]">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/20 p-4">
+            <div className="w-full max-w-sm rounded bg-paper border border-ink/10 p-6 shadow-xl text-ink">
               <h3 className="text-sm font-semibold">Install on iPhone / iPad</h3>
               <p className="mt-2 text-xs opacity-80">
                 1. Tap the <strong>Share</strong> button in Safari toolbar.<br />
@@ -93,7 +93,7 @@ export const PWAInstallButton: React.FC = () => {
               </p>
               <button
                 onClick={() => setShowIOSGuide(false)}
-                className="mt-4 w-full rounded bg-[#141310] text-[#f4f1ea] py-2 text-xs font-semibold hover:bg-[#141310]/90"
+                className="mt-4 w-full rounded bg-ink text-canvas py-2 text-xs font-semibold hover:bg-ink/90"
               >
                 Close
               </button>

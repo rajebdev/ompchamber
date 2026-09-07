@@ -6,7 +6,7 @@ export function SessionItem({ title, isActive = false, onClick }: { title: strin
   return (
     <div 
       onClick={onClick}
-      className={`text-xs truncate px-3 py-1.5 rounded cursor-pointer ${isActive ? 'bg-[#141310]/10 font-medium text-[#141310]' : 'text-[#141310]/60 hover:bg-[#141310]/5 hover:text-[#141310]/80'}`}
+      className={`text-xs truncate px-3 py-1.5 rounded cursor-pointer ${isActive ? 'bg-ink/10 font-medium text-ink' : 'text-ink/60 hover:bg-ink/5 hover:text-ink/80'}`}
     >
       {title}
     </div>
@@ -52,10 +52,10 @@ export function Category({
   return (
     <div className="space-y-1">
       <div 
-        className="group flex items-center justify-between text-[13px] font-semibold text-[#141310]/90 px-1 py-0.5 hover:bg-[#141310]/5 rounded transition-colors"
+        className="group flex items-center justify-between text-[13px] font-semibold text-ink/90 px-1 py-0.5 hover:bg-ink/5 rounded transition-colors"
       >
         <div className="flex-1 flex items-center space-x-1.5 cursor-pointer" onClick={handleToggle}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${isActuallyOpen ? 'rotate-90 text-[#141310]' : 'text-[#141310]/50'}`}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${isActuallyOpen ? 'rotate-90 text-ink' : 'text-ink/50'}`}>
             <polyline points="9 18 15 12 9 6"></polyline>
           </svg>
           <span>{folder.name}</span>
@@ -65,21 +65,21 @@ export function Category({
         <div className="hidden group-hover:flex items-center space-x-1 pr-1" onMouseLeave={() => setShowMenu(false)}>
           <Plus 
             size={12} 
-            className="text-[#141310]/40 hover:text-[#141310] cursor-pointer"  
+            className="text-ink/40 hover:text-ink cursor-pointer"  
             onClick={(e) => { e.stopPropagation(); onNewSessionForFolder(folder.id); }}
           />
           <div className="relative">
             <MoreHorizontal 
               size={12} 
-              className="text-[#141310]/40 hover:text-[#141310] cursor-pointer" 
+              className="text-ink/40 hover:text-ink cursor-pointer" 
               onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
             />
             {showMenu && (
-              <div className="absolute right-0 top-full mt-1 w-40 bg-[#faf8f3] border border-[#141310]/10 rounded shadow-lg z-50 py-1">
-                <div className="px-3 py-1.5 text-xs hover:bg-[#141310]/5 cursor-pointer flex items-center space-x-2">
+              <div className="absolute right-0 top-full mt-1 w-40 bg-paper border border-ink/10 rounded shadow-lg z-50 py-1">
+                <div className="px-3 py-1.5 text-xs hover:bg-ink/5 cursor-pointer flex items-center space-x-2">
                   <Pin size={12} /><span>Pin Workspace</span>
                 </div>
-                <div className="px-3 py-1.5 text-xs hover:bg-[#141310]/5 cursor-pointer flex items-center space-x-2 text-red-600">
+                <div className="px-3 py-1.5 text-xs hover:bg-ink/5 cursor-pointer flex items-center space-x-2 text-red-600">
                   <Trash2 size={12} /><span>Delete Workspace</span>
                 </div>
               </div>
@@ -89,7 +89,7 @@ export function Category({
       </div>
       
       {isActuallyOpen && allSessions?.length > 0 && (
-        <div className="space-y-0.5 ml-2 border-l border-[#141310]/10 pl-1">
+        <div className="space-y-0.5 ml-2 border-l border-ink/10 pl-1">
           {allSessions.map((session: any) => {
             const isActive = activeSessionId !== null 
               ? activeSessionId === session.id 
@@ -108,7 +108,7 @@ export function Category({
             <button 
               onClick={handleViewMore}
               disabled={fetcher.state === 'loading'}
-              className="text-[10px] font-medium text-[#141310]/60 hover:text-[#141310] px-4 py-1.5 w-full text-left flex items-center space-x-1"
+              className="text-[10px] font-medium text-ink/60 hover:text-ink px-4 py-1.5 w-full text-left flex items-center space-x-1"
             >
               {fetcher.state === 'loading' ? 'Loading...' : 'View more sessions...'}
             </button>

@@ -21,22 +21,22 @@ function CodeBlock({ language, code }: { language?: string; code: string }) {
   };
 
   return (
-    <div className="my-2 rounded-lg border border-[#141310]/15 bg-[#f4f1ea] overflow-hidden font-mono text-[12px] shadow-2xs">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-[#eae6dc] border-b border-[#141310]/10 text-[11px] text-[#141310]/70 select-none">
-        <span className="font-semibold text-[#141310] tracking-wider uppercase text-[10px]">
+    <div className="my-2 rounded-lg border border-ink/15 bg-canvas overflow-hidden font-mono text-[12px] shadow-2xs">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-ink/10 border-b border-ink/10 text-[11px] text-ink/70 select-none">
+        <span className="font-semibold text-ink tracking-wider uppercase text-[10px]">
           {language || 'text'}
         </span>
         <button
           type="button"
           onClick={handleCopy}
-          className="flex items-center space-x-1 px-1.5 py-0.5 rounded hover:bg-[#141310]/10 text-[#141310]/70 hover:text-[#141310] transition-colors cursor-pointer text-[10px]"
+          className="flex items-center space-x-1 px-1.5 py-0.5 rounded hover:bg-ink/10 text-ink/70 hover:text-ink transition-colors cursor-pointer text-[10px]"
           title="Copy code"
         >
-          {copied ? <Check size={11} className="text-emerald-700" /> : <Copy size={11} />}
+          {copied ? <Check size={11} className="text-success" /> : <Copy size={11} />}
           <span>{copied ? 'Copied' : 'Copy'}</span>
         </button>
       </div>
-      <pre className="p-3 overflow-x-auto text-[#141310] leading-relaxed select-text font-mono">
+      <pre className="p-3 overflow-x-auto text-ink leading-relaxed select-text font-mono">
         <code>{code}</code>
       </pre>
     </div>
@@ -47,7 +47,7 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
   if (!content) return null;
 
   return (
-    <div className={`prose-container text-[13px] text-[#141310] leading-relaxed select-text ${className}`}>
+    <div className={`prose-container text-[13px] text-ink leading-relaxed select-text ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -63,7 +63,7 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
 
             return (
               <code
-                className="px-1.5 py-0.5 rounded bg-[#141310]/5 border border-[#141310]/10 font-mono text-[12px] text-[#141310] break-words"
+                className="px-1.5 py-0.5 rounded bg-ink/5 border border-ink/10 font-mono text-[12px] text-ink break-words"
                 {...props}
               >
                 {children}
@@ -76,16 +76,16 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
           },
           // Custom Headings renderer
           h1({ children }) {
-            return <h1 className="text-[16px] font-bold text-[#141310] mt-3.5 mb-1.5 font-sans tracking-tight">{children}</h1>;
+            return <h1 className="text-[16px] font-bold text-ink mt-3.5 mb-1.5 font-sans tracking-tight">{children}</h1>;
           },
           h2({ children }) {
-            return <h2 className="text-[15px] font-bold text-[#141310] mt-3 mb-1 font-sans tracking-tight">{children}</h2>;
+            return <h2 className="text-[15px] font-bold text-ink mt-3 mb-1 font-sans tracking-tight">{children}</h2>;
           },
           h3({ children }) {
-            return <h3 className="text-[14px] font-semibold text-[#141310] mt-2.5 mb-1 font-sans">{children}</h3>;
+            return <h3 className="text-[14px] font-semibold text-ink mt-2.5 mb-1 font-sans">{children}</h3>;
           },
           h4({ children }) {
-            return <h4 className="text-[13px] font-semibold text-[#141310] mt-2 mb-0.5 font-sans">{children}</h4>;
+            return <h4 className="text-[13px] font-semibold text-ink mt-2 mb-0.5 font-sans">{children}</h4>;
           },
           // Custom List renderers
           ul({ children }) {
@@ -100,7 +100,7 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
           // Custom Blockquote renderer
           blockquote({ children }) {
             return (
-              <blockquote className="border-l-2 border-[#141310]/30 pl-3 my-2 text-[#141310]/80 italic bg-[#141310]/2 py-1 rounded-r">
+              <blockquote className="border-l-2 border-ink/30 pl-3 my-2 text-ink/80 italic bg-ink/2 py-1 rounded-r">
                 {children}
               </blockquote>
             );
@@ -108,24 +108,24 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
           // Custom Table renderer
           table({ children }) {
             return (
-              <div className="my-2.5 overflow-x-auto rounded-lg border border-[#141310]/15">
-                <table className="w-full text-left text-[12px] border-collapse bg-[#faf8f3]">
+              <div className="my-2.5 overflow-x-auto rounded-lg border border-ink/15">
+                <table className="w-full text-left text-[12px] border-collapse bg-paper">
                   {children}
                 </table>
               </div>
             );
           },
           thead({ children }) {
-            return <thead className="bg-[#f2efe9] border-b border-[#141310]/15 text-[#141310] font-semibold">{children}</thead>;
+            return <thead className="bg-ink/5 border-b border-ink/15 text-ink font-semibold">{children}</thead>;
           },
           tbody({ children }) {
-            return <tbody className="divide-y divide-[#141310]/10">{children}</tbody>;
+            return <tbody className="divide-y divide-ink/10">{children}</tbody>;
           },
           th({ children }) {
-            return <th className="px-3 py-1.5 font-semibold text-[#141310]">{children}</th>;
+            return <th className="px-3 py-1.5 font-semibold text-ink">{children}</th>;
           },
           td({ children }) {
-            return <td className="px-3 py-1.5 text-[#141310]/90">{children}</td>;
+            return <td className="px-3 py-1.5 text-ink/90">{children}</td>;
           },
           // Custom Links renderer
           a({ href, children }) {
@@ -134,7 +134,7 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
                 href={href}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="underline underline-offset-2 decoration-[#141310]/40 text-[#141310] font-medium hover:decoration-[#141310] transition-colors"
+                className="underline underline-offset-2 decoration-ink/40 text-ink font-medium hover:decoration-ink transition-colors"
               >
                 {children}
               </a>
@@ -142,7 +142,7 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
           },
           // Custom Horizontal Rule
           hr() {
-            return <hr className="my-3 border-t border-[#141310]/15" />;
+            return <hr className="my-3 border-t border-ink/15" />;
           }
         }}
       >

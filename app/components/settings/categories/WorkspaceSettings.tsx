@@ -16,7 +16,7 @@ export function WorkspaceSettings({ category, settings, onUpdate }: WorkspaceSet
   ]);
 
   return (
-    <div className="space-y-6 text-xs text-[#141310]">
+    <div className="space-y-6 text-xs text-ink">
       {/* View settings cleared as requested */}
     </div>
   );

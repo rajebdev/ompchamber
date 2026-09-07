@@ -2,22 +2,59 @@
 @import "@xterm/xterm/css/xterm.css";
 @plugin "@tailwindcss/typography";
 
+@theme {
+  --color-ink: var(--theme-ink);
+  --color-paper: var(--theme-paper);
+  --color-canvas: var(--theme-canvas);
+  --color-error: var(--theme-error);
+  --color-success: var(--theme-success);
+  --color-success-bg: var(--theme-success-bg);
+  --color-success-border: var(--theme-success-border);
+  --color-meta: var(--theme-meta);
+  --color-warning: var(--theme-warning);
+  --color-warning-hover: var(--theme-warning-hover);
+}
+
 @layer base {
   :root {
-    --paper-bg: #f4f1ea;
-    --paper-raised: #faf8f3;
-    --paper-card: #faf8f3;
-    --ink-primary: #141310;
-    --ink-secondary: rgba(20, 19, 16, 0.62);
-    --ink-muted: rgba(20, 19, 16, 0.42);
-    --ink-hairline: rgba(20, 19, 16, 0.14);
-    --signal-red: #c8321e;
+    --theme-paper: #faf8f3;
+    --theme-canvas: #f4f1ea;
+    --theme-ink: #141310;
+    --theme-error: #c8321e;
+    --theme-success: #047857;
+    --theme-success-bg: #ecfdf5;
+    --theme-success-border: #a7f3d0;
+    --theme-meta: #4f46e5;
+    --theme-warning: #c2410c;
+    --theme-warning-hover: #9a3412;
+    
+    --paper-bg: var(--theme-canvas);
+    --paper-raised: var(--theme-paper);
+    --paper-card: var(--theme-paper);
+    --ink-primary: var(--theme-ink);
+    --ink-secondary: color-mix(in srgb, var(--theme-ink) 62%, transparent);
+    --ink-muted: color-mix(in srgb, var(--theme-ink) 42%, transparent);
+    --ink-hairline: color-mix(in srgb, var(--theme-ink) 14%, transparent);
+    --signal-red: var(--theme-error);
+  }
+
+  [data-theme="one-dark-pro-soft"] {
+    --theme-paper: #282c34;
+    --theme-canvas: #21252b;
+    --theme-ink: #abb2bf;
+    --theme-error: #e06c75;
+    --theme-success: #34d399;
+    --theme-success-bg: rgba(5, 150, 105, 0.15);
+    --theme-success-border: rgba(16, 185, 129, 0.2);
+    --theme-meta: #818cf8;
+    --theme-warning: #fb923c;
+    --theme-warning-hover: #fdba74;
   }
 
   body {
     font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background-color: var(--paper-bg);
-    color: var(--ink-primary);
+    background-color: var(--theme-canvas);
+    color: var(--theme-ink);
   }
 
   .font-mono, code, pre, kbd, .tabular-nums {
@@ -28,7 +65,7 @@
 
 /* Dot grain texture for Hero production card */
 .dot-grain-texture {
-  background-image: radial-gradient(rgba(20, 19, 16, 0.06) 0.65px, transparent 0.65px);
+  background-image: radial-gradient(color-mix(in srgb, var(--theme-ink) 6%, transparent) 0.65px, transparent 0.65px);
   background-size: 4px 4px;
 }
 
@@ -39,16 +76,16 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #f4f1ea;
+  background: var(--theme-canvas);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(20, 19, 16, 0.2);
+  background: color-mix(in srgb, var(--theme-ink) 20%, transparent);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(20, 19, 16, 0.4);
+  background: color-mix(in srgb, var(--theme-ink) 40%, transparent);
 }
 
 /* Terminal xterm custom scrollbars */
@@ -58,16 +95,16 @@
 }
 
 .xterm .xterm-viewport::-webkit-scrollbar-track {
-  background: #141310 !important;
+  background: var(--theme-ink) !important;
 }
 
 .xterm .xterm-viewport::-webkit-scrollbar-thumb {
-  background: rgba(244, 241, 234, 0.25) !important;
+  background: color-mix(in srgb, var(--theme-canvas) 25%, transparent) !important;
   border-radius: 4px !important;
 }
 
 .xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background: rgba(244, 241, 234, 0.45) !important;
+  background: color-mix(in srgb, var(--theme-canvas) 45%, transparent) !important;
 }
 
 .xterm .xterm-viewport {

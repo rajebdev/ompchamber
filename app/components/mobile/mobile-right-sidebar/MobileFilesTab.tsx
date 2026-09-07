@@ -243,23 +243,23 @@ export function MobileFilesTab() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#faf8f3]" onContextMenu={(e) => e.preventDefault()}>
+    <div className="flex flex-col h-full bg-paper" onContextMenu={(e) => e.preventDefault()}>
       {/* Header: Search Bar + Refresh Button */}
-      <div className="p-3 border-b border-[#141310]/10 flex items-center space-x-2 bg-[#f4f1ea]">
+      <div className="p-3 border-b border-ink/10 flex items-center space-x-2 bg-canvas">
         <div className="relative flex-1">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#141310]/40" />
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink/40" />
           <input
             type="text"
             placeholder="Search files..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-[#faf8f3] border border-[#141310]/20 rounded-lg pl-8 pr-7 py-1.5 text-xs focus:outline-none focus:border-[#141310] transition-colors text-[#141310] placeholder-[#141310]/40 font-mono"
+            className="w-full bg-paper border border-ink/20 rounded-lg pl-8 pr-7 py-1.5 text-xs focus:outline-none focus:border-ink transition-colors text-ink placeholder-ink/40 font-mono"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-[#141310]/40 hover:text-[#141310]"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-ink/40 hover:text-ink"
             >
               <X size={12} />
             </button>
@@ -269,7 +269,7 @@ export function MobileFilesTab() {
         <button
           type="button"
           onClick={fetchFiles}
-          className="p-1.5 text-[#141310]/60 hover:text-[#141310] hover:bg-[#141310]/5 rounded-lg transition-colors flex-shrink-0"
+          className="p-1.5 text-ink/60 hover:text-ink hover:bg-ink/5 rounded-lg transition-colors flex-shrink-0"
           title="Refresh files"
         >
           <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
@@ -277,13 +277,13 @@ export function MobileFilesTab() {
       </div>
 
       {/* File Tree Explorer */}
-      <div className="flex-1 overflow-y-auto p-2 font-mono text-[11px] text-[#141310]/80 space-y-0.5">
+      <div className="flex-1 overflow-y-auto p-2 font-mono text-[11px] text-ink/80 space-y-0.5">
         {isLoading && displayedTree.length === 0 ? (
-          <div className="p-4 text-center text-[#141310]/40 italic">
+          <div className="p-4 text-center text-ink/40 italic">
             Loading files...
           </div>
         ) : displayedTree.length === 0 ? (
-          <div className="p-4 text-center text-[#141310]/40 italic">
+          <div className="p-4 text-center text-ink/40 italic">
             No matching files found
           </div>
         ) : (

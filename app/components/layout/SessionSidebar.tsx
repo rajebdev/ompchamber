@@ -101,12 +101,12 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
 
   return (
     <>
-      <aside className={`flex flex-col bg-[#faf8f3] h-full ${className}`}>
+      <aside className={`flex flex-col bg-paper h-full ${className}`}>
         {/* New Session Button */}
         <div className="px-3 pt-3">
           <button 
             onClick={handleNewSession}
-            className="w-full flex items-center justify-center space-x-2 py-2 bg-[#141310] text-[#f4f1ea] rounded text-xs font-semibold hover:bg-[#141310]/90 transition-colors"
+            className="w-full flex items-center justify-center space-x-2 py-2 bg-ink text-canvas rounded text-xs font-semibold hover:bg-ink/90 transition-colors"
           >
             <Plus size={14} />
             <span>New Session</span>
@@ -114,16 +114,16 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
         </div>
 
         {/* Top Actions */}
-        <div className="p-3 border-b border-[#141310]/10 flex flex-col space-y-3">
-          <div className="flex items-center justify-between px-1 text-[#141310]/60">
+        <div className="p-3 border-b border-ink/10 flex flex-col space-y-3">
+          <div className="flex items-center justify-between px-1 text-ink/60">
             <div className="flex space-x-3 items-center">
-              <FolderPlus size={14} className="hover:text-[#141310] cursor-pointer"  onClick={() => setNewWorkspaceOpen(true)} />
-              <Calendar size={14} className="hover:text-[#141310] cursor-pointer" onClick={() => setSchedulerOpen(true)} />
+              <FolderPlus size={14} className="hover:text-ink cursor-pointer"  onClick={() => setNewWorkspaceOpen(true)} />
+              <Calendar size={14} className="hover:text-ink cursor-pointer" onClick={() => setSchedulerOpen(true)} />
             </div>
             <div className="flex space-x-3 items-center relative">
               <Search 
                 size={14} 
-                className={`cursor-pointer transition-colors ${isSearchVisible ? 'text-[#141310]' : 'hover:text-[#141310]'}`} 
+                className={`cursor-pointer transition-colors ${isSearchVisible ? 'text-ink' : 'hover:text-ink'}`} 
                  
                 onClick={() => setIsSearchVisible(!isSearchVisible)} 
               />
@@ -134,53 +134,53 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
               >
                 <Archive 
                   size={14} 
-                  className={`transition-colors ${showArchived ? 'text-[#141310]' : 'hover:text-[#141310]'}`} 
+                  className={`transition-colors ${showArchived ? 'text-ink' : 'hover:text-ink'}`} 
                 />
               </span>
               
               <div className="relative">
                 <MoreHorizontal 
                   size={14} 
-                  className={`cursor-pointer transition-colors ${optionsOpen ? 'text-[#141310]' : 'hover:text-[#141310]'}`} 
+                  className={`cursor-pointer transition-colors ${optionsOpen ? 'text-ink' : 'hover:text-ink'}`} 
                    
                   onClick={() => setOptionsOpen(!optionsOpen)} 
                 />
                 {optionsOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-48 bg-[#faf8f3] border border-[#141310]/10 rounded shadow-lg z-50 py-1" onMouseLeave={() => setOptionsOpen(false)}>
-                    <div className="px-3 py-1 text-[10px] uppercase font-bold text-[#141310]/40 tracking-wider">Sort Workspaces</div>
+                  <div className="absolute right-0 top-full mt-2 w-48 bg-paper border border-ink/10 rounded shadow-lg z-50 py-1" onMouseLeave={() => setOptionsOpen(false)}>
+                    <div className="px-3 py-1 text-[10px] uppercase font-bold text-ink/40 tracking-wider">Sort Workspaces</div>
                     <div 
-                      className={`px-3 py-1.5 text-xs cursor-pointer flex items-center justify-between ${sortOption === 'A-Z' ? 'bg-[#141310]/5 text-[#141310] font-medium' : 'text-[#141310]/70 hover:bg-[#141310]/5 hover:text-[#141310]'}`}
+                      className={`px-3 py-1.5 text-xs cursor-pointer flex items-center justify-between ${sortOption === 'A-Z' ? 'bg-ink/5 text-ink font-medium' : 'text-ink/70 hover:bg-ink/5 hover:text-ink'}`}
                       onClick={() => { setSortOption('A-Z'); setOptionsOpen(false); }}
                     >
                       <span>A-Z</span>
-                      {sortOption === 'A-Z' && <div className="w-1.5 h-1.5 rounded-full bg-[#141310]"></div>}
+                      {sortOption === 'A-Z' && <div className="w-1.5 h-1.5 rounded-full bg-ink"></div>}
                     </div>
                     <div 
-                      className={`px-3 py-1.5 text-xs cursor-pointer flex items-center justify-between ${sortOption === 'Z-A' ? 'bg-[#141310]/5 text-[#141310] font-medium' : 'text-[#141310]/70 hover:bg-[#141310]/5 hover:text-[#141310]'}`}
+                      className={`px-3 py-1.5 text-xs cursor-pointer flex items-center justify-between ${sortOption === 'Z-A' ? 'bg-ink/5 text-ink font-medium' : 'text-ink/70 hover:bg-ink/5 hover:text-ink'}`}
                       onClick={() => { setSortOption('Z-A'); setOptionsOpen(false); }}
                     >
                       <span>Z-A</span>
-                      {sortOption === 'Z-A' && <div className="w-1.5 h-1.5 rounded-full bg-[#141310]"></div>}
+                      {sortOption === 'Z-A' && <div className="w-1.5 h-1.5 rounded-full bg-ink"></div>}
                     </div>
                     <div 
-                      className={`px-3 py-1.5 text-xs cursor-pointer flex items-center justify-between ${sortOption === 'LATEST_SESSION' ? 'bg-[#141310]/5 text-[#141310] font-medium' : 'text-[#141310]/70 hover:bg-[#141310]/5 hover:text-[#141310]'}`}
+                      className={`px-3 py-1.5 text-xs cursor-pointer flex items-center justify-between ${sortOption === 'LATEST_SESSION' ? 'bg-ink/5 text-ink font-medium' : 'text-ink/70 hover:bg-ink/5 hover:text-ink'}`}
                       onClick={() => { setSortOption('LATEST_SESSION'); setOptionsOpen(false); }}
                     >
                       <span>Latest Session</span>
-                      {sortOption === 'LATEST_SESSION' && <div className="w-1.5 h-1.5 rounded-full bg-[#141310]"></div>}
+                      {sortOption === 'LATEST_SESSION' && <div className="w-1.5 h-1.5 rounded-full bg-ink"></div>}
                     </div>
                     <div 
-                      className={`px-3 py-1.5 text-xs cursor-pointer flex items-center justify-between ${sortOption === 'LATEST_ADDED' ? 'bg-[#141310]/5 text-[#141310] font-medium' : 'text-[#141310]/70 hover:bg-[#141310]/5 hover:text-[#141310]'}`}
+                      className={`px-3 py-1.5 text-xs cursor-pointer flex items-center justify-between ${sortOption === 'LATEST_ADDED' ? 'bg-ink/5 text-ink font-medium' : 'text-ink/70 hover:bg-ink/5 hover:text-ink'}`}
                       onClick={() => { setSortOption('LATEST_ADDED'); setOptionsOpen(false); }}
                     >
                       <span>Latest Added</span>
-                      {sortOption === 'LATEST_ADDED' && <div className="w-1.5 h-1.5 rounded-full bg-[#141310]"></div>}
+                      {sortOption === 'LATEST_ADDED' && <div className="w-1.5 h-1.5 rounded-full bg-ink"></div>}
                     </div>
                   </div>
                 )}
               </div>
 
-              <PanelLeftClose size={14} className="hover:text-[#141310] cursor-pointer ml-1" onClick={onClose} />
+              <PanelLeftClose size={14} className="hover:text-ink cursor-pointer ml-1" onClick={onClose} />
             </div>
           </div>
           
@@ -193,7 +193,7 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 autoFocus
-                className="w-full bg-[#141310]/5 border border-[#141310]/10 rounded px-2.5 py-1.5 outline-none focus:border-[#141310]/30 text-xs text-[#141310] placeholder-[#141310]/40 transition-colors" 
+                className="w-full bg-ink/5 border border-ink/10 rounded px-2.5 py-1.5 outline-none focus:border-ink/30 text-xs text-ink placeholder-ink/40 transition-colors" 
               />
             </div>
           )}
@@ -215,7 +215,7 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
         {/* Session List */}
         <div className="flex-1 overflow-y-auto p-2 space-y-4">
           {processedFolders.length === 0 ? (
-            <div className="text-center py-8 text-xs text-[#141310]/40">
+            <div className="text-center py-8 text-xs text-ink/40">
               {searchQuery ? 'No results found.' : 'No workspaces available.'}
             </div>
           ) : (
@@ -233,12 +233,12 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
         </div>
 
         {/* Bottom Bar */}
-        <div className="p-3 border-t border-[#141310]/10 flex items-center justify-between text-[#141310]/60 shrink-0">
+        <div className="p-3 border-t border-ink/10 flex items-center justify-between text-ink/60 shrink-0">
           <div className="flex space-x-3">
-            <Settings size={16} className="hover:text-[#141310] cursor-pointer" onClick={() => setSettingsOpen(true)} />
-            <Info size={16} className="hover:text-[#141310] cursor-pointer" onClick={() => setInfoOpen(true)} />
+            <Settings size={16} className="hover:text-ink cursor-pointer" onClick={() => setSettingsOpen(true)} />
+            <Info size={16} className="hover:text-ink cursor-pointer" onClick={() => setInfoOpen(true)} />
           </div>
-          <div className="px-2 py-0.5 rounded-full border border-[#141310]/20 text-[10px] font-semibold text-[#141310]">
+          <div className="px-2 py-0.5 rounded-full border border-ink/20 text-[10px] font-semibold text-ink">
             update
           </div>
         </div>

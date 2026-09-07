@@ -100,9 +100,9 @@ export function ToolCallingSection({
   };
 
   return (
-    <div className="w-full my-2 font-sans border border-[#141310]/15 rounded-lg bg-[#faf8f3] overflow-hidden transition-all duration-200">
+    <div className="w-full my-2 font-sans border border-ink/15 rounded-lg bg-paper overflow-hidden transition-all duration-200">
       {/* Section Header Container (div container prevents nested button errors in HTML) */}
-      <div className="w-full flex items-center justify-between px-3 py-2 bg-[#f7f5ee] border-b border-[#141310]/10 text-[12px] select-none">
+      <div className="w-full flex items-center justify-between px-3 py-2 bg-ink/5 border-b border-ink/10 text-[12px] select-none">
         {/* Left Side: Clickable Title & Icon to Toggle Section */}
         <button
           type="button"
@@ -110,14 +110,14 @@ export function ToolCallingSection({
           className="flex items-center space-x-2 min-w-0 pr-2 flex-1 text-left cursor-pointer hover:opacity-80 transition-opacity"
           aria-expanded={isSectionOpen}
         >
-          <div className="w-5 h-5 rounded flex items-center justify-center bg-[#141310]/10 text-[#141310] flex-shrink-0">
+          <div className="w-5 h-5 rounded flex items-center justify-center bg-ink/10 text-ink flex-shrink-0">
             <Wrench size={12} />
           </div>
-          <span className="font-semibold text-[#141310] tracking-tight text-[12px]">
+          <span className="font-semibold text-ink tracking-tight text-[12px]">
             {title || `Tool Executions (${toolCount})`}
           </span>
           {errorCount > 0 && (
-            <span className="text-[10px] font-mono text-[#c8321e] bg-[#c8321e]/10 border border-[#c8321e]/20 px-1.5 py-0.2 rounded font-medium flex-shrink-0">
+            <span className="text-[10px] font-mono text-error bg-error/10 border border-error/20 px-1.5 py-0.2 rounded font-medium flex-shrink-0">
               {errorCount} failed
             </span>
           )}
@@ -129,7 +129,7 @@ export function ToolCallingSection({
             <button
               type="button"
               onClick={handleToggleExpandAll}
-              className="text-[10px] font-mono text-[#141310]/60 hover:text-[#141310] px-1.5 py-0.5 rounded hover:bg-[#141310]/10 transition-colors flex items-center space-x-1 cursor-pointer"
+              className="text-[10px] font-mono text-ink/60 hover:text-ink px-1.5 py-0.5 rounded hover:bg-ink/10 transition-colors flex items-center space-x-1 cursor-pointer"
               title={areAllExpanded ? 'Collapse all tool calls' : 'Expand all tool calls'}
             >
               <ChevronsUpDown size={11} />
@@ -140,7 +140,7 @@ export function ToolCallingSection({
           <button
             type="button"
             onClick={handleToggleSection}
-            className="flex items-center space-x-1 text-[#141310]/60 hover:text-[#141310] cursor-pointer transition-colors p-0.5 rounded"
+            className="flex items-center space-x-1 text-ink/60 hover:text-ink cursor-pointer transition-colors p-0.5 rounded"
             aria-label={isSectionOpen ? 'Hide tools' : 'Show tools'}
           >
             <span className="text-[10px] font-mono hidden sm:inline">
@@ -153,7 +153,7 @@ export function ToolCallingSection({
 
       {/* List of Tool Cards */}
       {isSectionOpen && (
-        <div className="p-2 sm:p-2.5 space-y-2 bg-[#faf8f3]">
+        <div className="p-2 sm:p-2.5 space-y-2 bg-paper">
           {normalizedTools.map((tool) => (
             <ToolCallCard
               key={tool.id}

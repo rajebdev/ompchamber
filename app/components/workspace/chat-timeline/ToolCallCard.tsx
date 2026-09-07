@@ -202,14 +202,14 @@ export function ToolCallCard({
   return (
     <div className={`w-full border rounded-md transition-all font-sans text-[12px] overflow-hidden ${
       status === 'error' 
-        ? 'border-[#c8321e]/30 bg-[#c8321e]/5' 
-        : 'border-[#141310]/15 bg-[#faf8f3]'
+        ? 'border-error/30 bg-error/5' 
+        : 'border-ink/15 bg-paper'
     }`}>
       {/* Header Row */}
       <div
         onClick={() => hasExpandableContent && handleToggle()}
         className={`w-full flex items-center justify-between px-3 py-2 text-left transition-colors select-none ${
-          hasExpandableContent ? 'hover:bg-[#141310]/5 cursor-pointer' : 'cursor-default'
+          hasExpandableContent ? 'hover:bg-ink/5 cursor-pointer' : 'cursor-default'
         }`}
         aria-expanded={isExpanded}
         role="button"
@@ -225,10 +225,10 @@ export function ToolCallCard({
           {/* Status / Tool Icon */}
           <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${
             status === 'error'
-              ? 'bg-[#c8321e]/15 text-[#c8321e]'
+              ? 'bg-error/15 text-error'
               : status === 'running'
-              ? 'bg-[#141310]/10 text-[#141310]'
-              : 'bg-[#141310]/5 text-[#141310]/70'
+              ? 'bg-ink/10 text-ink'
+              : 'bg-ink/5 text-ink/70'
           }`}>
             {status === 'running' ? (
               <Loader2 size={12} className="animate-spin" />
@@ -239,16 +239,16 @@ export function ToolCallCard({
 
           {/* Title & Target */}
           <div className="flex flex-wrap items-baseline gap-1.5 min-w-0 flex-1">
-            <span className="font-semibold text-[#141310] whitespace-nowrap flex-shrink-0 text-[12px]">
+            <span className="font-semibold text-ink whitespace-nowrap flex-shrink-0 text-[12px]">
               {tool.title || (isReadFile ? 'Read File' : tool.name || 'Tool Call')}
             </span>
             {targetFilePath && (
-              <span className="text-[#141310]/70 truncate max-w-[180px] sm:max-w-[280px] text-[11px] font-mono bg-[#141310]/5 px-1 rounded">
+              <span className="text-ink/70 truncate max-w-[180px] sm:max-w-[280px] text-[11px] font-mono bg-ink/5 px-1 rounded">
                 {targetFilePath}
               </span>
             )}
             {!targetFilePath && tool.detail && (
-              <span className="text-[#141310]/60 truncate max-w-[200px] sm:max-w-[320px] text-[11px]">
+              <span className="text-ink/60 truncate max-w-[200px] sm:max-w-[320px] text-[11px]">
                 {tool.detail}
               </span>
             )}
@@ -262,27 +262,27 @@ export function ToolCallCard({
             <button
               type="button"
               onClick={handleOpenInEditor}
-              className="flex items-center space-x-1 text-[#141310]/60 hover:text-[#141310] hover:bg-[#141310]/10 px-1.5 py-0.5 rounded transition-all cursor-pointer group"
+              className="flex items-center space-x-1 text-ink/60 hover:text-ink hover:bg-ink/10 px-1.5 py-0.5 rounded transition-all cursor-pointer group"
               title={`Open ${targetFilePath} in Editor`}
             >
-              <FileCode size={12} className="text-[#141310]/70 group-hover:text-[#141310]" />
+              <FileCode size={12} className="text-ink/70 group-hover:text-ink" />
               <span className="text-[10px] font-mono hidden md:inline">Open in Editor</span>
               <ExternalLink size={10} className="hidden sm:inline opacity-60 group-hover:opacity-100" />
             </button>
           )}
 
           {tool.duration || tool.time ? (
-            <span className="text-[#141310]/50">{tool.duration || tool.time}</span>
+            <span className="text-ink/50">{tool.duration || tool.time}</span>
           ) : null}
 
           {status === 'success' && (
-            <span className="inline-flex items-center text-emerald-800 text-[10px] bg-emerald-50 border border-emerald-200/60 px-1.5 py-0.5 rounded">
+            <span className="inline-flex items-center text-success text-[10px] bg-success-bg border border-success-border px-1.5 py-0.5 rounded">
               <Check size={10} className="mr-1" /> Ready
             </span>
           )}
 
           {status === 'error' && (
-            <span className="inline-flex items-center text-[#c8321e] text-[10px] bg-[#c8321e]/10 border border-[#c8321e]/30 px-1.5 py-0.5 rounded font-medium">
+            <span className="inline-flex items-center text-error text-[10px] bg-error/10 border border-error/30 px-1.5 py-0.5 rounded font-medium">
               <AlertCircle size={10} className="mr-1" /> Exit 1
             </span>
           )}
@@ -290,16 +290,16 @@ export function ToolCallCard({
           {tool.diff && (
             <span className="text-[10px] font-mono flex items-center space-x-1">
               {tool.diff.added !== undefined && (
-                <span className="text-emerald-700">+{tool.diff.added}</span>
+                <span className="text-success">+{tool.diff.added}</span>
               )}
               {tool.diff.removed !== undefined && (
-                <span className="text-[#c8321e]">-{tool.diff.removed}</span>
+                <span className="text-error">-{tool.diff.removed}</span>
               )}
             </span>
           )}
 
           {hasExpandableContent && (
-            <div className="text-[#141310]/50 ml-1">
+            <div className="text-ink/50 ml-1">
               {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </div>
           )}
@@ -308,13 +308,13 @@ export function ToolCallCard({
 
       {/* Expandable Detail Body */}
       {isExpanded && hasExpandableContent && (
-        <div className="px-3.5 py-2.5 border-t border-[#141310]/10 bg-[#f7f5ee] space-y-2.5">
+        <div className="px-3.5 py-2.5 border-t border-ink/10 bg-ink/5 space-y-2.5">
           {/* Read File Dedicated View */}
           {isReadFile && (
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-[10px] font-mono text-[#141310]/60 uppercase tracking-wider">
+              <div className="flex items-center justify-between text-[10px] font-mono text-ink/60 uppercase tracking-wider">
                 <div className="flex items-center space-x-1.5 truncate pr-2">
-                  <FileText size={12} className="text-[#141310]/70" />
+                  <FileText size={12} className="text-ink/70" />
                   <span className="truncate">{targetFilePath || 'File Content'}</span>
                 </div>
                 <div className="flex items-center space-x-2 flex-shrink-0">
@@ -322,10 +322,10 @@ export function ToolCallCard({
                     <button
                       type="button"
                       onClick={handleOpenInEditor}
-                      className="flex items-center space-x-1 hover:text-[#141310] transition-colors active:scale-95 cursor-pointer px-1.5 py-0.5 rounded hover:bg-[#141310]/10 bg-[#faf8f3] border border-[#141310]/15 shadow-2xs font-sans text-[11px] text-[#141310]"
+                      className="flex items-center space-x-1 hover:text-ink transition-colors active:scale-95 cursor-pointer px-1.5 py-0.5 rounded hover:bg-ink/10 bg-paper border border-ink/15 shadow-2xs font-sans text-[11px] text-ink"
                       title="Open file in editor"
                     >
-                      <FileCode size={11} className="text-[#141310]" />
+                      <FileCode size={11} className="text-ink" />
                       <span>Open in Editor</span>
                     </button>
                   )}
@@ -333,9 +333,9 @@ export function ToolCallCard({
                     <button
                       type="button"
                       onClick={handleCopyOutput}
-                      className="flex items-center space-x-1 hover:text-[#141310] transition-colors active:scale-95 cursor-pointer px-1.5 py-0.5 rounded hover:bg-[#141310]/5 text-[11px]"
+                      className="flex items-center space-x-1 hover:text-ink transition-colors active:scale-95 cursor-pointer px-1.5 py-0.5 rounded hover:bg-ink/5 text-[11px]"
                     >
-                      {copiedOutput ? <Check size={11} className="text-emerald-700" /> : <Copy size={11} />}
+                      {copiedOutput ? <Check size={11} className="text-success" /> : <Copy size={11} />}
                       <span>{copiedOutput ? 'Copied' : 'Copy'}</span>
                     </button>
                   )}
@@ -343,32 +343,32 @@ export function ToolCallCard({
               </div>
 
               {loadingFile ? (
-                <div className="bg-[#faf8f3] border border-[#141310]/15 p-3 rounded text-[11px] font-mono text-[#141310]/50 flex items-center space-x-2">
+                <div className="bg-paper border border-ink/15 p-3 rounded text-[11px] font-mono text-ink/50 flex items-center space-x-2">
                   <Loader2 size={12} className="animate-spin" />
                   <span>Loading file content...</span>
                 </div>
               ) : outputText ? (
-                <div className="bg-[#faf8f3] border border-[#141310]/15 rounded text-[11px] font-mono overflow-x-auto max-h-60 overflow-y-auto flex">
+                <div className="bg-paper border border-ink/15 rounded text-[11px] font-mono overflow-x-auto max-h-60 overflow-y-auto flex">
                   {/* Line numbers gutter */}
-                  <div className="py-2 pl-2.5 pr-2 select-none text-right text-[10px] text-[#141310]/30 bg-[#f0ede4] border-r border-[#141310]/10 font-mono leading-relaxed flex-shrink-0">
+                  <div className="py-2 pl-2.5 pr-2 select-none text-right text-[10px] text-ink/30 bg-ink/10 border-r border-ink/10 font-mono leading-relaxed flex-shrink-0">
                     {outputText.split('\n').map((_, idx) => (
                       <div key={idx}>{idx + 1}</div>
                     ))}
                   </div>
                   {/* Code body */}
                   <div 
-                    className="p-2 flex-1 whitespace-pre break-words leading-relaxed text-[#141310]/90 select-text overflow-x-auto"
+                    className="p-2 flex-1 whitespace-pre break-words leading-relaxed text-ink/90 select-text overflow-x-auto"
                     dangerouslySetInnerHTML={{ __html: highlightCode(outputText, getLanguage(targetFilePath)) }}
                   />
                 </div>
               ) : (
-                <div className="bg-[#faf8f3] border border-[#141310]/15 p-2.5 rounded text-[11px] font-mono text-[#141310]/60 flex items-center justify-between">
+                <div className="bg-paper border border-ink/15 p-2.5 rounded text-[11px] font-mono text-ink/60 flex items-center justify-between">
                   <span>File is ready for inspection.</span>
                   {targetFilePath && (
                     <button
                       type="button"
                       onClick={handleOpenInEditor}
-                      className="text-orange-700 underline hover:text-orange-800 text-[11px] cursor-pointer"
+                      className="text-warning underline hover:text-warning-hover text-[11px] cursor-pointer"
                     >
                       View in Editor →
                     </button>
@@ -381,19 +381,19 @@ export function ToolCallCard({
           {/* Command / Input preview (for non-read_file or when command is present) */}
           {!isReadFile && commandOrInput && (
             <div className="space-y-1">
-              <div className="flex items-center justify-between text-[10px] font-mono text-[#141310]/60 uppercase tracking-wider">
+              <div className="flex items-center justify-between text-[10px] font-mono text-ink/60 uppercase tracking-wider">
                 <span>Input / Command</span>
                 <button
                   type="button"
                   onClick={handleCopyCmd}
-                  className="flex items-center space-x-1 hover:text-[#141310] transition-colors active:scale-95 cursor-pointer px-1 py-0.5 rounded hover:bg-[#141310]/5"
+                  className="flex items-center space-x-1 hover:text-ink transition-colors active:scale-95 cursor-pointer px-1 py-0.5 rounded hover:bg-ink/5"
                 >
-                  {copiedCmd ? <Check size={11} className="text-emerald-700" /> : <Copy size={11} />}
+                  {copiedCmd ? <Check size={11} className="text-success" /> : <Copy size={11} />}
                   <span>{copiedCmd ? 'Copied' : 'Copy'}</span>
                 </button>
               </div>
-              <div className="bg-[#f0ede4] text-[#141310] border border-[#141310]/10 p-2 rounded text-[11px] sm:text-[12px] font-mono overflow-x-auto whitespace-pre-wrap break-all shadow-inner select-text">
-                <span className="text-orange-600 font-bold select-none mr-1.5">$</span>
+              <div className="bg-ink/10 text-ink border border-ink/10 p-2 rounded text-[11px] sm:text-[12px] font-mono overflow-x-auto whitespace-pre-wrap break-all shadow-inner select-text">
+                <span className="text-warning font-bold select-none mr-1.5">$</span>
                 <span dangerouslySetInnerHTML={{ __html: highlightCode(commandOrInput, 'bash') }} />
               </div>
             </div>
@@ -402,22 +402,22 @@ export function ToolCallCard({
           {/* Diff preview if file change */}
           {tool.diff && tool.diff.diffText && (
             <div className="space-y-1">
-              <div className="flex items-center justify-between text-[10px] font-mono text-[#141310]/60 uppercase tracking-wider">
+              <div className="flex items-center justify-between text-[10px] font-mono text-ink/60 uppercase tracking-wider">
                 <div className="flex items-center space-x-1.5 truncate pr-2">
-                  <FileCode size={11} className="text-[#141310]/70" />
+                  <FileCode size={11} className="text-ink/70" />
                   <span className="truncate">File Diff: {tool.diff.file}</span>
                 </div>
                 <button
                   type="button"
                   onClick={handleOpenInEditor}
-                  className="flex items-center space-x-1 hover:text-[#141310] transition-colors active:scale-95 cursor-pointer px-1.5 py-0.5 rounded hover:bg-[#141310]/10 bg-[#faf8f3] border border-[#141310]/15 shadow-2xs font-sans text-[11px] text-[#141310]"
+                  className="flex items-center space-x-1 hover:text-ink transition-colors active:scale-95 cursor-pointer px-1.5 py-0.5 rounded hover:bg-ink/10 bg-paper border border-ink/15 shadow-2xs font-sans text-[11px] text-ink"
                   title="Open file in editor"
                 >
-                  <FileCode size={11} className="text-[#141310]" />
+                  <FileCode size={11} className="text-ink" />
                   <span>Open in Editor</span>
                 </button>
               </div>
-              <div className="bg-[#f0ede4] border border-[#141310]/10 p-2 rounded text-[11px] sm:text-[12px] font-mono overflow-x-auto max-h-48 whitespace-pre leading-relaxed select-text">
+              <div className="bg-ink/10 border border-ink/10 p-2 rounded text-[11px] sm:text-[12px] font-mono overflow-x-auto max-h-48 whitespace-pre leading-relaxed select-text">
                 {tool.diff.diffText.split('\n').map((line, idx) => {
                   const isAdd = line.startsWith('+');
                   const isDel = line.startsWith('-');
@@ -429,10 +429,10 @@ export function ToolCallCard({
                     const prefix = line.substring(0, 1);
                     const code = line.substring(1);
                     const hlCode = highlightCode(code, lang);
-                    const prefixClass = isAdd ? 'text-emerald-800' : 'text-[#c8321e]';
+                    const prefixClass = isAdd ? 'text-success' : 'text-error';
                     codeHtml = `<span class="select-none ${prefixClass} mr-2 font-bold">${prefix}</span>${hlCode}`;
                   } else if (isMeta) {
-                    codeHtml = `<span class="text-indigo-600">${escapeHtml(line)}</span>`;
+                    codeHtml = `<span class="text-meta">${escapeHtml(line)}</span>`;
                   } else {
                     const prefix = line.substring(0, 1) === ' ' ? ' ' : '';
                     const code = prefix === ' ' ? line.substring(1) : line;
@@ -445,9 +445,9 @@ export function ToolCallCard({
                       key={idx}
                       className={
                         isAdd
-                          ? 'bg-emerald-100/50 px-1 rounded-xs'
+                          ? 'bg-success-bg px-1 rounded-xs'
                           : isDel
-                          ? 'bg-[#c8321e]/10 px-1 rounded-xs'
+                          ? 'bg-error/10 px-1 rounded-xs'
                           : 'px-1'
                       }
                       dangerouslySetInnerHTML={{ __html: codeHtml }}
@@ -461,19 +461,19 @@ export function ToolCallCard({
           {/* Output / stdout logs (for non-read_file) */}
           {!isReadFile && outputText && (
             <div className="space-y-1">
-              <div className="flex items-center justify-between text-[10px] font-mono text-[#141310]/60 uppercase tracking-wider">
+              <div className="flex items-center justify-between text-[10px] font-mono text-ink/60 uppercase tracking-wider">
                 <span>Output / Response</span>
                 <button
                   type="button"
                   onClick={handleCopyOutput}
-                  className="flex items-center space-x-1 hover:text-[#141310] transition-colors active:scale-95 cursor-pointer px-1 py-0.5 rounded hover:bg-[#141310]/5"
+                  className="flex items-center space-x-1 hover:text-ink transition-colors active:scale-95 cursor-pointer px-1 py-0.5 rounded hover:bg-ink/5"
                 >
-                  {copiedOutput ? <Check size={11} className="text-emerald-700" /> : <Copy size={11} />}
+                  {copiedOutput ? <Check size={11} className="text-success" /> : <Copy size={11} />}
                   <span>{copiedOutput ? 'Copied' : 'Copy'}</span>
                 </button>
               </div>
               <div 
-                className="bg-[#faf8f3] border border-[#141310]/15 p-2 rounded text-[11px] sm:text-[12px] font-mono overflow-x-auto max-h-56 overflow-y-auto whitespace-pre break-words leading-relaxed text-[#141310]/90 select-text"
+                className="bg-paper border border-ink/15 p-2 rounded text-[11px] sm:text-[12px] font-mono overflow-x-auto max-h-56 overflow-y-auto whitespace-pre break-words leading-relaxed text-ink/90 select-text"
                 dangerouslySetInnerHTML={{ __html: highlightCode(outputText, 'javascript') }}
               />
             </div>

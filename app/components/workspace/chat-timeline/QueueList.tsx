@@ -41,18 +41,18 @@ export function QueueList({ queue, setQueue, onEdit, onSendNow }: QueueListProps
           onDragEnter={(e) => { dragOverItem.current = index; }}
           onDragEnd={handleSort}
           onDragOver={(e) => e.preventDefault()}
-          className="flex items-center gap-2 px-2 py-1.5 bg-[#faf8f3] border border-[#141310]/10 rounded shadow-sm text-xs group hover:border-[#141310]/30 transition-colors"
+          className="flex items-center gap-2 px-2 py-1.5 bg-paper border border-ink/10 rounded shadow-sm text-xs group hover:border-ink/30 transition-colors"
         >
-          <div className="cursor-grab text-[#141310]/40 group-hover:text-[#141310]/80">
+          <div className="cursor-grab text-ink/40 group-hover:text-ink/80">
             <GripVertical size={14} />
           </div>
-          <div className="flex-1 truncate text-[#141310]/80 pr-2">
+          <div className="flex-1 truncate text-ink/80 pr-2">
             {item.text || (item.attachments.length > 0 ? `[${item.attachments.length} attachment${item.attachments.length > 1 ? 's' : ''}]` : 'Empty message')}
           </div>
           {onSendNow && (
             <button
               onClick={() => onSendNow(item)}
-              className="text-[#141310]/40 hover:text-[#141310]/80 opacity-0 group-hover:opacity-100 transition-opacity"
+              className="text-ink/40 hover:text-ink/80 opacity-0 group-hover:opacity-100 transition-opacity"
               title="Send Now (Steering)"
             >
               <Send size={12} />
@@ -61,7 +61,7 @@ export function QueueList({ queue, setQueue, onEdit, onSendNow }: QueueListProps
           {onEdit && (
             <button
               onClick={() => onEdit(item)}
-              className="text-[#141310]/40 hover:text-[#141310]/80 opacity-0 group-hover:opacity-100 transition-opacity"
+              className="text-ink/40 hover:text-ink/80 opacity-0 group-hover:opacity-100 transition-opacity"
               title="Edit"
             >
               <Pencil size={12} />
@@ -69,7 +69,7 @@ export function QueueList({ queue, setQueue, onEdit, onSendNow }: QueueListProps
           )}
           <button
             onClick={() => setQueue(q => q.filter(i => i.id !== item.id))}
-            className="text-[#141310]/40 hover:text-[#c8321e] opacity-0 group-hover:opacity-100 transition-opacity"
+            className="text-ink/40 hover:text-error opacity-0 group-hover:opacity-100 transition-opacity"
             title="Remove"
           >
             <X size={14} />

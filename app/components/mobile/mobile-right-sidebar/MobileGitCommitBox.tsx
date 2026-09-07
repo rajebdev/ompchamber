@@ -14,7 +14,7 @@ export function MobileGitCommitBox({
   onCommit
 }: MobileGitCommitBoxProps) {
   return (
-    <div className="p-3 border-b border-[#141310]/10 bg-[#faf8f3] flex-shrink-0">
+    <div className="p-3 border-b border-ink/10 bg-paper flex-shrink-0">
       <textarea
         placeholder="Message (Ctrl+Enter to commit)"
         value={message}
@@ -24,13 +24,13 @@ export function MobileGitCommitBox({
             onCommit();
           }
         }}
-        className="w-full bg-white border border-[#141310]/20 rounded text-xs p-2 focus:outline-none focus:border-[#141310]/40 focus:ring-1 focus:ring-[#141310]/10 transition-all resize-none h-16 text-[#141310] placeholder-[#141310]/30"
+        className="w-full bg-paper border border-ink/20 rounded text-xs p-2 focus:outline-none focus:border-ink/40 focus:ring-1 focus:ring-ink/10 transition-all resize-none h-16 text-ink placeholder-ink/30"
       />
       <button
         type="button"
         onClick={onCommit}
         disabled={!message.trim() || !hasStagedChanges}
-        className="mt-2 w-full bg-[#141310] text-[#faf8f3] text-xs font-medium py-1.5 rounded hover:bg-[#141310]/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+        className="mt-2 w-full bg-ink text-paper text-xs font-medium py-1.5 rounded hover:bg-ink/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
       >
         Commit
       </button>

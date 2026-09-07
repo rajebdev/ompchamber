@@ -48,8 +48,8 @@ export function GeneratingIndicator({ modelName, generatingVerb }: GeneratingInd
       `}</style>
 
       {/* Bottom Metadata Toolbar (standardized with ChatMessageItem footer: text-[11px] font-mono) */}
-      <div className="w-full flex items-center flex-nowrap space-x-2.5 text-[11px] text-[#141310]/60 px-1 pt-0.5 font-mono min-w-0">
-        <div className="flex items-center space-x-1.5 border-r border-[#141310]/15 pr-2.5 min-w-0 shrink overflow-hidden">
+      <div className="w-full flex items-center flex-nowrap space-x-2.5 text-[11px] text-ink/60 px-1 pt-0.5 font-mono min-w-0">
+        <div className="flex items-center space-x-1.5 border-r border-ink/15 pr-2.5 min-w-0 shrink overflow-hidden">
           
           {/* Bot Icon with Animated Colorful Gradient Spinner */}
           <div className="relative w-4 h-4 rounded flex items-center justify-center shrink-0">
@@ -62,21 +62,21 @@ export function GeneratingIndicator({ modelName, generatingVerb }: GeneratingInd
               }}
             />
             {/* Center Dark Bot Badge */}
-            <div className="relative w-full h-full rounded-[3px] bg-[#141310] flex items-center justify-center text-[#f4f1ea] z-10 shadow-2xs">
-              <Bot size={10} className="text-[#f4f1ea]" />
+            <div className="relative w-full h-full rounded-[3px] bg-ink flex items-center justify-center text-canvas z-10 shadow-2xs">
+              <Bot size={10} className="text-canvas" />
             </div>
           </div>
 
           {/* Model Name */}
-          <span className="font-semibold text-[#141310] truncate">
+          <span className="font-semibold text-ink truncate">
             {currentModel}
           </span>
-          <span className="text-[#141310]/40 shrink-0">•</span>
+          <span className="text-ink/40 shrink-0">•</span>
 
           {/* Dynamic Cool Action Verb + Animated Dots */}
-          <span className="text-[#141310]/75 shrink-0 flex items-center space-x-1 font-medium">
+          <span className="text-ink/75 shrink-0 flex items-center space-x-1 font-medium">
             <span className="transition-all duration-300">{displayVerb}</span>
-            <span className="inline-flex tracking-wider text-[#141310]/80">
+            <span className="inline-flex tracking-wider text-ink/80">
               <span className="dot-anim inline-block">.</span>
               <span className="dot-anim inline-block">.</span>
               <span className="dot-anim inline-block">.</span>
@@ -85,7 +85,7 @@ export function GeneratingIndicator({ modelName, generatingVerb }: GeneratingInd
         </div>
 
         {/* Live status telemetry badge */}
-        <span className="text-[#141310]/50 text-[10px] font-mono italic truncate hidden sm:inline">
+        <span className="text-ink/50 text-[10px] font-mono italic truncate hidden sm:inline">
           active cycle
         </span>
       </div>

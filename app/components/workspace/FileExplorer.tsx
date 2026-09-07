@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Folder, File as FileIcon, ChevronRight, ChevronDown, RefreshCw } from 'lucide-react';
+import { Search, ChevronRight, ChevronDown, RefreshCw } from 'lucide-react';
+import { FileIcon } from '../common/FileIcon';
 import { useFetcher } from '@remix-run/react';
 import { FileContextMenu, FileDeleteModal, FileRenameModal, FileHistoryModal } from './file-explorer/FileModals';
 
@@ -47,34 +48,34 @@ export function FileExplorer({ className = '', onOpenFile, refreshKey = 0, onRef
   const files = getFilteredFiles();
 
   return (
-    <div className={`flex flex-col h-full bg-[#faf8f3] ${className}`}>
-      <div className="p-3 border-b border-[#141310]/10 flex items-center space-x-2">
+    <div className={`flex flex-col h-full bg-paper ${className}`}>
+      <div className="p-3 border-b border-ink/10 flex items-center space-x-2">
         <div className="relative flex-1">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#141310]/40" />
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink/40" />
           <input 
             type="text" 
             placeholder="Search files..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-[#f4f1ea] border border-[#141310]/20 rounded pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:border-[#141310] transition-colors text-[#141310] placeholder-[#141310]/40"
+            className="w-full bg-canvas border border-ink/20 rounded pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:border-ink transition-colors text-ink placeholder-ink/40"
           />
         </div>
         <button 
           onClick={onRefresh ? onRefresh : loadFiles}
-          className="p-1.5 text-[#141310]/40 hover:text-[#141310] hover:bg-[#141310]/5 rounded transition-colors"
+          className="p-1.5 text-ink/40 hover:text-ink hover:bg-ink/5 rounded transition-colors"
           title="Refresh"
         >
           <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
         </button>
       </div>
       
-      <div className="flex-1 overflow-y-auto p-2 font-mono text-[11px] text-[#141310]/80" onContextMenu={(e) => e.preventDefault()}>
+      <div className="flex-1 overflow-y-auto p-2 font-mono text-[11px] text-ink/80" onContextMenu={(e) => e.preventDefault()}>
         {isLoading && files.length === 0 ? (
-          <div className="p-4 text-center text-[#141310]/40">
+          <div className="p-4 text-center text-ink/40">
             Loading files...
           </div>
         ) : files.length === 0 ? (
-          <div className="p-4 text-center text-[#141310]/40">
+          <div className="p-4 text-center text-ink/40">
             No files found
           </div>
         ) : (
@@ -179,26 +180,22 @@ function FileItem({ file, onOpenFile, onActionComplete }: { file: any, onOpenFil
   return (
     <div>
       <div 
-        className="flex items-center space-x-1.5 py-1 px-2 hover:bg-[#141310]/5 cursor-pointer rounded group"
+        className="flex items-center space-x-1.5 py-1 px-2 hover:bg-ink/5 cursor-pointer rounded group"
         onClick={handleToggle}
         onContextMenu={handleContextMenu}
       >
         {isFolder ? (
-          actualIsOpen ? <ChevronDown size={12} className="text-[#141310]/40" /> : <ChevronRight size={12} className="text-[#141310]/40" />
+          actualIsOpen ? <ChevronDown size={12} className="text-ink/40" /> : <ChevronRight size={12} className="text-ink/40" />
         ) : (
           <span className="w-3"></span>
         )}
         
-        {isFolder ? (
-          <Folder size={12} className="text-[#141310]/60" />
-        ) : (
-          <FileIcon size={12} className="text-[#141310]/60" />
-        )}
+        <FileIcon name={file.name} isFolder={isFolder} isOpen={actualIsOpen} size={12} />
         <span className="truncate">{file.name}</span>
       </div>
 
       {actualIsOpen && file.children && file.children.length > 0 && (
-        <div className="ml-3 border-l border-[#141310]/10 pl-1">
+        <div className="ml-3 border-l border-ink/10 pl-1">
           {file.children.map((child: any) => (
             <FileItem key={child.id} file={child} onOpenFile={onOpenFile} onActionComplete={onActionComplete} />
           ))}

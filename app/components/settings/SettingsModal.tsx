@@ -87,6 +87,9 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'general', ap
       // Save to localStorage
       if (typeof window !== 'undefined') {
         localStorage.setItem('omp_chamber_settings', JSON.stringify(next));
+        if (next.theme) {
+          document.documentElement.dataset.theme = next.theme;
+        }
       }
       
       // Save to SQLite
@@ -146,11 +149,11 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'general', ap
 
   return (
     <div
-      className="fixed inset-0 bg-[#141310]/40 backdrop-blur-[2px] z-50 flex items-center justify-center p-0 md:p-6 animate-in fade-in duration-150"
+      className="fixed inset-0 bg-ink/40 backdrop-blur-[2px] z-50 flex items-center justify-center p-0 md:p-6 animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
-        className="relative bg-[#faf8f3] border border-[#141310]/15 md:rounded-2xl shadow-2xl w-full h-full md:max-w-4xl md:h-[680px] md:max-h-[90vh] flex flex-col md:flex-row overflow-hidden text-[#141310]"
+        className="relative bg-paper border border-ink/15 md:rounded-2xl shadow-2xl w-full h-full md:max-w-4xl md:h-[680px] md:max-h-[90vh] flex flex-col md:flex-row overflow-hidden text-ink"
         onClick={(e) => e.stopPropagation()}
       >
         {/* DESKTOP VIEW: 2-Column Split */}
@@ -167,25 +170,25 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'general', ap
         </div>
 
         {/* DESKTOP & MOBILE DETAIL VIEW */}
-        <div className={`flex-1 flex-col h-full bg-[#faf8f3] overflow-hidden ${isMobileDrilled ? 'flex' : 'hidden md:flex'}`}>
+        <div className={`flex-1 flex-col h-full bg-paper overflow-hidden ${isMobileDrilled ? 'flex' : 'hidden md:flex'}`}>
           {/* Header Bar */}
-          <div className="h-16 px-6 border-b border-[#141310]/10 flex items-center justify-between flex-shrink-0 bg-[#faf8f3]">
+          <div className="h-16 px-6 border-b border-ink/10 flex items-center justify-between flex-shrink-0 bg-paper">
             <div className="flex items-center space-x-3 min-w-0">
               {/* Mobile Back Button */}
               <button
                 type="button"
                 onClick={() => setIsMobileDrilled(false)}
-                className="md:hidden p-1.5 -ml-2 rounded-lg hover:bg-[#141310]/5 active:bg-[#141310]/10 text-[#141310]"
+                className="md:hidden p-1.5 -ml-2 rounded-lg hover:bg-ink/5 active:bg-ink/10 text-ink"
                 aria-label="Back to categories"
               >
                 <ChevronLeft size={20} />
               </button>
 
               <div className="truncate">
-                <h3 className="font-semibold text-base tracking-tight text-[#141310] leading-tight">
+                <h3 className="font-semibold text-base tracking-tight text-ink leading-tight">
                   {currentCategoryDef.label}
                 </h3>
-                <p className="text-[11px] text-[#141310]/60 truncate hidden sm:block">
+                <p className="text-[11px] text-ink/60 truncate hidden sm:block">
                   {currentCategoryDef.description}
                 </p>
               </div>
@@ -195,7 +198,7 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'general', ap
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-lg text-[#141310]/50 hover:text-[#141310] hover:bg-[#141310]/5 transition-colors cursor-pointer"
+              className="p-1.5 rounded-lg text-ink/50 hover:text-ink hover:bg-ink/5 transition-colors cursor-pointer"
               aria-label="Close settings"
             >
               <X size={18} strokeWidth={2.2} />
@@ -211,13 +214,13 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'general', ap
         </div>
 
         {/* MOBILE CATEGORY LIST VIEW (When not drilled into detail) */}
-        <div className={`flex-1 flex-col h-full bg-[#f4f1ea] md:hidden ${isMobileDrilled ? 'hidden' : 'flex'}`}>
-          <div className="h-14 px-4 border-b border-[#141310]/10 flex items-center justify-between flex-shrink-0 bg-[#f4f1ea]">
-            <span className="font-bold text-sm tracking-tight text-[#141310]">Settings</span>
+        <div className={`flex-1 flex-col h-full bg-canvas md:hidden ${isMobileDrilled ? 'hidden' : 'flex'}`}>
+          <div className="h-14 px-4 border-b border-ink/10 flex items-center justify-between flex-shrink-0 bg-canvas">
+            <span className="font-bold text-sm tracking-tight text-ink">Settings</span>
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-lg text-[#141310]/50 hover:text-[#141310]"
+              className="p-1.5 rounded-lg text-ink/50 hover:text-ink"
               aria-label="Close"
             >
               <X size={18} />
@@ -239,8 +242,8 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'general', ap
 
         {/* Toast Notification */}
         {toastMessage && (
-          <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-[#141310] text-[#f4f1ea] px-4 py-2 rounded-lg text-xs font-semibold shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50 flex items-center space-x-2">
-            <Check size={14} className="text-emerald-400" />
+          <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-ink text-canvas px-4 py-2 rounded-lg text-xs font-semibold shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50 flex items-center space-x-2">
+            <Check size={14} className="text-success" />
             <span>{toastMessage}</span>
           </div>
         )}

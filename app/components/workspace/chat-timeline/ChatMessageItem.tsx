@@ -63,21 +63,21 @@ export function ChatMessageItem({ msg, modelName, onRetry, onUndo, onNewChat }: 
     return (
       <div id={msg.id} className="flex flex-col items-end space-y-1.5 w-full max-w-full">
         {/* User bubble - standardized to text-[13px] leading-relaxed with markdown support */}
-        <div className="bg-[#faf8f3] p-3.5 sm:p-4 rounded-xl border border-[#141310]/15 text-[13px] text-[#141310] leading-relaxed shadow-xs max-w-[92%] sm:max-w-[85%] break-words whitespace-pre-wrap overflow-hidden flex flex-col space-y-2 font-sans select-text">
+        <div className="bg-paper p-3.5 sm:p-4 rounded-xl border border-ink/15 text-[13px] text-ink leading-relaxed shadow-xs max-w-[92%] sm:max-w-[85%] break-words whitespace-pre-wrap overflow-hidden flex flex-col space-y-2 font-sans select-text">
           <MarkdownRenderer content={msg.content} />
           
           {msg.attachments && msg.attachments.length > 0 && (
-            <div className="flex flex-wrap gap-2 pt-2 border-t border-[#141310]/10">
+            <div className="flex flex-wrap gap-2 pt-2 border-t border-ink/10">
               {msg.attachments.map((att: any, i: number) => (
-                <div key={i} className="flex items-center space-x-2 bg-[#f4f1ea] px-2 py-1 rounded border border-[#141310]/10 text-[11px] font-sans">
+                <div key={i} className="flex items-center space-x-2 bg-canvas px-2 py-1 rounded border border-ink/10 text-[11px] font-sans">
                   {att.preview ? (
                     <img 
                       src={att.preview} 
                       alt="attachment preview" 
-                      className="w-6 h-6 rounded object-cover border border-[#141310]/10" 
+                      className="w-6 h-6 rounded object-cover border border-ink/10" 
                     />
                   ) : (
-                    <FileIcon size={12} className="text-[#141310]/60" />
+                    <FileIcon size={12} className="text-ink/60" />
                   )}
                   <span className="truncate max-w-[120px] font-mono text-[10px]">{att.name}</span>
                 </div>
@@ -87,9 +87,9 @@ export function ChatMessageItem({ msg, modelName, onRetry, onUndo, onNewChat }: 
         </div>
         
         {/* User Metadata & Toolbar (Undo on the left of Copy) */}
-        <div className="flex items-center space-x-2.5 text-[11px] text-[#141310]/60 px-1 font-mono">
-          <div className="flex items-center space-x-1.5 border-r border-[#141310]/15 pr-2.5">
-            <User size={11} className="text-[#141310]/70" />
+        <div className="flex items-center space-x-2.5 text-[11px] text-ink/60 px-1 font-mono">
+          <div className="flex items-center space-x-1.5 border-r border-ink/15 pr-2.5">
+            <User size={11} className="text-ink/70" />
             <span>{msg.date || msg.timestamp || 'Just now'}</span>
           </div>
           
@@ -97,7 +97,7 @@ export function ChatMessageItem({ msg, modelName, onRetry, onUndo, onNewChat }: 
             {/* Undo Button (to the left of copy button) */}
             <button 
               type="button"
-              className="flex items-center hover:text-[#141310] transition-colors p-1 rounded hover:bg-[#141310]/5 cursor-pointer" 
+              className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" 
               title="Undo / Edit message"
               onClick={handleUndo}
             >
@@ -107,17 +107,17 @@ export function ChatMessageItem({ msg, modelName, onRetry, onUndo, onNewChat }: 
             {/* Copy Button */}
             <button 
               type="button"
-              className="flex items-center hover:text-[#141310] transition-colors p-1 rounded hover:bg-[#141310]/5 cursor-pointer" 
+              className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" 
               title="Copy prompt"
               onClick={handleCopy}
             >
-              {copied ? <Check size={12} className="text-emerald-700" /> : <Copy size={12} />}
+              {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
             </button>
 
             {/* New Chat Button */}
             <button 
               type="button"
-              className="flex items-center hover:text-[#141310] transition-colors p-1 rounded hover:bg-[#141310]/5 cursor-pointer" 
+              className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" 
               title="New Chat from here"
               onClick={handleNewChat}
             >
@@ -159,8 +159,8 @@ export function ChatMessageItem({ msg, modelName, onRetry, onUndo, onNewChat }: 
 
         {/* Intermediate Diagnostic Note */}
         {msg.systemNote && (
-          <div className="text-[12px] text-[#141310] leading-relaxed border-l-2 border-[#141310]/30 bg-[#faf8f3]/60 px-3 py-2 rounded-r-md font-mono break-words whitespace-pre-wrap select-text">
-            <span className="text-[10px] text-[#141310]/50 uppercase tracking-wider block mb-0.5 font-sans font-semibold">
+          <div className="text-[12px] text-ink leading-relaxed border-l-2 border-ink/30 bg-paper/60 px-3 py-2 rounded-r-md font-mono break-words whitespace-pre-wrap select-text">
+            <span className="text-[10px] text-ink/50 uppercase tracking-wider block mb-0.5 font-sans font-semibold">
               Diagnostic Note
             </span>
             {msg.systemNote}
@@ -178,37 +178,37 @@ export function ChatMessageItem({ msg, modelName, onRetry, onUndo, onNewChat }: 
 
         {/* Main AI Response Content (Rich Markdown with code blocks, tables, lists) */}
         {msg.content && (
-          <div className="text-[13px] text-[#141310] leading-relaxed font-sans bg-transparent py-1 select-text">
+          <div className="text-[13px] text-ink leading-relaxed font-sans bg-transparent py-1 select-text">
             <MarkdownRenderer content={msg.content} />
           </div>
         )}
 
         {/* AI Final Summary / Conclusion Card */}
         {msg.summary && (
-          <div className="text-[12px] text-[#141310] bg-[#faf8f3] border border-[#141310]/15 rounded-lg p-3 space-y-1 select-text font-sans">
-            <div className="font-semibold text-[#141310] flex items-center space-x-1.5 text-[12px]">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+          <div className="text-[12px] text-ink bg-paper border border-ink/15 rounded-lg p-3 space-y-1 select-text font-sans">
+            <div className="font-semibold text-ink flex items-center space-x-1.5 text-[12px]">
+              <span className="w-1.5 h-1.5 rounded-full bg-success" />
               <span>Resolution Summary</span>
             </div>
-            <p className="text-[#141310]/80 leading-relaxed text-[12px]">{msg.summary}</p>
+            <p className="text-ink/80 leading-relaxed text-[12px]">{msg.summary}</p>
           </div>
         )}
       </div>
       
       {/* Bottom AI Metadata & Actions Toolbar */}
       {/* CRITICAL: Must use flex-nowrap. The model name container must have min-w-0 and shrink to allow ellipsis. Action buttons must have shrink-0 to prevent them from dropping down to the next line on mobile screens. */}
-      <div className="w-full flex items-center flex-nowrap space-x-2.5 text-[11px] text-[#141310]/60 px-1 pt-0.5 font-mono min-w-0">
+      <div className="w-full flex items-center flex-nowrap space-x-2.5 text-[11px] text-ink/60 px-1 pt-0.5 font-mono min-w-0">
         
         {/* Model and Date / Time with truncation protection */}
-        <div className="flex items-center space-x-1.5 border-r border-[#141310]/15 pr-2.5 min-w-0 shrink overflow-hidden" title={`${currentModel} • ${msg.date || msg.timestamp || 'Just now'}`}>
-          <div className="w-4 h-4 rounded flex items-center justify-center bg-[#141310] text-[#f4f1ea] shadow-2xs shrink-0">
+        <div className="flex items-center space-x-1.5 border-r border-ink/15 pr-2.5 min-w-0 shrink overflow-hidden" title={`${currentModel} • ${msg.date || msg.timestamp || 'Just now'}`}>
+          <div className="w-4 h-4 rounded flex items-center justify-center bg-ink text-canvas shadow-2xs shrink-0">
             <Bot size={10} />
           </div>
-          <span className="font-semibold text-[#141310] truncate shrink">
+          <span className="font-semibold text-ink truncate shrink">
             {currentModel}
           </span>
-          <span className="text-[#141310]/40 shrink-0">•</span>
-          <span className="text-[#141310]/60 shrink-0 whitespace-nowrap">{msg.date || msg.timestamp || 'Just now'}</span>
+          <span className="text-ink/40 shrink-0">•</span>
+          <span className="text-ink/60 shrink-0 whitespace-nowrap">{msg.date || msg.timestamp || 'Just now'}</span>
         </div>
 
         {/* Action Buttons */}
@@ -216,7 +216,7 @@ export function ChatMessageItem({ msg, modelName, onRetry, onUndo, onNewChat }: 
           {/* Quick Retry Action */}
           <button 
             type="button"
-            className="flex items-center hover:text-[#141310] transition-colors p-1 rounded hover:bg-[#141310]/5 cursor-pointer" 
+            className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" 
             title="Re-run / Retry generation"
             onClick={handleRetry}
           >
@@ -226,17 +226,17 @@ export function ChatMessageItem({ msg, modelName, onRetry, onUndo, onNewChat }: 
           {/* Quick Copy Action */}
           <button 
             type="button"
-            className="flex items-center hover:text-[#141310] transition-colors p-1 rounded hover:bg-[#141310]/5 cursor-pointer" 
+            className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" 
             title="Copy response"
             onClick={handleCopy}
           >
-            {copied ? <Check size={12} className="text-emerald-700" /> : <Copy size={12} />}
+            {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
           </button>
 
           {/* New Chat Action */}
           <button 
             type="button"
-            className="flex items-center hover:text-[#141310] transition-colors p-1 rounded hover:bg-[#141310]/5 cursor-pointer" 
+            className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" 
             title="New Chat from here"
             onClick={handleNewChat}
           >

@@ -58,42 +58,42 @@ export function MobileSessionCategory({
       {/* Category Header Row (Matching Gambar 2) */}
       <div 
         onClick={onToggleExpand}
-        className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-[#141310]/5 rounded-lg select-none transition-colors"
+        className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-ink/5 rounded-lg select-none transition-colors"
       >
         <div className="flex items-center space-x-2 min-w-0">
           {/* Icon */}
           {isChats ? (
-            <MessageSquare size={15} className="text-[#141310]/80 flex-shrink-0" />
+            <MessageSquare size={15} className="text-ink/80 flex-shrink-0" />
           ) : (
-            <Folder size={15} className="text-[#141310]/80 flex-shrink-0" />
+            <Folder size={15} className="text-ink/80 flex-shrink-0" />
           )}
 
           {/* Folder Name */}
-          <span className="text-sm font-semibold text-[#141310] truncate">
+          <span className="text-sm font-semibold text-ink truncate">
             {folder.name}
           </span>
         </div>
 
         {/* Right badges & actions */}
-        <div className="flex items-center space-x-2 text-xs text-[#141310]/60">
+        <div className="flex items-center space-x-2 text-xs text-ink/60">
           {/* Dot badge if workspace */}
           {isWorkspace && (
             <div className="flex items-center space-x-1">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-600"></span>
-              <span className="font-mono text-[11px] text-[#141310]/70">203</span>
+              <span className="font-mono text-[11px] text-ink/70">203</span>
             </div>
           )}
 
           {/* Count badge for chats & drreal */}
           {!isWorkspace && (
-            <span className="font-mono text-[11px] text-[#141310]/70">
+            <span className="font-mono text-[11px] text-ink/70">
               {isChats ? '2' : isDrReal ? '7' : totalCount}
             </span>
           )}
 
           {/* Branch / tree glyph if workspace */}
           {isWorkspace && (
-            <GitBranch size={13} className="text-[#141310]/50 ml-1" />
+            <GitBranch size={13} className="text-ink/50 ml-1" />
           )}
 
           {/* Chevron expand */}
@@ -115,14 +115,14 @@ export function MobileSessionCategory({
                 onClick={() => onSelectSession(session.id)}
                 className={`w-full text-left px-3 py-2 rounded-lg flex items-center justify-between transition-colors ${
                   isActive 
-                    ? 'bg-[#141310]/10 font-medium text-[#141310]' 
-                    : 'hover:bg-[#141310]/5 text-[#141310]/85'
+                    ? 'bg-ink/10 font-medium text-ink' 
+                    : 'hover:bg-ink/5 text-ink/85'
                 }`}
               >
                 {/* Title */}
                 <div className="flex items-center space-x-1.5 min-w-0 pr-2">
                   {isDrReal && (
-                    <span className="text-[#141310]/40 text-xs flex-shrink-0 font-mono">&gt;</span>
+                    <span className="text-ink/40 text-xs flex-shrink-0 font-mono">&gt;</span>
                   )}
                   <span className="text-xs truncate leading-snug">
                     {session.title}
@@ -130,7 +130,7 @@ export function MobileSessionCategory({
                 </div>
 
                 {/* Timestamp */}
-                <span className="text-[11px] text-[#141310]/45 font-mono flex-shrink-0 ml-2">
+                <span className="text-[11px] text-ink/45 font-mono flex-shrink-0 ml-2">
                   {timeAgo}
                 </span>
               </button>
@@ -142,7 +142,7 @@ export function MobileSessionCategory({
             <button
               type="button"
               onClick={() => setShowMore(!showMore)}
-              className="w-full text-left px-3 py-1.5 text-xs text-[#141310]/60 hover:text-[#141310] flex items-center space-x-1"
+              className="w-full text-left px-3 py-1.5 text-xs text-ink/60 hover:text-ink flex items-center space-x-1"
             >
               <ChevronDown size={12} className={showMore ? 'transform rotate-180' : ''} />
               <span>{showMore ? 'Show fewer sessions' : 'Show more sessions'}</span>

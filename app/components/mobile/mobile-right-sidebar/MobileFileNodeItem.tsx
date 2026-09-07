@@ -77,12 +77,12 @@ export function MobileFileNodeItem({
           onTouchEnd={clearTouchTimer}
           onTouchMove={clearTouchTimer}
           onTouchCancel={clearTouchTimer}
-          className="w-full text-left flex items-center space-x-1.5 py-1 px-2 rounded-md hover:bg-[#141310]/5 transition-colors text-xs font-mono text-[#141310]/90"
+          className="w-full text-left flex items-center space-x-1.5 py-1 px-2 rounded-md hover:bg-ink/5 transition-colors text-xs font-mono text-ink/90"
         >
           {isFolderOpen ? (
-            <ChevronDown size={13} className="text-[#141310]/50" />
+            <ChevronDown size={13} className="text-ink/50" />
           ) : (
-            <ChevronRight size={13} className="text-[#141310]/50" />
+            <ChevronRight size={13} className="text-ink/50" />
           )}
           {isFolderOpen ? (
             <FolderOpen size={14} className="text-amber-700/80" />
@@ -93,7 +93,7 @@ export function MobileFileNodeItem({
         </button>
 
         {isFolderOpen && node.children && (
-          <div className="pl-3.5 border-l border-[#141310]/10 ml-2 mt-0.5 space-y-0.5">
+          <div className="pl-3.5 border-l border-ink/10 ml-2 mt-0.5 space-y-0.5">
             {node.children.map(child => {
               const childPath = child.path || `${fullPath}/${child.name}`;
               return (
@@ -127,14 +127,14 @@ export function MobileFileNodeItem({
       onTouchEnd={clearTouchTimer}
       onTouchMove={clearTouchTimer}
       onTouchCancel={clearTouchTimer}
-      className="w-full text-left flex items-center space-x-1.5 py-1 px-2 rounded-md hover:bg-[#141310]/5 transition-colors text-xs font-mono text-[#141310]/80 group"
+      className="w-full text-left flex items-center space-x-1.5 py-1 px-2 rounded-md hover:bg-ink/5 transition-colors text-xs font-mono text-ink/80 group"
     >
       {isMd ? (
-        <FileText size={13} className="text-[#141310]/50 ml-3.5 flex-shrink-0" />
+        <FileText size={13} className="text-ink/50 ml-3.5 flex-shrink-0" />
       ) : (
-        <FileCode size={13} className="text-[#141310]/50 ml-3.5 flex-shrink-0" />
+        <FileCode size={13} className="text-ink/50 ml-3.5 flex-shrink-0" />
       )}
-      <span className="truncate group-hover:text-[#141310]">{node.name}</span>
+      <span className="truncate group-hover:text-ink">{node.name}</span>
     </button>
   );
 }

@@ -311,7 +311,7 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
     }, [onCommandSubmit]);
 
     return (
-      <div className="relative flex-1 w-full h-full bg-[#141310] overflow-hidden">
+      <div className="relative flex-1 w-full h-full bg-ink overflow-hidden">
         <div
           ref={containerRef}
           className="w-full h-full cursor-text p-1.5"
@@ -323,7 +323,7 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
           <button
             type="button"
             onClick={scrollToBottom}
-            className="absolute bottom-3 right-4 z-20 flex items-center space-x-1.5 px-2.5 py-1 bg-[#24221d] hover:bg-[#34322a] text-[#f4f1ea] border border-[#f4f1ea]/15 rounded-full shadow-lg text-[11px] font-mono transition-all animate-fade-in cursor-pointer active:scale-95"
+            className="absolute bottom-3 right-4 z-20 flex items-center space-x-1.5 px-2.5 py-1 bg-[#24221d] hover:bg-[#34322a] text-[#faf8f3] border border-[#faf8f3]/15 rounded-full shadow-lg text-[11px] font-mono transition-all animate-fade-in cursor-pointer active:scale-95"
             title="Scroll to latest output (Shift+End)"
           >
             <ArrowDown size={12} className="text-amber-400" />

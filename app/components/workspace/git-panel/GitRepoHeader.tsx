@@ -23,26 +23,26 @@ export function GitRepoHeader({
   onRefresh,
 }: GitRepoHeaderProps) {
   return (
-    <div className="p-3 border-b border-[#141310]/10 flex items-center justify-between">
+    <div className="p-3 border-b border-ink/10 flex items-center justify-between">
       <div className="relative" ref={repoRef}>
         <button 
           onClick={() => setShowRepoMenu(!showRepoMenu)}
-          className="flex items-center space-x-1.5 hover:bg-[#141310]/5 px-2 py-1 -ml-2 rounded transition-colors text-xs text-[#141310]/80 font-medium"
+          className="flex items-center space-x-1.5 hover:bg-ink/5 px-2 py-1 -ml-2 rounded transition-colors text-xs text-ink/80 font-medium"
         >
-          <FolderGit2 size={12} className="text-[#141310]/60" />
+          <FolderGit2 size={12} className="text-ink/60" />
           <span className="flex items-center space-x-1 truncate max-w-[150px]">
-            <span className="text-[#141310]/50 font-normal uppercase tracking-wider text-[10px]">GIT</span>
-            <span className="text-[#141310]/30">•</span>
+            <span className="text-ink/50 font-normal uppercase tracking-wider text-[10px]">GIT</span>
+            <span className="text-ink/30">•</span>
             <span>{activeRepo === '.' ? 'workspace root' : activeRepo.split('/').pop()}</span>
           </span>
-          <ChevronDown size={12} className="text-[#141310]/40" />
+          <ChevronDown size={12} className="text-ink/40" />
         </button>
         
         {showRepoMenu && (
-          <div className="absolute top-full left-0 mt-1 w-48 bg-[#faf8f3] border border-[#141310]/20 rounded-md shadow-lg z-50 flex flex-col overflow-hidden text-xs">
+          <div className="absolute top-full left-0 mt-1 w-48 bg-paper border border-ink/20 rounded-md shadow-lg z-50 flex flex-col overflow-hidden text-xs">
             <div className="max-h-48 overflow-y-auto py-1">
               {repos.length === 0 ? (
-                <div className="px-3 py-2 text-[#141310]/40 italic">No repos found</div>
+                <div className="px-3 py-2 text-ink/40 italic">No repos found</div>
               ) : (
                 repos.map(r => (
                   <button 
@@ -51,10 +51,10 @@ export function GitRepoHeader({
                       onSelectRepo(r);
                       setShowRepoMenu(false); 
                     }}
-                    className="w-full text-left px-3 py-2 hover:bg-[#141310]/5 flex items-center justify-between transition-colors"
+                    className="w-full text-left px-3 py-2 hover:bg-ink/5 flex items-center justify-between transition-colors"
                   >
                     <span className="truncate">{r === '.' ? 'workspace root' : r}</span>
-                    {activeRepo === r && <Check size={12} className="text-[#141310]" />}
+                    {activeRepo === r && <Check size={12} className="text-ink" />}
                   </button>
                 ))
               )}
@@ -63,12 +63,12 @@ export function GitRepoHeader({
         )}
       </div>
 
-      <div className="flex space-x-2 text-[#141310]/40">
+      <div className="flex space-x-2 text-ink/40">
         <button
           type="button"
           onClick={onRefresh} 
           title="Refresh"
-          className="hover:text-[#141310] cursor-pointer inline-flex"
+          className="hover:text-ink cursor-pointer inline-flex"
         >
           <RotateCcw 
             size={14} 

@@ -2,15 +2,17 @@
 
 ## 1. Palette & Surface Tokens
 
-| Token | Hex / Value | Purpose |
+| Token | CSS Variable (Light) | Purpose |
 |---|---|---|
-| **App Canvas** | `#f4f1ea` | Warm paper base ground |
-| **Raised Paper** | `#faf8f3` | Cards, sidebars, elevated surfaces |
-| **Primary Ink** | `#141310` | High-contrast text, primary buttons, filled glyphs |
-| **Secondary Ink** | `rgba(20, 19, 16, 0.62)` | Secondary labels, descriptions, durations |
-| **Muted Meta** | `rgba(20, 19, 16, 0.42)` | Micro-headers, timestamps, subtle breadcrumbs |
-| **Hairline Dividers** | `rgba(20, 19, 16, 0.14)` | 1px border lines and grid dividers |
-| **Signal Red (Only Chroma)** | `#c8321e` | Reserved strictly for failed build row & error log tail |
+| **App Canvas** | `var(--theme-canvas)` | Warm paper base ground |
+| **Raised Paper** | `var(--theme-paper)` | Cards, sidebars, elevated surfaces |
+| **Primary Ink** | `var(--theme-ink)` | High-contrast text, primary buttons, filled glyphs |
+| **Secondary Ink** | `color-mix(in srgb, var(--theme-ink) 62%, transparent)` | Secondary labels, descriptions, durations |
+| **Muted Meta** | `color-mix(in srgb, var(--theme-ink) 42%, transparent)` | Micro-headers, timestamps, subtle breadcrumbs |
+| **Hairline Dividers** | `color-mix(in srgb, var(--theme-ink) 14%, transparent)` | 1px border lines and grid dividers |
+| **Signal Red (Only Chroma)** | `var(--theme-error)` | Reserved strictly for failed build row & error log tail |
+
+The system uses `data-theme` on the `html` tag to swap palettes (e.g., `one-dark-pro-soft`). Always use tailwind theme classes (e.g. `bg-canvas`, `text-ink`, `border-ink/20`) instead of raw hex values to ensure themes apply universally.
 
 ---
 

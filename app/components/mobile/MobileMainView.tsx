@@ -112,7 +112,7 @@ export function MobileMainView({
   ];
 
   return (
-    <div className="flex flex-col h-full w-full bg-[#f4f1ea] text-[#141310] relative select-none">
+    <div className="flex flex-col h-full w-full bg-canvas text-ink relative select-none">
       
       {/* Top Header Bar */}
       <MobileHeader
@@ -137,13 +137,13 @@ export function MobileMainView({
           {messages.length === 0 ? (
             /* Empty Workspace Prompt Suggestions */
             <div className="h-full flex flex-col justify-center items-center text-center p-4">
-              <div className="w-10 h-10 rounded-2xl bg-[#141310]/5 flex items-center justify-center text-[#141310]/60 mb-3">
+              <div className="w-10 h-10 rounded-2xl bg-ink/5 flex items-center justify-center text-ink/60 mb-3">
                 <Sparkles size={20} />
               </div>
-              <h2 className="text-sm font-semibold text-[#141310] mb-1">
+              <h2 className="text-sm font-semibold text-ink mb-1">
                 {activeProject ? activeProject.name : 'OMPChamber Workspace'}
               </h2>
-              <p className="text-xs text-[#141310]/50 max-w-xs mb-4">
+              <p className="text-xs text-ink/50 max-w-xs mb-4">
                 Ask a question, diagnose build output, or select a quick starter prompt below.
               </p>
               <div className="flex flex-col space-y-1.5 w-full max-w-xs">
@@ -152,7 +152,7 @@ export function MobileMainView({
                     key={idx}
                     type="button"
                     onClick={() => setInputValue(promptText)}
-                    className="text-left px-3 py-2 rounded-xl bg-[#faf8f3] border border-[#141310]/10 hover:border-[#141310]/30 text-xs text-[#141310]/80 hover:text-[#141310] transition-all"
+                    className="text-left px-3 py-2 rounded-xl bg-paper border border-ink/10 hover:border-ink/30 text-xs text-ink/80 hover:text-ink transition-all"
                   >
                     {promptText}
                   </button>
@@ -186,7 +186,7 @@ export function MobileMainView({
           <button
             type="button"
             onClick={() => scrollToBottom('smooth')}
-            className="absolute bottom-24 right-4 z-20 w-8 h-8 rounded-full bg-[#faf8f3] border border-[#141310]/20 shadow-md flex items-center justify-center text-[#141310] hover:bg-[#141310]/5 transition-all"
+            className="absolute bottom-24 right-4 z-20 w-8 h-8 rounded-full bg-paper border border-ink/20 shadow-md flex items-center justify-center text-ink hover:bg-ink/5 transition-all"
             title="Scroll to bottom"
           >
             <ArrowDown size={14} />
@@ -194,30 +194,30 @@ export function MobileMainView({
         )}
 
         {/* Bottom Section: Workspace Selector + Chat Input Box */}
-        <div className="p-3 pt-2 bg-[#f4f1ea] border-t border-[#141310]/10 flex-shrink-0 space-y-2">
+        <div className="p-3 pt-2 bg-canvas border-t border-ink/10 flex-shrink-0 space-y-2">
           
           {/* Workspace Selection Small Dropdown */}
           <div className="relative inline-block" ref={workspacePickerRef}>
             <button
               type="button"
               onClick={() => setShowWorkspacePicker(!showWorkspacePicker)}
-              className="flex items-center space-x-1.5 hover:bg-[#141310]/5 px-2 py-1 rounded transition-colors text-xs text-[#141310]/80 font-medium bg-[#faf8f3] border border-[#141310]/20 shadow-xs focus:border-[#141310]/50 outline-none cursor-pointer max-w-[260px]"
+              className="flex items-center space-x-1.5 hover:bg-ink/5 px-2 py-1 rounded transition-colors text-xs text-ink/80 font-medium bg-paper border border-ink/20 shadow-xs focus:border-ink/50 outline-none cursor-pointer max-w-[260px]"
             >
-              <Folder size={12} className="text-[#141310]/60 flex-shrink-0" />
+              <Folder size={12} className="text-ink/60 flex-shrink-0" />
               <span className="truncate font-sans">
                 {activeProject ? activeProject.name : 'Select Workspace Context'}
               </span>
-              <ChevronDown size={12} className="text-[#141310]/40 flex-shrink-0" />
+              <ChevronDown size={12} className="text-ink/40 flex-shrink-0" />
             </button>
 
             {showWorkspacePicker && (
-              <div className="absolute bottom-full left-0 mb-1.5 w-60 bg-[#faf8f3] border border-[#141310]/20 rounded-md shadow-lg z-50 flex flex-col overflow-hidden text-xs">
-                <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-[#141310]/40 font-semibold border-b border-[#141310]/10 bg-[#f4f1ea]">
+              <div className="absolute bottom-full left-0 mb-1.5 w-60 bg-paper border border-ink/20 rounded-md shadow-lg z-50 flex flex-col overflow-hidden text-xs">
+                <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-ink/40 font-semibold border-b border-ink/10 bg-canvas">
                   Target Workspace
                 </div>
                 <div className="max-h-48 overflow-y-auto">
                   {folders.length === 0 ? (
-                    <div className="px-3 py-2 text-[#141310]/40 italic">No workspaces available</div>
+                    <div className="px-3 py-2 text-ink/40 italic">No workspaces available</div>
                   ) : (
                     folders.map(f => (
                       <button
@@ -229,16 +229,16 @@ export function MobileMainView({
                         }}
                         className={`w-full text-left px-3 py-2 flex items-center justify-between transition-colors cursor-pointer ${
                           selectedFolderId === f.id
-                            ? 'bg-[#141310]/10 font-semibold text-[#141310]'
-                            : 'hover:bg-[#141310]/5 text-[#141310]/80'
+                            ? 'bg-ink/10 font-semibold text-ink'
+                            : 'hover:bg-ink/5 text-ink/80'
                         }`}
                       >
                         <div className="flex items-center space-x-2 truncate pr-2">
-                          <Folder size={12} className="text-[#141310]/60 flex-shrink-0" />
+                          <Folder size={12} className="text-ink/60 flex-shrink-0" />
                           <span className="truncate">{f.name}</span>
                         </div>
                         {selectedFolderId === f.id && (
-                          <Check size={12} className="text-[#141310] flex-shrink-0" />
+                          <Check size={12} className="text-ink flex-shrink-0" />
                         )}
                       </button>
                     ))

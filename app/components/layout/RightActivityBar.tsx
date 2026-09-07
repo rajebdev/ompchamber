@@ -12,11 +12,11 @@ export function RightActivityBar({ activePanel, onChangePanel }: RightActivityBa
   const getBtnClass = (panel: RightPanelType) => {
     const base = "relative w-full h-10 flex items-center justify-center transition-colors border-l-2";
     const isActive = activePanel === panel;
-    return `${base} ${isActive ? 'text-[#141310] border-[#141310] bg-[#141310]/5' : 'text-[#141310]/40 border-transparent hover:text-[#141310] hover:bg-[#141310]/5'}`;
+    return `${base} ${isActive ? 'text-ink border-ink bg-ink/5' : 'text-ink/40 border-transparent hover:text-ink hover:bg-ink/5'}`;
   };
 
   return (
-    <nav className="w-12 flex-shrink-0 border-l border-[#141310]/10 bg-[#faf8f3] flex flex-col items-center py-3 space-y-2 z-10">
+    <nav className="w-12 flex-shrink-0 border-l border-ink/10 bg-paper flex flex-col items-center py-3 space-y-2 z-10">
       {/* Top Icons */}
       <div className="flex flex-col items-center space-y-1 w-full">
         <button 
@@ -53,10 +53,10 @@ export function RightActivityBar({ activePanel, onChangePanel }: RightActivityBa
       
       {/* Bottom Icons */}
       <div className="flex flex-col items-center space-y-1 w-full pb-2">
-        <button className="relative w-full h-10 flex items-center justify-center text-[#141310]/40 hover:text-[#141310] hover:bg-[#141310]/5 transition-colors border-l-2 border-transparent">
+        <button className="relative w-full h-10 flex items-center justify-center text-ink/40 hover:text-ink hover:bg-ink/5 transition-colors border-l-2 border-transparent">
           <CircleUser size={16} />
         </button>
-        <button className="relative w-full h-10 flex items-center justify-center text-[#141310]/40 hover:text-[#141310] hover:bg-[#141310]/5 transition-colors border-l-2 border-transparent">
+        <button className="relative w-full h-10 flex items-center justify-center text-ink/40 hover:text-ink hover:bg-ink/5 transition-colors border-l-2 border-transparent">
           <Settings size={16} />
         </button>
       </div>

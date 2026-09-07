@@ -31,7 +31,7 @@ interface DesktopLayoutProps {
 function CustomResizeHandle() {
   return (
     <Separator className="relative w-1 outline-none group flex justify-center cursor-col-resize z-10">
-      <div className="h-full w-[1px] bg-[#141310]/10 group-hover:bg-[#141310]/40 group-active:bg-[#141310]/60 group-hover:w-0.5 transition-all" />
+      <div className="h-full w-[1px] bg-ink/10 group-hover:bg-ink/40 group-active:bg-ink/60 group-hover:w-0.5 transition-all" />
     </Separator>
   );
 }
@@ -191,10 +191,10 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#f4f1ea] text-[#141310] font-sans selection:bg-[#141310] selection:text-[#f4f1ea]">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-canvas text-ink font-sans selection:bg-ink selection:text-canvas">
       
       {/* Top Navbar */}
-      <header className="h-12 flex-shrink-0 border-b border-[#141310]/10 bg-[#faf8f3] flex items-center justify-between pr-4 z-20">
+      <header className="h-12 flex-shrink-0 border-b border-ink/10 bg-paper flex items-center justify-between pr-4 z-20">
         <div className="flex items-center h-full w-full">
           <div className="flex items-center space-x-2 h-full px-4" style={{ width: showLeftPanel ? `${leftPanelSize}%` : 'auto' }}>
             <span className="font-bold text-sm tracking-tight hidden sm:flex items-center">
@@ -206,9 +206,9 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
 
         <div className="flex items-center space-x-3">
           {sessionId && (
-            <div className="hidden sm:flex items-center space-x-4 text-[10px] font-mono text-[#141310]/60 pr-4 border-r border-[#141310]/10">
+            <div className="hidden sm:flex items-center space-x-4 text-[10px] font-mono text-ink/60 pr-4 border-r border-ink/10">
               <div className="flex items-center space-x-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#141310]"></span>
+                <span className="w-1.5 h-1.5 rounded-full bg-ink"></span>
                 <span>6.4%</span>
               </div>
               <div className="flex items-center space-x-1">
@@ -223,7 +223,7 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
               <button 
                 type="button"
                 onClick={onSwitchToMobile}
-                className="p-1.5 rounded hover:bg-[#141310]/10 transition-colors text-[#141310]/60 hover:text-[#141310]"
+                className="p-1.5 rounded hover:bg-ink/10 transition-colors text-ink/60 hover:text-ink"
                 title="Switch to Mobile View"
               >
                 <Smartphone size={16} />
@@ -232,16 +232,8 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
             <PWAInstallButton />
             <button 
               type="button"
-              onClick={() => setSettingsOpen(true)}
-              className="p-1.5 rounded hover:bg-[#141310]/10 transition-colors text-[#141310]/60 hover:text-[#141310]"
-              title="Settings (Cmd+,)"
-            >
-              <Settings size={16} />
-            </button>
-            <button 
-              type="button"
               onClick={handleToggleEditor}
-              className={`p-1.5 rounded hover:bg-[#141310]/10 transition-colors ${showEditor ? 'text-[#141310]' : 'text-[#141310]/40'}`}
+              className={`p-1.5 rounded hover:bg-ink/10 transition-colors ${showEditor ? 'text-ink' : 'text-ink/40'}`}
               title="Toggle Editor Layout"
             >
               <LayoutTemplate size={16} />
@@ -249,7 +241,7 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
             <button 
               type="button"
               onClick={handleToggleRightPanel}
-              className={`p-1.5 rounded hover:bg-[#141310]/10 transition-colors ${showRightPanel ? 'text-[#141310]' : 'text-[#141310]/40'}`}
+              className={`p-1.5 rounded hover:bg-ink/10 transition-colors ${showRightPanel ? 'text-ink' : 'text-ink/40'}`}
               title="Toggle Right Panel"
             >
               {showRightPanel ? <PanelRightClose size={16} /> : <PanelRight size={16} />}
@@ -262,12 +254,12 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
       <div className="flex-1 flex overflow-hidden">
         {!showLeftPanel && (
           <div 
-            className="w-12 h-full bg-[#faf8f3] border-r border-[#141310]/10 flex flex-col items-center py-3 flex-shrink-0 cursor-pointer hover:bg-[#141310]/5 transition-colors" 
+            className="w-12 h-full bg-paper border-r border-ink/10 flex flex-col items-center py-3 flex-shrink-0 cursor-pointer hover:bg-ink/5 transition-colors" 
             onClick={() => handleToggleLeftPanel(true)} 
             title="Expand Sidebar"
           >
-            <PanelLeft size={16} className="text-[#141310]/60" />
-            <div className="w-[1px] flex-1 bg-[#141310]/10 my-4" />
+            <PanelLeft size={16} className="text-ink/60" />
+            <div className="w-[1px] flex-1 bg-ink/10 my-4" />
           </div>
         )}
 

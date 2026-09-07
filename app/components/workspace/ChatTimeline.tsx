@@ -336,15 +336,15 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {} }:
   }
 
   return (
-    <div className={`flex flex-col h-full bg-[#f4f1ea] relative ${className}`}>
+    <div className={`flex flex-col h-full bg-canvas relative ${className}`}>
       {/* Timeline Header */}
-      <div className="flex-shrink-0 h-12 flex items-center justify-between px-4 bg-[#faf8f3] border-b border-[#141310]/10 z-10">
+      <div className="flex-shrink-0 h-12 flex items-center justify-between px-4 bg-paper border-b border-ink/10 z-10">
         <div className="flex flex-col justify-center">
           <div className="flex items-center space-x-2">
-            <h3 className="font-semibold text-xs text-[#141310]">{sessionData?.title}</h3>
-            <MoreHorizontal size={14} className="text-[#141310]/40 hover:text-[#141310] cursor-pointer" />
+            <h3 className="font-semibold text-xs text-ink">{sessionData?.title}</h3>
+            <MoreHorizontal size={14} className="text-ink/40 hover:text-ink cursor-pointer" />
           </div>
-          <div className="text-[10px] font-mono text-[#141310]/60 leading-none mt-0.5">
+          <div className="text-[10px] font-mono text-ink/60 leading-none mt-0.5">
             Workspace <span className="mx-1">⎇</span> main
           </div>
         </div>
@@ -388,7 +388,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {} }:
           <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-20">
             <button 
               onClick={() => scrollToBottom('smooth')}
-              className="flex items-center justify-center w-8 h-8 rounded-full border border-[#141310]/20 bg-[#faf8f3] text-[#141310]/60 hover:text-[#141310] hover:bg-[#141310]/5 transition-all shadow-sm"
+              className="flex items-center justify-center w-8 h-8 rounded-full border border-ink/20 bg-paper text-ink/60 hover:text-ink hover:bg-ink/5 transition-all shadow-sm"
               title="Scroll to bottom"
             >
               <ArrowDown size={16} />
@@ -398,7 +398,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {} }:
       </div>
       
       {/* Input Area Footer */}
-      <div className="p-4 bg-[#f4f1ea] border-t border-[#141310]/10 flex-shrink-0">
+      <div className="p-4 bg-canvas border-t border-ink/10 flex-shrink-0">
         <QueueList 
           queue={messageQueue} 
           setQueue={setMessageQueue} 

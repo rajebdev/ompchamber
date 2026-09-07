@@ -123,14 +123,14 @@ export function MobileChatInput({
   };
 
   return (
-    <div className="relative border border-[#141310]/20 rounded-md bg-[#faf8f3] focus-within:border-[#141310] transition-colors flex flex-col shadow-sm font-sans">
+    <div className="relative border border-ink/20 rounded-md bg-paper focus-within:border-ink transition-colors flex flex-col shadow-sm font-sans">
       
       {/* Top Toolbar: Paperclip Attach button */}
-      <div className="flex items-center px-3 py-1.5 border-b border-[#141310]/5 text-[#141310]/60 space-x-2">
+      <div className="flex items-center px-3 py-1.5 border-b border-ink/5 text-ink/60 space-x-2">
         <button 
           type="button"
           onClick={() => fileInputRef.current?.click()} 
-          className="flex items-center justify-center hover:bg-[#141310]/5 p-1 rounded transition-colors text-[#141310]/60 hover:text-[#141310] cursor-pointer" 
+          className="flex items-center justify-center hover:bg-ink/5 p-1 rounded transition-colors text-ink/60 hover:text-ink cursor-pointer" 
           title="Attach file or image"
         >
           <Paperclip size={14} />
@@ -149,19 +149,19 @@ export function MobileChatInput({
       {attachments.length > 0 && (
         <div className="flex flex-wrap gap-2 px-3 pt-2">
           {attachments.map(att => (
-            <div key={att.id} className="relative flex items-center bg-[#f4f1ea] border border-[#141310]/10 rounded-md p-1 pr-6 text-xs shadow-xs group">
+            <div key={att.id} className="relative flex items-center bg-canvas border border-ink/10 rounded-md p-1 pr-6 text-xs shadow-xs group">
               {att.preview ? (
-                <img src={att.preview} alt="preview" className="w-7 h-7 object-cover rounded-xs mr-2 border border-[#141310]/5" />
+                <img src={att.preview} alt="preview" className="w-7 h-7 object-cover rounded-xs mr-2 border border-ink/5" />
               ) : (
-                <div className="w-7 h-7 flex items-center justify-center bg-[#141310]/5 rounded-xs mr-2 text-[#141310]/60">
+                <div className="w-7 h-7 flex items-center justify-center bg-ink/5 rounded-xs mr-2 text-ink/60">
                   <FileIcon size={13} />
                 </div>
               )}
-              <span className="truncate max-w-[100px] font-mono text-[10px] text-[#141310]/80">{att.file.name}</span>
+              <span className="truncate max-w-[100px] font-mono text-[10px] text-ink/80">{att.file.name}</span>
               <button 
                 type="button"
                 onClick={() => removeAttachment(att.id)} 
-                className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-[#141310]/40 hover:text-[#c8321e] hover:bg-[#c8321e]/10 rounded transition-colors cursor-pointer"
+                className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-ink/40 hover:text-error hover:bg-error/10 rounded transition-colors cursor-pointer"
                 title="Remove attachment"
               >
                 <X size={11} />
@@ -211,11 +211,11 @@ export function MobileChatInput({
         onPaste={handlePaste}
         disabled={disabled}
         placeholder={disabled ? "Please select a workspace above to start prompting..." : "@ for files/agents; / for commands and skills; ! for shell; # for snippets (Paste images/files here)"} 
-        className="w-full bg-transparent border-none px-3 py-2.5 text-xs focus:outline-none resize-none text-[#141310] placeholder-[#141310]/40 min-h-[64px] max-h-36 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full bg-transparent border-none px-3 py-2.5 text-xs focus:outline-none resize-none text-ink placeholder-ink/40 min-h-[64px] max-h-36 disabled:opacity-50 disabled:cursor-not-allowed"
       />
 
       {/* Bottom Config Toolbar */}
-      <div className="flex items-center justify-between px-2.5 py-1.5 border-t border-[#141310]/5 bg-[#f4f1ea]/50 rounded-b-md relative w-full">
+      <div className="flex items-center justify-between px-2.5 py-1.5 border-t border-ink/5 bg-canvas/50 rounded-b-md relative w-full">
         <div className="flex items-center space-x-1 sm:space-x-2 min-w-0 flex-1 mr-2">
           
           {/* Model Dropdown: auto width with max 70% of full width */}
@@ -223,46 +223,46 @@ export function MobileChatInput({
             <button 
               type="button"
               onClick={() => setShowModel(!showModel)}
-              className="w-auto max-w-full flex items-center space-x-1 hover:bg-[#141310]/5 px-1.5 py-1 rounded transition-colors text-xs text-[#141310]/80 font-medium cursor-pointer min-w-0"
+              className="w-auto max-w-full flex items-center space-x-1 hover:bg-ink/5 px-1.5 py-1 rounded transition-colors text-xs text-ink/80 font-medium cursor-pointer min-w-0"
               title={`${selectedModel.provider} • ${selectedModel.name}`}
             >
-              <Terminal size={12} className="text-[#141310]/60 flex-shrink-0" />
+              <Terminal size={12} className="text-ink/60 flex-shrink-0" />
               <span className="flex items-center space-x-1 truncate min-w-0 w-auto">
-                <span className="text-[#141310]/50 font-normal flex-shrink-0">{selectedModel.provider}</span>
-                <span className="text-[#141310]/30 flex-shrink-0">•</span>
+                <span className="text-ink/50 font-normal flex-shrink-0">{selectedModel.provider}</span>
+                <span className="text-ink/30 flex-shrink-0">•</span>
                 <span className="truncate">{selectedModel.name}</span>
               </span>
-              <ChevronDown size={11} className="text-[#141310]/40 flex-shrink-0" />
+              <ChevronDown size={11} className="text-ink/40 flex-shrink-0" />
             </button>
             {showModel && (
-              <div className="absolute bottom-full left-0 mb-1 w-60 bg-[#faf8f3] border border-[#141310]/20 rounded-md shadow-lg z-50 flex flex-col overflow-hidden text-xs">
-                <div className="p-2 border-b border-[#141310]/10 flex items-center bg-[#f4f1ea]">
-                  <Search size={12} className="text-[#141310]/40 mr-2 flex-shrink-0" />
+              <div className="absolute bottom-full left-0 mb-1 w-60 bg-paper border border-ink/20 rounded-md shadow-lg z-50 flex flex-col overflow-hidden text-xs">
+                <div className="p-2 border-b border-ink/10 flex items-center bg-canvas">
+                  <Search size={12} className="text-ink/40 mr-2 flex-shrink-0" />
                   <input 
                     type="text" 
                     value={modelSearch}
                     onChange={e => setModelSearch(e.target.value)}
                     placeholder="Search models..."
-                    className="bg-transparent border-none focus:outline-none w-full text-[#141310] placeholder-[#141310]/40 text-xs"
+                    className="bg-transparent border-none focus:outline-none w-full text-ink placeholder-ink/40 text-xs"
                     autoFocus
                   />
                 </div>
                 <div className="max-h-48 overflow-y-auto">
                   {filteredModels.length === 0 ? (
-                    <div className="px-3 py-2 text-[#141310]/40 italic">No models found</div>
+                    <div className="px-3 py-2 text-ink/40 italic">No models found</div>
                   ) : (
                     filteredModels.map(m => (
                       <button 
                         key={m.id}
                         type="button"
                         onClick={() => { setSelectedModel(m); setShowModel(false); }}
-                        className="w-full text-left px-3 py-2 hover:bg-[#141310]/5 flex items-center justify-between transition-colors cursor-pointer"
+                        className="w-full text-left px-3 py-2 hover:bg-ink/5 flex items-center justify-between transition-colors cursor-pointer"
                       >
                         <div className="flex items-center space-x-1.5 truncate pr-1">
-                          <span className="text-[#141310]/50 w-14 truncate text-[10px]">{m.provider}</span>
-                          <span className="text-[#141310] truncate">{m.name}</span>
+                          <span className="text-ink/50 w-14 truncate text-[10px]">{m.provider}</span>
+                          <span className="text-ink truncate">{m.name}</span>
                         </div>
-                        {selectedModel.id === m.id && <Check size={12} className="text-[#141310] flex-shrink-0" />}
+                        {selectedModel.id === m.id && <Check size={12} className="text-ink flex-shrink-0" />}
                       </button>
                     ))
                   )}
@@ -271,62 +271,62 @@ export function MobileChatInput({
             )}
           </div>
 
-          <div className="w-[1px] h-3 bg-[#141310]/10" />
+          <div className="w-[1px] h-3 bg-ink/10" />
 
           {/* Thinking Level Dropdown */}
           <div className="relative" ref={thinkingRef}>
             <button 
               type="button"
               onClick={() => setShowThinking(!showThinking)}
-              className="flex items-center space-x-1 hover:bg-[#141310]/5 px-1.5 py-1 rounded transition-colors text-xs text-[#141310]/80 cursor-pointer"
+              className="flex items-center space-x-1 hover:bg-ink/5 px-1.5 py-1 rounded transition-colors text-xs text-ink/80 cursor-pointer"
               title={`Thinking Level: ${selectedThinking}`}
             >
-              <Brain size={12} className="text-[#141310]/60 flex-shrink-0" />
+              <Brain size={12} className="text-ink/60 flex-shrink-0" />
               <span className="hidden sm:inline">{selectedThinking}</span>
             </button>
             {showThinking && (
-              <div className="absolute bottom-full left-0 mb-1 w-40 bg-[#faf8f3] border border-[#141310]/20 rounded-md shadow-lg z-50 py-1 text-xs">
-                <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-[#141310]/40 font-semibold mb-1">Thinking Level</div>
+              <div className="absolute bottom-full left-0 mb-1 w-40 bg-paper border border-ink/20 rounded-md shadow-lg z-50 py-1 text-xs">
+                <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-ink/40 font-semibold mb-1">Thinking Level</div>
                 {thinkingLevels.map(level => (
                   <button 
                     key={level}
                     type="button"
                     onClick={() => { setSelectedThinking(level); setShowThinking(false); }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-[#141310]/5 flex items-center justify-between transition-colors cursor-pointer"
+                    className="w-full text-left px-3 py-1.5 hover:bg-ink/5 flex items-center justify-between transition-colors cursor-pointer"
                   >
                     <span>{level}</span>
-                    {selectedThinking === level && <Check size={12} className="text-[#141310]" />}
+                    {selectedThinking === level && <Check size={12} className="text-ink" />}
                   </button>
                 ))}
               </div>
             )}
           </div>
 
-          <div className="w-[1px] h-3 bg-[#141310]/10" />
+          <div className="w-[1px] h-3 bg-ink/10" />
 
           {/* Access Control Dropdown */}
           <div className="relative" ref={accessRef}>
             <button 
               type="button"
               onClick={() => setShowAccess(!showAccess)}
-              className="flex items-center space-x-1 hover:bg-[#141310]/5 px-1.5 py-1 rounded transition-colors text-xs text-[#141310]/80 cursor-pointer"
+              className="flex items-center space-x-1 hover:bg-ink/5 px-1.5 py-1 rounded transition-colors text-xs text-ink/80 cursor-pointer"
               title={`Access Control: ${selectedAccess}`}
             >
-              <Shield size={12} className="text-[#141310]/60 flex-shrink-0" />
+              <Shield size={12} className="text-ink/60 flex-shrink-0" />
               <span className="hidden sm:inline">{selectedAccess}</span>
             </button>
             {showAccess && (
-              <div className="absolute bottom-full left-0 mb-1 w-40 bg-[#faf8f3] border border-[#141310]/20 rounded-md shadow-lg z-50 py-1 text-xs">
-                <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-[#141310]/40 font-semibold mb-1">Access Control</div>
+              <div className="absolute bottom-full left-0 mb-1 w-40 bg-paper border border-ink/20 rounded-md shadow-lg z-50 py-1 text-xs">
+                <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-ink/40 font-semibold mb-1">Access Control</div>
                 {accessLevels.map(level => (
                   <button 
                     key={level}
                     type="button"
                     onClick={() => { setSelectedAccess(level); setShowAccess(false); }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-[#141310]/5 flex items-center justify-between transition-colors cursor-pointer"
+                    className="w-full text-left px-3 py-1.5 hover:bg-ink/5 flex items-center justify-between transition-colors cursor-pointer"
                   >
                     <span>{level}</span>
-                    {selectedAccess === level && <Check size={12} className="text-[#141310]" />}
+                    {selectedAccess === level && <Check size={12} className="text-ink" />}
                   </button>
                 ))}
               </div>
@@ -340,7 +340,7 @@ export function MobileChatInput({
           type="button"
           onClick={() => handleSendClick()}
           disabled={isGenerating || disabled || (!value.trim() && attachments.length === 0)}
-          className="flex items-center justify-center w-7 h-7 rounded bg-[#141310] text-[#f4f1ea] hover:bg-[#141310]/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex-shrink-0"
+          className="flex items-center justify-center w-7 h-7 rounded bg-ink text-canvas hover:bg-ink/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex-shrink-0"
           title="Send message"
         >
           <Send size={12} className="ml-px" />

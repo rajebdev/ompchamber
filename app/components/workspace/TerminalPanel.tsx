@@ -51,7 +51,7 @@ export function TerminalPanel({ className = '', onClose, showHeader = true }: Te
   }, [clearLogs]);
 
   return (
-    <div className={`flex flex-col h-full w-full bg-[#faf8f3] text-[#141310] overflow-hidden ${className}`}>
+    <div className={`flex flex-col h-full w-full bg-paper text-ink overflow-hidden ${className}`}>
       {showHeader && (
         <TerminalHeader
           cwd={cwd}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { 
-  FileText, Copy, Download, ZoomIn, ZoomOut, Maximize, ExternalLink, X, Eye, EyeOff, Save, Check, ChevronDown 
+import { FileIcon } from '../common/FileIcon';
+import {
+  Copy, Download, ZoomIn, ZoomOut, Maximize, ExternalLink, X, Eye, EyeOff, Save, Check, ChevronDown, WrapText 
 } from 'lucide-react';
 import CodeEditor from 'react-simple-code-editor';
 import Prism from 'prismjs';
@@ -64,9 +65,10 @@ export function Editor({
   
   const [contents, setContents] = useState<Record<number, string>>({});
   const [previewMode, setPreviewMode] = useState<Record<number, boolean>>({});
-  const [zoomLevel, setZoomLevel] = useState(13);
+  const [zoomLevel, setZoomLevel] = useState(12);
   const [isMaximized, setIsMaximized] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [wordWrap, setWordWrap] = useState(true);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Tabs overflow logic
@@ -195,8 +197,8 @@ export function Editor({
 
   if (openedFiles.length === 0) {
     return (
-      <div className={`flex flex-col h-full bg-[#f4f1ea] items-center justify-center text-[#141310]/40 ${className}`}>
-        <FileText size={48} className="mb-4 opacity-20" />
+      <div className={`flex flex-col h-full bg-canvas items-center justify-center text-ink/40 ${className}`}>
+        <FileIcon name="placeholder.txt" size={48} className="mb-4 opacity-20" />
         <p className="font-mono text-sm">Select a file to open</p>
       </div>
     );
@@ -208,8 +210,8 @@ export function Editor({
   const lang = activeFile ? getLanguage(activeFile.name) : 'javascript';
 
   const editorContainerClass = isMaximized 
-    ? 'fixed inset-0 z-50 flex flex-col bg-[#f4f1ea]' 
-    : `flex flex-col h-full bg-[#f4f1ea] ${className}`;
+    ? 'fixed inset-0 z-50 flex flex-col bg-canvas' 
+    : `flex flex-col h-full bg-canvas ${className}`;
 
   // Calculate visible and hidden tabs
   let visibleTabs: any[] = [];
@@ -237,7 +239,7 @@ export function Editor({
   return (
     <div className={editorContainerClass}>
       {/* Tabs Header */}
-      <div className="flex bg-[#e8e4db] w-full relative border-b border-[#141310]/10" ref={tabsContainerRef}>
+      <div className="flex bg-ink/10 w-full relative border-b border-ink/10" ref={tabsContainerRef}>
         <div className="flex overflow-hidden">
           {visibleTabs.map(file => {
             const isActive = file.id === activeFileId;
@@ -245,14 +247,14 @@ export function Editor({
               <div 
                 key={file.id}
                 onClick={() => onSelectFile(file.id)}
-                className={`flex items-center space-x-2 px-3 py-1.5 cursor-pointer border-r border-[#141310]/10 min-w-[120px] max-w-[200px] group ${
-                  isActive ? 'bg-[#faf8f3] border-t-2 border-t-[#141310] text-[#141310]' : 'bg-transparent border-t-2 border-t-transparent text-[#141310]/60 hover:bg-[#faf8f3]/50'
+                className={`flex items-center space-x-2 px-3 py-1.5 cursor-pointer border-r border-ink/10 min-w-[120px] max-w-[200px] group ${
+                  isActive ? 'bg-paper border-t-2 border-t-ink text-ink' : 'bg-transparent border-t-2 border-t-transparent text-ink/60 hover:bg-paper/50'
                 }`}
               >
-                <FileText size={14} className={isActive ? 'text-[#141310]' : 'text-[#141310]/60'} />
+                <FileIcon name={file.name} size={14} className={isActive ? '' : 'opacity-60'} />
                 <span className="text-xs font-mono truncate flex-1">{file.name}</span>
                 <div 
-                  className={`p-0.5 rounded hover:bg-[#141310]/10 ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                  className={`p-0.5 rounded hover:bg-ink/10 ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     onCloseFile(file.id);
@@ -266,9 +268,9 @@ export function Editor({
         </div>
         
         {hiddenTabs.length > 0 && (
-          <div className="relative flex items-center ml-auto bg-[#e8e4db]" ref={dropdownRef}>
+          <div className="relative flex items-center ml-auto bg-ink/10" ref={dropdownRef}>
             <button 
-              className={`p-1.5 mx-1 rounded hover:bg-[#141310]/10 text-[#141310]/60 ${showDropdown ? 'bg-[#141310]/10 text-[#141310]' : ''}`}
+              className={`p-1.5 mx-1 rounded hover:bg-ink/10 text-ink/60 ${showDropdown ? 'bg-ink/10 text-ink' : ''}`}
               onClick={() => setShowDropdown(!showDropdown)}
               title="More open files"
             >
@@ -276,8 +278,8 @@ export function Editor({
             </button>
             
             {showDropdown && (
-              <div className="absolute right-0 top-full mt-1 w-48 bg-[#faf8f3] border border-[#141310]/10 rounded shadow-lg z-50 py-1">
-                <div className="px-3 py-1 text-[10px] uppercase font-mono text-[#141310]/40 border-b border-[#141310]/10 mb-1">
+              <div className="absolute right-0 top-full mt-1 w-48 bg-paper border border-ink/10 rounded shadow-lg z-50 py-1">
+                <div className="px-3 py-1 text-[10px] uppercase font-mono text-ink/40 border-b border-ink/10 mb-1">
                   Older Tabs
                 </div>
                 {hiddenTabs.map(file => (
@@ -287,19 +289,19 @@ export function Editor({
                       onSelectFile(file.id);
                       setShowDropdown(false);
                     }}
-                    className="flex items-center space-x-2 px-3 py-1.5 hover:bg-[#141310]/5 cursor-pointer group"
+                    className="flex items-center space-x-2 px-3 py-1.5 hover:bg-ink/5 cursor-pointer group"
                   >
-                    <FileText size={14} className="text-[#141310]/60" />
-                    <span className="text-xs font-mono truncate flex-1 text-[#141310]/80">{file.name}</span>
+                    <FileIcon name={file.name} size={14} className="opacity-60" />
+                    <span className="text-xs font-mono truncate flex-1 text-ink/80">{file.name}</span>
                     <div 
-                      className="p-0.5 rounded hover:bg-[#141310]/10 opacity-0 group-hover:opacity-100"
+                      className="p-0.5 rounded hover:bg-ink/10 opacity-0 group-hover:opacity-100"
                       onClick={(e) => {
                         e.stopPropagation();
                         onCloseFile(file.id);
                         if (hiddenTabs.length === 1) setShowDropdown(false);
                       }}
                     >
-                      <X size={12} className="text-[#141310]/60" />
+                      <X size={12} className="text-ink/60" />
                     </div>
                   </div>
                 ))}
@@ -311,61 +313,63 @@ export function Editor({
 
       {activeFile ? (
         <>
-          <div className="flex items-center justify-between px-3 py-2 border-b border-[#141310]/10 bg-[#faf8f3]">
-            {/* Left status / save button */}
-            <div className="flex items-center space-x-2 text-xs font-mono text-[#141310]/60">
-              <button
-                type="button"
-                onClick={() => saveFileToDisk(activeFile, currentContent)}
-                className="flex items-center space-x-1.5 px-2 py-0.5 rounded hover:bg-[#141310]/5 transition-colors text-[11px]"
-                title="Save file (Ctrl+S)"
-              >
-                {saveStatus === 'saving' ? (
-                  <span className="text-amber-600 font-sans">Saving...</span>
-                ) : saveStatus === 'saved' ? (
-                  <>
-                    <Check size={12} className="text-emerald-700" />
-                    <span className="text-emerald-700">Saved</span>
-                  </>
-                ) : (
-                  <>
-                    <Save size={12} />
-                    <span>Save</span>
-                  </>
-                )}
-              </button>
+          <div className="flex items-center justify-between px-3 py-2 border-b border-ink/10 bg-paper">
+            {/* Left status */}
+            <div className="flex items-center space-x-2 text-xs font-mono text-ink/40">
+              <span className="truncate max-w-[300px]" title={activeFile.path}>{activeFile.path}</span>
             </div>
 
             {/* Right actions */}
-            <div className="flex items-center space-x-3 text-[#141310]/40">
-              {isMd && (
-                <div onClick={togglePreview} className="flex items-center pr-3 border-r border-[#141310]/10">
-                  {isPreview ? (
-                    <EyeOff size={14} className="hover:text-[#141310] cursor-pointer" />
+            <div className="flex items-center space-x-3 text-ink/40">
+              <div className="flex items-center pr-3 border-r border-ink/10">
+                <button
+                  type="button"
+                  onClick={() => saveFileToDisk(activeFile, currentContent)}
+                  className="flex items-center justify-center rounded hover:bg-ink/5 transition-colors"
+                  title="Save file (Ctrl+S)"
+                >
+                  {saveStatus === 'saving' ? (
+                    <Save size={14} className="text-amber-500 animate-pulse" />
+                  ) : saveStatus === 'saved' ? (
+                    <Check size={14} className="text-success" />
                   ) : (
-                    <Eye size={14} className="hover:text-[#141310] cursor-pointer" />
+                    <Save size={14} className="hover:text-ink cursor-pointer" />
+                  )}
+                </button>
+              </div>
+
+              {isMd && (
+                <div onClick={togglePreview} className="flex items-center pr-3 border-r border-ink/10">
+                  {isPreview ? (
+                    <EyeOff size={14} className="hover:text-ink cursor-pointer" />
+                  ) : (
+                    <Eye size={14} className="hover:text-ink cursor-pointer" />
                   )}
                 </div>
               )}
               
-              <div className="flex items-center space-x-2 pr-3 border-r border-[#141310]/10">
-                <ZoomOut size={14} className="hover:text-[#141310] cursor-pointer" onClick={() => setZoomLevel(z => Math.max(8, z - 1))} />
-                <ZoomIn size={14} className="hover:text-[#141310] cursor-pointer" onClick={() => setZoomLevel(z => Math.min(24, z + 1))} />
+              <div className="flex items-center space-x-2 pr-3 border-r border-ink/10">
+                <WrapText size={14} className={`cursor-pointer ${wordWrap ? 'text-ink' : 'hover:text-ink'}`} onClick={() => setWordWrap(!wordWrap)}  />
+              </div>
+
+              <div className="flex items-center space-x-2 pr-3 border-r border-ink/10">
+                <ZoomOut size={14} className="hover:text-ink cursor-pointer" onClick={() => setZoomLevel(z => Math.max(8, z - 1))}  />
+                <ZoomIn size={14} className="hover:text-ink cursor-pointer" onClick={() => setZoomLevel(z => Math.min(24, z + 1))}  />
               </div>
               
-              <div className="flex items-center space-x-2 pr-3 border-r border-[#141310]/10">
-                <Copy size={14} className="hover:text-[#141310] cursor-pointer" onClick={handleCopy} />
-                <Download size={14} className="hover:text-[#141310] cursor-pointer" onClick={handleDownload} />
-                <ExternalLink size={14} className="hover:text-[#141310] cursor-pointer" />
+              <div className="flex items-center space-x-2 pr-3 border-r border-ink/10">
+                <Copy size={14} className="hover:text-ink cursor-pointer" onClick={handleCopy}  />
+                <Download size={14} className="hover:text-ink cursor-pointer" onClick={handleDownload}  />
               </div>
+
               <div className="flex items-center pl-1">
-                <Maximize size={14} className="hover:text-[#141310] cursor-pointer" onClick={() => setIsMaximized(!isMaximized)} />
+                <Maximize size={14} className="hover:text-ink cursor-pointer" onClick={() => setIsMaximized(!isMaximized)}  />
               </div>
             </div>
           </div>
           
           {/* Editor Content */}
-          <div className="flex-1 overflow-auto bg-[#faf8f3] flex">
+          <div className="flex-1 overflow-auto bg-paper flex">
             {(isMd && isPreview) ? (
               <div className="p-6 prose prose-sm max-w-4xl mx-auto font-sans flex-1" style={{ fontSize: `${zoomLevel}px` }}>
                 <Markdown rehypePlugins={[rehypeRaw]}>{currentContent}</Markdown>
@@ -373,7 +377,7 @@ export function Editor({
             ) : (
               <>
                 <div 
-                  className="flex flex-col text-right pl-4 pr-3 select-none text-[#141310]/30 font-mono border-r border-[#141310]/10 bg-[#f4f1ea] sticky left-0 z-10" 
+                  className="flex flex-col text-right pl-4 pr-3 select-none text-ink/30 font-mono border-r border-ink/10 bg-canvas sticky left-0 z-10" 
                   style={{ 
                     fontSize: zoomLevel, 
                     paddingTop: 16, 
@@ -392,8 +396,8 @@ export function Editor({
                     onValueChange={handleContentChange}
                     highlight={code => Prism.highlight(code, Prism.languages[lang] || Prism.languages.javascript, lang)}
                     padding={16}
-                    textareaClassName="focus:outline-none !whitespace-pre !break-normal"
-                    preClassName="!whitespace-pre !break-normal"
+                    textareaClassName={`focus:outline-none ${wordWrap ? '!whitespace-pre-wrap !break-words' : '!whitespace-pre !break-normal'}`}
+                    preClassName={`${wordWrap ? '!whitespace-pre-wrap !break-words' : '!whitespace-pre !break-normal'}`}
                     style={{
                       fontFamily: '"Fira Code", "JetBrains Mono", "SF Mono", Consolas, monospace',
                       fontSize: zoomLevel,
@@ -408,7 +412,7 @@ export function Editor({
           </div>
         </>
       ) : (
-        <div className="flex-1 flex items-center justify-center text-[#141310]/40">
+        <div className="flex-1 flex items-center justify-center text-ink/40">
           <p className="font-mono text-sm">Select a tab to view content</p>
         </div>
       )}

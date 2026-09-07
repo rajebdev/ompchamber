@@ -37,10 +37,10 @@ export function TerminalInputBar({
   return (
     <form
       onSubmit={handleSubmit}
-      className="p-2 border-t border-[#141310]/10 bg-[#faf8f3] flex items-center space-x-2 flex-shrink-0"
+      className="p-2 border-t border-ink/10 bg-paper flex items-center space-x-2 flex-shrink-0"
     >
-      <div className="flex items-center space-x-1.5 flex-1 min-w-0 bg-[#f4f1ea] border border-[#141310]/20 rounded-lg px-2.5 py-1.5 focus-within:border-[#141310]/50 transition-colors">
-        <span className="text-[#141310]/50 font-mono text-xs select-none font-bold">
+      <div className="flex items-center space-x-1.5 flex-1 min-w-0 bg-canvas border border-ink/20 rounded-lg px-2.5 py-1.5 focus-within:border-ink/50 transition-colors">
+        <span className="text-ink/50 font-mono text-xs select-none font-bold">
           $
         </span>
         <input
@@ -51,7 +51,7 @@ export function TerminalInputBar({
           onKeyDown={onKeyDown}
           disabled={isRunning}
           placeholder={isRunning ? "Command is executing..." : "bun run build, git status, ls -la..."}
-          className="flex-1 bg-transparent font-mono text-xs text-[#141310] placeholder-[#141310]/40 outline-none min-w-0"
+          className="flex-1 bg-transparent font-mono text-xs text-ink placeholder-ink/40 outline-none min-w-0"
         />
       </div>
 
@@ -59,7 +59,7 @@ export function TerminalInputBar({
         <button
           type="button"
           onClick={onCancel}
-          className="p-2 rounded-lg bg-[#c8321e] text-white hover:bg-[#c8321e]/90 active:scale-95 transition-all flex items-center justify-center cursor-pointer shadow-xs"
+          className="p-2 rounded-lg bg-error text-white hover:bg-error/90 active:scale-95 transition-all flex items-center justify-center cursor-pointer shadow-xs"
           title="Interrupt process (Ctrl+C)"
         >
           <Square size={13} fill="currentColor" />
@@ -68,7 +68,7 @@ export function TerminalInputBar({
         <button
           type="submit"
           disabled={!value.trim()}
-          className="p-2 rounded-lg bg-[#141310] text-[#f4f1ea] hover:bg-[#141310]/80 active:scale-95 transition-all flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none cursor-pointer shadow-xs"
+          className="p-2 rounded-lg bg-ink text-canvas hover:bg-ink/80 active:scale-95 transition-all flex items-center justify-center disabled:opacity-40 disabled:pointer-events-none cursor-pointer shadow-xs"
           title="Execute command (Enter)"
         >
           <CornerDownLeft size={13} />

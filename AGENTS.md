@@ -30,10 +30,11 @@
 3. **Patch Generation**: Formulate a runnable bun terminal command (e.g., `bun add @superdesign/svg-geometry@latest && bun run build`).
 4. **Execution in Chamber**: The user or agent triggers execution directly in the right sidebar chamber panel.
 
-### Code Style & Persistence Guidelines
-- Always preserve strict e-ink paper monochrome palette.
-- Do not inject rainbow status badges; use the ink glyph set (Ready, Building, Queued, Canceled, Failed).
-- The only allowable chroma is signal red `#c8321e` reserved for failures and error messages.
+### 3. Code Style & Persistence Guidelines
+- Use the CSS variable system defined in `app/tailwind.css` (`var(--theme-ink)`, `var(--theme-paper)`, etc.) and standard Tailwind classes mapped to them (`bg-paper`, `text-ink`, `border-ink/20`).
+- The application supports multiple themes (e.g., E-Ink Paper Monochrome, One Dark Pro Soft). **DO NOT** hardcode raw hex colors like `#141310` or `#faf8f3` in component files.
+- Semantic states are expressed purely through these theme variables.
+- The only allowable chroma (outside of dark theme) is the signal red variable `var(--theme-error)` (`text-error`, `bg-error`) reserved for failures and error messages.
 
 ---
 

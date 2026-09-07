@@ -230,7 +230,7 @@ export function MobileGitChangesList({
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#faf8f3] font-mono text-xs">
+    <div className="flex flex-col h-full bg-paper font-mono text-xs">
       {/* 1. Repo Switcher Header */}
       <MobileGitRepoHeader
         repos={repos}
@@ -264,7 +264,7 @@ export function MobileGitChangesList({
       />
 
       {/* 4. Staged & Unstaged Changes Sections */}
-      <div className="flex-1 overflow-y-auto font-mono text-[11px] text-[#141310]/80">
+      <div className="flex-1 overflow-y-auto font-mono text-[11px] text-ink/80">
         <MobileGitSection
           title="Staged Changes"
           count={stagedChanges.length}

@@ -177,7 +177,7 @@ export function getSessionData(sessionId: string | null) {
             file: 'app/components/layout/SessionSidebar.tsx',
             added: 12,
             removed: 5,
-            diffText: `@@ -45,5 +45,12 @@\n-  className="text-xs"\n+  className="text-[13px] font-semibold text-[#141310]"\n-  className="text-[11px]"\n+  className="text-[12px] font-mono text-[#141310]/70"`
+            diffText: `@@ -45,5 +45,12 @@\n-  className="text-xs"\n+  className="text-[13px] font-semibold text-ink"\n-  className="text-[11px]"\n+  className="text-[12px] font-mono text-ink/70"`
           },
           status: 'success',
           duration: '220ms'

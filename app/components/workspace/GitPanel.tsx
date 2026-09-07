@@ -132,7 +132,7 @@ export function GitPanel({ className = '', refreshKey = 0 }: GitPanelProps) {
   });
 
   return (
-    <div className={`flex flex-col h-full bg-[#faf8f3] relative ${className}`}>
+    <div className={`flex flex-col h-full bg-paper relative ${className}`}>
       {mounted && (
         <>
           <ConfirmActionModal 
@@ -208,28 +208,28 @@ export function GitPanel({ className = '', refreshKey = 0 }: GitPanelProps) {
       />
       
       {/* Changes List / Tree */}
-      <div className="flex-1 overflow-y-auto font-mono text-[11px] text-[#141310]/80">
+      <div className="flex-1 overflow-y-auto font-mono text-[11px] text-ink/80">
         {isLoading && changes.length === 0 ? (
-          <div className="p-4 text-center text-[#141310]/40 italic">Loading...</div>
+          <div className="p-4 text-center text-ink/40 italic">Loading...</div>
         ) : changes.length === 0 ? (
-          <div className="p-4 text-center text-[#141310]/40 italic">No changes found.</div>
+          <div className="p-4 text-center text-ink/40 italic">No changes found.</div>
         ) : (
           <div className="py-1">
             {/* Staged Changes Section */}
             {stagedChanges.length > 0 && (
               <div className="mb-2">
                 <div 
-                  className="flex items-center justify-between px-3 py-1 group hover:bg-[#141310]/5 cursor-pointer transition-colors"
+                  className="flex items-center justify-between px-3 py-1 group hover:bg-ink/5 cursor-pointer transition-colors"
                   onClick={() => setStagedExpanded(!stagedExpanded)}
                 >
-                  <div className="flex items-center space-x-1 font-semibold text-[#141310] text-xs">
+                  <div className="flex items-center space-x-1 font-semibold text-ink text-xs">
                     <span className="w-3 text-center">{stagedExpanded ? '▾' : '▸'}</span>
                     <span>Staged Changes</span>
-                    <span className="text-[#141310]/40 font-normal ml-1 border border-[#141310]/20 rounded-full px-1.5 text-[9px] bg-white">
+                    <span className="text-ink/40 font-normal ml-1 border border-ink/20 rounded-full px-1.5 text-[9px] bg-paper">
                       {stagedChanges.length}
                     </span>
                   </div>
-                  <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-1 text-[#141310]/40 flex-shrink-0">
+                  <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-1 text-ink/40 flex-shrink-0">
                     <button 
                       type="button" 
                       onClick={(e) => {
@@ -237,7 +237,7 @@ export function GitPanel({ className = '', refreshKey = 0 }: GitPanelProps) {
                         handleAction('unstage_all');
                       }} 
                       title="Unstage All Changes" 
-                      className="w-5 h-5 flex items-center justify-center rounded hover:text-[#141310] hover:bg-[#141310]/10 cursor-pointer transition-colors"
+                      className="w-5 h-5 flex items-center justify-center rounded hover:text-ink hover:bg-ink/10 cursor-pointer transition-colors"
                     >
                       <Minus size={12} />
                     </button>
@@ -269,17 +269,17 @@ export function GitPanel({ className = '', refreshKey = 0 }: GitPanelProps) {
             {unstagedChanges.length > 0 && (
               <div>
                 <div 
-                  className="flex items-center justify-between px-3 py-1 group hover:bg-[#141310]/5 cursor-pointer transition-colors"
+                  className="flex items-center justify-between px-3 py-1 group hover:bg-ink/5 cursor-pointer transition-colors"
                   onClick={() => setUnstagedExpanded(!unstagedExpanded)}
                 >
-                  <div className="flex items-center space-x-1 font-semibold text-[#141310] text-xs">
+                  <div className="flex items-center space-x-1 font-semibold text-ink text-xs">
                     <span className="w-3 text-center">{unstagedExpanded ? '▾' : '▸'}</span>
                     <span>Changes</span>
-                    <span className="text-[#141310]/40 font-normal ml-1 border border-[#141310]/20 rounded-full px-1.5 text-[9px] bg-white">
+                    <span className="text-ink/40 font-normal ml-1 border border-ink/20 rounded-full px-1.5 text-[9px] bg-paper">
                       {unstagedChanges.length}
                     </span>
                   </div>
-                  <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-1 text-[#141310]/40 flex-shrink-0">
+                  <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-1 text-ink/40 flex-shrink-0">
                     <button 
                       type="button" 
                       onClick={(e) => {
@@ -287,7 +287,7 @@ export function GitPanel({ className = '', refreshKey = 0 }: GitPanelProps) {
                         handleAction('revert_all');
                       }} 
                       title="Discard All Changes" 
-                      className="w-5 h-5 flex items-center justify-center rounded hover:text-[#c8321e] hover:bg-[#c8321e]/10 cursor-pointer transition-colors"
+                      className="w-5 h-5 flex items-center justify-center rounded hover:text-error hover:bg-error/10 cursor-pointer transition-colors"
                     >
                       <Undo2 size={12} />
                     </button>
@@ -298,7 +298,7 @@ export function GitPanel({ className = '', refreshKey = 0 }: GitPanelProps) {
                         handleAction('stage_all');
                       }} 
                       title="Stage All Changes" 
-                      className="w-5 h-5 flex items-center justify-center rounded hover:text-[#141310] hover:bg-[#141310]/10 cursor-pointer transition-colors"
+                      className="w-5 h-5 flex items-center justify-center rounded hover:text-ink hover:bg-ink/10 cursor-pointer transition-colors"
                     >
                       <Plus size={12} />
                     </button>

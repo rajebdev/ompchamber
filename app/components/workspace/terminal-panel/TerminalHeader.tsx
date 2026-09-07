@@ -17,21 +17,21 @@ export function TerminalHeader({
   onClose,
 }: TerminalHeaderProps) {
   return (
-    <div className="h-10 px-3 border-b border-[#141310]/10 bg-[#faf8f3] flex items-center justify-between flex-shrink-0 select-none">
+    <div className="h-10 px-3 border-b border-ink/10 bg-paper flex items-center justify-between flex-shrink-0 select-none">
       <div className="flex items-center space-x-2 min-w-0">
-        <Terminal size={14} className="text-[#141310]/70 flex-shrink-0" />
-        <span className="text-xs font-semibold tracking-tight text-[#141310] uppercase">
+        <Terminal size={14} className="text-ink/70 flex-shrink-0" />
+        <span className="text-xs font-semibold tracking-tight text-ink uppercase">
           Terminal
         </span>
         
         {/* Runtime Badge */}
-        <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-[#141310]/5 text-[#141310]/60 border border-[#141310]/10">
+        <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-ink/5 text-ink/60 border border-ink/10">
           bun v{bunVersion}
         </span>
 
         {/* Current working directory pill */}
-        <div className="flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-[#141310]/5 text-[#141310]/70 border border-[#141310]/10 truncate max-w-[140px] sm:max-w-[180px]">
-          <Folder size={10} className="text-[#141310]/50 flex-shrink-0" />
+        <div className="flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-ink/5 text-ink/70 border border-ink/10 truncate max-w-[140px] sm:max-w-[180px]">
+          <Folder size={10} className="text-ink/50 flex-shrink-0" />
           <span className="truncate">~/{cwd === '.' ? '' : cwd}</span>
         </div>
 
@@ -48,7 +48,7 @@ export function TerminalHeader({
           type="button"
           onClick={onClear}
           title="Clear Terminal (Ctrl+L)"
-          className="p-1.5 rounded hover:bg-[#141310]/5 text-[#141310]/60 hover:text-[#141310] transition-colors cursor-pointer"
+          className="p-1.5 rounded hover:bg-ink/5 text-ink/60 hover:text-ink transition-colors cursor-pointer"
         >
           <Trash2 size={13} />
         </button>

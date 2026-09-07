@@ -4,8 +4,11 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLoaderData
 } from "@remix-run/react";
-import type { LinksFunction } from "@remix-run/node";
+import type { LinksFunction, LoaderFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
+import { getDb } from "./db.server";
 
 import "./tailwind.css";
 
@@ -25,9 +28,32 @@ export const links: LinksFunction = () => [
   },
 ];
 
+export async function loader({ request }: LoaderFunctionArgs) {
+  try {
+    const db = await getDb();
+    const settingsRow = await db.get('SELECT * FROM app_settings WHERE key = ?', ['omp_chamber_settings']);
+    let theme = 'paper';
+    if (settingsRow) {
+      try {
+        const settings = JSON.parse(settingsRow.value);
+        if (settings.theme) {
+          theme = settings.theme;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    return json({ theme });
+  } catch (e) {
+    return json({ theme: 'paper' });
+  }
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
+  const data = useLoaderData<typeof loader>() || { theme: 'paper' };
+  
   return (
-    <html lang="en">
+    <html lang="en" data-theme={data.theme}>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />

@@ -80,23 +80,23 @@ export function SettingsSidebar({
   const sections: Array<'OMPCHAMBER' | 'WORKSPACE' | 'OMP' | 'LIBRARY'> = ['OMPCHAMBER', 'WORKSPACE', 'OMP', 'LIBRARY'];
 
   return (
-    <div className={`flex flex-col h-full bg-[#f4f1ea] border-r border-[#141310]/10 text-[#141310] select-none ${className}`}>
+    <div className={`flex flex-col h-full bg-canvas border-r border-ink/10 text-ink select-none ${className}`}>
       {/* Search Bar */}
-      <div className="p-3 border-b border-[#141310]/10 flex-shrink-0">
+      <div className="p-3 border-b border-ink/10 flex-shrink-0">
         <div className="relative flex items-center">
-          <Search size={14} className="absolute left-2.5 text-[#141310]/40 pointer-events-none" />
+          <Search size={14} className="absolute left-2.5 text-ink/40 pointer-events-none" />
           <input
             type="text"
             placeholder="Search settings"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full bg-[#faf8f3] border border-[#141310]/15 rounded-lg pl-8 pr-7 py-1.5 text-xs text-[#141310] placeholder-[#141310]/40 focus:outline-none focus:border-[#141310]/40 transition-colors"
+            className="w-full bg-paper border border-ink/15 rounded-lg pl-8 pr-7 py-1.5 text-xs text-ink placeholder-ink/40 focus:outline-none focus:border-ink/40 transition-colors"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => onSearchChange('')}
-              className="absolute right-2 text-[#141310]/40 hover:text-[#141310] p-0.5"
+              className="absolute right-2 text-ink/40 hover:text-ink p-0.5"
             >
               <X size={12} />
             </button>
@@ -107,7 +107,7 @@ export function SettingsSidebar({
       {/* Category Navigation Items */}
       <div className="flex-1 overflow-y-auto p-2 space-y-4">
         {filteredCategories.length === 0 ? (
-          <div className="text-center py-8 text-xs text-[#141310]/50 italic">
+          <div className="text-center py-8 text-xs text-ink/50 italic">
             No matching settings found
           </div>
         ) : (
@@ -117,7 +117,7 @@ export function SettingsSidebar({
 
             return (
               <div key={section} className="space-y-1">
-                <div className="px-2.5 py-1 text-[10px] font-bold text-[#141310]/40 tracking-wider font-mono uppercase">
+                <div className="px-2.5 py-1 text-[10px] font-bold text-ink/40 tracking-wider font-mono uppercase">
                   {section}
                 </div>
                 <div className="space-y-0.5">
@@ -131,12 +131,12 @@ export function SettingsSidebar({
                         onClick={() => onSelectCategory(item.id)}
                         className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-all text-left ${
                           isActive
-                            ? 'bg-[#141310]/10 font-semibold text-[#141310] shadow-2xs'
-                            : 'text-[#141310]/75 hover:bg-[#141310]/5 hover:text-[#141310]'
+                            ? 'bg-ink/10 font-semibold text-ink shadow-2xs'
+                            : 'text-ink/75 hover:bg-ink/5 hover:text-ink'
                         }`}
                       >
                         <div className="flex items-center space-x-2.5 truncate">
-                          <Icon size={14} className={isActive ? 'text-[#141310]' : 'text-[#141310]/60'} />
+                          <Icon size={14} className={isActive ? 'text-ink' : 'text-ink/60'} />
                           <span className="truncate">{item.label}</span>
                         </div>
                         {item.badge && (
@@ -155,14 +155,14 @@ export function SettingsSidebar({
       </div>
 
       {/* Bottom Action: Reload OMP Engine */}
-      <div className="p-2 border-t border-[#141310]/10 flex-shrink-0 bg-[#f4f1ea]">
+      <div className="p-2 border-t border-ink/10 flex-shrink-0 bg-canvas">
         <button
           type="button"
           onClick={onReloadOmpEngine}
           disabled={isReloading}
-          className="w-full flex items-center space-x-2 px-2.5 py-1.5 text-xs text-[#141310]/75 hover:text-[#141310] hover:bg-[#141310]/5 rounded-lg transition-colors font-medium cursor-pointer"
+          className="w-full flex items-center space-x-2 px-2.5 py-1.5 text-xs text-ink/75 hover:text-ink hover:bg-ink/5 rounded-lg transition-colors font-medium cursor-pointer"
         >
-          <RefreshCw size={13} className={`${isReloading ? 'animate-spin text-orange-600' : 'text-[#141310]/60'}`} />
+          <RefreshCw size={13} className={`${isReloading ? 'animate-spin text-warning' : 'text-ink/60'}`} />
           <span>{isReloading ? 'Reloading OMP Engine...' : 'Reload OMP Engine'}</span>
         </button>
       </div>

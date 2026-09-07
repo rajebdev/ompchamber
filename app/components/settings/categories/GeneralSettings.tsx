@@ -35,7 +35,7 @@ export function GeneralSettings({ settings, onUpdate }: GeneralSettingsProps) {
   };
 
   return (
-    <div className="space-y-8 text-xs text-[#141310]">
+    <div className="space-y-8 text-xs text-ink">
       {/* View settings cleared as requested */}
     </div>
   );
