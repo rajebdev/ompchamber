@@ -196,26 +196,26 @@ export function MobileMainView({
         {/* Bottom Section: Workspace Selector + Chat Input Box */}
         <div className="p-3 pt-2 bg-canvas border-t border-ink/10 flex-shrink-0 space-y-2">
           
-          {/* Workspace Selection Small Dropdown */}
+          {/* Workspace Selection Seamless Dropdown (No border, transparent background) */}
           <div className="relative inline-block" ref={workspacePickerRef}>
             <button
               type="button"
               onClick={() => setShowWorkspacePicker(!showWorkspacePicker)}
-              className="flex items-center space-x-1.5 hover:bg-ink/5 px-2 py-1 rounded transition-colors text-xs text-ink/80 font-medium bg-paper border border-ink/20 shadow-xs focus:border-ink/50 outline-none cursor-pointer max-w-[260px]"
+              className="group flex items-center space-x-1.5 px-1.5 py-1 rounded-md text-xs font-medium text-ink/75 hover:text-ink hover:bg-ink/5 focus-visible:bg-ink/5 transition-all outline-none cursor-pointer select-none max-w-[260px]"
             >
-              <Folder size={12} className="text-ink/60 flex-shrink-0" />
-              <span className="truncate font-sans">
+              <Folder size={13} className="text-ink/50 group-hover:text-ink/80 flex-shrink-0 transition-colors" />
+              <span className="truncate font-sans tracking-tight">
                 {activeProject ? activeProject.name : 'Select Workspace Context'}
               </span>
-              <ChevronDown size={12} className="text-ink/40 flex-shrink-0" />
+              <ChevronDown size={13} className={`text-ink/40 group-hover:text-ink/70 flex-shrink-0 transition-transform duration-150 ${showWorkspacePicker ? 'rotate-180 text-ink/70' : ''}`} />
             </button>
 
             {showWorkspacePicker && (
-              <div className="absolute bottom-full left-0 mb-1.5 w-60 bg-paper border border-ink/20 rounded-md shadow-lg z-50 flex flex-col overflow-hidden text-xs">
-                <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-ink/40 font-semibold border-b border-ink/10 bg-canvas">
+              <div className="absolute bottom-full left-0 mb-1.5 w-60 bg-paper border border-ink/10 rounded-lg shadow-lg z-50 flex flex-col overflow-hidden text-xs py-1">
+                <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-ink/40 font-semibold border-b border-ink/5">
                   Target Workspace
                 </div>
-                <div className="max-h-48 overflow-y-auto">
+                <div className="max-h-56 overflow-y-auto py-1">
                   {folders.length === 0 ? (
                     <div className="px-3 py-2 text-ink/40 italic">No workspaces available</div>
                   ) : (
@@ -227,15 +227,15 @@ export function MobileMainView({
                           onSelectFolder(f.id);
                           setShowWorkspacePicker(false);
                         }}
-                        className={`w-full text-left px-3 py-2 flex items-center justify-between transition-colors cursor-pointer ${
+                        className={`w-full text-left px-3 py-1.5 flex items-center justify-between transition-colors cursor-pointer ${
                           selectedFolderId === f.id
                             ? 'bg-ink/10 font-semibold text-ink'
-                            : 'hover:bg-ink/5 text-ink/80'
+                            : 'hover:bg-ink/5 text-ink/80 hover:text-ink'
                         }`}
                       >
                         <div className="flex items-center space-x-2 truncate pr-2">
-                          <Folder size={12} className="text-ink/60 flex-shrink-0" />
-                          <span className="truncate">{f.name}</span>
+                          <Folder size={12} className={selectedFolderId === f.id ? "text-ink flex-shrink-0" : "text-ink/50 flex-shrink-0"} />
+                          <span className="truncate font-medium">{f.name}</span>
                         </div>
                         {selectedFolderId === f.id && (
                           <Check size={12} className="text-ink flex-shrink-0" />
