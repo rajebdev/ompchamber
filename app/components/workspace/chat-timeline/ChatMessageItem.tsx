@@ -12,18 +12,29 @@ import {
 import type { ChatMessageData } from '@/types';
 import { ThinkingSection } from './ThinkingSection';
 import { ToolCallingSection } from './ToolCallingSection';
+import { GeneratingIndicator } from './GeneratingIndicator';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
 import { copyToClipboard } from '@/hooks/useClipboard';
 
 interface ChatMessageItemProps {
   msg: ChatMessageData | any;
   modelName?: string;
+  isStreaming?: boolean;
+  generatingVerb?: string;
   onRetry?: (msgId: string) => void;
   onUndo?: (msgId: string, content?: string) => void;
   onNewChat?: (content: string) => void;
 }
 
-export function ChatMessageItem({ msg, modelName, onRetry, onUndo, onNewChat }: ChatMessageItemProps) {
+export function ChatMessageItem({ 
+  msg, 
+  modelName, 
+  isStreaming = false,
+  generatingVerb,
+  onRetry, 
+  onUndo, 
+  onNewChat 
+}: ChatMessageItemProps) {
   const [copied, setCopied] = useState(false);
 
   const isUser = msg.role === 'user';
@@ -136,7 +147,12 @@ export function ChatMessageItem({ msg, modelName, onRetry, onUndo, onNewChat }: 
   const currentModel = modelName || 'DeepSeek V4 Pro';
 
   return (
-    <div id={msg.id} className="flex flex-col items-start space-y-2 w-full max-w-full">
+    <div 
+      id={msg.id} 
+      className={`flex flex-col items-start space-y-2 w-full max-w-full transition-all ${
+        isStreaming ? 'pb-10 mb-2' : ''
+      }`}
+    >
       {/* Main AI Response Container */}
       <div className="w-full space-y-2.5 font-sans">
         
@@ -180,11 +196,14 @@ export function ChatMessageItem({ msg, modelName, onRetry, onUndo, onNewChat }: 
         {msg.content && (
           <div className="text-[13px] text-ink leading-relaxed font-sans bg-transparent py-1 select-text">
             <MarkdownRenderer content={msg.content} />
+            {isStreaming && (
+              <span className="inline-block w-1.5 h-3.5 bg-ink/70 ml-1 translate-y-0.5 animate-pulse" />
+            )}
           </div>
         )}
 
-        {/* AI Final Summary / Conclusion Card */}
-        {msg.summary && (
+        {/* AI Final Summary / Conclusion Card (Only shown when not streaming) */}
+        {!isStreaming && msg.summary && (
           <div className="text-[12px] text-ink bg-paper border border-ink/15 rounded-lg p-3 space-y-1 select-text font-sans">
             <div className="font-semibold text-ink flex items-center space-x-1.5 text-[12px]">
               <span className="w-1.5 h-1.5 rounded-full bg-success" />
@@ -195,55 +214,56 @@ export function ChatMessageItem({ msg, modelName, onRetry, onUndo, onNewChat }: 
         )}
       </div>
       
-      {/* Bottom AI Metadata & Actions Toolbar */}
-      {/* CRITICAL: Must use flex-nowrap. The model name container must have min-w-0 and shrink to allow ellipsis. Action buttons must have shrink-0 to prevent them from dropping down to the next line on mobile screens. */}
-      <div className="w-full flex items-center flex-nowrap space-x-2.5 text-[11px] text-ink/60 px-1 pt-0.5 font-mono min-w-0">
-        
-        {/* Model and Date / Time with truncation protection */}
-        <div className="flex items-center space-x-1.5 border-r border-ink/15 pr-2.5 min-w-0 shrink overflow-hidden" title={`${currentModel} • ${msg.date || msg.timestamp || 'Just now'}`}>
-          <div className="w-4 h-4 rounded flex items-center justify-center bg-ink text-canvas shadow-2xs shrink-0">
-            <Bot size={10} />
+      {/* Bottom AI Metadata & Actions Toolbar (Only shown once completed) */}
+      {!isStreaming && (
+        <div className="w-full flex items-center flex-nowrap space-x-2.5 text-[11px] text-ink/60 px-1 pt-0.5 font-mono min-w-0 animate-in fade-in duration-200">
+          
+          {/* Model and Date / Time with truncation protection */}
+          <div className="flex items-center space-x-1.5 border-r border-ink/15 pr-2.5 min-w-0 shrink overflow-hidden" title={`${currentModel} • ${msg.date || msg.timestamp || 'Just now'}`}>
+            <div className="w-4 h-4 rounded flex items-center justify-center bg-ink text-canvas shadow-2xs shrink-0">
+              <Bot size={10} />
+            </div>
+            <span className="font-semibold text-ink truncate shrink">
+              {currentModel}
+            </span>
+            <span className="text-ink/40 shrink-0">•</span>
+            <span className="text-ink/60 shrink-0 whitespace-nowrap">{msg.date || msg.timestamp || 'Just now'}</span>
           </div>
-          <span className="font-semibold text-ink truncate shrink">
-            {currentModel}
-          </span>
-          <span className="text-ink/40 shrink-0">•</span>
-          <span className="text-ink/60 shrink-0 whitespace-nowrap">{msg.date || msg.timestamp || 'Just now'}</span>
+
+          {/* Action Buttons */}
+          <div className="flex items-center space-x-1 shrink-0">
+            {/* Quick Retry Action */}
+            <button 
+              type="button"
+              className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" 
+              title="Re-run / Retry generation"
+              onClick={handleRetry}
+            >
+              <RotateCcw size={12} />
+            </button>
+
+            {/* Quick Copy Action */}
+            <button 
+              type="button"
+              className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" 
+              title="Copy response"
+              onClick={handleCopy}
+            >
+              {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
+            </button>
+
+            {/* New Chat Action */}
+            <button 
+              type="button"
+              className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" 
+              title="New Chat from here"
+              onClick={handleNewChat}
+            >
+              <MessageSquarePlus size={12} />
+            </button>
+          </div>
         </div>
-
-        {/* Action Buttons */}
-        <div className="flex items-center space-x-1 shrink-0">
-          {/* Quick Retry Action */}
-          <button 
-            type="button"
-            className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" 
-            title="Re-run / Retry generation"
-            onClick={handleRetry}
-          >
-            <RotateCcw size={12} />
-          </button>
-
-          {/* Quick Copy Action */}
-          <button 
-            type="button"
-            className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" 
-            title="Copy response"
-            onClick={handleCopy}
-          >
-            {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
-          </button>
-
-          {/* New Chat Action */}
-          <button 
-            type="button"
-            className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" 
-            title="New Chat from here"
-            onClick={handleNewChat}
-          >
-            <MessageSquarePlus size={12} />
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

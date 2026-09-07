@@ -9,8 +9,16 @@ interface ThinkingSectionProps {
 }
 
 export function ThinkingSection({ thinking, defaultExpanded = false }: ThinkingSectionProps) {
-  const [isOpen, setIsOpen] = useState(defaultExpanded);
+  const isGenerating = typeof thinking === 'object' ? Boolean(thinking.isGenerating) : false;
+  const [isOpen, setIsOpen] = useState(defaultExpanded || isGenerating);
   const [copied, setCopied] = useState(false);
+
+  // Auto-expand if thinking starts generating
+  React.useEffect(() => {
+    if (isGenerating) {
+      setIsOpen(true);
+    }
+  }, [isGenerating]);
 
   const thoughtText = typeof thinking === 'string' ? thinking : thinking.thought || '';
   const duration = typeof thinking === 'object' ? thinking.duration : undefined;

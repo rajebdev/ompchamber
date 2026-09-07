@@ -26,6 +26,7 @@ interface MobileMainViewProps {
   messages: any[];
   onSendMessage: (text: string, attachments: Attachment[], options?: { steering?: boolean }) => void;
   isGenerating?: boolean;
+  onStop?: () => void;
   appSettings?: Record<string, any>;
   messageQueue?: import('@/components/workspace/chat-timeline/QueueList').QueuedMessage[];
   setMessageQueue?: React.Dispatch<React.SetStateAction<import('@/components/workspace/chat-timeline/QueueList').QueuedMessage[]>>;
@@ -43,6 +44,7 @@ export function MobileMainView({
   messages,
   onSendMessage,
   isGenerating = false,
+  onStop,
   appSettings = {},
   messageQueue = [],
   setMessageQueue = () => {}
@@ -132,7 +134,7 @@ export function MobileMainView({
         <div 
           ref={scrollRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 space-y-6"
+          className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 space-y-6 pb-10"
         >
           {messages.length === 0 ? (
             /* Empty Workspace Prompt Suggestions */
@@ -161,22 +163,18 @@ export function MobileMainView({
             </div>
           ) : (
             <>
-              {messages.map(msg => (
+              {messages.map((msg, idx) => (
                 <ChatMessageItem 
                   key={msg.id} 
                   msg={msg} 
                   modelName="DeepSeek V4 Pro"
+                  isStreaming={isGenerating && idx === messages.length - 1 && msg.role === 'ai'}
+                  generatingVerb="thinking"
                   onUndo={(_id, content) => {
                     if (content) setInputValue(content);
                   }}
                 />
               ))}
-              {isGenerating && (
-                <GeneratingIndicator 
-                  modelName="DeepSeek V4 Pro" 
-                  generatingVerb="thinking" 
-                />
-              )}
             </>
           )}
         </div>
@@ -193,8 +191,14 @@ export function MobileMainView({
           </button>
         )}
 
-        {/* Bottom Section: Workspace Selector + Chat Input Box */}
-        <div className="p-3 pt-2 bg-canvas border-t border-ink/10 flex-shrink-0 space-y-2">
+        {/* Bottom Section: Workspace Selector + Docked Generating Indicator + Queue + Chat Input Box */}
+        <div className="p-3 pt-1 bg-transparent border-t-0 flex-shrink-0 space-y-2">
+          {isGenerating && (
+            <GeneratingIndicator 
+              modelName="DeepSeek V4 Pro" 
+              generatingVerb="thinking" 
+            />
+          )}
           
           {/* Workspace Selection Seamless Dropdown (No border, transparent background) */}
           <div className="relative inline-block" ref={workspacePickerRef}>
@@ -262,6 +266,7 @@ export function MobileMainView({
             onAttachmentsChange={setInputAttachments}
             onSend={handleSend}
             isGenerating={isGenerating}
+            onStop={onStop}
             disabled={!selectedFolderId}
             appSettings={appSettings}
           />

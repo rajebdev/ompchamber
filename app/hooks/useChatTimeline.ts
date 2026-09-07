@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from '@remix-run/react';
-import type { Attachment } from '@/types';
+import type { Attachment, ChatMessageData, ToolCallData, ThinkingData } from '@/types';
 import type { QueuedMessage } from '@/components/workspace/chat-timeline/QueueList';
 import { triggerChatCompletionSound } from '@/hooks/useNotificationSound';
+import { streamChatResponse } from '@/hooks/useChatStream';
 
 interface UseChatTimelineOptions {
   folders?: any[];
@@ -35,10 +36,11 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
 
   const [inputValue, setInputValue] = useState('');
   const [inputAttachments, setInputAttachments] = useState<Attachment[]>([]);
-  const [localMessages, setLocalMessages] = useState<any[]>([]);
+  const [localMessages, setLocalMessages] = useState<ChatMessageData[]>([]);
   const [sessionData, setSessionData] = useState<{ id?: string; title?: string; model?: string; messages?: any[] } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingVerb, setGeneratingVerb] = useState('');
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Fetch session messages and details from API
   useEffect(() => {
@@ -91,8 +93,6 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     });
   }, [sessionId, localMessages.length, scrollToBottom]);
 
-  const generationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
   const currentSession = useMemo(() => {
     if (!sessionId) return null;
     for (const folder of folders) {
@@ -127,73 +127,193 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     });
   }, [sessionId]);
 
-  const executeSend = useCallback((text: string, attachments: Attachment[]) => {
+  const executeSend = useCallback(async (text: string, attachments: Attachment[]) => {
     const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    const newUserMsg = {
-      id: `msg-${Date.now()}-user`,
+    const userMsgId = `msg-${Date.now()}-user`;
+    const aiPlaceholderId = `msg-${Date.now() + 1}-ai`;
+
+    const newUserMsg: ChatMessageData = {
+      id: userMsgId,
       role: 'user',
       date: `Today, ${time}`,
       content: text,
       attachments: attachments.map(a => ({ name: a.file.name, preview: a.preview }))
     };
 
+    const initialAiMsg: ChatMessageData = {
+      id: aiPlaceholderId,
+      role: 'ai',
+      date: `Today, ${time}`,
+      content: '',
+    };
+
     setLocalMessages(prev => {
-      const next = [...prev, newUserMsg];
-      persistMessages(next);
+      const next = [...prev, newUserMsg, initialAiMsg];
+      persistMessages(next.filter(m => m.id !== aiPlaceholderId));
       return next;
     });
-    setIsGenerating(true);
 
+    setIsGenerating(true);
     const verbs = ['Synthesizing solution', 'Deep reasoning', 'Architecting patch', 'Compiling edge routes'];
     setGeneratingVerb(verbs[Math.floor(Math.random() * verbs.length)]);
     setTimeout(() => scrollToBottom('smooth'), 50);
 
-    generationTimeoutRef.current = setTimeout(() => {
-      const newAiMsg = {
-        id: `msg-${Date.now()}-ai`,
-        role: 'ai',
-        date: `Today, ${time}`,
-        thinking: {
-          duration: "2.1s",
-          summary: "Deconstruct prompt, execute workspace diagnostics, and formulate implementation patch.",
-          thought: `1. User requested: "${text}".\n2. Inspecting project context and Bun runtime dependencies.\n3. Running diagnostic checks against active edge endpoints.\n4. Compiling resolution output.`
+    // Cancel any previous stream
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
+    const currentFolder = folders.find(f => f.id === selectedFolderId);
+    const workspaceName = currentFolder?.name || 'Workspace';
+
+    await streamChatResponse(
+      {
+        sessionId: sessionId || `session-${Date.now()}`,
+        prompt: text,
+        workspaceName,
+        attachments,
+        signal: abortController.signal,
+      },
+      {
+        onInit: (data) => {
+          setLocalMessages(prev =>
+            prev.map(m => (m.id === aiPlaceholderId ? { ...m, id: data.id, date: data.date } : m))
+          );
         },
-        toolCalls: [
-          {
-            id: `tc-${Date.now()}-read`,
-            type: 'read_file' as const,
-            title: 'Read File',
-            target: 'examples/index.js',
-            command: 'read_file examples/index.js',
-            output: `// examples/index.js\nimport { createServer } from 'http';\n\nconst port = process.env.PORT || 3000;\nconst server = createServer((req, res) => {\n  res.writeHead(200, { 'Content-Type': 'application/json' });\n  res.end(JSON.stringify({ status: 'healthy', runtime: 'bun' }));\n});\n\nserver.listen(port, () => {\n  console.log(\`Server running at http://localhost:\${port}/\`);\n});`,
-            status: 'success' as const,
-            duration: '18ms'
-          },
-          {
-            id: `tc-${Date.now()}-1`,
-            type: 'bash' as const,
-            title: 'Diagnostic Command',
-            target: 'bun --version && bun pm ls',
-            command: 'bun --version && bun pm ls',
-            output: 'Bun v1.2.4\n├── @remis/edge@1.0.4\n├── lucide-react@0.475.0\n└── tailwindcss@4.0.0',
-            status: 'success' as const,
-            duration: '85ms'
-          }
-        ],
-        content: `I've processed your request: "${text}". The runtime environment is healthy and all diagnostics passed successfully.`,
-        summary: "Execution completed in 2.3s with 0 errors."
-      };
-      setLocalMessages(prev => {
-        const next = [...prev, newAiMsg];
-        persistMessages(next);
-        return next;
-      });
-      setIsGenerating(false);
-      generationTimeoutRef.current = null;
-      triggerChatCompletionSound(appSettings);
-      setTimeout(() => scrollToBottom('smooth'), 50);
-    }, 2500);
-  }, [appSettings, scrollToBottom, persistMessages]);
+        onThinkingStart: () => {
+          setLocalMessages(prev =>
+            prev.map(m =>
+              m.id === aiPlaceholderId || m.role === 'ai'
+                ? { ...m, thinking: { thought: '', isGenerating: true } }
+                : m
+            )
+          );
+          setTimeout(() => scrollToBottom('smooth'), 50);
+        },
+        onThinkingChunk: (data) => {
+          setLocalMessages(prev =>
+            prev.map(m => {
+              if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {
+                const currentThought = typeof m.thinking === 'object' ? m.thinking.thought || '' : '';
+                return {
+                  ...m,
+                  thinking: { thought: currentThought + data.delta, isGenerating: true },
+                };
+              }
+              return m;
+            })
+          );
+          scrollToBottom('smooth');
+        },
+        onThinkingEnd: (data) => {
+          setLocalMessages(prev =>
+            prev.map(m => {
+              if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {
+                return {
+                  ...m,
+                  thinking: {
+                    thought: data.thought,
+                    summary: data.summary,
+                    duration: data.duration,
+                    isGenerating: false,
+                  },
+                };
+              }
+              return m;
+            })
+          );
+        },
+        onToolStart: (data) => {
+          setLocalMessages(prev =>
+            prev.map(m => {
+              if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {
+                return {
+                  ...m,
+                  toolCalls: [...(m.toolCalls || []), data],
+                };
+              }
+              return m;
+            })
+          );
+          setTimeout(() => scrollToBottom('smooth'), 50);
+        },
+        onToolOutputChunk: (data) => {
+          setLocalMessages(prev =>
+            prev.map(m => {
+              if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {
+                return {
+                  ...m,
+                  toolCalls: (m.toolCalls || []).map(t =>
+                    t.id === data.id ? { ...t, output: (t.output || '') + data.delta } : t
+                  ),
+                };
+              }
+              return m;
+            })
+          );
+          scrollToBottom('smooth');
+        },
+        onToolEnd: (data) => {
+          setLocalMessages(prev =>
+            prev.map(m => {
+              if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {
+                return {
+                  ...m,
+                  toolCalls: (m.toolCalls || []).map(t => (t.id === data.id ? { ...t, ...data } : t)),
+                };
+              }
+              return m;
+            })
+          );
+        },
+        onContentChunk: (data) => {
+          setLocalMessages(prev =>
+            prev.map(m => {
+              if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {
+                return {
+                  ...m,
+                  content: (m.content || '') + data.delta,
+                };
+              }
+              return m;
+            })
+          );
+          scrollToBottom('smooth');
+        },
+        onSummary: (data) => {
+          setLocalMessages(prev =>
+            prev.map(m => {
+              if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {
+                return { ...m, summary: data.summary };
+              }
+              return m;
+            })
+          );
+        },
+        onDone: (data) => {
+          setLocalMessages(prev => {
+            const updated = prev.map(m =>
+              m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)
+                ? data.message
+                : m
+            );
+            persistMessages(updated);
+            return updated;
+          });
+          setIsGenerating(false);
+          abortControllerRef.current = null;
+          triggerChatCompletionSound(appSettings);
+          setTimeout(() => scrollToBottom('smooth'), 50);
+        },
+        onError: () => {
+          setIsGenerating(false);
+          abortControllerRef.current = null;
+        },
+      }
+    );
+  }, [appSettings, folders, selectedFolderId, sessionId, scrollToBottom, persistMessages]);
 
   // Auto-process queue
   useEffect(() => {
@@ -210,9 +330,9 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
 
     if (isGenerating) {
       if (options?.steering) {
-        if (generationTimeoutRef.current) {
-          clearTimeout(generationTimeoutRef.current);
-          generationTimeoutRef.current = null;
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+          abortControllerRef.current = null;
         }
         setIsGenerating(false);
         setInputValue('');
@@ -243,9 +363,9 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     setMessageQueue(q => q.filter(i => i.id !== item.id));
 
     if (isGenerating) {
-      if (generationTimeoutRef.current) {
-        clearTimeout(generationTimeoutRef.current);
-        generationTimeoutRef.current = null;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
       }
       setIsGenerating(false);
       setTimeout(() => executeSend(item.text, item.attachments), 0);
@@ -256,9 +376,9 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
 
   const handleUndo = useCallback((msgId: string, content?: string) => {
     if (isGenerating) {
-      if (generationTimeoutRef.current) {
-        clearTimeout(generationTimeoutRef.current);
-        generationTimeoutRef.current = null;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
       }
       setIsGenerating(false);
     }
@@ -277,9 +397,9 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
 
   const handleRetry = useCallback((msgId: string) => {
     if (isGenerating) {
-      if (generationTimeoutRef.current) {
-        clearTimeout(generationTimeoutRef.current);
-        generationTimeoutRef.current = null;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
       }
       setIsGenerating(false);
     }
@@ -289,7 +409,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
       if (aiIdx > 0 && prev[aiIdx - 1].role === 'user') {
         const userMsg = prev[aiIdx - 1];
         setTimeout(() => {
-          executeSend(userMsg.content, userMsg.attachments || []);
+          executeSend(userMsg.content, (userMsg.attachments as any) || []);
         }, 0);
         const next = prev.slice(0, aiIdx);
         persistMessages(next);
@@ -311,6 +431,14 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
       executeSend(text, attachments);
     }, 0);
   }, [setSearchParams, executeSend]);
+
+  const stopGenerating = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsGenerating(false);
+  }, []);
 
   return {
     sessionId,
@@ -336,5 +464,6 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     handleUndo,
     handleRetry,
     submitNewChat,
+    stopGenerating,
   };
 }

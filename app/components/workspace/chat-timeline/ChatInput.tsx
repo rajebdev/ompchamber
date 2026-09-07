@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Send, 
+  Square,
   Paperclip, 
   X, 
   Brain, 
@@ -19,6 +20,7 @@ export function ChatInput({
   onChange, 
   onSend, 
   isGenerating,
+  onStop,
   className = '',
   disabled = false,
   appSettings = {},
@@ -29,6 +31,7 @@ export function ChatInput({
   onChange: (v: string) => void; 
   onSend: (attachments: Attachment[], options?: { steering?: boolean }) => void; 
   isGenerating: boolean;
+  onStop?: () => void;
   className?: string;
   disabled?: boolean;
   appSettings?: Record<string, any>;
@@ -308,14 +311,26 @@ export function ChatInput({
 
         </div>
 
-        <button 
-          onClick={() => handleSendClick()}
-          disabled={isGenerating || disabled || (!value.trim() && attachments.length === 0)}
-          className="flex items-center justify-center w-7 h-7 rounded bg-ink text-canvas hover:bg-ink/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          title="Send message"
-        >
-          <Send size={12} className="ml-px" />
-        </button>
+        {isGenerating ? (
+          <button 
+            type="button"
+            onClick={onStop}
+            className="flex items-center justify-center w-7 h-7 rounded bg-ink text-canvas hover:bg-error hover:text-canvas transition-colors cursor-pointer shadow-xs animate-in zoom-in-90 duration-150"
+            title="Stop generation"
+          >
+            <Square size={10} className="fill-current" />
+          </button>
+        ) : (
+          <button 
+            type="button"
+            onClick={() => handleSendClick()}
+            disabled={disabled || (!value.trim() && attachments.length === 0)}
+            className="flex items-center justify-center w-7 h-7 rounded bg-ink text-canvas hover:bg-ink/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            title="Send message"
+          >
+            <Send size={12} className="ml-px" />
+          </button>
+        )}
       </div>
     </div>
   );

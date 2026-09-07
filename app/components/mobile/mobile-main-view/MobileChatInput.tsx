@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { 
   Send, 
+  Square,
   Paperclip, 
   X, 
   Brain, 
@@ -19,6 +20,7 @@ interface MobileChatInputProps {
   onChange: (val: string) => void;
   onSend: (attachments: Attachment[], options?: { steering?: boolean }) => void;
   isGenerating?: boolean;
+  onStop?: () => void;
   disabled?: boolean;
   appSettings?: Record<string, any>;
   attachments?: Attachment[];
@@ -30,6 +32,7 @@ export function MobileChatInput({
   onChange,
   onSend,
   isGenerating = false,
+  onStop,
   disabled = false,
   appSettings = {},
   attachments: externalAttachments,
@@ -273,16 +276,27 @@ export function MobileChatInput({
 
         </div>
 
-        {/* Send Button */}
-        <button 
-          type="button"
-          onClick={() => handleSendClick()}
-          disabled={isGenerating || disabled || (!value.trim() && attachments.length === 0)}
-          className="flex items-center justify-center w-7 h-7 rounded bg-ink text-canvas hover:bg-ink/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex-shrink-0"
-          title="Send message"
-        >
-          <Send size={12} className="ml-px" />
-        </button>
+        {/* Send / Stop Button */}
+        {isGenerating ? (
+          <button 
+            type="button"
+            onClick={onStop}
+            className="flex items-center justify-center w-7 h-7 rounded bg-ink text-canvas hover:bg-error hover:text-canvas transition-colors cursor-pointer flex-shrink-0 shadow-xs animate-in zoom-in-90 duration-150"
+            title="Stop generation"
+          >
+            <Square size={10} className="fill-current" />
+          </button>
+        ) : (
+          <button 
+            type="button"
+            onClick={() => handleSendClick()}
+            disabled={disabled || (!value.trim() && attachments.length === 0)}
+            className="flex items-center justify-center w-7 h-7 rounded bg-ink text-canvas hover:bg-ink/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex-shrink-0"
+            title="Send message"
+          >
+            <Send size={12} className="ml-px" />
+          </button>
+        )}
       </div>
     </div>
   );

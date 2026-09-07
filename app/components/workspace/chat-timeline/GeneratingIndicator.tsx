@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bot, Sparkles } from 'lucide-react';
+import { Bot } from 'lucide-react';
 
 interface GeneratingIndicatorProps {
   modelName?: string;
@@ -7,27 +7,24 @@ interface GeneratingIndicatorProps {
 }
 
 const COOL_VERBS = [
-  'Synthesizing',
-  'Reasoning',
-  'Architecting',
-  'Deconstructing',
-  'Compiling',
-  'Analyzing context',
-  'Optimizing',
-  'Formulating solution'
+  'Synthesizing solution',
+  'Deep reasoning',
+  'Architecting patch',
+  'Evaluating context',
+  'Executing diagnostics',
+  'Compiling edge routes'
 ];
 
 export function GeneratingIndicator({ modelName, generatingVerb }: GeneratingIndicatorProps) {
   const currentModel = modelName || 'DeepSeek V4 Pro';
-  
   const [activeVerbIndex, setActiveVerbIndex] = useState(0);
 
-  // Cycle through cool action verbs every 2.4s if no static verb is locked
+  // Rotate action verb every 2.8s
   useEffect(() => {
     if (generatingVerb) return;
     const interval = setInterval(() => {
       setActiveVerbIndex((prev) => (prev + 1) % COOL_VERBS.length);
-    }, 2400);
+    }, 2800);
     return () => clearInterval(interval);
   }, [generatingVerb]);
 
@@ -36,61 +33,62 @@ export function GeneratingIndicator({ modelName, generatingVerb }: GeneratingInd
     : COOL_VERBS[activeVerbIndex];
 
   return (
-    <div className="flex flex-col items-start space-y-2 w-full max-w-full font-sans animate-in fade-in duration-200">
+    <div 
+      id="generating-docked-indicator"
+      className="w-full flex items-center justify-between px-1 py-1 bg-transparent border-0 border-none text-[11px] font-mono select-none animate-in fade-in duration-200"
+    >
       <style>{`
         @keyframes bounce-dot {
           0%, 100% { opacity: 0.2; transform: translateY(0); }
           50% { opacity: 1; transform: translateY(-15%); }
         }
-        .dot-anim { animation: bounce-dot 1.2s infinite both; }
-        .dot-anim:nth-child(2) { animation-delay: 0.2s; }
-        .dot-anim:nth-child(3) { animation-delay: 0.4s; }
+        .dot-anim-1 { animation: bounce-dot 1.2s infinite both; }
+        .dot-anim-2 { animation: bounce-dot 1.2s infinite both 0.2s; }
+        .dot-anim-3 { animation: bounce-dot 1.2s infinite both 0.4s; }
       `}</style>
 
-      {/* Bottom Metadata Toolbar (standardized with ChatMessageItem footer: text-[11px] font-mono) */}
-      <div className="w-full flex items-center flex-nowrap space-x-2.5 text-[11px] text-ink/60 px-1 pt-0.5 font-mono min-w-0">
-        <div className="flex items-center space-x-1.5 border-r border-ink/15 pr-2.5 min-w-0 shrink overflow-hidden">
-          
-          {/* Bot Icon with Animated Colorful Gradient Spinner */}
-          <div className="relative w-4 h-4 rounded flex items-center justify-center shrink-0">
-            {/* Multi-color conic gradient spinner ring */}
-            <div 
-              className="absolute -inset-[1.5px] rounded-[5px] animate-spin"
-              style={{
-                background: 'conic-gradient(from 0deg, #ff453a, #ff9f0a, #ffd60a, #30d158, #64d2ff, #0a84ff, #bf5af2, #ff375f, #ff453a)',
-                animationDuration: '1.2s'
-              }}
-            />
-            {/* Center Dark Bot Badge */}
-            <div className="relative w-full h-full rounded-[3px] bg-ink flex items-center justify-center text-canvas z-10 shadow-2xs">
-              <Bot size={10} className="text-canvas" />
-            </div>
+      {/* Left info: Animated Rainbow Spinner Ring + Bot Badge + Model Name + Dynamic Action Verb */}
+      <div className="flex items-center space-x-2 min-w-0">
+        
+        {/* Bot Icon with Animated Colorful Gradient Spinner */}
+        <div className="relative w-4 h-4 rounded flex items-center justify-center shrink-0">
+          {/* Multi-color conic gradient spinner ring */}
+          <div 
+            className="absolute -inset-[1.5px] rounded-[5px] animate-spin"
+            style={{
+              background: 'conic-gradient(from 0deg, #ff453a, #ff9f0a, #ffd60a, #30d158, #64d2ff, #0a84ff, #bf5af2, #ff375f, #ff453a)',
+              animationDuration: '1.2s'
+            }}
+          />
+          {/* Center Dark Bot Badge */}
+          <div className="relative w-full h-full rounded-[3px] bg-ink flex items-center justify-center text-canvas z-10 shadow-2xs">
+            <Bot size={10} className="text-canvas" />
           </div>
+        </div>
 
-          {/* Model Name */}
+        {/* Model name & dynamic verb with dots */}
+        <div className="flex items-center space-x-1.5 min-w-0 truncate">
           <span className="font-semibold text-ink truncate">
             {currentModel}
           </span>
           <span className="text-ink/40 shrink-0">•</span>
-
-          {/* Dynamic Cool Action Verb + Animated Dots */}
-          <span className="text-ink/75 shrink-0 flex items-center space-x-1 font-medium">
+          <span className="text-ink/75 flex items-center space-x-1 shrink-0 font-medium">
             <span className="transition-all duration-300">{displayVerb}</span>
-            <span className="inline-flex tracking-wider text-ink/80">
-              <span className="dot-anim inline-block">.</span>
-              <span className="dot-anim inline-block">.</span>
-              <span className="dot-anim inline-block">.</span>
+            <span className="inline-flex tracking-wider text-ink/80 ml-0.5">
+              <span className="dot-anim-1 inline-block">.</span>
+              <span className="dot-anim-2 inline-block">.</span>
+              <span className="dot-anim-3 inline-block">.</span>
             </span>
           </span>
         </div>
+      </div>
 
-        {/* Live status telemetry badge */}
-        <span className="text-ink/50 text-[10px] font-mono italic truncate hidden sm:inline">
-          active cycle
+      {/* Right status label */}
+      <div className="flex items-center space-x-2 shrink-0">
+        <span className="text-[10px] text-ink/40 font-mono italic hidden sm:inline">
+          active stream
         </span>
       </div>
     </div>
   );
 }
-
-

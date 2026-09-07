@@ -40,6 +40,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {} }:
     handleUndo,
     handleRetry,
     submitNewChat,
+    stopGenerating,
   } = useChatTimeline({ folders, appSettings });
 
   const [newChatInitialContent, setNewChatInitialContent] = useState<string | null>(null);
@@ -98,25 +99,20 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {} }:
         <div 
           ref={scrollRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto p-4 space-y-8 scroll-smooth overflow-x-hidden"
+          className="flex-1 overflow-y-auto p-4 space-y-8 scroll-smooth overflow-x-hidden pb-10"
         >
-          {localMessages.map((msg) => (
+          {localMessages.map((msg, idx) => (
             <ChatMessageItem 
               key={msg.id} 
               msg={msg} 
               modelName={sessionData?.model} 
+              isStreaming={isGenerating && idx === localMessages.length - 1 && msg.role === 'ai'}
+              generatingVerb={generatingVerb}
               onUndo={handleUndo}
               onRetry={handleRetry}
               onNewChat={(content) => setNewChatInitialContent(content)}
             />
           ))}
-
-          {isGenerating && (
-            <GeneratingIndicator 
-              modelName={sessionData?.model} 
-              generatingVerb={generatingVerb} 
-            />
-          )}
         </div>
 
         {/* Scroll to bottom button */}
@@ -133,8 +129,14 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {} }:
         )}
       </div>
       
-      {/* Input Area Footer */}
-      <div className="p-4 bg-canvas border-t border-ink/10 flex-shrink-0">
+      {/* Input Area Footer with Docked Generating Indicator (Seamless & Transparent) */}
+      <div className="p-4 pt-1 bg-transparent border-t-0 flex-shrink-0 space-y-2">
+        {isGenerating && (
+          <GeneratingIndicator 
+            modelName={sessionData?.model} 
+            generatingVerb={generatingVerb} 
+          />
+        )}
         <QueueList 
           queue={messageQueue} 
           setQueue={setMessageQueue} 
@@ -148,6 +150,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {} }:
           onAttachmentsChange={setInputAttachments}
           onSend={handleSend}
           isGenerating={isGenerating}
+          onStop={stopGenerating}
           appSettings={appSettings}
         />
       </div>

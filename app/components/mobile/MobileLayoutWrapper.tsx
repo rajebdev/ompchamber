@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useSearchParams } from '@remix-run/react';
-import { Terminal } from 'lucide-react';
-import type { WorkspaceFolderData, GitChange, Attachment } from '@/types';
+import type { WorkspaceFolderData, GitChange, Attachment, ChatMessageData } from '@/types';
 import { MobileMainView } from './MobileMainView';
 import { MobileSessionSidebar } from './MobileSessionSidebar';
 import { MobileRightSidebar } from './MobileRightSidebar';
 import { MobileFullEditor } from './mobile-right-sidebar/MobileFullEditor';
 import { MobileScreenSwitcher } from './MobileScreenSwitcher';
 import { triggerChatCompletionSound } from '@/hooks/useNotificationSound';
+import { streamChatResponse } from '@/hooks/useChatStream';
 
 interface MobileLayoutWrapperProps {
   folders: WorkspaceFolderData[];
@@ -26,8 +26,9 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(folderId || (folders[0]?.id ?? null));
   const [mobileEditorFile, setMobileEditorFile] = useState<{ name: string; path?: string; content?: string } | null>(null);
 
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const [gitChanges, setGitChanges] = useState<GitChange[]>([]);
   const [branch, setBranch] = useState('main');
@@ -54,30 +55,26 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
     return () => { active = false; };
   }, [sessionId]);
 
-  const persistMessages = (nextMessages: any[]) => {
+  const persistMessages = useCallback((nextMessages: any[]) => {
     if (!sessionId) return;
     fetch(`/api/chat/${sessionId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages: nextMessages }),
     }).catch(console.error);
-  };
+  }, [sessionId]);
 
   // Load git data
   useEffect(() => {
     fetch('/api/fs/git')
       .then(res => res.json())
       .then(data => {
-        if (data.changes && data.changes.length > 0) {
-          setGitChanges(data.changes);
-        }
+        if (data.changes && data.changes.length > 0) setGitChanges(data.changes);
         if (data.branch) setBranch(data.branch);
         if (data.branches) setBranches(data.branches);
         if (data.syncCount) setSyncCount(data.syncCount);
       })
-      .catch(() => {
-        // Fallback already built into component
-      });
+      .catch(() => {});
   }, []);
 
   // Listen to open-file event on mobile
@@ -87,11 +84,7 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
       if (!customEvent.detail || !customEvent.detail.path) return;
       const rawPath = customEvent.detail.path.replace(/^\/+/, '');
       const name = customEvent.detail.name || rawPath.split('/').pop() || 'file';
-      setMobileEditorFile({
-        name,
-        path: rawPath,
-        content: customEvent.detail.content
-      });
+      setMobileEditorFile({ name, path: rawPath, content: customEvent.detail.content });
     };
 
     window.addEventListener('omp:open-file', handleCustomOpenFile);
@@ -126,7 +119,6 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
   };
 
   const handleCreateFolder = (name: string) => {
-    // In-memory or API creation
     const newId = Date.now();
     folders.push({
       id: newId,
@@ -149,9 +141,7 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
   }, [sessionId, folders]);
 
   const [messageQueue, setMessageQueueLocal] = useState<import('@/components/workspace/chat-timeline/QueueList').QueuedMessage[]>([]);
-  const generationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Initialize queue from DB on mount or session change
   useEffect(() => {
     if (currentSession && currentSession.queue_list) {
       setMessageQueueLocal(currentSession.queue_list);
@@ -160,7 +150,7 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
     }
   }, [currentSession]);
 
-  const setMessageQueue = React.useCallback((updater: React.SetStateAction<import('@/components/workspace/chat-timeline/QueueList').QueuedMessage[]>) => {
+  const setMessageQueue = useCallback((updater: React.SetStateAction<import('@/components/workspace/chat-timeline/QueueList').QueuedMessage[]>) => {
     setMessageQueueLocal(prev => {
       const newQueue = typeof updater === 'function' ? updater(prev) : updater;
       if (sessionId) {
@@ -174,94 +164,157 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
     });
   }, [sessionId]);
 
+  const executeSendMessage = useCallback(async (text: string, attachments: Attachment[]) => {
+    const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    const userMsgId = `msg-${Date.now()}-user`;
+    const aiPlaceholderId = `msg-${Date.now() + 1}-ai`;
+
+    const userMsg: ChatMessageData = {
+      id: userMsgId,
+      role: 'user',
+      timestamp: time,
+      date: `Today, ${time}`,
+      content: text,
+      attachments: attachments.map(a => ({ id: a.id, name: a.file.name, type: a.file.type, size: a.file.size, preview: a.preview }))
+    };
+
+    const initialAiMsg: ChatMessageData = {
+      id: aiPlaceholderId,
+      role: 'ai',
+      date: `Today, ${time}`,
+      content: '',
+    };
+
+    setMessages(prev => {
+      const next = [...prev, userMsg, initialAiMsg];
+      persistMessages(next.filter(m => m.id !== aiPlaceholderId));
+      return next;
+    });
+
+    setIsGenerating(true);
+
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
+    const currentFolder = folders.find(f => f.id === selectedFolderId);
+    const workspaceName = currentFolder?.name || 'Workspace';
+
+    await streamChatResponse(
+      {
+        sessionId: sessionId ? String(sessionId) : `session-${Date.now()}`,
+        prompt: text,
+        workspaceName,
+        attachments,
+        signal: abortController.signal,
+      },
+      {
+        onInit: (data) => {
+          setMessages(prev => prev.map(m => (m.id === aiPlaceholderId ? { ...m, id: data.id, date: data.date } : m)));
+        },
+        onThinkingChunk: (data) => {
+          setMessages(prev => prev.map(m => {
+            if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {
+              const currentThought = typeof m.thinking === 'object' ? m.thinking.thought || '' : '';
+              return { ...m, thinking: { thought: currentThought + data.delta, isGenerating: true } };
+            }
+            return m;
+          }));
+        },
+        onThinkingEnd: (data) => {
+          setMessages(prev => prev.map(m => {
+            if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {
+              return { ...m, thinking: { thought: data.thought, summary: data.summary, duration: data.duration, isGenerating: false } };
+            }
+            return m;
+          }));
+        },
+        onToolStart: (data) => {
+          setMessages(prev => prev.map(m => {
+            if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {
+              return { ...m, toolCalls: [...(m.toolCalls || []), data] };
+            }
+            return m;
+          }));
+        },
+        onToolEnd: (data) => {
+          setMessages(prev => prev.map(m => {
+            if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {
+              return { ...m, toolCalls: (m.toolCalls || []).map(t => (t.id === data.id ? { ...t, ...data } : t)) };
+            }
+            return m;
+          }));
+        },
+        onContentChunk: (data) => {
+          setMessages(prev => prev.map(m => {
+            if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {
+              return { ...m, content: (m.content || '') + data.delta };
+            }
+            return m;
+          }));
+        },
+        onSummary: (data) => {
+          setMessages(prev => prev.map(m => {
+            if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {
+              return { ...m, summary: data.summary };
+            }
+            return m;
+          }));
+        },
+        onDone: (data) => {
+          setMessages(prev => {
+            const updated = prev.map(m => (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id) ? data.message : m));
+            persistMessages(updated);
+            return updated;
+          });
+          setIsGenerating(false);
+          abortControllerRef.current = null;
+          triggerChatCompletionSound(appSettings);
+        },
+        onError: () => {
+          setIsGenerating(false);
+          abortControllerRef.current = null;
+        }
+      }
+    );
+  }, [appSettings, folders, selectedFolderId, sessionId, persistMessages]);
+
   useEffect(() => {
     if (!isGenerating && messageQueue.length > 0) {
       const nextMessage = messageQueue[0];
       setMessageQueue(q => q.slice(1));
       executeSendMessage(nextMessage.text, nextMessage.attachments);
     }
-  }, [isGenerating, messageQueue.length]);
+  }, [isGenerating, messageQueue, executeSendMessage, setMessageQueue]);
 
-  const executeSendMessage = (text: string, attachments: Attachment[]) => {
-    const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    const userMsg = {
-      id: `msg-${Date.now()}-user`,
-      role: 'user',
-      timestamp: time,
-      date: time,
-      content: text,
-      attachments: attachments.map(a => ({ id: a.id, name: a.file.name, type: a.file.type, size: a.file.size, preview: a.preview }))
-    };
-
-    setMessages(prev => {
-      const next = [...prev, userMsg];
-      persistMessages(next);
-      return next;
-    });
-    setIsGenerating(true);
-
-    generationTimeoutRef.current = setTimeout(() => {
-      const assistantMsg = {
-        id: `msg-${Date.now()}-assistant`,
-        role: 'assistant',
-        timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-        date: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-        thinking: {
-          duration: '1.6s',
-          summary: 'Inspect mobile workspace context, verify bun edge adapter and bundle telemetry.',
-          thought: `1. User prompt: "${text}".\n2. Target workspace: ${folders.find(f => f.id === selectedFolderId)?.name || 'Workspace'}.\n3. Verifying edge route signatures and bun runtime health.`
-        },
-        toolCalls: [
-          {
-            id: `mtc-${Date.now()}-1`,
-            type: 'bash' as const,
-            title: 'Bun Runner Check',
-            target: 'bun run build',
-            command: 'bun run build',
-            output: '✓ 14 modules bundled without errors in 82ms.',
-            status: 'success' as const,
-            duration: '142ms'
-          }
-        ],
-        content: `I've analyzed your request: "${text}".\n\n- Target project: **${folders.find(f => f.id === selectedFolderId)?.name || 'Workspace'}**\n- Runtime: Bun v1.2.4 with remisJS edge adapter\n- CI/CD telemetry status: Ready.`,
-        summary: 'Workspace verification complete.'
-      };
-      setMessages(prev => {
-        const next = [...prev, assistantMsg];
-        persistMessages(next);
-        return next;
-      });
-      setIsGenerating(false);
-      generationTimeoutRef.current = null;
-      triggerChatCompletionSound(appSettings);
-    }, 1200);
-  };
-
-  // Send message in mobile chat
   const handleSendMessage = (text: string, attachments: Attachment[], options?: { steering?: boolean }) => {
     if (!text.trim() && attachments.length === 0) return;
 
     if (isGenerating) {
       if (options?.steering) {
-        if (generationTimeoutRef.current) {
-          clearTimeout(generationTimeoutRef.current);
-          generationTimeoutRef.current = null;
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+          abortControllerRef.current = null;
         }
         setIsGenerating(false);
         setTimeout(() => executeSendMessage(text, attachments), 0);
         return;
       } else {
-        setMessageQueue(prev => [...prev, {
-          id: `queue-${Date.now()}`,
-          text,
-          attachments
-        }]);
+        setMessageQueue(prev => [...prev, { id: `queue-${Date.now()}`, text, attachments }]);
         return;
       }
     }
 
     executeSendMessage(text, attachments);
   };
+
+  const handleStopGenerating = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsGenerating(false);
+  }, []);
 
   const handleGitAction = (actionType: string, file?: string) => {
     const match = (f: string, t: string) => f === t || f.startsWith(t.endsWith('/') ? t : `${t}/`);
@@ -274,7 +327,7 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
     else if (actionType === 'push') setSyncCount(0);
   };
 
-  const handleCommit = (message: string) => {
+  const handleCommit = () => {
     setGitChanges([]);
     setSyncCount(prev => prev + 1);
   };
@@ -287,7 +340,6 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
         onDesktopToggle={onDesktopToggle}
       />
 
-      {/* Screen 1: Main UI (Gambar 1) */}
       <div className={`h-full w-full ${currentScreen === 'main' ? 'block' : 'hidden'}`}>
         <MobileMainView
           folders={folders}
@@ -301,13 +353,13 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
           messages={messages}
           onSendMessage={handleSendMessage}
           isGenerating={isGenerating}
+          onStop={handleStopGenerating}
           appSettings={appSettings}
           messageQueue={messageQueue}
           setMessageQueue={setMessageQueue}
         />
       </div>
 
-      {/* Screen 2: Session Sidebar (Gambar 2) */}
       <div className={`h-full w-full ${currentScreen === 'session' ? 'block' : 'hidden'}`}>
         <MobileSessionSidebar
           folders={folders}
@@ -320,7 +372,6 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
         />
       </div>
 
-      {/* Screen 3: Right Sidebar / Git Changes (Gambar 3) */}
       <div className={`h-full w-full ${currentScreen === 'right' ? 'block' : 'hidden'}`}>
         <MobileRightSidebar
           changes={gitChanges}
@@ -335,14 +386,12 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
         />
       </div>
 
-      {/* Fullscreen Mobile Editor when triggered via open-file event */}
       {mobileEditorFile && (
         <MobileFullEditor
           file={mobileEditorFile}
           onClose={() => setMobileEditorFile(null)}
         />
       )}
-
     </div>
   );
 }
