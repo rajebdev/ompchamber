@@ -155,7 +155,7 @@
 .prose-content td { border-bottom: 1px solid color-mix(in srgb, var(--theme-ink) 10%, transparent); padding: 0.375rem 0.75rem; }
 .prose-content code.inline-code {
   font-family: 'Fira Code', monospace; font-size: 0.75rem;
-  padding: 0.125rem 0.125rem; border-radius: 0.375rem;
+  padding: 0.0125rem 0.275rem; border-radius: 0.375rem;
   background: color-mix(in srgb, var(--theme-ink) 8%, transparent);
   color: var(--theme-ink);
   overflow-wrap: break-word;
