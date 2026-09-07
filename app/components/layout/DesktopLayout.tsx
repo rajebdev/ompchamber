@@ -327,7 +327,9 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
                 {activeRightPanel === 'files' && <FileExplorer className="w-full h-full" onOpenFile={handleOpenFile} refreshKey={refreshKey} onRefresh={handleRefreshWorkspace} />}
                 {activeRightPanel === 'search' && <SearchPanel className="w-full h-full" />}
                 {activeRightPanel === 'git' && <GitPanel className="w-full h-full" refreshKey={refreshKey} />}
-                {activeRightPanel === 'terminal' && <TerminalPanel className="w-full h-full" onClose={() => handleToggleRightPanel()} />}
+                <div className={`w-full h-full ${activeRightPanel === 'terminal' ? 'block' : 'hidden'}`}>
+                  <TerminalPanel className="w-full h-full" onClose={() => handleToggleRightPanel()} />
+                </div>
               </Panel>
             </>
           )}

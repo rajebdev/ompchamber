@@ -6,8 +6,18 @@ import { GeneralSettings } from './categories/GeneralSettings';
 import { AppearanceSettings } from './categories/AppearanceSettings';
 import { ChatSettings } from './categories/ChatSettings';
 import { WorkspaceSettings } from './categories/WorkspaceSettings';
+import { ProjectSettings } from './categories/ProjectSettings';
+import { ProviderSettings } from './categories/ProviderSettings';
+import { AgentSettings } from './categories/AgentSettings';
+import { BehaviorSettings } from './categories/BehaviorSettings';
+import { CommandSettings } from './categories/CommandSettings';
+import { McpSettings } from './categories/McpSettings';
+import { SkillSettings } from './categories/SkillSettings';
+import { SkillCatalogSettings } from './categories/SkillCatalogSettings';
 import { OmpSettings } from './categories/OmpSettings';
 import { OtherSettings } from './categories/OtherSettings';
+import { TokenUsageSettings } from './categories/TokenUsageSettings';
+import { NotificationSettings } from './categories/NotificationSettings';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -30,7 +40,8 @@ const DEFAULT_SETTINGS: SettingsState = {
   detailedToolCalls: false,
   notificationsEnabled: true,
   buildFailureAlert: true,
-  soundAlerts: false,
+  soundAlerts: true,
+  chatCompletionSound: true,
   defaultWorkspacePath: '~/Projects/ompchamber',
   gitAutoFetch: true,
   gitAuthorName: 'AI Oh-My-Pi',
@@ -130,17 +141,37 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'general', ap
       case 'chats':
         return <ChatSettings settings={settings} onUpdate={handleUpdateSettings} />;
       case 'projects':
+        return <ProjectSettings settings={settings} onUpdate={handleUpdateSettings} />;
+      case 'providers':
+        return <ProviderSettings settings={settings} onUpdate={handleUpdateSettings} />;
       case 'git':
         return <WorkspaceSettings category={activeCategory} settings={settings} onUpdate={handleUpdateSettings} />;
-      case 'providers':
       case 'agents':
+        return <AgentSettings settings={settings} onUpdate={handleUpdateSettings} />;
       case 'behavior':
+        return <BehaviorSettings settings={settings} onUpdate={handleUpdateSettings} />;
       case 'commands':
+        return <CommandSettings settings={settings} onUpdate={handleUpdateSettings} />;
       case 'mcp':
-        return <OmpSettings category={activeCategory} settings={settings} onUpdate={handleUpdateSettings} />;
-      case 'skills':
-      case 'skills-catalog':
+        return <McpSettings settings={settings} onUpdate={handleUpdateSettings} />;
+      case 'token-usage':
+        return <TokenUsageSettings settings={settings} onUpdate={handleUpdateSettings} />;
       case 'notifications':
+        return <NotificationSettings settings={settings} onUpdate={handleUpdateSettings} />;
+      case 'skills':
+        return (
+          <SkillSettings
+            settings={settings}
+            onUpdate={handleUpdateSettings}
+            onNavigateToCatalog={() => setActiveCategory('skills-catalog')}
+          />
+        );
+      case 'skills-catalog':
+        return (
+          <SkillCatalogSettings
+            onNavigateToSkills={() => setActiveCategory('skills')}
+          />
+        );
       case 'usage':
       default:
         return <OtherSettings category={activeCategory} settings={settings} onUpdate={handleUpdateSettings} />;
@@ -153,7 +184,7 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'general', ap
       onClick={onClose}
     >
       <div
-        className="relative bg-paper border border-ink/15 md:rounded-2xl shadow-2xl w-full h-full md:max-w-4xl md:h-[680px] md:max-h-[90vh] flex flex-col md:flex-row overflow-hidden text-ink"
+        className="relative bg-paper border border-ink/15 md:rounded-2xl shadow-2xl w-full h-full md:max-w-4xl lg:max-w-5xl xl:max-w-[1150px] md:h-[782px] md:max-h-[92vh] flex flex-col md:flex-row overflow-hidden text-ink"
         onClick={(e) => e.stopPropagation()}
       >
         {/* DESKTOP VIEW: 2-Column Split */}
@@ -205,9 +236,9 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'general', ap
             </button>
           </div>
 
-          {/* Scrollable Settings Body */}
-          <div className="flex-1 overflow-y-auto p-6 md:p-8">
-            <div className="max-w-2xl">
+          {/* Scrollable Settings Body - Full Width across all categories */}
+          <div className={`flex-1 overflow-y-auto w-full ${['projects', 'providers', 'agents', 'behavior', 'commands', 'mcp', 'skills', 'skills-catalog'].includes(activeCategory) ? 'p-0 flex flex-col' : 'p-6 md:p-8 flex flex-col'}`}>
+            <div className="w-full h-full flex-1 flex flex-col">
               {renderCategoryContent()}
             </div>
           </div>

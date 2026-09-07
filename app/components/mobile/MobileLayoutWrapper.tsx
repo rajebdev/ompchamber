@@ -7,6 +7,7 @@ import { MobileSessionSidebar } from './MobileSessionSidebar';
 import { MobileRightSidebar } from './MobileRightSidebar';
 import { MobileFullEditor } from './mobile-right-sidebar/MobileFullEditor';
 import { getSessionData } from '@/data/chatMockData';
+import { triggerChatCompletionSound } from '@/hooks/useNotificationSound';
 
 interface MobileLayoutWrapperProps {
   folders: WorkspaceFolderData[];
@@ -218,6 +219,7 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
       setMessages(prev => [...prev, assistantMsg]);
       setIsGenerating(false);
       generationTimeoutRef.current = null;
+      triggerChatCompletionSound(appSettings);
     }, 1200);
   };
 

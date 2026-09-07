@@ -18,8 +18,10 @@ export function TerminalPanel({ className = '', onClose, showHeader = true }: Te
     xtermRef.current?.write(text);
   }, []);
 
-  const handleCommandStart = useCallback((cmd: string) => {
-    xtermRef.current?.write(`\r\n\x1b[1;33m$\x1b[0m \x1b[1m${cmd}\x1b[0m\r\n`);
+  const handleCommandStart = useCallback((cmd: string, options?: { fromXterm?: boolean }) => {
+    if (!options?.fromXterm) {
+      xtermRef.current?.write(`\r\x1b[K\x1b[33m$\x1b[0m \x1b[1m${cmd}\x1b[0m\r\n`);
+    }
   }, []);
 
   const handleCommandEnd = useCallback((exitCode: number, _cwd: string) => {
@@ -27,6 +29,10 @@ export function TerminalPanel({ className = '', onClose, showHeader = true }: Te
       xtermRef.current?.write(`\x1b[31m[exit ${exitCode}]\x1b[0m\r\n`);
     }
     xtermRef.current?.write(`\x1b[33m$\x1b[0m `);
+  }, []);
+
+  const handleXtermClear = useCallback(() => {
+    xtermRef.current?.clear();
   }, []);
 
   const {
@@ -43,12 +49,17 @@ export function TerminalPanel({ className = '', onClose, showHeader = true }: Te
     onStreamChunk: handleStreamChunk,
     onCommandStart: handleCommandStart,
     onCommandEnd: handleCommandEnd,
+    onClear: handleXtermClear,
   });
 
   const handleClear = useCallback(() => {
     clearLogs();
     xtermRef.current?.clear();
   }, [clearLogs]);
+
+  const handleCommandSubmit = useCallback((cmd: string, options?: { fromXterm?: boolean }) => {
+    executeCommand(cmd, options);
+  }, [executeCommand]);
 
   return (
     <div className={`flex flex-col h-full w-full bg-paper text-ink overflow-hidden ${className}`}>
@@ -73,7 +84,7 @@ export function TerminalPanel({ className = '', onClose, showHeader = true }: Te
         <RealtimeXtermView
           ref={xtermRef}
           cwd={cwd}
-          onCommandSubmit={cmd => executeCommand(cmd)}
+          onCommandSubmit={handleCommandSubmit}
         />
       </div>
 

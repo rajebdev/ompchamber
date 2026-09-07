@@ -3,8 +3,9 @@ import type { TerminalLogItem } from '@/types';
 
 export interface UseTerminalOptions {
   onStreamChunk?: (text: string) => void;
-  onCommandStart?: (cmd: string) => void;
+  onCommandStart?: (cmd: string, options?: { fromXterm?: boolean }) => void;
   onCommandEnd?: (exitCode: number, cwd: string) => void;
+  onClear?: () => void;
 }
 
 export function useTerminal(options?: UseTerminalOptions) {
@@ -38,6 +39,9 @@ export function useTerminal(options?: UseTerminalOptions) {
   const commandEndRef = useRef(options?.onCommandEnd);
   commandEndRef.current = options?.onCommandEnd;
 
+  const clearCallbackRef = useRef(options?.onClear);
+  clearCallbackRef.current = options?.onClear;
+
   // Fetch real system environment on mount
   useEffect(() => {
     fetch('/api/terminal/run')
@@ -59,7 +63,7 @@ export function useTerminal(options?: UseTerminalOptions) {
   }, []);
 
   const executeCommand = useCallback(
-    async (customCommand?: string) => {
+    async (customCommand?: string, options?: { fromXterm?: boolean }) => {
       const rawCmd = (customCommand !== undefined ? customCommand : terminalInput).trim();
       if (!rawCmd || isRunning) return;
 
@@ -68,7 +72,7 @@ export function useTerminal(options?: UseTerminalOptions) {
         setTerminalLogs([]);
         setTerminalInput('');
         setHistoryPointer(-1);
-        commandEndRef.current?.(0, cwd);
+        clearCallbackRef.current?.();
         return;
       }
 
@@ -82,7 +86,7 @@ export function useTerminal(options?: UseTerminalOptions) {
       setIsRunning(true);
 
       // Notify start to xterm
-      commandStartRef.current?.(rawCmd);
+      commandStartRef.current?.(rawCmd, options);
 
       const controller = new AbortController();
       abortControllerRef.current = controller;
@@ -123,8 +127,9 @@ export function useTerminal(options?: UseTerminalOptions) {
               try {
                 const payload = JSON.parse(dataStr);
                 if (currentEvent === 'data' && payload.text) {
-                  accumulatedStdout += payload.text;
-                  streamCallbackRef.current?.(payload.text);
+                  const normalizedText = payload.text.replace(/\r?\n/g, '\r\n');
+                  accumulatedStdout += normalizedText;
+                  streamCallbackRef.current?.(normalizedText);
                 } else if (currentEvent === 'exit') {
                   exitCode = typeof payload.exitCode === 'number' ? payload.exitCode : 0;
                   if (payload.cwd && payload.cwd !== cwd) {
@@ -204,6 +209,7 @@ export function useTerminal(options?: UseTerminalOptions) {
       } else if (e.key === 'l' && e.ctrlKey) {
         e.preventDefault();
         clearLogs();
+        clearCallbackRef.current?.();
       }
     },
     [commandHistory, historyPointer, isRunning, cancelRunningCommand, clearLogs]

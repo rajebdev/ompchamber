@@ -150,9 +150,9 @@ export function MobileRightSidebar({
           <MobileSearchTab />
         )}
 
-        {activeTab === 'terminal' && (
+        <div className={`h-full w-full ${activeTab === 'terminal' ? 'block' : 'hidden'}`}>
           <TerminalPanel className="h-full w-full" showHeader={false} />
-        )}
+        </div>
       </div>
 
     </div>

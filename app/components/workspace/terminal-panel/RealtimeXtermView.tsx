@@ -2,6 +2,15 @@ import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef, us
 import { ArrowDown } from 'lucide-react';
 import type { Terminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
+import {
+  XTERM_THEME,
+  XTERM_FONT_FAMILY,
+  safePatchFitAddon,
+  safePatchRenderService,
+  getTerminalSessionOutput,
+  appendTerminalSessionOutput,
+  clearTerminalSessionOutput,
+} from '@/data/terminalTheme';
 
 export interface RealtimeXtermHandle {
   write: (data: string) => void;
@@ -14,8 +23,21 @@ export interface RealtimeXtermHandle {
 }
 
 interface RealtimeXtermViewProps {
-  onCommandSubmit?: (cmd: string) => void;
+  onCommandSubmit?: (cmd: string, options?: { fromXterm?: boolean }) => void;
   cwd: string;
+}
+
+function handleKeyNavigation(term: Terminal, event: KeyboardEvent): boolean {
+  if (event.type !== 'keydown') return true;
+  if (event.shiftKey) {
+    if (event.key === 'PageUp') { term.scrollPages(-1); return false; }
+    if (event.key === 'PageDown') { term.scrollPages(1); return false; }
+    if (event.key === 'Home') { term.scrollToTop(); return false; }
+    if (event.key === 'End') { term.scrollToBottom(); return false; }
+    if (event.key === 'ArrowUp') { term.scrollLines(-1); return false; }
+    if (event.key === 'ArrowDown') { term.scrollLines(1); return false; }
+  }
+  return true;
 }
 
 export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermViewProps>(
@@ -26,6 +48,11 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
     const inputBufferRef = useRef<string>('');
     const pendingWritesRef = useRef<string[]>([]);
     const [isScrolledUp, setIsScrolledUp] = useState(false);
+    const onCommandSubmitRef = useRef(onCommandSubmit);
+
+    useEffect(() => {
+      onCommandSubmitRef.current = onCommandSubmit;
+    }, [onCommandSubmit]);
 
     const scrollToBottom = useCallback(() => {
       if (terminalRef.current) {
@@ -35,49 +62,44 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
     }, []);
 
     const scrollToTop = useCallback(() => {
-      if (terminalRef.current) {
-        terminalRef.current.scrollToTop();
-      }
+      terminalRef.current?.scrollToTop();
     }, []);
 
     const scrollLines = useCallback((amount: number) => {
-      if (terminalRef.current) {
-        terminalRef.current.scrollLines(amount);
-      }
+      terminalRef.current?.scrollLines(amount);
     }, []);
 
-    // Expose methods to parent with buffering if xterm is not ready yet
     useImperativeHandle(ref, () => ({
       write: (data: string) => {
+        appendTerminalSessionOutput(data);
         if (terminalRef.current) {
           const term = terminalRef.current;
           const wasAtBottom = term.buffer.active.viewportY === term.buffer.active.baseY;
           term.write(data, () => {
-            if (wasAtBottom) {
-              term.scrollToBottom();
-            }
+            if (wasAtBottom) term.scrollToBottom();
           });
         } else {
           pendingWritesRef.current.push(data);
         }
       },
       writeln: (line: string) => {
+        appendTerminalSessionOutput(line + '\r\n');
         if (terminalRef.current) {
           const term = terminalRef.current;
           const wasAtBottom = term.buffer.active.viewportY === term.buffer.active.baseY;
           term.writeln(line, () => {
-            if (wasAtBottom) {
-              term.scrollToBottom();
-            }
+            if (wasAtBottom) term.scrollToBottom();
           });
         } else {
           pendingWritesRef.current.push(line + '\r\n');
         }
       },
       clear: () => {
+        clearTerminalSessionOutput();
         if (terminalRef.current) {
           terminalRef.current.clear();
           terminalRef.current.write('\r\x1b[33m$\x1b[0m ');
+          appendTerminalSessionOutput('\r\x1b[33m$\x1b[0m ');
           setIsScrolledUp(false);
         } else {
           pendingWritesRef.current = [];
@@ -98,11 +120,27 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
       let resizeObserver: ResizeObserver | null = null;
       let dataDisposable: { dispose: () => void } | null = null;
       let scrollDisposable: { dispose: () => void } | null = null;
+      let fitTimeout: ReturnType<typeof setTimeout> | null = null;
+      let rafId: number | null = null;
+      let cleanupTouch: (() => void) | null = null;
+
+      const safeFit = () => {
+        if (!isMounted || !termInstance || !fitAddonInstance || !containerRef.current) return;
+        const el = containerRef.current;
+        if (el.clientWidth <= 0 || el.clientHeight <= 0) return;
+        try {
+          const core = (termInstance as any)._core;
+          const renderService = core?._renderService;
+          if (!renderService) return;
+          const dims = renderService.dimensions;
+          if (!dims?.css?.cell?.width || !dims?.css?.cell?.height) return;
+          fitAddonInstance.fit();
+        } catch {}
+      };
 
       async function initXterm() {
         if (!containerRef.current || !isMounted) return;
 
-        // Dynamic client-side import with CJS/ESM interop
         const xtermModule = await import('@xterm/xterm');
         const fitModule = await import('@xterm/addon-fit');
 
@@ -118,35 +156,15 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
 
         if (!TerminalClass || !FitAddonClass || !containerRef.current || !isMounted) return;
 
+        safePatchFitAddon(FitAddonClass);
+
         const term = new TerminalClass({
           cursorBlink: true,
           cursorStyle: 'block',
           fontSize: 12,
           lineHeight: 1.25,
-          fontFamily: "'IBM Plex Mono', Menlo, Monaco, 'Courier New', monospace",
-          theme: {
-            background: '#141310',
-            foreground: '#f4f1ea',
-            cursor: '#f4f1ea',
-            cursorAccent: '#141310',
-            selectionBackground: '#3a3832',
-            black: '#141310',
-            red: '#c8321e',
-            green: '#10b981',
-            yellow: '#f59e0b',
-            blue: '#3b82f6',
-            magenta: '#ec4899',
-            cyan: '#06b6d4',
-            white: '#f4f1ea',
-            brightBlack: '#48453d',
-            brightRed: '#ef4444',
-            brightGreen: '#34d399',
-            brightYellow: '#fbbf24',
-            brightBlue: '#60a5fa',
-            brightMagenta: '#f472b6',
-            brightCyan: '#38bdf8',
-            brightWhite: '#ffffff',
-          },
+          fontFamily: XTERM_FONT_FAMILY,
+          theme: XTERM_THEME,
           convertEol: true,
           scrollback: 10000,
           scrollSensitivity: 1.5,
@@ -155,69 +173,37 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
           allowProposedApi: true,
         }) as Terminal;
 
+        term.open(containerRef.current);
+        safePatchRenderService(term);
+
         const fitAddon = new FitAddonClass() as FitAddon;
         term.loadAddon(fitAddon);
-        term.open(containerRef.current);
-
-        // Safe initial fit
-        requestAnimationFrame(() => {
-          if (isMounted) {
-            try {
-              fitAddon.fit();
-            } catch {}
-          }
-        });
 
         termInstance = term;
         fitAddonInstance = fitAddon;
         terminalRef.current = term;
         fitAddonRef.current = fitAddon;
 
-        // Custom keyboard shortcuts for scroll navigation
-        term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
-          if (event.type === 'keydown') {
-            if (event.shiftKey && event.key === 'PageUp') {
-              term.scrollPages(-1);
-              return false;
-            }
-            if (event.shiftKey && event.key === 'PageDown') {
-              term.scrollPages(1);
-              return false;
-            }
-            if (event.shiftKey && event.key === 'Home') {
-              term.scrollToTop();
-              return false;
-            }
-            if (event.shiftKey && event.key === 'End') {
-              term.scrollToBottom();
-              return false;
-            }
-            if (event.shiftKey && event.key === 'ArrowUp') {
-              term.scrollLines(-1);
-              return false;
-            }
-            if (event.shiftKey && event.key === 'ArrowDown') {
-              term.scrollLines(1);
-              return false;
-            }
-          }
-          return true;
+        rafId = requestAnimationFrame(() => {
+          if (isMounted) safeFit();
         });
 
-        // Track scroll position to update floating indicator
+        term.attachCustomKeyEventHandler((event: KeyboardEvent) => handleKeyNavigation(term, event));
+
         scrollDisposable = term.onScroll(() => {
           const buffer = term.buffer.active;
-          const isUp = buffer.viewportY < buffer.baseY;
-          setIsScrolledUp(isUp);
+          setIsScrolledUp(buffer.viewportY < buffer.baseY);
         });
 
-        // Welcome banner
-        term.writeln('\x1b[1;33m[OMPChamber Realtime Terminal]\x1b[0m');
-        term.writeln('\x1b[90mRuntime: Bun v1.4.0 • Node v22 • remisJS Edge\x1b[0m');
-        term.writeln('\x1b[90mStream connected. Live xterm canvas active.\x1b[0m');
-        term.write('\r\n\x1b[33m$\x1b[0m ');
+        const savedOutput = getTerminalSessionOutput();
+        if (savedOutput) {
+          term.write(savedOutput);
+        } else {
+          const welcome = '\x1b[1;33m[OMPChamber Realtime Terminal]\x1b[0m\r\n\x1b[90mRuntime: Bun v1.4.0 • Node v22 • remisJS Edge\x1b[0m\r\n\x1b[90mStream connected. Live xterm canvas active.\x1b[0m\r\n\r\n\x1b[33m$\x1b[0m ';
+          term.write(welcome);
+          appendTerminalSessionOutput(welcome);
+        }
 
-        // Flush any pending buffered writes
         if (pendingWritesRef.current.length > 0) {
           for (const chunk of pendingWritesRef.current) {
             term.write(chunk);
@@ -226,16 +212,17 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
           term.scrollToBottom();
         }
 
-        // Handle keyboard input
         dataDisposable = term.onData((data: string) => {
           if (data === '\r') {
             const cmd = inputBufferRef.current.trim();
             term.write('\r\n');
             inputBufferRef.current = '';
-            if (cmd && onCommandSubmit) {
-              onCommandSubmit(cmd);
+            if (cmd && onCommandSubmitRef.current) {
+              appendTerminalSessionOutput(cmd + '\r\n');
+              onCommandSubmitRef.current(cmd, { fromXterm: true });
             } else {
               term.write('\x1b[33m$\x1b[0m ');
+              appendTerminalSessionOutput('\r\n\x1b[33m$\x1b[0m ');
             }
           } else if (data === '\x7f' || data === '\b') {
             if (inputBufferRef.current.length > 0) {
@@ -245,32 +232,28 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
           } else if (data === '\x03') {
             inputBufferRef.current = '';
             term.write('^C\r\n\x1b[33m$\x1b[0m ');
+            appendTerminalSessionOutput('^C\r\n\x1b[33m$\x1b[0m ');
           } else if (data === '\x0c') {
+            clearTerminalSessionOutput();
             term.clear();
             term.write('\x1b[33m$\x1b[0m ');
+            appendTerminalSessionOutput('\x1b[33m$\x1b[0m ');
           } else if (data >= ' ') {
             inputBufferRef.current += data;
             term.write(data);
           }
         });
 
-        // Touch scroll support on mobile touch devices
         let touchStartY = 0;
         const containerEl = containerRef.current;
-
         const handleTouchStart = (e: TouchEvent) => {
-          if (e.touches.length === 1) {
-            touchStartY = e.touches[0].clientY;
-          }
+          if (e.touches.length === 1) touchStartY = e.touches[0].clientY;
         };
-
         const handleTouchMove = (e: TouchEvent) => {
           if (e.touches.length === 1) {
             const deltaY = touchStartY - e.touches[0].clientY;
-            const lineHeight = 16;
-            if (Math.abs(deltaY) >= lineHeight) {
-              const lines = Math.trunc(deltaY / lineHeight);
-              term.scrollLines(lines);
+            if (Math.abs(deltaY) >= 16) {
+              term.scrollLines(Math.trunc(deltaY / 16));
               touchStartY = e.touches[0].clientY;
             }
           }
@@ -279,17 +262,17 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
         if (containerEl) {
           containerEl.addEventListener('touchstart', handleTouchStart, { passive: true });
           containerEl.addEventListener('touchmove', handleTouchMove, { passive: true });
+          cleanupTouch = () => {
+            containerEl.removeEventListener('touchstart', handleTouchStart);
+            containerEl.removeEventListener('touchmove', handleTouchMove);
+          };
         }
 
-        // Auto-fit on layout or container size change with debouncing
-        let fitTimeout: ReturnType<typeof setTimeout> | null = null;
         resizeObserver = new ResizeObserver(() => {
           if (fitTimeout) clearTimeout(fitTimeout);
           fitTimeout = setTimeout(() => {
-            try {
-              fitAddon.fit();
-            } catch {}
-          }, 30);
+            safeFit();
+          }, 35);
         });
 
         if (containerEl) {
@@ -301,14 +284,22 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
 
       return () => {
         isMounted = false;
+        if (rafId !== null) cancelAnimationFrame(rafId);
+        if (fitTimeout !== null) clearTimeout(fitTimeout);
+        cleanupTouch?.();
         dataDisposable?.dispose();
         scrollDisposable?.dispose();
         resizeObserver?.disconnect();
-        termInstance?.dispose();
+        try {
+          fitAddonInstance?.dispose();
+        } catch {}
+        try {
+          termInstance?.dispose();
+        } catch {}
         terminalRef.current = null;
         fitAddonRef.current = null;
       };
-    }, [onCommandSubmit]);
+    }, []);
 
     return (
       <div className="relative flex-1 w-full h-full bg-ink overflow-hidden">
@@ -318,7 +309,6 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
           style={{ height: '100%', width: '100%' }}
         />
 
-        {/* Floating Scroll to Bottom pill when scrolled up */}
         {isScrolledUp && (
           <button
             type="button"

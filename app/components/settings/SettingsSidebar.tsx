@@ -6,6 +6,7 @@ import {
   MessageSquare,
   Bell,
   BarChart3,
+  Coins,
   FolderGit,
   GitBranch,
   Cloud,
@@ -35,10 +36,10 @@ export const SETTINGS_CATEGORIES: CategoryDef[] = [
   { id: 'appearance', label: 'Appearance', icon: Palette, section: 'OMPCHAMBER', description: 'Custom themes, typography scale, and layout density.' },
   { id: 'chats', label: 'Chats', icon: MessageSquare, section: 'OMPCHAMBER', description: 'Message streaming, thinking blocks, and tool view modes.' },
   { id: 'notifications', label: 'Notifications', icon: Bell, section: 'OMPCHAMBER', description: 'Build failure alerts, sounds, and system popups.' },
-  { id: 'usage', label: 'Usage', icon: BarChart3, section: 'OMPCHAMBER', description: 'Build minutes quota, token telemetry, and cache.' },
+  { id: 'usage', label: 'Usage', icon: BarChart3, section: 'OMPCHAMBER', description: 'Build minutes quota, storage, and general usage.' },
+  { id: 'token-usage', label: 'Token Usage', icon: Coins, section: 'OMPCHAMBER', description: 'Token telemetry, cache, and cost breakdown.' },
   // WORKSPACE
   { id: 'projects', label: 'Projects', icon: FolderGit, section: 'WORKSPACE', description: 'Workspace directories, roots, and ignored paths.' },
-  { id: 'git', label: 'Git', icon: GitBranch, section: 'WORKSPACE', description: 'Version control author identity, diffs, and sync.' },
   // OMP
   { id: 'providers', label: 'Providers', icon: Cloud, section: 'OMP', description: 'AI model engines, endpoints, and credentials.' },
   { id: 'agents', label: 'Agents', icon: Bot, section: 'OMP', description: 'Autonomous agent persona, self-healing, and reasoning.' },

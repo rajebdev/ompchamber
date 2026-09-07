@@ -14,7 +14,7 @@ export function AppearanceSettings({ settings, onUpdate }: AppearanceSettingsPro
   ] as const;
 
   return (
-    <div className="space-y-8 text-xs text-ink">
+    <div className="w-full space-y-8 text-xs text-ink">
       <section className="space-y-4">
         <div className="flex items-center space-x-2 border-b border-ink/10 pb-2">
           <Palette size={16} className="text-ink/60" />

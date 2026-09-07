@@ -5,6 +5,7 @@ export type SettingsCategoryId =
   | 'chats'
   | 'notifications'
   | 'usage'
+  | 'token-usage'
   // WORKSPACE
   | 'projects'
   | 'git'
@@ -42,6 +43,7 @@ export interface SettingsState {
   notificationsEnabled: boolean;
   buildFailureAlert: boolean;
   soundAlerts: boolean;
+  chatCompletionSound: boolean;
   defaultWorkspacePath: string;
   gitAutoFetch: boolean;
   gitAuthorName: string;
