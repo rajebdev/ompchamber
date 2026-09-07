@@ -20,7 +20,7 @@ import {
   Settings,
   Smartphone
 } from 'lucide-react';
-import type { WorkspaceFolderData } from '@/types';
+import type { WorkspaceFolderData, SettingsCategoryId } from '@/types';
 
 interface DesktopLayoutProps {
   folders: WorkspaceFolderData[];
@@ -63,6 +63,8 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
   };
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsCategory, setSettingsCategory] = useState<SettingsCategoryId>('general');
+  const [autoOpenAddProvider, setAutoOpenAddProvider] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const handleRefreshWorkspace = () => setRefreshKey(k => k + 1);
 
@@ -71,11 +73,30 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === ',') {
         e.preventDefault();
+        setSettingsCategory('general');
+        setAutoOpenAddProvider(false);
         setSettingsOpen(prev => !prev);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Global event listener for settings triggers
+  useEffect(() => {
+    const handleCustomOpenSettings = (e: Event) => {
+      const customEvent = e as CustomEvent<{ category?: SettingsCategoryId; autoOpenAdd?: boolean }>;
+      if (customEvent.detail?.category) {
+        setSettingsCategory(customEvent.detail.category);
+      } else {
+        setSettingsCategory('general');
+      }
+      setAutoOpenAddProvider(!!customEvent.detail?.autoOpenAdd);
+      setSettingsOpen(true);
+    };
+
+    window.addEventListener('omp:open-settings', handleCustomOpenSettings);
+    return () => window.removeEventListener('omp:open-settings', handleCustomOpenSettings);
   }, []);
 
   useEffect(() => {
@@ -341,7 +362,16 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
       </div>
 
       {/* Global Desktop Settings Modal */}
-      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} appSettings={appSettings} />
+      <SettingsModal 
+        isOpen={settingsOpen} 
+        onClose={() => {
+          setSettingsOpen(false);
+          setAutoOpenAddProvider(false);
+        }} 
+        initialCategory={settingsCategory}
+        autoOpenAddProvider={autoOpenAddProvider}
+        appSettings={appSettings} 
+      />
     </div>
   );
 }

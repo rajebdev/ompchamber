@@ -12,9 +12,16 @@ import { ModelCapabilitiesModal } from './provider-settings/ModelCapabilitiesMod
 interface ProviderSettingsProps {
   settings: SettingsState;
   onUpdate: (updater: Partial<SettingsState> | ((prev: SettingsState) => SettingsState)) => void;
+  autoOpenAdd?: boolean;
+  onAddModalClose?: () => void;
 }
 
-export function ProviderSettings({ settings, onUpdate }: ProviderSettingsProps) {
+export function ProviderSettings({ 
+  settings, 
+  onUpdate,
+  autoOpenAdd = false,
+  onAddModalClose,
+}: ProviderSettingsProps) {
   const [providers, setProviders] = useState<ProviderItem[]>([]);
   const [presetProviders, setPresetProviders] = useState<PresetProviderOption[]>([]);
   const [selectedProviderId, setSelectedProviderId] = useState<string>('provider-deepseek');
@@ -22,10 +29,16 @@ export function ProviderSettings({ settings, onUpdate }: ProviderSettingsProps) 
   const [isLoading, setIsLoading] = useState(true);
 
   // Modals state
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(autoOpenAdd);
   const [isReconnectModalOpen, setIsReconnectModalOpen] = useState(false);
   const [configModel, setConfigModel] = useState<ProviderModel | null>(null);
   const [capabilitiesModel, setCapabilitiesModel] = useState<ProviderModel | null>(null);
+
+  useEffect(() => {
+    if (autoOpenAdd) {
+      setIsAddModalOpen(true);
+    }
+  }, [autoOpenAdd]);
 
   useEffect(() => {
     let active = true;
@@ -68,6 +81,36 @@ export function ProviderSettings({ settings, onUpdate }: ProviderSettingsProps) 
     const updated = [...providers, newProvider];
     persistProviders(updated);
     setSelectedProviderId(newProvider.id);
+    setIsAddModalOpen(false);
+    onAddModalClose?.();
+
+    // Also sync the new provider default models to the catalog endpoint
+    if (newProvider.models && newProvider.models.length > 0) {
+      Promise.all(
+        newProvider.models.map(pm =>
+          fetch('/api/models', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              actionType: 'addModel',
+              model: {
+                id: pm.id,
+                name: pm.name,
+                provider: newProvider.name,
+                contextWindow: pm.contextWindow?.split(' ')[0] || '128K',
+                thinkingLevel: 'Default',
+                isFavorite: true,
+                capabilities: ['Tool calling', 'Reasoning'],
+                inputFormats: ['text'],
+                outputFormats: ['text'],
+              }
+            })
+          })
+        )
+      ).then(() => {
+        window.dispatchEvent(new CustomEvent('omp:models-updated'));
+      }).catch(console.error);
+    }
   };
 
   // Button action: Reconnect / update credentials
@@ -203,7 +246,10 @@ export function ProviderSettings({ settings, onUpdate }: ProviderSettingsProps) 
       {/* Modals */}
       <AddProviderModal
         isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
+        onClose={() => {
+          setIsAddModalOpen(false);
+          onAddModalClose?.();
+        }}
         onAddProvider={handleAddProvider}
         presets={presetProviders}
       />

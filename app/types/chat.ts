@@ -88,5 +88,19 @@ export interface AIModelOption {
   id: string;
   name: string;
   provider: string;
+  providerIcon?: string;
+  contextWindow?: string;
+  isCmdAgent?: boolean;
+  isFavorite?: boolean;
+  isRecent?: boolean;
+  thinkingLevel?: 'Default' | 'High' | 'Low' | 'Off';
+  capabilities?: string[];
+  input?: string;
+  output?: string;
+  cost?: {
+    input: string;
+    output: string;
+  };
+  description?: string;
 }
 

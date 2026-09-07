@@ -24,6 +24,7 @@ interface SettingsModalProps {
   onClose: () => void;
   initialCategory?: SettingsCategoryId;
   appSettings?: Record<string, any>;
+  autoOpenAddProvider?: boolean;
 }
 
 const DEFAULT_SETTINGS: SettingsState = {
@@ -57,8 +58,15 @@ const DEFAULT_SETTINGS: SettingsState = {
   keybindingSteering: 'Ctrl / Cmd + Enter'
 };
 
-export function SettingsModal({ isOpen, onClose, initialCategory = 'general', appSettings = {} }: SettingsModalProps) {
+export function SettingsModal({ 
+  isOpen, 
+  onClose, 
+  initialCategory = 'general', 
+  appSettings = {},
+  autoOpenAddProvider = false,
+}: SettingsModalProps) {
   const [activeCategory, setActiveCategory] = useState<SettingsCategoryId>(initialCategory);
+  const [autoOpenAdd, setAutoOpenAdd] = useState(autoOpenAddProvider);
   const [searchQuery, setSearchQuery] = useState('');
   const [isReloading, setIsReloading] = useState(false);
   const [isMobileDrilled, setIsMobileDrilled] = useState(false);
@@ -86,10 +94,27 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'general', ap
   useEffect(() => {
     if (isOpen) {
       setActiveCategory(initialCategory);
+      setAutoOpenAdd(autoOpenAddProvider);
       setIsMobileDrilled(false);
       setSearchQuery('');
     }
-  }, [isOpen, initialCategory]);
+  }, [isOpen, initialCategory, autoOpenAddProvider]);
+
+  // Global event listener for direct trigger
+  useEffect(() => {
+    const handleCustomOpenSettings = (e: Event) => {
+      const customEvent = e as CustomEvent<{ category?: SettingsCategoryId; autoOpenAdd?: boolean }>;
+      if (customEvent.detail?.category) {
+        setActiveCategory(customEvent.detail.category);
+      }
+      if (customEvent.detail?.autoOpenAdd) {
+        setAutoOpenAdd(true);
+      }
+    };
+
+    window.addEventListener('omp:open-settings', handleCustomOpenSettings);
+    return () => window.removeEventListener('omp:open-settings', handleCustomOpenSettings);
+  }, []);
 
   const handleUpdateSettings = (updater: Partial<SettingsState> | ((prev: SettingsState) => SettingsState)) => {
     setSettings(prev => {
@@ -143,7 +168,14 @@ export function SettingsModal({ isOpen, onClose, initialCategory = 'general', ap
       case 'projects':
         return <ProjectSettings settings={settings} onUpdate={handleUpdateSettings} />;
       case 'providers':
-        return <ProviderSettings settings={settings} onUpdate={handleUpdateSettings} />;
+        return (
+          <ProviderSettings 
+            settings={settings} 
+            onUpdate={handleUpdateSettings} 
+            autoOpenAdd={autoOpenAdd}
+            onAddModalClose={() => setAutoOpenAdd(false)}
+          />
+        );
       case 'git':
         return <WorkspaceSettings category={activeCategory} settings={settings} onUpdate={handleUpdateSettings} />;
       case 'agents':

@@ -1,18 +1,18 @@
 import React, { useState, useRef } from 'react';
 import { 
-  Terminal, 
   Send, 
   Paperclip, 
   X, 
-  Search, 
   Brain, 
   Shield, 
   ChevronDown, 
   File as FileIcon, 
   Check 
 } from 'lucide-react';
-import type { Attachment } from '@/types';
+import type { Attachment, AIModelOption } from '@/types';
 import { useOnClickOutside } from '@/hooks/useOnClickOutside';
+import { ModelDropdown } from '@/components/workspace/model-dropdown/ModelDropdown';
+import { INITIAL_MODELS_CATALOG } from '@/data/modelCatalogData';
 
 interface MobileChatInputProps {
   value: string;
@@ -48,25 +48,9 @@ export function MobileChatInput({
     }
   };
 
-  // Model Dropdown State (matching desktop)
-  const [showModel, setShowModel] = useState(false);
-  const [modelSearch, setModelSearch] = useState('');
-  
-  const models = [
-    { id: 'deepseek-v4', name: 'DeepSeek V4 Flash', provider: 'DeepSeek' },
-    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'Google' },
-    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', provider: 'Google' },
-    { id: 'claude-3-5', name: 'Claude 3.5 Sonnet', provider: 'Anthropic' },
-    { id: 'gpt-4o', name: 'GPT-4o', provider: 'OpenAI' }
-  ];
-  
-  const [selectedModel, setSelectedModel] = useState(models[0]);
-  const modelRef = useRef<HTMLDivElement>(null);
-  useOnClickOutside(modelRef, () => setShowModel(false));
-
-  const filteredModels = models.filter(m => 
-    m.name.toLowerCase().includes(modelSearch.toLowerCase()) || 
-    m.provider.toLowerCase().includes(modelSearch.toLowerCase())
+  // Model Selection State
+  const [selectedModel, setSelectedModel] = useState<AIModelOption>(
+    INITIAL_MODELS_CATALOG[5] || INITIAL_MODELS_CATALOG[0]
   );
 
   // Thinking Dropdown State (matching desktop)
@@ -218,58 +202,12 @@ export function MobileChatInput({
       <div className="flex items-center justify-between px-2.5 py-1.5 border-t border-ink/5 bg-canvas/50 rounded-b-md relative w-full">
         <div className="flex items-center space-x-1 sm:space-x-2 min-w-0 flex-1 mr-2">
           
-          {/* Model Dropdown: auto width with max 70% of full width */}
-          <div className="relative min-w-0 w-auto max-w-[70%]" ref={modelRef}>
-            <button 
-              type="button"
-              onClick={() => setShowModel(!showModel)}
-              className="w-auto max-w-full flex items-center space-x-1 hover:bg-ink/5 px-1.5 py-1 rounded transition-colors text-xs text-ink/80 font-medium cursor-pointer min-w-0"
-              title={`${selectedModel.provider} • ${selectedModel.name}`}
-            >
-              <Terminal size={12} className="text-ink/60 flex-shrink-0" />
-              <span className="flex items-center space-x-1 truncate min-w-0 w-auto">
-                <span className="text-ink/50 font-normal flex-shrink-0">{selectedModel.provider}</span>
-                <span className="text-ink/30 flex-shrink-0">•</span>
-                <span className="truncate">{selectedModel.name}</span>
-              </span>
-              <ChevronDown size={11} className="text-ink/40 flex-shrink-0" />
-            </button>
-            {showModel && (
-              <div className="absolute bottom-full left-0 mb-1 w-60 bg-paper border border-ink/20 rounded-md shadow-lg z-50 flex flex-col overflow-hidden text-xs">
-                <div className="p-2 border-b border-ink/10 flex items-center bg-canvas">
-                  <Search size={12} className="text-ink/40 mr-2 flex-shrink-0" />
-                  <input 
-                    type="text" 
-                    value={modelSearch}
-                    onChange={e => setModelSearch(e.target.value)}
-                    placeholder="Search models..."
-                    className="bg-transparent border-none focus:outline-none w-full text-ink placeholder-ink/40 text-xs"
-                    autoFocus
-                  />
-                </div>
-                <div className="max-h-48 overflow-y-auto">
-                  {filteredModels.length === 0 ? (
-                    <div className="px-3 py-2 text-ink/40 italic">No models found</div>
-                  ) : (
-                    filteredModels.map(m => (
-                      <button 
-                        key={m.id}
-                        type="button"
-                        onClick={() => { setSelectedModel(m); setShowModel(false); }}
-                        className="w-full text-left px-3 py-2 hover:bg-ink/5 flex items-center justify-between transition-colors cursor-pointer"
-                      >
-                        <div className="flex items-center space-x-1.5 truncate pr-1">
-                          <span className="text-ink/50 w-14 truncate text-[10px]">{m.provider}</span>
-                          <span className="text-ink truncate">{m.name}</span>
-                        </div>
-                        {selectedModel.id === m.id && <Check size={12} className="text-ink flex-shrink-0" />}
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+          {/* Redesigned Model Dropdown */}
+          <ModelDropdown
+            selectedModel={selectedModel}
+            onSelectModel={setSelectedModel}
+            className="min-w-0 max-w-[70%]"
+          />
 
           <div className="w-[1px] h-3 bg-ink/10" />
 
