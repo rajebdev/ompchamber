@@ -8,6 +8,7 @@ import { FileExplorer } from '@/components/workspace/FileExplorer';
 import { SearchPanel } from '@/components/workspace/SearchPanel';
 import { GitPanel } from '@/components/workspace/GitPanel';
 import { TerminalPanel } from '@/components/workspace/TerminalPanel';
+import { ContextPanel } from '@/components/workspace/ContextPanel';
 import { PWAInstallButton } from '@/components/common/PWAInstallButton';
 import { SettingsModal } from '@/components/settings/SettingsModal';
 import { 
@@ -49,7 +50,7 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
   const editorPanelRef = useRef<PanelImperativeHandle>(null);
   const rightPanelRef = useRef<PanelImperativeHandle>(null);
 
-  const shouldShowEditor = openedFiles.length > 0 && activeRightPanel !== 'search' && activeRightPanel !== 'git' && activeRightPanel !== 'terminal';
+  const shouldShowEditor = openedFiles.length > 0 && activeRightPanel !== 'search' && activeRightPanel !== 'git' && activeRightPanel !== 'terminal' && activeRightPanel !== 'context';
   const [userToggledEditor, setUserToggledEditor] = useState<boolean | null>(appSettings.userToggledEditor ?? null);
   const showEditor = userToggledEditor !== null ? userToggledEditor : shouldShowEditor;
 
@@ -78,7 +79,7 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
   }, []);
 
   useEffect(() => {
-    if (activeRightPanel === 'search' || activeRightPanel === 'git' || activeRightPanel === 'terminal') {
+    if (activeRightPanel === 'search' || activeRightPanel === 'git' || activeRightPanel === 'terminal' || activeRightPanel === 'context') {
       setUserToggledEditor(false);
     } else if (openedFiles.length > 0) {
       setUserToggledEditor(true);
@@ -152,10 +153,10 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
     setShowRightPanel(nextShow);
     setActiveRightPanel(nextActive);
 
-    // Adjust width dynamically (terminal = 536px, others = 268px)
+    // Adjust width dynamically (terminal/context = 536px [2x268], others = 268px)
     if (nextShow && rightPanelRef.current) {
       setTimeout(() => {
-        const targetPx = nextActive === 'terminal' ? 536 : 268;
+        const targetPx = (nextActive === 'terminal' || nextActive === 'context') ? 536 : 268;
         rightPanelRef.current?.resize(targetPx);
       }, 50);
     }
@@ -323,10 +324,11 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
           {showRightPanel && (
             <>
               <CustomResizeHandle />
-              <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={initialLayoutSizes?.right ?? (activeRightPanel === 'terminal' ? 536 : 268)} minSize={200} maxSize={800} collapsible>
+              <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={initialLayoutSizes?.right ?? ((activeRightPanel === 'terminal' || activeRightPanel === 'context') ? 536 : 268)} minSize={200} maxSize={800} collapsible>
                 {activeRightPanel === 'files' && <FileExplorer className="w-full h-full" onOpenFile={handleOpenFile} refreshKey={refreshKey} onRefresh={handleRefreshWorkspace} />}
                 {activeRightPanel === 'search' && <SearchPanel className="w-full h-full" />}
                 {activeRightPanel === 'git' && <GitPanel className="w-full h-full" refreshKey={refreshKey} />}
+                {activeRightPanel === 'context' && <ContextPanel className="w-full h-full" refreshKey={refreshKey} onClose={() => handleToggleRightPanel()} />}
                 <div className={`w-full h-full ${activeRightPanel === 'terminal' ? 'block' : 'hidden'}`}>
                   <TerminalPanel className="w-full h-full" onClose={() => handleToggleRightPanel()} />
                 </div>
@@ -335,7 +337,7 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
           )}
         </Group>
 
-        <RightActivityBar activePanel={activeRightPanel} onChangePanel={handleChangeRightPanel} />
+        <RightActivityBar activePanel={activeRightPanel} onChangePanel={handleChangeRightPanel} onOpenSettings={() => setSettingsOpen(true)} />
       </div>
 
       {/* Global Desktop Settings Modal */}

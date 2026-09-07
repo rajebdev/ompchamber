@@ -11,4 +11,5 @@ export * from './agentSettings';
 export * from './commandSettings';
 export * from './mcpSettings';
 export * from './skillSettings';
+export * from './context';
 export type { RightPanelType } from '@/components/layout/RightActivityBar';

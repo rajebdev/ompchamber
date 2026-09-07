@@ -3,7 +3,8 @@ import {
   GitBranch, 
   Files, 
   Search, 
-  Terminal, 
+  Terminal,
+  Layers,
   X
 } from 'lucide-react';
 import type { GitChange } from '@/types';
@@ -11,6 +12,7 @@ import { MobileGitChangesList } from './mobile-right-sidebar/MobileGitChangesLis
 import { MobileFilesTab } from './mobile-right-sidebar/MobileFilesTab';
 import { MobileSearchTab } from './mobile-right-sidebar/MobileSearchTab';
 import { TerminalPanel } from '@/components/workspace/TerminalPanel';
+import { ContextPanel } from '@/components/workspace/ContextPanel';
 
 interface MobileRightSidebarProps {
   changes: GitChange[];
@@ -35,7 +37,7 @@ export function MobileRightSidebar({
   onCommit,
   onClose
 }: MobileRightSidebarProps) {
-  const [activeTab, setActiveTab] = useState<'git' | 'files' | 'search' | 'terminal'>('files');
+  const [activeTab, setActiveTab] = useState<'git' | 'files' | 'search' | 'terminal' | 'context'>('files');
 
   return (
     <div className="flex flex-col h-full w-full bg-paper text-ink relative select-none">
@@ -100,7 +102,22 @@ export function MobileRightSidebar({
             )}
           </button>
 
-          {/* 4. Terminal Tab Button */}
+          {/* 4. Context Tab Button */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('context')}
+            className={`flex items-center transition-all cursor-pointer ${
+              activeTab === 'context'
+                ? 'space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-ink text-canvas shadow-sm'
+                : 'p-2 rounded-lg text-ink/70 hover:bg-ink/5'
+            }`}
+            title="Context & Telemetry"
+          >
+            <Layers size={14} className="flex-shrink-0" />
+            {activeTab === 'context' && <span>Context</span>}
+          </button>
+
+          {/* 5. Terminal Tab Button */}
           <button
             type="button"
             onClick={() => setActiveTab('terminal')}
@@ -148,6 +165,10 @@ export function MobileRightSidebar({
 
         {activeTab === 'search' && (
           <MobileSearchTab />
+        )}
+
+        {activeTab === 'context' && (
+          <ContextPanel className="h-full w-full" onClose={onClose} />
         )}
 
         <div className={`h-full w-full ${activeTab === 'terminal' ? 'block' : 'hidden'}`}>
