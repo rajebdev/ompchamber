@@ -3,12 +3,20 @@ import { exec } from 'child_process';
 import util from 'util';
 import path from 'path';
 import fs from 'fs';
+import { resolveRoot } from '@/lib/fs-root';
 
 const execAsync = util.promisify(exec);
 
+const MAX_GIT_DEPTH = 8;
+
 async function getRepos(rootDir: string): Promise<string[]> {
   try {
-    const { stdout } = await execAsync('find . -maxdepth 3 -name node_modules -prune -o -name .git -type d -print', { cwd: rootDir });
+    // Search deep enough to discover nested/child git repos inside a monorepo
+    // workspace (e.g. projects/<name>/<sub>/.git) while pruning node_modules.
+    const { stdout } = await execAsync(
+      `find . -maxdepth ${MAX_GIT_DEPTH} -name node_modules -prune -o -name .git -type d -print`,
+      { cwd: rootDir, timeout: 12000, maxBuffer: 1024 * 1024 }
+    );
     const discovered = stdout
       .trim()
       .split('\n')
@@ -24,21 +32,57 @@ async function getRepos(rootDir: string): Promise<string[]> {
     }
     return uniqueRepos.length ? uniqueRepos : ['.'];
   } catch {
-    return ['.', 'examples'];
+    return ['.'];
   }
+}
+
+// Nested-repo discovery is expensive (find over a deep workspace), so it runs
+// in the background after the loader returns the root status. Results are
+// cached per scoped root and the client polls `?reposOnly=1` until ready.
+interface RepoDiscovery {
+  repos: string[];
+  done: boolean;
+}
+const repoDiscovery = new Map<string, RepoDiscovery>();
+
+function startRepoScan(rootDir: string): void {
+  if (repoDiscovery.has(rootDir)) return;
+  const d: RepoDiscovery = { repos: ['.'], done: false };
+  repoDiscovery.set(rootDir, d);
+  void getRepos(rootDir)
+    .then(repos => { d.repos = repos; d.done = true; })
+    .catch(() => { d.repos = ['.']; d.done = true; });
+}
+
+function discoveredRepos(rootDir: string): { repos: string[]; pending: boolean } {
+  const d = repoDiscovery.get(rootDir);
+  if (!d) return { repos: ['.'], pending: false };
+  return { repos: d.done ? d.repos : ['.'], pending: !d.done };
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
-  const rootDir = process.cwd();
+  const rootDir = await resolveRoot(url.searchParams.get('root'), process.cwd());
 
-  const repos = await getRepos(rootDir);
+  // Kick off nested-repo discovery in the background (non-blocking) and read
+  // whatever is already cached.
+  startRepoScan(rootDir);
+  const { repos, pending } = discoveredRepos(rootDir);
+
+  // Lightweight polling endpoint: just the discovered repos, no git status.
+  if (url.searchParams.get('reposOnly') === '1') {
+    return json({ repos, reposPending: pending, activeRepo: (url.searchParams.get('repo') || '.') });
+  }
+
   let repo = url.searchParams.get('repo');
   if (!repo || !repos.includes(repo)) {
     repo = repos.includes('.') ? '.' : (repos[0] || '.');
   }
 
   const targetDir = repo === '.' ? rootDir : path.join(rootDir, repo);
+  if (targetDir !== rootDir && !targetDir.startsWith(rootDir + path.sep)) {
+    return json({ error: 'Invalid repo path' }, { status: 403 });
+  }
 
   try {
     // Use --porcelain=v1 -uall so all individual edited/untracked files are listed
@@ -92,6 +136,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       branch: branch || 'main',
       branches: branches.length ? branches : ['main'],
       repos,
+      reposPending: pending,
       activeRepo: repo,
       syncCount: 0,
     });
@@ -101,6 +146,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       branch: 'main',
       branches: ['main'],
       repos: repos.length ? repos : ['.'],
+      reposPending: pending,
       activeRepo: repo,
       syncCount: 0,
       error: error?.message || 'Git error',
@@ -110,9 +156,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
 export async function action({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
-  const rootDir = process.cwd();
+  const rootDir = await resolveRoot(formData.get('root') as string, process.cwd());
   const repo = (formData.get('repo') as string) || '.';
   const targetDir = repo === '.' ? rootDir : path.join(rootDir, repo);
+  if (targetDir !== rootDir && !targetDir.startsWith(rootDir + path.sep)) {
+    return json({ error: 'Invalid repo path' }, { status: 403 });
+  }
   const actionType = formData.get('actionType') as string;
 
   try {

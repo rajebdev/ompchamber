@@ -11,12 +11,14 @@ import { RawMessagesList } from './context-panel/RawMessagesList';
 
 interface ContextPanelProps {
   className?: string;
+  enabled?: boolean;
   refreshKey?: number;
   onClose?: () => void;
 }
 
 export function ContextPanel({
   className = '',
+  enabled = true,
   refreshKey = 0
 }: ContextPanelProps) {
   const [searchParams] = useSearchParams();
@@ -41,8 +43,17 @@ export function ContextPanel({
   };
 
   useEffect(() => {
+    if (!enabled) return;
     fetchContextTelemetry();
-  }, [sessionId, refreshKey]);
+  }, [sessionId, refreshKey, enabled]);
+
+  if (!enabled) {
+    return (
+      <div className={`flex flex-col h-full bg-paper items-center justify-center text-ink/40 ${className}`}>
+        <span className="text-xs font-mono">No session selected</span>
+      </div>
+    );
+  }
 
   return (
     <div className={`flex flex-col h-full bg-paper text-ink overflow-hidden select-none ${className}`}>

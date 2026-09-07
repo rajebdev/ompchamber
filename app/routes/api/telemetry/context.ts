@@ -37,6 +37,18 @@ export async function loader({ request }: LoaderFunctionArgs) {
         const telemetry = computeSessionContextTelemetry(sessionId, existing.title || `Session ${sessionId}`, parsedMessages);
         return json({ telemetry, isMock: false });
       }
+
+      // Real omp sessions live on disk as JSONL and have no chat_sessions row —
+      // compute their telemetry from the actual session timeline.
+      const { findSessionFileById } = await import('@/lib/omp/session-locator');
+      const { loadSessionMessages, loadSessionTitle } = await import('@/lib/omp/session-messages');
+      const filePath = findSessionFileById(sessionId);
+      if (filePath) {
+        const messages = loadSessionMessages(filePath);
+        const title = loadSessionTitle(filePath) || `Session ${sessionId}`;
+        const telemetry = computeSessionContextTelemetry(sessionId, title, messages);
+        return json({ telemetry, isMock: false, source: 'omp-jsonl' });
+      }
     }
 
     const defaultTelemetry = getDefaultMockTelemetry('default', 'History Commit 2026-09-06 23:00');

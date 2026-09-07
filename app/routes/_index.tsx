@@ -62,6 +62,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       groupedFolders.push({
         id: folder.id,
         name: folder.name,
+        project_path: folder.project_path ?? null,
         isExpanded: folder.is_expanded === 1,
         sessions: folderSessions,
         hasMore: folderSessions.length > 7,
@@ -109,6 +110,7 @@ async function buildRealFolders(db: Database, folderRows: any[]): Promise<Worksp
     return {
       id: folder.id,
       name: folder.name,
+      project_path: folder.project_path ?? null,
       isExpanded: folder.is_expanded === 1,
       sessions: folderSessions,
       hasMore: folderSessions.length > 7,

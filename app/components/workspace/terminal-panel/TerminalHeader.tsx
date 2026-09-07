@@ -3,6 +3,7 @@ import { Terminal, Trash2, Folder, Loader2 } from 'lucide-react';
 
 interface TerminalHeaderProps {
   cwd: string;
+  rootName?: string;
   isRunning: boolean;
   bunVersion: string;
   onClear: () => void;
@@ -11,6 +12,7 @@ interface TerminalHeaderProps {
 
 export function TerminalHeader({
   cwd,
+  rootName,
   isRunning,
   bunVersion,
   onClear,
@@ -32,7 +34,7 @@ export function TerminalHeader({
         {/* Current working directory pill */}
         <div className="flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-ink/5 text-ink/70 border border-ink/10 truncate max-w-[140px] sm:max-w-[180px]">
           <Folder size={10} className="text-ink/50 flex-shrink-0" />
-          <span className="truncate">~/{cwd === '.' ? '' : cwd}</span>
+          <span className="truncate">{rootName || '~'}/{cwd === '.' ? '' : cwd}</span>
         </div>
 
         {isRunning && (

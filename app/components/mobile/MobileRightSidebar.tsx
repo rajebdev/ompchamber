@@ -1,54 +1,35 @@
 import React, { useState } from 'react';
-import { 
-  GitBranch, 
-  Files, 
-  Search, 
-  Terminal,
-  Layers,
-  X
-} from 'lucide-react';
-import type { GitChange } from '@/types';
-import { MobileGitChangesList } from './mobile-right-sidebar/MobileGitChangesList';
-import { MobileFilesTab } from './mobile-right-sidebar/MobileFilesTab';
-import { MobileSearchTab } from './mobile-right-sidebar/MobileSearchTab';
+import { GitBranch, Files, Search, Terminal, Layers, X } from 'lucide-react';
+import { FileExplorer } from '@/components/workspace/FileExplorer';
+import { SearchPanel } from '@/components/workspace/SearchPanel';
+import { GitPanel } from '@/components/workspace/GitPanel';
 import { TerminalPanel } from '@/components/workspace/TerminalPanel';
 import { ContextPanel } from '@/components/workspace/ContextPanel';
 
 interface MobileRightSidebarProps {
-  changes: GitChange[];
-  branch: string;
-  branches: string[];
-  syncCount: number;
-  onBranchChange: (branch: string) => void;
-  onSync: () => void;
-  onGitAction: (actionType: string, file?: string) => void;
-  onCommit: (message: string) => void;
+  enabled?: boolean;
+  rootPath?: string;
+  onOpenFile?: (file: any) => void;
   onClose: () => void;
 }
 
+type MobileTab = 'git' | 'files' | 'search' | 'context' | 'terminal';
+
 export function MobileRightSidebar({
-  changes,
-  branch,
-  branches,
-  syncCount,
-  onBranchChange,
-  onSync,
-  onGitAction,
-  onCommit,
+  enabled = true,
+  rootPath,
+  onOpenFile,
   onClose
 }: MobileRightSidebarProps) {
-  const [activeTab, setActiveTab] = useState<'git' | 'files' | 'search' | 'terminal' | 'context'>('files');
+  const [activeTab, setActiveTab] = useState<MobileTab>('files');
 
   return (
     <div className="flex flex-col h-full w-full bg-paper text-ink relative select-none">
-      
+
       {/* Top Header & Tab Navigation Bar */}
       <div className="h-14 border-b border-ink/10 flex items-center justify-between px-3 flex-shrink-0 bg-canvas">
-        
-        {/* Horizontal Navigation Tabs: buttons display text only when selected */}
+
         <div className="flex items-center space-x-1.5 overflow-x-auto no-scrollbar py-1">
-          
-          {/* 1. Files Explorer Tab Button */}
           <button
             type="button"
             onClick={() => setActiveTab('files')}
@@ -63,7 +44,6 @@ export function MobileRightSidebar({
             {activeTab === 'files' && <span>Files</span>}
           </button>
 
-          {/* 2. Search Tab Button */}
           <button
             type="button"
             onClick={() => setActiveTab('search')}
@@ -78,7 +58,6 @@ export function MobileRightSidebar({
             {activeTab === 'search' && <span>Search</span>}
           </button>
 
-          {/* 3. GIT Tab Button */}
           <button
             type="button"
             onClick={() => setActiveTab('git')}
@@ -90,19 +69,9 @@ export function MobileRightSidebar({
             title="GIT"
           >
             <GitBranch size={14} className="flex-shrink-0" />
-            {activeTab === 'git' && (
-              <>
-                <span className="tracking-wide">GIT</span>
-                {changes.length > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-canvas/20 font-mono ml-0.5">
-                    {changes.length}
-                  </span>
-                )}
-              </>
-            )}
+            {activeTab === 'git' && <span className="tracking-wide">GIT</span>}
           </button>
 
-          {/* 4. Context Tab Button */}
           <button
             type="button"
             onClick={() => setActiveTab('context')}
@@ -117,7 +86,6 @@ export function MobileRightSidebar({
             {activeTab === 'context' && <span>Context</span>}
           </button>
 
-          {/* 5. Terminal Tab Button */}
           <button
             type="button"
             onClick={() => setActiveTab('terminal')}
@@ -131,10 +99,8 @@ export function MobileRightSidebar({
             <Terminal size={14} className="flex-shrink-0" />
             {activeTab === 'terminal' && <span>Terminal</span>}
           </button>
-
         </div>
 
-        {/* Close button */}
         <button
           type="button"
           onClick={onClose}
@@ -146,34 +112,31 @@ export function MobileRightSidebar({
         </button>
       </div>
 
-      {/* Main Tab Content */}
+      {/* Main Tab Content — shared components so mobile == desktop features */}
       <div className="flex-1 overflow-hidden relative">
-        {activeTab === 'git' && (
-          <MobileGitChangesList
-            changes={changes}
-            branch={branch}
-            branches={branches}
-            onBranchChange={onBranchChange}
-            onAction={onGitAction}
-            onCommit={onCommit}
-          />
+        {!enabled ? (
+          <div className="h-full flex items-center justify-center text-ink/40">
+            <span className="text-xs font-mono">No session selected</span>
+          </div>
+        ) : (
+          <>
+            {activeTab === 'files' && (
+              <FileExplorer className="h-full w-full" enabled={enabled} rootPath={rootPath} onOpenFile={onOpenFile} />
+            )}
+            {activeTab === 'search' && (
+              <SearchPanel className="h-full w-full" enabled={enabled} rootPath={rootPath} />
+            )}
+            {activeTab === 'git' && (
+              <GitPanel className="h-full w-full" enabled={enabled} rootPath={rootPath} />
+            )}
+            {activeTab === 'context' && (
+              <ContextPanel className="h-full w-full" enabled={enabled} onClose={onClose} />
+            )}
+            <div className={`h-full w-full ${activeTab === 'terminal' ? 'block' : 'hidden'}`}>
+              <TerminalPanel className="h-full w-full" enabled={enabled} rootPath={rootPath} showHeader={false} />
+            </div>
+          </>
         )}
-
-        {activeTab === 'files' && (
-          <MobileFilesTab />
-        )}
-
-        {activeTab === 'search' && (
-          <MobileSearchTab />
-        )}
-
-        {activeTab === 'context' && (
-          <ContextPanel className="h-full w-full" onClose={onClose} />
-        )}
-
-        <div className={`h-full w-full ${activeTab === 'terminal' ? 'block' : 'hidden'}`}>
-          <TerminalPanel className="h-full w-full" showHeader={false} />
-        </div>
       </div>
 
     </div>

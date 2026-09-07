@@ -3,11 +3,13 @@ import { exec } from 'child_process';
 import util from 'util';
 import path from 'path';
 import fs from 'fs';
+import { resolveRoot } from '@/lib/fs-root';
 
 const execAsync = util.promisify(exec);
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const rootDir = process.cwd();
+  const url = new URL(request.url);
+  const rootDir = await resolveRoot(url.searchParams.get('root'), process.cwd());
   let bunVersion = '';
   let nodeVersion = process.version;
   let gitBranch = 'main';
@@ -38,19 +40,22 @@ export async function loader({ request }: LoaderFunctionArgs) {
 export async function action({ request }: ActionFunctionArgs) {
   let command = '';
   let requestedCwd = '';
+  let requestedRoot = '';
 
   const contentType = request.headers.get('content-type') || '';
   if (contentType.includes('application/json')) {
     const body = await request.json();
     command = (body.command || '').trim();
     requestedCwd = (body.cwd || '').trim();
+    requestedRoot = (body.root || '').trim();
   } else {
     const formData = await request.formData();
     command = ((formData.get('command') as string) || '').trim();
     requestedCwd = ((formData.get('cwd') as string) || '').trim();
+    requestedRoot = ((formData.get('root') as string) || '').trim();
   }
 
-  const rootDir = process.cwd();
+  const rootDir = await resolveRoot(requestedRoot, process.cwd());
   let currentDir = rootDir;
 
   if (requestedCwd) {
@@ -58,8 +63,8 @@ export async function action({ request }: ActionFunctionArgs) {
       ? path.resolve(requestedCwd)
       : path.resolve(rootDir, requestedCwd);
 
-    // Keep within rootDir for containment
-    if (resolved.startsWith(rootDir) && fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+    // Keep within the scoped root for containment
+    if ((resolved === rootDir || resolved.startsWith(rootDir + path.sep)) && fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
       currentDir = resolved;
     }
   }

@@ -6,6 +6,7 @@ export interface UseTerminalOptions {
   onCommandStart?: (cmd: string, options?: { fromXterm?: boolean }) => void;
   onCommandEnd?: (exitCode: number, cwd: string) => void;
   onClear?: () => void;
+  root?: string;
 }
 
 export function useTerminal(options?: UseTerminalOptions) {
@@ -42,9 +43,21 @@ export function useTerminal(options?: UseTerminalOptions) {
   const clearCallbackRef = useRef(options?.onClear);
   clearCallbackRef.current = options?.onClear;
 
-  // Fetch real system environment on mount
+  const rootRef = useRef(options?.root);
+  rootRef.current = options?.root;
+  const prevRootRef = useRef(options?.root);
+
+  // Fetch real system environment on mount / when the scoped root changes
   useEffect(() => {
-    fetch('/api/terminal/run')
+    const root = options?.root;
+    if (prevRootRef.current !== root) {
+      prevRootRef.current = root;
+      setCwd('.');
+      setTerminalLogs([]);
+      clearCallbackRef.current?.();
+    }
+    const rootQuery = root ? `?root=${encodeURIComponent(root)}` : '';
+    fetch(`/api/terminal/run${rootQuery}`)
       .then(res => res.json())
       .then(data => {
         if (data && data.bunVersion) {
@@ -56,7 +69,7 @@ export function useTerminal(options?: UseTerminalOptions) {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [options?.root]);
 
   const clearLogs = useCallback(() => {
     setTerminalLogs([]);
@@ -96,7 +109,8 @@ export function useTerminal(options?: UseTerminalOptions) {
       let nextCwd = cwd;
 
       try {
-        const streamUrl = `/api/terminal/stream?cmd=${encodeURIComponent(rawCmd)}&cwd=${encodeURIComponent(cwd)}`;
+        const rootQuery = rootRef.current ? `&root=${encodeURIComponent(rootRef.current)}` : '';
+        const streamUrl = `/api/terminal/stream?cmd=${encodeURIComponent(rawCmd)}&cwd=${encodeURIComponent(cwd)}${rootQuery}`;
         const response = await fetch(streamUrl, {
           signal: controller.signal,
         });

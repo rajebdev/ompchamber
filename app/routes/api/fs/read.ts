@@ -1,28 +1,22 @@
 import { json, type LoaderFunctionArgs } from '@remix-run/node';
 import fs from 'fs';
 import path from 'path';
+import { isMockMode } from '@/mock.server';
+import { getDefaultFsRoot, resolveRoot } from '@/lib/fs-root';
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const filePath = url.searchParams.get('path');
-  
+
   if (!filePath) {
     return json({ error: 'Missing path' }, { status: 400 });
   }
 
-  const workspaceRoot = process.cwd();
-  const examplesDir = path.join(workspaceRoot, 'examples');
+  const baseDir = await resolveRoot(url.searchParams.get('root'), getDefaultFsRoot(isMockMode()));
   const cleanPath = filePath.replace(/^\/+/, '');
+  const fullPath = path.resolve(baseDir, cleanPath);
 
-  let fullPath = path.resolve(examplesDir, cleanPath.replace(/^examples\//, ''));
-  if (!fs.existsSync(fullPath)) {
-    const candidateInRoot = path.resolve(workspaceRoot, cleanPath);
-    if (candidateInRoot.startsWith(workspaceRoot) && fs.existsSync(candidateInRoot)) {
-      fullPath = candidateInRoot;
-    }
-  }
-
-  if (!fullPath.startsWith(workspaceRoot)) {
+  if (fullPath !== baseDir && !fullPath.startsWith(baseDir + path.sep)) {
     return json({ error: 'Invalid path' }, { status: 403 });
   }
 
@@ -34,7 +28,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     if (stat.isDirectory()) {
       return json({ error: 'Cannot read a directory' }, { status: 400 });
     }
-    
+
     const content = fs.readFileSync(fullPath, 'utf-8');
     return json({ content });
   } catch (error: any) {

@@ -1,6 +1,8 @@
 import { json, type ActionFunctionArgs } from '@remix-run/node';
 import fs from 'fs/promises';
 import path from 'path';
+import { isMockMode } from '@/mock.server';
+import { getDefaultFsRoot, resolveRoot } from '@/lib/fs-root';
 
 export async function action({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
@@ -17,7 +19,7 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
-    const targetDir = path.join(process.cwd(), 'examples');
+    const targetDir = await resolveRoot(formData.get('root') as string, getDefaultFsRoot(isMockMode()));
     let filesToProcess: string[] = [];
 
     if (fileToReplace) {

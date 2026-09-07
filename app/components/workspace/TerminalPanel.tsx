@@ -7,12 +7,16 @@ import { RealtimeXtermView, type RealtimeXtermHandle } from './terminal-panel/Re
 
 interface TerminalPanelProps {
   className?: string;
+  enabled?: boolean;
+  rootPath?: string;
   onClose?: () => void;
   showHeader?: boolean;
 }
 
-export function TerminalPanel({ className = '', onClose, showHeader = true }: TerminalPanelProps) {
+export function TerminalPanel({ className = '', enabled = true, rootPath, onClose, showHeader = true }: TerminalPanelProps) {
   const xtermRef = useRef<RealtimeXtermHandle>(null);
+
+  const rootName = rootPath ? rootPath.replace(/\/+$/, '').split('/').pop() : undefined;
 
   const handleStreamChunk = useCallback((text: string) => {
     xtermRef.current?.write(text);
@@ -50,6 +54,7 @@ export function TerminalPanel({ className = '', onClose, showHeader = true }: Te
     onCommandStart: handleCommandStart,
     onCommandEnd: handleCommandEnd,
     onClear: handleXtermClear,
+    root: enabled ? rootPath : undefined,
   });
 
   const handleClear = useCallback(() => {
@@ -61,11 +66,20 @@ export function TerminalPanel({ className = '', onClose, showHeader = true }: Te
     executeCommand(cmd, options);
   }, [executeCommand]);
 
+  if (!enabled) {
+    return (
+      <div className={`flex flex-col h-full bg-paper items-center justify-center text-ink/40 ${className}`}>
+        <span className="text-xs font-mono">No session selected</span>
+      </div>
+    );
+  }
+
   return (
     <div className={`flex flex-col h-full w-full bg-paper text-ink overflow-hidden ${className}`}>
       {showHeader && (
         <TerminalHeader
           cwd={cwd}
+          rootName={rootName}
           isRunning={isRunning}
           bunVersion={systemInfo.bunVersion}
           onClear={handleClear}

@@ -21,6 +21,17 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     setSelectedFolderId(folderId ? parseInt(folderId, 10) : null);
   }, [folderId]);
 
+  // Choosing a workspace context mirrors it to the `folderId` URL param so the
+  // layout (right-panel scoping) can react to the same selection.
+  const selectContextFolder = useCallback((id: number | null) => {
+    setSelectedFolderId(id);
+    setSearchParams(prev => {
+      if (id) prev.set('folderId', String(id));
+      else prev.delete('folderId');
+      return prev;
+    }, { replace: true });
+  }, [setSearchParams]);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
 
@@ -446,7 +457,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   return {
     sessionId,
     selectedFolderId,
-    setSelectedFolderId,
+    setSelectedFolderId: selectContextFolder,
     sessionData,
     localMessages,
     isGenerating,

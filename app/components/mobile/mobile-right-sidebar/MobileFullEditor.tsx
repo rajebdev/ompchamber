@@ -30,6 +30,7 @@ interface MobileFullEditorProps {
     name: string;
     path?: string;
     content?: string;
+    root?: string;
   };
   onClose: () => void;
 }
@@ -80,7 +81,9 @@ export function MobileFullEditor({ file, onClose }: MobileFullEditorProps) {
   useEffect(() => {
     if (!file.content && file.path) {
       setIsLoading(true);
-      fetch(`/api/fs/read?path=${encodeURIComponent(file.path)}`)
+      const params = new URLSearchParams({ path: file.path });
+      if (file.root) params.set('root', file.root);
+      fetch(`/api/fs/read?${params.toString()}`)
         .then(res => res.json())
         .then(data => {
           if (data && data.content !== undefined) {

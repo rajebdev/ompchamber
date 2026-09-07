@@ -2,6 +2,8 @@ import { json, type ActionFunctionArgs } from '@remix-run/node';
 import { execFile } from 'child_process';
 import util from 'util';
 import path from 'path';
+import { isMockMode } from '@/mock.server';
+import { getDefaultFsRoot, resolveRoot } from '@/lib/fs-root';
 
 const execFileAsync = util.promisify(execFile);
 
@@ -12,13 +14,13 @@ export async function action({ request }: ActionFunctionArgs) {
   const wholeWord = formData.get('wholeWord') === 'true';
   const useRegex = formData.get('useRegex') === 'true';
   const includeFiles = formData.get('includeFiles') as string;
-  
+
   if (!q) {
     return json({ results: [] });
   }
 
   try {
-    const targetDir = path.join(process.cwd(), 'examples');
+    const targetDir = await resolveRoot(formData.get('root') as string, getDefaultFsRoot(isMockMode()));
     
     const args = ['-rn'];
     if (!matchCase) args[0] += 'i';

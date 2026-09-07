@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from '@remix-run/react';
 import { Group, Panel, Separator, type PanelImperativeHandle } from 'react-resizable-panels';
 import { SessionSidebar } from '@/components/layout/SessionSidebar';
 import { RightActivityBar, type RightPanelType } from '@/components/layout/RightActivityBar';
@@ -21,6 +22,7 @@ import {
   Smartphone
 } from 'lucide-react';
 import type { WorkspaceFolderData, SettingsCategoryId } from '@/types';
+import { activeProjectForSession } from '@/lib/activeProject';
 
 interface DesktopLayoutProps {
   folders: WorkspaceFolderData[];
@@ -53,6 +55,28 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
   const shouldShowEditor = openedFiles.length > 0 && activeRightPanel !== 'search' && activeRightPanel !== 'git' && activeRightPanel !== 'terminal' && activeRightPanel !== 'context';
   const [userToggledEditor, setUserToggledEditor] = useState<boolean | null>(appSettings.userToggledEditor ?? null);
   const showEditor = userToggledEditor !== null ? userToggledEditor : shouldShowEditor;
+
+  // The right-panel developer tools are scoped to the active workspace
+  // context: the folder owning the selected session, or — when creating a
+  // new session — the folder picked from the context dropdown / the "+" next
+  // to a folder (mirrored into the `folderId` URL param).
+  const [searchParams] = useSearchParams();
+  const folderIdParam = searchParams.get('folderId');
+  const activeProject = useMemo(() => {
+    const sessionFolder = activeProjectForSession(folders, sessionId).folder;
+    if (sessionFolder) return sessionFolder;
+    if (folderIdParam) return folders.find(f => String(f.id) === String(folderIdParam)) ?? null;
+    return null;
+  }, [folders, sessionId, folderIdParam]);
+  const activeProjectPath = activeProject?.project_path ?? null;
+  const hasActiveContext = !!activeProject;
+  const activeRootRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (activeRootRef.current === activeProjectPath) return;
+    activeRootRef.current = activeProjectPath;
+    setOpenedFiles([]);
+    setActiveFileId(null);
+  }, [activeProjectPath, sessionId]);
 
   const saveSetting = (key: string, value: any) => {
     fetch('/api/settings', {
@@ -110,15 +134,16 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
   }, [activeRightPanel, openedFiles.length]);
 
   const handleOpenFile = (file: any) => {
+    const fileEntry = { ...file, root: file.root ?? activeProjectPath ?? undefined };
     setOpenedFiles(prev => {
-      const existing = prev.find(f => f.id === file.id || (f.path && file.path && f.path === file.path));
+      const existing = prev.find(f => f.id === fileEntry.id || (f.path && fileEntry.path && f.path === fileEntry.path));
       if (existing) {
         setActiveFileId(existing.id);
         return prev;
       }
-      return [...prev, file];
+      return [...prev, fileEntry];
     });
-    setActiveFileId(file.id);
+    setActiveFileId(fileEntry.id);
     setUserToggledEditor(true);
   };
 
@@ -346,12 +371,12 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
             <>
               <CustomResizeHandle />
               <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={initialLayoutSizes?.right ?? ((activeRightPanel === 'terminal' || activeRightPanel === 'context') ? 536 : 268)} minSize={200} maxSize={800} collapsible>
-                {activeRightPanel === 'files' && <FileExplorer className="w-full h-full" onOpenFile={handleOpenFile} refreshKey={refreshKey} onRefresh={handleRefreshWorkspace} />}
-                {activeRightPanel === 'search' && <SearchPanel className="w-full h-full" />}
-                {activeRightPanel === 'git' && <GitPanel className="w-full h-full" refreshKey={refreshKey} />}
-                {activeRightPanel === 'context' && <ContextPanel className="w-full h-full" refreshKey={refreshKey} onClose={() => handleToggleRightPanel()} />}
+                {activeRightPanel === 'files' && <FileExplorer className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} onOpenFile={handleOpenFile} refreshKey={refreshKey} onRefresh={handleRefreshWorkspace} />}
+                {activeRightPanel === 'search' && <SearchPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} />}
+                {activeRightPanel === 'git' && <GitPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} refreshKey={refreshKey} />}
+                {activeRightPanel === 'context' && <ContextPanel className="w-full h-full" enabled={hasActiveContext} refreshKey={refreshKey} onClose={() => handleToggleRightPanel()} />}
                 <div className={`w-full h-full ${activeRightPanel === 'terminal' ? 'block' : 'hidden'}`}>
-                  <TerminalPanel className="w-full h-full" onClose={() => handleToggleRightPanel()} />
+                  <TerminalPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} onClose={() => handleToggleRightPanel()} />
                 </div>
               </Panel>
             </>

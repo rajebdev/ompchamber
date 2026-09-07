@@ -91,17 +91,6 @@ export function GitBranchToolbar({
       <div className="flex items-center space-x-2 text-ink/40 relative" ref={optionsRef}>
         <button
           type="button"
-          onClick={() => setViewMode(viewMode === 'flat' ? 'tree' : 'flat')}
-          title={viewMode === 'flat' ? 'Switch to Tree View' : 'Switch to List View'}
-          className={`p-1 rounded hover:text-ink hover:bg-ink/5 cursor-pointer transition-colors ${
-            viewMode === 'tree' ? 'text-ink bg-ink/5' : ''
-          }`}
-        >
-          {viewMode === 'flat' ? <FolderTree size={13} /> : <List size={13} />}
-        </button>
-
-        <button
-          type="button"
           onClick={onHistory} 
           title="Commit History"
           className="p-1 rounded hover:text-ink hover:bg-ink/5 cursor-pointer transition-colors"

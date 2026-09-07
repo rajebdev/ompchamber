@@ -2,19 +2,20 @@ import { type LoaderFunctionArgs } from '@remix-run/node';
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { resolveRoot } from '@/lib/fs-root';
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const command = (url.searchParams.get('cmd') || '').trim();
   const requestedCwd = (url.searchParams.get('cwd') || '').trim();
-  const rootDir = process.cwd();
+  const rootDir = await resolveRoot(url.searchParams.get('root'), process.cwd());
   let currentDir = rootDir;
 
   if (requestedCwd) {
     const resolved = path.isAbsolute(requestedCwd)
       ? path.resolve(requestedCwd)
       : path.resolve(rootDir, requestedCwd);
-    if (resolved.startsWith(rootDir) && fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+    if ((resolved === rootDir || resolved.startsWith(rootDir + path.sep)) && fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
       currentDir = resolved;
     }
   }

@@ -102,7 +102,9 @@ export function Editor({
   useEffect(() => {
     if (activeFile && contents[activeFile.id] === undefined) {
       if (activeFile.path) {
-        fetch(`/api/fs/read?path=${encodeURIComponent(activeFile.path)}`)
+        const params = new URLSearchParams({ path: activeFile.path });
+        if (activeFile.root) params.set('root', activeFile.root);
+        fetch(`/api/fs/read?${params.toString()}`)
           .then(res => res.json())
           .then(data => {
             if (data.content !== undefined) {
@@ -130,6 +132,7 @@ export function Editor({
     formData.append('actionType', 'save');
     formData.append('path', fileToSave.path);
     formData.append('content', content);
+    if (fileToSave.root) formData.append('root', fileToSave.root);
 
     fetch('/api/fs/action', { method: 'POST', body: formData })
       .then(res => res.json())

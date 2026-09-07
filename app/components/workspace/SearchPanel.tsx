@@ -3,7 +3,7 @@ import { Search, CaseSensitive, WholeWord, Regex, Replace, ReplaceAll, MoreHoriz
 import { FileIcon } from '../common/FileIcon';
 import { useFetcher } from '@remix-run/react';
 
-export function SearchPanel({ className = '' }: { className?: string }) {
+export function SearchPanel({ className = '', enabled = true, rootPath }: { className?: string, enabled?: boolean, rootPath?: string }) {
   const [query, setQuery] = useState('');
   const [replaceQuery, setReplaceQuery] = useState('');
   
@@ -31,6 +31,7 @@ export function SearchPanel({ className = '' }: { className?: string }) {
   }, []);
 
   const triggerSearch = () => {
+    if (!enabled) return;
     if (query.trim().length > 2) {
       fetcher.submit(
         { 
@@ -38,7 +39,8 @@ export function SearchPanel({ className = '' }: { className?: string }) {
           matchCase: String(matchCase), 
           wholeWord: String(wholeWord), 
           useRegex: String(useRegex),
-          includeFiles: showIncludeField ? includeFiles : ''
+          includeFiles: showIncludeField ? includeFiles : '',
+          ...(rootPath ? { root: rootPath } : {})
         },
         { method: 'POST', action: '/api/fs/search' }
       );
@@ -50,7 +52,15 @@ export function SearchPanel({ className = '' }: { className?: string }) {
       triggerSearch();
     }, 300);
     return () => clearTimeout(timeoutId);
-  }, [query, matchCase, wholeWord, useRegex, includeFiles, showIncludeField]);
+  }, [query, matchCase, wholeWord, useRegex, includeFiles, showIncludeField, rootPath, enabled]);
+
+  if (!enabled) {
+    return (
+      <div className={`flex flex-col h-full bg-paper items-center justify-center text-ink/40 ${className}`}>
+        <span className="text-xs font-mono">No session selected</span>
+      </div>
+    );
+  }
 
   const handleReplace = (file?: string) => {
     if (!query) return;
@@ -67,7 +77,8 @@ export function SearchPanel({ className = '' }: { className?: string }) {
         matchCase: String(matchCase),
         wholeWord: String(wholeWord),
         useRegex: String(useRegex),
-        files: JSON.stringify(targetFiles)
+        files: JSON.stringify(targetFiles),
+        ...(rootPath ? { root: rootPath } : {})
       },
       { method: 'POST', action: '/api/fs/replace' }
     );

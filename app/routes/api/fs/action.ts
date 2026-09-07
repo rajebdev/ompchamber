@@ -3,6 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import { exec } from 'child_process';
 import util from 'util';
+import { isMockMode } from '@/mock.server';
+import { getDefaultFsRoot, resolveRoot } from '@/lib/fs-root';
 
 const execAsync = util.promisify(exec);
 
@@ -10,11 +12,11 @@ export async function action({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
   const actionType = formData.get('actionType') as string;
   const filePath = formData.get('path') as string;
-  
-  const rootDir = path.join(process.cwd(), 'examples');
-  const fullPath = path.join(rootDir, filePath);
 
-  if (!fullPath.startsWith(rootDir)) {
+  const rootDir = await resolveRoot(formData.get('root') as string, getDefaultFsRoot(isMockMode()));
+  const fullPath = path.resolve(rootDir, filePath);
+
+  if (fullPath !== rootDir && !fullPath.startsWith(rootDir + path.sep)) {
     return json({ error: 'Invalid path' }, { status: 403 });
   }
 
@@ -31,8 +33,8 @@ export async function action({ request }: ActionFunctionArgs) {
       return json({ success: true });
     } else if (actionType === 'rename') {
       const newPath = formData.get('newPath') as string;
-      const fullNewPath = path.join(rootDir, newPath);
-      if (!fullNewPath.startsWith(rootDir)) {
+      const fullNewPath = path.resolve(rootDir, newPath);
+      if (fullNewPath !== rootDir && !fullNewPath.startsWith(rootDir + path.sep)) {
         return json({ error: 'Invalid new path' }, { status: 403 });
       }
       fs.renameSync(fullPath, fullNewPath);

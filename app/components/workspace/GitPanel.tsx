@@ -11,12 +11,23 @@ import { GitRepoHeader } from './git-panel/GitRepoHeader';
 
 interface GitPanelProps {
   className?: string;
+  enabled?: boolean;
+  rootPath?: string;
   refreshKey?: number;
 }
 
-export function GitPanel({ className = '', refreshKey = 0 }: GitPanelProps) {
-  const fetcher = useFetcher<{ changes: GitChange[], branch: string, branches: string[], repos: string[], activeRepo: string }>();
+export function GitPanel({ className = '', enabled = true, rootPath, refreshKey = 0 }: GitPanelProps) {
+  const fetcher = useFetcher<{ changes: GitChange[], branch: string, branches: string[], repos: string[], reposPending?: boolean, activeRepo: string }>();
   const actionFetcher = useFetcher<{ success: boolean, type?: string, data?: any }>();
+
+  const loadRepo = (repo?: string) => {
+    if (!enabled) return;
+    const params = new URLSearchParams();
+    if (rootPath) params.set('root', rootPath);
+    if (repo) params.set('repo', repo);
+    params.set('t', String(Date.now()));
+    fetcher.load(`/api/fs/git?${params.toString()}`);
+  };
   
   const [message, setMessage] = useState('');
   const [viewMode, setViewMode] = useState<'flat' | 'tree'>('flat');
@@ -43,10 +54,35 @@ export function GitPanel({ className = '', refreshKey = 0 }: GitPanelProps) {
   const [viewingOutput, setViewingOutput] = useState<{ title: string, data: any[] } | null>(null);
   const [mounted, setMounted] = useState(false);
 
+  // Background nested-repo discovery polling: the loader returns immediately
+  // with the root status and `reposPending`; we poll the lightweight
+  // `?reposOnly=1` endpoint until the discoverer finishes, then refresh.
+  const [extraRepos, setExtraRepos] = useState<string[] | null>(null);
+  const [pollingRepos, setPollingRepos] = useState(false);
+
   useEffect(() => {
     setMounted(true);
-    fetcher.load('/api/fs/git');
-  }, [refreshKey]);
+    loadRepo();
+  }, [refreshKey, rootPath, enabled]);
+
+  useEffect(() => {
+    if (fetcher.data?.reposPending) setPollingRepos(true);
+  }, [fetcher.data]);
+
+  useEffect(() => {
+    if (!pollingRepos) return;
+    const params = new URLSearchParams({ reposOnly: '1' });
+    if (rootPath) params.set('root', rootPath);
+    const id = setInterval(async () => {
+      const data = await fetch(`/api/fs/git?${params.toString()}`).then(r => r.json()).catch(() => null);
+      if (data && !data.reposPending && Array.isArray(data.repos)) {
+        setExtraRepos(data.repos);
+        setPollingRepos(false);
+        loadRepo();
+      }
+    }, 1500);
+    return () => clearInterval(id);
+  }, [pollingRepos, rootPath, loadRepo]);
 
   // Focus input when branch prompt opens
   useEffect(() => {
@@ -63,7 +99,7 @@ export function GitPanel({ className = '', refreshKey = 0 }: GitPanelProps) {
       } else if (actionFetcher.data.type === 'graph') {
         setViewingOutput({ title: 'Git Graph', data: actionFetcher.data.data || [] });
       } else if (actionFetcher.data.success) {
-        fetcher.load(`/api/fs/git?repo=${encodeURIComponent(activeRepo)}&t=${Date.now()}`);
+        loadRepo(activeRepo);
       }
     }
   }, [actionFetcher.state, actionFetcher.data]);
@@ -102,6 +138,7 @@ export function GitPanel({ className = '', refreshKey = 0 }: GitPanelProps) {
     const formData = new FormData();
     formData.append('actionType', actionType);
     formData.append('repo', activeRepo);
+    if (rootPath) formData.append('root', rootPath);
     if (file) formData.append('file', file);
     if (additionalData) {
       Object.entries(additionalData).forEach(([key, val]) => formData.append(key, val as string));
@@ -117,7 +154,7 @@ export function GitPanel({ className = '', refreshKey = 0 }: GitPanelProps) {
   const activeRepo = fetcher.data?.activeRepo || '.';
   const branch = fetcher.data?.branch || 'main';
   const branches = fetcher.data?.branches || ['main'];
-  const repos = fetcher.data?.repos || ['.'];
+  const repos = extraRepos ?? (fetcher.data?.repos || ['.']);
   const changes = fetcher.data?.changes || [];
   const isLoading = fetcher.state === 'loading' || actionFetcher.state !== 'idle';
 
@@ -130,6 +167,14 @@ export function GitPanel({ className = '', refreshKey = 0 }: GitPanelProps) {
     const status = c.status;
     return (status && status[1] !== ' ' && status[1] !== '?') || status === '??';
   });
+
+  if (!enabled) {
+    return (
+      <div className={`flex flex-col h-full bg-paper items-center justify-center text-ink/40 ${className}`}>
+        <span className="text-xs font-mono">No session selected</span>
+      </div>
+    );
+  }
 
   return (
     <div className={`flex flex-col h-full bg-paper relative ${className}`}>
@@ -177,8 +222,8 @@ export function GitPanel({ className = '', refreshKey = 0 }: GitPanelProps) {
         activeRepo={activeRepo}
         repos={repos}
         isLoading={isLoading}
-        onSelectRepo={(r) => fetcher.load(`/api/fs/git?repo=${encodeURIComponent(r)}&t=${Date.now()}`)}
-        onRefresh={() => fetcher.load(`/api/fs/git?repo=${encodeURIComponent(activeRepo)}&t=${Date.now()}`)}
+        onSelectRepo={(r) => loadRepo(r)}
+        onRefresh={() => loadRepo(activeRepo)}
       />
       
       {/* Branch & View Mode Toolbar */}

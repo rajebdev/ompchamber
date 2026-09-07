@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useSearchParams } from '@remix-run/react';
-import type { WorkspaceFolderData, GitChange, Attachment, ChatMessageData } from '@/types';
+import type { WorkspaceFolderData, Attachment, ChatMessageData } from '@/types';
 import { MobileMainView } from './MobileMainView';
 import { MobileSessionSidebar } from './MobileSessionSidebar';
 import { MobileRightSidebar } from './MobileRightSidebar';
@@ -8,6 +8,7 @@ import { MobileFullEditor } from './mobile-right-sidebar/MobileFullEditor';
 import { MobileScreenSwitcher } from './MobileScreenSwitcher';
 import { triggerChatCompletionSound } from '@/hooks/useNotificationSound';
 import { streamChatResponse } from '@/hooks/useChatStream';
+import { activeProjectForSession } from '@/lib/activeProject';
 
 interface MobileLayoutWrapperProps {
   folders: WorkspaceFolderData[];
@@ -28,16 +29,16 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(
     typeof folderId === 'number' ? folderId : null
   );
-  const [mobileEditorFile, setMobileEditorFile] = useState<{ name: string; path?: string; content?: string } | null>(null);
+  const [mobileEditorFile, setMobileEditorFile] = useState<{ name: string; path?: string; content?: string; root?: string } | null>(null);
 
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const [gitChanges, setGitChanges] = useState<GitChange[]>([]);
-  const [branch, setBranch] = useState('main');
-  const [branches, setBranches] = useState<string[]>(['main', 'feat/mobile-ui', 'fix/dr-smpp']);
-  const [syncCount, setSyncCount] = useState(40);
+  const { folder: sessionFolder } = activeProjectForSession(folders, sessionId);
+  const contextFolder = sessionFolder ?? (folderId ? folders.find(f => String(f.id) === String(folderId)) ?? null : null);
+  const activeProjectPath = contextFolder?.project_path ?? null;
+  const hasContext = !!contextFolder;
 
   // Load session messages via API
   useEffect(() => {
@@ -67,19 +68,6 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
       body: JSON.stringify({ messages: nextMessages }),
     }).catch(console.error);
   }, [sessionId]);
-
-  // Load git data
-  useEffect(() => {
-    fetch('/api/fs/git')
-      .then(res => res.json())
-      .then(data => {
-        if (data.changes && data.changes.length > 0) setGitChanges(data.changes);
-        if (data.branch) setBranch(data.branch);
-        if (data.branches) setBranches(data.branches);
-        if (data.syncCount) setSyncCount(data.syncCount);
-      })
-      .catch(() => {});
-  }, []);
 
   // Listen to open-file event on mobile
   useEffect(() => {
@@ -320,21 +308,16 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
     setIsGenerating(false);
   }, []);
 
-  const handleGitAction = (actionType: string, file?: string) => {
-    const match = (f: string, t: string) => f === t || f.startsWith(t.endsWith('/') ? t : `${t}/`);
-    if (actionType === 'revert') setGitChanges(prev => prev.filter(c => !(file ? match(c.file, file) : true)));
-    else if (actionType === 'revert_all') setGitChanges(prev => prev.filter(c => c.staged));
-    else if (actionType === 'stage') setGitChanges(prev => prev.map(c => (!file || match(c.file, file)) ? { ...c, staged: true } : c));
-    else if (actionType === 'stage_all') setGitChanges(prev => prev.map(c => ({ ...c, staged: true })));
-    else if (actionType === 'unstage') setGitChanges(prev => prev.map(c => (!file || match(c.file, file)) ? { ...c, staged: false } : c));
-    else if (actionType === 'unstage_all') setGitChanges(prev => prev.map(c => ({ ...c, staged: false })));
-    else if (actionType === 'push') setSyncCount(0);
-  };
-
-  const handleCommit = () => {
-    setGitChanges([]);
-    setSyncCount(prev => prev + 1);
-  };
+  const handleOpenFile = useCallback((file: any) => {
+    const rawPath = (file?.path || '').replace(/^\/+/, '');
+    const name = file?.name || rawPath.split('/').pop() || 'file';
+    setMobileEditorFile({
+      name,
+      path: rawPath,
+      content: file?.content,
+      root: file?.root ?? activeProjectPath ?? undefined,
+    });
+  }, [activeProjectPath]);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-canvas text-ink font-sans selection:bg-ink selection:text-canvas relative">
@@ -378,14 +361,9 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
 
       <div className={`h-full w-full ${currentScreen === 'right' ? 'block' : 'hidden'}`}>
         <MobileRightSidebar
-          changes={gitChanges}
-          branch={branch}
-          branches={branches}
-          syncCount={syncCount}
-          onBranchChange={setBranch}
-          onSync={() => handleGitAction('push')}
-          onGitAction={handleGitAction}
-          onCommit={handleCommit}
+          enabled={hasContext}
+          rootPath={activeProjectPath ?? undefined}
+          onOpenFile={handleOpenFile}
           onClose={() => setCurrentScreen('main')}
         />
       </div>
