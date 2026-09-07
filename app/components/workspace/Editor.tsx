@@ -13,8 +13,7 @@ import 'prismjs/components/prism-css';
 import 'prismjs/components/prism-json';
 import 'prismjs/components/prism-markdown';
 import 'prismjs/themes/prism.css';
-import Markdown from 'react-markdown';
-import rehypeRaw from 'rehype-raw';
+import { MarkdownRenderer } from '../common/MarkdownRenderer';
 import { useOnClickOutside } from '../../hooks/useOnClickOutside';
 
 interface EditorProps {
@@ -372,7 +371,7 @@ export function Editor({
           <div className="flex-1 overflow-auto bg-paper flex">
             {(isMd && isPreview) ? (
               <div className="p-6 prose prose-sm max-w-4xl mx-auto font-sans flex-1" style={{ fontSize: `${zoomLevel}px` }}>
-                <Markdown rehypePlugins={[rehypeRaw]}>{currentContent}</Markdown>
+                <MarkdownRenderer content={currentContent} />
               </div>
             ) : (
               <>

@@ -65,8 +65,10 @@ export function ToolCallingSection({
   const [openMap, setOpenMap] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
     normalizedTools.forEach((tool, idx) => {
-      // Default: First item and errors are expanded
-      initial[tool.id] = (idx === 0 || tool.status === 'error');
+      // Default: only errors are expanded. Long successful outputs (agent
+      // reports, file reads) stay collapsed so a single card never owns a
+      // second scrollbar beside the timeline one.
+      initial[tool.id] = tool.status === 'error';
     });
     return initial;
   });

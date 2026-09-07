@@ -41,7 +41,7 @@ export function EmptyWorkspacePrompt({
 
   return (
     <div className={`flex flex-col h-full bg-canvas items-center justify-center p-8 ${className}`}>
-      <div className="w-full max-w-3xl flex flex-col items-start space-y-2">
+      <div className="w-full max-w-[970px] flex flex-col items-start space-y-2">
         {/* Workspace Selection Seamless Dropdown (No border, transparent background) */}
         <div className="relative" ref={workspaceRef}>
           <button 

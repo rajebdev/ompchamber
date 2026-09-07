@@ -12,8 +12,8 @@ import type { WorkspaceFolderData, SessionItemData } from '@/types';
 
 interface MobileSessionCategoryProps {
   folder: WorkspaceFolderData;
-  activeSessionId: number | null;
-  onSelectSession: (id: number) => void;
+  activeSessionId: number | string | null;
+  onSelectSession: (id: number | string) => void;
   isExpanded: boolean;
   onToggleExpand: () => void;
 }

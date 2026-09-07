@@ -6,7 +6,8 @@ import { Category } from './session-sidebar/CategoryItem';
 
 export function SessionSidebar({ className = '', folders = [], onClose, appSettings = {} }: { className?: string, folders?: any[], onClose?: () => void, appSettings?: Record<string, any> }) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeSessionId = searchParams.get('sessionId') ? Number(searchParams.get('sessionId')) : null;
+  const sessionParam = searchParams.get('sessionId');
+  const activeSessionId = sessionParam ? (Number.isNaN(Number(sessionParam)) ? sessionParam : Number(sessionParam)) : null;
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
@@ -24,7 +25,7 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [sortOption, setSortOption] = useState<'A-Z' | 'Z-A' | 'LATEST_SESSION' | 'LATEST_ADDED'>('A-Z');
 
-  const handleSelectSession = (id: number) => {
+  const handleSelectSession = (id: number | string) => {
     setSearchParams(prev => {
       prev.set('sessionId', id.toString());
       return prev;
@@ -36,8 +37,7 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
       const currentSessionId = prev.get('sessionId');
       prev.delete('sessionId');
       if (currentSessionId) {
-        const id = parseInt(currentSessionId, 10);
-        const currentFolder = folders.find(f => f.sessions?.some((s: any) => s.id === id));
+        const currentFolder = folders.find(f => f.sessions?.some((s: any) => String(s.id) === String(currentSessionId)));
         if (currentFolder) {
           prev.set('folderId', currentFolder.id.toString());
         }
@@ -251,7 +251,22 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
       <AboutModal isOpen={infoOpen} onClose={() => setInfoOpen(false)} />
 
       {/* New Workspace Modal */}
-      <NewWorkspaceModal isOpen={newWorkspaceOpen} onClose={() => setNewWorkspaceOpen(false)} />
+      <NewWorkspaceModal
+        isOpen={newWorkspaceOpen}
+        onClose={() => setNewWorkspaceOpen(false)}
+        onCreate={async ({ name, path }) => {
+          const res = await fetch('/api/folders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, path }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.success) {
+            throw new Error(data.error || `HTTP ${res.status}`);
+          }
+          window.location.reload();
+        }}
+      />
 
       {/* Scheduler Modal */}
       <SchedulerModal isOpen={schedulerOpen} onClose={() => setSchedulerOpen(false)} />

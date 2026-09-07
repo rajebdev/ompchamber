@@ -23,8 +23,7 @@ import 'prismjs/components/prism-json';
 import 'prismjs/components/prism-markdown';
 import 'prismjs/components/prism-css';
 import 'prismjs/components/prism-bash';
-import Markdown from 'react-markdown';
-import rehypeRaw from 'rehype-raw';
+import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
 
 interface MobileFullEditorProps {
   file: {
@@ -239,7 +238,7 @@ export function MobileFullEditor({ file, onClose }: MobileFullEditorProps) {
         ) : isMd && isPreview ? (
           /* Markdown Preview Mode */
           <div className="p-4 bg-paper text-ink min-h-full font-sans prose prose-sm max-w-none">
-            <Markdown rehypePlugins={[rehypeRaw]}>{content}</Markdown>
+            <MarkdownRenderer content={content} />
           </div>
         ) : (
           /* Code Editor with Line Numbers - Desktop styled: gutter bg-canvas border-r border-ink/10 */

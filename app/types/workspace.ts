@@ -1,6 +1,11 @@
+/**
+ * Session item shape. In real (non-mock) mode sessions come from oh-my-pi
+ * JSONL discovery and use the omp session UUID (string) as id — hence the
+ * union with string ids. Mock/demo mode keeps numeric SQLite ids.
+ */
 export interface SessionItemData {
-  id: number;
-  folder_id: number;
+  id: number | string;
+  folder_id: number | string;
   title: string;
   created_at?: string;
   updated_at?: string;
@@ -10,9 +15,17 @@ export interface SessionItemData {
   hasArrow?: boolean;
 }
 
+/**
+ * A sidebar workspace folder. In real mode folders are SQLite workspaces that
+ * carry an optional `project_path` binding the folder to an oh-my-pi project
+ * root; the folder name is the lowercase basename of that path.
+ */
 export interface WorkspaceFolderData {
   id: number;
   name: string;
+  /** When set, this workspace is bound to an oh-my-pi project root; sessions
+   *  discovered under that root render inside this folder. */
+  project_path?: string | null;
   isExpanded: boolean;
   sessions: SessionItemData[];
   hasMore: boolean;

@@ -8,6 +8,7 @@ import { GeneratingIndicator } from './chat-timeline/GeneratingIndicator';
 import { QueueList } from './chat-timeline/QueueList';
 import { NewChatModal } from './chat-timeline/NewChatModal';
 import { useChatTimeline } from '@/hooks/useChatTimeline';
+import { responseRunDurationMs } from '@/lib/chat-duration';
 
 interface ChatTimelineProps {
   className?: string;
@@ -73,7 +74,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {} }:
   }
 
   return (
-    <div className={`flex flex-col h-full bg-canvas relative ${className}`}>
+    <div className={`flex flex-col h-full min-h-0 overflow-hidden bg-canvas relative ${className}`}>
       {/* Timeline Header */}
       <div className="flex-shrink-0 h-12 flex items-center justify-between px-4 bg-paper border-b border-ink/10 z-10">
         <div className="flex flex-col justify-center">
@@ -99,20 +100,32 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {} }:
         <div 
           ref={scrollRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto p-4 space-y-8 scroll-smooth overflow-x-hidden pb-10"
+          className="flex-1 overflow-y-auto overscroll-contain p-4 scroll-smooth overflow-x-hidden pb-10"
         >
-          {localMessages.map((msg, idx) => (
-            <ChatMessageItem 
-              key={msg.id} 
-              msg={msg} 
-              modelName={sessionData?.model} 
-              isStreaming={isGenerating && idx === localMessages.length - 1 && msg.role === 'ai'}
-              generatingVerb={generatingVerb}
-              onUndo={handleUndo}
-              onRetry={handleRetry}
-              onNewChat={(content) => setNewChatInitialContent(content)}
-            />
-          ))}
+          <div className="mx-auto w-full max-w-[970px]">
+            {localMessages.map((msg, idx) => {
+              const prev = localMessages[idx - 1];
+              const next = localMessages[idx + 1];
+              const isLoading = isGenerating && idx === localMessages.length - 1 && msg.role === 'ai';
+              const isLastAi = msg.role !== 'user' && (!next || next.role === 'user');
+              const isAiFragment = msg.role !== 'user' && prev && prev.role !== 'user';
+              return (
+                <ChatMessageItem
+                  key={msg.id}
+                  msg={msg}
+                  modelName={sessionData?.model}
+                  isStreaming={isLoading}
+                  generatingVerb={generatingVerb}
+                  onUndo={handleUndo}
+                  onRetry={handleRetry}
+                  onNewChat={(content) => setNewChatInitialContent(content)}
+                  footerVisible={isLastAi}
+                  durationMs={isLastAi ? responseRunDurationMs(localMessages, idx) : null}
+                  className={isAiFragment ? 'mt-1' : 'mt-8'}
+                />
+              );
+            })}
+          </div>
         </div>
 
         {/* Scroll to bottom button */}
@@ -131,28 +144,30 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {} }:
       
       {/* Input Area Footer with Docked Generating Indicator (Seamless & Transparent) */}
       <div className="p-4 pt-1 bg-transparent border-t-0 flex-shrink-0 space-y-2">
-        {isGenerating && (
-          <GeneratingIndicator 
-            modelName={sessionData?.model} 
-            generatingVerb={generatingVerb} 
+        <div className="mx-auto w-full max-w-[970px]">
+          {isGenerating && (
+            <GeneratingIndicator 
+              modelName={sessionData?.model} 
+              generatingVerb={generatingVerb} 
+            />
+          )}
+          <QueueList 
+            queue={messageQueue} 
+            setQueue={setMessageQueue} 
+            onEdit={handleEditQueueItem} 
+            onSendNow={handleSendNowQueueItem}
           />
-        )}
-        <QueueList 
-          queue={messageQueue} 
-          setQueue={setMessageQueue} 
-          onEdit={handleEditQueueItem} 
-          onSendNow={handleSendNowQueueItem}
-        />
-        <ChatInput 
-          value={inputValue}
-          onChange={setInputValue}
-          attachments={inputAttachments}
-          onAttachmentsChange={setInputAttachments}
-          onSend={handleSend}
-          isGenerating={isGenerating}
-          onStop={stopGenerating}
-          appSettings={appSettings}
-        />
+          <ChatInput 
+            value={inputValue}
+            onChange={setInputValue}
+            attachments={inputAttachments}
+            onAttachmentsChange={setInputAttachments}
+            onSend={handleSend}
+            isGenerating={isGenerating}
+            onStop={stopGenerating}
+            appSettings={appSettings}
+          />
+        </div>
       </div>
 
       {newChatInitialContent !== null && (

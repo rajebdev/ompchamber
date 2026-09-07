@@ -13,6 +13,31 @@ export async function loader({ params }: LoaderFunctionArgs) {
   const mock = isMockMode();
 
   try {
+    // Real mode: an omp session UUID found on disk is authoritative — load its
+    // messages straight from the session JSONL file (rich timeline). The
+    // chat_sessions overlay is only for chamber-created sessions (mock or
+    // synthetic ids).
+    if (!mock) {
+      const { findSessionFileById } = await import('@/lib/omp/session-locator');
+      const { loadSessionMessages, loadSessionTitle } = await import('@/lib/omp/session-messages');
+      const filePath = findSessionFileById(sessionId);
+      if (filePath) {
+        const messages = loadSessionMessages(filePath);
+        const title = loadSessionTitle(filePath)
+          || messages.find((m) => m.role === 'user')?.content?.slice(0, 120)
+          || `Session ${sessionId}`;
+        return json({
+          session: {
+            id: sessionId,
+            title,
+            messages,
+          },
+          isMock: false,
+          source: 'omp-jsonl',
+        });
+      }
+    }
+
     const db = await getDb();
     const existing = await db.get('SELECT * FROM chat_sessions WHERE session_id = ?', [sessionId]);
 

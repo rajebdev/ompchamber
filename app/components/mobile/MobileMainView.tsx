@@ -13,13 +13,14 @@ import { ChatMessageItem } from '@/components/workspace/chat-timeline/ChatMessag
 import { GeneratingIndicator } from '@/components/workspace/chat-timeline/GeneratingIndicator';
 import { QueueList } from '@/components/workspace/chat-timeline/QueueList';
 import { useOnClickOutside } from '@/hooks/useOnClickOutside';
+import { responseRunDurationMs } from '@/lib/chat-duration';
 
 interface MobileMainViewProps {
   folders: WorkspaceFolderData[];
   selectedFolderId: number | null;
   onSelectFolder: (id: number | null) => void;
-  activeSessionId: number | null;
-  onSelectSession: (id: number) => void;
+  activeSessionId: number | string | null;
+  onSelectSession: (id: number | string) => void;
   onNewSession: () => void;
   onOpenSessionSidebar: () => void;
   onOpenRightSidebar: () => void;
@@ -134,7 +135,7 @@ export function MobileMainView({
         <div 
           ref={scrollRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 space-y-6 pb-10"
+          className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-4 py-4 pb-10"
         >
           {messages.length === 0 ? (
             /* Empty Workspace Prompt Suggestions */
@@ -163,18 +164,28 @@ export function MobileMainView({
             </div>
           ) : (
             <>
-              {messages.map((msg, idx) => (
-                <ChatMessageItem 
-                  key={msg.id} 
-                  msg={msg} 
-                  modelName="DeepSeek V4 Pro"
-                  isStreaming={isGenerating && idx === messages.length - 1 && msg.role === 'ai'}
-                  generatingVerb="thinking"
-                  onUndo={(_id, content) => {
-                    if (content) setInputValue(content);
-                  }}
-                />
-              ))}
+              {messages.map((msg, idx) => {
+                const prev = messages[idx - 1];
+                const next = messages[idx + 1];
+                const isLoading = isGenerating && idx === messages.length - 1 && msg.role === 'ai';
+                const isLastAi = msg.role !== 'user' && (!next || next.role === 'user');
+                const isAiFragment = msg.role !== 'user' && prev && prev.role !== 'user';
+                return (
+                  <ChatMessageItem
+                    key={msg.id}
+                    msg={msg}
+                    modelName="DeepSeek V4 Pro"
+                    isStreaming={isLoading}
+                    generatingVerb="thinking"
+                    footerVisible={isLastAi}
+                    durationMs={isLastAi ? responseRunDurationMs(messages, idx) : null}
+                    className={isAiFragment ? 'mt-1' : 'mt-6'}
+                    onUndo={(_id, content) => {
+                      if (content) setInputValue(content);
+                    }}
+                  />
+                );
+              })}
             </>
           )}
         </div>

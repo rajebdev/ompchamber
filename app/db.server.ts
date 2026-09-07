@@ -7,6 +7,14 @@ import { isMockMode } from '@/mock.server';
 
 let dbPromise: Promise<Database> | null = null;
 
+/** SYNC_WORKSPACE env flag (default true when unset). When enabled in real
+ *  mode, workspace folders are auto-created from discovered omp projects. */
+export function isWorkspaceSyncEnabled(): boolean {
+  const raw = (process.env.SYNC_WORKSPACE || '').trim().toLowerCase();
+  if (raw === '') return true;
+  return raw !== 'false' && raw !== '0' && raw !== 'off' && raw !== 'no';
+}
+
 export function getDatabasePath(): string {
   if (isMockMode()) {
     return path.join(process.cwd(), 'workspace.db');
@@ -46,6 +54,7 @@ export async function getDb(): Promise<Database> {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         is_expanded BOOLEAN DEFAULT 0,
+        project_path TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
       
@@ -75,6 +84,12 @@ export async function getDb(): Promise<Database> {
     // Attempt to add column to existing tables if it doesn't exist
     try {
       await db.exec('ALTER TABLE workspace_folders ADD COLUMN is_expanded BOOLEAN DEFAULT 0;');
+    } catch (err) {
+      // Column already exists, ignore
+    }
+
+    try {
+      await db.exec('ALTER TABLE workspace_folders ADD COLUMN project_path TEXT;');
     } catch (err) {
       // Column already exists, ignore
     }
@@ -198,9 +213,16 @@ export async function getDb(): Promise<Database> {
         }
       }
     } else {
-      // MOCK=false (Real Data Mode): Only ensure a base workspace folder exists if completely empty
-      if (folderCount.count === 0) {
-        await db.run("INSERT OR IGNORE INTO workspace_folders (id, name, is_expanded) VALUES (1, 'Workspace', 1)");
+      // MOCK=false (Real Data Mode): when SYNC_WORKSPACE is enabled (default),
+      // auto-create workspace folders from discovered omp projects. User-made
+      // folders are never deleted; only additive sync.
+      if (isWorkspaceSyncEnabled()) {
+        try {
+          await syncWorkspaceFoldersWithOmp(db);
+        } catch (err) {
+          // Discovery must never block app startup.
+          console.error('OMP workspace sync failed:', err);
+        }
       }
     }
 
@@ -208,4 +230,59 @@ export async function getDb(): Promise<Database> {
   })();
 
   return dbPromise;
+}
+
+/**
+ * Additive folder ↔ omp project sync: creates a workspace folder for every
+ * project discovered from ~/.omp/agent (folder name = lowercase basename,
+ * bound via project_path). Existing user folders — bound or unbound — are
+ * left untouched, including one-time binding of an unbound folder whose name
+ * matches a project basename.
+ */
+async function syncWorkspaceFoldersWithOmp(db: Database): Promise<void> {
+  const { loadOmpSidebarData } = await import('@/lib/omp/session-reader');
+  const { orderedOmpProjects, projectDisplayName } = await import('@/lib/omp/sidebar-adapter');
+
+  const data = await loadOmpSidebarData();
+  const existing = await db.all('SELECT id, name, project_path FROM workspace_folders');
+
+  const byPath = new Map<string, { id: number; name: string }>();
+  const byName = new Map<string, { id: number; name: string }>();
+  for (const row of existing) {
+    if (row.project_path) byPath.set(row.project_path as string, row);
+    else byName.set((row.name as string).toLowerCase(), row);
+  }
+
+  const usedNames = new Set(existing.map((r) => (r.name as string).toLowerCase()));
+
+  for (const project of orderedOmpProjects(data)) {
+    const name = projectDisplayName(project);
+    const bound = byPath.get(project.path);
+    if (bound) {
+      if (bound.name !== name) {
+        await db.run('UPDATE workspace_folders SET name = ? WHERE id = ?', [name, bound.id]);
+      }
+      continue;
+    }
+    const legacy = byName.get(name);
+    if (legacy) {
+      byName.delete(name);
+      await db.run('UPDATE workspace_folders SET project_path = ?, name = ? WHERE id = ?', [
+        project.path,
+        name,
+        legacy.id,
+      ]);
+      continue;
+    }
+    let candidate = name;
+    let suffix = 2;
+    while (usedNames.has(candidate)) {
+      candidate = `${name}-${suffix++}`;
+    }
+    usedNames.add(candidate);
+    await db.run(
+      'INSERT INTO workspace_folders (name, is_expanded, project_path) VALUES (?, 1, ?)',
+      [candidate, project.path],
+    );
+  }
 }

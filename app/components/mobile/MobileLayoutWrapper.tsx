@@ -19,11 +19,15 @@ export type MobileScreen = 'main' | 'session' | 'right';
 
 export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {} }: MobileLayoutWrapperProps) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const sessionId = searchParams.get('sessionId') ? Number(searchParams.get('sessionId')) : null;
-  const folderId = searchParams.get('folderId') ? Number(searchParams.get('folderId')) : null;
+  const sessionParam = searchParams.get('sessionId');
+  const sessionId = sessionParam ? (Number.isNaN(Number(sessionParam)) ? sessionParam : Number(sessionParam)) : null;
+  const folderParam = searchParams.get('folderId');
+  const folderId = folderParam ? (Number.isNaN(Number(folderParam)) ? folderParam : Number(folderParam)) : null;
 
   const [currentScreen, setCurrentScreen] = useState<MobileScreen>('main');
-  const [selectedFolderId, setSelectedFolderId] = useState<number | null>(folderId || (folders[0]?.id ?? null));
+  const [selectedFolderId, setSelectedFolderId] = useState<number | null>(
+    typeof folderId === 'number' ? folderId : null
+  );
   const [mobileEditorFile, setMobileEditorFile] = useState<{ name: string; path?: string; content?: string } | null>(null);
 
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
@@ -91,7 +95,7 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
     return () => window.removeEventListener('omp:open-file', handleCustomOpenFile);
   }, []);
 
-  const handleSelectSession = (id: number) => {
+  const handleSelectSession = (id: number | string) => {
     setSearchParams(prev => {
       prev.set('sessionId', id.toString());
       return prev;
@@ -118,17 +122,17 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
     }
   };
 
-  const handleCreateFolder = (name: string) => {
-    const newId = Date.now();
-    folders.push({
-      id: newId,
-      name,
-      isExpanded: true,
-      sessions: [],
-      hasMore: false,
-      totalSessions: 0
+  const handleCreateFolder = async (input: { name: string; path?: string }) => {
+    const res = await fetch('/api/folders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
     });
-    setSelectedFolderId(newId);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    window.location.reload();
   };
 
   const currentSession = useMemo(() => {

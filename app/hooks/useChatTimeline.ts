@@ -96,7 +96,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   const currentSession = useMemo(() => {
     if (!sessionId) return null;
     for (const folder of folders) {
-      const session = folder.sessions?.find((s: any) => String(s.id) === sessionId);
+      const session = folder.sessions?.find((s: any) => String(s.id) === String(sessionId));
       if (session) return session;
     }
     return null;
@@ -116,7 +116,10 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   const setMessageQueue = useCallback((updater: React.SetStateAction<QueuedMessage[]>) => {
     setMessageQueueLocal(prev => {
       const newQueue = typeof updater === 'function' ? updater(prev) : updater;
-      if (sessionId) {
+      // Queue persistence targets the SQLite `sessions` table (mock/numeric
+      // sessions). omp sessions (string UUIDs) have no such row — keep the
+      // queue client-side only for this session.
+      if (sessionId && !Number.isNaN(Number(sessionId))) {
         fetch(`/api/sessions/${sessionId}/queue`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -165,7 +168,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
-    const currentFolder = folders.find(f => f.id === selectedFolderId);
+    const currentFolder = folders.find(f => String(f.id) === String(selectedFolderId));
     const workspaceName = currentFolder?.name || 'Workspace';
 
     await streamChatResponse(

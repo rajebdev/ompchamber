@@ -11,6 +11,11 @@ import { json } from "@remix-run/node";
 import { getDb } from "./db.server";
 
 import "./tailwind.css";
+import "katex/dist/katex.min.css";
+import '@fontsource/fira-code/400.css';
+import '@fontsource/fira-code/500.css';
+import '@fontsource/fira-code/600.css';
+import '@fontsource/fira-code/700.css';
 
 export const links: LinksFunction = () => [
   { rel: "manifest", href: "/manifest.webmanifest" },

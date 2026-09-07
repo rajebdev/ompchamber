@@ -1,7 +1,20 @@
-import React, { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { Copy, Check } from 'lucide-react';
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * Markdown renderer for the chat timeline and editor previews.
+ *
+ * Pipeline: remend (heal streaming) → marked (GFM, autolink, KaTeX) →
+ * DOMPurify (sanitize). Renders as sanitized HTML. Raw HTML in the source is
+ * escaped by DOMPurify (default profile) rather than executed. A single
+ * delegated click handler manages the per-block "Copy" buttons.
+ */
+
+import React, { useCallback, useMemo, useRef } from 'react';
+import { renderMarkdown } from '@/lib/markdown/marked';
+import { sanitizeHtml } from '@/lib/markdown/sanitize';
 import { copyToClipboard } from '@/hooks/useClipboard';
 
 interface MarkdownRendererProps {
@@ -9,145 +22,41 @@ interface MarkdownRendererProps {
   className?: string;
 }
 
-function CodeBlock({ language, code }: { language?: string; code: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    const success = await copyToClipboard(code);
-    if (success) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
-  return (
-    <div className="my-2 rounded-lg border border-ink/15 bg-canvas overflow-hidden font-mono text-[12px] shadow-2xs">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-ink/10 border-b border-ink/10 text-[11px] text-ink/70 select-none">
-        <span className="font-semibold text-ink tracking-wider uppercase text-[10px]">
-          {language || 'text'}
-        </span>
-        <button
-          type="button"
-          onClick={handleCopy}
-          className="flex items-center space-x-1 px-1.5 py-0.5 rounded hover:bg-ink/10 text-ink/70 hover:text-ink transition-colors cursor-pointer text-[10px]"
-          title="Copy code"
-        >
-          {copied ? <Check size={11} className="text-success" /> : <Copy size={11} />}
-          <span>{copied ? 'Copied' : 'Copy'}</span>
-        </button>
-      </div>
-      <pre className="p-3 overflow-x-auto text-ink leading-relaxed select-text font-mono">
-        <code>{code}</code>
-      </pre>
-    </div>
-  );
-}
-
 export function MarkdownRenderer({ content, className = '' }: MarkdownRendererProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const html = useMemo(() => {
+    if (!content) return '';
+    const rendered = renderMarkdown(content);
+    return sanitizeHtml(rendered);
+  }, [content]);
+
+  const handleContainerClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const target = (e.target as HTMLElement).closest<HTMLButtonElement>('button.code-copy-float');
+    if (!target) return;
+    const text = target.dataset.copy ?? '';
+    if (!text) return;
+    e.preventDefault();
+    e.stopPropagation();
+    void copyToClipboard(text).then((ok) => {
+      if (!ok) return;
+      target.setAttribute('data-copied', 'true');
+      target.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      setTimeout(() => {
+        target.removeAttribute('data-copied');
+        target.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+      }, 2000);
+    });
+  }, []);
+
   if (!content) return null;
 
   return (
-    <div className={`prose-container text-[13px] text-ink leading-relaxed select-text ${className}`}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          // Custom Code and Code Block renderer
-          code({ className: codeClass, children, ...props }) {
-            const match = /language-(\w+)/.exec(codeClass || '');
-            const rawString = String(children).replace(/\n$/, '');
-            const isMultiLine = rawString.includes('\n') || Boolean(match);
-
-            if (isMultiLine) {
-              return <CodeBlock language={match?.[1]} code={rawString} />;
-            }
-
-            return (
-              <code
-                className="px-1.5 py-0.5 rounded bg-ink/5 border border-ink/10 font-mono text-[12px] text-ink break-words"
-                {...props}
-              >
-                {children}
-              </code>
-            );
-          },
-          // Custom Paragraph renderer
-          p({ children }) {
-            return <p className="mb-2 last:mb-0 leading-relaxed break-words">{children}</p>;
-          },
-          // Custom Headings renderer
-          h1({ children }) {
-            return <h1 className="text-[16px] font-bold text-ink mt-3.5 mb-1.5 font-sans tracking-tight">{children}</h1>;
-          },
-          h2({ children }) {
-            return <h2 className="text-[15px] font-bold text-ink mt-3 mb-1 font-sans tracking-tight">{children}</h2>;
-          },
-          h3({ children }) {
-            return <h3 className="text-[14px] font-semibold text-ink mt-2.5 mb-1 font-sans">{children}</h3>;
-          },
-          h4({ children }) {
-            return <h4 className="text-[13px] font-semibold text-ink mt-2 mb-0.5 font-sans">{children}</h4>;
-          },
-          // Custom List renderers
-          ul({ children }) {
-            return <ul className="list-disc pl-5 my-1.5 space-y-1">{children}</ul>;
-          },
-          ol({ children }) {
-            return <ol className="list-decimal pl-5 my-1.5 space-y-1">{children}</ol>;
-          },
-          li({ children }) {
-            return <li className="leading-relaxed">{children}</li>;
-          },
-          // Custom Blockquote renderer
-          blockquote({ children }) {
-            return (
-              <blockquote className="border-l-2 border-ink/30 pl-3 my-2 text-ink/80 italic bg-ink/2 py-1 rounded-r">
-                {children}
-              </blockquote>
-            );
-          },
-          // Custom Table renderer
-          table({ children }) {
-            return (
-              <div className="my-2.5 overflow-x-auto rounded-lg border border-ink/15">
-                <table className="w-full text-left text-[12px] border-collapse bg-paper">
-                  {children}
-                </table>
-              </div>
-            );
-          },
-          thead({ children }) {
-            return <thead className="bg-ink/5 border-b border-ink/15 text-ink font-semibold">{children}</thead>;
-          },
-          tbody({ children }) {
-            return <tbody className="divide-y divide-ink/10">{children}</tbody>;
-          },
-          th({ children }) {
-            return <th className="px-3 py-1.5 font-semibold text-ink">{children}</th>;
-          },
-          td({ children }) {
-            return <td className="px-3 py-1.5 text-ink/90">{children}</td>;
-          },
-          // Custom Links renderer
-          a({ href, children }) {
-            return (
-              <a
-                href={href}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="underline underline-offset-2 decoration-ink/40 text-ink font-medium hover:decoration-ink transition-colors"
-              >
-                {children}
-              </a>
-            );
-          },
-          // Custom Horizontal Rule
-          hr() {
-            return <hr className="my-3 border-t border-ink/15" />;
-          }
-        }}
-      >
-        {content}
-      </ReactMarkdown>
-    </div>
+    <div
+      ref={containerRef}
+      className={`prose-content text-[13px] text-ink leading-relaxed select-text ${className}`}
+      onClick={handleContainerClick}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
   );
 }

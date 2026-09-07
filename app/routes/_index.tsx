@@ -12,6 +12,8 @@ import { isMockMode } from '@/mock.server';
 import { DesktopLayout } from '@/components/layout/DesktopLayout';
 import { MobileLayoutWrapper } from '@/components/mobile/MobileLayoutWrapper';
 import type { WorkspaceFolderData } from '@/types';
+import type { OmpSession } from '@/types/omp';
+import type { Database } from 'sqlite';
 
 export const meta: MetaFunction = () => {
   return [
@@ -26,10 +28,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const userAgent = request.headers.get('user-agent') || '';
   const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile|CriOS/i.test(userAgent);
 
+  const mock = isMockMode();
   const db = await getDb();
-  const folders = await db.all('SELECT * FROM workspace_folders ORDER BY id ASC');
-  const sessions = await db.all('SELECT * FROM sessions ORDER BY id ASC');
-  
+  const folderRows = await db.all('SELECT * FROM workspace_folders ORDER BY id ASC');
+
   // Fetch app settings
   let appSettings: Record<string, any> = {};
   try {
@@ -45,27 +47,73 @@ export async function loader({ request }: LoaderFunctionArgs) {
     // app_settings table might not exist yet if just created
   }
 
-  const groupedFolders: WorkspaceFolderData[] = folders.map(folder => {
-    const folderSessions = sessions.filter(s => s.folder_id === folder.id).map(s => {
-      let queue_list;
-      try { queue_list = JSON.parse(s.queue_list); } catch (e) { queue_list = []; }
-      return { ...s, queue_list };
-    });
+  const groupedFolders: WorkspaceFolderData[] = [];
+  if (mock) {
+    // Demo mode: sessions come from the SQLite `sessions` table.
+    const sessions = await db.all('SELECT * FROM sessions ORDER BY id ASC');
+    for (const folder of folderRows) {
+      const folderSessions = sessions
+        .filter((s: any) => String(s.folder_id) === String(folder.id))
+        .map((s: any) => {
+          let queue_list;
+          try { queue_list = JSON.parse(s.queue_list); } catch (e) { queue_list = []; }
+          return { ...s, queue_list };
+        });
+      groupedFolders.push({
+        id: folder.id,
+        name: folder.name,
+        isExpanded: folder.is_expanded === 1,
+        sessions: folderSessions,
+        hasMore: folderSessions.length > 7,
+        totalSessions: folderSessions.length,
+      });
+    }
+  } else {
+    // Real mode: workspace folders are bound to omp projects via project_path;
+    // the session items under each folder come from the omp JSONL discovery.
+    groupedFolders.push(...(await buildRealFolders(db, folderRows)));
+  }
+
+  return json({
+    folders: groupedFolders,
+    initialIsMobile: isMobileUA,
+    appSettings,
+    isMock: mock,
+  });
+}
+
+/**
+ * Real-mode folder assembly: run the omp discovery scan once and bucket the
+ * discovered sessions under each folder whose project_path matches the
+ * session's resolved project root. Folders without a project_path render with
+ * no omp sessions (a local/empty workspace).
+ */
+async function buildRealFolders(db: Database, folderRows: any[]): Promise<WorkspaceFolderData[]> {
+  const { loadOmpSidebarData } = await import('@/lib/omp/session-reader');
+  const { sessionTitleFor, groupSessionsByRoot } = await import('@/lib/omp/sidebar-adapter');
+
+  const data = await loadOmpSidebarData();
+  const sessionsByRoot = groupSessionsByRoot(data.sessions);
+
+  return folderRows.map((folder: any) => {
+    const root = (folder.project_path as string | null) ?? '';
+    const rootSessions: OmpSession[] = root ? sessionsByRoot.get(root) ?? [] : [];
+    const folderSessions = rootSessions.map((session: OmpSession) => ({
+      id: session.id,
+      folder_id: folder.id,
+      title: sessionTitleFor(session),
+      created_at: session.created,
+      updated_at: session.modified,
+      is_active: 0,
+    }));
     return {
       id: folder.id,
       name: folder.name,
       isExpanded: folder.is_expanded === 1,
       sessions: folderSessions,
       hasMore: folderSessions.length > 7,
-      totalSessions: folderSessions.length
+      totalSessions: folderSessions.length,
     };
-  });
-
-  return json({ 
-    folders: groupedFolders,
-    initialIsMobile: isMobileUA,
-    appSettings,
-    isMock: isMockMode(),
   });
 }
 

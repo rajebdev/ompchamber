@@ -348,16 +348,16 @@ export function ToolCallCard({
                   <span>Loading file content...</span>
                 </div>
               ) : outputText ? (
-                <div className="bg-paper border border-ink/15 rounded text-[11px] font-mono overflow-x-auto max-h-60 overflow-y-auto flex">
+                <div className="bg-paper border border-ink/15 rounded text-[11px] font-mono overflow-x-auto max-h-80 overflow-y-auto overscroll-contain flex items-start">
                   {/* Line numbers gutter */}
-                  <div className="py-2 pl-2.5 pr-2 select-none text-right text-[10px] text-ink/30 bg-ink/10 border-r border-ink/10 font-mono leading-relaxed flex-shrink-0">
+                  <div className="py-2 pl-2.5 pr-2 select-none text-right text-[11px] text-ink/30 bg-ink/10 border-r border-ink/10 font-mono leading-relaxed flex-shrink-0">
                     {outputText.split('\n').map((_, idx) => (
                       <div key={idx}>{idx + 1}</div>
                     ))}
                   </div>
                   {/* Code body */}
                   <div 
-                    className="p-2 flex-1 whitespace-pre break-words leading-relaxed text-ink/90 select-text overflow-x-auto"
+                    className="p-2 flex-1 whitespace-pre leading-relaxed text-ink/90 select-text overflow-x-auto"
                     dangerouslySetInnerHTML={{ __html: highlightCode(outputText, getLanguage(targetFilePath)) }}
                   />
                 </div>
@@ -473,7 +473,7 @@ export function ToolCallCard({
                 </button>
               </div>
               <div 
-                className="bg-paper border border-ink/15 p-2 rounded text-[11px] sm:text-[12px] font-mono overflow-x-auto max-h-56 overflow-y-auto whitespace-pre break-words leading-relaxed text-ink/90 select-text"
+                className="bg-paper border border-ink/15 p-2 rounded text-[11px] sm:text-[12px] font-mono overflow-x-auto max-h-80 overflow-y-auto overscroll-contain whitespace-pre break-words leading-relaxed text-ink/90 select-text"
                 dangerouslySetInnerHTML={{ __html: highlightCode(outputText, 'javascript') }}
               />
             </div>

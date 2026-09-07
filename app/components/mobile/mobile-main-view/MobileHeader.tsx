@@ -11,12 +11,12 @@ import { useOnClickOutside } from '@/hooks/useOnClickOutside';
 
 interface MobileHeaderProps {
   activeSessionTitle: string;
-  activeSessionId: number | null;
+  activeSessionId: number | string | null;
   folders: WorkspaceFolderData[];
   onOpenSessionSidebar: () => void;
   onOpenRightSidebar: () => void;
   onNewSession: () => void;
-  onSelectSession: (id: number) => void;
+  onSelectSession: (id: number | string) => void;
 }
 
 export function MobileHeader({

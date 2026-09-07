@@ -5,6 +5,7 @@ import {
   MessageSquarePlus, 
   User, 
   Bot, 
+  Hourglass,
   File as FileIcon,
   Check,
   Undo2
@@ -15,6 +16,7 @@ import { ToolCallingSection } from './ToolCallingSection';
 import { GeneratingIndicator } from './GeneratingIndicator';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
 import { copyToClipboard } from '@/hooks/useClipboard';
+import { formatDuration } from '@/lib/chat-duration';
 
 interface ChatMessageItemProps {
   msg: ChatMessageData | any;
@@ -24,6 +26,14 @@ interface ChatMessageItemProps {
   onRetry?: (msgId: string) => void;
   onUndo?: (msgId: string, content?: string) => void;
   onNewChat?: (content: string) => void;
+  /** Render the AI metadata/toolbar footer. Only the last AI message of a
+   *  response run should show it so multi-part JSONL responses do not repeat
+   *  the footer per message. */
+  footerVisible?: boolean;
+  /** Extra classes on the root wrapper (e.g. spacing between messages). */
+  className?: string;
+  /** Elapsed ms of the whole AI response run — shown as ⏳ duration. */
+  durationMs?: number | null;
 }
 
 export function ChatMessageItem({ 
@@ -33,11 +43,27 @@ export function ChatMessageItem({
   generatingVerb,
   onRetry, 
   onUndo, 
-  onNewChat 
+  onNewChat,
+  footerVisible = true,
+  className = '',
+  durationMs = null
 }: ChatMessageItemProps) {
   const [copied, setCopied] = useState(false);
 
   const isUser = msg.role === 'user';
+
+  /** Content is not worth rendering when it is empty or only punctuation
+   *  placeholders ("." / "..." etc.) — chunked assistant turns often carry a
+   *  lone dot while the real payload lives in tool calls / thinking. */
+  const hasRenderableContent = typeof msg.content === 'string' && /[A-Za-z0-9]/.test(msg.content);
+
+  const formatFooterDate = (value?: string) => {
+    const raw = value || msg.timestamp;
+    if (!raw) return '';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  };
 
   const handleCopy = async () => {
     if (msg.content) {
@@ -72,9 +98,9 @@ export function ChatMessageItem({
 
   if (isUser) {
     return (
-      <div id={msg.id} className="flex flex-col items-end space-y-1.5 w-full max-w-full">
-        {/* User bubble - standardized to text-[13px] leading-relaxed with markdown support */}
-        <div className="bg-paper p-3.5 sm:p-4 rounded-xl border border-ink/15 text-[13px] text-ink leading-relaxed shadow-xs max-w-[92%] sm:max-w-[85%] break-words whitespace-pre-wrap overflow-hidden flex flex-col space-y-2 font-sans select-text">
+      <div id={msg.id} className={`flex flex-col items-end space-y-1.5 w-full max-w-full ${className}`}>
+        {/* User bubble - standardized to text-[13px] with markdown support */}
+        <div className="bg-paper p-3.5 sm:p-4 rounded-xl border border-ink/15 text-[13px] text-ink shadow-xs max-w-[92%] sm:max-w-[85%] break-words whitespace-pre-wrap overflow-hidden flex flex-col space-y-2 font-sans select-text" style={{ lineHeight: 'var(--markdown-body-line-height)' }}>
           <MarkdownRenderer content={msg.content} />
           
           {msg.attachments && msg.attachments.length > 0 && (
@@ -101,7 +127,7 @@ export function ChatMessageItem({
         <div className="flex items-center space-x-2.5 text-[11px] text-ink/60 px-1 font-mono">
           <div className="flex items-center space-x-1.5 border-r border-ink/15 pr-2.5">
             <User size={11} className="text-ink/70" />
-            <span>{msg.date || msg.timestamp || 'Just now'}</span>
+            {formatFooterDate() && <span>{formatFooterDate()}</span>}
           </div>
           
           <div className="flex items-center space-x-1">
@@ -151,10 +177,10 @@ export function ChatMessageItem({
       id={msg.id} 
       className={`flex flex-col items-start space-y-2 w-full max-w-full transition-all ${
         isStreaming ? 'pb-10 mb-2' : ''
-      }`}
+      } ${className}`}
     >
       {/* Main AI Response Container */}
-      <div className="w-full space-y-2.5 font-sans">
+      <div className="w-full space-y-2.5 font-sans leading-relaxed">
         
         {/* Thinking / Reasoning Accordion */}
         {thinkingData && (
@@ -169,7 +195,7 @@ export function ChatMessageItem({
           <ToolCallingSection 
             tools={allToolCalls}
             title={allToolCalls.length === 1 ? 'Tool Execution (1 step)' : `Tool Executions (${allToolCalls.length} steps)`}
-            defaultExpanded={true}
+            defaultExpanded={false}
           />
         )}
 
@@ -193,7 +219,7 @@ export function ChatMessageItem({
         )}
 
         {/* Main AI Response Content (Rich Markdown with code blocks, tables, lists) */}
-        {msg.content && (
+        {hasRenderableContent && (
           <div className="text-[13px] text-ink leading-relaxed font-sans bg-transparent py-1 select-text">
             <MarkdownRenderer content={msg.content} />
             {isStreaming && (
@@ -215,7 +241,7 @@ export function ChatMessageItem({
       </div>
       
       {/* Bottom AI Metadata & Actions Toolbar (Only shown once completed) */}
-      {!isStreaming && (
+      {!isStreaming && footerVisible && (
         <div className="w-full flex items-center flex-nowrap space-x-2.5 text-[11px] text-ink/60 px-1 pt-0.5 font-mono min-w-0 animate-in fade-in duration-200">
           
           {/* Model and Date / Time with truncation protection */}
@@ -227,7 +253,21 @@ export function ChatMessageItem({
               {currentModel}
             </span>
             <span className="text-ink/40 shrink-0">•</span>
-            <span className="text-ink/60 shrink-0 whitespace-nowrap">{msg.date || msg.timestamp || 'Just now'}</span>
+            {formatFooterDate() && (
+              <span className="text-ink/60 shrink-0 whitespace-nowrap">{formatFooterDate()}</span>
+            )}
+            {formatDuration(durationMs ?? 0) && (
+              <>
+                <span className="text-ink/40 shrink-0">•</span>
+                <span
+                  className="text-ink/60 shrink-0 whitespace-nowrap flex items-center space-x-1"
+                  title={`Response time: ${formatDuration(durationMs ?? 0)}`}
+                >
+                  <Hourglass size={11} className="text-ink/50 flex-shrink-0" />
+                  <span>{formatDuration(durationMs ?? 0)}</span>
+                </span>
+              </>
+            )}
           </div>
 
           {/* Action Buttons */}

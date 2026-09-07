@@ -22,7 +22,7 @@ export const XTERM_THEME = {
   brightWhite: '#ffffff',
 };
 
-export const XTERM_FONT_FAMILY = "'IBM Plex Mono', Menlo, Monaco, 'Courier New', monospace";
+export const XTERM_FONT_FAMILY = "'Fira Code', Menlo, Monaco, 'Courier New', monospace";
 
 export function safePatchFitAddon(FitAddonClass: any) {
   try {

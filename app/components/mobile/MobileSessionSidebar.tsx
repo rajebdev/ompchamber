@@ -24,10 +24,10 @@ import packageJson from '../../../package.json';
 
 interface MobileSessionSidebarProps {
   folders: WorkspaceFolderData[];
-  activeSessionId: number | null;
-  onSelectSession: (id: number) => void;
+  activeSessionId: number | string | null;
+  onSelectSession: (id: number | string) => void;
   onNewSession: () => void;
-  onCreateFolder: (name: string) => void;
+  onCreateFolder: (input: { name: string; path?: string }) => Promise<void> | void;
   onClose: () => void;
   appSettings?: Record<string, any>;
 }
@@ -314,6 +314,7 @@ export function MobileSessionSidebar({
       <NewWorkspaceModal
         isOpen={newWorkspaceOpen}
         onClose={() => setNewWorkspaceOpen(false)}
+        onCreate={onCreateFolder}
       />
       <SchedulerModal
         isOpen={schedulerOpen}

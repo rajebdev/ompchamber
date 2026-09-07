@@ -21,8 +21,8 @@ export function Category({
   forceExpanded = false
 }: { 
   folder: any;
-  activeSessionId: number | null;
-  onSelectSession: (id: number) => void;
+  activeSessionId: number | string | null;
+  onSelectSession: (id: number | string) => void;
   onNewSessionForFolder: (id: number) => void;
   forceExpanded?: boolean;
 }) {
@@ -32,7 +32,9 @@ export function Category({
   const toggleFetcher = useFetcher();
   
   const allSessions = fetcher.data?.sessions || folder.sessions;
-  const hasMore = !fetcher.data?.sessions && folder.hasMore;
+  // Real-mode folders carry every session already; only mock folders (which
+  // may have a numeric "View more" pagination) trigger the fetcher route.
+  const hasMore = !fetcher.data?.sessions && folder.hasMore && typeof folder.id === 'number';
   
   const handleViewMore = () => {
     fetcher.load(`/api/sessions/${folder.id}`);
@@ -41,6 +43,11 @@ export function Category({
   const handleToggle = () => {
     const nextState = !isOpen;
     setIsOpen(nextState); // optimistic UI update
+    if (typeof folder.id !== 'number') {
+      // Real folders are omp-bound: expansion state is kept client-side only
+      // (no workspace_folders row to persist to for string ids).
+      return;
+    }
     toggleFetcher.submit(
       { isExpanded: String(nextState) },
       { method: 'POST', action: `/api/folders/${folder.id}/toggle` }
@@ -92,7 +99,7 @@ export function Category({
         <div className="space-y-0.5 ml-2 border-l border-ink/10 pl-1">
           {allSessions.map((session: any) => {
             const isActive = activeSessionId !== null 
-              ? activeSessionId === session.id 
+              ? String(activeSessionId) === String(session.id)
               : session.is_active === 1;
 
             return (
