@@ -1,5 +1,5 @@
-import React, { RefObject } from 'react';
-import { FolderGit2, ChevronDown, Check, RotateCcw } from 'lucide-react';
+import React, { RefObject, useState } from 'react';
+import { FolderGit2, ChevronDown, Check, RotateCcw, Search } from 'lucide-react';
 
 interface GitRepoHeaderProps {
   repoRef: RefObject<HTMLDivElement | null>;
@@ -22,6 +22,14 @@ export function GitRepoHeader({
   onSelectRepo,
   onRefresh,
 }: GitRepoHeaderProps) {
+  const [repoQuery, setRepoQuery] = useState('');
+
+  const filteredRepos = repos.filter(r => {
+    if (!repoQuery.trim()) return true;
+    const label = r === '.' ? 'workspace root' : r;
+    return label.toLowerCase().includes(repoQuery.toLowerCase());
+  });
+
   return (
     <div className="p-3 border-b border-ink/10 flex items-center justify-between">
       <div className="relative" ref={repoRef}>
@@ -39,18 +47,42 @@ export function GitRepoHeader({
         </button>
         
         {showRepoMenu && (
-          <div className="absolute top-full left-0 mt-1 w-48 bg-paper border border-ink/20 rounded-md shadow-lg z-50 flex flex-col overflow-hidden text-xs">
+          <div className="absolute top-full left-0 mt-1 w-52 bg-paper border border-ink/20 rounded-md shadow-lg z-50 flex flex-col overflow-hidden text-xs">
+            <div className="px-2 py-1.5 border-b border-ink/10 flex items-center space-x-1.5">
+              <Search size={11} className="text-ink/40 flex-shrink-0" />
+              <input
+                type="text"
+                value={repoQuery}
+                onChange={(e) => setRepoQuery(e.target.value)}
+                placeholder="Search repos..."
+                title="Search repositories"
+                className="w-full bg-transparent outline-none text-xs text-ink placeholder-ink/40"
+                autoFocus
+              />
+              {repoQuery && (
+                <button
+                  type="button"
+                  onClick={() => setRepoQuery('')}
+                  title="Clear search"
+                  className="text-ink/40 hover:text-ink flex-shrink-0"
+                >
+                  ×
+                </button>
+              )}
+            </div>
             <div className="max-h-48 overflow-y-auto py-1">
-              {repos.length === 0 ? (
+              {filteredRepos.length === 0 ? (
                 <div className="px-3 py-2 text-ink/40 italic">No repos found</div>
               ) : (
-                repos.map(r => (
+                filteredRepos.map(r => (
                   <button 
                     key={r}
                     onClick={() => { 
                       onSelectRepo(r);
                       setShowRepoMenu(false); 
+                      setRepoQuery('');
                     }}
+                    title={r === '.' ? 'workspace root' : r}
                     className="w-full text-left px-3 py-2 hover:bg-ink/5 flex items-center justify-between transition-colors"
                   >
                     <span className="truncate">{r === '.' ? 'workspace root' : r}</span>

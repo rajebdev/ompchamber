@@ -5,7 +5,7 @@ import {
   Paperclip, 
   X, 
   Brain, 
-  Shield, 
+  LockKeyhole, 
   ChevronDown, 
   File as FileIcon, 
   Check 
@@ -262,7 +262,7 @@ export function ChatInput({
               title={`Thinking Level: ${currentThinking}`}
             >
               <Brain size={12} className="text-ink/60" />
-              <span className="hidden sm:inline">{currentThinking}</span>
+              <span className="hidden lg:inline">{currentThinking}</span>
             </button>
             {showThinking && (
               <div className="absolute bottom-full left-0 mb-1 w-40 bg-paper border border-ink/20 rounded-md shadow-lg z-50 py-1 text-xs">
@@ -289,8 +289,8 @@ export function ChatInput({
               onClick={() => setShowAccess(!showAccess)}
               className="flex items-center space-x-1 hover:bg-ink/5 px-2 py-1 rounded transition-colors text-xs text-ink/80"
             >
-              <Shield size={12} className="text-ink/60" />
-              <span className="hidden sm:inline">{selectedAccess}</span>
+              <LockKeyhole size={12} className="text-ink/60" />
+              <span className="hidden lg:inline">{selectedAccess}</span>
             </button>
             {showAccess && (
               <div className="absolute bottom-full left-0 mb-1 w-40 bg-paper border border-ink/20 rounded-md shadow-lg z-50 py-1 text-xs">

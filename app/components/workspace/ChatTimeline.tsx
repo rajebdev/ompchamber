@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { MoreHorizontal, ArrowDown } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowDown } from 'lucide-react';
 import { ChatInput } from './chat-timeline/ChatInput';
 import { ChatMessageItem } from './chat-timeline/ChatMessageItem';
 import { MinimapShortcuts } from './chat-timeline/MinimapShortcuts';
@@ -14,9 +14,10 @@ interface ChatTimelineProps {
   className?: string;
   folders?: any[];
   appSettings?: Record<string, any>;
+  onSessionTitle?: (title: string | null) => void;
 }
 
-export function ChatTimeline({ className = '', folders = [], appSettings = {} }: ChatTimelineProps) {
+export function ChatTimeline({ className = '', folders = [], appSettings = {}, onSessionTitle }: ChatTimelineProps) {
   const {
     sessionId,
     selectedFolderId,
@@ -45,6 +46,10 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {} }:
   } = useChatTimeline({ folders, appSettings });
 
   const [newChatInitialContent, setNewChatInitialContent] = useState<string | null>(null);
+
+  useEffect(() => {
+    onSessionTitle?.(sessionData?.title ?? null);
+  }, [sessionData?.title, onSessionTitle]);
 
   const handleScrollTo = (id: string) => {
     const el = document.getElementById(id);
@@ -75,19 +80,6 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {} }:
 
   return (
     <div className={`flex flex-col h-full min-h-0 overflow-hidden bg-canvas relative ${className}`}>
-      {/* Timeline Header */}
-      <div className="flex-shrink-0 h-12 flex items-center justify-between px-4 bg-paper border-b border-ink/10 z-10">
-        <div className="flex flex-col justify-center">
-          <div className="flex items-center space-x-2">
-            <h3 className="font-semibold text-xs text-ink">{sessionData?.title}</h3>
-            <MoreHorizontal size={14} className="text-ink/40 hover:text-ink cursor-pointer" />
-          </div>
-          <div className="text-[10px] font-mono text-ink/60 leading-none mt-0.5">
-            Workspace <span className="mx-1">⎇</span> main
-          </div>
-        </div>
-      </div>
-
       {/* Minimap Shortcuts */}
       <MinimapShortcuts 
         userMessages={userMessages} 

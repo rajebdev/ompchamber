@@ -2,27 +2,15 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from '@remix-run/react';
 import { Group, Panel, Separator, type PanelImperativeHandle } from 'react-resizable-panels';
 import { SessionSidebar } from '@/components/layout/SessionSidebar';
-import { RightActivityBar, type RightPanelType } from '@/components/layout/RightActivityBar';
-import { ChatTimeline } from '@/components/workspace/ChatTimeline';
-import { Editor } from '@/components/workspace/Editor';
-import { FileExplorer } from '@/components/workspace/FileExplorer';
-import { SearchPanel } from '@/components/workspace/SearchPanel';
-import { GitPanel } from '@/components/workspace/GitPanel';
-import { TerminalPanel } from '@/components/workspace/TerminalPanel';
-import { ContextPanel } from '@/components/workspace/ContextPanel';
-import { PWAInstallButton } from '@/components/common/PWAInstallButton';
+import { type RightPanelType } from '@/components/layout/RightActivityBar';
 import { SettingsModal } from '@/components/settings/SettingsModal';
 import { 
-  PanelRightClose, 
-  PanelRight, 
-  PanelLeft, 
-  LayoutTemplate, 
-  Activity,
-  Settings,
-  Smartphone
+  PanelLeft
 } from 'lucide-react';
 import type { WorkspaceFolderData, SettingsCategoryId } from '@/types';
 import { activeProjectForSession } from '@/lib/activeProject';
+import { TopNavbar } from '@/components/layout/desktop-layout/TopNavbar';
+import { WorkspacePanels } from '@/components/layout/desktop-layout/WorkspacePanels';
 
 interface DesktopLayoutProps {
   folders: WorkspaceFolderData[];
@@ -43,15 +31,12 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
   const [showLeftPanel, setShowLeftPanel] = useState(appSettings.showLeftPanel ?? true);
   const [showRightPanel, setShowRightPanel] = useState(appSettings.showRightPanel ?? true);
   const [activeRightPanel, setActiveRightPanel] = useState<RightPanelType>(appSettings.activeRightPanel ?? 'files');
-  const [leftPanelSize, setLeftPanelSize] = useState(appSettings.leftPanelSize ?? 15);
   const initialLayoutSizes = appSettings.desktopLayoutSizes || undefined;
-  
+
   const [openedFiles, setOpenedFiles] = useState<any[]>([]);
   const [activeFileId, setActiveFileId] = useState<number | null>(null);
-  const leftPanelRef = useRef<PanelImperativeHandle>(null);
   const editorPanelRef = useRef<PanelImperativeHandle>(null);
   const rightPanelRef = useRef<PanelImperativeHandle>(null);
-
   const shouldShowEditor = openedFiles.length > 0 && activeRightPanel !== 'search' && activeRightPanel !== 'git' && activeRightPanel !== 'terminal' && activeRightPanel !== 'context';
   const [userToggledEditor, setUserToggledEditor] = useState<boolean | null>(appSettings.userToggledEditor ?? null);
   const showEditor = userToggledEditor !== null ? userToggledEditor : shouldShowEditor;
@@ -91,6 +76,7 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
   const [autoOpenAddProvider, setAutoOpenAddProvider] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const handleRefreshWorkspace = () => setRefreshKey(k => k + 1);
+  const [sessionTitle, setSessionTitle] = useState<string | null>(null);
 
   // Global keyboard shortcut for settings (Cmd/Ctrl + ,)
   useEffect(() => {
@@ -239,66 +225,9 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-canvas text-ink font-sans selection:bg-ink selection:text-canvas">
-      
-      {/* Top Navbar */}
-      <header className="h-12 flex-shrink-0 border-b border-ink/10 bg-paper flex items-center justify-between pr-4 z-20">
-        <div className="flex items-center h-full w-full">
-          <div className="flex items-center space-x-2 h-full px-4" style={{ width: showLeftPanel ? `${leftPanelSize}%` : 'auto' }}>
-            <span className="font-bold text-sm tracking-tight hidden sm:flex items-center">
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-500 font-extrabold text-[15px] tracking-tighter">OMP</span>
-              <span className="ml-[1px]">Chamber</span>
-            </span>
-          </div>
-        </div>
 
-        <div className="flex items-center space-x-3">
-          {sessionId && (
-            <div className="hidden sm:flex items-center space-x-4 text-[10px] font-mono text-ink/60 pr-4 border-r border-ink/10">
-              <div className="flex items-center space-x-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-ink"></span>
-                <span>6.4%</span>
-              </div>
-              <div className="flex items-center space-x-1">
-                <Activity size={12} />
-                <span>90%</span>
-              </div>
-            </div>
-          )}
-
-          <div className="flex items-center space-x-1">
-            {onSwitchToMobile && (
-              <button 
-                type="button"
-                onClick={onSwitchToMobile}
-                className="p-1.5 rounded hover:bg-ink/10 transition-colors text-ink/60 hover:text-ink"
-                title="Switch to Mobile View"
-              >
-                <Smartphone size={16} />
-              </button>
-            )}
-            <PWAInstallButton />
-            <button 
-              type="button"
-              onClick={handleToggleEditor}
-              className={`p-1.5 rounded hover:bg-ink/10 transition-colors ${showEditor ? 'text-ink' : 'text-ink/40'}`}
-              title="Toggle Editor Layout"
-            >
-              <LayoutTemplate size={16} />
-            </button>
-            <button 
-              type="button"
-              onClick={handleToggleRightPanel}
-              className={`p-1.5 rounded hover:bg-ink/10 transition-colors ${showRightPanel ? 'text-ink' : 'text-ink/40'}`}
-              title="Toggle Right Panel"
-            >
-              {showRightPanel ? <PanelRightClose size={16} /> : <PanelRight size={16} />}
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Workspace Layout with Resizable Panels */}
-      <div className="flex-1 flex overflow-hidden">
+      {/* Main Workspace: full-height left sidebar (resizable) + right stack */}
+      <div className="flex flex-1 overflow-hidden">
         {!showLeftPanel && (
           <div 
             className="w-12 h-full bg-paper border-r border-ink/10 flex flex-col items-center py-3 flex-shrink-0 cursor-pointer hover:bg-ink/5 transition-colors" 
@@ -312,24 +241,13 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
 
         <Group 
           orientation="horizontal" 
-          id="ompchamber-layout"
+          id="ompchamber-main"
           onLayoutChanged={(sizes) => {
-            // Map sizes to panel identifiers based on visibility
             const layoutMap: Record<string, number> = {};
             let i = 0;
             if (showLeftPanel) layoutMap.left = sizes[i++];
-            layoutMap.center = sizes[i++];
-            if (showEditor) layoutMap.editor = sizes[i++];
-            if (showRightPanel) layoutMap.right = sizes[i++];
-
-            if (showLeftPanel && sizes.length > 0) {
-              setLeftPanelSize(sizes[0]);
-            }
-            
-            // Merge with existing so we don't lose hidden panel sizes
             const mergedLayoutMap = { ...initialLayoutSizes, ...layoutMap };
-            
-            // Debounce save layout sizes
+
             const timeoutId = (window as any)._layoutTimeout;
             if (timeoutId) clearTimeout(timeoutId);
             (window as any)._layoutTimeout = setTimeout(() => {
@@ -339,51 +257,54 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
         >
           {showLeftPanel && (
             <>
-              <Panel panelRef={leftPanelRef} id="left-panel" defaultSize={initialLayoutSizes?.left ?? 268} minSize={200} maxSize={600} collapsible>
+              <Panel id="left-panel" defaultSize={initialLayoutSizes?.left ?? 268} minSize={200} maxSize={600} collapsible>
                 <SessionSidebar className="w-full h-full" folders={folders} onClose={() => handleToggleLeftPanel(false)} appSettings={appSettings} />
               </Panel>
               <CustomResizeHandle />
             </>
           )}
 
-          <Panel id="center-panel" defaultSize={initialLayoutSizes?.center ?? undefined} minSize={300}>
-            <ChatTimeline className="w-full h-full" folders={folders} appSettings={appSettings} />
+          {/* Right stack: top navbar + resizable workspace */}
+          <Panel id="main-right-stack">
+            <div className="flex flex-col h-full">
+              <TopNavbar
+                sessionTitle={sessionTitle}
+                sessionId={sessionId}
+                showLeftPanel={showLeftPanel}
+                showEditor={showEditor}
+                showRightPanel={showRightPanel}
+                onSwitchToMobile={onSwitchToMobile}
+                onToggleEditor={handleToggleEditor}
+                onToggleRightPanel={handleToggleRightPanel}
+              />
+
+              <WorkspacePanels
+                folders={folders}
+                appSettings={appSettings}
+                showEditor={showEditor}
+                editorPanelRef={editorPanelRef}
+                showRightPanel={showRightPanel}
+                activeRightPanel={activeRightPanel}
+                rightPanelRef={rightPanelRef}
+                initialLayoutSizes={initialLayoutSizes}
+                hasActiveContext={hasActiveContext}
+                activeProjectPath={activeProjectPath}
+                openedFiles={openedFiles}
+                activeFileId={activeFileId}
+                refreshKey={refreshKey}
+                onSetActiveFileId={setActiveFileId}
+                onCloseFile={handleCloseFile}
+                onOpenFile={handleOpenFile}
+                onRefreshWorkspace={handleRefreshWorkspace}
+                onChangeRightPanel={handleChangeRightPanel}
+                onToggleRightPanel={handleToggleRightPanel}
+                onOpenSettings={() => setSettingsOpen(true)}
+                onSessionTitle={setSessionTitle}
+                onLayoutSaved={(sizes) => saveSetting('desktopLayoutSizes', sizes)}
+              />
+            </div>
           </Panel>
-
-          {showEditor && (
-            <>
-              <CustomResizeHandle />
-              <Panel panelRef={editorPanelRef} id="editor-panel" defaultSize={initialLayoutSizes?.editor ?? 536} minSize={300}>
-                <Editor 
-                  className="w-full h-full" 
-                  openedFiles={openedFiles}
-                  activeFileId={activeFileId}
-                  onSelectFile={setActiveFileId}
-                  onCloseFile={handleCloseFile}
-                  refreshKey={refreshKey}
-                  onFileSaved={handleRefreshWorkspace}
-                />
-              </Panel>
-            </>
-          )}
-
-          {showRightPanel && (
-            <>
-              <CustomResizeHandle />
-              <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={initialLayoutSizes?.right ?? ((activeRightPanel === 'terminal' || activeRightPanel === 'context') ? 536 : 268)} minSize={200} maxSize={800} collapsible>
-                {activeRightPanel === 'files' && <FileExplorer className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} onOpenFile={handleOpenFile} refreshKey={refreshKey} onRefresh={handleRefreshWorkspace} />}
-                {activeRightPanel === 'search' && <SearchPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} />}
-                {activeRightPanel === 'git' && <GitPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} refreshKey={refreshKey} />}
-                {activeRightPanel === 'context' && <ContextPanel className="w-full h-full" enabled={hasActiveContext} refreshKey={refreshKey} onClose={() => handleToggleRightPanel()} />}
-                <div className={`w-full h-full ${activeRightPanel === 'terminal' ? 'block' : 'hidden'}`}>
-                  <TerminalPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} onClose={() => handleToggleRightPanel()} />
-                </div>
-              </Panel>
-            </>
-          )}
         </Group>
-
-        <RightActivityBar activePanel={activeRightPanel} onChangePanel={handleChangeRightPanel} onOpenSettings={() => setSettingsOpen(true)} />
       </div>
 
       {/* Global Desktop Settings Modal */}

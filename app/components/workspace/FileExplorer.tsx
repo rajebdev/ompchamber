@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Search, ChevronRight, ChevronDown, RefreshCw } from 'lucide-react';
 import { FileIcon } from '../common/FileIcon';
 import { useFetcher } from '@remix-run/react';
@@ -15,10 +15,31 @@ function setChildrenAt(nodes: any[], path: string, children: any[]): any[] {
   });
 }
 
+// After a refresh the API returns folders with `children: null`. Re-attach the
+// children we already loaded and keep the expand/collapse state so a refresh
+// never collapses expanded folders or forces a re-fetch on toggle.
+function rehydrateTree(nodes: any[], cache: Record<string, any[]>, expanded: Set<string>): any[] {
+  return nodes.map(node => {
+    if (node.type !== 'folder') return node;
+    const cached = cache[node.path];
+    const wasExpanded = expanded.has(node.path);
+    if (cached) {
+      return {
+        ...node,
+        children: rehydrateTree(cached, cache, expanded),
+        is_expanded: wasExpanded ? 1 : 0,
+      };
+    }
+    return node;
+  });
+}
+
 export function FileExplorer({ className = '', enabled = true, rootPath, onOpenFile, refreshKey = 0, onRefresh }: { className?: string, enabled?: boolean, rootPath?: string, onOpenFile?: (file: any) => void, refreshKey?: number, onRefresh?: () => void }) {
   const [tree, setTree] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+  const childrenCacheRef = useRef<Record<string, any[]>>({});
 
   const loadFiles = () => {
     if (!enabled) return;
@@ -26,7 +47,11 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
     const rootQuery = rootPath ? `&root=${encodeURIComponent(rootPath)}` : '';
     fetch(`/api/fs/dir?t=${Date.now()}${rootQuery}`)
       .then(r => r.json())
-      .then(data => { if (Array.isArray(data.files)) setTree(data.files); })
+      .then(data => {
+        if (Array.isArray(data.files)) {
+          setTree(rehydrateTree(data.files, childrenCacheRef.current, expandedPaths));
+        }
+      })
       .catch(() => {})
       .finally(() => setIsLoading(false));
   };
@@ -41,10 +66,20 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data.files)) {
+          childrenCacheRef.current[path] = data.files;
           setTree(prev => setChildrenAt(prev, path, data.files));
         }
       })
       .catch(() => {});
+  };
+
+  const handleToggleFolder = (path: string, open: boolean) => {
+    setExpandedPaths(prev => {
+      const next = new Set(prev);
+      if (open) next.add(path);
+      else next.delete(path);
+      return next;
+    });
   };
 
   if (!enabled) {
@@ -118,7 +153,7 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
           </div>
         ) : (
           files.map(file => (
-            <FileItem key={file.id} file={file} rootPath={rootPath} onLoadChildren={loadChildren} onOpenFile={onOpenFile} onActionComplete={loadFiles} />
+            <FileItem key={file.id} file={file} rootPath={rootPath} onLoadChildren={loadChildren} onOpenFile={onOpenFile} onActionComplete={loadFiles} expandedPaths={expandedPaths} onToggleFolder={handleToggleFolder} />
           ))
         )}
       </div>
@@ -126,7 +161,7 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
   );
 }
 
-function FileItem({ file, rootPath, onLoadChildren, onOpenFile, onActionComplete }: { file: any, rootPath?: string, onLoadChildren?: (path: string) => Promise<void>, onOpenFile?: (file: any) => void, onActionComplete: () => void }) {
+function FileItem({ file, rootPath, onLoadChildren, onOpenFile, onActionComplete, expandedPaths, onToggleFolder }: { file: any, rootPath?: string, onLoadChildren?: (path: string) => Promise<void>, onOpenFile?: (file: any) => void, onActionComplete: () => void, expandedPaths?: Set<string>, onToggleFolder?: (path: string, open: boolean) => void }) {
   const [isOpen, setIsOpen] = useState(file.is_expanded === 1);
   const [isLoadingChildren, setIsLoadingChildren] = useState(false);
   const actionFetcher = useFetcher<any>();
@@ -140,9 +175,16 @@ function FileItem({ file, rootPath, onLoadChildren, onOpenFile, onActionComplete
 
   const isFolder = file.type === 'folder';
   const children = Array.isArray(file.children) ? file.children : [];
-  const childrenLoaded = file.children !== null && file.children !== undefined;
 
   useEffect(() => { setMounted(true); }, []);
+
+  // Keep local open state in sync with the parent's expanded folder set so a
+  // refresh (which rebuilds the tree) never silently collapses an open folder.
+  useEffect(() => {
+    if (isFolder && expandedPaths) {
+      setIsOpen(expandedPaths.has(file.path));
+    }
+  }, [expandedPaths, file.path, isFolder]);
 
   // Close context menu on outside click
   useEffect(() => {
@@ -176,7 +218,8 @@ function FileItem({ file, rootPath, onLoadChildren, onOpenFile, onActionComplete
       if (file.forceExpanded !== undefined) {
         file.forceExpanded = undefined;
       }
-      if (next && !childrenLoaded && onLoadChildren) {
+      onToggleFolder?.(file.path, next);
+      if (next && onLoadChildren) {
         setIsLoadingChildren(true);
         Promise.resolve(onLoadChildren(file.path)).finally(() => setIsLoadingChildren(false));
       }
@@ -247,7 +290,7 @@ function FileItem({ file, rootPath, onLoadChildren, onOpenFile, onActionComplete
       {actualIsOpen && !isLoadingChildren && children.length > 0 && (
         <div className="ml-3 border-l border-ink/10 pl-1">
           {children.map((child: any) => (
-            <FileItem key={child.id} file={child} rootPath={rootPath} onLoadChildren={onLoadChildren} onOpenFile={onOpenFile} onActionComplete={onActionComplete} />
+            <FileItem key={child.id} file={child} rootPath={rootPath} onLoadChildren={onLoadChildren} onOpenFile={onOpenFile} onActionComplete={onActionComplete} expandedPaths={expandedPaths} onToggleFolder={onToggleFolder} />
           ))}
         </div>
       )}
