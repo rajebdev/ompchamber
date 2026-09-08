@@ -9,7 +9,8 @@ import {
   File as FileIcon,
   Check,
   Undo2,
-  AlertCircle
+  AlertCircle,
+  Info
 } from 'lucide-react';
 import type { ChatMessageData } from '@/types';
 import { ThinkingSection } from './ThinkingSection';
@@ -108,7 +109,7 @@ export function ChatMessageItem({
       <div id={msg.id} className={`flex flex-col items-end space-y-1.5 w-full max-w-full ${className}`}>
         {/* User bubble - standardized to text-[13px] with markdown support */}
         <div className="bg-paper p-3.5 sm:p-4 rounded-xl border border-ink/15 text-[13px] text-ink shadow-xs max-w-[92%] sm:max-w-[85%] break-words whitespace-pre-wrap overflow-hidden flex flex-col space-y-2 font-sans select-text mx-3" style={{ lineHeight: 'var(--markdown-body-line-height)' }}>
-          <MarkdownRenderer content={msg.content} />
+          <MarkdownRenderer content={msg.content.trim()} />
           
           {msg.attachments && msg.attachments.length > 0 && (
             <div className="flex flex-wrap gap-2 pt-2 border-t border-ink/10">
@@ -206,7 +207,15 @@ export function ChatMessageItem({
               </div>
               {msg.error.message && (
                 <p className="text-ink/80 leading-relaxed text-[12px] font-mono whitespace-pre-wrap break-words">
-                  {msg.error.message.split('\n').map((l: string) => l.trim()).filter(Boolean).pop()}
+                  {msg.error.message.split('\n').map((l: string) => l.trim()).filter(Boolean)[0]}
+                  {msg.error.message.split('\n').map((l: string) => l.trim()).filter(Boolean).length > 1 && (
+                    <span className="relative inline-flex items-center ml-1.5 align-middle group">
+                      <Info size={13} className="text-error/70 hover:text-error cursor-pointer transition-colors" />
+                      <span className="pointer-events-none absolute z-50 left-1/2 bottom-full mb-1.5 w-72 -translate-x-1/2 rounded-md bg-ink text-canvas p-2.5 text-[11px] font-mono leading-relaxed whitespace-pre-wrap break-words opacity-0 group-hover:opacity-100 transition-opacity duration-150 shadow-lg">
+                        {msg.error.message}
+                      </span>
+                    </span>
+                  )}
                 </p>
               )}
             </div>

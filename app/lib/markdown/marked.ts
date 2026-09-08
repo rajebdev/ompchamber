@@ -201,7 +201,7 @@ function escapeHtmlOutsideCode(source: string): string {
 export function renderMarkdown(markdown: string): string {
   const escaped = escapeHtmlOutsideCode(markdown);
   const healed = remend(escaped, { katex: true, inlineKatex: true });
-  return marked.parse(healed) as string;
+  return (marked.parse(healed) as string).trim();
 }
 
 export { marked };
