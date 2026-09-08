@@ -20,6 +20,7 @@ interface ChatTimelineProps {
 export function ChatTimeline({ className = '', folders = [], appSettings = {}, onSessionTitle }: ChatTimelineProps) {
   const {
     sessionId,
+    isOmpSession,
     selectedFolderId,
     setSelectedFolderId,
     sessionData,
@@ -44,6 +45,8 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
     handleRetry,
     submitNewChat,
     stopGenerating,
+    handleThinkingLevelChange,
+    handleModelChange,
   } = useChatTimeline({ folders, appSettings });
 
   const [newChatInitialContent, setNewChatInitialContent] = useState<string | null>(null);
@@ -160,6 +163,10 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
             isGenerating={isGenerating}
             onStop={stopGenerating}
             appSettings={appSettings}
+            sessionId={sessionId}
+            isOmpSession={isOmpSession}
+            onThinkingLevelChange={handleThinkingLevelChange}
+            onModelChange={handleModelChange}
           />
         </div>
       </div>

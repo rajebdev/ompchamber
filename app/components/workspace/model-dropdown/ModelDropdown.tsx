@@ -12,6 +12,7 @@ interface ModelDropdownProps {
   selectedModel?: AIModelOption;
   onSelectModel?: (model: AIModelOption) => void;
   onOpenAddProvider?: () => void;
+  onThinkingLevelChange?: (level: string) => void;
   className?: string;
 }
 
@@ -19,6 +20,7 @@ export function ModelDropdown({
   selectedModel: externalSelectedModel,
   onSelectModel,
   onOpenAddProvider,
+  onThinkingLevelChange,
   className = '',
 }: ModelDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -43,7 +45,31 @@ export function ModelDropdown({
       const res = await fetch('/api/models');
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data.models) && data.models.length > 0) {
+        if (Array.isArray(data.modelList) && data.modelList.length > 0) {
+          const realModels: AIModelOption[] = data.modelList.map((m: { id: string; name: string; provider: string; contextWindow?: number; thinkingLevels?: string[]; cost?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number } }) => {
+            const ladder = Array.isArray(m.thinkingLevels) ? m.thinkingLevels : [];
+            const hasReasoning = ladder.length > 1;
+            return {
+              id: m.id,
+              name: m.name,
+              provider: m.provider,
+              contextWindow: m.contextWindow,
+              thinkingLevel: hasReasoning ? 'Default' : 'Off',
+              capabilities: hasReasoning ? ['Tool calling', 'Reasoning'] : ['Tool calling'],
+              cost: m.cost ? {
+                input: m.cost.input !== undefined ? `$${m.cost.input}` : '—',
+                output: m.cost.output !== undefined ? `$${m.cost.output}` : '—',
+                cacheRead: m.cost.cacheRead !== undefined ? `$${m.cost.cacheRead}` : undefined,
+                cacheWrite: m.cost.cacheWrite !== undefined ? `$${m.cost.cacheWrite}` : undefined,
+              } : undefined,
+            };
+          });
+          setModels(realModels);
+          if (data.defaultModel && !externalSelectedModel) {
+            const match = realModels.find(m => m.id === data.defaultModel.modelId && m.provider === data.defaultModel.provider);
+            if (match) setSelectedModel(match);
+          }
+        } else if (Array.isArray(data.models) && data.models.length > 0) {
           setModels(data.models);
         }
         if (data.selectedModel && !externalSelectedModel) {
@@ -61,7 +87,16 @@ export function ModelDropdown({
   }, [loadModelsFromApi]);
 
   useEffect(() => {
-    if (externalSelectedModel) setSelectedModel(externalSelectedModel);
+    if (!externalSelectedModel) return;
+    setSelectedModel(externalSelectedModel);
+    // The pill in each row reads `models[i].thinkingLevel`, so a thinking
+    // change made in the composer (which flows back via this prop) must also
+    // update the matching list entry — not just the selectedModel state.
+    setModels(prev => prev.map(m =>
+      m.id === externalSelectedModel.id && m.provider === externalSelectedModel.provider
+        ? { ...m, thinkingLevel: externalSelectedModel.thinkingLevel }
+        : m
+    ));
   }, [externalSelectedModel]);
 
   const handleAddProviderClick = () => {
@@ -88,7 +123,7 @@ export function ModelDropdown({
     return models.filter(m => 
       m.name.toLowerCase().includes(q) ||
       m.provider.toLowerCase().includes(q) ||
-      m.contextWindow?.toLowerCase().includes(q) ||
+      String(m.contextWindow ?? '').toLowerCase().includes(q) ||
       m.capabilities?.some(c => c.toLowerCase().includes(q))
     );
   }, [models, search]);
@@ -137,7 +172,9 @@ export function ModelDropdown({
     setModels(prev => prev.map(m => m.id === id ? { ...m, thinkingLevel: nextThinking } : m));
     if (selectedModel.id === id) {
       setSelectedModel(prev => ({ ...prev, thinkingLevel: nextThinking }));
+      onSelectModel?.({ ...selectedModel, thinkingLevel: nextThinking });
     }
+    onThinkingLevelChange?.(nextThinking);
     try {
       await fetch('/api/models', {
         method: 'POST',

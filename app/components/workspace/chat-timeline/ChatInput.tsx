@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Send, 
   Square,
@@ -9,10 +9,11 @@ import {
   File as FileIcon, 
   Check 
 } from 'lucide-react';
-import type { Attachment, AIModelOption } from '@/types';
+import type { Attachment, AIModelOption, ModelEntry } from '@/types';
 import { useOnClickOutside } from '@/hooks/useOnClickOutside';
 import { ModelDropdown } from '@/components/workspace/model-dropdown/ModelDropdown';
 import { INITIAL_MODELS_CATALOG } from '@/data/modelCatalogData';
+import { selectableThinkingLevels } from '@/lib/thinking-levels';
 
 export function ChatInput({ 
   value, 
@@ -24,7 +25,11 @@ export function ChatInput({
   disabled = false,
   appSettings = {},
   attachments: externalAttachments,
-  onAttachmentsChange
+  onAttachmentsChange,
+  sessionId,
+  isOmpSession = false,
+  onThinkingLevelChange,
+  onModelChange,
 }: { 
   value: string; 
   onChange: (v: string) => void; 
@@ -36,6 +41,10 @@ export function ChatInput({
   appSettings?: Record<string, any>;
   attachments?: Attachment[];
   onAttachmentsChange?: (attachments: Attachment[]) => void;
+  sessionId?: string | null;
+  isOmpSession?: boolean;
+  onThinkingLevelChange?: (level: string) => void;
+  onModelChange?: (provider: string, modelId: string) => void;
 }) {
   const [internalAttachments, setInternalAttachments] = useState<Attachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -54,6 +63,8 @@ export function ChatInput({
   const [selectedModel, setSelectedModel] = useState<AIModelOption>(
     INITIAL_MODELS_CATALOG[5] || INITIAL_MODELS_CATALOG[0]
   );
+  const [thinkingLevelsByModel, setThinkingLevelsByModel] = useState<Record<string, string[]>>({});
+  const [currentThinking, setCurrentThinking] = useState('auto');
 
   // Sync selected model from server and event listener
   useEffect(() => {
@@ -63,7 +74,16 @@ export function ChatInput({
         const res = await fetch('/api/models');
         if (res.ok && active) {
           const data = await res.json();
-          if (data.selectedModel) {
+          if (Array.isArray(data.modelList) && data.modelList.length > 0) {
+            setThinkingLevelsByModel(data.thinkingLevels ?? {});
+            const defaultModel = data.defaultModel;
+            if (defaultModel) {
+              const match = data.modelList.find((m: ModelEntry) => m.id === defaultModel.modelId && m.provider === defaultModel.provider);
+              if (match) {
+                setSelectedModel({ id: match.id, name: match.name, provider: match.provider });
+              }
+            }
+          } else if (data.selectedModel) {
             setSelectedModel(data.selectedModel);
           }
         }
@@ -83,13 +103,21 @@ export function ChatInput({
   const [showThinking, setShowThinking] = useState(false);
   const thinkingRef = useRef<HTMLDivElement>(null);
   useOnClickOutside(thinkingRef, () => setShowThinking(false));
-  const thinkingLevels: ('Default' | 'High' | 'Low' | 'Off')[] = ['Default', 'High', 'Low', 'Off'];
-  const currentThinking = selectedModel.thinkingLevel || 'Default';
+  const thinkingLevels = useMemo(() => {
+    const key = `${selectedModel.provider}:${selectedModel.id}`;
+    const baked = thinkingLevelsByModel[key];
+    if (baked && baked.length > 0) return selectableThinkingLevels(baked);
+    return selectableThinkingLevels(null);
+  }, [selectedModel, thinkingLevelsByModel]);
 
-  const handleSelectThinking = async (level: 'Default' | 'High' | 'Low' | 'Off') => {
+  const handleSelectThinking = async (level: string) => {
     setShowThinking(false);
-    setSelectedModel(prev => ({ ...prev, thinkingLevel: level }));
-
+    setCurrentThinking(level);
+    setSelectedModel(prev => ({ ...prev, thinkingLevel: level as AIModelOption['thinkingLevel'] }));
+    if (isOmpSession && sessionId) {
+      onThinkingLevelChange?.(level);
+      return;
+    }
     try {
       await fetch('/api/models', {
         method: 'POST',
@@ -105,6 +133,43 @@ export function ChatInput({
       console.error('Failed to update thinking level:', err);
     }
   };
+
+  // Re-sync the thinking dropdown label when the model dropdown's thinking
+  // pill cycles the level (it updates `selectedModel.thinkingLevel`). Only
+  // applies when the field is set — real-mode models fetched from the catalog
+  // carry no baked level, so their label comes from get_state (below).
+  useEffect(() => {
+    if (selectedModel.thinkingLevel) {
+      setCurrentThinking(selectedModel.thinkingLevel as string);
+    }
+  }, [selectedModel.thinkingLevel]);
+
+  // Real mode: sync the label with the thinking level omp is actually using
+  // (get_state). The model dropdown's pill and the composer dropdown both feed
+  // set_thinking_level; the live process is the source of truth.
+  useEffect(() => {
+    if (!isOmpSession || !sessionId) return;
+    let active = true;
+    const syncFromState = async () => {
+      try {
+        const res = await fetch(`/api/agent/${encodeURIComponent(sessionId)}`);
+        if (!res.ok || !active) return;
+        const body = await res.json();
+        const level = body?.state?.thinkingLevel;
+        if (typeof level === 'string' && active) {
+          setCurrentThinking(level);
+          setSelectedModel(prev => ({ ...prev, thinkingLevel: level as AIModelOption['thinkingLevel'] }));
+        }
+      } catch {}
+    };
+    syncFromState();
+    const handleModelsUpdated = () => syncFromState();
+    window.addEventListener('omp:models-updated', handleModelsUpdated);
+    return () => {
+      active = false;
+      window.removeEventListener('omp:models-updated', handleModelsUpdated);
+    };
+  }, [isOmpSession, sessionId]);
 
   // Access Dropdown State
   const [showAccess, setShowAccess] = useState(false);
@@ -135,6 +200,18 @@ export function ChatInput({
       preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : ''
     }));
     setAttachments(prev => [...prev, ...newAttachments]);
+    // Read image payloads as base64 so the omp model can receive them.
+    for (const att of newAttachments) {
+      if (!att.file.type.startsWith('image/')) continue;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        const base64 = result.split(',')[1];
+        if (!base64) return;
+        setAttachments(prev => prev.map(a => (a.id === att.id ? { ...a, dataBase64: base64 } : a)));
+      };
+      reader.readAsDataURL(att.file);
+    }
   };
 
   const removeAttachment = (id: string) => {
@@ -248,7 +325,17 @@ export function ChatInput({
           {/* Redesigned Model Dropdown */}
           <ModelDropdown 
             selectedModel={selectedModel}
-            onSelectModel={setSelectedModel}
+            onSelectModel={(model) => {
+              setSelectedModel(model);
+              if (isOmpSession && sessionId) {
+                onModelChange?.(model.provider, model.id);
+              }
+            }}
+            onThinkingLevelChange={(level) => {
+              if (isOmpSession && sessionId) {
+                onThinkingLevelChange?.(level);
+              }
+            }}
           />
 
           <div className="w-[1px] h-3 bg-ink/10" />

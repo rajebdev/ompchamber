@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Search, SlidersHorizontal, Settings2, Image as ImageIcon, Eye, EyeOff } from 'lucide-react';
 import type { ProviderModel } from '@/types';
+import { formatContextWindow } from '@/lib/format';
 
 interface ProviderModelsListProps {
   models: ProviderModel[];
@@ -99,7 +100,7 @@ export function ProviderModelsList({
               <div className="flex items-center gap-2 flex-shrink-0">
                 {/* Context Window Badge */}
                 <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-ink/5 text-ink/70 border border-ink/10">
-                  {model.contextWindow}
+                  {formatContextWindow(model.contextWindow)}
                 </span>
 
                 {/* Tool Calling / Steering Button */}

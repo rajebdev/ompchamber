@@ -7,6 +7,8 @@ export interface Attachment {
   preview: string;
   type?: string;
   size?: number;
+  /** Base64 payload for image attachments (sent to the omp model). */
+  dataBase64?: string;
 }
 
 export type ChatAttachment = Attachment;
@@ -98,7 +100,7 @@ export interface AIModelOption {
   name: string;
   provider: string;
   providerIcon?: string;
-  contextWindow?: string;
+  contextWindow?: string | number;
   isCmdAgent?: boolean;
   isFavorite?: boolean;
   isRecent?: boolean;
@@ -107,9 +109,52 @@ export interface AIModelOption {
   input?: string;
   output?: string;
   cost?: {
-    input: string;
-    output: string;
+    input: string | number;
+    output: string | number;
+    cacheRead?: string | number;
+    cacheWrite?: string | number;
   };
   description?: string;
+}
+
+// ── Real omp model registry (forked from omp-web) ──────────────────────────
+
+/** One pickable model from the omp catalog (`/api/models` modelList). */
+export interface ModelEntry {
+  id: string;
+  name: string;
+  provider: string;
+  supportsFastMode?: boolean;
+  contextWindow?: number;
+  maxTokens?: number;
+  /** Baked thinking ladder for this model: `["off", ...efforts]`. */
+  thinkingLevels?: string[];
+  /** Cost in $/1M tokens (omp catalog). */
+  cost?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number };
+}
+
+/** A model selected by provider + modelId (omp's set_model shape). */
+export interface SelectedModel {
+  provider: string;
+  modelId: string;
+}
+
+/** Model-level thinking metadata read off the live session state. */
+export interface ThinkingModelMeta {
+  provider: string;
+  modelId: string;
+  name?: string;
+  reasoning?: boolean;
+  thinking?: { efforts?: string[] };
+}
+
+/** Response shape of GET /api/models (mirrors omp-web ModelsData). */
+export interface ModelsData {
+  models: Record<string, string>;
+  modelList: ModelEntry[];
+  defaultModel: SelectedModel | null;
+  thinkingLevels: Record<string, string[]>;
+  connectedProviders?: { id: string; name: string; disabled: boolean }[];
+  modelError?: string;
 }
 

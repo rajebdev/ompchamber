@@ -12,6 +12,7 @@ import {
   Brain
 } from 'lucide-react';
 import type { AIModelOption } from '@/types';
+import { formatContextWindow } from '@/lib/format';
 
 interface ModelDropdownItemProps {
   model: AIModelOption;
@@ -103,7 +104,7 @@ export function ModelDropdownItem({
           </span>
           {model.contextWindow && (
             <span className="font-mono text-[10px] text-ink/45 flex-shrink-0">
-              {model.contextWindow}
+              {formatContextWindow(model.contextWindow)}
             </span>
           )}
         </div>
