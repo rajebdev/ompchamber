@@ -18,6 +18,7 @@ interface GitBranchToolbarProps {
   setShowBranchMenu: (show: boolean) => void;
   branch: string;
   branches: string[];
+  remoteBranches: string[];
   onCheckout: (branch: string) => void;
   onOpenBranchPrompt: () => void;
   optionsRef: RefObject<HTMLDivElement | null>;
@@ -38,6 +39,7 @@ export function GitBranchToolbar({
   setShowBranchMenu,
   branch,
   branches,
+  remoteBranches,
   onCheckout,
   onOpenBranchPrompt,
   optionsRef,
@@ -66,19 +68,42 @@ export function GitBranchToolbar({
         {showBranchMenu && (
           <div className="absolute top-full left-0 mt-1 w-48 bg-paper border border-ink/20 rounded-md shadow-lg z-50 flex flex-col overflow-hidden text-xs">
             <div className="max-h-48 overflow-y-auto py-1">
-              {branches.map(b => (
-                <button 
-                  key={b}
-                  onClick={() => { 
-                    onCheckout(b);
-                    setShowBranchMenu(false); 
-                  }}
-                  className="w-full text-left px-3 py-2 hover:bg-ink/5 flex items-center justify-between transition-colors"
-                >
-                  <span className="truncate">{b}</span>
-                  {branch === b && <Check size={12} className="text-ink" />}
-                </button>
-              ))}
+              {branches.length > 0 && (
+                <>
+                  <div className="px-3 py-1 text-[9px] uppercase tracking-wider text-ink/40 font-semibold">Local</div>
+                  {branches.map(b => (
+                    <button 
+                      key={b}
+                      onClick={() => { 
+                        onCheckout(b);
+                        setShowBranchMenu(false); 
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-ink/5 flex items-center justify-between transition-colors"
+                    >
+                      <span className="truncate">{b}</span>
+                      {branch === b && <Check size={12} className="text-ink" />}
+                    </button>
+                  ))}
+                </>
+              )}
+              {remoteBranches.length > 0 && (
+                <>
+                  <div className="px-3 py-1 text-[9px] uppercase tracking-wider text-ink/40 font-semibold">Remote</div>
+                  {remoteBranches.map(b => (
+                    <button 
+                      key={b}
+                      onClick={() => { 
+                        onCheckout(b);
+                        setShowBranchMenu(false); 
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-ink/5 flex items-center justify-between transition-colors"
+                    >
+                      <span className="truncate">{b}</span>
+                      {branch === b && <Check size={12} className="text-ink" />}
+                    </button>
+                  ))}
+                </>
+              )}
               <div className="w-full h-px bg-ink/10 my-1" />
               <button 
                 onClick={() => { 

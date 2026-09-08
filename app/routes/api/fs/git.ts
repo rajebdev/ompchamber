@@ -98,12 +98,16 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
     let branch = 'main';
     let branches: string[] = ['main'];
+    let remoteBranches: string[] = [];
     try {
       const { stdout: branchOut } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: targetDir });
       branch = branchOut.trim() || 'main';
 
-      const { stdout: allBranchesOut } = await execAsync('git branch --format="%(refname:short)"', { cwd: targetDir });
-      branches = allBranchesOut.trim().split('\n').filter(Boolean);
+      const { stdout: localOut } = await execAsync('git branch --format="%(refname:short)"', { cwd: targetDir });
+      branches = localOut.trim().split('\n').filter(Boolean);
+
+      const { stdout: remoteOut } = await execAsync('git branch -r --format="%(refname:short)"', { cwd: targetDir });
+      remoteBranches = remoteOut.trim().split('\n').filter(Boolean).filter(b => b.includes('/') && !b.endsWith('/HEAD'));
       if (!branches.includes(branch)) {
         branches.unshift(branch);
       }
@@ -155,6 +159,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       changes,
       branch: branch || 'main',
       branches: branches.length ? branches : ['main'],
+      remoteBranches,
       repos,
       reposPending: pending,
       activeRepo: repo,
@@ -165,6 +170,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       changes: [],
       branch: 'main',
       branches: ['main'],
+      remoteBranches: [],
       repos: repos.length ? repos : ['.'],
       reposPending: pending,
       activeRepo: repo,
@@ -220,7 +226,15 @@ export async function action({ request }: ActionFunctionArgs) {
       await execAsync(`git clean -fd`, { cwd: targetDir });
     } else if (actionType === 'checkout') {
       const branch = formData.get('branch') as string;
-      await execAsync(`git checkout "${branch}"`, { cwd: targetDir });
+      const isLocal = await execAsync(`git rev-parse --verify --quiet refs/heads/${branch}`, { cwd: targetDir })
+        .then(() => true)
+        .catch(() => false);
+      if (isLocal) {
+        await execAsync(`git checkout "${branch}"`, { cwd: targetDir });
+      } else {
+        const localName = branch.split('/').slice(1).join('/');
+        await execAsync(`git checkout -b "${localName}" --track "${branch}"`, { cwd: targetDir });
+      }
     } else if (actionType === 'create_branch') {
       const branch = formData.get('branch') as string;
       await execAsync(`git checkout -b "${branch}"`, { cwd: targetDir });

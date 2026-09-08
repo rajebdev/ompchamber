@@ -17,7 +17,7 @@ interface GitPanelProps {
 }
 
 export function GitPanel({ className = '', enabled = true, rootPath, refreshKey = 0 }: GitPanelProps) {
-  const fetcher = useFetcher<{ changes: GitChange[], branch: string, branches: string[], repos: string[], reposPending?: boolean, activeRepo: string, syncCount?: { ahead: number, behind: number } }>();
+  const fetcher = useFetcher<{ changes: GitChange[], branch: string, branches: string[], remoteBranches?: string[], repos: string[], reposPending?: boolean, activeRepo: string, syncCount?: { ahead: number, behind: number } }>();
   const actionFetcher = useFetcher<{ success: boolean, type?: string, data?: any }>();
 
   const loadRepo = (repo?: string) => {
@@ -170,6 +170,7 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
   const activeRepo = fetcher.data?.activeRepo || '.';
   const branch = fetcher.data?.branch || 'main';
   const branches = fetcher.data?.branches || ['main'];
+  const remoteBranches = fetcher.data?.remoteBranches || [];
   const repos = extraRepos ?? (fetcher.data?.repos || ['.']);
   const changes = fetcher.data?.changes || [];
   const isLoading = fetcher.state === 'loading' || actionFetcher.state !== 'idle';
@@ -263,6 +264,7 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
         setShowBranchMenu={setShowBranchMenu}
         branch={branch}
         branches={branches}
+        remoteBranches={remoteBranches}
         onCheckout={(b: string) => executeAction('checkout', undefined, { branch: b })}
         onOpenBranchPrompt={() => setBranchPrompt(true)}
         optionsRef={optionsRef}
