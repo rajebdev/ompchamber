@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Settings2, Sliders, Check } from 'lucide-react';
+import { X, Settings2, Check } from 'lucide-react';
 import type { ProviderModel } from '@/types';
 
 interface ModelConfigModalProps {

@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Plus, Minus, Undo2 } from 'lucide-react';
 import type { GitChange } from '@/types';
-import { GitFileItem } from './GitFileItem';
-import { GitTreeView } from './GitTreeView';
+import { GitFileItem } from '@/components/workspace/git-panel/GitFileItem';
+import { GitTreeView } from '@/components/workspace/git-panel/GitTreeView';
 
 interface GitChangesListProps {
   changes: GitChange[];

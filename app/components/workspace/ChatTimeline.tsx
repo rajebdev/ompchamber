@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { ArrowDown } from 'lucide-react';
-import { ChatInput } from './chat-timeline/ChatInput';
-import { ChatMessageItem } from './chat-timeline/ChatMessageItem';
-import { MinimapShortcuts } from './chat-timeline/MinimapShortcuts';
-import { EmptyWorkspacePrompt } from './chat-timeline/EmptyWorkspacePrompt';
-import { GeneratingIndicator } from './chat-timeline/GeneratingIndicator';
-import { QueueList } from './chat-timeline/QueueList';
-import { NewChatModal } from './chat-timeline/NewChatModal';
+import { ChatInput } from '@/components/workspace/chat-timeline/ChatInput';
+import { ChatMessageItem } from '@/components/workspace/chat-timeline/ChatMessageItem';
+import { MinimapShortcuts } from '@/components/workspace/chat-timeline/MinimapShortcuts';
+import { EmptyWorkspacePrompt } from '@/components/workspace/chat-timeline/EmptyWorkspacePrompt';
+import { GeneratingIndicator } from '@/components/workspace/chat-timeline/GeneratingIndicator';
+import { QueueList } from '@/components/workspace/chat-timeline/QueueList';
+import { NewChatModal } from '@/components/workspace/chat-timeline/NewChatModal';
 import { useChatTimeline } from '@/hooks/useChatTimeline';
 import { responseRunDurationMs } from '@/lib/chat-duration';
 
@@ -110,7 +110,6 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
                   msg={msg}
                   modelName={sessionData?.model}
                   isStreaming={isLoading}
-                  generatingVerb={generatingVerb}
                   onUndo={handleUndo}
                   onRetry={handleRetry}
                   onNewChat={(content) => setNewChatInitialContent(content)}

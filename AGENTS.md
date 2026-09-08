@@ -60,7 +60,20 @@
   - `import { SessionSidebar } from '@/components/layout/SessionSidebar';`
   - `import { PWAInstallButton } from '@/components/common/PWAInstallButton';`
 
-### 4. Pure UI Components & Semantic Separation
+### 4. Absolute Imports via `@/` Alias (No Relative Imports)
+- **All** internal imports MUST use the `@/` path alias (mapped to `./app/*` in both `tsconfig.json` and `vite.config.ts`). Relative imports (`./`, `../`) are **forbidden** in application code.
+- This applies to every import form: `import`, `import type`, `export * from`, and side-effect imports.
+- Examples:
+  - `import { ChatTimeline } from '@/components/workspace/ChatTimeline';`
+  - `import type { OmpSession } from '@/types/omp';`
+  - `import { getDb } from '@/db.server';`
+  - `import '@/tailwind.css';`
+- Exceptions (keep relative):
+  - Third-party packages and node built-ins (never prefixed with `@/`).
+  - Assets outside `app/` (e.g., `package.json` at the project root) — use `@/../package.json` or a relative path.
+- The `~` alias is deprecated; use `@/` exclusively.
+
+### 5. Pure UI Components & Semantic Separation
 - **`app/components/` is strictly for React UI (`.tsx`)**:
   - No mixed `.ts` utility, data, or hook files inside component folders.
 - **Dedicated non-UI directories**:
@@ -68,7 +81,7 @@
   - **Data (`app/data/`)**: Mock or static datasets (e.g., `chatMockData.ts`).
   - **Types (`app/types/`)**: Domain interfaces and types (`workspace.ts`, `fs.ts`, `git.ts`, `chat.ts`).
 
-### 5. Domain Types Architecture
+### 6. Domain Types Architecture
 - Domain data models and shared TypeScript interfaces must be organized cleanly under `app/types/`:
   - `workspace.ts` — folders, session entities, and sorting types
   - `fs.ts` — file explorer node trees, opened files, and search result items
@@ -76,20 +89,20 @@
   - `chat.ts` — messages, agent actions, monologue, and attachments
   - `index.ts` — central export barrel for all types (`import type { ... } from '@/types'`)
 
-### 6. Verification Requirements
+### 7. Verification Requirements
 - Every change must pass:
   1. `npm run lint` (`tsc --noEmit`) without errors.
   2. Production build verification (`compile_applet`).
 
-### 7. Layout & Panel Resizing
+### 8. Layout & Panel Resizing
 - **Panel Width**: Be aware that the width of the layout panels (like the sidebar or right sidebar) is considered and calculated in **pixels**. When handling layout persistence or default sizes, ensure they are treated as pixel values rather than just percentages, adapting library APIs (like `react-resizable-panels`) as needed to accommodate pixel-based design intent.
 
-### 8. Route Organization & Domain Grouping
+### 9. Route Organization & Domain Grouping
 - **Domain-Based Subdirectories**: Routes under `app/routes/` MUST be organized and grouped into subdirectories matching their functional domain (e.g., `app/routes/api/settings/`, `app/routes/api/chat/`, `app/routes/api/fs/`, `app/routes/api/terminal/`, `app/routes/api/telemetry/`, `app/routes/api/sessions/`, `app/routes/api/files/`, `app/routes/api/folders/`).
 - **No Monolithic Flat Folder Clutter**: Do NOT dump all API route endpoints loosely in the root of `app/routes/api/` as flat files. Group related child endpoints inside domain folders (e.g., `settings/route.ts`, `settings/agents.ts`, `settings/providers.ts`).
 - **Nested & Parametric Routes**: Parametric and dynamic routes follow Remix flat-routes directory nesting conventions (e.g., `chat/$sessionId.ts`, `sessions/$sessionId.queue.ts`).
 
-### 9. Environment Data Modes (`MOCK=true` vs `MOCK=false`)
+### 10. Environment Data Modes (`MOCK=true` vs `MOCK=false`)
 - **`MOCK=true` (Simulation & Demo Mode)**:
   - All features and loaders utilize rich predefined datasets and presets from `app/data/` (simulated demo chats, token telemetry ranges, agent/project presets).
   - Database seeding automatically injects sample workspace folders, demo commit sessions, and file structures.

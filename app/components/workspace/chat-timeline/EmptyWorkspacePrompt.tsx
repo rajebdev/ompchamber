@@ -1,8 +1,8 @@
-import React, { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { Folder, ChevronDown, Check } from 'lucide-react';
 import type { Attachment } from '@/types';
 import { useOnClickOutside } from '@/hooks/useOnClickOutside';
-import { ChatInput } from './ChatInput';
+import { ChatInput } from '@/components/workspace/chat-timeline/ChatInput';
 
 interface EmptyWorkspacePromptProps {
   className?: string;

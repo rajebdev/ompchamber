@@ -21,7 +21,7 @@
  */
 
 import { readFileSync, statSync } from 'fs';
-import { parseJsonlLenient } from './session-jsonl';
+import { parseJsonlLenient } from '@/lib/omp/session-jsonl';
 import type { ChatMessageData, ToolCallData, ToolType } from '@/types/chat';
 
 const MAX_SESSION_LOAD_BYTES = 512 * 1024 * 1024;

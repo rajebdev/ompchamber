@@ -1,7 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Folder, ChevronDown, Plus, Check } from 'lucide-react';
 import type { ProviderItem } from '@/types';
-import { ProviderIcon } from './ProviderIcons';
+import { ProviderIcon } from '@/components/settings/categories/provider-settings/ProviderIcons';
 
 interface ProviderSidebarListProps {
   providers: ProviderItem[];

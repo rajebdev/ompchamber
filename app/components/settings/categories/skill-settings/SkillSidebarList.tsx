@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Plus, Folder, ChevronDown, ChevronRight, Check } from 'lucide-react';
 import type { SkillItem } from '@/types';
 

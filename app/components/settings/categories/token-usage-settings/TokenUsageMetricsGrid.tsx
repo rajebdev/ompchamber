@@ -1,4 +1,3 @@
-import React from 'react';
 import type { TokenUsageMetricSet } from '@/types';
 
 interface TokenUsageMetricsGridProps {

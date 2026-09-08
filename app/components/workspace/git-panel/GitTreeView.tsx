@@ -1,7 +1,6 @@
-import React from 'react';
 import type { GitChange } from '@/types';
 import { useGitTree } from '@/hooks/useGitTree';
-import { GitTreeItem } from './GitTreeItem';
+import { GitTreeItem } from '@/components/workspace/git-panel/GitTreeItem';
 
 interface GitTreeViewProps {
   changes: GitChange[];

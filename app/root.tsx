@@ -6,11 +6,11 @@ import {
   ScrollRestoration,
   useLoaderData
 } from "@remix-run/react";
-import type { LinksFunction, LoaderFunctionArgs } from "@remix-run/node";
+import type { LinksFunction } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { getDb } from "./db.server";
+import { getDb } from "@/db.server";
 
-import "./tailwind.css";
+import "@/tailwind.css";
 import "katex/dist/katex.min.css";
 import '@fontsource/fira-code/400.css';
 import '@fontsource/fira-code/500.css';
@@ -33,7 +33,7 @@ export const links: LinksFunction = () => [
   },
 ];
 
-export async function loader({ request }: LoaderFunctionArgs) {
+export async function loader() {
   try {
     const db = await getDb();
     const settingsRow = await db.get('SELECT * FROM app_settings WHERE key = ?', ['omp_chamber_settings']);

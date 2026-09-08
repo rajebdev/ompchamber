@@ -1,4 +1,3 @@
-import React from 'react';
 import { X, SlidersHorizontal, Check, ShieldCheck, Eye, Terminal, Sparkles, Cpu } from 'lucide-react';
 import type { ProviderModel } from '@/types';
 

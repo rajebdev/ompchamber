@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Sparkles, ChevronDown, Info, Check } from 'lucide-react';
 
 const FALLBACK_MODELS = [

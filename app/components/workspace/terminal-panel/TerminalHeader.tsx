@@ -1,6 +1,5 @@
-import React from 'react';
 import { Terminal, Trash2, Folder, Loader2 } from 'lucide-react';
-import { GitRepoDropdown } from '../file-explorer/GitRepoDropdown';
+import { GitRepoDropdown } from '@/components/workspace/file-explorer/GitRepoDropdown';
 
 interface TerminalHeaderProps {
   cwd: string;
@@ -8,7 +7,6 @@ interface TerminalHeaderProps {
   isRunning: boolean;
   bunVersion: string;
   onClear: () => void;
-  onClose?: () => void;
   rootPath?: string;
   activeRepo: string;
   onSelectRepo: (repo: string) => void;
@@ -20,7 +18,6 @@ export function TerminalHeader({
   isRunning,
   bunVersion,
   onClear,
-  onClose,
   rootPath,
   activeRepo,
   onSelectRepo,

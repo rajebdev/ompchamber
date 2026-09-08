@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Search, SlidersHorizontal, Settings2, Image as ImageIcon, Eye, EyeOff } from 'lucide-react';
 import type { ProviderModel } from '@/types';
 

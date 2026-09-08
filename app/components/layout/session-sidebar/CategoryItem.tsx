@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { Plus, MoreHorizontal, Pin, PinOff, Trash2 } from 'lucide-react';
 import { useFetcher, useRevalidator } from '@remix-run/react';
 import { useOnClickOutside } from '@/hooks/useOnClickOutside';

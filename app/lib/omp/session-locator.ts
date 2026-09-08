@@ -9,8 +9,8 @@
  * the file path when an id matches.
  */
 
-import { getSessionsDir } from './paths';
-import { listSessionFiles, scanSessionInfo } from './session-files';
+import { getSessionsDir } from '@/lib/omp/paths';
+import { listSessionFiles, scanSessionInfo } from '@/lib/omp/session-files';
 
 /** Find the absolute path of the .jsonl whose header id matches. */
 export function findSessionFileById(

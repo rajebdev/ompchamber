@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, ChevronsUpDown, Filter } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, ChevronsUpDown } from 'lucide-react';
 import type { RawMessageItem } from '@/types';
-import { RawJsonViewer } from './RawJsonViewer';
+import { RawJsonViewer } from '@/components/workspace/context-panel/RawJsonViewer';
 
 const MODEL_COLORS = [
   'bg-emerald-500',

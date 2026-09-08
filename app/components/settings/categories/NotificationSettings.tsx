@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Volume2, VolumeX, Sparkles } from 'lucide-react';
 import type { SettingsState } from '@/types';
 import { playNotificationSound } from '@/hooks/useNotificationSound';

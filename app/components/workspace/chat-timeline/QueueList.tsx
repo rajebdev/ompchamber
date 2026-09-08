@@ -37,8 +37,8 @@ export function QueueList({ queue, setQueue, onEdit, onSendNow }: QueueListProps
         <div
           key={item.id}
           draggable
-          onDragStart={(e) => { dragItem.current = index; }}
-          onDragEnter={(e) => { dragOverItem.current = index; }}
+          onDragStart={() => { dragItem.current = index; }}
+          onDragEnter={() => { dragOverItem.current = index; }}
           onDragEnd={handleSort}
           onDragOver={(e) => e.preventDefault()}
           className="flex items-center gap-2 px-2 py-1.5 bg-paper border border-ink/10 rounded shadow-sm text-xs group hover:border-ink/30 transition-colors"

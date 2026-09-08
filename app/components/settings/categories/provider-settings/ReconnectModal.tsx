@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Key, Globe, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 import type { ProviderItem } from '@/types';
-import { ProviderIcon } from './ProviderIcons';
+import { ProviderIcon } from '@/components/settings/categories/provider-settings/ProviderIcons';
 
 interface ReconnectModalProps {
   isOpen: boolean;

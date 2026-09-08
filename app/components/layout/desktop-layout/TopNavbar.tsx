@@ -1,10 +1,8 @@
-import React from 'react';
 import { PanelRightClose, PanelRight, LayoutTemplate, Smartphone, MoreHorizontal } from 'lucide-react';
 import { PWAInstallButton } from '@/components/common/PWAInstallButton';
 
 interface TopNavbarProps {
   sessionTitle: string | null;
-  sessionId: string | null;
   showLeftPanel: boolean;
   showEditor: boolean;
   showRightPanel: boolean;
@@ -15,7 +13,6 @@ interface TopNavbarProps {
 
 export function TopNavbar({
   sessionTitle,
-  sessionId,
   showLeftPanel,
   showEditor,
   showRightPanel,

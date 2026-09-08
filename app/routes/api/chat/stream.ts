@@ -20,7 +20,6 @@ async function handleStreamingRequest(request: Request) {
   let sessionId = url.searchParams.get('sessionId') || `session-${Date.now()}`;
   let prompt = url.searchParams.get('prompt') || '';
   let modelName = url.searchParams.get('model') || 'DeepSeek V4 Pro';
-  let attachments: any[] = [];
   let workspaceName = url.searchParams.get('workspaceName') || 'Workspace';
 
   if (request.method === 'POST') {
@@ -29,7 +28,6 @@ async function handleStreamingRequest(request: Request) {
       if (body.sessionId) sessionId = body.sessionId;
       if (body.prompt) prompt = body.prompt;
       if (body.model) modelName = body.model;
-      if (Array.isArray(body.attachments)) attachments = body.attachments;
       if (body.workspaceName) workspaceName = body.workspaceName;
     } catch {
       // Use fallback query params if JSON parsing fails
@@ -231,7 +229,7 @@ async function handleSimulatedStreaming(options: {
   sendEvent: (event: string, data: any) => void;
   isAborted: () => boolean;
 }) {
-  const { prompt, modelName, workspaceName, sessionId, messageId, timeStr, sendEvent, isAborted } = options;
+  const { prompt, workspaceName, sessionId, messageId, timeStr, sendEvent, isAborted } = options;
 
   // 1. Thinking Phase - Calm and steady pacing
   sendEvent('thinking_start', { title: 'Thinking' });

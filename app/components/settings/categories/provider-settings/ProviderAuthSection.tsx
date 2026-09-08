@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Check, Info, AlertCircle } from 'lucide-react';
 import type { ProviderItem } from '@/types';
 

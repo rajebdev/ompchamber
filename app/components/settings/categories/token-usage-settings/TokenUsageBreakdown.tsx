@@ -1,4 +1,3 @@
-import React from 'react';
 import type { BreakdownTab, BreakdownRow, TokenUsageMetricSet } from '@/types';
 
 interface TokenUsageBreakdownProps {

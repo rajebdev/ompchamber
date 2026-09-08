@@ -1,4 +1,4 @@
-import React, { RefObject, useState } from 'react';
+import { RefObject, useState } from 'react';
 import { FolderGit2, ChevronDown, Check, RotateCcw, Search } from 'lucide-react';
 
 interface GitRepoHeaderProps {

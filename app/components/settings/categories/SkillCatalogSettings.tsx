@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Search,
   Star,
@@ -8,16 +8,11 @@ import {
   Check,
   Plus,
   Download,
-  Trash2,
 } from 'lucide-react';
 import type { SkillCatalogSource, CatalogSkillItem, SkillItem } from '@/types';
-import { AddSourceModal } from './skill-catalog/AddSourceModal';
+import { AddSourceModal } from '@/components/settings/categories/skill-catalog/AddSourceModal';
 
-interface SkillCatalogSettingsProps {
-  onNavigateToSkills?: () => void;
-}
-
-export function SkillCatalogSettings({ onNavigateToSkills }: SkillCatalogSettingsProps) {
+export function SkillCatalogSettings() {
   const [sources, setSources] = useState<SkillCatalogSource[]>([]);
   const [catalogSkills, setCatalogSkills] = useState<CatalogSkillItem[]>([]);
   const [userSkills, setUserSkills] = useState<SkillItem[]>([]);

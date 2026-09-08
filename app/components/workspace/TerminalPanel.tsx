@@ -1,19 +1,18 @@
-import React, { useRef, useCallback, useState } from 'react';
+import { useRef, useCallback, useState } from 'react';
 import { useTerminal } from '@/hooks/useTerminal';
-import { TerminalHeader } from './terminal-panel/TerminalHeader';
-import { TerminalQuickActions } from './terminal-panel/TerminalQuickActions';
-import { TerminalInputBar } from './terminal-panel/TerminalInputBar';
-import { RealtimeXtermView, type RealtimeXtermHandle } from './terminal-panel/RealtimeXtermView';
+import { TerminalHeader } from '@/components/workspace/terminal-panel/TerminalHeader';
+import { TerminalQuickActions } from '@/components/workspace/terminal-panel/TerminalQuickActions';
+import { TerminalInputBar } from '@/components/workspace/terminal-panel/TerminalInputBar';
+import { RealtimeXtermView, type RealtimeXtermHandle } from '@/components/workspace/terminal-panel/RealtimeXtermView';
 
 interface TerminalPanelProps {
   className?: string;
   enabled?: boolean;
   rootPath?: string;
-  onClose?: () => void;
   showHeader?: boolean;
 }
 
-export function TerminalPanel({ className = '', enabled = true, rootPath, onClose, showHeader = true }: TerminalPanelProps) {
+export function TerminalPanel({ className = '', enabled = true, rootPath, showHeader = true }: TerminalPanelProps) {
   const xtermRef = useRef<RealtimeXtermHandle>(null);
   const [activeRepo, setActiveRepo] = useState('.');
 
@@ -85,7 +84,6 @@ export function TerminalPanel({ className = '', enabled = true, rootPath, onClos
           isRunning={isRunning}
           bunVersion={systemInfo.bunVersion}
           onClear={handleClear}
-          onClose={onClose}
           rootPath={rootPath}
           activeRepo={activeRepo}
           onSelectRepo={setActiveRepo}
@@ -115,7 +113,6 @@ export function TerminalPanel({ className = '', enabled = true, rootPath, onClos
         onKeyDown={handleKeyDown}
         onCancel={cancelRunningCommand}
         isRunning={isRunning}
-        cwd={cwd}
       />
     </div>
   );

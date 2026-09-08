@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { ChevronRight, ChevronDown } from 'lucide-react';
 import { useFetcher } from '@remix-run/react';
-import { FileIcon } from '../../common/FileIcon';
-import { FileContextMenu, FileDeleteModal, FileRenameModal, FileHistoryModal } from './FileModals';
+import { FileIcon } from '@/components/common/FileIcon';
+import { FileContextMenu, FileDeleteModal, FileRenameModal, FileHistoryModal } from '@/components/workspace/file-explorer/FileModals';
 
 interface FileTreeItemProps {
   file: any;

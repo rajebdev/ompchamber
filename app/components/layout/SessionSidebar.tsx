@@ -1,8 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { Plus, Search, Settings, Info, FolderPlus, Calendar, Archive, MoreHorizontal, PanelLeftClose, X } from 'lucide-react';
 import { useSearchParams } from '@remix-run/react';
-import { SettingsModal, AboutModal, NewWorkspaceModal, SchedulerModal } from './session-sidebar/SidebarModals';
-import { Category } from './session-sidebar/CategoryItem';
+import { SettingsModal, AboutModal, NewWorkspaceModal, SchedulerModal } from '@/components/layout/session-sidebar/SidebarModals';
+import { Category } from '@/components/layout/session-sidebar/CategoryItem';
 
 export function SessionSidebar({ className = '', folders = [], onClose, appSettings = {} }: { className?: string, folders?: any[], onClose?: () => void, appSettings?: Record<string, any> }) {
   const [searchParams, setSearchParams] = useSearchParams();

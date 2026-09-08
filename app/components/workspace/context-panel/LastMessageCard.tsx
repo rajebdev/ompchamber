@@ -1,5 +1,4 @@
-import React from 'react';
-import { StatCard } from './StatCard';
+import { StatCard } from '@/components/workspace/context-panel/StatCard';
 
 interface LastMessageCardProps {
   input: number;

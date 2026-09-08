@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { SettingsState } from '@/types';
-import { BehaviorEditor } from './behavior-settings/BehaviorEditor';
+import { BehaviorEditor } from '@/components/settings/categories/behavior-settings/BehaviorEditor';
 
 interface BehaviorSettingsProps {
   settings: SettingsState;

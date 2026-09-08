@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { CornerDownLeft, Square, Loader2 } from 'lucide-react';
+import { CornerDownLeft, Square } from 'lucide-react';
 
 interface TerminalInputBarProps {
   value: string;
@@ -8,7 +8,6 @@ interface TerminalInputBarProps {
   onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   onCancel: () => void;
   isRunning: boolean;
-  cwd: string;
 }
 
 export function TerminalInputBar({
@@ -18,7 +17,6 @@ export function TerminalInputBar({
   onKeyDown,
   onCancel,
   isRunning,
-  cwd,
 }: TerminalInputBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 

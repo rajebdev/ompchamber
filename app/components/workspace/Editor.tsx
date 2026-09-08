@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { FileIcon } from '../common/FileIcon';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { FileIcon } from '@/components/common/FileIcon';
 import {
-  Copy, Download, ZoomIn, ZoomOut, Maximize, ExternalLink, X, Eye, EyeOff, Save, Check, ChevronDown, WrapText 
+  Copy, Download, ZoomIn, ZoomOut, Maximize, X, Eye, EyeOff, Save, Check, ChevronDown, WrapText 
 } from 'lucide-react';
 import CodeEditor from 'react-simple-code-editor';
 import Prism from 'prismjs';
@@ -13,8 +13,8 @@ import 'prismjs/components/prism-css';
 import 'prismjs/components/prism-json';
 import 'prismjs/components/prism-markdown';
 import 'prismjs/themes/prism.css';
-import { MarkdownRenderer } from '../common/MarkdownRenderer';
-import { useOnClickOutside } from '../../hooks/useOnClickOutside';
+import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
+import { useOnClickOutside } from '@/hooks/useOnClickOutside';
 
 interface EditorProps {
   className?: string;

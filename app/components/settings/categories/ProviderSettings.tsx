@@ -1,24 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import type { SettingsState, ProviderItem, ProviderModel } from '@/types';
-import { ProviderSidebarList } from './provider-settings/ProviderSidebarList';
-import { ProviderHeader } from './provider-settings/ProviderHeader';
-import { ProviderAuthSection } from './provider-settings/ProviderAuthSection';
-import { ProviderModelsList } from './provider-settings/ProviderModelsList';
-import { AddProviderModal, type PresetProviderOption } from './provider-settings/AddProviderModal';
-import { ReconnectModal } from './provider-settings/ReconnectModal';
-import { ModelConfigModal } from './provider-settings/ModelConfigModal';
-import { ModelCapabilitiesModal } from './provider-settings/ModelCapabilitiesModal';
+import { useState, useEffect } from 'react';
+import type { ProviderItem, ProviderModel } from '@/types';
+import { ProviderSidebarList } from '@/components/settings/categories/provider-settings/ProviderSidebarList';
+import { ProviderHeader } from '@/components/settings/categories/provider-settings/ProviderHeader';
+import { ProviderAuthSection } from '@/components/settings/categories/provider-settings/ProviderAuthSection';
+import { ProviderModelsList } from '@/components/settings/categories/provider-settings/ProviderModelsList';
+import { AddProviderModal, type PresetProviderOption } from '@/components/settings/categories/provider-settings/AddProviderModal';
+import { ReconnectModal } from '@/components/settings/categories/provider-settings/ReconnectModal';
+import { ModelConfigModal } from '@/components/settings/categories/provider-settings/ModelConfigModal';
+import { ModelCapabilitiesModal } from '@/components/settings/categories/provider-settings/ModelCapabilitiesModal';
 
 interface ProviderSettingsProps {
-  settings: SettingsState;
-  onUpdate: (updater: Partial<SettingsState> | ((prev: SettingsState) => SettingsState)) => void;
   autoOpenAdd?: boolean;
   onAddModalClose?: () => void;
 }
 
-export function ProviderSettings({ 
-  settings, 
-  onUpdate,
+export function ProviderSettings({
   autoOpenAdd = false,
   onAddModalClose,
 }: ProviderSettingsProps) {
@@ -26,7 +22,6 @@ export function ProviderSettings({
   const [presetProviders, setPresetProviders] = useState<PresetProviderOption[]>([]);
   const [selectedProviderId, setSelectedProviderId] = useState<string>('provider-deepseek');
   const [currentProject, setCurrentProject] = useState('ompchamber');
-  const [isLoading, setIsLoading] = useState(true);
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(autoOpenAdd);
@@ -56,10 +51,7 @@ export function ProviderSettings({
           setPresetProviders(data.presetProviders);
         }
       })
-      .catch(err => console.error('Failed to load providers from API:', err))
-      .finally(() => {
-        if (active) setIsLoading(false);
-      });
+      .catch(err => console.error('Failed to load providers from API:', err));
     return () => { active = false; };
   }, []);
 

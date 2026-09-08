@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, CaseSensitive, WholeWord, Regex, Replace, ReplaceAll, MoreHorizontal, Check } from 'lucide-react';
-import { FileIcon } from '../common/FileIcon';
+import { FileIcon } from '@/components/common/FileIcon';
 import { useFetcher } from '@remix-run/react';
-import { GitRepoDropdown } from './file-explorer/GitRepoDropdown';
+import { GitRepoDropdown } from '@/components/workspace/file-explorer/GitRepoDropdown';
 
 export function SearchPanel({ className = '', enabled = true, rootPath }: { className?: string, enabled?: boolean, rootPath?: string }) {
   const [query, setQuery] = useState('');

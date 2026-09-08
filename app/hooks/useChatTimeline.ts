@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from '@remix-run/react';
-import type { Attachment, ChatMessageData, ToolCallData, ThinkingData } from '@/types';
+import type { Attachment, ChatMessageData } from '@/types';
 import type { QueuedMessage } from '@/components/workspace/chat-timeline/QueueList';
 import { triggerChatCompletionSound } from '@/hooks/useNotificationSound';
 import { streamChatResponse } from '@/hooks/useChatStream';

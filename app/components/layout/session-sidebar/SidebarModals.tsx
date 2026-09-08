@@ -1,6 +1,6 @@
 import React from 'react';
 import { X, Home, Clock, Plus, Columns, Maximize2, Settings2, Terminal, Send, FolderOpen } from 'lucide-react';
-import packageJson from '../../../../package.json';
+import packageJson from '@/../package.json';
 import { SettingsModal } from '@/components/settings/SettingsModal';
 import { FolderPicker } from '@/components/common/FolderPicker';
 

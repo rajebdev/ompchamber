@@ -6,7 +6,6 @@ import {
   X, 
   Brain, 
   Shield, 
-  ChevronDown, 
   File as FileIcon, 
   Check 
 } from 'lucide-react';

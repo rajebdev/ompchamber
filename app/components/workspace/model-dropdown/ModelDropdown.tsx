@@ -3,10 +3,10 @@ import { ChevronDown, Sparkles } from 'lucide-react';
 import type { AIModelOption } from '@/types';
 import { useOnClickOutside } from '@/hooks/useOnClickOutside';
 import { INITIAL_MODELS_CATALOG } from '@/data/modelCatalogData';
-import { ModelDropdownHeader } from './ModelDropdownHeader';
-import { ModelDropdownSection } from './ModelDropdownSection';
-import { ModelDropdownFooter } from './ModelDropdownFooter';
-import { ModelSpecsTooltip } from './ModelSpecsTooltip';
+import { ModelDropdownHeader } from '@/components/workspace/model-dropdown/ModelDropdownHeader';
+import { ModelDropdownSection } from '@/components/workspace/model-dropdown/ModelDropdownSection';
+import { ModelDropdownFooter } from '@/components/workspace/model-dropdown/ModelDropdownFooter';
+import { ModelSpecsTooltip } from '@/components/workspace/model-dropdown/ModelSpecsTooltip';
 
 interface ModelDropdownProps {
   selectedModel?: AIModelOption;

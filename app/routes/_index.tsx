@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { json } from '@remix-run/node';
 import type { MetaFunction, LoaderFunctionArgs } from '@remix-run/node';
 import { useLoaderData, useSearchParams } from '@remix-run/react';
@@ -13,7 +13,6 @@ import { DesktopLayout } from '@/components/layout/DesktopLayout';
 import { MobileLayoutWrapper } from '@/components/mobile/MobileLayoutWrapper';
 import type { WorkspaceFolderData } from '@/types';
 import type { OmpSession } from '@/types/omp';
-import type { Database } from 'sqlite';
 
 export const meta: MetaFunction = () => {
   return [
@@ -73,7 +72,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   } else {
     // Real mode: workspace folders are bound to omp projects via project_path;
     // the session items under each folder come from the omp JSONL discovery.
-    groupedFolders.push(...(await buildRealFolders(db, folderRows)));
+    groupedFolders.push(...(await buildRealFolders(folderRows)));
   }
 
   return json({
@@ -90,7 +89,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
  * session's resolved project root. Folders without a project_path render with
  * no omp sessions (a local/empty workspace).
  */
-async function buildRealFolders(db: Database, folderRows: any[]): Promise<WorkspaceFolderData[]> {
+async function buildRealFolders(folderRows: any[]): Promise<WorkspaceFolderData[]> {
   const { loadOmpSidebarData } = await import('@/lib/omp/session-reader');
   const { sessionTitleFor, groupSessionsByRoot } = await import('@/lib/omp/sidebar-adapter');
 

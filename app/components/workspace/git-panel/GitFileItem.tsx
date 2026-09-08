@@ -1,6 +1,5 @@
-import React from 'react';
 import { Undo2, Plus, Minus } from 'lucide-react';
-import { FileIcon } from '../../common/FileIcon';
+import { FileIcon } from '@/components/common/FileIcon';
 import type { GitChange } from '@/types';
 
 interface GitFileItemProps {

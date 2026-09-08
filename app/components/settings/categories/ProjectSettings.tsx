@@ -1,14 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import type { SettingsState, ProjectConfigItem, AccentColorOption } from '@/types';
-import { ProjectSidebarList } from './project-settings/ProjectSidebarList';
-import { ProjectDetailsForm } from './project-settings/ProjectDetailsForm';
+import { useState, useEffect } from 'react';
+import type { ProjectConfigItem, AccentColorOption } from '@/types';
+import { ProjectSidebarList } from '@/components/settings/categories/project-settings/ProjectSidebarList';
+import { ProjectDetailsForm } from '@/components/settings/categories/project-settings/ProjectDetailsForm';
 
-interface ProjectSettingsProps {
-  settings: SettingsState;
-  onUpdate: (updater: Partial<SettingsState> | ((prev: SettingsState) => SettingsState)) => void;
-}
-
-export function ProjectSettings({ settings, onUpdate }: ProjectSettingsProps) {
+export function ProjectSettings() {
   const [projects, setProjects] = useState<ProjectConfigItem[]>([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [accentColorOptions, setAccentColorOptions] = useState<AccentColorOption[]>([]);

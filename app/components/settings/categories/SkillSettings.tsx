@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import type { SkillItem, SettingsState } from '@/types';
-import { SkillSidebarList } from './skill-settings/SkillSidebarList';
-import { SkillDetailPane } from './skill-settings/SkillDetailPane';
+import { SkillSidebarList } from '@/components/settings/categories/skill-settings/SkillSidebarList';
+import { SkillDetailPane } from '@/components/settings/categories/skill-settings/SkillDetailPane';
 
 interface SkillSettingsProps {
   settings?: SettingsState;

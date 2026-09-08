@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { CommandItem, SettingsState } from '@/types';
-import { CommandSidebarList } from './command-settings/CommandSidebarList';
-import { CommandDetailPane } from './command-settings/CommandDetailPane';
+import { CommandSidebarList } from '@/components/settings/categories/command-settings/CommandSidebarList';
+import { CommandDetailPane } from '@/components/settings/categories/command-settings/CommandDetailPane';
 
 interface CommandSettingsProps {
   settings: SettingsState;

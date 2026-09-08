@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { Search, RefreshCw } from 'lucide-react';
-import { setChildrenAt, rehydrateTree } from './file-explorer/tree-utils';
-import { GitRepoDropdown } from './file-explorer/GitRepoDropdown';
-import { FileTreeItem } from './file-explorer/FileTreeItem';
+import { setChildrenAt, rehydrateTree } from '@/components/workspace/file-explorer/tree-utils';
+import { GitRepoDropdown } from '@/components/workspace/file-explorer/GitRepoDropdown';
+import { FileTreeItem } from '@/components/workspace/file-explorer/FileTreeItem';
 
 export function FileExplorer({ className = '', enabled = true, rootPath, onOpenFile, refreshKey = 0, onRefresh }: { className?: string, enabled?: boolean, rootPath?: string, onOpenFile?: (file: any) => void, refreshKey?: number, onRefresh?: () => void }) {
   const [tree, setTree] = useState<any[]>([]);

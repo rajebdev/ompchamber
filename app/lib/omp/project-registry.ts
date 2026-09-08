@@ -19,7 +19,7 @@
  */
 
 import { existsSync, readFileSync, realpathSync } from 'fs';
-import { getProjectsRegistryPath } from './paths';
+import { getProjectsRegistryPath } from '@/lib/omp/paths';
 import type { OmpProject } from '@/types/omp';
 
 /** Error carrying a stable code (errors.* key) for client localization. */

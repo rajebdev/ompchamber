@@ -1,4 +1,3 @@
-import React from 'react';
 import { 
   ChevronRight, 
   ChevronDown, 
@@ -6,7 +5,7 @@ import {
   Minus, 
   Undo2 
 } from 'lucide-react';
-import { FileIcon } from '../../common/FileIcon';
+import { FileIcon } from '@/components/common/FileIcon';
 import type { GitTreeNode } from '@/types';
 
 interface GitTreeItemProps {

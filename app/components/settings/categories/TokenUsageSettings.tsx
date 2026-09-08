@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { RefreshCw, ChevronDown, Check } from 'lucide-react';
 import type {
   SettingsState,
@@ -7,8 +7,8 @@ import type {
   BreakdownTab,
   ChartMetric,
 } from '@/types';
-import { TokenUsageMetricsGrid } from './token-usage-settings/TokenUsageMetricsGrid';
-import { TokenUsageBreakdown } from './token-usage-settings/TokenUsageBreakdown';
+import { TokenUsageMetricsGrid } from '@/components/settings/categories/token-usage-settings/TokenUsageMetricsGrid';
+import { TokenUsageBreakdown } from '@/components/settings/categories/token-usage-settings/TokenUsageBreakdown';
 
 interface TokenUsageSettingsProps {
   settings: SettingsState;

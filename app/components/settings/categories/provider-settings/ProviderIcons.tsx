@@ -1,11 +1,9 @@
-import React from 'react';
 import {
   Sparkles,
   Network,
   TerminalSquare,
   Zap,
   Bot,
-  Cpu,
   Boxes,
   Flame,
   Globe,

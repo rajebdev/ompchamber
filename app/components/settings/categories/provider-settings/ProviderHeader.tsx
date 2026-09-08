@@ -1,6 +1,5 @@
-import React from 'react';
 import type { ProviderItem } from '@/types';
-import { ProviderIcon } from './ProviderIcons';
+import { ProviderIcon } from '@/components/settings/categories/provider-settings/ProviderIcons';
 
 interface ProviderHeaderProps {
   provider: ProviderItem;

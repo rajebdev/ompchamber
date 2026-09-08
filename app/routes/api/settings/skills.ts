@@ -3,7 +3,7 @@ import type { LoaderFunctionArgs, ActionFunctionArgs } from '@remix-run/node';
 import { getDb } from '@/db.server';
 import { DEFAULT_SKILLS, DEFAULT_CATALOG_SOURCES, DEFAULT_CATALOG_SKILLS } from '@/data/skillData';
 import { isMockMode } from '@/mock.server';
-import type { SkillItem, SkillCatalogSource, CatalogSkillItem } from '@/types';
+import type { SkillItem, SkillCatalogSource } from '@/types';
 
 const SKILLS_KEY = 'omp_skills';
 const SOURCES_KEY = 'omp_catalog_sources';

@@ -13,9 +13,8 @@ import {
   Info
 } from 'lucide-react';
 import type { ChatMessageData } from '@/types';
-import { ThinkingSection } from './ThinkingSection';
-import { ToolCallingSection } from './ToolCallingSection';
-import { GeneratingIndicator } from './GeneratingIndicator';
+import { ThinkingSection } from '@/components/workspace/chat-timeline/ThinkingSection';
+import { ToolCallingSection } from '@/components/workspace/chat-timeline/ToolCallingSection';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
 import { copyToClipboard } from '@/hooks/useClipboard';
 import { formatDuration } from '@/lib/chat-duration';
@@ -24,7 +23,6 @@ interface ChatMessageItemProps {
   msg: ChatMessageData | any;
   modelName?: string;
   isStreaming?: boolean;
-  generatingVerb?: string;
   onRetry?: (msgId: string) => void;
   onUndo?: (msgId: string, content?: string) => void;
   onNewChat?: (content: string) => void;
@@ -42,7 +40,6 @@ export function ChatMessageItem({
   msg, 
   modelName, 
   isStreaming = false,
-  generatingVerb,
   onRetry, 
   onUndo, 
   onNewChat,

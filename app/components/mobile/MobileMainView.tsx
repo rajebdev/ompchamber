@@ -7,8 +7,8 @@ import {
   Sparkles
 } from 'lucide-react';
 import type { Attachment, WorkspaceFolderData } from '@/types';
-import { MobileHeader } from './mobile-main-view/MobileHeader';
-import { MobileChatInput } from './mobile-main-view/MobileChatInput';
+import { MobileHeader } from '@/components/mobile/mobile-main-view/MobileHeader';
+import { MobileChatInput } from '@/components/mobile/mobile-main-view/MobileChatInput';
 import { ChatMessageItem } from '@/components/workspace/chat-timeline/ChatMessageItem';
 import { GeneratingIndicator } from '@/components/workspace/chat-timeline/GeneratingIndicator';
 import { QueueList } from '@/components/workspace/chat-timeline/QueueList';
@@ -176,7 +176,6 @@ export function MobileMainView({
                     msg={msg}
                     modelName="DeepSeek V4 Pro"
                     isStreaming={isLoading}
-                    generatingVerb="thinking"
                     footerVisible={isLastAi}
                     durationMs={isLastAi ? responseRunDurationMs(messages, idx) : null}
                     className={isAiFragment ? 'mt-1' : 'mt-6'}

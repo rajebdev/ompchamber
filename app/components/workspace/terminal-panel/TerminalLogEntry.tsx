@@ -1,4 +1,3 @@
-import React from 'react';
 import type { TerminalLogItem } from '@/types';
 import { Check, X, Clock, Loader2 } from 'lucide-react';
 

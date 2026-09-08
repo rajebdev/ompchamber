@@ -1,23 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { X, ChevronLeft, Check } from 'lucide-react';
 import type { SettingsCategoryId, SettingsState } from '@/types';
-import { SettingsSidebar, SETTINGS_CATEGORIES } from './SettingsSidebar';
-import { GeneralSettings } from './categories/GeneralSettings';
-import { AppearanceSettings } from './categories/AppearanceSettings';
-import { ChatSettings } from './categories/ChatSettings';
-import { WorkspaceSettings } from './categories/WorkspaceSettings';
-import { ProjectSettings } from './categories/ProjectSettings';
-import { ProviderSettings } from './categories/ProviderSettings';
-import { AgentSettings } from './categories/AgentSettings';
-import { BehaviorSettings } from './categories/BehaviorSettings';
-import { CommandSettings } from './categories/CommandSettings';
-import { McpSettings } from './categories/McpSettings';
-import { SkillSettings } from './categories/SkillSettings';
-import { SkillCatalogSettings } from './categories/SkillCatalogSettings';
-import { OmpSettings } from './categories/OmpSettings';
-import { OtherSettings } from './categories/OtherSettings';
-import { TokenUsageSettings } from './categories/TokenUsageSettings';
-import { NotificationSettings } from './categories/NotificationSettings';
+import { SettingsSidebar, SETTINGS_CATEGORIES } from '@/components/settings/SettingsSidebar';
+import { GeneralSettings } from '@/components/settings/categories/GeneralSettings';
+import { AppearanceSettings } from '@/components/settings/categories/AppearanceSettings';
+import { ChatSettings } from '@/components/settings/categories/ChatSettings';
+import { WorkspaceSettings } from '@/components/settings/categories/WorkspaceSettings';
+import { ProjectSettings } from '@/components/settings/categories/ProjectSettings';
+import { ProviderSettings } from '@/components/settings/categories/ProviderSettings';
+import { AgentSettings } from '@/components/settings/categories/AgentSettings';
+import { BehaviorSettings } from '@/components/settings/categories/BehaviorSettings';
+import { CommandSettings } from '@/components/settings/categories/CommandSettings';
+import { McpSettings } from '@/components/settings/categories/McpSettings';
+import { SkillSettings } from '@/components/settings/categories/SkillSettings';
+import { SkillCatalogSettings } from '@/components/settings/categories/SkillCatalogSettings';
+import { OtherSettings } from '@/components/settings/categories/OtherSettings';
+import { TokenUsageSettings } from '@/components/settings/categories/TokenUsageSettings';
+import { NotificationSettings } from '@/components/settings/categories/NotificationSettings';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -160,24 +159,22 @@ export function SettingsModal({
   const renderCategoryContent = () => {
     switch (activeCategory) {
       case 'general':
-        return <GeneralSettings settings={settings} onUpdate={handleUpdateSettings} />;
+        return <GeneralSettings />;
       case 'appearance':
         return <AppearanceSettings settings={settings} onUpdate={handleUpdateSettings} />;
       case 'chats':
         return <ChatSettings settings={settings} onUpdate={handleUpdateSettings} />;
       case 'projects':
-        return <ProjectSettings settings={settings} onUpdate={handleUpdateSettings} />;
+        return <ProjectSettings />;
       case 'providers':
         return (
-          <ProviderSettings 
-            settings={settings} 
-            onUpdate={handleUpdateSettings} 
+          <ProviderSettings
             autoOpenAdd={autoOpenAdd}
             onAddModalClose={() => setAutoOpenAdd(false)}
           />
         );
       case 'git':
-        return <WorkspaceSettings category={activeCategory} settings={settings} onUpdate={handleUpdateSettings} />;
+        return <WorkspaceSettings />;
       case 'agents':
         return <AgentSettings settings={settings} onUpdate={handleUpdateSettings} />;
       case 'behavior':
@@ -199,14 +196,10 @@ export function SettingsModal({
           />
         );
       case 'skills-catalog':
-        return (
-          <SkillCatalogSettings
-            onNavigateToSkills={() => setActiveCategory('skills')}
-          />
-        );
+        return <SkillCatalogSettings />;
       case 'usage':
       default:
-        return <OtherSettings category={activeCategory} settings={settings} onUpdate={handleUpdateSettings} />;
+        return <OtherSettings category={activeCategory} />;
     }
   };
 

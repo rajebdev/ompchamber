@@ -50,8 +50,6 @@ const KATEX_MATHML_TAGS = [
 ];
 
 /** Whether KaTeX output is present — extends the allowlist for MathML. */
-const KATEX_CSS_CLASSES = ['katex', 'katex-display', 'katex-html', 'katex-mathml', 'base', 'strut'];
-
 function hasKatex(html: string): boolean {
   return /class="[^"]*katex/.test(html);
 }

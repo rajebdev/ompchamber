@@ -1,5 +1,4 @@
-import React from 'react';
-import { Palette, Check, Sun, Moon, Sparkles } from 'lucide-react';
+import { Palette, Check, Sun, Moon } from 'lucide-react';
 import type { SettingsState } from '@/types';
 
 interface AppearanceSettingsProps {

@@ -28,7 +28,7 @@ import {
   type Dirent,
 } from 'fs';
 import * as path from 'path';
-import { getSessionsDir } from './paths';
+import { getSessionsDir } from '@/lib/omp/paths';
 import {
   countMessageMarkers,
   extractFirstDisplayMessageFromPrefix,
@@ -36,7 +36,7 @@ import {
   isRecord,
   parseJsonlLenient,
   parseSessionListHeader,
-} from './session-jsonl';
+} from '@/lib/omp/session-jsonl';
 
 export const SESSION_TITLE_SLOT_BYTES = 256;
 

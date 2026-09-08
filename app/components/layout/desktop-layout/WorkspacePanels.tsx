@@ -114,7 +114,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
               {activeRightPanel === 'git' && <GitPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} refreshKey={refreshKey} />}
               {activeRightPanel === 'context' && <ContextPanel className="w-full h-full" enabled={hasActiveContext} refreshKey={refreshKey} onClose={onToggleRightPanel} />}
               <div className={`w-full h-full ${activeRightPanel === 'terminal' ? 'block' : 'hidden'}`}>
-                <TerminalPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} onClose={onToggleRightPanel} />
+                <TerminalPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} />
               </div>
             </Panel>
           </>

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import type { ToolCallData, AgentActionData, ToolType } from '@/types';
-import { ToolCallCard } from './ToolCallCard';
+import { ToolCallCard } from '@/components/workspace/chat-timeline/ToolCallCard';
 
 interface ToolCallingSectionProps {
   tools: (ToolCallData | AgentActionData)[];

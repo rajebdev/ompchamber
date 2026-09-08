@@ -1,7 +1,6 @@
-import React from 'react';
 import type { SettingsState } from '@/types';
-import { ChatFollowUpSection } from './chat-settings/ChatFollowUpSection';
-import { ChatKeybindingsSection } from './chat-settings/ChatKeybindingsSection';
+import { ChatFollowUpSection } from '@/components/settings/categories/chat-settings/ChatFollowUpSection';
+import { ChatKeybindingsSection } from '@/components/settings/categories/chat-settings/ChatKeybindingsSection';
 
 interface ChatSettingsProps {
   settings: SettingsState;

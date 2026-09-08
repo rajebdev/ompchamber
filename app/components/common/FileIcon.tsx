@@ -1,4 +1,3 @@
-import React from 'react';
 import { 
   VscFolder, 
   VscFolderOpened, 
@@ -6,8 +5,7 @@ import {
   VscFileMedia,
   VscFileZip,
   VscJson,
-  VscSettingsGear,
-  VscTerminal
+  VscSettingsGear
 } from 'react-icons/vsc';
 import { 
   SiTypescript, 

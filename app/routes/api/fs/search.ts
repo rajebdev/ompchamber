@@ -1,7 +1,6 @@
 import { json, type ActionFunctionArgs } from '@remix-run/node';
 import { execFile } from 'child_process';
 import util from 'util';
-import path from 'path';
 import { isMockMode } from '@/mock.server';
 import { getDefaultFsRoot, resolveRoot } from '@/lib/fs-root';
 import { scopeToRepo } from '@/lib/repo-scope';

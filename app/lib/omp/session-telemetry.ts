@@ -4,7 +4,7 @@
  */
 
 import { readFileSync } from 'fs';
-import { parseJsonlLenient } from './session-jsonl';
+import { parseJsonlLenient } from '@/lib/omp/session-jsonl';
 import type {
   RawMessageInfo,
   RawMessageItem,

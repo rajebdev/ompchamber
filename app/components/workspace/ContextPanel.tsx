@@ -1,13 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from '@remix-run/react';
-import { Layers } from 'lucide-react';
 import type { SessionContextTelemetry } from '@/types';
 import { emptyTelemetry } from '@/data/contextData';
-import { ContextWindowCard } from './context-panel/ContextWindowCard';
-import { ContextStatsGrid } from './context-panel/ContextStatsGrid';
-import { LastMessageCard } from './context-panel/LastMessageCard';
-import { TokenDistributionBar } from './context-panel/TokenDistributionBar';
-import { RawMessagesList } from './context-panel/RawMessagesList';
+import { ContextWindowCard } from '@/components/workspace/context-panel/ContextWindowCard';
+import { ContextStatsGrid } from '@/components/workspace/context-panel/ContextStatsGrid';
+import { LastMessageCard } from '@/components/workspace/context-panel/LastMessageCard';
+import { TokenDistributionBar } from '@/components/workspace/context-panel/TokenDistributionBar';
+import { RawMessagesList } from '@/components/workspace/context-panel/RawMessagesList';
 
 interface ContextPanelProps {
   className?: string;

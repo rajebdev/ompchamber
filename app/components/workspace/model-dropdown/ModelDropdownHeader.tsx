@@ -1,4 +1,3 @@
-import React from 'react';
 import { Plus, Search, X } from 'lucide-react';
 
 interface ModelDropdownHeaderProps {

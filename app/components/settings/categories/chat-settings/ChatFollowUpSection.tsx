@@ -1,4 +1,3 @@
-import React from 'react';
 import { ListOrdered, Compass, Check } from 'lucide-react';
 import type { SettingsState } from '@/types';
 

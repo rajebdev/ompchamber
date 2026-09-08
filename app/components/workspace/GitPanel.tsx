@@ -1,11 +1,11 @@
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useFetcher } from '@remix-run/react';
 import type { GitChange } from '@/types';
-import { ConfirmActionModal, BranchPromptModal, GitOutputModal } from './git-panel/GitModals';
-import { GitCommitBox } from './git-panel/GitCommitBox';
-import { GitBranchToolbar } from './git-panel/GitBranchToolbar';
-import { GitRepoHeader } from './git-panel/GitRepoHeader';
-import { GitChangesList } from './git-panel/GitChangesList';
+import { ConfirmActionModal, BranchPromptModal, GitOutputModal } from '@/components/workspace/git-panel/GitModals';
+import { GitCommitBox } from '@/components/workspace/git-panel/GitCommitBox';
+import { GitBranchToolbar } from '@/components/workspace/git-panel/GitBranchToolbar';
+import { GitRepoHeader } from '@/components/workspace/git-panel/GitRepoHeader';
+import { GitChangesList } from '@/components/workspace/git-panel/GitChangesList';
 import { Toast } from '@/components/common/Toast';
 import { useToasts } from '@/hooks/useToasts';
 

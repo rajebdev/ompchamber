@@ -31,7 +31,6 @@ export function computeSessionContextTelemetry(
 
   messages.forEach((msg, index) => {
     const isUser = msg.role === 'user';
-    const isAi = msg.role === 'ai' || msg.role === 'assistant';
 
     if (isUser) {
       userCount++;

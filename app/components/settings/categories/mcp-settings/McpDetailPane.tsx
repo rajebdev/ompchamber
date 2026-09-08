@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Terminal, Globe, Code, Plus, Trash2, Check, Activity, AlertCircle } from 'lucide-react';
-import type { McpServerItem, McpReachType, McpScope, McpEnvVar } from '@/types';
+import type { McpServerItem, McpScope, McpEnvVar } from '@/types';
 
 interface McpDetailPaneProps {
   server: McpServerItem;

@@ -1,4 +1,3 @@
-import React from 'react';
 import { Files, Search, GitBranch, Terminal, Layers } from 'lucide-react';
 
 export type RightPanelType = 'files' | 'search' | 'git' | 'terminal' | 'context';

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallback } from 'react';
+import { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { ArrowDown } from 'lucide-react';
 import type { Terminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';

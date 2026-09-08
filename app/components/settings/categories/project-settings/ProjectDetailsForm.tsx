@@ -1,10 +1,9 @@
-import React from 'react';
 import type { ProjectConfigItem, AccentColorOption } from '@/types';
-import { ProjectDetailsHeader } from './ProjectDetailsHeader';
-import { ProjectNameInput } from './ProjectNameInput';
-import { ProjectModelDropdown } from './ProjectModelDropdown';
-import { ProjectAccentPalette } from './ProjectAccentPalette';
-import { ProjectIconGrid } from './ProjectIconGrid';
+import { ProjectDetailsHeader } from '@/components/settings/categories/project-settings/ProjectDetailsHeader';
+import { ProjectNameInput } from '@/components/settings/categories/project-settings/ProjectNameInput';
+import { ProjectModelDropdown } from '@/components/settings/categories/project-settings/ProjectModelDropdown';
+import { ProjectAccentPalette } from '@/components/settings/categories/project-settings/ProjectAccentPalette';
+import { ProjectIconGrid } from '@/components/settings/categories/project-settings/ProjectIconGrid';
 
 interface ProjectDetailsFormProps {
   project: ProjectConfigItem;

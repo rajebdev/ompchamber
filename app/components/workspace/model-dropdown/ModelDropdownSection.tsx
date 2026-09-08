@@ -1,7 +1,7 @@
 import React from 'react';
 import { ChevronDown, ChevronUp, Star, History, GripVertical } from 'lucide-react';
 import type { AIModelOption } from '@/types';
-import { ModelDropdownItem } from './ModelDropdownItem';
+import { ModelDropdownItem } from '@/components/workspace/model-dropdown/ModelDropdownItem';
 
 interface ModelDropdownSectionProps {
   id: string;

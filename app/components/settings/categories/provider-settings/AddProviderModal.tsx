@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Check, Globe, Key, Layers } from 'lucide-react';
 import type { ProviderItem } from '@/types';
-import { ProviderIcon } from './ProviderIcons';
+import { ProviderIcon } from '@/components/settings/categories/provider-settings/ProviderIcons';
 
 export interface PresetProviderOption {
   id: string;

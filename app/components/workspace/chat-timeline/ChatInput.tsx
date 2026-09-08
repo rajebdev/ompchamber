@@ -6,7 +6,6 @@ import {
   X, 
   Brain, 
   LockKeyhole, 
-  ChevronDown, 
   File as FileIcon, 
   Check 
 } from 'lucide-react';

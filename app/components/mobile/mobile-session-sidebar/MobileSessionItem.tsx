@@ -1,12 +1,10 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { 
   ChevronDown, 
   ChevronRight, 
   MessageSquare, 
   Folder, 
-  GitBranch, 
-  MoreHorizontal,
-  ChevronRight as ArrowIcon
+  GitBranch 
 } from 'lucide-react';
 import type { WorkspaceFolderData, SessionItemData } from '@/types';
 

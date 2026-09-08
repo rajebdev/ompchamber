@@ -20,10 +20,10 @@
  */
 
 import { existsSync } from 'fs';
-import { listAllSessionInfos, type OmpSessionInfo } from './session-files';
-import { loadProjectRegistry, mergeProjects } from './project-registry';
-import { resolveProjectRoot } from './worktree';
-import { getAgentDir, getSessionsDir } from './paths';
+import { listAllSessionInfos, type OmpSessionInfo } from '@/lib/omp/session-files';
+import { loadProjectRegistry, mergeProjects } from '@/lib/omp/project-registry';
+import { resolveProjectRoot } from '@/lib/omp/worktree';
+import { getAgentDir, getSessionsDir } from '@/lib/omp/paths';
 import type { OmpProject, OmpSession, OmpSidebarData } from '@/types/omp';
 
 const CONCURRENCY = 6;

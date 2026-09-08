@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Info, Eye, EyeOff, Save, Trash2, Check, User, ExternalLink, Sparkles } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Info, Eye, EyeOff, Save, Trash2, Check, User, Sparkles } from 'lucide-react';
 import type { SkillItem } from '@/types';
 
 interface SkillDetailPaneProps {

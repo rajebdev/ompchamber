@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useSearchParams } from '@remix-run/react';
 import { Group, Panel, Separator, type PanelImperativeHandle } from 'react-resizable-panels';
 import { SessionSidebar } from '@/components/layout/SessionSidebar';
@@ -287,7 +287,6 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
             <div className="flex flex-col h-full">
               <TopNavbar
                 sessionTitle={sessionTitle}
-                sessionId={sessionId}
                 showLeftPanel={showLeftPanel}
                 showEditor={showEditor}
                 showRightPanel={showRightPanel}

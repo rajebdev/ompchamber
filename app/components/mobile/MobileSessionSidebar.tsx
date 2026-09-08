@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { 
   X, 
   Search, 
@@ -12,7 +12,7 @@ import {
   Check
 } from 'lucide-react';
 import type { WorkspaceFolderData } from '@/types';
-import { MobileSessionCategory } from './mobile-session-sidebar/MobileSessionItem';
+import { MobileSessionCategory } from '@/components/mobile/mobile-session-sidebar/MobileSessionItem';
 import { 
   SettingsModal, 
   AboutModal, 
@@ -20,7 +20,7 @@ import {
   SchedulerModal 
 } from '@/components/layout/session-sidebar/SidebarModals';
 import { useOnClickOutside } from '@/hooks/useOnClickOutside';
-import packageJson from '../../../package.json';
+import packageJson from '@/../package.json';
 
 interface MobileSessionSidebarProps {
   folders: WorkspaceFolderData[];

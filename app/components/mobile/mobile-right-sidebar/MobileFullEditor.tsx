@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { FileIcon } from '../../common/FileIcon';
+import { useState, useEffect } from 'react';
+import { FileIcon } from '@/components/common/FileIcon';
 import {
   ArrowLeft, 
   Copy, 
@@ -10,8 +10,7 @@ import {
   Eye, 
   EyeOff, 
   X,
-  WrapText,
-  FileText
+  WrapText
 } from 'lucide-react';
 import CodeEditor from 'react-simple-code-editor';
 import Prism from 'prismjs';

@@ -8,7 +8,6 @@ import {
   BarChart3,
   Coins,
   FolderGit,
-  GitBranch,
   Cloud,
   Bot,
   Sliders,

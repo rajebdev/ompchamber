@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bot, PenTool, Trash2, Check, Copy, Terminal } from 'lucide-react';
+import { Bot, PenTool, Trash2, Check, Copy } from 'lucide-react';
 import type { CommandItem, CommandScope, AgentItem } from '@/types';
 
 interface CommandDetailPaneProps {

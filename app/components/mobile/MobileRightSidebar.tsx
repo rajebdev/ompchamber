@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { GitBranch, Files, Search, Terminal, Layers, X } from 'lucide-react';
 import { FileExplorer } from '@/components/workspace/FileExplorer';
 import { SearchPanel } from '@/components/workspace/SearchPanel';

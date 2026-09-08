@@ -1,4 +1,3 @@
-import React from 'react';
 import { Keyboard, CornerDownLeft, WrapText, Compass } from 'lucide-react';
 import type { SettingsState } from '@/types';
 

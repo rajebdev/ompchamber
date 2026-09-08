@@ -1,13 +1,10 @@
-import React from 'react';
-import type { SettingsState, SettingsCategoryId } from '@/types';
+import type { SettingsCategoryId } from '@/types';
 
 interface OtherSettingsProps {
   category: SettingsCategoryId;
-  settings: SettingsState;
-  onUpdate: (updater: Partial<SettingsState> | ((prev: SettingsState) => SettingsState)) => void;
 }
 
-export function OtherSettings({ category, settings, onUpdate }: OtherSettingsProps) {
+export function OtherSettings({ category }: OtherSettingsProps) {
   return (
     <div className="space-y-6 text-ink flex flex-col items-center justify-center py-16">
       <div className="text-sm font-semibold capitalize">{category.replace('-', ' ')} Settings</div>

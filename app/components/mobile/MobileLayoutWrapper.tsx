@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useSearchParams } from '@remix-run/react';
 import type { WorkspaceFolderData, Attachment, ChatMessageData } from '@/types';
-import { MobileMainView } from './MobileMainView';
-import { MobileSessionSidebar } from './MobileSessionSidebar';
-import { MobileRightSidebar } from './MobileRightSidebar';
-import { MobileFullEditor } from './mobile-right-sidebar/MobileFullEditor';
-import { MobileScreenSwitcher } from './MobileScreenSwitcher';
+import { MobileMainView } from '@/components/mobile/MobileMainView';
+import { MobileSessionSidebar } from '@/components/mobile/MobileSessionSidebar';
+import { MobileRightSidebar } from '@/components/mobile/MobileRightSidebar';
+import { MobileFullEditor } from '@/components/mobile/mobile-right-sidebar/MobileFullEditor';
+import { MobileScreenSwitcher } from '@/components/mobile/MobileScreenSwitcher';
 import { triggerChatCompletionSound } from '@/hooks/useNotificationSound';
 import { streamChatResponse } from '@/hooks/useChatStream';
 import { activeProjectForSession } from '@/lib/activeProject';

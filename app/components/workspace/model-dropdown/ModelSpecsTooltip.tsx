@@ -1,4 +1,3 @@
-import React from 'react';
 import type { AIModelOption } from '@/types';
 
 interface ModelSpecsTooltipProps {

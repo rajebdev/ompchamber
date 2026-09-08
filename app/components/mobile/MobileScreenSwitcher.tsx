@@ -1,5 +1,4 @@
-import React from 'react';
-import type { MobileScreen } from './MobileLayoutWrapper';
+import type { MobileScreen } from '@/components/mobile/MobileLayoutWrapper';
 
 interface MobileScreenSwitcherProps {
   currentScreen: MobileScreen;

@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Info } from 'lucide-react';
 import type { ContextCostBreakdown } from '@/types';
-import { CostBreakdownPopover } from './CostBreakdownPopover';
-import { StatCard } from './StatCard';
+import { CostBreakdownPopover } from '@/components/workspace/context-panel/CostBreakdownPopover';
+import { StatCard } from '@/components/workspace/context-panel/StatCard';
 
 interface ContextStatsGridProps {
   messagesCount: number;
