@@ -20,6 +20,13 @@ export function RightActivityBar({ activePanel, onChangePanel }: RightActivityBa
       {/* Top Icons */}
       <div className="flex flex-col items-center space-y-1 w-full">
         <button 
+          className={getBtnClass('context')}
+          onClick={() => onChangePanel('context')}
+          title="Context & Telemetry"
+        >
+          <Layers size={16} />
+        </button>
+        <button 
           className={getBtnClass('files')}
           onClick={() => onChangePanel('files')}
           title="Files"
@@ -39,13 +46,6 @@ export function RightActivityBar({ activePanel, onChangePanel }: RightActivityBa
           title="Source Control"
         >
           <GitBranch size={16} />
-        </button>
-        <button 
-          className={getBtnClass('context')}
-          onClick={() => onChangePanel('context')}
-          title="Context & Telemetry"
-        >
-          <Layers size={16} />
         </button>
         <button 
           className={getBtnClass('terminal')}
