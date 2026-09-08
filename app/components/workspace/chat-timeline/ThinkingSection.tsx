@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, ChevronDown, ChevronRight, Copy, Check } from 'lucide-react';
+import { Sparkles, ChevronDown, ChevronRight, Copy, Check, BrainCircuit } from 'lucide-react';
 import type { ThinkingData } from '@/types';
 import { copyToClipboard } from '@/hooks/useClipboard';
 
@@ -12,6 +12,7 @@ export function ThinkingSection({ thinking, defaultExpanded = false }: ThinkingS
   const isGenerating = typeof thinking === 'object' ? Boolean(thinking.isGenerating) : false;
   const [isOpen, setIsOpen] = useState(defaultExpanded || isGenerating);
   const [copied, setCopied] = useState(false);
+  const thoughtBodyRef = React.useRef<HTMLDivElement>(null);
 
   // Auto-expand if thinking starts generating
   React.useEffect(() => {
@@ -21,14 +22,28 @@ export function ThinkingSection({ thinking, defaultExpanded = false }: ThinkingS
   }, [isGenerating]);
 
   const thoughtText = typeof thinking === 'string' ? thinking : thinking.thought || '';
+  // omp wraps injected system prompts in <system-notice> tags; models often
+  // echo that wrapper verbatim into their reasoning stream. Lift the notice
+  // out as its own alert and keep only the actual reasoning in the drawer.
+  const noticeMatch = thoughtText.match(/<system-notice[^>]*>([\s\S]*?)<\/system-notice>/);
+  const noticeText = noticeMatch?.[1]?.trim() ?? '';
+  const cleanThought = thoughtText.replace(/<system-notice[^>]*>[\s\S]*?<\/system-notice>/g, '').trim();
   const duration = typeof thinking === 'object' ? thinking.duration : undefined;
   const summary = typeof thinking === 'object' && thinking.summary 
     ? thinking.summary 
-    : thoughtText.slice(0, 100) + (thoughtText.length > 100 ? '...' : '');
+    : cleanThought.slice(0, 100) + (cleanThought.length > 100 ? '...' : '');
+
+  // Keep the reasoning body pinned to its newest content while open: streaming
+  // grows the text above the fold, so follow it unless the user scrolls up.
+  React.useEffect(() => {
+    if (!isOpen || !isGenerating) return;
+    const el = thoughtBodyRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [isOpen, cleanThought, isGenerating]);
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    const success = await copyToClipboard(thoughtText);
+    const success = await copyToClipboard(cleanThought);
     if (success) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -39,7 +54,7 @@ export function ThinkingSection({ thinking, defaultExpanded = false }: ThinkingS
     setIsOpen(prev => !prev);
   };
 
-  if (!thoughtText.trim()) return null;
+  if (!cleanThought) return null;
 
   return (
     <div className="w-full font-sans">
@@ -95,8 +110,27 @@ export function ThinkingSection({ thinking, defaultExpanded = false }: ThinkingS
             </button>
           </div>
 
-          <div className="border-l-2 border-ink/20 pl-3 py-1 text-[12px] text-ink/85 whitespace-pre-wrap break-words font-mono leading-relaxed max-h-72 overflow-y-auto select-text">
-            {thoughtText}
+          {noticeText && (
+            <div className="flex items-start space-x-2.5 rounded-md border border-ink/15 bg-paper/80 px-3 py-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
+              <div className="w-6 h-6 rounded-full bg-ink/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <BrainCircuit size={13} className="text-ink/70" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] font-mono uppercase tracking-wider text-ink/50 font-semibold mb-0.5">
+                  System Notice
+                </div>
+                <div className="text-[12px] text-ink/85 leading-relaxed">
+                  {noticeText}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div
+            ref={thoughtBodyRef}
+            className="border-l-2 border-ink/20 pl-3 py-1 text-[12px] text-ink/85 whitespace-pre-wrap break-words font-mono leading-relaxed max-h-72 overflow-y-auto select-text"
+          >
+            {cleanThought}
           </div>
         </div>
       )}

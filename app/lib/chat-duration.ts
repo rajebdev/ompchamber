@@ -12,6 +12,13 @@
 function parseMsgDate(msg: { date?: string; timestamp?: string } | undefined): number | null {
   const raw = msg?.date || msg?.timestamp;
   if (!raw) return null;
+  // Live-stream messages carry a preformatted "Today, 10:30 AM" label that
+  // `new Date()` cannot parse — resolve it against the current day.
+  if (raw.startsWith('Today,')) {
+    const time = raw.slice('Today,'.length).trim();
+    const parsed = new Date(`${new Date().toDateString()} ${time}`);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
+  }
   const t = new Date(raw).getTime();
   return Number.isNaN(t) ? null : t;
 }

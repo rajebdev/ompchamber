@@ -174,6 +174,28 @@ marked.use({
         return renderKatex(token.text ?? '', true);
       },
     },
+    // $ ... $ inline math, per remark-math flanking rules: the opening $ must
+    // follow start/whitespace/punctuation (never a word char, so "$5 each" and
+    // "a$b" read as text) and must not be followed by $ or whitespace; the
+    // closing $ must not be preceded by whitespace and not be followed by $
+    // or a digit (so "$n$ =" still works but "cost $5$" does not).
+    {
+      name: 'inlineMathDollar',
+      level: 'inline',
+      start(src: string) {
+        const match = /(^|[^\w$])\$(?!\$)(?!\s)/.exec(src);
+        return match ? match.index + (match[1]?.length ?? 0) : undefined;
+      },
+      tokenizer(src: string) {
+        const match = /^\$(?!\$)(?!\s)((?:\\\$|[^$])*?)(?<!\s)\$(?!\$)(?!\d)/.exec(src);
+        return match
+          ? { type: 'inlineMathDollar', raw: match[0], text: match[1] }
+          : undefined;
+      },
+      renderer(token: TokenLike) {
+        return renderKatex(token.text ?? '', false);
+      },
+    },
   ],
 });
 

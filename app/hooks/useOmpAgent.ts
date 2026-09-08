@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ChatMessageData } from '@/types';
+import type { ChatMessageData, ToolCallData } from '@/types';
 
 /**
  * Live omp agent bridge for the chamber chat (real mode, MOCK=false).
@@ -35,23 +35,62 @@ interface OmpAgentState {
   error: string | null;
 }
 
-/** Convert an omp AgentMessage (content blocks) into the chamber ChatMessageData shape. */
-function toChatMessage(raw: Record<string, unknown>): ChatMessageData {
+/** Convert an omp AgentMessage (content blocks) into the chamber ChatMessageData shape.
+ *  Custom-role frames (ultrathink-notice, xdev-mount-notice, ...) become a
+ *  `notice` row — omp marks them display:false, so they render as an alert,
+ *  never as assistant content. */
+function toChatMessage(raw: Record<string, unknown>, streaming = true): ChatMessageData | null {
+  if (raw.role === 'custom') {
+    const content = raw.content;
+    const text = typeof content === 'string'
+      ? content
+      : Array.isArray(content)
+        ? content
+            .map((b) => (b && typeof b === 'object' && (b as { type?: unknown }).type === 'text' ? (b as { text?: unknown }).text ?? '' : ''))
+            .join('')
+        : '';
+    const notice = text.replace(/<\/?system-notice[^>]*>/g, '').trim();
+    if (!notice) return null;
+    return {
+      id: typeof raw.id === 'string' ? raw.id : `notice-${Date.now()}`,
+      role: 'ai',
+      content: '',
+      notice,
+    };
+  }
   const content = raw.content;
   let text = '';
+  let thinking: ChatMessageData['thinking'];
+  let toolCalls: ChatMessageData['toolCalls'];
   if (typeof content === 'string') {
     text = content;
   } else if (Array.isArray(content)) {
-    text = content
-      .map((block) => {
-        if (block && typeof block === 'object' && (block as { type?: unknown }).type === 'text') {
-          return (block as { text?: unknown }).text ?? '';
-        }
-        return '';
-      })
-      .join('');
+    const blocks: ToolCallData[] = [];
+    const thoughtParts: string[] = [];
+    for (const block of content) {
+      if (!block || typeof block !== 'object') continue;
+      const b = block as { type?: unknown; text?: unknown; thinking?: unknown; toolCallId?: unknown; toolName?: unknown; name?: unknown; id?: unknown; input?: unknown; arguments?: unknown };
+      if (b.type === 'text' && typeof b.text === 'string') {
+        text += b.text;
+      } else if (b.type === 'thinking') {
+        if (typeof b.thinking === 'string') thoughtParts.push(b.thinking);
+        else if (typeof b.text === 'string') thoughtParts.push(b.text);
+      } else if (b.type === 'toolCall') {
+        blocks.push({
+          id: typeof b.toolCallId === 'string' ? b.toolCallId : (typeof b.id === 'string' ? b.id : `tc-${Date.now()}`),
+          type: 'bash',
+          title: typeof b.toolName === 'string' ? b.toolName : (typeof b.name === 'string' ? b.name : 'Tool'),
+          target: '',
+          command: '',
+          input: (b.input ?? b.arguments) as Record<string, unknown> | undefined,
+          status: streaming ? 'running' : 'success',
+        });
+      }
+    }
+    if (thoughtParts.length) thinking = { thought: thoughtParts.join('\n'), isGenerating: streaming };
+    if (blocks.length) toolCalls = blocks;
   }
-  const id = typeof raw.id === 'string' ? raw.id : `msg-${Date.now()}-ai`;
+  const id = typeof raw.id === 'string' ? raw.id : `msg-${raw.timestamp ?? Date.now()}-ai`;
   const role = raw.role === 'user' ? 'user' : 'ai';
   const timestamp = typeof raw.timestamp === 'number' ? new Date(raw.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : undefined;
   return {
@@ -60,8 +99,8 @@ function toChatMessage(raw: Record<string, unknown>): ChatMessageData {
     date: timestamp ? `Today, ${timestamp}` : undefined,
     timestamp,
     content: text,
-    thinking: raw.thinking as ChatMessageData['thinking'],
-    toolCalls: raw.toolCalls as ChatMessageData['toolCalls'],
+    thinking: thinking ?? (raw.thinking as ChatMessageData['thinking']),
+    toolCalls: toolCalls ?? (raw.toolCalls as ChatMessageData['toolCalls']),
     summary: typeof raw.summary === 'string' ? raw.summary : undefined,
     error: raw.error as ChatMessageData['error'],
   };
@@ -111,14 +150,16 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
         case 'message_update': {
           const msg = data.message as Record<string, unknown> | undefined;
           if (msg && msg.role !== 'user') {
-            callbacksRef.current.onMessageUpdate?.(toChatMessage(msg));
+            const converted = toChatMessage(msg);
+            if (converted) callbacksRef.current.onMessageUpdate?.(converted);
           }
           break;
         }
         case 'message_end': {
           const completed = data.message as Record<string, unknown> | undefined;
           if (completed && completed.role !== 'user') {
-            callbacksRef.current.onMessageEnd?.(toChatMessage(completed));
+            const converted = toChatMessage(completed, false);
+            if (converted) callbacksRef.current.onMessageEnd?.(converted);
           }
           break;
         }

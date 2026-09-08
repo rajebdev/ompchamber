@@ -54,7 +54,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   const [inputValue, setInputValue] = useState('');
   const [inputAttachments, setInputAttachments] = useState<Attachment[]>([]);
   const [localMessages, setLocalMessages] = useState<ChatMessageData[]>([]);
-  const [sessionData, setSessionData] = useState<{ id?: string; title?: string; model?: string; messages?: any[] } | null>(null);
+  const [sessionData, setSessionData] = useState<{ id?: string; title?: string; model?: string | { provider: string; modelId: string }; thinkingLevel?: string; messages?: any[] } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingVerb, setGeneratingVerb] = useState('');
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -159,14 +159,27 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
       setGeneratingVerb('Deep reasoning');
       setTimeout(() => scrollToBottom('smooth'), 50);
     },
+    // omp-web mirrors this exactly: streaming updates live in a SEPARATE
+    // slot that is replaced wholesale on every update (never merged into the
+    // committed list), and only flushed to history on message_end. omp's
+    // message frames are timestamp-identified, not id-identified.
     onMessageUpdate: (msg) => {
       setLocalMessages(prev => {
         const placeholderId = aiPlaceholderIdRef.current;
+        // Notice rows are independent of the streaming bubble — append them
+        // (deduped by id) without touching the placeholder.
+        if (msg.notice) {
+          if (prev.some(m => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        }
         if (placeholderId && prev.some(m => m.id === placeholderId)) {
           return prev.map(m => (m.id === placeholderId ? msg : m));
         }
         const last = prev[prev.length - 1];
-        if (last && last.role === 'ai' && last.content === '' && !last.thinking && !last.toolCalls) {
+        if (last && last.role === 'ai' && msg.id === last.id) {
+          return [...prev.slice(0, -1), msg];
+        }
+        if (last && last.role === 'ai' && /\S/.test(last.content) === false && !last.toolCalls?.length) {
           return [...prev.slice(0, -1), msg];
         }
         return [...prev, msg];
@@ -176,9 +189,20 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     onMessageEnd: (msg) => {
       setLocalMessages(prev => {
         const placeholderId = aiPlaceholderIdRef.current;
-        const updated = placeholderId && prev.some(m => m.id === placeholderId)
-          ? prev.map(m => (m.id === placeholderId ? msg : m))
-          : [...prev.slice(0, -1), msg];
+        let updated: ChatMessageData[];
+        if (placeholderId && prev.some(m => m.id === placeholderId)) {
+          updated = prev.map(m => (m.id === placeholderId ? msg : m));
+        } else {
+          // Replace the trailing in-flight AI message; notice rows appended
+          // after it must survive.
+          let idx = prev.length - 1;
+          while (idx >= 0 && prev[idx].notice) idx--;
+          if (idx >= 0 && prev[idx].role === 'ai') {
+            updated = [...prev.slice(0, idx), msg, ...prev.slice(idx + 1)];
+          } else {
+            updated = [...prev, msg];
+          }
+        }
         aiPlaceholderIdRef.current = null;
         persistMessages(updated);
         return updated;

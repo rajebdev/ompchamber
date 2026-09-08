@@ -63,6 +63,13 @@ export function ChatMessageItem({
     if (raw.startsWith('Today,')) {
       return `Today, ${raw.slice('Today,'.length).trim()}`;
     }
+    // Bare "10:30 AM" timestamp (live path) — resolve against today.
+    if (/^\d{1,2}:\d{2}\s*(AM|PM)$/i.test(raw)) {
+      const parsed = new Date(`${new Date().toDateString()} ${raw}`);
+      if (!Number.isNaN(parsed.getTime())) {
+        return `Today, ${parsed.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}`;
+      }
+    }
     const date = new Date(raw);
     if (Number.isNaN(date.getTime())) return '';
     const day = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -215,6 +222,21 @@ export function ChatMessageItem({
                   )}
                 </p>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* System Notice Alert */}
+        {msg.notice && (
+          <div className="flex items-start space-x-2.5 bg-canvas/80 border border-ink/20 rounded-lg mx-3 px-3.5 py-2.5 text-[12px] text-ink select-text">
+            <div className="w-6 h-6 rounded-full bg-ink/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Info size={13} className="text-ink/70" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-mono uppercase tracking-wider text-ink/50 font-semibold mb-0.5">
+                System Notice
+              </div>
+              <p className="text-ink/85 leading-relaxed whitespace-pre-wrap break-words">{msg.notice}</p>
             </div>
           </div>
         )}

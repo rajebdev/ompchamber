@@ -80,6 +80,9 @@ export interface ChatMessageData {
   thinking?: ThinkingData | string;
   /** Short human intent for tool calls (omp arguments.i) shown before the tools. */
   intent?: string;
+  /** System notice surfaced by omp (e.g. ultrathink-notice) — rendered as an
+   *  alert row, not as assistant content. */
+  notice?: string;
   toolCalls?: ToolCallData[];
   actions?: (AgentActionData | ToolCallData)[];
   systemNote?: string;

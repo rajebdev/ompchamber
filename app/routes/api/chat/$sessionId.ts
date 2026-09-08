@@ -19,7 +19,7 @@ export async function loader({ params }: LoaderFunctionArgs) {
     // synthetic ids).
     if (!mock) {
       const { findSessionFileById } = await import('@/lib/omp/session-locator');
-      const { loadSessionMessages, loadSessionTitle } = await import('@/lib/omp/session-messages');
+      const { loadSessionMessages, loadSessionTitle, loadSessionModel, loadSessionThinkingLevel } = await import('@/lib/omp/session-messages');
       const filePath = findSessionFileById(sessionId);
       if (filePath) {
         const messages = loadSessionMessages(filePath);
@@ -31,6 +31,8 @@ export async function loader({ params }: LoaderFunctionArgs) {
             id: sessionId,
             title,
             messages,
+            model: loadSessionModel(filePath),
+            thinkingLevel: loadSessionThinkingLevel(filePath),
           },
           isMock: false,
           source: 'omp-jsonl',

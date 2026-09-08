@@ -63,6 +63,9 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
   };
 
   const userMessages = localMessages.filter(m => m.role === 'user');
+  const sessionModelName = typeof sessionData?.model === 'object'
+    ? sessionData.model.modelId
+    : sessionData?.model;
 
   if (!sessionId) {
     return (
@@ -103,15 +106,18 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
           <div className="mx-auto w-full max-w-[970px]">
             {localMessages.map((msg, idx) => {
               const prev = localMessages[idx - 1];
-              const next = localMessages[idx + 1];
               const isLoading = isGenerating && idx === localMessages.length - 1 && msg.role === 'ai';
-              const isLastAi = msg.role !== 'user' && (!next || next.role === 'user');
+              // Notice rows are transparent for footer purposes: the last real
+              // AI message of a run still owns the footer even when a notice
+              // row follows it.
+              const nextReal = localMessages.slice(idx + 1).find(m => !m.notice);
+              const isLastAi = msg.role !== 'user' && !msg.notice && (!nextReal || nextReal.role === 'user');
               const isAiFragment = msg.role !== 'user' && prev && prev.role !== 'user';
               return (
                 <ChatMessageItem
                   key={msg.id}
                   msg={msg}
-                  modelName={sessionData?.model}
+                  modelName={sessionModelName}
                   isStreaming={isLoading}
                   onUndo={handleUndo}
                   onRetry={handleRetry}
@@ -144,7 +150,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
         <div className="mx-auto w-full max-w-[970px]">
           {isGenerating && (
             <GeneratingIndicator 
-              modelName={sessionData?.model} 
+              modelName={sessionModelName} 
               generatingVerb={generatingVerb} 
             />
           )}
@@ -167,6 +173,8 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
             isOmpSession={isOmpSession}
             onThinkingLevelChange={handleThinkingLevelChange}
             onModelChange={handleModelChange}
+            sessionModel={typeof sessionData?.model === 'object' ? sessionData.model : null}
+            sessionThinkingLevel={sessionData?.thinkingLevel}
           />
         </div>
       </div>

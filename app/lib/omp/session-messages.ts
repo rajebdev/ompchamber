@@ -294,6 +294,28 @@ function collectToolOutputs(records: Record<string, unknown>[]): Map<string, str
   return outputs;
 }
 
+/** Map an omp `custom_message` entry (ultrathink-notice, xdev-mount-notice,
+ *  ...) to a notice row. Returns null for non-notice custom messages. */
+function noticeFromCustomMessage(record: Record<string, unknown>): ChatMessageData | null {
+  const content = record.content;
+  const text = typeof content === 'string'
+    ? content
+    : Array.isArray(content)
+      ? content
+          .map((b) => (isRecord(b) && b.type === 'text' && typeof b.text === 'string' ? b.text : ''))
+          .join('')
+      : '';
+  const notice = text.replace(/<\/?system-notice[^>]*>/g, '').trim();
+  if (!notice) return null;
+  return {
+    id: typeof record.id === 'string' ? record.id : `notice-${Date.now()}`,
+    role: 'ai',
+    content: '',
+    notice,
+    date: typeof record.timestamp === 'string' ? new Date(record.timestamp).toISOString() : undefined,
+  };
+}
+
 /**
  * Load a session file and return the chat timeline in chronological order.
  * Assistant messages carry thinking accordion + tool calls (with outputs
@@ -318,6 +340,11 @@ export function loadSessionMessages(filePath: string): ChatMessageData[] {
   const state: SequenceState = { messages: [], outputsByCall: collectToolOutputs(records) };
 
   for (const record of records) {
+    if (record?.type === 'custom_message') {
+      const notice = noticeFromCustomMessage(record);
+      if (notice) state.messages.push(notice);
+      continue;
+    }
     if (record?.type !== 'message') continue;
     const mapped = toChatMessage(record as unknown as OmpMessageEntry);
     if (!mapped) continue;
@@ -350,6 +377,61 @@ export function loadSessionTitle(filePath: string): string | undefined {
     }
     const header = records.find((r) => r?.type === 'session');
     return typeof header?.title === 'string' && header.title.trim() ? header.title : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Resolve the model last used by a session from its `model_change` entries
+ *  (omp records `"provider/model-id"`). Returns undefined when the file has
+ *  no model_change entry or the value is malformed. */
+export function loadSessionModel(filePath: string): { provider: string; modelId: string } | undefined {
+  try {
+    const stat = statSync(filePath);
+    if (stat.size > MAX_SESSION_LOAD_BYTES) return undefined;
+  } catch {
+    return undefined;
+  }
+  try {
+    const body = readFileSync(filePath, 'utf8');
+    const records = parseJsonlLenient<Record<string, unknown>>(body);
+    let last: { provider: string; modelId: string } | undefined;
+    for (const record of records) {
+      if (record?.type !== 'model_change') continue;
+      const model = typeof record.model === 'string' ? record.model : undefined;
+      if (!model) continue;
+      const slash = model.indexOf('/');
+      if (slash <= 0 || slash === model.length - 1) continue;
+      last = { provider: model.slice(0, slash), modelId: model.slice(slash + 1) };
+    }
+    return last;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Resolve the thinking level last used by a session from its
+ *  `thinking_level_change` entries (omp records the level string, e.g.
+ *  "off" | "minimal" | "low" | "medium" | "high" | "max"). */
+export function loadSessionThinkingLevel(filePath: string): string | undefined {
+  try {
+    const stat = statSync(filePath);
+    if (stat.size > MAX_SESSION_LOAD_BYTES) return undefined;
+  } catch {
+    return undefined;
+  }
+  try {
+    const body = readFileSync(filePath, 'utf8');
+    const records = parseJsonlLenient<Record<string, unknown>>(body);
+    let last: string | undefined;
+    for (const record of records) {
+      if (record?.type !== 'thinking_level_change') continue;
+      const level = typeof record.thinkingLevel === 'string' && record.thinkingLevel.trim()
+        ? record.thinkingLevel.trim()
+        : undefined;
+      if (level) last = level;
+    }
+    return last;
   } catch {
     return undefined;
   }
