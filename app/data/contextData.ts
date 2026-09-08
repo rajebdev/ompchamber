@@ -10,9 +10,10 @@ export function computeSessionContextTelemetry(
   const timeFormatted = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
   const dateFormatted = `${now.getMonth() + 1}/${now.getDate()}, ${timeFormatted}`;
 
-  // If there are no messages or default demo session, generate or compute telemetry
+  // If there are no messages, this is a newly started (or empty) session —
+  // show a zeroed telemetry rather than fabricated demo data.
   if (!messages || messages.length === 0) {
-    return getDefaultMockTelemetry(sessionId || 'default', currentTitle);
+    return emptyTelemetry(sessionId || 'default', currentTitle);
   }
 
   let userCount = 0;
@@ -185,6 +186,29 @@ export function computeSessionContextTelemetry(
       otherPercent: otherPct
     },
     rawMessages
+  };
+}
+
+export function emptyTelemetry(sessionId: string, sessionTitle: string): SessionContextTelemetry {
+  return {
+    sessionId,
+    sessionTitle,
+    modelId: '',
+    modelName: '',
+    timestamp: '',
+    contextUsed: 0,
+    contextLimit: 1_000_000,
+    contextPercent: 0,
+    messagesCount: 0,
+    userCount: 0,
+    assistantCount: 0,
+    totalCost: 0,
+    costFormatted: '$0.00',
+    cacheHitAverage: 0,
+    costBreakdown: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    lastMessage: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0, cacheHitPercent: 0 },
+    distribution: { userTokens: 0, userPercent: 0, assistantTokens: 0, assistantPercent: 0, toolTokens: 0, toolPercent: 0, otherTokens: 0, otherPercent: 100 },
+    rawMessages: [],
   };
 }
 

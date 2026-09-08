@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams } from '@remix-run/react';
 import { Layers } from 'lucide-react';
 import type { SessionContextTelemetry } from '@/types';
-import { getDefaultMockTelemetry } from '@/data/contextData';
+import { emptyTelemetry } from '@/data/contextData';
 import { ContextWindowCard } from './context-panel/ContextWindowCard';
 import { ContextStatsGrid } from './context-panel/ContextStatsGrid';
 import { LastMessageCard } from './context-panel/LastMessageCard';
@@ -25,7 +25,7 @@ export function ContextPanel({
   const sessionId = searchParams.get('sessionId');
 
   const [telemetry, setTelemetry] = useState<SessionContextTelemetry>(() =>
-    getDefaultMockTelemetry(sessionId || 'history-commit', 'History Commit 2026-09-06 23:00')
+    emptyTelemetry(sessionId || 'default', 'Session not started')
   );
 
   const fetchContextTelemetry = () => {
@@ -51,6 +51,14 @@ export function ContextPanel({
     return (
       <div className={`flex flex-col h-full bg-paper items-center justify-center text-ink/40 ${className}`}>
         <span className="text-xs font-mono">No session selected</span>
+      </div>
+    );
+  }
+
+  if (telemetry.messagesCount === 0) {
+    return (
+      <div className={`flex flex-col h-full bg-paper items-center justify-center text-ink/40 ${className}`}>
+        <span className="text-xs font-mono">Session not started</span>
       </div>
     );
   }

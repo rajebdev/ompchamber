@@ -1,6 +1,6 @@
 import { json } from '@remix-run/node';
 import type { LoaderFunctionArgs } from '@remix-run/node';
-import { computeSessionContextTelemetry, getDefaultMockTelemetry } from '@/data/contextData';
+import { computeSessionContextTelemetry, emptyTelemetry } from '@/data/contextData';
 import { getSessionData } from '@/data/chatMockData';
 import { getDb } from '@/db.server';
 import { isMockMode } from '@/mock.server';
@@ -19,7 +19,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
           return json({ telemetry, isMock: true });
         }
       }
-      const defaultMock = getDefaultMockTelemetry(sessionId || 'history-commit', 'History Commit 2026-09-06 23:00');
+      const defaultMock = emptyTelemetry(sessionId || 'default', 'Session not started');
       return json({ telemetry: defaultMock, isMock: true });
     }
 
@@ -49,11 +49,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
       }
     }
 
-    const defaultTelemetry = getDefaultMockTelemetry('default', 'History Commit 2026-09-06 23:00');
+    const defaultTelemetry = emptyTelemetry('default', 'Session not started');
     return json({ telemetry: defaultTelemetry, isMock: false });
   } catch (error: any) {
     console.error('Context telemetry loader error:', error);
-    const fallback = getDefaultMockTelemetry('fallback', 'History Commit 2026-09-06 23:00');
+    const fallback = emptyTelemetry('fallback', 'Session not started');
     return json({ telemetry: fallback, isMock: mock, error: error.message }, { status: 200 });
   }
 }
