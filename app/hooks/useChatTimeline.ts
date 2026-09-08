@@ -34,11 +34,16 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const [isScrolling, setIsScrolling] = useState(false);
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleScroll = useCallback(() => {
     if (!scrollRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
     setShowScrollBottom(scrollHeight - scrollTop - clientHeight >= 100);
+    setIsScrolling(true);
+    if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+    scrollTimerRef.current = setTimeout(() => setIsScrolling(false), 600);
   }, []);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
@@ -470,6 +475,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     setInputAttachments,
     scrollRef,
     showScrollBottom,
+    isScrolling,
     handleScroll,
     scrollToBottom,
     handleSend,

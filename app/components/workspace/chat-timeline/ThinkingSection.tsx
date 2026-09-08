@@ -42,15 +42,15 @@ export function ThinkingSection({ thinking, defaultExpanded = false }: ThinkingS
   if (!thoughtText.trim()) return null;
 
   return (
-    <div className="w-full my-2 font-sans border border-ink/15 rounded-lg bg-paper overflow-hidden transition-all duration-200">
+    <div className="w-full font-sans">
       {/* Header Button */}
       <button
         type="button"
         onClick={toggleOpen}
-        className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-ink/5 transition-colors cursor-pointer select-none text-[12px]"
+        className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-ink/5 rounded-md transition-colors cursor-pointer select-none text-[12px]"
         aria-expanded={isOpen}
       >
-        <div className="flex items-center space-x-2 min-w-0 pr-2 flex-1">
+        <div className="flex items-center space-x-2 min-w-0 pr-[50px] flex-1">
           <div className="w-5 h-5 rounded flex items-center justify-center bg-ink/5 text-ink/70 flex-shrink-0">
             <Sparkles size={12} />
           </div>
@@ -61,8 +61,8 @@ export function ThinkingSection({ thinking, defaultExpanded = false }: ThinkingS
             </span>
           )}
           {!isOpen && summary && (
-            <span className="text-[11px] text-ink/60 italic truncate max-w-[180px] sm:max-w-[340px]">
-              — {summary}
+            <span className="text-ink/55 font-mono text-[11px] truncate min-w-0 flex-1">
+              {summary}
             </span>
           )}
         </div>
@@ -81,7 +81,7 @@ export function ThinkingSection({ thinking, defaultExpanded = false }: ThinkingS
 
       {/* Expanded Content Drawer */}
       {isOpen && (
-        <div className="px-3.5 py-2.5 border-t border-ink/10 bg-ink/5 text-[12px] text-ink/80 leading-relaxed font-sans space-y-2">
+        <div className="mt-2 mx-3 px-3.5 py-2.5 bg-ink/5 rounded-md text-[12px] text-ink/80 leading-relaxed font-sans space-y-2">
           <div className="flex items-center justify-between pb-1 text-[11px] font-mono text-ink/60 border-b border-ink/5">
             <span>Model Reasoning & Strategy</span>
             <button

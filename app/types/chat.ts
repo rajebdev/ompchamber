@@ -76,12 +76,21 @@ export interface ChatMessageData {
   content: string;
   attachments?: { id?: string; name: string; preview?: string; type?: string; size?: number }[];
   thinking?: ThinkingData | string;
+  /** Short human intent for tool calls (omp arguments.i) shown before the tools. */
+  intent?: string;
   toolCalls?: ToolCallData[];
   actions?: (AgentActionData | ToolCallData)[];
   systemNote?: string;
   actions2?: (AgentActionData | ToolCallData)[];
   summary?: string;
   monologue?: string;
+  /** Provider/API error attached to an assistant turn (e.g. 401 auth failure). */
+  error?: {
+    status?: number;
+    id?: number;
+    message?: string;
+    stopReason?: string;
+  };
 }
 
 export interface AIModelOption {

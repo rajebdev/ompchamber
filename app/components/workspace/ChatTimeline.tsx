@@ -34,6 +34,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
     setInputAttachments,
     scrollRef,
     showScrollBottom,
+    isScrolling,
     handleScroll,
     scrollToBottom,
     handleSend,
@@ -80,19 +81,21 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
 
   return (
     <div className={`flex flex-col h-full min-h-0 overflow-hidden bg-canvas relative ${className}`}>
-      {/* Minimap Shortcuts */}
-      <MinimapShortcuts 
-        userMessages={userMessages} 
-        onScrollTo={handleScrollTo} 
-      />
-
       {/* Main chat container wrapper */}
       <div className="relative flex-1 min-h-0 flex flex-col">
+        {/* Minimap Shortcuts */}
+        <MinimapShortcuts 
+          userMessages={userMessages} 
+          onScrollTo={handleScrollTo} 
+        />
+
         {/* Timeline Body */}
         <div 
           ref={scrollRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto overscroll-contain p-4 scroll-smooth overflow-x-hidden pb-10"
+          className={`flex-1 overflow-y-[overlay] overscroll-contain p-4 scroll-smooth overflow-x-hidden pb-10 ${
+            isScrolling ? 'timeline-scrollbar-visible' : 'timeline-scrollbar-hidden'
+          }`}
         >
           <div className="mx-auto w-full max-w-[970px]">
             {localMessages.map((msg, idx) => {

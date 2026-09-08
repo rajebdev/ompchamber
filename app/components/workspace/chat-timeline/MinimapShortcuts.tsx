@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 interface MinimapShortcutsProps {
   userMessages: any[];
@@ -6,25 +6,42 @@ interface MinimapShortcutsProps {
 }
 
 export function MinimapShortcuts({ userMessages, onScrollTo }: MinimapShortcutsProps) {
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   if (userMessages.length === 0) return null;
 
+  const lineWidth = (idx: number): string => {
+    if (hoveredIdx === null) return 'w-3';
+    const dist = Math.abs(idx - hoveredIdx);
+    if (dist === 0) return 'w-6';
+    if (dist === 1) return 'w-4';
+    return 'w-3';
+  };
+
   return (
-    <div className="absolute right-4 top-1/2 transform -translate-y-1/2 z-20 py-8 pl-12 group pointer-events-auto">
-      <div className="flex flex-col items-center space-y-3 p-2 bg-paper/90 backdrop-blur rounded-full border border-ink/10 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-        {userMessages.map((msg, idx) => (
-          <div key={`minimap-${msg.id}`} className="relative group/dot flex items-center justify-center">
-            <button 
-              onClick={() => onScrollTo(msg.id)}
-              className="w-2 h-2 rounded-full bg-ink/30 group-hover/dot:bg-ink group-hover/dot:scale-125 transition-all"
+    <div
+      className="absolute right-0.5 top-1/2 -translate-y-1/2 z-20 flex flex-col items-center py-4 w-6"
+      onMouseLeave={() => setHoveredIdx(null)}
+    >
+      {userMessages.map((msg, idx) => {
+        const isHovered = hoveredIdx === idx;
+        return (
+          <div
+            key={`minimap-${msg.id}`}
+            className="relative flex items-center justify-center w-full py-[3px] cursor-pointer"
+            onMouseEnter={() => setHoveredIdx(idx)}
+            onClick={() => onScrollTo(msg.id)}
+          >
+            <button
+              className={`block h-px rounded-full transition-all duration-200 ease-out ${lineWidth(idx)} ${isHovered ? 'bg-ink h-[2px]' : 'bg-ink/25'}`}
               aria-label={`Jump to your message #${idx + 1}`}
             />
-            <div className="absolute right-full mr-3 top-1/2 transform -translate-y-1/2 w-64 p-3 bg-ink text-canvas text-xs rounded-md shadow-lg opacity-0 pointer-events-none group-hover/dot:opacity-100 transition-opacity duration-200 z-30">
+            <div className={`absolute right-full mr-3 top-1/2 transform -translate-y-1/2 w-64 p-3 bg-ink text-canvas text-xs rounded-md shadow-lg pointer-events-none transition-opacity duration-200 z-30 ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
               <div className="line-clamp-3 whitespace-pre-wrap leading-relaxed">{msg.content}</div>
               <div className="absolute top-1/2 -right-1 transform -translate-y-1/2 w-2 h-2 bg-ink rotate-45"></div>
             </div>
           </div>
-        ))}
-      </div>
+        );
+      })}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { PanelRightClose, PanelRight, LayoutTemplate, Activity, Smartphone, MoreHorizontal } from 'lucide-react';
+import { PanelRightClose, PanelRight, LayoutTemplate, Smartphone, MoreHorizontal } from 'lucide-react';
 import { PWAInstallButton } from '@/components/common/PWAInstallButton';
 
 interface TopNavbarProps {
@@ -43,19 +43,6 @@ export function TopNavbar({
       </div>
 
       <div className="flex items-center space-x-3">
-        {sessionId && (
-          <div className="hidden sm:flex items-center space-x-4 text-[10px] font-mono text-ink/60 pr-4 border-r border-ink/10">
-            <div className="flex items-center space-x-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-ink"></span>
-              <span>6.4%</span>
-            </div>
-            <div className="flex items-center space-x-1">
-              <Activity size={12} />
-              <span>90%</span>
-            </div>
-          </div>
-        )}
-
         <div className="flex items-center space-x-1">
           {onSwitchToMobile && (
             <button

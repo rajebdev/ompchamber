@@ -45,6 +45,10 @@ interface OmpMessageEntry {
     toolName?: string;
     isError?: boolean;
     details?: unknown;
+    stopReason?: string;
+    errorStatus?: number;
+    errorId?: number;
+    errorMessage?: string;
     [key: string]: unknown;
   };
 }
@@ -90,13 +94,16 @@ function inferToolType(name?: string): ToolType {
 
 function toolTitleFor(block: OmpBlock): string {
   const name = typeof block.name === 'string' ? block.name : 'tool';
-  const intent =
-    isRecord(block.arguments) && typeof block.arguments.i === 'string'
-      ? (block.arguments.i as string)
-      : isRecord(block.arguments) && typeof block.arguments.path === 'string'
-        ? (block.arguments.path as string)
+  const args = isRecord(block.arguments) ? block.arguments : {};
+  const command =
+    typeof args.command === 'string'
+      ? args.command
+      : typeof args.cmd === 'string'
+        ? args.cmd
         : undefined;
-  return intent ? `${name} — ${intent}` : name;
+  const path = typeof args.path === 'string' ? args.path : undefined;
+  const detail = command || path;
+  return detail ? `${name} — ${detail}` : name;
 }
 
 function targetFor(block: OmpBlock): string | undefined {
@@ -152,6 +159,8 @@ interface ParsedBlocks {
   /** toolCallId → text output accumulated from following toolResult entries. */
   outputs: Map<string, string>;
   textParts: string[];
+  /** Short human intent (omp arguments.i) for the tool calls in this turn. */
+  intent?: string;
 }
 
 function parseAssistantContent(content: unknown): ParsedBlocks {
@@ -173,6 +182,11 @@ function parseAssistantContent(content: unknown): ParsedBlocks {
       if (call) {
         result.toolCalls.push(call);
         result.outputs.set(call.id, '');
+        const intent =
+          isRecord(block.arguments) && typeof block.arguments.i === 'string'
+            ? (block.arguments.i as string)
+            : undefined;
+        if (intent && !result.intent) result.intent = intent;
       }
     } else if (block.type === 'toolResult') {
       const targetId = typeof block.toolCallId === 'string' ? block.toolCallId : undefined;
@@ -222,11 +236,24 @@ function toChatMessage(entry: OmpMessageEntry): ChatMessageData | null {
 
   // Assistant / developer / custom: parse the rich block structure.
   const parsed = parseAssistantContent(content);
+  const stoppedWithError =
+    msg.stopReason === 'error' ||
+    typeof msg.errorStatus === 'number' ||
+    typeof msg.errorMessage === 'string';
   const message: ChatMessageData = {
     ...base,
     content: parsed.textParts.join('\n').trim(),
   };
+  if (stoppedWithError) {
+    message.error = {
+      status: typeof msg.errorStatus === 'number' ? msg.errorStatus : undefined,
+      id: typeof msg.errorId === 'number' ? msg.errorId : undefined,
+      message: typeof msg.errorMessage === 'string' ? msg.errorMessage : undefined,
+      stopReason: typeof msg.stopReason === 'string' ? msg.stopReason : undefined,
+    };
+  }
   if (parsed.thinking) message.thinking = { thought: parsed.thinking, isGenerating: false };
+  if (parsed.intent) message.intent = parsed.intent;
   if (parsed.toolCalls.length > 0) {
     message.toolCalls = parsed.toolCalls.map((call) => ({
       ...call,
@@ -234,7 +261,9 @@ function toChatMessage(entry: OmpMessageEntry): ChatMessageData | null {
       status: (msg.isError ? 'error' : 'success') as ToolCallData['status'],
     }));
   }
-  if (!message.content && !message.thinking && !message.toolCalls?.length && !message.systemNote) {
+  // Error turns are kept even when they carry no text/tools so the failure is
+  // visible in the timeline instead of silently vanishing.
+  if (!message.content && !message.thinking && !message.toolCalls?.length && !message.systemNote && !message.error) {
     return null;
   }
   return message;

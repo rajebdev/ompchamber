@@ -88,6 +88,20 @@
   background: color-mix(in srgb, var(--theme-ink) 40%, transparent);
 }
 
+/* Chat timeline: side scrollbar floats over content (overlay), fades while scrolling */
+.timeline-scrollbar-hidden::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+
+.timeline-scrollbar-visible::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--theme-ink) 20%, transparent);
+  border-radius: 3px;
+}
+
+.timeline-scrollbar-visible::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--theme-ink) 40%, transparent);
+}
+
 /* Terminal xterm custom scrollbars */
 .xterm .xterm-viewport::-webkit-scrollbar {
   width: 8px !important;

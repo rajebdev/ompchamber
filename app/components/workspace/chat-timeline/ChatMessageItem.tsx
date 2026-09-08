@@ -8,7 +8,8 @@ import {
   Hourglass,
   File as FileIcon,
   Check,
-  Undo2
+  Undo2,
+  AlertCircle
 } from 'lucide-react';
 import type { ChatMessageData } from '@/types';
 import { ThinkingSection } from './ThinkingSection';
@@ -58,11 +59,17 @@ export function ChatMessageItem({
   const hasRenderableContent = typeof msg.content === 'string' && /[A-Za-z0-9]/.test(msg.content);
 
   const formatFooterDate = (value?: string) => {
-    const raw = value || msg.timestamp;
+    const raw = value || msg.timestamp || msg.date;
     if (!raw) return '';
+    // Live-stream messages carry a preformatted "Today, 10:30 AM" label.
+    if (raw.startsWith('Today,')) {
+      return `Today, ${raw.slice('Today,'.length).trim()}`;
+    }
     const date = new Date(raw);
     if (Number.isNaN(date.getTime())) return '';
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const day = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const time = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    return `${day}, ${time}`;
   };
 
   const handleCopy = async () => {
@@ -100,7 +107,7 @@ export function ChatMessageItem({
     return (
       <div id={msg.id} className={`flex flex-col items-end space-y-1.5 w-full max-w-full ${className}`}>
         {/* User bubble - standardized to text-[13px] with markdown support */}
-        <div className="bg-paper p-3.5 sm:p-4 rounded-xl border border-ink/15 text-[13px] text-ink shadow-xs max-w-[92%] sm:max-w-[85%] break-words whitespace-pre-wrap overflow-hidden flex flex-col space-y-2 font-sans select-text" style={{ lineHeight: 'var(--markdown-body-line-height)' }}>
+        <div className="bg-paper p-3.5 sm:p-4 rounded-xl border border-ink/15 text-[13px] text-ink shadow-xs max-w-[92%] sm:max-w-[85%] break-words whitespace-pre-wrap overflow-hidden flex flex-col space-y-2 font-sans select-text mx-3" style={{ lineHeight: 'var(--markdown-body-line-height)' }}>
           <MarkdownRenderer content={msg.content} />
           
           {msg.attachments && msg.attachments.length > 0 && (
@@ -182,12 +189,46 @@ export function ChatMessageItem({
       {/* Main AI Response Container */}
       <div className="w-full space-y-2.5 font-sans leading-relaxed">
         
+        {/* Provider / API Error Alert */}
+        {msg.error && (
+          <div className="flex items-start space-x-2.5 bg-error/10 border border-error/30 rounded-lg mx-3 px-3.5 py-2.5 text-[12px] text-ink select-text">
+            <AlertCircle size={15} className="text-error flex-shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1 space-y-0.5">
+              <div className="flex items-center space-x-2 flex-wrap">
+                <span className="font-semibold text-error text-[12px] tracking-tight">
+                  {msg.error.status ? `Error ${msg.error.status}` : 'Request Failed'}
+                </span>
+                {msg.error.stopReason && (
+                  <span className="text-[10px] font-mono text-ink/50 bg-ink/5 px-1.5 py-0.5 rounded">
+                    {msg.error.stopReason}
+                  </span>
+                )}
+              </div>
+              {msg.error.message && (
+                <p className="text-ink/80 leading-relaxed text-[12px] font-mono whitespace-pre-wrap break-words">
+                  {msg.error.message.split('\n').map((l: string) => l.trim()).filter(Boolean).pop()}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Thinking / Reasoning Accordion */}
         {thinkingData && (
           <ThinkingSection 
             thinking={thinkingData} 
             defaultExpanded={false}
           />
+        )}
+
+        {/* Tool Call Intent */}
+        {msg.intent && (
+          <div className="text-[12px] text-ink/80 leading-relaxed font-sans px-3 py-0.5 select-text">
+            {(() => {
+              const clean = msg.intent.replace(/^[.\s]+/, '');
+              return clean.charAt(0).toUpperCase() + clean.slice(1);
+            })()}
+          </div>
         )}
 
         {/* Primary Tool Executions Accordion */}
@@ -220,7 +261,7 @@ export function ChatMessageItem({
 
         {/* Main AI Response Content (Rich Markdown with code blocks, tables, lists) */}
         {hasRenderableContent && (
-          <div className="text-[13px] text-ink leading-relaxed font-sans bg-transparent py-1 select-text">
+          <div className="text-[13px] text-ink leading-relaxed font-sans bg-transparent px-3 py-1 select-text">
             <MarkdownRenderer content={msg.content} />
             {isStreaming && (
               <span className="inline-block w-1.5 h-3.5 bg-ink/70 ml-1 translate-y-0.5 animate-pulse" />

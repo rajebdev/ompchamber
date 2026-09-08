@@ -12,12 +12,10 @@ import {
   Check, 
   Copy, 
   AlertCircle,
-  Loader2,
-  ExternalLink
+  Loader2
 } from 'lucide-react';
 import type { ToolCallData, ToolType } from '@/types';
 import { copyToClipboard } from '@/hooks/useClipboard';
-import { openFileInEditor } from '@/hooks/useOpenFile';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-javascript';
 import 'prismjs/components/prism-typescript';
@@ -72,7 +70,6 @@ interface ToolCallCardProps {
   isOpen?: boolean;
   onToggle?: () => void;
   defaultExpanded?: boolean;
-  onOpenFile?: (path: string, name?: string, content?: string) => void;
 }
 
 function getToolIcon(type: ToolType) {
@@ -100,8 +97,7 @@ export function ToolCallCard({
   tool, 
   isOpen: controlledIsOpen, 
   onToggle, 
-  defaultExpanded = false,
-  onOpenFile
+  defaultExpanded = false
 }: ToolCallCardProps) {
   const [internalIsOpen, setInternalIsOpen] = useState(defaultExpanded);
   const [copiedCmd, setCopiedCmd] = useState(false);
@@ -155,19 +151,6 @@ export function ToolCallCard({
     }
   };
 
-  const handleOpenInEditor = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!targetFilePath) return;
-    if (onOpenFile) {
-      onOpenFile(targetFilePath, undefined, outputText || undefined);
-    } else {
-      openFileInEditor({
-        path: targetFilePath,
-        content: outputText || undefined
-      });
-    }
-  };
-
   const handleCopyCmd = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (commandOrInput) {
@@ -200,16 +183,16 @@ export function ToolCallCard({
   );
 
   return (
-    <div className={`w-full border rounded-md transition-all font-sans text-[12px] overflow-hidden ${
+    <div className={`w-full rounded-md transition-all font-sans text-[12px] overflow-hidden ${
       status === 'error' 
-        ? 'border-error/30 bg-error/5' 
-        : 'border-ink/15 bg-paper'
+        ? 'bg-error/5' 
+        : 'bg-transparent'
     }`}>
       {/* Header Row */}
       <div
         onClick={() => hasExpandableContent && handleToggle()}
         className={`w-full flex items-center justify-between px-3 py-2 text-left transition-colors select-none ${
-          hasExpandableContent ? 'hover:bg-ink/5 cursor-pointer' : 'cursor-default'
+          hasExpandableContent ? 'hover:bg-ink/5 cursor-pointer rounded-md' : 'cursor-default'
         }`}
         aria-expanded={isExpanded}
         role="button"
@@ -238,10 +221,25 @@ export function ToolCallCard({
           </div>
 
           {/* Title & Target */}
-          <div className="flex flex-wrap items-baseline gap-1.5 min-w-0 flex-1">
-            <span className="font-semibold text-ink whitespace-nowrap flex-shrink-0 text-[12px]">
-              {tool.title || (isReadFile ? 'Read File' : tool.name || 'Tool Call')}
-            </span>
+          <div className="flex items-baseline gap-1.5 min-w-0 flex-1 pr-[50px]">
+            {(() => {
+              const fullTitle = tool.title || (isReadFile ? 'Read File' : tool.name || 'Tool Call');
+              const sepIndex = fullTitle.indexOf(' — ');
+              const name = sepIndex > -1 ? fullTitle.slice(0, sepIndex) : fullTitle;
+              const detail = sepIndex > -1 ? fullTitle.slice(sepIndex + 3) : '';
+              return (
+                <>
+                  <span className="font-semibold text-ink whitespace-nowrap flex-shrink-0 text-[12px] capitalize">
+                    {name}
+                  </span>
+                  {detail && (
+                    <span className="text-ink/55 font-mono text-[11px] truncate min-w-0 flex-1">
+                      {detail}
+                    </span>
+                  )}
+                </>
+              );
+            })()}
             {targetFilePath && (
               <span className="text-ink/70 truncate max-w-[180px] sm:max-w-[280px] text-[11px] font-mono bg-ink/5 px-1 rounded">
                 {targetFilePath}
@@ -257,29 +255,9 @@ export function ToolCallCard({
 
         {/* Right metadata & shortcut buttons */}
         <div className="flex items-center space-x-2 flex-shrink-0 text-[11px] font-mono">
-          {/* Shortcut icon to open file directly in Editor */}
-          {targetFilePath && (
-            <button
-              type="button"
-              onClick={handleOpenInEditor}
-              className="flex items-center space-x-1 text-ink/60 hover:text-ink hover:bg-ink/10 px-1.5 py-0.5 rounded transition-all cursor-pointer group"
-              title={`Open ${targetFilePath} in Editor`}
-            >
-              <FileCode size={12} className="text-ink/70 group-hover:text-ink" />
-              <span className="text-[10px] font-mono hidden md:inline">Open in Editor</span>
-              <ExternalLink size={10} className="hidden sm:inline opacity-60 group-hover:opacity-100" />
-            </button>
-          )}
-
           {tool.duration || tool.time ? (
             <span className="text-ink/50">{tool.duration || tool.time}</span>
           ) : null}
-
-          {status === 'success' && (
-            <span className="inline-flex items-center text-success text-[10px] bg-success-bg border border-success-border px-1.5 py-0.5 rounded">
-              <Check size={10} className="mr-1" /> Ready
-            </span>
-          )}
 
           {status === 'error' && (
             <span className="inline-flex items-center text-error text-[10px] bg-error/10 border border-error/30 px-1.5 py-0.5 rounded font-medium">
@@ -299,7 +277,10 @@ export function ToolCallCard({
           )}
 
           {hasExpandableContent && (
-            <div className="text-ink/50 ml-1">
+            <div className="flex items-center space-x-1 text-ink/50 ml-1">
+              <span className="text-[10px] font-mono hidden sm:inline">
+                {isExpanded ? 'Collapse' : 'Expand'}
+              </span>
               {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </div>
           )}
@@ -308,7 +289,7 @@ export function ToolCallCard({
 
       {/* Expandable Detail Body */}
       {isExpanded && hasExpandableContent && (
-        <div className="px-3.5 py-2.5 border-t border-ink/10 bg-ink/5 space-y-2.5">
+        <div className="mt-2 mx-3 px-3.5 py-2.5 bg-ink/5 rounded-md space-y-2.5">
           {/* Read File Dedicated View */}
           {isReadFile && (
             <div className="space-y-1.5">
@@ -318,17 +299,6 @@ export function ToolCallCard({
                   <span className="truncate">{targetFilePath || 'File Content'}</span>
                 </div>
                 <div className="flex items-center space-x-2 flex-shrink-0">
-                  {targetFilePath && (
-                    <button
-                      type="button"
-                      onClick={handleOpenInEditor}
-                      className="flex items-center space-x-1 hover:text-ink transition-colors active:scale-95 cursor-pointer px-1.5 py-0.5 rounded hover:bg-ink/10 bg-paper border border-ink/15 shadow-2xs font-sans text-[11px] text-ink"
-                      title="Open file in editor"
-                    >
-                      <FileCode size={11} className="text-ink" />
-                      <span>Open in Editor</span>
-                    </button>
-                  )}
                   {outputText && (
                     <button
                       type="button"
@@ -343,12 +313,12 @@ export function ToolCallCard({
               </div>
 
               {loadingFile ? (
-                <div className="bg-paper border border-ink/15 p-3 rounded text-[11px] font-mono text-ink/50 flex items-center space-x-2">
+                <div className="bg-paper p-3 rounded text-[11px] font-mono text-ink/50 flex items-center space-x-2">
                   <Loader2 size={12} className="animate-spin" />
                   <span>Loading file content...</span>
                 </div>
               ) : outputText ? (
-                <div className="bg-paper border border-ink/15 rounded text-[11px] font-mono overflow-x-auto max-h-80 overflow-y-auto overscroll-contain flex items-start">
+                <div className="bg-paper rounded text-[11px] font-mono overflow-x-auto max-h-80 overflow-y-auto overscroll-contain flex items-start">
                   {/* Line numbers gutter */}
                   <div className="py-2 pl-2.5 pr-2 select-none text-right text-[11px] text-ink/30 bg-ink/10 border-r border-ink/10 font-mono leading-relaxed flex-shrink-0">
                     {outputText.split('\n').map((_, idx) => (
@@ -362,17 +332,8 @@ export function ToolCallCard({
                   />
                 </div>
               ) : (
-                <div className="bg-paper border border-ink/15 p-2.5 rounded text-[11px] font-mono text-ink/60 flex items-center justify-between">
+                <div className="bg-paper p-2.5 rounded text-[11px] font-mono text-ink/60">
                   <span>File is ready for inspection.</span>
-                  {targetFilePath && (
-                    <button
-                      type="button"
-                      onClick={handleOpenInEditor}
-                      className="text-warning underline hover:text-warning-hover text-[11px] cursor-pointer"
-                    >
-                      View in Editor →
-                    </button>
-                  )}
                 </div>
               )}
             </div>
@@ -392,7 +353,7 @@ export function ToolCallCard({
                   <span>{copiedCmd ? 'Copied' : 'Copy'}</span>
                 </button>
               </div>
-              <div className="bg-ink/10 text-ink border border-ink/10 p-2 rounded text-[11px] sm:text-[12px] font-mono overflow-x-auto whitespace-pre-wrap break-all shadow-inner select-text">
+              <div className="bg-ink/10 text-ink p-2 rounded text-[11px] sm:text-[12px] font-mono overflow-x-auto whitespace-pre-wrap break-all shadow-inner select-text">
                 <span className="text-warning font-bold select-none mr-1.5">$</span>
                 <span dangerouslySetInnerHTML={{ __html: highlightCode(commandOrInput, 'bash') }} />
               </div>
@@ -407,17 +368,8 @@ export function ToolCallCard({
                   <FileCode size={11} className="text-ink/70" />
                   <span className="truncate">File Diff: {tool.diff.file}</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleOpenInEditor}
-                  className="flex items-center space-x-1 hover:text-ink transition-colors active:scale-95 cursor-pointer px-1.5 py-0.5 rounded hover:bg-ink/10 bg-paper border border-ink/15 shadow-2xs font-sans text-[11px] text-ink"
-                  title="Open file in editor"
-                >
-                  <FileCode size={11} className="text-ink" />
-                  <span>Open in Editor</span>
-                </button>
               </div>
-              <div className="bg-ink/10 border border-ink/10 p-2 rounded text-[11px] sm:text-[12px] font-mono overflow-x-auto max-h-48 whitespace-pre leading-relaxed select-text">
+              <div className="bg-ink/10 p-2 rounded text-[11px] sm:text-[12px] font-mono overflow-x-auto max-h-48 whitespace-pre leading-relaxed select-text">
                 {tool.diff.diffText.split('\n').map((line, idx) => {
                   const isAdd = line.startsWith('+');
                   const isDel = line.startsWith('-');
@@ -473,7 +425,7 @@ export function ToolCallCard({
                 </button>
               </div>
               <div 
-                className="bg-paper border border-ink/15 p-2 rounded text-[11px] sm:text-[12px] font-mono overflow-x-auto max-h-80 overflow-y-auto overscroll-contain whitespace-pre break-words leading-relaxed text-ink/90 select-text"
+                className="bg-paper p-2 rounded text-[11px] sm:text-[12px] font-mono overflow-x-auto max-h-80 overflow-y-auto overscroll-contain whitespace-pre break-words leading-relaxed text-ink/90 select-text"
                 dangerouslySetInnerHTML={{ __html: highlightCode(outputText, 'javascript') }}
               />
             </div>
