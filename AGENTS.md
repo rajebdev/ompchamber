@@ -93,6 +93,11 @@
 - Every change must pass:
   1. `npm run lint` (`tsc --noEmit`) without errors.
   2. Production build verification (`compile_applet`).
+- **Unused Code Check (MANDATORY before task completion)**: Before declaring any task done, verify no unused imports, locals, or dead props were introduced or left behind:
+  - Run `npx tsc --noEmit --noUnusedLocals --noUnusedParameters` and fix every `TS6133` (declared but never read), `TS6192` (all imports unused), `TS6196` (declared but never used), and `TS6198` (all destructured elements unused) error it reports.
+  - Remove unused imports (icons, types, components) and unused destructured props/state — do not leave dead code behind.
+  - If a component's props/state become unused because a feature was stubbed or removed, strip them from the interface, the destructure, and every call-site in the same change.
+  - Do NOT ship `import React from 'react'` in `.tsx` files — the React 19 JSX transform makes it unnecessary (keep named imports like `useState`).
 
 ### 8. Layout & Panel Resizing
 - **Panel Width**: Be aware that the width of the layout panels (like the sidebar or right sidebar) is considered and calculated in **pixels**. When handling layout persistence or default sizes, ensure they are treated as pixel values rather than just percentages, adapting library APIs (like `react-resizable-panels`) as needed to accommodate pixel-based design intent.
