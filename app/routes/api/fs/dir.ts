@@ -38,7 +38,17 @@ function listEntries(dirPath: string, rootPath: string): any[] {
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const mock = isMockMode();
-  const baseDir = await resolveRoot(url.searchParams.get('root'), getDefaultFsRoot(mock));
+  let baseDir = await resolveRoot(url.searchParams.get('root'), getDefaultFsRoot(mock));
+
+  // Browse inside a nested git repo; emitted paths are repo-relative to match GitPanel.
+  const repo = url.searchParams.get('repo');
+  if (repo && repo !== '.') {
+    const repoDir = path.resolve(baseDir, repo);
+    if (repoDir !== baseDir && !repoDir.startsWith(baseDir + path.sep)) {
+      return json({ error: 'Invalid repo path' }, { status: 403 });
+    }
+    baseDir = repoDir;
+  }
 
   const targetPath = url.searchParams.get('path') || '.';
   const fullPath = path.resolve(baseDir, targetPath);

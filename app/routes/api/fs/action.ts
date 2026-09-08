@@ -14,9 +14,14 @@ export async function action({ request }: ActionFunctionArgs) {
   const filePath = formData.get('path') as string;
 
   const rootDir = await resolveRoot(formData.get('root') as string, getDefaultFsRoot(isMockMode()));
-  const fullPath = path.resolve(rootDir, filePath);
+  const repo = (formData.get('repo') as string) || '.';
+  const scopedRoot = repo === '.' ? rootDir : path.join(rootDir, repo);
+  if (scopedRoot !== rootDir && !scopedRoot.startsWith(rootDir + path.sep)) {
+    return json({ error: 'Invalid repo path' }, { status: 403 });
+  }
+  const fullPath = path.resolve(scopedRoot, filePath);
 
-  if (fullPath !== rootDir && !fullPath.startsWith(rootDir + path.sep)) {
+  if (fullPath !== scopedRoot && !fullPath.startsWith(scopedRoot + path.sep)) {
     return json({ error: 'Invalid path' }, { status: 403 });
   }
 
@@ -52,7 +57,7 @@ export async function action({ request }: ActionFunctionArgs) {
       execAsync(command).catch(e => console.error('Failed to open explorer:', e));
       return json({ success: true });
     } else if (actionType === 'git_history') {
-      const targetDir = rootDir; 
+      const targetDir = scopedRoot; 
       try {
         const { stdout } = await execAsync(`git log -n 50 --date-order --pretty=format:"|~|%h|~|%an|~|%ar|~|%s" -- "${filePath}"`, { cwd: targetDir });
         const parsedData = stdout.split('\n').filter(Boolean).map(line => {
