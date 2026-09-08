@@ -26,6 +26,8 @@ export interface WorkspaceFolderData {
   /** When set, this workspace is bound to an oh-my-pi project root; sessions
    *  discovered under that root render inside this folder. */
   project_path?: string | null;
+  /** When true, the workspace is pinned and sorts to the top of the sidebar. */
+  isPinned?: boolean;
   isExpanded: boolean;
   sessions: SessionItemData[];
   hasMore: boolean;

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { Plus, MoreHorizontal, Pin, Trash2 } from 'lucide-react';
-import { useFetcher } from '@remix-run/react';
+import React, { useState, useRef } from 'react';
+import { Plus, MoreHorizontal, Pin, PinOff, Trash2 } from 'lucide-react';
+import { useFetcher, useRevalidator } from '@remix-run/react';
+import { useOnClickOutside } from '@/hooks/useOnClickOutside';
 
 export function SessionItem({ title, isActive = false, onClick }: { title: string, isActive?: boolean, onClick?: () => void }) {
   return (
@@ -28,9 +29,19 @@ export function Category({
 }) {
   const [isOpen, setIsOpen] = useState(folder.isExpanded || false);
   const [showMenu, setShowMenu] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const fetcher = useFetcher<any>();
   const toggleFetcher = useFetcher();
-  
+  const pinFetcher = useFetcher();
+  const deleteFetcher = useFetcher();
+  const revalidator = useRevalidator();
+
+  useOnClickOutside(menuRef, () => {
+    setShowMenu(false);
+    setConfirmDelete(false);
+  });
+
   const allSessions = fetcher.data?.sessions || folder.sessions;
   // Real-mode folders carry every session already; only mock folders (which
   // may have a numeric "View more" pagination) trigger the fetcher route.
@@ -54,6 +65,27 @@ export function Category({
     );
   };
 
+  const handlePin = () => {
+    if (typeof folder.id !== 'number') return;
+    pinFetcher.submit(
+      { isPinned: String(!folder.isPinned) },
+      { method: 'POST', action: `/api/folders/${folder.id}/pin` }
+    );
+    setShowMenu(false);
+    revalidator.revalidate();
+  };
+
+  const handleDelete = () => {
+    if (typeof folder.id !== 'number') return;
+    deleteFetcher.submit(
+      {},
+      { method: 'POST', action: `/api/folders/${folder.id}/delete` }
+    );
+    setShowMenu(false);
+    setConfirmDelete(false);
+    revalidator.revalidate();
+  };
+
   const isActuallyOpen = forceExpanded || isOpen;
 
   return (
@@ -65,17 +97,18 @@ export function Category({
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${isActuallyOpen ? 'rotate-90 text-ink' : 'text-ink/50'}`}>
             <polyline points="9 18 15 12 9 6"></polyline>
           </svg>
+          {folder.isPinned && <Pin size={11} className="text-ink/50" />}
           <span>{folder.name}</span>
         </div>
         
         {/* Hover Actions */}
-        <div className="hidden group-hover:flex items-center space-x-1 pr-1" onMouseLeave={() => setShowMenu(false)}>
+        <div className={`items-center space-x-1 pr-1 ${showMenu ? 'flex' : 'hidden group-hover:flex'}`}>
           <Plus 
             size={12} 
             className="text-ink/40 hover:text-ink cursor-pointer"  
             onClick={(e) => { e.stopPropagation(); onNewSessionForFolder(folder.id); }}
           />
-          <div className="relative">
+          <div className="relative" ref={menuRef}>
             <MoreHorizontal 
               size={12} 
               className="text-ink/40 hover:text-ink cursor-pointer" 
@@ -83,12 +116,27 @@ export function Category({
             />
             {showMenu && (
               <div className="absolute right-0 top-full mt-1 w-40 bg-paper border border-ink/10 rounded shadow-lg z-50 py-1">
-                <div className="px-3 py-1.5 text-xs hover:bg-ink/5 cursor-pointer flex items-center space-x-2">
-                  <Pin size={12} /><span>Pin Workspace</span>
-                </div>
-                <div className="px-3 py-1.5 text-xs hover:bg-ink/5 cursor-pointer flex items-center space-x-2 text-red-600">
-                  <Trash2 size={12} /><span>Delete Workspace</span>
-                </div>
+                {confirmDelete ? (
+                  <>
+                    <div className="px-3 py-1.5 text-xs text-ink/80">Delete workspace?</div>
+                    <div className="px-3 py-1.5 text-xs hover:bg-ink/5 cursor-pointer flex items-center space-x-2 text-red-600" onClick={handleDelete}>
+                      <Trash2 size={12} /><span>Yes, delete</span>
+                    </div>
+                    <div className="px-3 py-1.5 text-xs hover:bg-ink/5 cursor-pointer flex items-center space-x-2" onClick={() => setConfirmDelete(false)}>
+                      <span>Cancel</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="px-3 py-1.5 text-xs hover:bg-ink/5 cursor-pointer flex items-center space-x-2" onClick={handlePin}>
+                      {folder.isPinned ? <PinOff size={12} /> : <Pin size={12} />}
+                      <span>{folder.isPinned ? 'Unpin Workspace' : 'Pin Workspace'}</span>
+                    </div>
+                    <div className="px-3 py-1.5 text-xs hover:bg-ink/5 cursor-pointer flex items-center space-x-2 text-red-600" onClick={() => setConfirmDelete(true)}>
+                      <Trash2 size={12} /><span>Delete Workspace</span>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>

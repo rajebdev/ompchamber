@@ -76,6 +76,10 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: 'Workspace name is required', code: 'name_required' }, { status: 400 });
   }
 
+  if (projectPath) {
+    await db.run('DELETE FROM deleted_workspaces WHERE project_path = ?', [projectPath]);
+  }
+
   const result = await db.run(
     'INSERT INTO workspace_folders (name, is_expanded, project_path) VALUES (?, 1, ?)',
     [name, projectPath],

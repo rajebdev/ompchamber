@@ -79,6 +79,11 @@ export async function getDb(): Promise<Database> {
         messages TEXT NOT NULL,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS deleted_workspaces (
+        project_path TEXT PRIMARY KEY,
+        deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
     `);
 
     // Attempt to add column to existing tables if it doesn't exist
@@ -90,6 +95,12 @@ export async function getDb(): Promise<Database> {
 
     try {
       await db.exec('ALTER TABLE workspace_folders ADD COLUMN project_path TEXT;');
+    } catch (err) {
+      // Column already exists, ignore
+    }
+
+    try {
+      await db.exec('ALTER TABLE workspace_folders ADD COLUMN is_pinned BOOLEAN DEFAULT 0;');
     } catch (err) {
       // Column already exists, ignore
     }
@@ -233,11 +244,12 @@ export async function getDb(): Promise<Database> {
 }
 
 /**
- * Additive folder ↔ omp project sync: creates a workspace folder for every
- * project discovered from ~/.omp/agent (folder name = lowercase basename,
- * bound via project_path). Existing user folders — bound or unbound — are
- * left untouched, including one-time binding of an unbound folder whose name
- * matches a project basename.
+ * Additive-only folder ↔ omp project sync: creates a workspace folder for
+ * every project discovered from ~/.omp/agent (folder name = lowercase
+ * basename, bound via project_path). It never modifies or deletes existing
+ * user data — no renames, no re-binding of unbound folders — and it skips
+ * projects the user has explicitly deleted (tombstoned in
+ * `deleted_workspaces`), so a deleted workspace stays deleted.
  */
 async function syncWorkspaceFoldersWithOmp(db: Database): Promise<void> {
   const { loadOmpSidebarData } = await import('@/lib/omp/session-reader');
@@ -245,35 +257,17 @@ async function syncWorkspaceFoldersWithOmp(db: Database): Promise<void> {
 
   const data = await loadOmpSidebarData();
   const existing = await db.all('SELECT id, name, project_path FROM workspace_folders');
+  const tombstoned = await db.all('SELECT project_path FROM deleted_workspaces');
 
-  const byPath = new Map<string, { id: number; name: string }>();
-  const byName = new Map<string, { id: number; name: string }>();
-  for (const row of existing) {
-    if (row.project_path) byPath.set(row.project_path as string, row);
-    else byName.set((row.name as string).toLowerCase(), row);
-  }
-
+  const byPath = new Set(existing.map((r) => r.project_path).filter(Boolean));
   const usedNames = new Set(existing.map((r) => (r.name as string).toLowerCase()));
+  const deletedPaths = new Set(tombstoned.map((r) => r.project_path as string));
 
   for (const project of orderedOmpProjects(data)) {
+    if (deletedPaths.has(project.path)) continue;
+    if (byPath.has(project.path)) continue;
+
     const name = projectDisplayName(project);
-    const bound = byPath.get(project.path);
-    if (bound) {
-      if (bound.name !== name) {
-        await db.run('UPDATE workspace_folders SET name = ? WHERE id = ?', [name, bound.id]);
-      }
-      continue;
-    }
-    const legacy = byName.get(name);
-    if (legacy) {
-      byName.delete(name);
-      await db.run('UPDATE workspace_folders SET project_path = ?, name = ? WHERE id = ?', [
-        project.path,
-        name,
-        legacy.id,
-      ]);
-      continue;
-    }
     let candidate = name;
     let suffix = 2;
     while (usedNames.has(candidate)) {

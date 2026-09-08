@@ -78,6 +78,9 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
 
     // Sort folders
     result.sort((a, b) => {
+      if (a.isPinned !== b.isPinned) {
+        return a.isPinned ? -1 : 1;
+      }
       switch (sortOption) {
         case 'A-Z':
           return a.name.localeCompare(b.name);
