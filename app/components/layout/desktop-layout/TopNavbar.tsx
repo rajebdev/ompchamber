@@ -23,19 +23,24 @@ export function TopNavbar({
   return (
     <header className="h-12 flex-shrink-0 border-b border-ink/10 bg-paper flex items-center justify-between pr-4 z-20">
       <div className="flex items-center space-x-2 px-4 min-w-0">
-        {showLeftPanel ? (
+        {!showLeftPanel && (
           <>
-            <span className="font-bold text-sm tracking-tight hidden sm:flex items-center">
-              <span className="font-semibold text-xs text-ink truncate">{sessionTitle ?? 'OMP Chamber'}</span>
+            <span className="font-bold text-sm tracking-tight hidden sm:flex items-center flex-shrink-0">
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-500 font-extrabold text-[15px] tracking-tighter">OMP</span>
+              <span className="ml-[1px]">Chamber</span>
             </span>
             {sessionTitle && (
-              <MoreHorizontal size={14} className="text-ink/40 hover:text-ink cursor-pointer flex-shrink-0" />
+              <span className="text-ink/30 text-xs select-none flex-shrink-0">/</span>
             )}
           </>
-        ) : (
-          <span className="font-bold text-sm tracking-tight hidden sm:flex items-center whitespace-nowrap bg-clip-text text-transparent bg-gradient-to-r from-orange-600 to-amber-500 font-extrabold text-[15px] tracking-tighter">
-            OMP Chamber
-          </span>
+        )}
+        {sessionTitle && (
+          <>
+            <span className="font-bold text-sm tracking-tight hidden sm:flex items-center">
+              <span className="font-semibold text-xs text-ink truncate">{sessionTitle}</span>
+            </span>
+            <MoreHorizontal size={14} className="text-ink/40 hover:text-ink cursor-pointer flex-shrink-0" />
+          </>
         )}
       </div>
 
