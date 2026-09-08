@@ -108,7 +108,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
         {showRightPanel && (
           <>
             <CustomResizeHandle />
-            <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={pctOr(initialLayoutSizes?.right, (activeRightPanel === 'terminal' || activeRightPanel === 'context') ? 536 : 268)} minSize={activeRightPanel === 'context' ? 420 : 200} maxSize={800} collapsible>
+            <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={pctOr(initialLayoutSizes?.right, (activeRightPanel === 'terminal' || activeRightPanel === 'context') ? 536 : 268)} minSize={activeRightPanel === 'context' ? 420 : activeRightPanel === 'git' ? 260 : 200} maxSize={800} collapsible>
               {activeRightPanel === 'files' && <FileExplorer className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} onOpenFile={onOpenFile} refreshKey={refreshKey} onRefresh={onRefreshWorkspace} />}
               {activeRightPanel === 'search' && <SearchPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} />}
               {activeRightPanel === 'git' && <GitPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} refreshKey={refreshKey} />}
