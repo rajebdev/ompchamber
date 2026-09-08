@@ -24,4 +24,5 @@ export interface GitStatusData {
   branches: string[];
   repos: string[];
   activeRepo: string;
+  syncCount?: { ahead: number; behind: number };
 }

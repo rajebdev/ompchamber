@@ -112,7 +112,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
 
     const changes = statusOut
-      .trim()
       .split('\n')
       .filter(Boolean)
       .map(line => {
@@ -139,6 +138,19 @@ export async function loader({ request }: LoaderFunctionArgs) {
         };
       });
 
+    // `git rev-list --left-right --count HEAD...@{upstream}` prints "<ahead>\t<behind>".
+    let syncCount = { ahead: 0, behind: 0 };
+    try {
+      const { stdout: syncOut } = await execAsync(
+        'git rev-list --left-right --count HEAD...@{upstream}',
+        { cwd: targetDir, timeout: 8000 }
+      );
+      const [ahead, behind] = syncOut.trim().split(/\s+/).map(Number);
+      syncCount = { ahead: ahead || 0, behind: behind || 0 };
+    } catch {
+      // No upstream configured — nothing to sync against.
+    }
+
     return json({
       changes,
       branch: branch || 'main',
@@ -146,7 +158,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       repos,
       reposPending: pending,
       activeRepo: repo,
-      syncCount: 0,
+      syncCount,
     });
   } catch (error: any) {
     return json({
@@ -156,7 +168,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       repos: repos.length ? repos : ['.'],
       reposPending: pending,
       activeRepo: repo,
-      syncCount: 0,
+      syncCount: { ahead: 0, behind: 0 },
       error: error?.message || 'Git error',
     }, { status: 200 });
   }
@@ -244,6 +256,13 @@ export async function action({ request }: ActionFunctionArgs) {
         };
       });
       return json({ success: true, type: 'graph', data: parsedData });
+    } else if (actionType === 'push') {
+      await execAsync('git push', { cwd: targetDir, timeout: 120000 });
+    } else if (actionType === 'pull') {
+      await execAsync('git pull --ff-only', { cwd: targetDir, timeout: 120000 });
+    } else if (actionType === 'sync') {
+      await execAsync('git pull --ff-only', { cwd: targetDir, timeout: 120000 });
+      await execAsync('git push', { cwd: targetDir, timeout: 120000 });
     }
     return json({ success: true });
   } catch (error: any) {
