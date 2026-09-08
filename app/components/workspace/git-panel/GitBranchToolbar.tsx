@@ -8,7 +8,8 @@ import {
   GitMerge, 
   MoreHorizontal,
   FolderTree,
-  List
+  List,
+  RefreshCw
 } from 'lucide-react';
 
 interface GitBranchToolbarProps {
@@ -26,6 +27,9 @@ interface GitBranchToolbarProps {
   onGraph: () => void;
   viewMode: 'flat' | 'tree';
   setViewMode: (mode: 'flat' | 'tree') => void;
+  isBusy?: boolean;
+  syncCount?: { ahead: number; behind: number };
+  onSync: () => void;
 }
 
 export function GitBranchToolbar({
@@ -42,7 +46,10 @@ export function GitBranchToolbar({
   onHistory,
   onGraph,
   viewMode,
-  setViewMode
+  setViewMode,
+  isBusy = false,
+  syncCount = { ahead: 0, behind: 0 },
+  onSync
 }: GitBranchToolbarProps) {
   return (
     <div className="p-3 border-b border-ink/10 bg-canvas/50 flex items-center justify-between">
@@ -89,6 +96,25 @@ export function GitBranchToolbar({
       </div>
 
       <div className="flex items-center space-x-2 text-ink/40 relative" ref={optionsRef}>
+        <button
+          type="button"
+          onClick={onSync}
+          disabled={isBusy || (syncCount.ahead === 0 && syncCount.behind === 0)}
+          title={
+            syncCount.ahead > 0 && syncCount.behind > 0
+              ? `Pull ${syncCount.behind} then push ${syncCount.ahead} commit(s)`
+              : syncCount.ahead > 0
+                ? `Push ${syncCount.ahead} commit(s)`
+                : syncCount.behind > 0
+                  ? `Pull ${syncCount.behind} commit(s)`
+                  : 'Up to date'
+          }
+          className="flex items-center gap-1 p-1 rounded hover:text-ink hover:bg-ink/5 cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <RefreshCw size={13} />
+          <span className="font-mono tabular-nums text-[10px]">↑{syncCount.ahead} ↓{syncCount.behind}</span>
+        </button>
+
         <button
           type="button"
           onClick={onHistory} 

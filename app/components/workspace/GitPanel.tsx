@@ -17,7 +17,7 @@ interface GitPanelProps {
 }
 
 export function GitPanel({ className = '', enabled = true, rootPath, refreshKey = 0 }: GitPanelProps) {
-  const fetcher = useFetcher<{ changes: GitChange[], branch: string, branches: string[], repos: string[], reposPending?: boolean, activeRepo: string }>();
+  const fetcher = useFetcher<{ changes: GitChange[], branch: string, branches: string[], repos: string[], reposPending?: boolean, activeRepo: string, syncCount?: { ahead: number, behind: number } }>();
   const actionFetcher = useFetcher<{ success: boolean, type?: string, data?: any }>();
 
   const loadRepo = (repo?: string) => {
@@ -272,12 +272,16 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
         onGraph={() => executeAction('graph')}
         viewMode={viewMode}
         setViewMode={setViewMode}
+        isBusy={isLoading}
+        syncCount={fetcher.data?.syncCount}
+        onSync={() => executeAction('sync')}
       />
 
       {/* Commit Box */}
       <GitCommitBox 
         message={message}
         hasStagedChanges={stagedChanges.length > 0}
+        isBusy={isLoading}
         onChangeMessage={setMessage}
         onCommit={() => executeAction('commit', undefined, { message })}
       />
