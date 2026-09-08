@@ -1,71 +1,64 @@
-import React, { useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Copy, Check } from 'lucide-react';
 
 interface RawJsonViewerProps {
   data: Record<string, any>;
 }
 
+// Build syntax-highlighted HTML for the (inert) background layer.
+function highlightJson(text: string): string {
+  return text.replace(
+    /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,
+    (match) => {
+      let cls = 'text-amber-500 dark:text-amber-400'; // number default
+      if (/^"/.test(match)) {
+        if (/:$/.test(match)) {
+          cls = 'text-sky-600 dark:text-sky-300 font-medium'; // key
+        } else {
+          cls = 'text-emerald-600 dark:text-emerald-400'; // string value
+        }
+      } else if (/true|false/.test(match)) {
+        cls = 'text-purple-600 dark:text-purple-400 font-medium'; // boolean
+      } else if (/null/.test(match)) {
+        cls = 'text-rose-500 dark:text-rose-400'; // null
+      }
+      return `<span class="${cls}">${match}</span>`;
+    }
+  );
+}
+
 export function RawJsonViewer({ data }: RawJsonViewerProps) {
   const [copied, setCopied] = useState(false);
+  const preRef = useRef<HTMLPreElement>(null);
 
   const jsonString = JSON.stringify(data, null, 2);
+  const highlightedHtml = highlightJson(jsonString);
 
-  const handleCopy = (e: React.MouseEvent) => {
+  const handleCopy = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
-    navigator.clipboard.writeText(jsonString);
+    try {
+      await navigator.clipboard.writeText(jsonString);
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = jsonString;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  // Syntax highlighting parser
-  const renderHighlightedJson = (text: string) => {
-    const lines = text.split('\n');
-
-    return (
-      <div className="table w-full border-collapse">
-        {lines.map((line, idx) => {
-          // Highlight matching JSON tokens
-          const formatted = line.replace(
-            /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,
-            (match) => {
-              let cls = 'text-amber-500 dark:text-amber-400'; // number default
-              if (/^"/.test(match)) {
-                if (/:$/.test(match)) {
-                  cls = 'text-sky-600 dark:text-sky-300 font-medium'; // key
-                } else {
-                  cls = 'text-emerald-600 dark:text-emerald-400'; // string value
-                }
-              } else if (/true|false/.test(match)) {
-                cls = 'text-purple-600 dark:text-purple-400 font-medium'; // boolean
-              } else if (/null/.test(match)) {
-                cls = 'text-rose-500 dark:text-rose-400'; // null
-              }
-              return `<span class="${cls}">${match}</span>`;
-            }
-          );
-
-          return (
-            <div key={idx} className="table-row leading-5 hover:bg-ink/[0.03]">
-              {/* Line Number Gutter */}
-              <span className="table-cell pr-3 select-none text-right text-ink/30 font-mono text-[10px] w-6 align-top">
-                {idx + 1}
-              </span>
-              {/* Code Line Content */}
-              <span
-                className="table-cell whitespace-pre font-mono text-[11px] text-ink/90 align-top"
-                dangerouslySetInnerHTML={{ __html: formatted }}
-              />
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
+  }, [jsonString]);
 
   return (
-    <div className="relative group/code my-1.5 rounded-lg bg-paper/80 border border-ink/10 p-2.5 font-mono overflow-x-auto selection:bg-ink selection:text-canvas">
-      {/* Action Header Overlay */}
-      <div className="absolute top-2 right-2 flex items-center space-x-1 z-10 opacity-0 group-hover/code:opacity-100 focus-within:opacity-100 transition-opacity">
+    <div className="relative my-1.5 rounded-lg bg-paper/80 border border-ink/10 overflow-hidden">
+      {/* Action Header Bar */}
+      <div className="flex items-center justify-between px-2.5 py-1.5 bg-ink/[0.04] border-b border-ink/10">
+        <span className="text-[10px] font-mono text-ink/50 select-none">
+          {Object.keys(data).length} keys · {jsonString.length} chars
+        </span>
         <button
           type="button"
           onClick={handleCopy}
@@ -86,8 +79,22 @@ export function RawJsonViewer({ data }: RawJsonViewerProps) {
         </button>
       </div>
 
-      <div className="pr-4">
-        {renderHighlightedJson(jsonString)}
+      {/* Code Block: inert highlight layer + real selectable text layer */}
+      <div className="relative">
+        {/* Highlight overlay — visuals only, non-interactive */}
+        <pre
+          aria-hidden
+          className="absolute inset-0 p-2.5 m-0 font-mono text-[11px] leading-5 overflow-x-auto whitespace-pre pointer-events-none"
+          dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+        />
+
+        {/* Real selectable text — transparent ink, sits on top */}
+        <pre
+          ref={preRef}
+          className="relative p-2.5 m-0 font-mono text-[11px] leading-5 overflow-x-auto whitespace-pre select-text selection:bg-ink selection:text-canvas"
+        >
+          <code className="text-transparent">{jsonString}</code>
+        </pre>
       </div>
     </div>
   );
