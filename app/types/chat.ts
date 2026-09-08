@@ -104,7 +104,9 @@ export interface AIModelOption {
   isCmdAgent?: boolean;
   isFavorite?: boolean;
   isRecent?: boolean;
-  thinkingLevel?: 'Default' | 'High' | 'Low' | 'Off';
+  thinkingLevel?: string;
+  /** Baked thinking ladder for this model: `["off", ...efforts]`. */
+  thinkingLevels?: string[];
   capabilities?: string[];
   input?: string;
   output?: string;

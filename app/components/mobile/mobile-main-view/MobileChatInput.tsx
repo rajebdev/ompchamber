@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Send, 
   Square,
@@ -9,10 +9,12 @@ import {
   File as FileIcon, 
   Check 
 } from 'lucide-react';
-import type { Attachment, AIModelOption } from '@/types';
+import type { Attachment, AIModelOption, ModelEntry } from '@/types';
 import { useOnClickOutside } from '@/hooks/useOnClickOutside';
 import { ModelDropdown } from '@/components/workspace/model-dropdown/ModelDropdown';
 import { INITIAL_MODELS_CATALOG } from '@/data/modelCatalogData';
+import { selectableThinkingLevels } from '@/lib/thinking-levels';
+import { fetchModelsData, subscribeModelsUpdated } from '@/lib/models-client';
 
 interface MobileChatInputProps {
   value: string;
@@ -55,12 +57,52 @@ export function MobileChatInput({
     INITIAL_MODELS_CATALOG[5] || INITIAL_MODELS_CATALOG[0]
   );
 
+  // Sync selected model from the server (same source of truth as the desktop
+  // composer). The thinking ladder rides on the model entry itself.
+  useEffect(() => {
+    let active = true;
+    const syncModel = async () => {
+      try {
+        const data = await fetchModelsData();
+        if (!active) return;
+        if (Array.isArray(data.modelList) && data.modelList.length > 0) {
+          const defaultModel = data.defaultModel;
+          if (defaultModel) {
+            const match = data.modelList.find((m: ModelEntry) => m.id === defaultModel.modelId && m.provider === defaultModel.provider);
+            if (match) {
+              setSelectedModel({ id: match.id, name: match.name, provider: match.provider, thinkingLevels: match.thinkingLevels, thinkingLevel: match.thinkingLevels?.[0] ?? 'off' });
+            }
+          }
+        } else if (data.selectedModel) {
+          setSelectedModel(data.selectedModel);
+        }
+      } catch {}
+    };
+
+    syncModel();
+    const unsubscribe = subscribeModelsUpdated(syncModel);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
   // Thinking Dropdown State (matching desktop)
   const [showThinking, setShowThinking] = useState(false);
   const [selectedThinking, setSelectedThinking] = useState('Standard');
   const thinkingRef = useRef<HTMLDivElement>(null);
   useOnClickOutside(thinkingRef, () => setShowThinking(false));
-  const thinkingLevels = ['Fast', 'Standard', 'Deep Thinking'];
+  const thinkingLevels = useMemo(() => {
+    return selectableThinkingLevels(selectedModel.thinkingLevels);
+  }, [selectedModel]);
+
+  // Keep the thinking dropdown label in sync with the model dropdown's pill
+  // (both write to `selectedModel.thinkingLevel`).
+  useEffect(() => {
+    if (selectedModel.thinkingLevel) {
+      setSelectedThinking(selectedModel.thinkingLevel);
+    }
+  }, [selectedModel.thinkingLevel]);
 
   // Access Dropdown State (matching desktop)
   const [showAccess, setShowAccess] = useState(false);
@@ -217,21 +259,22 @@ export function MobileChatInput({
           <div className="relative" ref={thinkingRef}>
             <button 
               type="button"
-              onClick={() => setShowThinking(!showThinking)}
-              className="flex items-center space-x-1 hover:bg-ink/5 px-1.5 py-1 rounded transition-colors text-xs text-ink/80 cursor-pointer"
-              title={`Thinking Level: ${selectedThinking}`}
+              onClick={() => thinkingLevels.length > 0 && setShowThinking(!showThinking)}
+              disabled={thinkingLevels.length === 0}
+              className="flex items-center space-x-1 hover:bg-ink/5 px-1.5 py-1 rounded transition-colors text-xs text-ink/80 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              title={thinkingLevels.length === 0 ? 'This model exposes no thinking levels' : `Thinking Level: ${selectedThinking}`}
             >
               <Brain size={12} className="text-ink/60 flex-shrink-0" />
               <span className="hidden sm:inline">{selectedThinking}</span>
             </button>
-            {showThinking && (
+            {showThinking && thinkingLevels.length > 0 && (
               <div className="absolute bottom-full left-0 mb-1 w-40 bg-paper border border-ink/20 rounded-md shadow-lg z-50 py-1 text-xs">
                 <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-ink/40 font-semibold mb-1">Thinking Level</div>
                 {thinkingLevels.map(level => (
                   <button 
                     key={level}
                     type="button"
-                    onClick={() => { setSelectedThinking(level); setShowThinking(false); }}
+                    onClick={() => { setSelectedThinking(level); setSelectedModel(prev => ({ ...prev, thinkingLevel: level })); setShowThinking(false); }}
                     className="w-full text-left px-3 py-1.5 hover:bg-ink/5 flex items-center justify-between transition-colors cursor-pointer"
                   >
                     <span>{level}</span>

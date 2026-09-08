@@ -20,12 +20,17 @@ import type { ThinkingModelMeta } from '@/types';
 
 const DEFAULT_THINKING_LEVELS = ['auto', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 
-/** Keep familiar levels ordered while preserving provider-defined additions. */
+/**
+ * Order the model's own ladder by the familiar sequence while preserving
+ * provider-defined additions. Returns an EMPTY list when the model provides no
+ * ladder — no generic fallback, no injected 'auto'. Callers must treat an empty
+ * result as "this model exposes no thinking levels" and disable the selector.
+ */
 export function selectableThinkingLevels(available: readonly string[] | null | undefined): string[] {
-  if (!available) return [...DEFAULT_THINKING_LEVELS];
+  if (!available || available.length === 0) return [];
 
   const remaining = new Set(available.filter((level) => level && level !== 'auto'));
-  const ordered = DEFAULT_THINKING_LEVELS.filter((level) => level === 'auto' || remaining.delete(level));
+  const ordered = DEFAULT_THINKING_LEVELS.filter((level) => remaining.delete(level));
   return [...ordered, ...remaining];
 }
 

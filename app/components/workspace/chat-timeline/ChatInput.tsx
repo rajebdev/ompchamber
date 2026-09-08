@@ -14,6 +14,7 @@ import { useOnClickOutside } from '@/hooks/useOnClickOutside';
 import { ModelDropdown } from '@/components/workspace/model-dropdown/ModelDropdown';
 import { INITIAL_MODELS_CATALOG } from '@/data/modelCatalogData';
 import { selectableThinkingLevels } from '@/lib/thinking-levels';
+import { fetchModelsData, subscribeModelsUpdated } from '@/lib/models-client';
 
 export function ChatInput({ 
   value, 
@@ -63,39 +64,34 @@ export function ChatInput({
   const [selectedModel, setSelectedModel] = useState<AIModelOption>(
     INITIAL_MODELS_CATALOG[5] || INITIAL_MODELS_CATALOG[0]
   );
-  const [thinkingLevelsByModel, setThinkingLevelsByModel] = useState<Record<string, string[]>>({});
   const [currentThinking, setCurrentThinking] = useState('auto');
 
   // Sync selected model from server and event listener
   useEffect(() => {
     let active = true;
-    const fetchCurrentModel = async () => {
+    const syncModel = async () => {
       try {
-        const res = await fetch('/api/models');
-        if (res.ok && active) {
-          const data = await res.json();
-          if (Array.isArray(data.modelList) && data.modelList.length > 0) {
-            setThinkingLevelsByModel(data.thinkingLevels ?? {});
-            const defaultModel = data.defaultModel;
-            if (defaultModel) {
-              const match = data.modelList.find((m: ModelEntry) => m.id === defaultModel.modelId && m.provider === defaultModel.provider);
-              if (match) {
-                setSelectedModel({ id: match.id, name: match.name, provider: match.provider });
-              }
+        const data = await fetchModelsData();
+        if (!active) return;
+        if (Array.isArray(data.modelList) && data.modelList.length > 0) {
+          const defaultModel = data.defaultModel;
+          if (defaultModel) {
+            const match = data.modelList.find((m: ModelEntry) => m.id === defaultModel.modelId && m.provider === defaultModel.provider);
+            if (match) {
+              setSelectedModel({ id: match.id, name: match.name, provider: match.provider, thinkingLevels: match.thinkingLevels, thinkingLevel: match.thinkingLevels?.[0] ?? 'off' });
             }
-          } else if (data.selectedModel) {
-            setSelectedModel(data.selectedModel);
           }
+        } else if (data.selectedModel) {
+          setSelectedModel(data.selectedModel);
         }
       } catch {}
     };
 
-    fetchCurrentModel();
-    const handleModelsUpdated = () => fetchCurrentModel();
-    window.addEventListener('omp:models-updated', handleModelsUpdated);
+    syncModel();
+    const unsubscribe = subscribeModelsUpdated(syncModel);
     return () => {
       active = false;
-      window.removeEventListener('omp:models-updated', handleModelsUpdated);
+      unsubscribe();
     };
   }, []);
 
@@ -104,72 +100,23 @@ export function ChatInput({
   const thinkingRef = useRef<HTMLDivElement>(null);
   useOnClickOutside(thinkingRef, () => setShowThinking(false));
   const thinkingLevels = useMemo(() => {
-    const key = `${selectedModel.provider}:${selectedModel.id}`;
-    const baked = thinkingLevelsByModel[key];
-    if (baked && baked.length > 0) return selectableThinkingLevels(baked);
-    return selectableThinkingLevels(null);
-  }, [selectedModel, thinkingLevelsByModel]);
+    return selectableThinkingLevels(selectedModel.thinkingLevels);
+  }, [selectedModel]);
 
-  const handleSelectThinking = async (level: string) => {
+  const handleSelectThinking = (level: string) => {
     setShowThinking(false);
     setCurrentThinking(level);
-    setSelectedModel(prev => ({ ...prev, thinkingLevel: level as AIModelOption['thinkingLevel'] }));
-    if (isOmpSession && sessionId) {
-      onThinkingLevelChange?.(level);
-      return;
-    }
-    try {
-      await fetch('/api/models', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          actionType: 'setThinking',
-          modelId: selectedModel.id,
-          thinkingLevel: level,
-        }),
-      });
-      window.dispatchEvent(new CustomEvent('omp:models-updated'));
-    } catch (err) {
-      console.error('Failed to update thinking level:', err);
-    }
+    setSelectedModel(prev => ({ ...prev, thinkingLevel: level }));
+    onThinkingLevelChange?.(level);
   };
 
   // Re-sync the thinking dropdown label when the model dropdown's thinking
-  // pill cycles the level (it updates `selectedModel.thinkingLevel`). Only
-  // applies when the field is set — real-mode models fetched from the catalog
-  // carry no baked level, so their label comes from get_state (below).
+  // pill cycles the level (it updates `selectedModel.thinkingLevel`).
   useEffect(() => {
     if (selectedModel.thinkingLevel) {
-      setCurrentThinking(selectedModel.thinkingLevel as string);
+      setCurrentThinking(selectedModel.thinkingLevel);
     }
   }, [selectedModel.thinkingLevel]);
-
-  // Real mode: sync the label with the thinking level omp is actually using
-  // (get_state). The model dropdown's pill and the composer dropdown both feed
-  // set_thinking_level; the live process is the source of truth.
-  useEffect(() => {
-    if (!isOmpSession || !sessionId) return;
-    let active = true;
-    const syncFromState = async () => {
-      try {
-        const res = await fetch(`/api/agent/${encodeURIComponent(sessionId)}`);
-        if (!res.ok || !active) return;
-        const body = await res.json();
-        const level = body?.state?.thinkingLevel;
-        if (typeof level === 'string' && active) {
-          setCurrentThinking(level);
-          setSelectedModel(prev => ({ ...prev, thinkingLevel: level as AIModelOption['thinkingLevel'] }));
-        }
-      } catch {}
-    };
-    syncFromState();
-    const handleModelsUpdated = () => syncFromState();
-    window.addEventListener('omp:models-updated', handleModelsUpdated);
-    return () => {
-      active = false;
-      window.removeEventListener('omp:models-updated', handleModelsUpdated);
-    };
-  }, [isOmpSession, sessionId]);
 
   // Access Dropdown State
   const [showAccess, setShowAccess] = useState(false);
@@ -343,14 +290,15 @@ export function ChatInput({
           {/* Thinking Level Dropdown */}
           <div className="relative" ref={thinkingRef}>
             <button 
-              onClick={() => setShowThinking(!showThinking)}
-              className="flex items-center space-x-1 hover:bg-ink/5 px-2 py-1 rounded transition-colors text-xs text-ink/80"
-              title={`Thinking Level: ${currentThinking}`}
+              onClick={() => thinkingLevels.length > 0 && setShowThinking(!showThinking)}
+              disabled={thinkingLevels.length === 0}
+              className="flex items-center space-x-1 hover:bg-ink/5 px-2 py-1 rounded transition-colors text-xs text-ink/80 disabled:opacity-40 disabled:cursor-not-allowed"
+              title={thinkingLevels.length === 0 ? 'This model exposes no thinking levels' : `Thinking Level: ${currentThinking}`}
             >
               <Brain size={12} className="text-ink/60" />
               <span className="hidden lg:inline">{currentThinking}</span>
             </button>
-            {showThinking && (
+            {showThinking && thinkingLevels.length > 0 && (
               <div className="absolute bottom-full left-0 mb-1 w-40 bg-paper border border-ink/20 rounded-md shadow-lg z-50 py-1 text-xs">
                 <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-ink/40 font-semibold mb-1">Thinking Level</div>
                 {thinkingLevels.map(level => (

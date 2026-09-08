@@ -3,6 +3,7 @@ import { ChevronDown, Sparkles } from 'lucide-react';
 import type { AIModelOption } from '@/types';
 import { useOnClickOutside } from '@/hooks/useOnClickOutside';
 import { INITIAL_MODELS_CATALOG } from '@/data/modelCatalogData';
+import { fetchModelsData, subscribeModelsUpdated } from '@/lib/models-client';
 import { ModelDropdownHeader } from '@/components/workspace/model-dropdown/ModelDropdownHeader';
 import { ModelDropdownSection } from '@/components/workspace/model-dropdown/ModelDropdownSection';
 import { ModelDropdownFooter } from '@/components/workspace/model-dropdown/ModelDropdownFooter';
@@ -40,22 +41,25 @@ export function ModelDropdown({
     setFocusedIndex(-1);
   });
 
+  // Read the latest external selection without re-triggering the models fetch.
+  // Re-fetching on every thinking change would reset the pill to its default.
+  const externalSelectedRef = useRef(externalSelectedModel);
+  externalSelectedRef.current = externalSelectedModel;
+
   const loadModelsFromApi = useCallback(async () => {
     try {
-      const res = await fetch('/api/models');
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.modelList) && data.modelList.length > 0) {
+      const data = await fetchModelsData();
+      if (Array.isArray(data.modelList) && data.modelList.length > 0) {
           const realModels: AIModelOption[] = data.modelList.map((m: { id: string; name: string; provider: string; contextWindow?: number; thinkingLevels?: string[]; cost?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number } }) => {
             const ladder = Array.isArray(m.thinkingLevels) ? m.thinkingLevels : [];
-            const hasReasoning = ladder.length > 1;
             return {
               id: m.id,
               name: m.name,
               provider: m.provider,
               contextWindow: m.contextWindow,
-              thinkingLevel: hasReasoning ? 'Default' : 'Off',
-              capabilities: hasReasoning ? ['Tool calling', 'Reasoning'] : ['Tool calling'],
+              thinkingLevel: ladder[0] ?? 'off',
+              thinkingLevels: ladder,
+              capabilities: ladder.length > 1 ? ['Tool calling', 'Reasoning'] : ['Tool calling'],
               cost: m.cost ? {
                 input: m.cost.input !== undefined ? `$${m.cost.input}` : '—',
                 output: m.cost.output !== undefined ? `$${m.cost.output}` : '—',
@@ -64,26 +68,32 @@ export function ModelDropdown({
               } : undefined,
             };
           });
-          setModels(realModels);
-          if (data.defaultModel && !externalSelectedModel) {
-            const match = realModels.find(m => m.id === data.defaultModel.modelId && m.provider === data.defaultModel.provider);
+          // Keep a thinking level the user already picked, but only when it is
+          // still a real level of this model's ladder (legacy mock values like
+          // 'Default'/'High' must not be preserved).
+          setModels(prev => realModels.map(rm => {
+            const existing = prev.find(p => p.id === rm.id && p.provider === rm.provider);
+            return existing?.thinkingLevel && rm.thinkingLevels?.includes(existing.thinkingLevel)
+              ? { ...rm, thinkingLevel: existing.thinkingLevel }
+              : rm;
+          }));
+          const defaultModel = data.defaultModel;
+          if (defaultModel && !externalSelectedRef.current) {
+            const match = realModels.find(m => m.id === defaultModel.modelId && m.provider === defaultModel.provider);
             if (match) setSelectedModel(match);
           }
         } else if (Array.isArray(data.models) && data.models.length > 0) {
           setModels(data.models);
         }
-        if (data.selectedModel && !externalSelectedModel) {
+        if (data.selectedModel && !externalSelectedRef.current) {
           setSelectedModel(data.selectedModel);
         }
-      }
     } catch {}
-  }, [externalSelectedModel]);
+  }, []);
 
   useEffect(() => {
     loadModelsFromApi();
-    const handleModelsUpdated = () => loadModelsFromApi();
-    window.addEventListener('omp:models-updated', handleModelsUpdated);
-    return () => window.removeEventListener('omp:models-updated', handleModelsUpdated);
+    return subscribeModelsUpdated(loadModelsFromApi);
   }, [loadModelsFromApi]);
 
   useEffect(() => {
@@ -163,11 +173,13 @@ export function ModelDropdown({
     } catch {}
   };
 
-  const cycleThinkingLevel = async (id: string) => {
-    const sequence: ('Off' | 'Low' | 'Default' | 'High')[] = ['Default', 'High', 'Low', 'Off'];
+  const cycleThinkingLevel = (id: string) => {
     const currentModel = models.find(m => m.id === id);
-    const current = currentModel?.thinkingLevel || 'Default';
-    const nextThinking = sequence[(sequence.indexOf(current) + 1) % sequence.length];
+    const ladder = currentModel?.thinkingLevels ?? [];
+    if (ladder.length === 0) return;
+    const current = currentModel?.thinkingLevel ?? ladder[0];
+    const idx = ladder.indexOf(current);
+    const nextThinking = ladder[(idx + 1) % ladder.length];
 
     setModels(prev => prev.map(m => m.id === id ? { ...m, thinkingLevel: nextThinking } : m));
     if (selectedModel.id === id) {
@@ -175,13 +187,6 @@ export function ModelDropdown({
       onSelectModel?.({ ...selectedModel, thinkingLevel: nextThinking });
     }
     onThinkingLevelChange?.(nextThinking);
-    try {
-      await fetch('/api/models', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ actionType: 'setThinking', modelId: id, thinkingLevel: nextThinking }),
-      });
-    } catch {}
   };
 
   const toggleAgentCmd = async (id: string) => {
