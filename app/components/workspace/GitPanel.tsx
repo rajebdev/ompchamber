@@ -59,6 +59,7 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
   // `?reposOnly=1` endpoint until the discoverer finishes, then refresh.
   const [extraRepos, setExtraRepos] = useState<string[] | null>(null);
   const [pollingRepos, setPollingRepos] = useState(false);
+  const [rescanningRepos, setRescanningRepos] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -69,6 +70,20 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
     if (fetcher.data?.reposPending) setPollingRepos(true);
   }, [fetcher.data]);
 
+  // A forced rescan may finish before the polling interval kicks in; when that
+  // happens the loader returns the fresh repo list synchronously.
+  useEffect(() => {
+    if (
+      rescanningRepos &&
+      fetcher.data &&
+      !fetcher.data.reposPending &&
+      Array.isArray(fetcher.data.repos)
+    ) {
+      setExtraRepos(fetcher.data.repos);
+      setRescanningRepos(false);
+    }
+  }, [fetcher.data, rescanningRepos]);
+
   useEffect(() => {
     if (!pollingRepos) return;
     const params = new URLSearchParams({ reposOnly: '1' });
@@ -78,7 +93,8 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
       if (data && !data.reposPending && Array.isArray(data.repos)) {
         setExtraRepos(data.repos);
         setPollingRepos(false);
-        loadRepo();
+        setRescanningRepos(false);
+        loadRepo(activeRepo);
       }
     }, 1500);
     return () => clearInterval(id);
@@ -168,6 +184,17 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
     return (status && status[1] !== ' ' && status[1] !== '?') || status === '??';
   });
 
+  const refreshRepos = () => {
+    if (!enabled || pollingRepos || rescanningRepos) return;
+    setExtraRepos(repos);
+    setRescanningRepos(true);
+    const params = new URLSearchParams({ rescan: '1' });
+    if (rootPath) params.set('root', rootPath);
+    if (activeRepo !== '.') params.set('repo', activeRepo);
+    params.set('t', String(Date.now()));
+    fetcher.load(`/api/fs/git?${params.toString()}`);
+  };
+
   if (!enabled) {
     return (
       <div className={`flex flex-col h-full bg-paper items-center justify-center text-ink/40 ${className}`}>
@@ -223,8 +250,10 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
         repos={repos}
         isLoading={isLoading}
         rootPath={rootPath}
+        reposScanning={pollingRepos || rescanningRepos}
         onSelectRepo={(r) => loadRepo(r)}
         onRefresh={() => loadRepo(activeRepo)}
+        onRefreshRepos={refreshRepos}
       />
       
       {/* Branch & View Mode Toolbar */}

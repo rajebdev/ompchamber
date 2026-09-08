@@ -65,7 +65,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const rootDir = await resolveRoot(url.searchParams.get('root'), process.cwd());
 
   // Kick off nested-repo discovery in the background (non-blocking) and read
-  // whatever is already cached.
+  // whatever is already cached. `rescan=1` invalidates the cache so a fresh
+  // discovery pass starts (used by the repo-switcher refresh button).
+  const rescan = url.searchParams.get('rescan') === '1';
+  if (rescan) {
+    repoDiscovery.delete(rootDir);
+  }
   startRepoScan(rootDir);
   const { repos, pending } = discoveredRepos(rootDir);
 
@@ -74,8 +79,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return json({ repos, reposPending: pending, activeRepo: (url.searchParams.get('repo') || '.') });
   }
 
-  let repo = url.searchParams.get('repo');
-  if (!repo || !repos.includes(repo)) {
+  // An explicitly requested repo is honored even while a rescan is pending
+  // (path containment is enforced below), so refreshing the list doesn't yank
+  // the user back to the root repo mid-scan.
+  let repo = url.searchParams.get('repo') || '';
+  if (!repo) {
     repo = repos.includes('.') ? '.' : (repos[0] || '.');
   }
 

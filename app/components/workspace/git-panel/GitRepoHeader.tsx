@@ -9,8 +9,10 @@ interface GitRepoHeaderProps {
   repos: string[];
   isLoading: boolean;
   rootPath?: string;
+  reposScanning: boolean;
   onSelectRepo: (repo: string) => void;
   onRefresh: () => void;
+  onRefreshRepos: () => void;
 }
 
 function workspaceFolderName(rootPath?: string): string {
@@ -27,8 +29,10 @@ export function GitRepoHeader({
   repos,
   isLoading,
   rootPath,
+  reposScanning,
   onSelectRepo,
   onRefresh,
+  onRefreshRepos,
 }: GitRepoHeaderProps) {
   const [repoQuery, setRepoQuery] = useState('');
   const rootLabel = workspaceFolderName(rootPath);
@@ -79,6 +83,15 @@ export function GitRepoHeader({
                   ×
                 </button>
               )}
+              <button
+                type="button"
+                onClick={onRefreshRepos}
+                title="Refresh nested repos"
+                disabled={reposScanning}
+                className="text-ink/40 hover:text-ink flex-shrink-0 transition-colors disabled:opacity-40 disabled:hover:text-ink/40"
+              >
+                <RotateCcw size={11} className={reposScanning ? 'animate-spin' : ''} />
+              </button>
             </div>
             <div className="max-h-48 overflow-y-auto py-1">
               {filteredRepos.length === 0 ? (
