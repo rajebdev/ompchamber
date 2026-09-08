@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useState } from 'react';
 import { useTerminal } from '@/hooks/useTerminal';
 import { TerminalHeader } from './terminal-panel/TerminalHeader';
 import { TerminalQuickActions } from './terminal-panel/TerminalQuickActions';
@@ -15,6 +15,7 @@ interface TerminalPanelProps {
 
 export function TerminalPanel({ className = '', enabled = true, rootPath, onClose, showHeader = true }: TerminalPanelProps) {
   const xtermRef = useRef<RealtimeXtermHandle>(null);
+  const [activeRepo, setActiveRepo] = useState('.');
 
   const rootName = rootPath ? rootPath.replace(/\/+$/, '').split('/').pop() : undefined;
 
@@ -55,6 +56,7 @@ export function TerminalPanel({ className = '', enabled = true, rootPath, onClos
     onCommandEnd: handleCommandEnd,
     onClear: handleXtermClear,
     root: enabled ? rootPath : undefined,
+    repo: activeRepo,
   });
 
   const handleClear = useCallback(() => {
@@ -84,6 +86,9 @@ export function TerminalPanel({ className = '', enabled = true, rootPath, onClos
           bunVersion={systemInfo.bunVersion}
           onClear={handleClear}
           onClose={onClose}
+          rootPath={rootPath}
+          activeRepo={activeRepo}
+          onSelectRepo={setActiveRepo}
         />
       )}
 

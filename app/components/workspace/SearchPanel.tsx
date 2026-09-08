@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Search, CaseSensitive, WholeWord, Regex, Replace, ReplaceAll, MoreHorizontal, Check } from 'lucide-react';
 import { FileIcon } from '../common/FileIcon';
 import { useFetcher } from '@remix-run/react';
+import { GitRepoDropdown } from './file-explorer/GitRepoDropdown';
 
 export function SearchPanel({ className = '', enabled = true, rootPath }: { className?: string, enabled?: boolean, rootPath?: string }) {
   const [query, setQuery] = useState('');
@@ -14,6 +15,7 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
   const [includeFiles, setIncludeFiles] = useState('');
   const [showMenu, setShowMenu] = useState(false);
   const [showIncludeField, setShowIncludeField] = useState(false);
+  const [activeRepo, setActiveRepo] = useState('.');
   
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -40,7 +42,8 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
           wholeWord: String(wholeWord), 
           useRegex: String(useRegex),
           includeFiles: showIncludeField ? includeFiles : '',
-          ...(rootPath ? { root: rootPath } : {})
+          ...(rootPath ? { root: rootPath } : {}),
+          ...(activeRepo !== '.' ? { repo: activeRepo } : {})
         },
         { method: 'POST', action: '/api/fs/search' }
       );
@@ -52,7 +55,7 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
       triggerSearch();
     }, 300);
     return () => clearTimeout(timeoutId);
-  }, [query, matchCase, wholeWord, useRegex, includeFiles, showIncludeField, rootPath, enabled]);
+  }, [query, matchCase, wholeWord, useRegex, includeFiles, showIncludeField, rootPath, enabled, activeRepo]);
 
   if (!enabled) {
     return (
@@ -78,7 +81,8 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
         wholeWord: String(wholeWord),
         useRegex: String(useRegex),
         files: JSON.stringify(targetFiles),
-        ...(rootPath ? { root: rootPath } : {})
+        ...(rootPath ? { root: rootPath } : {}),
+        ...(activeRepo !== '.' ? { repo: activeRepo } : {})
       },
       { method: 'POST', action: '/api/fs/replace' }
     );
@@ -103,7 +107,10 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
   return (
     <div className={`flex flex-col h-full bg-paper ${className}`}>
       <div className="p-3 border-b border-ink/10 flex items-center justify-between">
-        <h2 className="text-xs font-semibold text-ink uppercase tracking-wider">Search</h2>
+        <div className="flex items-center space-x-2 min-w-0">
+          <h2 className="text-xs font-semibold text-ink uppercase tracking-wider">Search</h2>
+          <GitRepoDropdown rootPath={rootPath} activeRepo={activeRepo} onSelectRepo={setActiveRepo} />
+        </div>
         <div className="relative" ref={menuRef}>
           <button 
             onClick={() => setShowMenu(!showMenu)}

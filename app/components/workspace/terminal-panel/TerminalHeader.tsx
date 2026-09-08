@@ -1,5 +1,6 @@
 import React from 'react';
 import { Terminal, Trash2, Folder, Loader2 } from 'lucide-react';
+import { GitRepoDropdown } from '../file-explorer/GitRepoDropdown';
 
 interface TerminalHeaderProps {
   cwd: string;
@@ -8,6 +9,9 @@ interface TerminalHeaderProps {
   bunVersion: string;
   onClear: () => void;
   onClose?: () => void;
+  rootPath?: string;
+  activeRepo: string;
+  onSelectRepo: (repo: string) => void;
 }
 
 export function TerminalHeader({
@@ -17,6 +21,9 @@ export function TerminalHeader({
   bunVersion,
   onClear,
   onClose,
+  rootPath,
+  activeRepo,
+  onSelectRepo,
 }: TerminalHeaderProps) {
   return (
     <div className="h-10 px-3 border-b border-ink/10 bg-paper flex items-center justify-between flex-shrink-0 select-none">
@@ -25,6 +32,8 @@ export function TerminalHeader({
         <span className="text-xs font-semibold tracking-tight text-ink uppercase">
           Terminal
         </span>
+
+        <GitRepoDropdown rootPath={rootPath} activeRepo={activeRepo} onSelectRepo={onSelectRepo} />
         
         {/* Runtime Badge */}
         <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-ink/5 text-ink/60 border border-ink/10">

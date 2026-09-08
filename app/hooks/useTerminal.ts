@@ -7,6 +7,7 @@ export interface UseTerminalOptions {
   onCommandEnd?: (exitCode: number, cwd: string) => void;
   onClear?: () => void;
   root?: string;
+  repo?: string;
 }
 
 export function useTerminal(options?: UseTerminalOptions) {
@@ -47,17 +48,24 @@ export function useTerminal(options?: UseTerminalOptions) {
   rootRef.current = options?.root;
   const prevRootRef = useRef(options?.root);
 
-  // Fetch real system environment on mount / when the scoped root changes
+  const repoRef = useRef(options?.repo);
+  repoRef.current = options?.repo;
+  const prevRepoRef = useRef(options?.repo);
+
+  // Fetch real system environment on mount / when the scoped root or repo changes
   useEffect(() => {
     const root = options?.root;
-    if (prevRootRef.current !== root) {
+    const repo = options?.repo;
+    if (prevRootRef.current !== root || prevRepoRef.current !== repo) {
       prevRootRef.current = root;
+      prevRepoRef.current = repo;
       setCwd('.');
       setTerminalLogs([]);
       clearCallbackRef.current?.();
     }
     const rootQuery = root ? `?root=${encodeURIComponent(root)}` : '';
-    fetch(`/api/terminal/run${rootQuery}`)
+    const repoQuery = repo && repo !== '.' ? `&repo=${encodeURIComponent(repo)}` : '';
+    fetch(`/api/terminal/run${rootQuery}${repoQuery}`)
       .then(res => res.json())
       .then(data => {
         if (data && data.bunVersion) {
@@ -69,7 +77,7 @@ export function useTerminal(options?: UseTerminalOptions) {
         }
       })
       .catch(() => {});
-  }, [options?.root]);
+  }, [options?.root, options?.repo]);
 
   const clearLogs = useCallback(() => {
     setTerminalLogs([]);
@@ -110,7 +118,8 @@ export function useTerminal(options?: UseTerminalOptions) {
 
       try {
         const rootQuery = rootRef.current ? `&root=${encodeURIComponent(rootRef.current)}` : '';
-        const streamUrl = `/api/terminal/stream?cmd=${encodeURIComponent(rawCmd)}&cwd=${encodeURIComponent(cwd)}${rootQuery}`;
+        const repoQuery = repoRef.current && repoRef.current !== '.' ? `&repo=${encodeURIComponent(repoRef.current)}` : '';
+        const streamUrl = `/api/terminal/stream?cmd=${encodeURIComponent(rawCmd)}&cwd=${encodeURIComponent(cwd)}${rootQuery}${repoQuery}`;
         const response = await fetch(streamUrl, {
           signal: controller.signal,
         });

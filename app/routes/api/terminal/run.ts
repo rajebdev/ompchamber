@@ -4,25 +4,27 @@ import util from 'util';
 import path from 'path';
 import fs from 'fs';
 import { resolveRoot } from '@/lib/fs-root';
+import { scopeToRepo } from '@/lib/repo-scope';
 
 const execAsync = util.promisify(exec);
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const rootDir = await resolveRoot(url.searchParams.get('root'), process.cwd());
+  const targetDir = scopeToRepo(rootDir, url.searchParams.get('repo'));
   let bunVersion = '';
   let nodeVersion = process.version;
   let gitBranch = 'main';
 
   try {
-    const { stdout } = await execAsync('bun --version', { cwd: rootDir });
+    const { stdout } = await execAsync('bun --version', { cwd: targetDir });
     bunVersion = stdout.trim();
   } catch {
     bunVersion = '1.4.0';
   }
 
   try {
-    const { stdout } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: rootDir });
+    const { stdout } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: targetDir });
     gitBranch = stdout.trim() || 'main';
   } catch {
     gitBranch = 'main';
@@ -32,7 +34,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     bunVersion,
     nodeVersion,
     gitBranch,
-    cwd: rootDir,
+    cwd: targetDir,
     relativePath: '.',
   });
 }
@@ -41,6 +43,7 @@ export async function action({ request }: ActionFunctionArgs) {
   let command = '';
   let requestedCwd = '';
   let requestedRoot = '';
+  let requestedRepo = '';
 
   const contentType = request.headers.get('content-type') || '';
   if (contentType.includes('application/json')) {
@@ -48,14 +51,17 @@ export async function action({ request }: ActionFunctionArgs) {
     command = (body.command || '').trim();
     requestedCwd = (body.cwd || '').trim();
     requestedRoot = (body.root || '').trim();
+    requestedRepo = (body.repo || '').trim();
   } else {
     const formData = await request.formData();
     command = ((formData.get('command') as string) || '').trim();
     requestedCwd = ((formData.get('cwd') as string) || '').trim();
     requestedRoot = ((formData.get('root') as string) || '').trim();
+    requestedRepo = ((formData.get('repo') as string) || '').trim();
   }
 
-  const rootDir = await resolveRoot(requestedRoot, process.cwd());
+  const baseDir = await resolveRoot(requestedRoot, process.cwd());
+  const rootDir = scopeToRepo(baseDir, requestedRepo);
   let currentDir = rootDir;
 
   if (requestedCwd) {

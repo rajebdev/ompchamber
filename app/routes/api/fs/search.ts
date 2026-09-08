@@ -4,6 +4,7 @@ import util from 'util';
 import path from 'path';
 import { isMockMode } from '@/mock.server';
 import { getDefaultFsRoot, resolveRoot } from '@/lib/fs-root';
+import { scopeToRepo } from '@/lib/repo-scope';
 
 const execFileAsync = util.promisify(execFile);
 
@@ -20,7 +21,8 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
-    const targetDir = await resolveRoot(formData.get('root') as string, getDefaultFsRoot(isMockMode()));
+    const baseDir = await resolveRoot(formData.get('root') as string, getDefaultFsRoot(isMockMode()));
+    const targetDir = scopeToRepo(baseDir, formData.get('repo') as string);
     
     const args = ['-rn'];
     if (!matchCase) args[0] += 'i';

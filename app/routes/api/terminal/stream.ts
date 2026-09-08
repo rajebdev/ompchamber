@@ -3,12 +3,14 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { resolveRoot } from '@/lib/fs-root';
+import { scopeToRepo } from '@/lib/repo-scope';
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const command = (url.searchParams.get('cmd') || '').trim();
   const requestedCwd = (url.searchParams.get('cwd') || '').trim();
-  const rootDir = await resolveRoot(url.searchParams.get('root'), process.cwd());
+  const baseDir = await resolveRoot(url.searchParams.get('root'), process.cwd());
+  const rootDir = scopeToRepo(baseDir, url.searchParams.get('repo'));
   let currentDir = rootDir;
 
   if (requestedCwd) {
