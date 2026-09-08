@@ -121,7 +121,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
         )}
       </Group>
 
-      <RightActivityBar activePanel={activeRightPanel} onChangePanel={onChangeRightPanel} />
+      <RightActivityBar activePanel={activeRightPanel} onChangePanel={onChangeRightPanel} isPanelOpen={showRightPanel} />
     </div>
   );
 }

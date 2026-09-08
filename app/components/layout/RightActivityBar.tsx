@@ -5,12 +5,13 @@ export type RightPanelType = 'files' | 'search' | 'git' | 'terminal' | 'context'
 interface RightActivityBarProps {
   activePanel: RightPanelType;
   onChangePanel: (panel: RightPanelType) => void;
+  isPanelOpen: boolean;
 }
 
-export function RightActivityBar({ activePanel, onChangePanel }: RightActivityBarProps) {
+export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen }: RightActivityBarProps) {
   const getBtnClass = (panel: RightPanelType) => {
     const base = "relative w-full h-10 flex items-center justify-center transition-colors border-l-2";
-    const isActive = activePanel === panel;
+    const isActive = isPanelOpen && activePanel === panel;
     return `${base} ${isActive ? 'text-ink border-ink bg-ink/5' : 'text-ink/40 border-transparent hover:text-ink hover:bg-ink/5'}`;
   };
 
