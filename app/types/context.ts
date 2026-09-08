@@ -37,6 +37,16 @@ export interface RawMessageItem {
   rawPayload: Record<string, any>;
 }
 
+export interface ContextCostBreakdown {
+  /** Fresh (uncached) prompt cost — often labelled "cache miss". */
+  input: number;
+  output: number;
+  /** Served-from-cache cost — labelled "cache hit". */
+  cacheRead: number;
+  cacheWrite: number;
+  total: number;
+}
+
 export interface SessionContextTelemetry {
   sessionId: string;
   sessionTitle: string;
@@ -51,6 +61,10 @@ export interface SessionContextTelemetry {
   assistantCount: number;
   totalCost: number;
   costFormatted: string;
+  /** Average cache-hit rate (%) across assistant turns. */
+  cacheHitAverage?: number;
+  /** Per-category cost breakdown for the cost detail popup. */
+  costBreakdown?: ContextCostBreakdown;
   lastMessage: {
     input: number;
     output: number;

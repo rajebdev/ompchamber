@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useSearchParams } from '@remix-run/react';
 import { Group, Panel, Separator, type PanelImperativeHandle } from 'react-resizable-panels';
 import { SessionSidebar } from '@/components/layout/SessionSidebar';
@@ -31,7 +31,10 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
   const [showLeftPanel, setShowLeftPanel] = useState(appSettings.showLeftPanel ?? true);
   const [showRightPanel, setShowRightPanel] = useState(appSettings.showRightPanel ?? true);
   const [activeRightPanel, setActiveRightPanel] = useState<RightPanelType>(appSettings.activeRightPanel ?? 'files');
-  const initialLayoutSizes = appSettings.desktopLayoutSizes || undefined;
+  const initialLayoutSizes = appSettings.desktopLayoutSizes || {};
+  const leftSizeRef = useRef<number | undefined>(undefined);
+  const innerSizesRef = useRef<Record<string, number>>({ ...initialLayoutSizes });
+  const layoutSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [openedFiles, setOpenedFiles] = useState<any[]>([]);
   const [activeFileId, setActiveFileId] = useState<number | null>(null);
@@ -70,6 +73,28 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
       body: JSON.stringify({ [key]: value })
     }).catch(console.error);
   };
+
+  // Single-owner layout persistence: merge the live sizes of BOTH groups (the
+  // outer left panel and the inner center/editor/right stack) into one complete
+  // map before writing, so no group clobbers the other's widths.
+  const persistLayout = useCallback(() => {
+    if (layoutSaveTimerRef.current) clearTimeout(layoutSaveTimerRef.current);
+    layoutSaveTimerRef.current = setTimeout(() => {
+      const complete: Record<string, number> = {
+        ...innerSizesRef.current,
+        ...(leftSizeRef.current !== undefined ? { left: leftSizeRef.current } : {}),
+      };
+      saveSetting('desktopLayoutSizes', complete);
+    }, 500);
+  }, [saveSetting]);
+
+  const handleWorkspaceLayout = useCallback(
+    (inner: Record<string, number>) => {
+      innerSizesRef.current = { ...innerSizesRef.current, ...inner };
+      persistLayout();
+    },
+    [persistLayout],
+  );
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategoryId>('general');
@@ -243,21 +268,14 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
           orientation="horizontal" 
           id="ompchamber-main"
           onLayoutChanged={(sizes) => {
-            const layoutMap: Record<string, number> = {};
-            let i = 0;
-            if (showLeftPanel) layoutMap.left = sizes[i++];
-            const mergedLayoutMap = { ...initialLayoutSizes, ...layoutMap };
-
-            const timeoutId = (window as any)._layoutTimeout;
-            if (timeoutId) clearTimeout(timeoutId);
-            (window as any)._layoutTimeout = setTimeout(() => {
-              saveSetting('desktopLayoutSizes', mergedLayoutMap);
-            }, 500);
+            const left = showLeftPanel ? sizes[0] : undefined;
+            if (left !== undefined) leftSizeRef.current = left;
+            persistLayout();
           }}
         >
           {showLeftPanel && (
             <>
-              <Panel id="left-panel" defaultSize={initialLayoutSizes?.left ?? 268} minSize={200} maxSize={600} collapsible>
+              <Panel id="left-panel" defaultSize={initialLayoutSizes?.left != null ? `${initialLayoutSizes.left}%` : 268} minSize={200} maxSize={600} collapsible>
                 <SessionSidebar className="w-full h-full" folders={folders} onClose={() => handleToggleLeftPanel(false)} appSettings={appSettings} />
               </Panel>
               <CustomResizeHandle />
@@ -298,9 +316,8 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
                 onRefreshWorkspace={handleRefreshWorkspace}
                 onChangeRightPanel={handleChangeRightPanel}
                 onToggleRightPanel={handleToggleRightPanel}
-                onOpenSettings={() => setSettingsOpen(true)}
                 onSessionTitle={setSessionTitle}
-                onLayoutSaved={(sizes) => saveSetting('desktopLayoutSizes', sizes)}
+                onWorkspaceLayout={handleWorkspaceLayout}
               />
             </div>
           </Panel>

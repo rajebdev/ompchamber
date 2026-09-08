@@ -158,6 +158,14 @@ export function computeSessionContextTelemetry(
     assistantCount,
     totalCost: totalCostVal,
     costFormatted: totalCostVal < 0.01 ? '$0.01' : `$${totalCostVal.toFixed(2)}`,
+    cacheHitAverage: cacheHitPercent,
+    costBreakdown: {
+      input: (totalInput * 0.14) / 1_000_000,
+      output: (totalOutput * 0.28) / 1_000_000,
+      cacheRead: (totalCacheRead * 0.014) / 1_000_000,
+      cacheWrite: 0,
+      total: totalCostVal,
+    },
     lastMessage: {
       input: lastMsgInput,
       output: lastMsgOutput,
@@ -324,6 +332,14 @@ export function getDefaultMockTelemetry(sessionId: string, sessionTitle: string)
     assistantCount: 4,
     totalCost: 0.01,
     costFormatted: "$0.01",
+    cacheHitAverage: 98.4,
+    costBreakdown: {
+      input: 0.00009,
+      output: 0.000099,
+      cacheRead: 0.000914,
+      cacheWrite: 0,
+      total: 0.01
+    },
     lastMessage: {
       input: 1013,
       output: 172,

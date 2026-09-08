@@ -39,14 +39,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
       }
 
       // Real omp sessions live on disk as JSONL and have no chat_sessions row —
-      // compute their telemetry from the actual session timeline.
+      // compute telemetry from the on-disk assistant usage/cost (bypass the mock).
       const { findSessionFileById } = await import('@/lib/omp/session-locator');
-      const { loadSessionMessages, loadSessionTitle } = await import('@/lib/omp/session-messages');
+      const { computeRealSessionTelemetry } = await import('@/lib/omp/session-telemetry');
       const filePath = findSessionFileById(sessionId);
       if (filePath) {
-        const messages = loadSessionMessages(filePath);
-        const title = loadSessionTitle(filePath) || `Session ${sessionId}`;
-        const telemetry = computeSessionContextTelemetry(sessionId, title, messages);
+        const telemetry = computeRealSessionTelemetry(filePath, sessionId);
         return json({ telemetry, isMock: false, source: 'omp-jsonl' });
       }
     }

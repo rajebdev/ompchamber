@@ -30,9 +30,8 @@ interface WorkspacePanelsProps {
   onRefreshWorkspace: () => void;
   onChangeRightPanel: (panel: RightPanelType) => void;
   onToggleRightPanel: () => void;
-  onOpenSettings: () => void;
   onSessionTitle: (title: string | null) => void;
-  onLayoutSaved: (sizes: Record<string, number>) => void;
+  onWorkspaceLayout: (sizes: Record<string, number>) => void;
 }
 
 function CustomResizeHandle() {
@@ -42,6 +41,9 @@ function CustomResizeHandle() {
     </Separator>
   );
 }
+
+const pctOr = (saved: number | undefined, fallback?: number | string): number | string | undefined =>
+  saved != null ? `${saved}%` : fallback;
 
 export function WorkspacePanels(props: WorkspacePanelsProps) {
   const {
@@ -64,9 +66,8 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
     onRefreshWorkspace,
     onChangeRightPanel,
     onToggleRightPanel,
-    onOpenSettings,
     onSessionTitle,
-    onLayoutSaved,
+    onWorkspaceLayout,
   } = props;
 
   return (
@@ -80,18 +81,17 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
           layoutMap.center = sizes[i++];
           if (showEditor) layoutMap.editor = sizes[i++];
           if (showRightPanel) layoutMap.right = sizes[i++];
-          const mergedLayoutMap = { ...initialLayoutSizes, ...layoutMap };
-          onLayoutSaved(mergedLayoutMap);
+          onWorkspaceLayout(layoutMap);
         }}
       >
-        <Panel id="center-panel" defaultSize={initialLayoutSizes?.center ?? undefined} minSize={300}>
+        <Panel id="center-panel" defaultSize={pctOr(initialLayoutSizes?.center)} minSize={300}>
           <ChatTimeline className="w-full h-full" folders={folders} appSettings={appSettings} onSessionTitle={onSessionTitle} />
         </Panel>
 
         {showEditor && (
           <>
             <CustomResizeHandle />
-            <Panel panelRef={editorPanelRef} id="editor-panel" defaultSize={initialLayoutSizes?.editor ?? 536} minSize={300}>
+            <Panel panelRef={editorPanelRef} id="editor-panel" defaultSize={pctOr(initialLayoutSizes?.editor, 536)} minSize={300}>
               <Editor
                 className="w-full h-full"
                 openedFiles={openedFiles}
@@ -108,7 +108,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
         {showRightPanel && (
           <>
             <CustomResizeHandle />
-            <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={initialLayoutSizes?.right ?? ((activeRightPanel === 'terminal' || activeRightPanel === 'context') ? 536 : 268)} minSize={200} maxSize={800} collapsible>
+            <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={pctOr(initialLayoutSizes?.right, (activeRightPanel === 'terminal' || activeRightPanel === 'context') ? 536 : 268)} minSize={activeRightPanel === 'context' ? 420 : 200} maxSize={800} collapsible>
               {activeRightPanel === 'files' && <FileExplorer className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} onOpenFile={onOpenFile} refreshKey={refreshKey} onRefresh={onRefreshWorkspace} />}
               {activeRightPanel === 'search' && <SearchPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} />}
               {activeRightPanel === 'git' && <GitPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} refreshKey={refreshKey} />}
@@ -121,7 +121,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
         )}
       </Group>
 
-      <RightActivityBar activePanel={activeRightPanel} onChangePanel={onChangeRightPanel} onOpenSettings={onOpenSettings} />
+      <RightActivityBar activePanel={activeRightPanel} onChangePanel={onChangeRightPanel} />
     </div>
   );
 }

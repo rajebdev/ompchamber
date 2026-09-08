@@ -1,4 +1,5 @@
 import React from 'react';
+import { StatCard } from './StatCard';
 
 interface LastMessageCardProps {
   input: number;
@@ -18,54 +19,17 @@ export function LastMessageCard({
   cacheHitPercent
 }: LastMessageCardProps) {
   return (
-    <div className="bg-canvas border border-ink/10 rounded-xl p-4 space-y-4">
-      <div className="text-xs font-semibold text-ink/80">
-        Last Assistant Message
+    <>
+      <div className="mb-1.5">
+        <span className="text-xs font-semibold text-ink/80">Last Assistant Message</span>
       </div>
-
-      {/* Row 1: Input, Output, Reasoning */}
-      <div className="grid grid-cols-3 gap-2">
-        <div>
-          <div className="text-[10px] font-medium text-ink/50 mb-1">Input</div>
-          <div className="text-xs font-mono font-semibold text-ink">
-            {input.toLocaleString()}
-          </div>
-        </div>
-        <div>
-          <div className="text-[10px] font-medium text-ink/50 mb-1">Output</div>
-          <div className="text-xs font-mono font-semibold text-ink">
-            {output.toLocaleString()}
-          </div>
-        </div>
-        <div>
-          <div className="text-[10px] font-medium text-ink/50 mb-1">Reasoning</div>
-          <div className="text-xs font-mono font-semibold text-ink">
-            {reasoning.toLocaleString()}
-          </div>
-        </div>
+      <div className="flex gap-2 flex-wrap">
+        <StatCard label="In" value={input.toLocaleString()} />
+        <StatCard label="Out" value={output.toLocaleString()} />
+        <StatCard label="Reason" value={reasoning.toLocaleString()} />
+        <StatCard label="Cache" value={`${cacheRead.toLocaleString()}/${cacheWrite.toLocaleString()}`} />
+        <StatCard label="Hit" value={`${cacheHitPercent.toFixed(1)}%`} />
       </div>
-
-      {/* Row 2: Cache Read, Cache Write, Cache Hit */}
-      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-ink/5">
-        <div>
-          <div className="text-[10px] font-medium text-ink/50 mb-1">Cache Read</div>
-          <div className="text-xs font-mono font-semibold text-ink">
-            {cacheRead.toLocaleString()}
-          </div>
-        </div>
-        <div>
-          <div className="text-[10px] font-medium text-ink/50 mb-1">Cache Write</div>
-          <div className="text-xs font-mono font-semibold text-ink">
-            {cacheWrite.toLocaleString()}
-          </div>
-        </div>
-        <div>
-          <div className="text-[10px] font-medium text-ink/50 mb-1">Cache Hit</div>
-          <div className="text-xs font-mono font-semibold text-ink">
-            {cacheHitPercent.toFixed(1)}%
-          </div>
-        </div>
-      </div>
-    </div>
+    </>
   );
 }

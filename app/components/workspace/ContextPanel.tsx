@@ -60,11 +60,11 @@ export function ContextPanel({
       {/* Top Header without action buttons */}
       <div className="flex-shrink-0 p-4 border-b border-ink/10 bg-paper">
         <div>
-          <h2 className="text-sm font-semibold text-ink tracking-tight truncate flex items-center gap-1.5">
-            <span className="truncate">{telemetry.sessionTitle}</span>
+          <h2 className="text-xs font-medium text-ink tracking-tight truncate">
+            {telemetry.sessionTitle}
           </h2>
           <div className="text-[11px] text-ink/50 mt-1 truncate font-mono">
-            Command Code / [CMD] {telemetry.modelName} · {telemetry.timestamp}
+            {telemetry.timestamp}
           </div>
         </div>
       </div>
@@ -78,12 +78,14 @@ export function ContextPanel({
           percent={telemetry.contextPercent}
         />
 
-        {/* 2. Metric Grid (Messages, User, Assistant, Cost) */}
+        {/* 2. Metric Row (Messages, User, Assistant, Cache Hit, Cost + detail) */}
         <ContextStatsGrid
           messagesCount={telemetry.messagesCount}
           userCount={telemetry.userCount}
           assistantCount={telemetry.assistantCount}
           costFormatted={telemetry.costFormatted}
+          cacheHitAverage={telemetry.cacheHitAverage}
+          costBreakdown={telemetry.costBreakdown}
         />
 
         {/* 3. Last Assistant Message Stats */}
