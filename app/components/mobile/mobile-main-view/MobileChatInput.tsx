@@ -25,7 +25,7 @@ interface MobileChatInputProps {
   disabled?: boolean;
   appSettings?: Record<string, any>;
   attachments?: Attachment[];
-  onAttachmentsChange?: (attachments: Attachment[]) => void;
+  onAttachmentsChange?: (attachments: React.SetStateAction<Attachment[]>) => void;
 }
 
 export function MobileChatInput({
@@ -45,8 +45,11 @@ export function MobileChatInput({
   const attachments = externalAttachments !== undefined ? externalAttachments : internalAttachments;
   const setAttachments = (updater: React.SetStateAction<Attachment[]>) => {
     if (onAttachmentsChange) {
-      const newAtts = typeof updater === 'function' ? updater(attachments) : updater;
-      onAttachmentsChange(newAtts);
+      // Forward the updater untouched: onAttachmentsChange is a state setter,
+      // so functional updates stay functional. Evaluating them here against
+      // the closure `attachments` would resurrect stale state (e.g. the async
+      // FileReader callback wiping the just-added image).
+      onAttachmentsChange(updater);
     } else {
       setInternalAttachments(updater);
     }
@@ -153,16 +156,37 @@ export function MobileChatInput({
   return (
     <div className="relative border border-ink/20 rounded-md bg-paper focus-within:border-ink transition-colors flex flex-col shadow-sm font-sans">
       
-      {/* Top Toolbar: Paperclip Attach button */}
-      <div className="flex items-center px-3 py-1.5 border-b border-ink/5 text-ink/60 space-x-2">
+      {/* Attach toolbar: paperclip stays left of the attached files */}
+      <div className="flex items-center flex-wrap gap-1.5 px-3 py-1.5 border-b border-ink/5 text-ink/60">
         <button 
           type="button"
           onClick={() => fileInputRef.current?.click()} 
-          className="flex items-center justify-center hover:bg-ink/5 p-1 rounded transition-colors text-ink/60 hover:text-ink cursor-pointer" 
+          className="flex items-center justify-center hover:bg-ink/5 p-1 rounded transition-colors text-ink/60 hover:text-ink cursor-pointer shrink-0" 
           title="Attach file or image"
         >
           <Paperclip size={14} />
         </button>
+
+        {attachments.map(att => (
+          <div key={att.id} className="relative flex items-center bg-canvas border border-ink/10 rounded-md p-0.5 pr-5 text-xs shadow-xs group">
+            {att.preview ? (
+              <img src={att.preview} alt="preview" className="w-5 h-5 object-cover rounded-xs mr-1.5 border border-ink/5" />
+            ) : (
+              <div className="w-5 h-5 flex items-center justify-center bg-ink/5 rounded-xs mr-1.5 text-ink/60">
+                <FileIcon size={11} />
+              </div>
+            )}
+            <span className="truncate max-w-[100px] font-mono text-[10px] text-ink/80">{att.file.name}</span>
+            <button 
+              type="button"
+              onClick={() => removeAttachment(att.id)} 
+              className="absolute right-0.5 top-1/2 -translate-y-1/2 p-0.5 text-ink/40 hover:text-error hover:bg-error/10 rounded transition-colors cursor-pointer"
+              title="Remove attachment"
+            >
+              <X size={9} />
+            </button>
+          </div>
+        ))}
       </div>
       
       <input 
@@ -172,32 +196,6 @@ export function MobileChatInput({
         ref={fileInputRef} 
         onChange={handleFileSelect} 
       />
-
-      {/* Attachments Preview */}
-      {attachments.length > 0 && (
-        <div className="flex flex-wrap gap-2 px-3 pt-2">
-          {attachments.map(att => (
-            <div key={att.id} className="relative flex items-center bg-canvas border border-ink/10 rounded-md p-1 pr-6 text-xs shadow-xs group">
-              {att.preview ? (
-                <img src={att.preview} alt="preview" className="w-7 h-7 object-cover rounded-xs mr-2 border border-ink/5" />
-              ) : (
-                <div className="w-7 h-7 flex items-center justify-center bg-ink/5 rounded-xs mr-2 text-ink/60">
-                  <FileIcon size={13} />
-                </div>
-              )}
-              <span className="truncate max-w-[100px] font-mono text-[10px] text-ink/80">{att.file.name}</span>
-              <button 
-                type="button"
-                onClick={() => removeAttachment(att.id)} 
-                className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 text-ink/40 hover:text-error hover:bg-error/10 rounded transition-colors cursor-pointer"
-                title="Remove attachment"
-              >
-                <X size={11} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* Textarea */}
       <textarea 

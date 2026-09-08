@@ -5,6 +5,7 @@ import type { QueuedMessage } from '@/components/workspace/chat-timeline/QueueLi
 import { triggerChatCompletionSound } from '@/hooks/useNotificationSound';
 import { streamChatResponse } from '@/hooks/useChatStream';
 import { useOmpAgent } from '@/hooks/useOmpAgent';
+import { isTextAttachmentFile, composeMessageWithTextAttachments } from '@/lib/chat-attachments';
 
 interface UseChatTimelineOptions {
   folders?: any[];
@@ -229,12 +230,33 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     const userMsgId = `msg-${Date.now()}-user`;
     const aiPlaceholderId = `msg-${Date.now() + 1}-ai`;
 
+    // Read text-file contents once: used for the editor (attachment.content)
+    // and for inlining into the prompt (mirror omp-web).
+    const textFileContents = new Map<string, string>();
+    try {
+      await Promise.all(
+        attachments
+          .filter(a => isTextAttachmentFile(a.file))
+          .map(async a => {
+            textFileContents.set(a.id, await a.file.text());
+          })
+      );
+    } catch {
+      // Fall back to prompt without inlined contents if a file cannot be read.
+    }
+
     const newUserMsg: ChatMessageData = {
       id: userMsgId,
       role: 'user',
       date: `Today, ${time}`,
       content: text,
-      attachments: attachments.map(a => ({ name: a.file.name, preview: a.preview }))
+      attachments: attachments.map(a => ({
+        name: a.file.name,
+        preview: a.dataBase64 ? `data:${a.file.type};base64,${a.dataBase64}` : a.preview,
+        type: a.file.type,
+        size: a.file.size,
+        content: textFileContents.get(a.id),
+      }))
     };
 
     const initialAiMsg: ChatMessageData = {
@@ -261,7 +283,18 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
       const images = attachments
         .filter(a => a.file.type.startsWith('image/') && a.dataBase64)
         .map(a => ({ data: a.dataBase64 as string, mimeType: a.file.type }));
-      const ok = await ompAgent.sendPrompt(text, images.length ? images : undefined);
+      // Inline text-file contents into the prompt (mirror omp-web): the model
+      // sees the full file content as fenced blocks, not just the filename.
+      const textFiles = attachments
+        .filter(a => textFileContents.has(a.id))
+        .map(a => ({
+          name: a.file.name,
+          mimeType: a.file.type,
+          content: textFileContents.get(a.id) as string,
+          size: a.file.size,
+        }));
+      const promptText = composeMessageWithTextAttachments(text, textFiles);
+      const ok = await ompAgent.sendPrompt(promptText, images.length ? images : undefined);
       if (!ok) {
         // Roll back the optimistic bubbles on a failed send.
         setLocalMessages(prev => prev.filter(m => m.id !== userMsgId && m.id !== aiPlaceholderId));

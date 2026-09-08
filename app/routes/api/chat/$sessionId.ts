@@ -4,6 +4,47 @@ import { getDb } from '@/db.server';
 import { getSessionData } from '@/data/chatMockData';
 import { isMockMode } from '@/mock.server';
 
+interface StoredAttachment {
+  name?: string;
+  preview?: string;
+  type?: string;
+  size?: number;
+  content?: string;
+}
+
+/** Merge attachment metadata from the chamber DB copy onto the JSONL-loaded
+ *  messages. omp's JSONL only records image blocks, so text/pdf attachments
+ *  are matched back by user content (the DB copy is written by the chat
+ *  timeline and carries the full attachment list). */
+function mergeOmpAttachments(
+  messages: { role: string; content: string; attachments?: StoredAttachment[] }[],
+  storedMessagesJson: string | undefined,
+): typeof messages {
+  if (!storedMessagesJson) return messages;
+  let stored: { role: string; content: string; attachments?: StoredAttachment[] }[] = [];
+  try {
+    stored = JSON.parse(storedMessagesJson);
+  } catch {
+    return messages;
+  }
+  const byContent = new Map<string, StoredAttachment[]>();
+  for (const m of stored) {
+    if (m.role === 'user' && Array.isArray(m.attachments) && m.attachments.length > 0) {
+      byContent.set(m.content, m.attachments);
+    }
+  }
+  return messages.map((m) => {
+    if (m.role !== 'user' || m.attachments?.length) return m;
+    // The JSONL content may carry the inlined text-file blocks appended to the
+    // original prompt, so match by prefix instead of exact equality.
+    const atts = byContent.get(m.content)
+      ?? [...byContent.entries()].find(([storedContent]) =>
+          m.content.startsWith(storedContent) || storedContent.startsWith(m.content)
+        )?.[1];
+    return atts ? { ...m, attachments: atts } : m;
+  });
+}
+
 export async function loader({ params }: LoaderFunctionArgs) {
   const { sessionId } = params;
   if (!sessionId) {
@@ -26,11 +67,18 @@ export async function loader({ params }: LoaderFunctionArgs) {
         const title = loadSessionTitle(filePath)
           || messages.find((m) => m.role === 'user')?.content?.slice(0, 120)
           || `Session ${sessionId}`;
+        // Real omp JSONL only records image blocks — text/pdf attachments
+        // never reach the file. The chamber's DB copy (written by the chat
+        // timeline) carries the full attachment metadata, so merge it back
+        // onto the matching user messages by content.
+        const db = await getDb();
+        const overlay = await db.get('SELECT messages FROM chat_sessions WHERE session_id = ?', [sessionId]);
+        const overlaid = mergeOmpAttachments(messages, overlay?.messages);
         return json({
           session: {
             id: sessionId,
             title,
-            messages,
+            messages: overlaid,
             model: loadSessionModel(filePath),
             thinkingLevel: loadSessionThinkingLevel(filePath),
           },

@@ -101,7 +101,10 @@ export function Editor({
 
   useEffect(() => {
     if (activeFile && contents[activeFile.id] === undefined) {
-      if (activeFile.path) {
+      if (activeFile.content !== undefined) {
+        // Attachment chips carry the file content inline (no fetch needed).
+        setContents(prev => ({ ...prev, [activeFile.id]: activeFile.content }));
+      } else if (activeFile.path) {
         const params = new URLSearchParams({ path: activeFile.path });
         if (activeFile.root) params.set('root', activeFile.root);
         fetch(`/api/fs/read?${params.toString()}`)

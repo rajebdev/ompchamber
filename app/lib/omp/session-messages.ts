@@ -141,6 +141,46 @@ function toToolCall(block: OmpBlock): ToolCallData | null {
   };
 }
 
+/** Extract image blocks from an omp user content array ({type:'image',
+ *  data: base64, mimeType}) into ChatMessageData attachment entries so the
+ *  timeline keeps showing them after a reload from the session JSONL. */
+function extractUserImageAttachments(
+  content: unknown,
+): { id: string; name: string; preview: string; type: string }[] {
+  if (!Array.isArray(content)) return [];
+  const attachments: { id: string; name: string; preview: string; type: string }[] = [];
+  let index = 0;
+  for (const block of content) {
+    if (!isRecord(block) || block.type !== 'image') continue;
+    const data = typeof block.data === 'string' ? block.data : undefined;
+    const mimeType = typeof block.mimeType === 'string' ? block.mimeType : 'image/png';
+    if (!data) continue;
+    index += 1;
+    const ext = (mimeType.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '') || 'png';
+    attachments.push({
+      id: `att-${index}`,
+      name: `attachment-${index}.${ext}`,
+      preview: `data:${mimeType};base64,${data}`,
+      type: mimeType,
+    });
+  }
+  return attachments;
+}
+
+/** Strip the inlined "Attached file: ..." fenced blocks that the composer
+ *  appends to the prompt before sending (mirror omp-web). The JSONL stores
+ *  the composed prompt; the timeline should show the original text only —
+ *  the file itself renders as an attachment chip. Handles both a leading
+ *  block (attach-only prompt) and one appended after the user text. */
+function stripInlinedTextAttachments(text: string): string {
+  const match = text.match(/(?:^|\n{2})\s*Attached file: /);
+  if (!match || match.index === undefined) return text;
+  const before = text.slice(0, match.index);
+  const rest = text.slice(match.index + match[0].length);
+  if (!/^[^\n]+\n```[a-z]*\n/.test(rest)) return text;
+  return before.trim();
+}
+
 /** Strip a toolResult's text into a plain output string (skip binary/refusal). */
 function resultOutput(message: OmpMessageEntry['message']): string {
   if (!message) return '';
@@ -220,9 +260,10 @@ function toChatMessage(entry: OmpMessageEntry): ChatMessageData | null {
   };
 
   if (role === 'user') {
-    const text = extractText(content);
-    if (!text.trim()) return null;
-    return { ...base, content: text };
+    const text = stripInlinedTextAttachments(extractText(content));
+    const attachments = extractUserImageAttachments(content);
+    if (!text.trim() && attachments.length === 0) return null;
+    return { ...base, content: text, attachments };
   }
 
   if (role === 'toolResult') {

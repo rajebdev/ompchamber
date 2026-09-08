@@ -6,7 +6,6 @@ import {
   User, 
   Bot, 
   Hourglass,
-  File as FileIcon,
   Check,
   Undo2,
   AlertCircle,
@@ -16,6 +15,7 @@ import type { ChatMessageData } from '@/types';
 import { ThinkingSection } from '@/components/workspace/chat-timeline/ThinkingSection';
 import { ToolCallingSection } from '@/components/workspace/chat-timeline/ToolCallingSection';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
+import { AttachmentChips } from '@/components/workspace/chat-timeline/AttachmentChips';
 import { copyToClipboard } from '@/hooks/useClipboard';
 import { formatDuration } from '@/lib/chat-duration';
 
@@ -115,24 +115,14 @@ export function ChatMessageItem({
         <div className="bg-paper p-3.5 sm:p-4 rounded-xl border border-ink/15 text-[13px] text-ink shadow-xs max-w-[92%] sm:max-w-[85%] break-words whitespace-pre-wrap overflow-hidden flex flex-col space-y-2 font-sans select-text mx-3" style={{ lineHeight: 'var(--markdown-body-line-height)' }}>
           <MarkdownRenderer content={msg.content.trim()} />
           
-          {msg.attachments && msg.attachments.length > 0 && (
-            <div className="flex flex-wrap gap-2 pt-2 border-t border-ink/10">
-              {msg.attachments.map((att: any, i: number) => (
-                <div key={i} className="flex items-center space-x-2 bg-canvas px-2 py-1 rounded border border-ink/10 text-[11px] font-sans">
-                  {att.preview ? (
-                    <img 
-                      src={att.preview} 
-                      alt="attachment preview" 
-                      className="w-6 h-6 rounded object-cover border border-ink/10" 
-                    />
-                  ) : (
-                    <FileIcon size={12} className="text-ink/60" />
-                  )}
-                  <span className="truncate max-w-[120px] font-mono text-[10px]">{att.name}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          <AttachmentChips
+            attachments={msg.attachments || []}
+            onOpenFile={(att: { name?: string; content?: string }) => {
+              window.dispatchEvent(new CustomEvent('omp:open-file', {
+                detail: { path: att.name ?? 'attachment', content: att.content }
+              }));
+            }}
+          />
         </div>
         
         {/* User Metadata & Toolbar (Undo on the left of Copy) */}

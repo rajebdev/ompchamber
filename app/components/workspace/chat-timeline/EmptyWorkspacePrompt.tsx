@@ -12,7 +12,7 @@ interface EmptyWorkspacePromptProps {
   inputValue: string;
   setInputValue: (v: string) => void;
   inputAttachments?: Attachment[];
-  setInputAttachments?: (atts: Attachment[]) => void;
+  setInputAttachments?: (atts: React.SetStateAction<Attachment[]>) => void;
   onSend: (attachments: Attachment[]) => void;
   isGenerating: boolean;
   appSettings?: Record<string, any>;
