@@ -84,7 +84,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
           onWorkspaceLayout(layoutMap);
         }}
       >
-        <Panel id="center-panel" defaultSize={pctOr(initialLayoutSizes?.center)} minSize={300}>
+        <Panel id="center-panel" defaultSize={pctOr(initialLayoutSizes?.center)} minSize="540px">
           <ChatTimeline className="w-full h-full" folders={folders} appSettings={appSettings} onSessionTitle={onSessionTitle} />
         </Panel>
 
