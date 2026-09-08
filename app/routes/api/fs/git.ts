@@ -233,7 +233,14 @@ export async function action({ request }: ActionFunctionArgs) {
         await execAsync(`git checkout "${branch}"`, { cwd: targetDir });
       } else {
         const localName = branch.split('/').slice(1).join('/');
-        await execAsync(`git checkout -b "${localName}" --track "${branch}"`, { cwd: targetDir });
+        const localExists = await execAsync(`git rev-parse --verify --quiet refs/heads/${localName}`, { cwd: targetDir })
+          .then(() => true)
+          .catch(() => false);
+        if (localExists) {
+          await execAsync(`git checkout "${localName}"`, { cwd: targetDir });
+        } else {
+          await execAsync(`git checkout -b "${localName}" --track "${branch}"`, { cwd: targetDir });
+        }
       }
     } else if (actionType === 'create_branch') {
       const branch = formData.get('branch') as string;

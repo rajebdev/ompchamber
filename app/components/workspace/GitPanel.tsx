@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Plus, Minus, Undo2 } from 'lucide-react';
 import { useFetcher } from '@remix-run/react';
 import type { GitChange } from '@/types';
 import { ConfirmActionModal, BranchPromptModal, GitOutputModal } from './git-panel/GitModals';
-import { GitFileItem } from './git-panel/GitFileItem';
-import { GitTreeView } from './git-panel/GitTreeView';
 import { GitCommitBox } from './git-panel/GitCommitBox';
 import { GitBranchToolbar } from './git-panel/GitBranchToolbar';
 import { GitRepoHeader } from './git-panel/GitRepoHeader';
+import { GitChangesList } from './git-panel/GitChangesList';
+import { Toast } from '@/components/common/Toast';
+import { useToasts } from '@/hooks/useToasts';
 
 interface GitPanelProps {
   className?: string;
@@ -18,7 +18,7 @@ interface GitPanelProps {
 
 export function GitPanel({ className = '', enabled = true, rootPath, refreshKey = 0 }: GitPanelProps) {
   const fetcher = useFetcher<{ changes: GitChange[], branch: string, branches: string[], remoteBranches?: string[], repos: string[], reposPending?: boolean, activeRepo: string, syncCount?: { ahead: number, behind: number } }>();
-  const actionFetcher = useFetcher<{ success: boolean, type?: string, data?: any }>();
+  const actionFetcher = useFetcher<{ success: boolean, type?: string, data?: any, error?: string }>();
 
   const loadRepo = (repo?: string) => {
     if (!enabled) return;
@@ -41,9 +41,6 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
   const [showBranchMenu, setShowBranchMenu] = useState(false);
   const branchRef = useRef<HTMLDivElement>(null);
 
-  const [stagedExpanded, setStagedExpanded] = useState(true);
-  const [unstagedExpanded, setUnstagedExpanded] = useState(true);
-
   // Custom modal states
   const [confirmModal, setConfirmModal] = useState<{ type: string, file?: string, message: string } | null>(null);
   const [branchPrompt, setBranchPrompt] = useState(false);
@@ -53,6 +50,8 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
   // History and Graph states
   const [viewingOutput, setViewingOutput] = useState<{ title: string, data: any[] } | null>(null);
   const [mounted, setMounted] = useState(false);
+
+  const { toasts, pushToast, dismissToast } = useToasts();
 
   // Background nested-repo discovery polling: the loader returns immediately
   // with the root status and `reposPending`; we poll the lightweight
@@ -116,6 +115,8 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
         setViewingOutput({ title: 'Git Graph', data: actionFetcher.data.data || [] });
       } else if (actionFetcher.data.success) {
         loadRepo(activeRepo);
+      } else {
+        pushToast(actionFetcher.data.error || 'Git operation failed');
       }
     }
   }, [actionFetcher.state, actionFetcher.data]);
@@ -180,11 +181,6 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
     return status && status[0] !== ' ' && status[0] !== '?';
   });
 
-  const unstagedChanges = changes.filter(c => {
-    const status = c.status;
-    return (status && status[1] !== ' ' && status[1] !== '?') || status === '??';
-  });
-
   const refreshRepos = () => {
     if (!enabled || pollingRepos || rescanningRepos) return;
     setExtraRepos(repos);
@@ -242,6 +238,10 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
         </>
       )}
 
+      {toasts.map(t => (
+        <Toast key={t.id} toast={t} onDismiss={dismissToast} />
+      ))}
+
       {/* Repo Switcher Header */}
       <GitRepoHeader 
         repoRef={repoRef}
@@ -289,126 +289,12 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
       />
       
       {/* Changes List / Tree */}
-      <div className="flex-1 overflow-y-auto font-mono text-[11px] text-ink/80">
-        {isLoading && changes.length === 0 ? (
-          <div className="p-4 text-center text-ink/40 italic">Loading...</div>
-        ) : changes.length === 0 ? (
-          <div className="p-4 text-center text-ink/40 italic">No changes found.</div>
-        ) : (
-          <div className="py-1">
-            {/* Staged Changes Section */}
-            {stagedChanges.length > 0 && (
-              <div className="mb-2">
-                <div 
-                  className="flex items-center justify-between px-3 py-1 group hover:bg-ink/5 cursor-pointer transition-colors"
-                  onClick={() => setStagedExpanded(!stagedExpanded)}
-                >
-                  <div className="flex items-center space-x-1 font-semibold text-ink text-xs">
-                    <span className="w-3 text-center">{stagedExpanded ? '▾' : '▸'}</span>
-                    <span>Staged Changes</span>
-                    <span className="text-ink/40 font-normal ml-1 border border-ink/20 rounded-full px-1.5 text-[9px] bg-paper">
-                      {stagedChanges.length}
-                    </span>
-                  </div>
-                  <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-1 text-ink/40 flex-shrink-0">
-                    <button 
-                      type="button" 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleAction('unstage_all');
-                      }} 
-                      title="Unstage All Changes" 
-                      className="w-5 h-5 flex items-center justify-center rounded hover:text-ink hover:bg-ink/10 cursor-pointer transition-colors"
-                    >
-                      <Minus size={12} />
-                    </button>
-                  </div>
-                </div>
-
-                {stagedExpanded && (
-                  viewMode === 'tree' ? (
-                    <GitTreeView 
-                      changes={stagedChanges}
-                      isStaged={true}
-                      onAction={handleAction}
-                    />
-                  ) : (
-                    stagedChanges.map(c => (
-                      <GitFileItem 
-                        key={c.file + 'staged'}
-                        change={c}
-                        isStaged={true}
-                        onAction={handleAction}
-                      />
-                    ))
-                  )
-                )}
-              </div>
-            )}
-
-            {/* Unstaged Changes Section */}
-            {unstagedChanges.length > 0 && (
-              <div>
-                <div 
-                  className="flex items-center justify-between px-3 py-1 group hover:bg-ink/5 cursor-pointer transition-colors"
-                  onClick={() => setUnstagedExpanded(!unstagedExpanded)}
-                >
-                  <div className="flex items-center space-x-1 font-semibold text-ink text-xs">
-                    <span className="w-3 text-center">{unstagedExpanded ? '▾' : '▸'}</span>
-                    <span>Changes</span>
-                    <span className="text-ink/40 font-normal ml-1 border border-ink/20 rounded-full px-1.5 text-[9px] bg-paper">
-                      {unstagedChanges.length}
-                    </span>
-                  </div>
-                  <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-1 text-ink/40 flex-shrink-0">
-                    <button 
-                      type="button" 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleAction('revert_all');
-                      }} 
-                      title="Discard All Changes" 
-                      className="w-5 h-5 flex items-center justify-center rounded hover:text-error hover:bg-error/10 cursor-pointer transition-colors"
-                    >
-                      <Undo2 size={12} />
-                    </button>
-                    <button 
-                      type="button" 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleAction('stage_all');
-                      }} 
-                      title="Stage All Changes" 
-                      className="w-5 h-5 flex items-center justify-center rounded hover:text-ink hover:bg-ink/10 cursor-pointer transition-colors"
-                    >
-                      <Plus size={12} />
-                    </button>
-                  </div>
-                </div>
-
-                {unstagedExpanded && (
-                  viewMode === 'tree' ? (
-                    <GitTreeView 
-                      changes={unstagedChanges}
-                      isStaged={false}
-                      onAction={handleAction}
-                    />
-                  ) : (
-                    unstagedChanges.map(c => (
-                      <GitFileItem 
-                        key={c.file + 'unstaged'}
-                        change={c}
-                        isStaged={false}
-                        onAction={handleAction}
-                      />
-                    ))
-                  )
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      <GitChangesList
+        changes={changes}
+        isLoading={isLoading}
+        viewMode={viewMode}
+        onAction={handleAction}
+      />
     </div>
   );
 }
