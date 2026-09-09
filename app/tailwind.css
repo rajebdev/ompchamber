@@ -102,6 +102,43 @@
   background: color-mix(in srgb, var(--theme-ink) 40%, transparent);
 }
 
+/* Generic overlay scrollbar for any scrollable panel: the thumb fades out
+ * when scrolled to rest and reappears while scrolling (same behavior as the
+ * chat timeline). Pair with overflow-y-[overlay] and the useScrollbarFade
+ * hook or an onScroll-driven isScrolling flag. */
+.scrollbar-overlay-container {
+  overflow-y: overlay;
+}
+
+.scrollbar-overlay::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+}
+
+.scrollbar-overlay::-webkit-scrollbar-track,
+.scrollbar-overlay-scrolling::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-overlay-scrolling::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--theme-ink) 20%, transparent);
+}
+
+.scrollbar-overlay-scrolling::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--theme-ink) 40%, transparent);
+}
+
+/* Static overlay thumb for small containers (dropdowns, modals) that don't
+ * use the fade hook: always a thin visible thumb, no idle fade. */
+.scrollbar-overlay-static::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--theme-ink) 20%, transparent);
+  border-radius: 3px;
+}
+
+.scrollbar-overlay-static::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--theme-ink) 40%, transparent);
+}
+
 /* Terminal xterm custom scrollbars */
 .xterm .xterm-viewport::-webkit-scrollbar {
   width: 8px !important;

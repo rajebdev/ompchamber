@@ -32,7 +32,7 @@ export function QueueList({ queue, setQueue, onEdit, onSendNow }: QueueListProps
   if (queue.length === 0) return null;
 
   return (
-    <div className="max-h-[150px] overflow-y-auto mb-2 space-y-1">
+    <div className="max-h-[150px] scrollbar-overlay-container scrollbar-overlay-static mb-2 space-y-1">
       {queue.map((item, index) => (
         <div
           key={item.id}

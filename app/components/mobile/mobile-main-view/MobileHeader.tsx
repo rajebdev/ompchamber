@@ -82,7 +82,7 @@ export function MobileHeader({
               </button>
 
               <div className="px-2 py-1 text-[10px] uppercase font-bold text-ink/40">Recent Sessions</div>
-              <div className="max-h-48 overflow-y-auto space-y-0.5">
+              <div className="max-h-48 scrollbar-overlay-container scrollbar-overlay-static space-y-0.5">
                 {folders.flatMap(f => f.sessions || []).slice(0, 10).map(s => (
                   <button
                     key={s.id}

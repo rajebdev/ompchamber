@@ -128,7 +128,7 @@ export function ThinkingSection({ thinking, defaultExpanded = false }: ThinkingS
 
           <div
             ref={thoughtBodyRef}
-            className="border-l-2 border-ink/20 pl-3 py-1 text-[12px] text-ink/85 whitespace-pre-wrap break-words font-mono leading-relaxed max-h-72 overflow-y-auto select-text"
+            className="border-l-2 border-ink/20 pl-3 py-1 text-[12px] text-ink/85 whitespace-pre-wrap break-words font-mono leading-relaxed max-h-72 scrollbar-overlay-container scrollbar-overlay-static select-text"
           >
             {cleanThought}
           </div>

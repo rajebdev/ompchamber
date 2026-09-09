@@ -23,6 +23,7 @@ import 'prismjs/components/prism-markdown';
 import 'prismjs/components/prism-css';
 import 'prismjs/components/prism-bash';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
+import { useScrollbarFade } from '@/hooks/useScrollbarFade';
 
 interface MobileFullEditorProps {
   file: {
@@ -71,6 +72,7 @@ export function MobileFullEditor({ file, onClose }: MobileFullEditorProps) {
   const [fontSize, setFontSize] = useState(12);
   const [wordWrap, setWordWrap] = useState(true);
   const [copied, setCopied] = useState(false);
+  const { isScrolling, handleScroll } = useScrollbarFade();
 
   const isMd = file.name.endsWith('.md');
   const lang = getLanguage(file.name);
@@ -232,7 +234,7 @@ export function MobileFullEditor({ file, onClose }: MobileFullEditorProps) {
       </header>
 
       {/* Editor Content Area - Desktop styled: bg-paper text-ink */}
-      <div className="flex-1 overflow-auto relative bg-paper text-ink select-text">
+      <div onScroll={handleScroll} className={`flex-1 overflow-auto relative bg-paper text-ink select-text ${isScrolling ? 'scrollbar-overlay-scrolling' : 'scrollbar-overlay'}`}>
         {isLoading ? (
           <div className="flex items-center justify-center h-full text-ink/40 text-xs">
             Loading file content...

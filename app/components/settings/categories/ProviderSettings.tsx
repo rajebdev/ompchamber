@@ -208,7 +208,7 @@ export function ProviderSettings({
       />
 
       {/* Right Column: Provider Details, Authentication, & Models */}
-      <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6">
+      <div className="flex-1 scrollbar-overlay-container scrollbar-overlay-static p-6 md:p-8 space-y-6">
         {selectedProvider ? (
           <>
             <ProviderHeader provider={selectedProvider} />

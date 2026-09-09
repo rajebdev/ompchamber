@@ -27,7 +27,7 @@ export function GitChangesList({ changes, isLoading, viewMode, onAction }: GitCh
 
   if (isLoading && changes.length === 0) {
     return (
-      <div className="flex-1 overflow-y-auto font-mono text-[11px] text-ink/80">
+      <div className="flex-1 scrollbar-overlay-container scrollbar-overlay-static font-mono text-[11px] text-ink/80">
         <div className="p-4 text-center text-ink/40 italic">Loading...</div>
       </div>
     );
@@ -35,14 +35,14 @@ export function GitChangesList({ changes, isLoading, viewMode, onAction }: GitCh
 
   if (changes.length === 0) {
     return (
-      <div className="flex-1 overflow-y-auto font-mono text-[11px] text-ink/80">
+      <div className="flex-1 scrollbar-overlay-container scrollbar-overlay-static font-mono text-[11px] text-ink/80">
         <div className="p-4 text-center text-ink/40 italic">No changes found.</div>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-y-auto font-mono text-[11px] text-ink/80">
+    <div className="flex-1 scrollbar-overlay-container scrollbar-overlay-static font-mono text-[11px] text-ink/80">
       <div className="py-1">
         {stagedChanges.length > 0 && (
           <div className="mb-2">

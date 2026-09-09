@@ -3,6 +3,7 @@ import { Search, RefreshCw } from 'lucide-react';
 import { setChildrenAt, rehydrateTree } from '@/components/workspace/file-explorer/tree-utils';
 import { GitRepoDropdown } from '@/components/workspace/file-explorer/GitRepoDropdown';
 import { FileTreeItem } from '@/components/workspace/file-explorer/FileTreeItem';
+import { useScrollbarFade } from '@/hooks/useScrollbarFade';
 
 export function FileExplorer({ className = '', enabled = true, rootPath, onOpenFile, refreshKey = 0, onRefresh }: { className?: string, enabled?: boolean, rootPath?: string, onOpenFile?: (file: any) => void, refreshKey?: number, onRefresh?: () => void }) {
   const [tree, setTree] = useState<any[]>([]);
@@ -11,6 +12,7 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const childrenCacheRef = useRef<Record<string, any[]>>({});
   const [activeRepo, setActiveRepo] = useState('.');
+  const { isScrolling, handleScroll } = useScrollbarFade();
 
   const listUrl = (path?: string) => {
     const params = new URLSearchParams();
@@ -130,7 +132,7 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2 font-mono text-[11px] text-ink/80" onContextMenu={(e) => e.preventDefault()}>
+      <div className={`flex-1 scrollbar-overlay-container p-2 font-mono text-[11px] text-ink/80 ${isScrolling ? 'scrollbar-overlay-scrolling' : 'scrollbar-overlay'}`} onContextMenu={(e) => e.preventDefault()} onScroll={handleScroll}>
         {isLoading && files.length === 0 ? (
           <div className="p-4 text-center text-ink/40">
             Loading files...

@@ -58,9 +58,17 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   const [sessionData, setSessionData] = useState<{ id?: string; title?: string; model?: string | { provider: string; modelId: string }; thinkingLevel?: string; messages?: any[] } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const isGeneratingRef = useRef(false);
+  // Single throat through which every generation state transition flows
+  // (send, queue, steer, retry, undo, agent start/end, stream done/error).
+  // Sidebar subscribes here to paint spinner/check on the session item.
   const setGenerating = (v: boolean) => {
     isGeneratingRef.current = v;
     setIsGenerating(v);
+    if (sessionIdRef.current) {
+      window.dispatchEvent(new CustomEvent('omp:session-processing', {
+        detail: { sessionId: sessionIdRef.current, processing: v },
+      }));
+    }
   };
   const [generatingVerb, setGeneratingVerb] = useState('');
   const abortControllerRef = useRef<AbortController | null>(null);

@@ -66,7 +66,7 @@ export const CommandDetailPane: React.FC<CommandDetailPaneProps> = ({
   };
 
   return (
-    <form onSubmit={handleSave} className="flex-1 flex flex-col h-full overflow-y-auto bg-paper text-ink p-6 md:p-8 space-y-6">
+    <form onSubmit={handleSave} className="flex-1 flex flex-col h-full scrollbar-overlay-container scrollbar-overlay-static bg-paper text-ink p-6 md:p-8 space-y-6">
       {/* SECTION 1: Identity */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">

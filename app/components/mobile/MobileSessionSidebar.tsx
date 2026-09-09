@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   X, 
   Search, 
@@ -20,6 +20,7 @@ import {
   SchedulerModal 
 } from '@/components/layout/session-sidebar/SidebarModals';
 import { useOnClickOutside } from '@/hooks/useOnClickOutside';
+import { useScrollbarFade } from '@/hooks/useScrollbarFade';
 import packageJson from '@/../package.json';
 
 interface MobileSessionSidebarProps {
@@ -55,12 +56,64 @@ export function MobileSessionSidebar({
   const [aboutOpen, setAboutOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
 
+  // Live session status: the chat timeline dispatches omp:session-processing
+  // (processing true/false) through its single setGenerating throat, so the
+  // sidebar can paint a spinner while a session runs and a check when done.
+  const [sessionStatus, setSessionStatus] = useState<Record<string, 'processing' | 'done'>>({});
+  const activeSessionIdRef = useRef(activeSessionId);
+  activeSessionIdRef.current = activeSessionId;
+  useEffect(() => {
+    const onProcessing = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { sessionId?: string; processing?: boolean } | undefined;
+      const sid = detail?.sessionId;
+      if (!sid) return;
+      setSessionStatus(prev => {
+        const next = { ...prev };
+        if (detail.processing) {
+          next[sid] = 'processing';
+        } else if (String(sid) === String(activeSessionIdRef.current)) {
+          // Completed while the user is already looking at it — no check.
+          delete next[sid];
+        } else {
+          next[sid] = 'done';
+        }
+        return next;
+      });
+    };
+    window.addEventListener('omp:session-processing', onProcessing);
+    return () => window.removeEventListener('omp:session-processing', onProcessing);
+  }, []);
+
+  // The check is a "finished while you weren't looking" badge: opening a
+  // session or navigating to another one clears it. Spinners survive.
+  useEffect(() => {
+    setSessionStatus(prev => {
+      const next: Record<string, 'processing' | 'done'> = {};
+      for (const [k, v] of Object.entries(prev)) {
+        if (v === 'processing') next[k] = v;
+      }
+      return next;
+    });
+  }, [activeSessionId]);
+
   // Sorting state (matching desktop)
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const [sortOption, setSortOption] = useState<'A-Z' | 'Z-A' | 'LATEST_SESSION' | 'LATEST_ADDED'>('A-Z');
+  const [sortOption, setSortOption] = useState<'A-Z' | 'Z-A' | 'LATEST_SESSION' | 'LATEST_ADDED'>(() => {
+    if (typeof window === 'undefined') return 'A-Z';
+    const saved = localStorage.getItem('omp_sidebar_sort');
+    return saved === 'A-Z' || saved === 'Z-A' || saved === 'LATEST_SESSION' || saved === 'LATEST_ADDED' ? saved : 'A-Z';
+  });
+
+  const handleSortChange = (opt: 'A-Z' | 'Z-A' | 'LATEST_SESSION' | 'LATEST_ADDED') => {
+    setSortOption(opt);
+    localStorage.setItem('omp_sidebar_sort', opt);
+    setOptionsOpen(false);
+  };
 
   const optionsRef = useRef<HTMLDivElement>(null);
   useOnClickOutside(optionsRef, () => setOptionsOpen(false));
+
+  const { isScrolling, handleScroll } = useScrollbarFade();
 
   const toggleFolder = (folderId: number) => {
     setExpandedFolders(prev => ({
@@ -173,7 +226,7 @@ export function MobileSessionSidebar({
                   <button
                     key={opt}
                     type="button"
-                    onClick={() => { setSortOption(opt); setOptionsOpen(false); }}
+                    onClick={() => handleSortChange(opt)}
                     className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between transition-colors ${
                       sortOption === opt 
                         ? 'bg-ink/10 font-semibold text-ink' 
@@ -265,7 +318,10 @@ export function MobileSessionSidebar({
       </div>
 
       {/* Scrollable Categories and Sessions */}
-      <div className="flex-1 overflow-y-auto p-3">
+      <div 
+        onScroll={handleScroll}
+        className={`flex-1 scrollbar-overlay-container p-3 ${isScrolling ? 'scrollbar-overlay-scrolling' : 'scrollbar-overlay'}`}
+      >
         {processedFolders.length === 0 ? (
           <div className="text-center py-12 text-xs text-ink/50 italic">
             No matching sessions found
@@ -282,6 +338,8 @@ export function MobileSessionSidebar({
               }}
               isExpanded={expandedFolders[folder.id] ?? true}
               onToggleExpand={() => toggleFolder(folder.id)}
+              showArchived={showArchived}
+              sessionStatus={sessionStatus}
             />
           ))
         )}

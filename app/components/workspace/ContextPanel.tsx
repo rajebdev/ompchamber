@@ -7,6 +7,7 @@ import { ContextStatsGrid } from '@/components/workspace/context-panel/ContextSt
 import { LastMessageCard } from '@/components/workspace/context-panel/LastMessageCard';
 import { TokenDistributionBar } from '@/components/workspace/context-panel/TokenDistributionBar';
 import { RawMessagesList } from '@/components/workspace/context-panel/RawMessagesList';
+import { useScrollbarFade } from '@/hooks/useScrollbarFade';
 
 interface ContextPanelProps {
   className?: string;
@@ -22,6 +23,7 @@ export function ContextPanel({
 }: ContextPanelProps) {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('sessionId');
+  const { isScrolling, handleScroll } = useScrollbarFade();
 
   const [telemetry, setTelemetry] = useState<SessionContextTelemetry>(() =>
     emptyTelemetry(sessionId || 'default', 'Session not started')
@@ -77,7 +79,7 @@ export function ContextPanel({
       </div>
 
       {/* Scrollable Context Body */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div onScroll={handleScroll} className={`flex-1 scrollbar-overlay-container p-4 space-y-4 ${isScrolling ? 'scrollbar-overlay-scrolling' : 'scrollbar-overlay'}`}>
         {/* 1. Context Window Usage Progress Card */}
         <ContextWindowCard
           used={telemetry.contextUsed}

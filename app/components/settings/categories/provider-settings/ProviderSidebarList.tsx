@@ -61,7 +61,7 @@ export function ProviderSidebarList({
         </button>
 
         {isProjectDropdownOpen && (
-          <div className="absolute left-3 right-3 mt-1.5 bg-paper border border-ink/15 rounded-lg shadow-xl py-1 z-50 max-h-56 overflow-y-auto">
+          <div className="absolute left-3 right-3 mt-1.5 bg-paper border border-ink/15 rounded-lg shadow-xl py-1 z-50 max-h-56 scrollbar-overlay-container scrollbar-overlay">
             {projects.map((proj) => (
               <button
                 key={proj.id}
@@ -105,7 +105,7 @@ export function ProviderSidebarList({
       </div>
 
       {/* 4. Provider List */}
-      <div className="flex-1 overflow-y-auto p-1.5 space-y-0.5">
+      <div className="flex-1 scrollbar-overlay-container scrollbar-overlay-static p-1.5 space-y-0.5">
         {providers.map((item) => {
           const isSelected = item.id === selectedProviderId;
 

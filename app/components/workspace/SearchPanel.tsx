@@ -3,6 +3,7 @@ import { Search, CaseSensitive, WholeWord, Regex, Replace, ReplaceAll, MoreHoriz
 import { FileIcon } from '@/components/common/FileIcon';
 import { useFetcher } from '@remix-run/react';
 import { GitRepoDropdown } from '@/components/workspace/file-explorer/GitRepoDropdown';
+import { useScrollbarFade } from '@/hooks/useScrollbarFade';
 
 export function SearchPanel({ className = '', enabled = true, rootPath }: { className?: string, enabled?: boolean, rootPath?: string }) {
   const [query, setQuery] = useState('');
@@ -18,6 +19,7 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
   const [activeRepo, setActiveRepo] = useState('.');
   
   const menuRef = useRef<HTMLDivElement>(null);
+  const { isScrolling, handleScroll } = useScrollbarFade();
 
   const fetcher = useFetcher<{ results: any[] }>();
   const replaceFetcher = useFetcher<{ success: boolean, results: any[] }>();
@@ -206,7 +208,7 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
         )}
       </div>
       
-      <div className="flex-1 overflow-y-auto px-3 py-2 text-xs">
+      <div onScroll={handleScroll} className={`flex-1 scrollbar-overlay-container px-3 py-2 text-xs ${isScrolling ? 'scrollbar-overlay-scrolling' : 'scrollbar-overlay'}`}>
 
         {isLoading && results.length === 0 ? (
           <div className="text-ink/40 italic text-center py-4">Searching...</div>

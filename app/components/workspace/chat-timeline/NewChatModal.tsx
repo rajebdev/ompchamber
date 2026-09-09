@@ -34,7 +34,7 @@ export function NewChatModal({ initialContent, onClose, onSend, appSettings }: N
           </button>
         </div>
         
-        <div className="p-4 flex-1 overflow-y-auto">
+        <div className="p-4 flex-1 scrollbar-overlay-container scrollbar-overlay-static">
           <p className="text-xs text-ink/60 mb-3">
             Start a new session in this workspace based on the selected message.
           </p>

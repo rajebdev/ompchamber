@@ -84,6 +84,11 @@ export async function getDb(): Promise<Database> {
         project_path TEXT PRIMARY KEY,
         deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS archived_sessions (
+        session_id TEXT PRIMARY KEY,
+        archived_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
     `);
 
     // Attempt to add column to existing tables if it doesn't exist

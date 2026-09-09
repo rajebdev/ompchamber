@@ -3,6 +3,7 @@ import { Plus, Search, Settings, Info, FolderPlus, Calendar, Archive, MoreHorizo
 import { useSearchParams, useRevalidator } from '@remix-run/react';
 import { SettingsModal, AboutModal, NewWorkspaceModal, SchedulerModal } from '@/components/layout/session-sidebar/SidebarModals';
 import { Category } from '@/components/layout/session-sidebar/CategoryItem';
+import { useScrollbarFade } from '@/hooks/useScrollbarFade';
 
 export function SessionSidebar({ className = '', folders = [], onClose, appSettings = {} }: { className?: string, folders?: any[], onClose?: () => void, appSettings?: Record<string, any> }) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -48,7 +49,59 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
   
   // Options dropdown state
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const [sortOption, setSortOption] = useState<'A-Z' | 'Z-A' | 'LATEST_SESSION' | 'LATEST_ADDED'>('A-Z');
+  const [sortOption, setSortOption] = useState<'A-Z' | 'Z-A' | 'LATEST_SESSION' | 'LATEST_ADDED'>(() => {
+    if (typeof window === 'undefined') return 'A-Z';
+    const saved = localStorage.getItem('omp_sidebar_sort');
+    return saved === 'A-Z' || saved === 'Z-A' || saved === 'LATEST_SESSION' || saved === 'LATEST_ADDED' ? saved : 'A-Z';
+  });
+
+  const handleSortChange = (opt: 'A-Z' | 'Z-A' | 'LATEST_SESSION' | 'LATEST_ADDED') => {
+    setSortOption(opt);
+    localStorage.setItem('omp_sidebar_sort', opt);
+    setOptionsOpen(false);
+  };
+
+  const { isScrolling, handleScroll } = useScrollbarFade();
+
+  // Live session status: the chat timeline dispatches omp:session-processing
+  // (processing true/false) through its single setGenerating throat, so the
+  // sidebar can paint a spinner while a session runs and a check when done.
+  const [sessionStatus, setSessionStatus] = useState<Record<string, 'processing' | 'done'>>({});
+  const activeSessionIdRef = useRef(activeSessionId);
+  activeSessionIdRef.current = activeSessionId;
+  useEffect(() => {
+    const onProcessing = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { sessionId?: string; processing?: boolean } | undefined;
+      const sid = detail?.sessionId;
+      if (!sid) return;
+      setSessionStatus(prev => {
+        const next = { ...prev };
+        if (detail.processing) {
+          next[sid] = 'processing';
+        } else if (String(sid) === String(activeSessionIdRef.current)) {
+          // Completed while the user is already looking at it — no check.
+          delete next[sid];
+        } else {
+          next[sid] = 'done';
+        }
+        return next;
+      });
+    };
+    window.addEventListener('omp:session-processing', onProcessing);
+    return () => window.removeEventListener('omp:session-processing', onProcessing);
+  }, []);
+
+  // The check is a "finished while you weren't looking" badge: opening a
+  // session or navigating to another one clears it. Spinners survive.
+  useEffect(() => {
+    setSessionStatus(prev => {
+      const next: Record<string, 'processing' | 'done'> = {};
+      for (const [k, v] of Object.entries(prev)) {
+        if (v === 'processing') next[k] = v;
+      }
+      return next;
+    });
+  }, [activeSessionId]);
 
   const handleSelectSession = (id: number | string) => {
     setSearchParams(prev => {
@@ -211,28 +264,28 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
                     <div className="px-3 py-1 text-[10px] uppercase font-bold text-ink/40 tracking-wider">Sort Workspaces</div>
                     <div 
                       className={`px-3 py-1.5 text-xs cursor-pointer flex items-center justify-between ${sortOption === 'A-Z' ? 'bg-ink/5 text-ink font-medium' : 'text-ink/70 hover:bg-ink/5 hover:text-ink'}`}
-                      onClick={() => { setSortOption('A-Z'); setOptionsOpen(false); }}
+                      onClick={() => handleSortChange('A-Z')}
                     >
                       <span>A-Z</span>
                       {sortOption === 'A-Z' && <div className="w-1.5 h-1.5 rounded-full bg-ink"></div>}
                     </div>
                     <div 
                       className={`px-3 py-1.5 text-xs cursor-pointer flex items-center justify-between ${sortOption === 'Z-A' ? 'bg-ink/5 text-ink font-medium' : 'text-ink/70 hover:bg-ink/5 hover:text-ink'}`}
-                      onClick={() => { setSortOption('Z-A'); setOptionsOpen(false); }}
+                      onClick={() => handleSortChange('Z-A')}
                     >
                       <span>Z-A</span>
                       {sortOption === 'Z-A' && <div className="w-1.5 h-1.5 rounded-full bg-ink"></div>}
                     </div>
                     <div 
                       className={`px-3 py-1.5 text-xs cursor-pointer flex items-center justify-between ${sortOption === 'LATEST_SESSION' ? 'bg-ink/5 text-ink font-medium' : 'text-ink/70 hover:bg-ink/5 hover:text-ink'}`}
-                      onClick={() => { setSortOption('LATEST_SESSION'); setOptionsOpen(false); }}
+                      onClick={() => handleSortChange('LATEST_SESSION')}
                     >
                       <span>Latest Session</span>
                       {sortOption === 'LATEST_SESSION' && <div className="w-1.5 h-1.5 rounded-full bg-ink"></div>}
                     </div>
                     <div 
                       className={`px-3 py-1.5 text-xs cursor-pointer flex items-center justify-between ${sortOption === 'LATEST_ADDED' ? 'bg-ink/5 text-ink font-medium' : 'text-ink/70 hover:bg-ink/5 hover:text-ink'}`}
-                      onClick={() => { setSortOption('LATEST_ADDED'); setOptionsOpen(false); }}
+                      onClick={() => handleSortChange('LATEST_ADDED')}
                     >
                       <span>Latest Added</span>
                       {sortOption === 'LATEST_ADDED' && <div className="w-1.5 h-1.5 rounded-full bg-ink"></div>}
@@ -274,7 +327,10 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
         </div>
         
         {/* Session List */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-4">
+        <div 
+          onScroll={handleScroll}
+          className={`flex-1 scrollbar-overlay-container p-2 space-y-4 ${isScrolling ? 'scrollbar-overlay-scrolling' : 'scrollbar-overlay'}`}
+        >
           {processedFolders.length === 0 ? (
             <div className="text-center py-8 text-xs text-ink/40">
               {searchQuery ? 'No results found.' : 'No workspaces available.'}
@@ -288,6 +344,8 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
                 onSelectSession={handleSelectSession}
                 onNewSessionForFolder={handleNewSessionForFolder}
                 forceExpanded={!!searchQuery}
+                showArchived={showArchived}
+                sessionStatus={sessionStatus}
               />
             ))
           )}

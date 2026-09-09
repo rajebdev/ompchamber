@@ -345,7 +345,7 @@ export function ToolCallCard({
                   <span>Loading file content...</span>
                 </div>
               ) : outputText ? (
-                <div className="bg-paper rounded text-[11px] font-mono overflow-x-auto max-h-80 overflow-y-auto overscroll-contain flex items-start">
+                <div className="bg-paper rounded text-[11px] font-mono overflow-x-auto max-h-80 scrollbar-overlay-container scrollbar-overlay-static overscroll-contain flex items-start">
                   {/* Line numbers gutter */}
                   <div className="py-2 pl-2.5 pr-2 select-none text-right text-[11px] text-ink/30 bg-ink/10 border-r border-ink/10 font-mono leading-relaxed flex-shrink-0">
                     {outputText.split('\n').map((_, idx) => (
@@ -452,7 +452,7 @@ export function ToolCallCard({
                 </button>
               </div>
               <div 
-                className="bg-paper p-2 rounded text-[11px] sm:text-[12px] font-mono overflow-x-auto max-h-80 overflow-y-auto overscroll-contain whitespace-pre break-words leading-relaxed text-ink/90 select-text"
+                className="bg-paper p-2 rounded text-[11px] sm:text-[12px] font-mono overflow-x-auto max-h-80 scrollbar-overlay-container scrollbar-overlay-static overscroll-contain whitespace-pre break-words leading-relaxed text-ink/90 select-text"
                 dangerouslySetInnerHTML={{ __html: highlightCode(outputText, 'javascript') }}
               />
             </div>

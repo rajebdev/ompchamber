@@ -47,6 +47,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 
   const groupedFolders: WorkspaceFolderData[] = [];
+  // Archive state lives in archived_sessions (session_id TEXT PK) so it works
+  // for both numeric mock ids and omp session UUIDs in real mode.
+  const archivedRows = await db.all('SELECT session_id FROM archived_sessions');
+  const archivedIds = new Set(archivedRows.map((r: any) => String(r.session_id)));
   if (mock) {
     // Demo mode: sessions come from the SQLite `sessions` table.
     const sessions = await db.all('SELECT * FROM sessions ORDER BY id ASC');
@@ -56,7 +60,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         .map((s: any) => {
           let queue_list;
           try { queue_list = JSON.parse(s.queue_list); } catch (e) { queue_list = []; }
-          return { ...s, queue_list };
+          return { ...s, queue_list, is_archived: archivedIds.has(String(s.id)) ? 1 : 0 };
         });
       groupedFolders.push({
         id: folder.id,
@@ -72,7 +76,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   } else {
     // Real mode: workspace folders are bound to omp projects via project_path;
     // the session items under each folder come from the omp JSONL discovery.
-    groupedFolders.push(...(await buildRealFolders(folderRows)));
+    groupedFolders.push(...(await buildRealFolders(folderRows, archivedIds)));
   }
 
   return json({
@@ -89,7 +93,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
  * session's resolved project root. Folders without a project_path render with
  * no omp sessions (a local/empty workspace).
  */
-async function buildRealFolders(folderRows: any[]): Promise<WorkspaceFolderData[]> {
+async function buildRealFolders(folderRows: any[], archivedIds: Set<string>): Promise<WorkspaceFolderData[]> {
   const { loadOmpSidebarData } = await import('@/lib/omp/session-reader');
   const { sessionTitleFor, groupSessionsByRoot } = await import('@/lib/omp/sidebar-adapter');
 
@@ -106,6 +110,7 @@ async function buildRealFolders(folderRows: any[]): Promise<WorkspaceFolderData[
       created_at: session.created,
       updated_at: session.modified,
       is_active: 0,
+      is_archived: archivedIds.has(String(session.id)) ? 1 : 0,
     }));
     return {
       id: folder.id,

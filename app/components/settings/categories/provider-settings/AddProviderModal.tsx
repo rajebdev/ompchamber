@@ -118,7 +118,7 @@ export function AddProviderModal({
             <label className="block text-xs font-semibold text-ink mb-1.5">
               Provider Preset
             </label>
-            <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto pr-1">
+            <div className="grid grid-cols-2 gap-2 max-h-36 scrollbar-overlay-container scrollbar-overlay-static pr-1">
               {presetList.map((preset) => {
                 const isSelected = preset.id === selectedPresetId;
                 return (

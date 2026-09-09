@@ -297,7 +297,7 @@ export function ModelDropdown({
 
             {/* Scrollable Model Lists */}
             <div 
-              className="flex-1 overflow-y-auto p-1.5 space-y-2 max-h-80"
+              className="flex-1 scrollbar-overlay-container scrollbar-overlay-static p-1.5 space-y-2 max-h-80"
               onMouseLeave={() => setHoveredModel(null)}
             >
               {filteredModels.length === 0 ? (

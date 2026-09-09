@@ -15,6 +15,7 @@ import 'prismjs/components/prism-markdown';
 import 'prismjs/themes/prism.css';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
 import { useOnClickOutside } from '@/hooks/useOnClickOutside';
+import { useScrollbarFade } from '@/hooks/useScrollbarFade';
 
 interface EditorProps {
   className?: string;
@@ -69,6 +70,7 @@ export function Editor({
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [wordWrap, setWordWrap] = useState(true);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const { isScrolling, handleScroll } = useScrollbarFade();
 
   // Tabs overflow logic
   const tabsContainerRef = useRef<HTMLDivElement>(null);
@@ -374,7 +376,7 @@ export function Editor({
           </div>
           
           {/* Editor Content */}
-          <div className="flex-1 overflow-auto bg-paper flex">
+          <div onScroll={handleScroll} className={`flex-1 overflow-auto bg-paper flex ${isScrolling ? 'scrollbar-overlay-scrolling' : 'scrollbar-overlay'}`}>
             {(isMd && isPreview) ? (
               <div className="p-6 prose prose-sm max-w-4xl mx-auto font-sans flex-1" style={{ fontSize: `${zoomLevel}px` }}>
                 <MarkdownRenderer content={currentContent} />

@@ -107,7 +107,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
         <div 
           ref={scrollRef}
           onScroll={handleScroll}
-          className={`flex-1 overflow-y-[overlay] overscroll-contain p-4 scroll-smooth overflow-x-hidden pb-10 ${
+          className={`flex-1 scrollbar-overlay-container overscroll-contain p-4 scroll-smooth overflow-x-hidden pb-10 ${
             isScrolling ? 'timeline-scrollbar-visible' : 'timeline-scrollbar-hidden'
           }`}
         >

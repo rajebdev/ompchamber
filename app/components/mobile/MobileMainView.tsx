@@ -13,6 +13,7 @@ import { ChatMessageItem } from '@/components/workspace/chat-timeline/ChatMessag
 import { GeneratingIndicator } from '@/components/workspace/chat-timeline/GeneratingIndicator';
 import { QueueList } from '@/components/workspace/chat-timeline/QueueList';
 import { useOnClickOutside } from '@/hooks/useOnClickOutside';
+import { useScrollbarFade } from '@/hooks/useScrollbarFade';
 import { responseRunDurationMs } from '@/lib/chat-duration';
 
 interface MobileMainViewProps {
@@ -54,6 +55,7 @@ export function MobileMainView({
   const [inputAttachments, setInputAttachments] = useState<Attachment[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const { isScrolling, handleScroll: handleScrollbarFade } = useScrollbarFade();
   
   // Workspace Picker dropdown state
   const [showWorkspacePicker, setShowWorkspacePicker] = useState(false);
@@ -61,6 +63,7 @@ export function MobileMainView({
   useOnClickOutside(workspacePickerRef, () => setShowWorkspacePicker(false));
 
   const handleScroll = () => {
+    handleScrollbarFade();
     if (!scrollRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
     setShowScrollBottom(scrollHeight - scrollTop - clientHeight > 100);
@@ -135,7 +138,7 @@ export function MobileMainView({
         <div 
           ref={scrollRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-4 py-4 pb-10"
+          className={`flex-1 scrollbar-overlay-container overflow-x-hidden overscroll-contain px-4 py-4 pb-10 ${isScrolling ? 'scrollbar-overlay-scrolling' : 'scrollbar-overlay'}`}
         >
           {messages.length === 0 ? (
             /* Empty Workspace Prompt Suggestions */
@@ -229,7 +232,7 @@ export function MobileMainView({
                 <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-ink/40 font-semibold border-b border-ink/5">
                   Target Workspace
                 </div>
-                <div className="max-h-56 overflow-y-auto py-1">
+                <div className="max-h-56 scrollbar-overlay-container scrollbar-overlay py-1">
                   {folders.length === 0 ? (
                     <div className="px-3 py-2 text-ink/40 italic">No workspaces available</div>
                   ) : (

@@ -105,7 +105,7 @@ export function SettingsSidebar({
       </div>
 
       {/* Category Navigation Items */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-4">
+      <div className="flex-1 scrollbar-overlay-container scrollbar-overlay-static p-2 space-y-4">
         {filteredCategories.length === 0 ? (
           <div className="text-center py-8 text-xs text-ink/50 italic">
             No matching settings found

@@ -42,7 +42,7 @@ export function GitOutputModal({ output, onClose }: { output: { title: string; d
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3 font-mono text-[11px] text-ink/80">
+      <div className="flex-1 scrollbar-overlay-container scrollbar-overlay-static p-3 font-mono text-[11px] text-ink/80">
         {rows.length === 0 ? (
           <div className="text-ink/40 text-center py-10">No commits found.</div>
         ) : (

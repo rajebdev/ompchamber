@@ -4,8 +4,13 @@ import {
   ChevronRight, 
   MessageSquare, 
   Folder, 
-  GitBranch 
+  GitBranch,
+  Archive,
+  ArchiveRestore,
+  Loader2,
+  Check
 } from 'lucide-react';
+import { useFetcher, useRevalidator } from '@remix-run/react';
 import type { WorkspaceFolderData, SessionItemData } from '@/types';
 
 interface MobileSessionCategoryProps {
@@ -14,6 +19,8 @@ interface MobileSessionCategoryProps {
   onSelectSession: (id: number | string) => void;
   isExpanded: boolean;
   onToggleExpand: () => void;
+  showArchived?: boolean;
+  sessionStatus?: Record<string, 'processing' | 'done'>;
 }
 
 export function MobileSessionCategory({
@@ -21,9 +28,22 @@ export function MobileSessionCategory({
   activeSessionId,
   onSelectSession,
   isExpanded,
-  onToggleExpand
+  onToggleExpand,
+  showArchived = false,
+  sessionStatus = {}
 }: MobileSessionCategoryProps) {
-  const [showMore, setShowMore] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(5);
+  const archiveFetcher = useFetcher();
+  const revalidator = useRevalidator();
+
+  const handleArchive = (session: SessionItemData) => {
+    const nextArchived = session.is_archived !== 1;
+    archiveFetcher.submit(
+      { archived: String(nextArchived) },
+      { method: 'POST', action: `/api/sessions/${session.id}/archive` }
+    );
+    revalidator.revalidate();
+  };
 
   // Derive realistic timestamps if not provided in DB
   const formatTimeAgo = (session: SessionItemData, index: number, folderName: string): string => {
@@ -47,8 +67,11 @@ export function MobileSessionCategory({
   const isWorkspace = folder.name.toLowerCase().includes('workspace');
   const isChats = folder.name.toLowerCase().includes('chat');
 
-  // Limit sessions shown initially to match screenshot
-  const visibleSessions = showMore ? (folder.sessions || []) : (folder.sessions || []).slice(0, 7);
+  // Show 5 sessions initially; each "Show more" click reveals 7 more.
+  const filteredSessions = (folder.sessions || []).filter((s) =>
+    showArchived ? s.is_archived === 1 : s.is_archived !== 1
+  );
+  const visibleSessions = filteredSessions.slice(0, visibleCount);
   const totalCount = folder.totalSessions || folder.sessions?.length || 0;
 
   return (
@@ -107,43 +130,64 @@ export function MobileSessionCategory({
             const timeAgo = formatTimeAgo(session, idx, folder.name);
 
             return (
-              <button
+              <div
                 key={session.id}
-                type="button"
-                onClick={() => onSelectSession(session.id)}
-                className={`w-full text-left px-3 py-2 rounded-lg flex items-center justify-between transition-colors ${
+                className={`w-full rounded-lg flex items-center transition-colors ${
                   isActive 
                     ? 'bg-ink/10 font-medium text-ink' 
                     : 'hover:bg-ink/5 text-ink/85'
                 }`}
               >
-                {/* Title */}
-                <div className="flex items-center space-x-1.5 min-w-0 pr-2">
-                  {isDrReal && (
-                    <span className="text-ink/40 text-xs flex-shrink-0 font-mono">&gt;</span>
-                  )}
-                  <span className="text-xs truncate leading-snug">
-                    {session.title}
-                  </span>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => onSelectSession(session.id)}
+                  className="flex-1 text-left px-3 py-2 flex items-center justify-between min-w-0"
+                >
+                  {/* Title */}
+                  <div className="flex items-center space-x-1.5 min-w-0 pr-2">
+                    <span className="w-4 flex-shrink-0 flex items-center justify-center">
+                      {sessionStatus[String(session.id)] === 'processing' && (
+                        <Loader2 size={13} className="text-ink/50 animate-spin" />
+                      )}
+                      {sessionStatus[String(session.id)] === 'done' && (
+                        <Check size={13} className="text-ink/50" />
+                      )}
+                    </span>
+                    {isDrReal && (
+                      <span className="text-ink/40 text-xs flex-shrink-0 font-mono">&gt;</span>
+                    )}
+                    <span className="text-xs truncate leading-snug">
+                      {session.title.charAt(0).toUpperCase() + session.title.slice(1)}
+                    </span>
+                  </div>
 
-                {/* Timestamp */}
-                <span className="text-[11px] text-ink/45 font-mono flex-shrink-0 ml-2">
-                  {timeAgo}
-                </span>
-              </button>
+                  {/* Timestamp */}
+                  <span className="text-[11px] text-ink/45 font-mono flex-shrink-0 ml-2">
+                    {timeAgo}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleArchive(session)}
+                  title={session.is_archived === 1 ? 'Unarchive session' : 'Archive session'}
+                  className="flex-shrink-0 p-2 mr-1 text-ink/35 hover:text-ink rounded-lg cursor-pointer"
+                >
+                  {session.is_archived === 1 ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+                </button>
+              </div>
             );
           })}
 
           {/* "Show more sessions" toggle button */}
-          {(folder.sessions?.length || 0) > 7 && (
+          {filteredSessions.length > visibleCount && (
             <button
               type="button"
-              onClick={() => setShowMore(!showMore)}
-              className="w-full text-left px-3 py-1.5 text-xs text-ink/60 hover:text-ink flex items-center space-x-1"
+              onClick={() => setVisibleCount(c => c + 7)}
+              className="w-full text-left px-3 py-2 text-xs text-ink/60 hover:text-ink flex items-center space-x-1.5"
             >
-              <ChevronDown size={12} className={showMore ? 'transform rotate-180' : ''} />
-              <span>{showMore ? 'Show fewer sessions' : 'Show more sessions'}</span>
+              <ChevronDown size={12} className="w-4 flex-shrink-0" />
+              <span>Show more sessions</span>
             </button>
           )}
         </div>
