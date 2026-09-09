@@ -175,6 +175,9 @@ export function ChatMessageItem({
   const allToolCalls = msg.toolCalls || msg.actions;
   const secondaryToolCalls = msg.actions2;
   const currentModel = modelName || 'DeepSeek V4 Pro';
+  const cleanIntent = msg.intent ? capitalizeFirstLetter(msg.intent.replace(/^[.\s]+/, '')) : null;
+  const hasToolCalls = Boolean(allToolCalls && allToolCalls.length > 0);
+  const toolTitle = cleanIntent || (allToolCalls?.length === 1 ? 'Tool Execution (1 step)' : `Tool Executions (${allToolCalls?.length} steps)`);
 
   return (
     <div 
@@ -240,22 +243,22 @@ export function ChatMessageItem({
           </div>
         )}
 
-        {/* Tool Call Intent (rendered right before Tool Calling) */}
-        {msg.intent && (!hasRenderableContent || !msg.content.toLowerCase().includes(msg.intent.toLowerCase().trim())) && (
+        {/* Tool Call Intent (rendered standalone only when there are no tool calls to absorb it as title) */}
+        {cleanIntent && !hasToolCalls && (!hasRenderableContent || !msg.content.toLowerCase().includes(msg.intent.toLowerCase().trim())) && (
           <div className={`leading-relaxed font-sans px-3 select-text ${
             hasRenderableContent
               ? 'text-[12px] text-ink/70 py-0.5'
               : 'text-[13px] text-ink py-1'
           }`}>
-            {capitalizeFirstLetter(msg.intent.replace(/^[.\s]+/, ''))}
+            {cleanIntent}
           </div>
         )}
 
         {/* Primary Tool Executions Accordion */}
-        {allToolCalls && allToolCalls.length > 0 && (
+        {hasToolCalls && (
           <ToolCallingSection 
             tools={allToolCalls}
-            title={allToolCalls.length === 1 ? 'Tool Execution (1 step)' : `Tool Executions (${allToolCalls.length} steps)`}
+            title={toolTitle}
             defaultExpanded={false}
           />
         )}
