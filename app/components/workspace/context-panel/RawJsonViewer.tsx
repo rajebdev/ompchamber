@@ -30,9 +30,17 @@ function highlightJson(text: string): string {
 export function RawJsonViewer({ data }: RawJsonViewerProps) {
   const [copied, setCopied] = useState(false);
   const preRef = useRef<HTMLPreElement>(null);
+  const overlayRef = useRef<HTMLPreElement>(null);
 
   const jsonString = JSON.stringify(data, null, 2);
   const highlightedHtml = highlightJson(jsonString);
+
+  const syncOverlayScroll = useCallback((e: React.UIEvent<HTMLPreElement>) => {
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+    overlay.scrollLeft = e.currentTarget.scrollLeft;
+    overlay.scrollTop = e.currentTarget.scrollTop;
+  }, []);
 
   const handleCopy = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -83,15 +91,17 @@ export function RawJsonViewer({ data }: RawJsonViewerProps) {
       <div className="relative">
         {/* Highlight overlay — visuals only, non-interactive */}
         <pre
+          ref={overlayRef}
           aria-hidden
-          className="absolute inset-0 p-2.5 m-0 font-mono text-[11px] leading-5 overflow-x-auto whitespace-pre pointer-events-none"
+          className="absolute inset-0 p-2.5 m-0 font-mono text-[11px] leading-5 overflow-x-auto overflow-y-auto whitespace-pre pointer-events-none"
           dangerouslySetInnerHTML={{ __html: highlightedHtml }}
         />
 
         {/* Real selectable text — transparent ink, sits on top */}
         <pre
           ref={preRef}
-          className="relative p-2.5 m-0 font-mono text-[11px] leading-5 overflow-x-auto whitespace-pre select-text selection:bg-ink selection:text-canvas"
+          onScroll={syncOverlayScroll}
+          className="relative p-2.5 m-0 font-mono text-[11px] leading-5 overflow-x-auto overflow-y-auto whitespace-pre select-text selection:bg-ink selection:text-canvas"
         >
           <code className="text-transparent">{jsonString}</code>
         </pre>

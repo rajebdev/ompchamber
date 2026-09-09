@@ -26,6 +26,16 @@ export async function loader({ request }: LoaderFunctionArgs) {
     // Real DB Mode
     const db = await getDb();
     if (sessionId) {
+      // JSONL-first: omp sessions live on disk, so the raw panel shows full entries.
+      const { findSessionFileById } = await import('@/lib/omp/session-locator');
+      const { computeRealSessionTelemetry } = await import('@/lib/omp/session-telemetry');
+      const filePath = findSessionFileById(sessionId);
+      if (filePath) {
+        const telemetry = computeRealSessionTelemetry(filePath, sessionId);
+        return json({ telemetry, isMock: false, source: 'omp-jsonl' });
+      }
+
+      // Chat-created sessions have no JSONL on disk — fall back to the DB copy.
       const existing = await db.get('SELECT * FROM chat_sessions WHERE session_id = ?', [sessionId]);
       if (existing) {
         let parsedMessages = [];
@@ -36,16 +46,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
         }
         const telemetry = computeSessionContextTelemetry(sessionId, existing.title || `Session ${sessionId}`, parsedMessages);
         return json({ telemetry, isMock: false });
-      }
-
-      // Real omp sessions live on disk as JSONL and have no chat_sessions row —
-      // compute telemetry from the on-disk assistant usage/cost (bypass the mock).
-      const { findSessionFileById } = await import('@/lib/omp/session-locator');
-      const { computeRealSessionTelemetry } = await import('@/lib/omp/session-telemetry');
-      const filePath = findSessionFileById(sessionId);
-      if (filePath) {
-        const telemetry = computeRealSessionTelemetry(filePath, sessionId);
-        return json({ telemetry, isMock: false, source: 'omp-jsonl' });
       }
     }
 
