@@ -8,11 +8,12 @@ import {
   ExternalLink, 
   Copy, 
   Check, 
-  X, 
-  Monitor, 
-  Tablet, 
-  Smartphone 
+  X,
+  ZoomIn,
+  ZoomOut
 } from 'lucide-react';
+import { BrowserViewportSelector } from '@/components/workspace/browser-panel/BrowserViewportSelector';
+import type { ViewportMode } from '@/types';
 
 interface BrowserAddressBarProps {
   inputUrl: string;
@@ -20,7 +21,8 @@ interface BrowserAddressBarProps {
   isLoading: boolean;
   canGoBack: boolean;
   canGoForward: boolean;
-  viewportMode: 'responsive' | 'tablet' | 'mobile';
+  viewportMode: ViewportMode;
+  zoomLevel?: number;
   onChangeInput: (url: string) => void;
   onSubmitUrl: (e?: React.FormEvent) => void;
   onGoBack: () => void;
@@ -28,7 +30,11 @@ interface BrowserAddressBarProps {
   onReload: () => void;
   onHome: () => void;
   onOpenExternal: () => void;
-  onChangeViewport: (mode: 'responsive' | 'tablet' | 'mobile') => void;
+  onChangeViewport: (mode: ViewportMode) => void;
+  onZoomIn?: () => void;
+  onZoomOut?: () => void;
+  onResetZoom?: () => void;
+  onSetZoom?: (zoom: number) => void;
 }
 
 export function BrowserAddressBar({
@@ -38,6 +44,7 @@ export function BrowserAddressBar({
   canGoBack,
   canGoForward,
   viewportMode,
+  zoomLevel = 100,
   onChangeInput,
   onSubmitUrl,
   onGoBack,
@@ -46,6 +53,10 @@ export function BrowserAddressBar({
   onHome,
   onOpenExternal,
   onChangeViewport,
+  onZoomIn,
+  onZoomOut,
+  onResetZoom,
+  onSetZoom,
 }: BrowserAddressBarProps) {
   const [copied, setCopied] = useState(false);
 
@@ -89,8 +100,9 @@ export function BrowserAddressBar({
         <button
           type="button"
           onClick={onReload}
-          className="p-1.5 rounded hover:bg-ink/5 text-ink/70 hover:text-ink transition-colors cursor-pointer"
-          title="Reload page"
+          disabled={!committedUrl}
+          className="p-1.5 rounded hover:bg-ink/5 disabled:opacity-25 disabled:hover:bg-transparent text-ink/70 hover:text-ink transition-colors cursor-pointer disabled:cursor-not-allowed"
+          title={committedUrl ? "Reload page" : "No page to reload"}
         >
           <RotateCw size={14} className={isLoading ? 'animate-spin text-ink' : ''} />
         </button>
@@ -123,7 +135,7 @@ export function BrowserAddressBar({
             <button
               type="button"
               onClick={handleClear}
-              className="p-0.5 text-ink/40 hover:text-ink ml-1 rounded flex-shrink-0"
+              className="p-0.5 text-ink/40 hover:text-ink ml-1 rounded flex-shrink-0 cursor-pointer"
               title="Clear"
             >
               <X size={12} />
@@ -133,40 +145,53 @@ export function BrowserAddressBar({
       </form>
 
       {/* Viewport Presets & Action Buttons */}
-      <div className="flex items-center space-x-1 flex-shrink-0">
-        {/* Viewport Mode Toggles */}
-        <div className="hidden sm:flex items-center bg-canvas border border-ink/10 rounded-md p-0.5">
-          <button
-            type="button"
-            onClick={() => onChangeViewport('responsive')}
-            className={`p-1 rounded text-xs transition-colors ${viewportMode === 'responsive' ? 'bg-ink text-canvas font-medium' : 'text-ink/50 hover:text-ink'}`}
-            title="Responsive (100%)"
-          >
-            <Monitor size={12} />
-          </button>
-          <button
-            type="button"
-            onClick={() => onChangeViewport('tablet')}
-            className={`p-1 rounded text-xs transition-colors ${viewportMode === 'tablet' ? 'bg-ink text-canvas font-medium' : 'text-ink/50 hover:text-ink'}`}
-            title="Tablet (768px)"
-          >
-            <Tablet size={12} />
-          </button>
-          <button
-            type="button"
-            onClick={() => onChangeViewport('mobile')}
-            className={`p-1 rounded text-xs transition-colors ${viewportMode === 'mobile' ? 'bg-ink text-canvas font-medium' : 'text-ink/50 hover:text-ink'}`}
-            title="Mobile (375px)"
-          >
-            <Smartphone size={12} />
-          </button>
-        </div>
+      <div className="flex items-center space-x-1.5 flex-shrink-0">
+        {/* Viewport Selector (Desktop 16:9, Mobile, Tablet, Dropdown) */}
+        <BrowserViewportSelector
+          viewportMode={viewportMode}
+          onChangeViewport={onChangeViewport}
+          zoomLevel={zoomLevel}
+          onSetZoom={onSetZoom}
+        />
+
+        {/* Zoom In / Out Controls */}
+        {onZoomIn && onZoomOut && (
+          <div className="flex items-center bg-canvas border border-ink/10 rounded-md p-0.5 space-x-0.5 text-xs font-mono">
+            <button
+              type="button"
+              onClick={onZoomOut}
+              disabled={zoomLevel <= 50}
+              className="p-1 rounded hover:bg-ink/5 disabled:opacity-25 disabled:hover:bg-transparent text-ink/70 hover:text-ink cursor-pointer disabled:cursor-not-allowed transition-colors"
+              title="Zoom Out (-10%)"
+            >
+              <ZoomOut size={12} />
+            </button>
+            <button
+              type="button"
+              onClick={onResetZoom}
+              className="px-1 text-[10px] font-medium text-ink/75 hover:text-ink hover:underline cursor-pointer select-none"
+              title="Reset Zoom (100%)"
+            >
+              {zoomLevel}%
+            </button>
+            <button
+              type="button"
+              onClick={onZoomIn}
+              disabled={zoomLevel >= 200}
+              className="p-1 rounded hover:bg-ink/5 disabled:opacity-25 disabled:hover:bg-transparent text-ink/70 hover:text-ink cursor-pointer disabled:cursor-not-allowed transition-colors"
+              title="Zoom In (+10%)"
+            >
+              <ZoomIn size={12} />
+            </button>
+          </div>
+        )}
 
         {/* Copy URL */}
         <button
           type="button"
           onClick={handleCopy}
-          className="p-1.5 rounded hover:bg-ink/5 text-ink/70 hover:text-ink transition-colors cursor-pointer"
+          disabled={!committedUrl && !inputUrl}
+          className="p-1.5 rounded hover:bg-ink/5 disabled:opacity-25 disabled:hover:bg-transparent text-ink/70 hover:text-ink transition-colors cursor-pointer disabled:cursor-not-allowed"
           title={copied ? "Copied URL!" : "Copy URL"}
         >
           {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
@@ -176,8 +201,9 @@ export function BrowserAddressBar({
         <button
           type="button"
           onClick={onOpenExternal}
-          className="p-1.5 rounded hover:bg-ink/5 text-ink/70 hover:text-ink transition-colors cursor-pointer"
-          title="Open in new window"
+          disabled={!committedUrl}
+          className="p-1.5 rounded hover:bg-ink/5 disabled:opacity-25 disabled:hover:bg-transparent text-ink/70 hover:text-ink transition-colors cursor-pointer disabled:cursor-not-allowed"
+          title={committedUrl ? "Open in new window" : "No URL loaded"}
         >
           <ExternalLink size={14} />
         </button>

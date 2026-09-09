@@ -38,3 +38,11 @@ export interface WorkspaceFolderData {
 }
 
 export type SessionSortOption = 'A-Z' | 'Z-A' | 'LATEST_SESSION' | 'LATEST_ADDED';
+
+export type ViewportMode =
+  | 'responsive'
+  | 'desktop-16-9'
+  | 'laptop'
+  | 'tablet'
+  | 'mobile'
+  | 'mobile-lg';
