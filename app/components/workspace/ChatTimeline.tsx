@@ -20,7 +20,6 @@ interface ChatTimelineProps {
 export function ChatTimeline({ className = '', folders = [], appSettings = {}, onSessionTitle }: ChatTimelineProps) {
   const {
     sessionId,
-    folderId,
     isOmpSession,
     selectedFolderId,
     setSelectedFolderId,
@@ -71,11 +70,12 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
     ? sessionData.model.modelId
     : sessionData?.model;
 
-  const isPendingNoFolder = Boolean(sessionId?.startsWith('new-'))
-    && selectedFolderId === null
-    && !folderId;
+  // A pending "new-…" session has no messages yet, so the workspace picker
+  // must stay available until the first chat is sent (which spawns the real
+  // omp session). Never lock the user into a folder before sending.
+  const isPendingSession = Boolean(sessionId?.startsWith('new-'));
 
-  if (!sessionId || isPendingNoFolder) {
+  if (!sessionId || isPendingSession) {
     return (
       <EmptyWorkspacePrompt
         className={className}
@@ -89,6 +89,8 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
         onSend={handleSend}
         isGenerating={isGenerating}
         appSettings={appSettings}
+        localMessages={localMessages}
+        modelName={sessionModelName}
       />
     );
   }

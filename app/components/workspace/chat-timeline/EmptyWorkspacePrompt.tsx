@@ -1,8 +1,9 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { Folder, ChevronDown, Check } from 'lucide-react';
-import type { Attachment } from '@/types';
+import type { Attachment, ChatMessageData } from '@/types';
 import { useOnClickOutside } from '@/hooks/useOnClickOutside';
 import { ChatInput } from '@/components/workspace/chat-timeline/ChatInput';
+import { ChatMessageItem } from '@/components/workspace/chat-timeline/ChatMessageItem';
 
 interface EmptyWorkspacePromptProps {
   className?: string;
@@ -16,6 +17,11 @@ interface EmptyWorkspacePromptProps {
   onSend: (attachments: Attachment[]) => void;
   isGenerating: boolean;
   appSettings?: Record<string, any>;
+  /** Messages of the pending session: rendered above the input so the
+   *  optimistic user bubble shows immediately on send (before the omp spawn
+   *  completes and the real session timeline takes over). */
+  localMessages?: ChatMessageData[];
+  modelName?: string;
 }
 
 export function EmptyWorkspacePrompt({
@@ -29,21 +35,37 @@ export function EmptyWorkspacePrompt({
   setInputAttachments,
   onSend,
   isGenerating,
-  appSettings = {}
+  appSettings = {},
+  localMessages = [],
+  modelName
 }: EmptyWorkspacePromptProps) {
   const [showWorkspace, setShowWorkspace] = useState(false);
   const workspaceRef = useRef<HTMLDivElement>(null);
   useOnClickOutside(workspaceRef, () => setShowWorkspace(false));
+  const timelineRef = useRef<HTMLDivElement>(null);
 
   const selectedFolder = useMemo(() => {
     return folders?.find(f => f.id === selectedFolderId);
   }, [folders, selectedFolderId]);
 
+  useEffect(() => {
+    if (timelineRef.current) {
+      timelineRef.current.scrollTop = timelineRef.current.scrollHeight;
+    }
+  }, [localMessages.length]);
+
   return (
-    <div className={`flex flex-col h-full bg-canvas items-center justify-center p-8 ${className}`}>
-      <div className="w-full max-w-[970px] flex flex-col items-start space-y-2">
-        {/* Workspace Selection Seamless Dropdown (No border, transparent background) */}
-        <div className="relative" ref={workspaceRef}>
+    <div className={`flex flex-col h-full bg-canvas p-8 ${className}`}>
+      <div
+        className={`mx-auto w-full max-w-[970px] flex flex-col min-h-0 space-y-3 ${
+          localMessages.length > 0 ? 'flex-1' : 'my-auto justify-center'
+        }`}
+      >
+        {/* Workspace Selection Seamless Dropdown (No border, transparent
+            background). Hidden once a chat has been sent — the session now has
+            a target workspace, so the composer is the only focus. */}
+        {localMessages.length === 0 && (
+          <div className="relative shrink-0" ref={workspaceRef}>
           <button 
             type="button"
             onClick={() => setShowWorkspace(!showWorkspace)}
@@ -88,6 +110,36 @@ export function EmptyWorkspacePrompt({
             </div>
           )}
         </div>
+        )}
+
+        {/* Pending session timeline: optimistic bubbles render here immediately
+            on send, then the real session (UUID) takes over the ChatTimeline.
+            Only shown when there are messages so the empty composer stays
+            centered next to the workspace picker. */}
+        {localMessages.length > 0 && (
+          <div
+            ref={timelineRef}
+            className="flex-1 min-h-0 overflow-y-auto scroll-smooth overscroll-contain"
+          >
+            <div className="mx-auto w-full max-w-[970px]">
+              {localMessages.map((msg, idx) => {
+                const prev = localMessages[idx - 1];
+                const isLoading = isGenerating && idx === localMessages.length - 1 && msg.role === 'ai';
+                const isAiFragment = msg.role !== 'user' && prev && prev.role !== 'user';
+                return (
+                  <ChatMessageItem
+                    key={msg.id}
+                    msg={msg}
+                    modelName={modelName}
+                    isStreaming={isLoading}
+                    footerVisible={msg.role !== 'user' && msg.role !== 'assistant'}
+                    className={isAiFragment ? 'mt-1' : 'mt-8'}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <ChatInput 
           value={inputValue}
@@ -103,7 +155,7 @@ export function EmptyWorkspacePrompt({
           }}
           isGenerating={isGenerating}
           disabled={!selectedFolderId}
-          className="w-full"
+          className="w-full shrink-0"
           appSettings={appSettings}
         />
       </div>

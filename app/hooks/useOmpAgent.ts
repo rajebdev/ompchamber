@@ -239,6 +239,10 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
             }
             break;
           }
+          // Notices (custom role) are rendered from their message_start /
+          // message_update frames (deduped by id in the timeline); emitting
+          // them again on message_end duplicates the notice row.
+          if (completed.role === 'custom') break;
           if (completed.role !== 'toolResult' && completed.role !== 'user') {
             const converted = toChatMessage(completed, false);
             if (converted) {
