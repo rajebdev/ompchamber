@@ -6,6 +6,7 @@ import { triggerChatCompletionSound } from '@/hooks/useNotificationSound';
 import { streamChatResponse } from '@/hooks/useChatStream';
 import { useOmpAgent, type ExtensionUiDialogRequest } from '@/hooks/useOmpAgent';
 import { isTextAttachmentFile, composeMessageWithTextAttachments } from '@/lib/chat-attachments';
+import { normalizeNoticePositions } from '@/lib/chat-order';
 
 interface UseChatTimelineOptions {
   folders?: any[];
@@ -141,7 +142,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
             // JSONL is not written yet must not wipe the optimistic bubbles.
             const fetched = data.session.messages || [];
             if (fetched.length > 0) {
-              setLocalMessages(fetched);
+              setLocalMessages(normalizeNoticePositions(fetched));
             } else if (!sessionId.startsWith('new-') && !isGeneratingRef.current) {
               setLocalMessages([]);
             }
@@ -259,16 +260,16 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     onMessageUpdate: (msg) => {
       setLocalMessages(prev => {
         const placeholderId = aiPlaceholderIdRef.current;
-        // Notice rows are independent of the streaming bubble — insert them
-        // above the turn (before the last user message, deduped by id) so
-        // the order matches the JSONL reload: notice → user → assistant.
+        // Notice rows (e.g. background job done, system alerts) belong chronologically
+        // right before the next AI response, NEVER backwards before the initiating user message.
         if (msg.notice) {
           if (prev.some(m => m.id === msg.id)) return prev;
-          let insertAt = prev.length;
-          for (let i = prev.length - 1; i >= 0; i--) {
-            if (prev[i].role === 'user') { insertAt = i; break; }
+          // If an active AI placeholder is generating at the tail, insert notice immediately before it
+          if (placeholderId && prev.some(m => m.id === placeholderId)) {
+            const pIdx = prev.findIndex(m => m.id === placeholderId);
+            return normalizeNoticePositions([...prev.slice(0, pIdx), msg, ...prev.slice(pIdx)]);
           }
-          return [...prev.slice(0, insertAt), msg, ...prev.slice(insertAt)];
+          return normalizeNoticePositions([...prev, msg]);
         }
         if (placeholderId && prev.some(m => m.id === placeholderId)) {
           return prev.map(m => (m.id === placeholderId ? msg : m));
@@ -376,7 +377,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     };
 
     setLocalMessages(prev => {
-      const next = [...prev, newUserMsg, initialAiMsg];
+      const next = normalizeNoticePositions([...prev, newUserMsg, initialAiMsg]);
       persistMessages(next.filter(m => m.id !== aiPlaceholderId));
       return next;
     });

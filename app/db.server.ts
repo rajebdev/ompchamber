@@ -151,8 +151,40 @@ export async function getDb(): Promise<Database> {
       // Seed specific sessions matching screenshot 2 if not present
       const existingChats = await db.all("SELECT * FROM sessions WHERE folder_id = 1");
       if (existingChats.length === 0) {
-        await db.run("INSERT INTO sessions (folder_id, title, is_active) VALUES (1, 'Halo greeting', 0)");
-        await db.run("INSERT INTO sessions (folder_id, title, is_active) VALUES (1, 'TRD web list CRD dan PB/PMD', 0)");
+        await db.run("INSERT INTO sessions (folder_id, title, is_active) VALUES (1, 'call tool all of this (38 Tools Showcase)', 1)");
+        await db.run("INSERT INTO sessions (folder_id, title, is_active) VALUES (1, 'Deployment & Repo Summarizer (Dialogue Sample)', 0)");
+      } else {
+        await db.run("UPDATE sessions SET title = 'call tool all of this (38 Tools Showcase)' WHERE id = 1");
+        await db.run("UPDATE sessions SET title = 'Deployment & Repo Summarizer (Dialogue Sample)' WHERE id = 2");
+      }
+
+      // Pre-seed sample sessions data
+      try {
+        const { getSampleToolsSession, SAMPLE_TOOLS_SESSION_ID } = await import('@/data/sampleToolsSession');
+        const sample = getSampleToolsSession();
+        const jsonStr = JSON.stringify(sample.messages);
+        await db.run(
+          'INSERT OR REPLACE INTO chat_sessions (session_id, title, messages, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)',
+          ['1', sample.title, jsonStr]
+        );
+        await db.run(
+          'INSERT OR REPLACE INTO chat_sessions (session_id, title, messages, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)',
+          [SAMPLE_TOOLS_SESSION_ID, sample.title, jsonStr]
+        );
+
+        const { getSampleDialogueSession, SAMPLE_DIALOGUE_SESSION_ID } = await import('@/data/sampleDialogueSession');
+        const sample2 = getSampleDialogueSession();
+        const jsonStr2 = JSON.stringify(sample2.messages);
+        await db.run(
+          'INSERT OR REPLACE INTO chat_sessions (session_id, title, messages, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)',
+          ['2', sample2.title, jsonStr2]
+        );
+        await db.run(
+          'INSERT OR REPLACE INTO chat_sessions (session_id, title, messages, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)',
+          [SAMPLE_DIALOGUE_SESSION_ID, sample2.title, jsonStr2]
+        );
+      } catch (e) {
+        console.error('Failed to pre-seed sample sessions:', e);
       }
 
       const existingWorkspace = await db.all("SELECT * FROM sessions WHERE folder_id = 2");

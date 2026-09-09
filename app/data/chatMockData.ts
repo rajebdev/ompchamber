@@ -1,9 +1,19 @@
 import type { ChatMessageData } from '@/types';
+import { getSampleToolsSession, SAMPLE_TOOLS_SESSION_ID } from '@/data/sampleToolsSession';
+import { getSampleDialogueSession, SAMPLE_DIALOGUE_SESSION_ID } from '@/data/sampleDialogueSession';
 
 export function getSessionData(sessionId: string | null) {
   if (!sessionId) return null;
 
-  const id = parseInt(sessionId, 10);
+  if (sessionId === SAMPLE_TOOLS_SESSION_ID || sessionId === '1' || sessionId === 'sample' || sessionId === 'showcase') {
+    return getSampleToolsSession();
+  }
+
+  if (sessionId === SAMPLE_DIALOGUE_SESSION_ID || sessionId === '2' || sessionId === 'dialogue') {
+    return getSampleDialogueSession();
+  }
+
+  const id = parseInt(sessionId, 10) || 1;
   const date = "Sep 4, 09:00 PM";
 
   const messages: ChatMessageData[] = [

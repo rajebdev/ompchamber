@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ArrowDown } from 'lucide-react';
 import { ChatInput } from '@/components/workspace/chat-timeline/ChatInput';
 import { ChatMessageItem } from '@/components/workspace/chat-timeline/ChatMessageItem';
@@ -10,6 +10,9 @@ import { QueueList } from '@/components/workspace/chat-timeline/QueueList';
 import { NewChatModal } from '@/components/workspace/chat-timeline/NewChatModal';
 import { useChatTimeline } from '@/hooks/useChatTimeline';
 import { responseRunDurationMs } from '@/lib/chat-duration';
+import { normalizeNoticePositions } from '@/lib/chat-order';
+
+import type { ExtensionUiDialogRequest } from '@/hooks/useOmpAgent';
 
 interface ChatTimelineProps {
   className?: string;
@@ -54,6 +57,18 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
   } = useChatTimeline({ folders, appSettings });
 
   const [newChatInitialContent, setNewChatInitialContent] = useState<string | null>(null);
+  const [previewDialog, setPreviewDialog] = useState<ExtensionUiDialogRequest | null>(null);
+
+  useEffect(() => {
+    const handleOpenAsk = (e: Event) => {
+      const customEvent = e as CustomEvent<ExtensionUiDialogRequest>;
+      if (customEvent.detail) {
+        setPreviewDialog(customEvent.detail);
+      }
+    };
+    window.addEventListener('omp:open_ask_dialog', handleOpenAsk);
+    return () => window.removeEventListener('omp:open_ask_dialog', handleOpenAsk);
+  }, []);
 
   useEffect(() => {
     // Pending client-side sessions ("new-…") show a default title until the
@@ -99,6 +114,8 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
     );
   }
 
+  const orderedMessages = useMemo(() => normalizeNoticePositions(localMessages), [localMessages]);
+
   return (
     <div className={`flex flex-col h-full min-h-0 overflow-hidden bg-canvas relative ${className}`}>
       {/* Main chat container wrapper */}
@@ -118,20 +135,21 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
           }`}
         >
           <div className="mx-auto w-full max-w-[970px]">
-            {localMessages.map((msg, idx) => {
-              const prev = localMessages[idx - 1];
+            {orderedMessages.map((msg, idx) => {
+              const prev = orderedMessages[idx - 1];
               // The streaming AI message is the last non-notice row: notice
               // rows sit above the turn, so a plain "last item" check would
               // mark the notice as streaming and render the footer early.
-              let lastAiIdx = localMessages.length - 1;
-              while (lastAiIdx >= 0 && localMessages[lastAiIdx].notice) lastAiIdx--;
+              let lastAiIdx = orderedMessages.length - 1;
+              while (lastAiIdx >= 0 && orderedMessages[lastAiIdx].notice) lastAiIdx--;
               const isLoading = isGenerating && idx === lastAiIdx && msg.role === 'ai';
               // Notice rows are transparent for footer purposes: the last real
               // AI message of a run still owns the footer even when a notice
               // row follows it.
-              const nextReal = localMessages.slice(idx + 1).find(m => !m.notice);
+              const nextReal = orderedMessages.slice(idx + 1).find(m => !m.notice);
               const isLastAi = msg.role !== 'user' && !msg.notice && (!nextReal || nextReal.role === 'user');
-              const isAiFragment = msg.role !== 'user' && prev && prev.role !== 'user';
+              const isPrevNotice = Boolean(prev?.notice);
+              const isAiFragment = msg.role !== 'user' && prev && prev.role !== 'user' && !isPrevNotice;
               return (
                 <ChatMessageItem
                   key={msg.id}
@@ -142,8 +160,8 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
                   onRetry={handleRetry}
                   onNewChat={(content) => setNewChatInitialContent(content)}
                   footerVisible={isLastAi}
-                  durationMs={isLastAi ? responseRunDurationMs(localMessages, idx) : null}
-                  className={isAiFragment ? 'mt-1' : 'mt-8'}
+                  durationMs={isLastAi ? responseRunDurationMs(orderedMessages, idx) : null}
+                  className={msg.notice ? 'mt-3 mb-1' : isAiFragment ? 'mt-1' : 'mt-8'}
                 />
               );
             })}
@@ -207,12 +225,16 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
         />
       )}
 
-      {extensionDialog && (
+      {(extensionDialog || previewDialog) && (
         <AskDialog
-          request={extensionDialog}
+          request={extensionDialog || previewDialog!}
           onRespond={(request, response) => {
-            void respondToExtensionUi(request, response);
-            closeExtensionDialog();
+            if (extensionDialog) {
+              void respondToExtensionUi(request, response);
+              closeExtensionDialog();
+            } else {
+              setPreviewDialog(null);
+            }
           }}
         />
       )}

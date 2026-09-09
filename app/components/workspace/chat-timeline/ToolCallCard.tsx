@@ -1,13 +1,36 @@
-import { useState } from 'react';
-import { Terminal, FileCode, FileText, Search, Globe, Wrench, Copy, Check } from 'lucide-react';
-import type { ToolCallData, ToolType } from '@/types';
+import { useState, useMemo, type MouseEvent } from 'react';
+import {
+  Terminal,
+  FileCode,
+  FileText,
+  Search,
+  Globe,
+  Wrench,
+  Copy,
+  Check,
+  ListTodo,
+  Code2,
+  Server,
+  HelpCircle,
+  BrainCircuit,
+  Shield,
+  Camera,
+  GitPullRequest,
+  Brain,
+} from 'lucide-react';
+import type { ToolCallData } from '@/types';
 import { copyToClipboard } from '@/hooks/useClipboard';
 import { ToolCardShell } from '@/components/workspace/chat-timeline/tool-renderers/ToolCardShell';
-import { ReadPanel } from '@/components/workspace/chat-timeline/tool-renderers/ReadPanel';
 import { DiffView } from '@/components/workspace/chat-timeline/tool-renderers/DiffView';
-import { ToolDetailsPanel, hasToolDetailsPanel } from '@/components/workspace/chat-timeline/tool-renderers';
+import {
+  ToolDetailsPanel,
+  hasToolDetailsPanel,
+  resolveToolKey,
+} from '@/components/workspace/chat-timeline/tool-renderers';
 import { toTitleCase } from '@/components/workspace/chat-timeline/tool-renderers/title-case';
 import { FallbackOutput } from '@/components/workspace/chat-timeline/tool-renderers/FallbackOutput';
+import { tryParseJson } from '@/lib/syntax-highlight';
+import { JsonCodeBlock } from '@/components/workspace/chat-timeline/tool-renderers/JsonCodeBlock';
 
 interface ToolCallCardProps {
   tool: ToolCallData;
@@ -16,8 +39,8 @@ interface ToolCallCardProps {
   defaultExpanded?: boolean;
 }
 
-function getToolIcon(type: ToolType) {
-  switch (type) {
+function getToolIcon(key: string) {
+  switch (key) {
     case 'bash':
     case 'terminal':
       return <Terminal size={14} />;
@@ -25,6 +48,7 @@ function getToolIcon(type: ToolType) {
     case 'write':
     case 'edit_file':
     case 'create_file':
+    case 'ast_edit':
       return <FileCode size={14} />;
     case 'read':
     case 'read_file':
@@ -33,25 +57,51 @@ function getToolIcon(type: ToolType) {
     case 'glob':
     case 'grep':
     case 'search_fs':
+    case 'ast_grep':
       return <Search size={14} />;
     case 'web_search':
       return <Globe size={14} />;
+    case 'todo':
+    case 'task':
+      return <ListTodo size={14} />;
+    case 'eval':
+      return <Code2 size={14} />;
+    case 'hub':
+      return <Server size={14} />;
+    case 'ask':
+      return <HelpCircle size={14} />;
+    case 'think':
+      return <BrainCircuit size={14} />;
+    case 'security_scan':
+      return <Shield size={14} />;
+    case 'checkpoint':
+    case 'rewind':
+      return <Camera size={14} />;
+    case 'github':
+      return <GitPullRequest size={14} />;
+    case 'memory_edit':
+    case 'retain':
+    case 'recall':
+    case 'reflect':
+    case 'learn':
+      return <Brain size={14} />;
     default:
       return <Wrench size={14} />;
   }
 }
 
-function isReadTool(tool: ToolCallData): boolean {
-  const t = tool.type;
-  return t === 'read' || t === 'read_file' || t === 'view_file' || (tool.title ?? '').toLowerCase().includes('read');
-}
-
 function resolveTargetFile(tool: ToolCallData): string | undefined {
   if (tool.target) return tool.target;
   if (tool.diff?.file) return tool.diff.file;
-  if (tool.input && typeof tool.input === 'object' && typeof tool.input.path === 'string') return tool.input.path;
-  if (typeof tool.input === 'string' && (tool.input.includes('.') || tool.input.includes('/'))) return tool.input;
-  if (tool.detail && (tool.detail.includes('.') || tool.detail.includes('/'))) return tool.detail;
+  if (tool.input && typeof tool.input === 'object' && typeof (tool.input as any).path === 'string') {
+    return (tool.input as any).path;
+  }
+  if (typeof tool.input === 'string' && (tool.input.includes('.') || tool.input.includes('/'))) {
+    return tool.input;
+  }
+  if (tool.detail && (tool.detail.includes('.') || tool.detail.includes('/'))) {
+    return tool.detail;
+  }
   return undefined;
 }
 
@@ -59,7 +109,7 @@ function commandOrInputOf(tool: ToolCallData): string {
   if (tool.command) return tool.command;
   if (typeof tool.input === 'string') return tool.input;
   if (tool.input && typeof tool.input === 'object') return JSON.stringify(tool.input, null, 2);
-  if (!isReadTool(tool) && (tool.target || tool.detail)) return tool.target || tool.detail || '';
+  if (tool.target || tool.detail) return tool.target || tool.detail || '';
   return '';
 }
 
@@ -83,7 +133,7 @@ function SectionLabel({ children }: { children: string }) {
 
 function CopyButton({ text, label }: { text: string; label: string }) {
   const [copied, setCopied] = useState(false);
-  const handleCopy = async (e: React.MouseEvent) => {
+  const handleCopy = async (e: MouseEvent) => {
     e.stopPropagation();
     const success = await copyToClipboard(text);
     if (success) {
@@ -104,15 +154,42 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 }
 
 export function ToolCallCard({ tool, isOpen, onToggle, defaultExpanded = false }: ToolCallCardProps) {
-  const isReadFile = isReadTool(tool);
+  const toolKey = resolveToolKey(tool);
   const hasPanel = hasToolDetailsPanel(tool);
-  const targetFilePath = resolveTargetFile(tool);
   const commandOrInput = commandOrInputOf(tool);
   const outputText = tool.output || (tool.error ? `Error: ${tool.error}` : '');
   const diffText = diffTextOf(tool);
 
-  const title = toTitleCase(tool.title || (isReadFile ? 'Read File' : tool.name || 'Tool Call'));
-  const subtitle = targetFilePath || (tool.detail && !targetFilePath ? tool.detail : undefined);
+  const inputJson = useMemo(
+    () => (!hasPanel && commandOrInput ? tryParseJson(commandOrInput) : null),
+    [hasPanel, commandOrInput]
+  );
+
+  // Clean title & subtitle extraction
+  let displayTitle = '';
+  let displaySubtitle: string | undefined;
+
+  if (tool.title && (tool.title.includes('—') || tool.title.includes(' - ') || tool.title.includes(': '))) {
+    const parts = tool.title.split(/\s+[—\-:]\s+/);
+    displayTitle = toTitleCase(parts[0].trim());
+    displaySubtitle = parts.slice(1).join(' — ').trim();
+  } else if (tool.title) {
+    displayTitle = toTitleCase(tool.title);
+  } else {
+    displayTitle = toTitleCase(toolKey || tool.name || 'Tool Call');
+  }
+
+  // Resolve task tool subagent name/target
+  if ((toolKey === 'task' || tool.name === 'task') && !displaySubtitle) {
+    const inputObj = typeof tool.input === 'object' && tool.input !== null ? (tool.input as Record<string, any>) : undefined;
+    const firstTask = Array.isArray(inputObj?.tasks) ? inputObj.tasks[0] : undefined;
+    if (firstTask?.name) {
+      displaySubtitle = `${firstTask.name}${firstTask.agent ? ` · ${firstTask.agent}` : ''}`;
+    }
+  }
+
+  const targetFilePath = resolveTargetFile(tool);
+  const subtitle = displaySubtitle || targetFilePath || (tool.detail && !targetFilePath ? tool.detail : undefined);
 
   const meta = tool.duration || tool.time ? (
     <span className="font-mono text-[10px] text-ink/40">{tool.duration || tool.time}</span>
@@ -121,40 +198,54 @@ export function ToolCallCard({ tool, isOpen, onToggle, defaultExpanded = false }
   return (
     <ToolCardShell
       tool={tool}
-      icon={tool.icon || getToolIcon(tool.type)}
-      title={title}
+      icon={tool.icon || getToolIcon(toolKey)}
+      title={displayTitle}
       subtitle={subtitle}
       meta={meta}
       isOpen={isOpen}
       onToggle={onToggle}
       defaultExpanded={defaultExpanded}
     >
-      {isReadFile && (
-        <ReadPanel targetFilePath={targetFilePath} output={outputText} />
-      )}
+      <ToolDetailsPanel tool={tool} />
 
-      {!isReadFile && !hasPanel && commandOrInput && (
+      {!hasPanel && commandOrInput && (
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
-            <SectionLabel>Input</SectionLabel>
-            <CopyButton text={commandOrInput} label="Copy" />
+            <div className="flex items-center gap-1.5">
+              <SectionLabel>Input</SectionLabel>
+              {inputJson?.isValid && (
+                <span className="rounded bg-ink/5 px-1.5 py-0.2 font-mono text-[9px] uppercase tracking-wider text-ink/45">
+                  JSON
+                </span>
+              )}
+            </div>
+            <CopyButton
+              text={inputJson?.isValid && inputJson.pretty ? inputJson.pretty : commandOrInput}
+              label="Copy"
+            />
           </div>
-          <pre className="overflow-x-auto rounded-lg border border-ink/8 bg-paper px-3 py-2.5 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-all text-ink/80 select-text">
-            {commandOrInput}
-          </pre>
+          {inputJson?.isValid && inputJson.pretty ? (
+            <JsonCodeBlock
+              jsonString={inputJson.pretty}
+              maxHeightClass="max-h-60"
+              showHeader={false}
+            />
+          ) : (
+            <pre className="overflow-x-auto rounded-lg border border-ink/8 bg-paper px-3 py-2.5 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-all text-ink/80 select-text">
+              {commandOrInput}
+            </pre>
+          )}
         </div>
       )}
 
-      {diffText && (
+      {!hasPanel && diffText && (
         <div className="space-y-1.5">
           <SectionLabel>Diff</SectionLabel>
           <DiffView text={diffText} />
         </div>
       )}
 
-      <ToolDetailsPanel tool={tool} />
-
-      {!isReadFile && !hasPanel && outputText && (
+      {!hasPanel && outputText && (
         <FallbackOutput text={outputText} />
       )}
     </ToolCardShell>

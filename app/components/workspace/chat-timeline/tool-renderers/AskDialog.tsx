@@ -1,6 +1,18 @@
-import { useEffect, useRef, useState } from 'react';
-import { X, Check } from 'lucide-react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import {
+  HelpCircle,
+  AlertCircle,
+  Terminal,
+  FileText,
+  ListFilter,
+  CheckCircle2,
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import type { ExtensionUiDialogRequest } from '@/hooks/useOmpAgent';
+import { AskDialogHeader } from '@/components/workspace/chat-timeline/tool-renderers/ask-dialog/AskDialogHeader';
+import { AskDialogSelectBody } from '@/components/workspace/chat-timeline/tool-renderers/ask-dialog/AskDialogSelectBody';
+import { AskDialogFooter } from '@/components/workspace/chat-timeline/tool-renderers/ask-dialog/AskDialogFooter';
+import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
 
 export type ExtensionDialogResponse =
   | { value: string }
@@ -12,190 +24,271 @@ interface AskDialogProps {
   onRespond: (request: ExtensionUiDialogRequest, response: ExtensionDialogResponse) => void;
 }
 
-/** Overlay dialog untuk ask/approval dari omp (extension_ui_request).
- *  Blocking: tool call menunggu sampai user merespons. */
 export function AskDialog({ request, onRespond }: AskDialogProps) {
   const [value, setValue] = useState(request.method === 'editor' ? request.prefill ?? '' : '');
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setValue(request.method === 'editor' ? request.prefill ?? '' : '');
-    setSelectedOption(null);
-  }, [request]);
-
-  useEffect(() => {
-    panelRef.current?.focus();
-  }, [request.id]);
-
-  const cancel = () => onRespond(request, { cancelled: true });
-
-  const submitValue = () => {
-    if (request.method === 'confirm') {
-      onRespond(request, { confirmed: true });
-    } else if (request.method === 'select') {
-      if (selectedOption) onRespond(request, { value: selectedOption });
-    } else {
-      onRespond(request, { value });
-    }
-  };
+  const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const options = request.options ?? [];
   const optionDetails = request.optionDetails ?? [];
 
+  useEffect(() => {
+    setValue(request.method === 'editor' ? request.prefill ?? '' : '');
+    setSelectedOption(options.length > 0 ? options[0] : null);
+  }, [request, options]);
+
+  useEffect(() => {
+    panelRef.current?.focus();
+    if (request.method === 'input') {
+      inputRef.current?.focus();
+    } else if (request.method === 'editor') {
+      textareaRef.current?.focus();
+    }
+  }, [request.id, request.method]);
+
+  const cancel = useCallback(() => {
+    onRespond(request, { cancelled: true });
+  }, [onRespond, request]);
+
+  const submitValue = useCallback(() => {
+    if (request.method === 'confirm') {
+      onRespond(request, { confirmed: true });
+    } else if (request.method === 'select') {
+      if (selectedOption) {
+        onRespond(request, { value: selectedOption });
+      }
+    } else {
+      onRespond(request, { value });
+    }
+  }, [onRespond, request, selectedOption, value]);
+
+  const handleConfirmOption = useCallback(
+    (option: string) => {
+      onRespond(request, { value: option });
+    },
+    [onRespond, request]
+  );
+
+  // Keyboard navigation & shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        cancel();
+        return;
+      }
+
+      if (request.method === 'select' && options.length > 0) {
+        const num = parseInt(e.key, 10);
+        if (!isNaN(num) && num >= 1 && num <= options.length) {
+          e.preventDefault();
+          setSelectedOption(options[num - 1]);
+          return;
+        }
+
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          const currentIdx = options.findIndex((o) => o === selectedOption);
+          const nextIdx = currentIdx < options.length - 1 ? currentIdx + 1 : 0;
+          setSelectedOption(options[nextIdx]);
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          const currentIdx = options.findIndex((o) => o === selectedOption);
+          const prevIdx = currentIdx > 0 ? currentIdx - 1 : options.length - 1;
+          setSelectedOption(options[prevIdx]);
+          return;
+        }
+
+        if (e.key === 'Enter' && selectedOption) {
+          e.preventDefault();
+          submitValue();
+          return;
+        }
+      }
+
+      if (request.method === 'confirm') {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          submitValue();
+          return;
+        }
+      }
+
+      if (request.method === 'editor') {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+          e.preventDefault();
+          submitValue();
+          return;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [cancel, submitValue, request.method, options, selectedOption]);
+
+  const methodMeta = (() => {
+    switch (request.method) {
+      case 'select':
+        return {
+          icon: <ListFilter size={16} className="text-ink" />,
+          label: 'Decision Required',
+          badge: `${options.length} Choices`,
+        };
+      case 'confirm':
+        return {
+          icon: <AlertCircle size={16} className="text-ink" />,
+          label: 'Confirmation Required',
+          badge: 'Confirm Action',
+        };
+      case 'input':
+        return {
+          icon: <Terminal size={16} className="text-ink" />,
+          label: 'Prompt Input',
+          badge: 'Text Input',
+        };
+      case 'editor':
+        return {
+          icon: <FileText size={16} className="text-ink" />,
+          label: 'Buffer Editor',
+          badge: 'Multiline Buffer',
+        };
+      default:
+        return {
+          icon: <HelpCircle size={16} className="text-ink" />,
+          label: 'Agent Request',
+          badge: 'Input',
+        };
+    }
+  })();
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-5 animate-fade-in"
-      style={{ background: 'color-mix(in srgb, var(--theme-ink) 45%, transparent)', backdropFilter: 'blur(4px)' }}
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) cancel();
-      }}
-    >
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label={request.title}
-        tabIndex={-1}
-        className="w-full max-w-[520px] overflow-hidden rounded-2xl outline-none animate-scale-in"
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.15 }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
         style={{
-          border: '1px solid color-mix(in srgb, var(--theme-ink) 15%, transparent)',
-          background: 'var(--theme-paper)',
-          boxShadow: '0 24px 80px color-mix(in srgb, var(--theme-ink) 35%, transparent)',
+          background: 'color-mix(in srgb, var(--theme-ink) 55%, transparent)',
+          backdropFilter: 'blur(8px)',
         }}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') {
-            e.stopPropagation();
-            cancel();
-          }
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) cancel();
         }}
       >
-        <div className="flex items-start justify-between gap-3 border-b border-ink/10 px-4 py-3.5">
-          <div className="min-w-0">
-            <div className="text-[14px] font-semibold tracking-tight text-ink">{request.title}</div>
-            <div className="mt-0.5 text-[10px] font-mono uppercase tracking-[0.12em] text-ink/40">
-              {request.method === 'select' ? 'Select an option' : request.method === 'confirm' ? 'Confirmation' : request.method === 'input' ? 'Input' : 'Editor'}
-            </div>
+        <motion.div
+          ref={panelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={request.title || methodMeta.label}
+          tabIndex={-1}
+          initial={{ opacity: 0, scale: 0.95, y: 10 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: 10 }}
+          transition={{ duration: 0.18, ease: 'easeOut' }}
+          className="w-full max-w-[560px] overflow-hidden rounded-2xl border border-ink/15 bg-paper shadow-2xl outline-none"
+          style={{
+            boxShadow: '0 24px 64px -8px color-mix(in srgb, var(--theme-ink) 28%, transparent)',
+          }}
+        >
+          <AskDialogHeader
+            title={request.title}
+            methodLabel={methodMeta.label}
+            badge={methodMeta.badge}
+            icon={methodMeta.icon}
+            onCancel={cancel}
+          />
+
+          <div className="max-h-[65vh] overflow-y-auto px-6 py-5 space-y-4">
+            {/* Prompt / Context Message with Markdown */}
+            {request.message && (
+              <div className="rounded-xl border border-ink/8 bg-canvas/40 p-4 text-[13px] leading-relaxed text-ink/85 select-text">
+                <MarkdownRenderer content={request.message} />
+              </div>
+            )}
+
+            {/* Select Options */}
+            {request.method === 'select' && (
+              <AskDialogSelectBody
+                options={options}
+                optionDetails={optionDetails}
+                selectedOption={selectedOption}
+                onSelect={setSelectedOption}
+                onConfirmOption={handleConfirmOption}
+              />
+            )}
+
+            {/* Confirm Banner */}
+            {request.method === 'confirm' && (
+              <div className="flex items-center gap-3 rounded-xl border border-ink/10 bg-canvas/30 p-4">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ink/5 text-ink">
+                  <CheckCircle2 size={18} />
+                </div>
+                <div className="text-[12.5px] leading-relaxed text-ink/75">
+                  Confirming will allow the autonomous agent to proceed with this operation. Press <kbd className="rounded border border-ink/20 bg-paper px-1 py-0.2 font-mono text-[10.5px]">Enter</kbd> to confirm or <kbd className="rounded border border-ink/20 bg-paper px-1 py-0.2 font-mono text-[10.5px]">Esc</kbd> to abort.
+                </div>
+              </div>
+            )}
+
+            {/* Single-line Input */}
+            {request.method === 'input' && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-[11px] font-medium tracking-wider text-ink/50 uppercase">
+                  <span>Your Response</span>
+                  <span className="font-mono text-[10px] text-ink/40">Press [Enter] to submit</span>
+                </div>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={value}
+                  placeholder={request.placeholder || 'Type your response...'}
+                  onChange={(e) => setValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      submitValue();
+                    }
+                  }}
+                  className="w-full rounded-xl border border-ink/15 bg-paper px-4 py-3 text-[13.5px] text-ink placeholder:text-ink/35 outline-none transition-all focus:border-ink focus:ring-2 focus:ring-ink/15"
+                />
+              </div>
+            )}
+
+            {/* Multiline Editor */}
+            {request.method === 'editor' && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-[11px] font-medium tracking-wider text-ink/50 uppercase">
+                  <span>Buffer Content</span>
+                  <span className="font-mono text-[10px] text-ink/40">{value.split('\n').length} lines · ⌘↵ to save</span>
+                </div>
+                <textarea
+                  ref={textareaRef}
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  rows={8}
+                  placeholder={request.placeholder || 'Enter content...'}
+                  className="w-full rounded-xl border border-ink/15 bg-canvas/30 px-4 py-3 font-mono text-[12px] leading-relaxed text-ink placeholder:text-ink/35 outline-none transition-all focus:border-ink focus:bg-paper focus:ring-2 focus:ring-ink/15"
+                />
+              </div>
+            )}
           </div>
-          <button
-            type="button"
-            onClick={cancel}
-            aria-label="Cancel"
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-ink/40 transition-colors hover:bg-ink/5 hover:text-ink"
-          >
-            <X size={14} />
-          </button>
-        </div>
 
-        <div className="max-h-[60vh] overflow-y-auto p-4">
-          {request.method === 'confirm' && (
-            <div className="whitespace-pre-wrap text-[13px] leading-relaxed text-ink/80">
-              {request.message}
-            </div>
-          )}
-
-          {request.method === 'select' && (
-            <div className="grid gap-1.5">
-              {options.map((option, index) => {
-                const selected = selectedOption === option;
-                const detail = optionDetails[index]?.description;
-                return (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => onRespond(request, { value: option })}
-                    aria-pressed={selected}
-                    className="group flex w-full items-start gap-2.5 rounded-xl border px-3 py-2.5 text-left text-[13px] transition-all duration-150"
-                    style={{
-                      borderColor: selected ? 'var(--theme-ink)' : 'color-mix(in srgb, var(--theme-ink) 12%, transparent)',
-                      background: selected ? 'color-mix(in srgb, var(--theme-ink) 6%, var(--theme-paper))' : 'var(--theme-paper)',
-                      color: 'var(--theme-ink)',
-                    }}
-                  >
-                    <span
-                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors ${
-                        selected ? 'border-ink bg-ink' : 'border-ink/25 group-hover:border-ink/50'
-                      }`}
-                    >
-                      {selected && <Check size={10} className="text-paper" />}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block font-medium">{option}</span>
-                      {detail && (
-                        <span className="mt-0.5 block text-[11px] leading-snug text-ink/50">{detail}</span>
-                      )}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {request.method === 'input' && (
-            <input
-              autoFocus
-              aria-label={request.title || request.placeholder || 'Input value'}
-              value={value}
-              placeholder={request.placeholder}
-              onChange={(e) => setValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') submitValue();
-              }}
-              className="w-full rounded-xl border border-ink/15 bg-paper px-3.5 py-2.5 text-[13px] text-ink outline-none transition-colors focus:border-ink/50"
-            />
-          )}
-
-          {request.method === 'editor' && (
-            <textarea
-              autoFocus
-              aria-label={request.title || 'Input value'}
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              onKeyDown={(e) => {
-                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submitValue();
-              }}
-              className="w-full min-h-[200px] resize-y rounded-xl border border-ink/15 bg-paper px-3.5 py-3 text-[13px] leading-relaxed text-ink outline-none transition-colors focus:border-ink/50"
-              style={{ fontFamily: 'var(--font-mono)' }}
-            />
-          )}
-        </div>
-
-        <div className="flex justify-end gap-2 border-t border-ink/10 bg-canvas/40 px-4 py-3">
-          <button
-            type="button"
-            onClick={cancel}
-            className="rounded-lg border border-ink/15 px-3.5 py-1.5 text-[12px] font-medium text-ink/60 transition-colors hover:bg-ink/5 hover:text-ink"
-          >
-            Cancel
-          </button>
-          {request.method === 'confirm' ? (
-            <button
-              type="button"
-              onClick={submitValue}
-              className="rounded-lg bg-ink px-3.5 py-1.5 text-[12px] font-semibold text-paper transition-opacity hover:opacity-85"
-            >
-              Confirm
-            </button>
-          ) : request.method === 'select' ? (
-            <button
-              type="button"
-              onClick={submitValue}
-              disabled={!selectedOption}
-              className="rounded-lg bg-ink px-3.5 py-1.5 text-[12px] font-semibold text-paper transition-opacity disabled:cursor-not-allowed disabled:opacity-35"
-            >
-              Submit
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={submitValue}
-              className="rounded-lg bg-ink px-3.5 py-1.5 text-[12px] font-semibold text-paper transition-opacity hover:opacity-85"
-            >
-              Submit
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+          <AskDialogFooter
+            method={request.method}
+            optionsLength={options.length}
+            selectedOption={selectedOption}
+            onCancel={cancel}
+            onSubmit={submitValue}
+          />
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
   );
 }

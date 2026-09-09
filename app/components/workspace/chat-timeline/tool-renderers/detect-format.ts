@@ -13,10 +13,7 @@ export function detectOutputFormat(text: string): OutputFormat {
   // 1. Fenced code block → markdown, apapun isinya (HTML/JSON di dalamnya aman)
   if (trimmed.includes('```')) return 'markdown';
 
-  // 2. Markdown: heading, inline code, blockquote, list, link, table
-  if (MARKDOWN_RE.test(trimmed)) return 'markdown';
-
-  // 3. JSON: object/array valid (bukan string/number primitif)
+  // 2. JSON: object/array valid (bukan string/number primitif)
   if (trimmed.length < 100_000 && (trimmed.startsWith('{') || trimmed.startsWith('['))) {
     try {
       const parsed = JSON.parse(trimmed);
@@ -25,6 +22,9 @@ export function detectOutputFormat(text: string): OutputFormat {
       // bukan JSON valid — lanjut
     }
   }
+
+  // 3. Markdown: heading, inline code, blockquote, list, link, table
+  if (MARKDOWN_RE.test(trimmed)) return 'markdown';
 
   // 4. HTML: tag pembuka lengkap di awal, atau pasangan tag lengkap
   if (/^<(?:!doctype|html|div|section|article|table|ul|ol|h[1-6]|p|pre|code|span|a|b|strong|em|i|blockquote|form|button|input|img|nav|header|footer|main|aside|figure|figcaption|details|summary|label|select|option|textarea|video|audio|iframe|script|style|link|meta|title|body|head)\b/i.test(trimmed)) {

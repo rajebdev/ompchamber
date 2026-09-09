@@ -1,19 +1,19 @@
-import { FileSearch, FolderSearch } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { FileSearch, FolderSearch, FileText, Check, Copy, ChevronRight } from 'lucide-react';
 import type { ToolCallData } from '@/types';
+import { copyToClipboard } from '@/hooks/useClipboard';
+import { highlightCode, getLanguageFromPath } from '@/lib/syntax-highlight';
 
-interface SearchMatch {
-  file?: unknown;
-  path?: unknown;
-  line?: unknown;
-  text?: unknown;
-  matches?: unknown;
+interface MatchLine {
+  lineNum: number;
+  text: string;
+  isMatch: boolean;
 }
 
-function matchLocation(m: SearchMatch): string {
-  const file = typeof m.file === 'string' ? m.file : typeof m.path === 'string' ? m.path : '';
-  const line = typeof m.line === 'number' ? m.line : undefined;
-  if (!file) return '';
-  return line === undefined ? file : `${file}:${line}`;
+interface ParsedFileMatches {
+  path: string;
+  lines: MatchLine[];
+  matchCount: number;
 }
 
 function queryOf(tool: ToolCallData): string {
@@ -23,61 +23,229 @@ function queryOf(tool: ToolCallData): string {
     if (typeof input.query === 'string') return input.query;
     if (typeof input.glob === 'string') return input.glob;
   }
+  if (typeof tool.target === 'string' && tool.target !== '.') return tool.target;
   return '';
 }
 
-/** Panel untuk tool pencarian file — grep/glob/ast_grep dengan query + match list. */
-export function SearchPanel({ tool }: { tool: ToolCallData }) {
-  const details = tool.details ?? {};
-  const items: SearchMatch[] = Array.isArray(details.matches) ? details.matches : [];
-  const isGlob = tool.type === 'glob';
-  const query = queryOf(tool);
-  const label = isGlob ? 'Files' : 'Matches';
+/** Parses markdown hierarchical output from ripgrep/grep tool */
+function parseGrepOutput(output: string): { files: ParsedFileMatches[]; totalMatches: number; isGlobList: boolean } {
+  const lines = output.split(/\r?\n/);
+  const files: ParsedFileMatches[] = [];
+  const dirStack: string[] = [];
+  let currentFile: ParsedFileMatches | null = null;
+  let isGlobList = true;
 
-  if (items.length === 0) {
-    const lines = (tool.output ?? '').split(/\r?\n/).filter(Boolean);
-    if (lines.length === 0) {
-      return (
-        <div className="flex items-center gap-2 rounded-lg border border-dashed border-ink/15 px-3 py-2.5 text-[11.5px] text-ink/45">
-          {isGlob ? <FolderSearch size={13} className="shrink-0" /> : <FileSearch size={13} className="shrink-0" />}
-          <span>No {isGlob ? 'files' : 'matches'} found{query ? ` for "${query}"` : ''}</span>
-        </div>
-      );
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trimEnd();
+    if (!trimmed) continue;
+
+    // Detect heading lines like "# app/", "## components/", "#### File.tsx"
+    const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      const name = headingMatch[2].trim();
+
+      // Adjust directory stack based on heading depth
+      dirStack.length = Math.min(dirStack.length, level - 1);
+
+      if (name.endsWith('/')) {
+        dirStack[level - 1] = name;
+      } else {
+        // File heading
+        if (currentFile && currentFile.lines.length > 0) {
+          files.push(currentFile);
+        }
+        const fullDir = dirStack.filter(Boolean).join('');
+        const fullPath = fullDir ? `${fullDir.replace(/\/+$/, '')}/${name}` : name;
+        currentFile = { path: fullPath, lines: [], matchCount: 0 };
+      }
+      continue;
     }
+
+    // Match code line format: " 18|..." or "*19|..." or "18:..."
+    const codeMatch = trimmed.match(/^(\*?)(\s*\d+)[|:](.*)$/);
+    if (codeMatch) {
+      isGlobList = false;
+      const isMatch = codeMatch[1] === '*';
+      const lineNum = parseInt(codeMatch[2].trim(), 10) || 1;
+      const text = codeMatch[3];
+
+      if (!currentFile) {
+        currentFile = { path: 'Results', lines: [], matchCount: 0 };
+      }
+
+      currentFile.lines.push({ lineNum, text, isMatch });
+      if (isMatch) currentFile.matchCount++;
+      continue;
+    }
+
+    // Handle plain file list output (glob format)
+    if (!trimmed.startsWith('#') && !codeMatch) {
+      if (trimmed.includes('|') || trimmed.includes(':')) {
+        isGlobList = false;
+      }
+      const fullDir = dirStack.filter(Boolean).join('');
+      const fullPath = fullDir ? `${fullDir.replace(/\/+$/, '')}/${trimmed}` : trimmed;
+      files.push({
+        path: fullPath,
+        lines: [],
+        matchCount: 1,
+      });
+    }
+  }
+
+  if (currentFile && currentFile.lines.length > 0) {
+    files.push(currentFile);
+  }
+
+  const totalMatches = files.reduce((acc, f) => acc + (f.matchCount || f.lines.length || 1), 0);
+  return { files, totalMatches, isGlobList };
+}
+
+/** Panel untuk tool pencarian file — grep/glob/ast_grep dengan visualisasi hierarkis & readable. */
+export function SearchPanel({ tool }: { tool: ToolCallData }) {
+  const [copied, setCopied] = useState(false);
+  const [filterText, setFilterText] = useState('');
+  const output = tool.output || '';
+  const query = queryOf(tool);
+  const isGlob = tool.type === 'glob' || tool.name === 'glob';
+
+  const { files, totalMatches, isGlobList } = useMemo(() => parseGrepOutput(output), [output]);
+
+  const filteredFiles = useMemo(() => {
+    if (!filterText) return files;
+    const lower = filterText.toLowerCase();
+    return files
+      .map((file) => {
+        const pathMatches = file.path.toLowerCase().includes(lower);
+        const matchingLines = file.lines.filter((l) => l.text.toLowerCase().includes(lower));
+        if (pathMatches) return file;
+        if (matchingLines.length > 0) {
+          return { ...file, lines: matchingLines };
+        }
+        return null;
+      })
+      .filter((f): f is ParsedFileMatches => f !== null);
+  }, [files, filterText]);
+
+  const handleCopyAll = async () => {
+    if (!output) return;
+    const ok = await copyToClipboard(output);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  if (!output && files.length === 0) {
     return (
-      <ul className="divide-y divide-ink/6 overflow-hidden rounded-lg border border-ink/8 bg-canvas/40">
-        {lines.map((line, i) => (
-          <li key={i} className="px-2.5 py-1.5 font-mono text-[11px] break-words text-ink/75">
-            {line}
-          </li>
-        ))}
-      </ul>
+      <div className="flex items-center gap-2 rounded-lg border border-dashed border-ink/15 px-3 py-2.5 text-[11.5px] text-ink/45">
+        {isGlob ? <FolderSearch size={13} className="shrink-0" /> : <FileSearch size={13} className="shrink-0" />}
+        <span>No {isGlob ? 'files' : 'matches'} found{query ? ` for "${query}"` : ''}</span>
+      </div>
     );
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-ink/8">
-      <div className="flex items-center gap-2 border-b border-ink/8 bg-paper px-2.5 py-1.5">
-        <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-ink/40">{label}</span>
-        <span className="rounded-full bg-ink/5 px-1.5 py-px font-mono text-[9.5px] text-ink/45">{items.length}</span>
-        {query && (
-          <span className="ml-auto truncate font-mono text-[10px] text-ink/45">"{query}"</span>
-        )}
+    <div className="space-y-2">
+      {/* Header Info Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-ink/8 bg-paper px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+          <span className="flex h-5 w-5 items-center justify-center rounded bg-ink/5 text-ink/60">
+            {isGlob || isGlobList ? <FolderSearch size={12} /> : <FileSearch size={12} />}
+          </span>
+          <span className="font-semibold text-ink">
+            {isGlob || isGlobList ? 'Files Found' : 'Search Matches'}
+          </span>
+          <span className="rounded-full bg-ink/5 px-2 py-0.5 font-mono text-[10px] text-ink/60">
+            {totalMatches} {totalMatches === 1 ? 'match' : 'matches'}
+          </span>
+          {files.length > 1 && (
+            <span className="font-mono text-[10px] text-ink/40">
+              in {files.length} {files.length === 1 ? 'file' : 'files'}
+            </span>
+          )}
+          {query && (
+            <span className="rounded border border-ink/10 bg-canvas px-1.5 py-0.5 font-mono text-[10px] text-ink/75">
+              "{query}"
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {files.length > 4 && (
+            <input
+              type="text"
+              placeholder="Filter paths..."
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+              className="h-6 w-28 rounded border border-ink/10 bg-canvas px-2 text-[10.5px] text-ink placeholder:text-ink/30 focus:border-ink/30 focus:outline-none"
+            />
+          )}
+          <button
+            type="button"
+            onClick={handleCopyAll}
+            className="flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-ink/45 transition-colors hover:bg-ink/5 hover:text-ink"
+          >
+            {copied ? <Check size={10} className="text-success" /> : <Copy size={10} />}
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </div>
       </div>
-      <div className="divide-y divide-ink/6 bg-canvas/40 py-1">
-        {items.map((m, index) => {
-          const loc = matchLocation(m);
-          const text = typeof m.text === 'string' ? m.text : '';
-          return (
-            <div key={index} className="flex items-start gap-2 px-2.5 py-1.5 text-[11.5px]">
-              <span className="w-4 shrink-0 text-right font-mono text-[9.5px] text-ink/35">{index + 1}</span>
-              <span className="min-w-0 flex-1 break-words">
-                {loc && <span className="font-mono text-[10px] text-ink/45">{loc}: </span>}
-                <span className="text-ink/80">{text}</span>
-              </span>
+
+      {/* Results Container */}
+      <div className="max-h-80 space-y-2 overflow-y-auto overscroll-contain pr-0.5">
+        {filteredFiles.map((file, fileIdx) => (
+          <div key={fileIdx} className="overflow-hidden rounded-lg border border-ink/8 bg-paper">
+            {/* File Header */}
+            <div className="flex items-center justify-between border-b border-ink/6 bg-canvas/40 px-2.5 py-1.5">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <FileText size={12} className="shrink-0 text-ink/40" />
+                <span className="truncate font-mono text-[11px] font-medium text-ink/85">{file.path}</span>
+              </div>
+              {file.matchCount > 0 && !isGlobList && (
+                <span className="ml-2 shrink-0 rounded bg-ink/5 px-1.5 py-0.2 font-mono text-[9.5px] text-ink/50">
+                  {file.matchCount} {file.matchCount === 1 ? 'hit' : 'hits'}
+                </span>
+              )}
             </div>
-          );
-        })}
+
+            {/* Code Lines inside file */}
+            {file.lines.length > 0 && (
+              <div className="divide-y divide-ink/[0.04] font-mono text-[11px] leading-relaxed select-text">
+                {file.lines.map((line, lineIdx) => (
+                  <div
+                    key={lineIdx}
+                    className={`flex items-start gap-2.5 px-2.5 py-1 transition-colors ${
+                      line.isMatch ? 'bg-warning/[0.08] text-ink' : 'text-ink/60 hover:bg-ink/[0.02]'
+                    }`}
+                  >
+                    <span
+                      className={`flex w-9 shrink-0 select-none items-center justify-end font-mono text-[10px] ${
+                        line.isMatch ? 'font-semibold text-warning-dark dark:text-warning' : 'text-ink/30'
+                      }`}
+                    >
+                      {line.isMatch && <ChevronRight size={10} className="mr-0.5 text-warning" />}
+                      {line.lineNum}
+                    </span>
+                    <pre
+                      className="min-w-0 flex-1 overflow-x-auto whitespace-pre font-mono"
+                      dangerouslySetInnerHTML={{
+                        __html: line.text ? highlightCode(line.text, getLanguageFromPath(file.path)) : '&nbsp;',
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+
+        {filteredFiles.length === 0 && (
+          <div className="rounded-lg border border-dashed border-ink/15 p-4 text-center font-mono text-[11px] text-ink/40">
+            No results match filter "{filterText}"
+          </div>
+        )}
       </div>
     </div>
   );

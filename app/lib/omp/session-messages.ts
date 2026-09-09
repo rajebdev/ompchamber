@@ -22,6 +22,7 @@
 
 import { readFileSync, statSync } from 'fs';
 import { parseJsonlLenient } from '@/lib/omp/session-jsonl';
+import { normalizeNoticePositions } from '@/lib/chat-order';
 import type { ChatMessageData, ToolCallData, ToolType } from '@/types/chat';
 
 const MAX_SESSION_LOAD_BYTES = 512 * 1024 * 1024;
@@ -398,7 +399,7 @@ export function loadSessionMessages(filePath: string): ChatMessageData[] {
     }
     state.messages.push(mapped);
   }
-  return state.messages;
+  return normalizeNoticePositions(state.messages);
 }
 
 /** Derive the display title from the JSONL header/title slot (cheap read). */

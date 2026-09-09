@@ -128,7 +128,7 @@ async function buildRealFolders(folderRows: any[], archivedIds: Set<string>): Pr
 export default function App() {
   const { folders, initialIsMobile, appSettings } = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
-  const sessionId = searchParams.get('sessionId');
+  const sessionId = searchParams.get('sessionId') || '1';
 
   // Initialize with server-detected User-Agent to eliminate SSR flash
   const [isMobileMode, setIsMobileMode] = useState<boolean>(
