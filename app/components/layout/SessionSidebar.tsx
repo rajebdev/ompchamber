@@ -1,13 +1,38 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Plus, Search, Settings, Info, FolderPlus, Calendar, Archive, MoreHorizontal, PanelLeftClose, X } from 'lucide-react';
-import { useSearchParams } from '@remix-run/react';
+import { useSearchParams, useRevalidator } from '@remix-run/react';
 import { SettingsModal, AboutModal, NewWorkspaceModal, SchedulerModal } from '@/components/layout/session-sidebar/SidebarModals';
 import { Category } from '@/components/layout/session-sidebar/CategoryItem';
 
 export function SessionSidebar({ className = '', folders = [], onClose, appSettings = {} }: { className?: string, folders?: any[], onClose?: () => void, appSettings?: Record<string, any> }) {
   const [searchParams, setSearchParams] = useSearchParams();
+  const revalidator = useRevalidator();
   const sessionParam = searchParams.get('sessionId');
   const activeSessionId = sessionParam ? (Number.isNaN(Number(sessionParam)) ? sessionParam : Number(sessionParam)) : null;
+
+  // Refresh the session list when a new omp session is spawned or its title
+  // changes (the chat timeline dispatches omp:session-updated after the JSONL
+  // is written). No SSE — a plain event + revalidator keeps it cheap.
+  const revalidatorRef = useRef(revalidator);
+  revalidatorRef.current = revalidator;
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const scheduleRefresh = () => {
+      if (refreshTimerRef.current) return;
+      refreshTimerRef.current = setTimeout(() => {
+        refreshTimerRef.current = null;
+        revalidatorRef.current.revalidate();
+      }, 300);
+    };
+    window.addEventListener('omp:session-updated', scheduleRefresh);
+    return () => {
+      window.removeEventListener('omp:session-updated', scheduleRefresh);
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
@@ -35,30 +60,55 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
   const handleNewSession = () => {
     setSearchParams(prev => {
       const currentSessionId = prev.get('sessionId');
-      prev.delete('sessionId');
+      const next = new URLSearchParams(prev);
+      // Client-side pending session: shown immediately with a default title;
+      // the real omp session id replaces it on first send.
+      next.set('sessionId', `new-${Date.now()}`);
       if (currentSessionId) {
         const currentFolder = folders.find(f => f.sessions?.some((s: any) => String(s.id) === String(currentSessionId)));
         if (currentFolder) {
-          prev.set('folderId', currentFolder.id.toString());
+          next.set('folderId', currentFolder.id.toString());
         }
       } else {
-        prev.delete('folderId');
+        next.delete('folderId');
       }
-      return prev;
+      return next;
     }, { replace: true });
   };
 
   const handleNewSessionForFolder = (folderId: number) => {
     setSearchParams(prev => {
-      prev.delete('sessionId');
-      prev.set('folderId', folderId.toString());
-      return prev;
+      const next = new URLSearchParams(prev);
+      next.set('sessionId', `new-${Date.now()}`);
+      next.set('folderId', folderId.toString());
+      return next;
     }, { replace: true });
   };
 
   // Filter and sort folders
   const processedFolders = useMemo(() => {
     let result = [...folders];
+
+    // The active session may not be in the sidebar list yet: a pending
+    // "new-…" session, or a freshly spawned omp session whose JSONL has not
+    // been scanned (the chat timeline signals omp:session-updated once it is).
+    // Render it as an "Untitled session" item so there is never a gap between
+    // sending a chat and the session appearing with its real title.
+    const sessionExists = result.some(f => f.sessions?.some((s: any) => String(s.id) === String(sessionParam)));
+    const pendingId = sessionParam && !sessionExists ? sessionParam : null;
+    if (pendingId) {
+      const folderIdParam = searchParams.get('folderId');
+      const target = folderIdParam
+        ? result.find(f => String(f.id) === String(folderIdParam))
+        : result[0];
+      if (target) {
+        result = result.map(f => {
+          if (f.id !== target.id) return f;
+          const pending = { id: pendingId, title: 'Untitled session', is_active: 1 };
+          return { ...f, isExpanded: true, sessions: [pending, ...(f.sessions || [])] };
+        });
+      }
+    }
 
     // Search filter
     if (searchQuery.trim()) {

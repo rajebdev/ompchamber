@@ -1,6 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessageData, ToolCallData } from '@/types';
 
+/** Extract plain text from omp content (string or [{type:'text',text},...]). */
+function extractTextFromContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  const parts: string[] = [];
+  for (const block of content) {
+    if (block && typeof block === 'object' && (block as { type?: unknown }).type === 'text') {
+      const text = (block as { text?: unknown }).text;
+      if (typeof text === 'string') parts.push(text);
+    }
+  }
+  return parts.join('\n');
+}
+
+/** Tool events carry result/partialResult as a string or as an omp content
+ *  block ({content:[{type:'text',text}]}) — normalize both to plain text. */
+function toolResultText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') {
+    const content = (value as { content?: unknown }).content;
+    return extractTextFromContent(content);
+  }
+  return '';
+}
+
 /**
  * Live omp agent bridge for the chamber chat (real mode, MOCK=false).
  *
@@ -58,38 +83,50 @@ function toChatMessage(raw: Record<string, unknown>, streaming = true): ChatMess
       notice,
     };
   }
-  const content = raw.content;
-  let text = '';
-  let thinking: ChatMessageData['thinking'];
-  let toolCalls: ChatMessageData['toolCalls'];
-  if (typeof content === 'string') {
-    text = content;
-  } else if (Array.isArray(content)) {
-    const blocks: ToolCallData[] = [];
-    const thoughtParts: string[] = [];
-    for (const block of content) {
-      if (!block || typeof block !== 'object') continue;
-      const b = block as { type?: unknown; text?: unknown; thinking?: unknown; toolCallId?: unknown; toolName?: unknown; name?: unknown; id?: unknown; input?: unknown; arguments?: unknown };
-      if (b.type === 'text' && typeof b.text === 'string') {
-        text += b.text;
-      } else if (b.type === 'thinking') {
-        if (typeof b.thinking === 'string') thoughtParts.push(b.thinking);
-        else if (typeof b.text === 'string') thoughtParts.push(b.text);
-      } else if (b.type === 'toolCall') {
-        blocks.push({
-          id: typeof b.toolCallId === 'string' ? b.toolCallId : (typeof b.id === 'string' ? b.id : `tc-${Date.now()}`),
-          type: 'bash',
-          title: typeof b.toolName === 'string' ? b.toolName : (typeof b.name === 'string' ? b.name : 'Tool'),
-          target: '',
-          command: '',
-          input: (b.input ?? b.arguments) as Record<string, unknown> | undefined,
-          status: streaming ? 'running' : 'success',
-        });
+    const content = raw.content;
+    let text = '';
+    let thinking: ChatMessageData['thinking'];
+    let toolCalls: ChatMessageData['toolCalls'];
+    if (typeof content === 'string') {
+      text = content;
+    } else if (Array.isArray(content)) {
+      const blocks: (ToolCallData & { _toolCallId?: string })[] = [];
+      const thoughtParts: string[] = [];
+      for (const block of content) {
+        if (!block || typeof block !== 'object') continue;
+        const b = block as { type?: unknown; text?: unknown; thinking?: unknown; toolCallId?: unknown; toolName?: unknown; name?: unknown; id?: unknown; input?: unknown; arguments?: unknown; duration?: unknown };
+        if (b.type === 'text' && typeof b.text === 'string') {
+          text += b.text;
+        } else if (b.type === 'thinking') {
+          if (typeof b.thinking === 'string') thoughtParts.push(b.thinking);
+          else if (typeof b.text === 'string') thoughtParts.push(b.text);
+        } else if (b.type === 'toolCall') {
+          const tcId = typeof b.toolCallId === 'string' ? b.toolCallId : (typeof b.id === 'string' ? b.id : `tc-${Date.now()}`);
+          blocks.push({
+            id: tcId,
+            _toolCallId: tcId,
+            type: 'bash',
+            title: typeof b.toolName === 'string' ? b.toolName : (typeof b.name === 'string' ? b.name : 'Tool'),
+            target: '',
+            command: '',
+            input: (b.input ?? b.arguments) as Record<string, unknown> | undefined,
+            status: streaming ? 'running' : 'success',
+          });
+        } else if (b.type === 'toolResult') {
+          const targetId = typeof b.toolCallId === 'string' ? b.toolCallId : undefined;
+          const resultText = typeof b.text === 'string' ? b.text : '';
+          const found = blocks.find(tc => tc._toolCallId === targetId) ?? blocks[blocks.length - 1];
+          if (found) {
+            found.output = resultText;
+            found.status = 'success';
+            if (typeof b.duration === 'string') found.duration = b.duration;
+          }
+        }
       }
+      blocks.forEach((tc) => { delete tc._toolCallId; });
+      if (thoughtParts.length) thinking = { thought: thoughtParts.join('\n'), isGenerating: streaming };
+      if (blocks.length) toolCalls = blocks;
     }
-    if (thoughtParts.length) thinking = { thought: thoughtParts.join('\n'), isGenerating: streaming };
-    if (blocks.length) toolCalls = blocks;
-  }
   const id = typeof raw.id === 'string' ? raw.id : `msg-${raw.timestamp ?? Date.now()}-ai`;
   const role = raw.role === 'user' ? 'user' : 'ai';
   const timestamp = typeof raw.timestamp === 'number' ? new Date(raw.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : undefined;
@@ -113,6 +150,24 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
   callbacksRef.current = callbacks;
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
+  // Tool results arrive as separate events (tool_execution_end) or as
+  // toolResult messages AFTER the assistant message with the toolCall block.
+  // Accumulate them here and merge into the matching tool call on message_end.
+  const toolResultsRef = useRef<Map<string, { output: string; isError?: boolean }>>(new Map());
+  // Last assistant message that carried tool calls, so tool_execution_end
+  // events arriving after message_end can re-emit it with the result paired.
+  const lastToolMessageRef = useRef<ChatMessageData | null>(null);
+
+  const pairToolOutputs = (msg: ChatMessageData): ChatMessageData => {
+    if (!msg.toolCalls?.length) return msg;
+    const toolCalls = msg.toolCalls.map(tc => {
+      const res = toolResultsRef.current.get(tc.id);
+      return res
+        ? { ...tc, output: res.output, status: (res.isError ? 'error' : 'success') as ToolCallData['status'] }
+        : tc;
+    });
+    return { ...msg, toolCalls };
+  };
 
   const disconnect = useCallback(() => {
     const es = eventSourceRef.current;
@@ -144,12 +199,28 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
       switch (data.type) {
         case 'agent_start':
           setState((prev) => ({ ...prev, isGenerating: true, error: null }));
+          // Fresh turn: discard any accumulated tool outputs from the previous
+          // turn so results always pair with the current tool calls.
+          toolResultsRef.current.clear();
+          lastToolMessageRef.current = null;
           callbacksRef.current.onAgentStart?.();
           break;
         case 'message_start':
         case 'message_update': {
           const msg = data.message as Record<string, unknown> | undefined;
-          if (msg && msg.role !== 'user') {
+          if (!msg) break;
+          // Tool results arrive as standalone toolResult messages; hoist their
+          // text into the accumulated map instead of rendering them as an
+          // assistant content bubble.
+          if (msg.role === 'toolResult') {
+            const callId = typeof msg.toolCallId === 'string' ? msg.toolCallId : undefined;
+            const text = extractTextFromContent(msg.content);
+            if (callId) {
+              toolResultsRef.current.set(callId, { output: text });
+            }
+            break;
+          }
+          if (msg.role !== 'user') {
             const converted = toChatMessage(msg);
             if (converted) callbacksRef.current.onMessageUpdate?.(converted);
           }
@@ -157,9 +228,59 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
         }
         case 'message_end': {
           const completed = data.message as Record<string, unknown> | undefined;
-          if (completed && completed.role !== 'user') {
+          if (!completed) break;
+          // toolResult messages are already folded into the tool output map;
+          // never render them as a standalone assistant bubble.
+          if (completed.role === 'toolResult') {
+            const callId = typeof completed.toolCallId === 'string' ? completed.toolCallId : undefined;
+            const text = extractTextFromContent(completed.content);
+            if (callId) {
+              toolResultsRef.current.set(callId, { output: text });
+            }
+            break;
+          }
+          if (completed.role !== 'toolResult' && completed.role !== 'user') {
             const converted = toChatMessage(completed, false);
-            if (converted) callbacksRef.current.onMessageEnd?.(converted);
+            if (converted) {
+              const paired = pairToolOutputs(converted);
+              if (paired.toolCalls?.length) lastToolMessageRef.current = paired;
+              callbacksRef.current.onMessageEnd?.(paired);
+            }
+          }
+          break;
+        }
+        case 'tool_execution_start': {
+          const callId = typeof data.toolCallId === 'string' ? data.toolCallId : undefined;
+          if (callId) toolResultsRef.current.set(callId, { output: '' });
+          if (lastToolMessageRef.current?.toolCalls?.some(tc => tc.id === callId)) {
+            lastToolMessageRef.current = { ...lastToolMessageRef.current, toolCalls: lastToolMessageRef.current.toolCalls.map(tc => ({ ...tc, status: 'running' as ToolCallData['status'] })) };
+            callbacksRef.current.onMessageUpdate?.(lastToolMessageRef.current);
+          }
+          break;
+        }
+        case 'tool_execution_update': {
+          const callId = typeof data.toolCallId === 'string' ? data.toolCallId : undefined;
+          const partial = toolResultText(data.partialResult);
+          if (callId && partial) {
+            const prev = toolResultsRef.current.get(callId)?.output ?? '';
+            toolResultsRef.current.set(callId, { output: prev + partial });
+            if (lastToolMessageRef.current?.toolCalls?.some(tc => tc.id === callId)) {
+              callbacksRef.current.onMessageUpdate?.(pairToolOutputs(lastToolMessageRef.current));
+            }
+          }
+          break;
+        }
+        case 'tool_execution_end': {
+          const callId = typeof data.toolCallId === 'string' ? data.toolCallId : undefined;
+          const result = toolResultText(data.result);
+          const isError = data.isError === true;
+          if (callId) {
+            // The final result is complete; replace accumulated partials so
+            // the displayed output is not duplicated (partials + final).
+            toolResultsRef.current.set(callId, { output: result, isError });
+            if (lastToolMessageRef.current?.toolCalls?.some(tc => tc.id === callId)) {
+              callbacksRef.current.onMessageUpdate?.(pairToolOutputs(lastToolMessageRef.current));
+            }
           }
           break;
         }
@@ -248,6 +369,51 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     }
   }, [connect]);
 
+  /** Spawn a brand-new omp session and send the first prompt: ensure_session
+   *  first (returns omp's real session id), attach the SSE stream, then send
+   *  the prompt through the existing session route so no agent events are
+   *  missed. Returns the new session id on success, or null on failure — the
+   *  caller adopts the id as the active session. */
+  const sendNewPrompt = useCallback(async (
+    message: string,
+    cwd: string,
+    images?: { data: string; mimeType: string }[],
+  ): Promise<string | null> => {
+    setState((prev) => ({ ...prev, isGenerating: true, error: null }));
+    try {
+      const created = await fetch('/api/agent/new', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'ensure_session', cwd }),
+      });
+      const createdBody = (await created.json().catch(() => ({}))) as { success?: boolean; sessionId?: string; error?: string };
+      if (!created.ok || !createdBody.sessionId) {
+        setState((prev) => ({ ...prev, isGenerating: false, error: createdBody.error ?? `HTTP ${created.status}` }));
+        return null;
+      }
+      const sid = createdBody.sessionId;
+      connect(sid);
+      const res = await fetch(`/api/agent/${encodeURIComponent(sid)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'prompt',
+          message,
+          ...(images?.length ? { images } : {}),
+        }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      if (!res.ok || body.error) {
+        setState((prev) => ({ ...prev, isGenerating: false, error: body.error ?? `HTTP ${res.status}` }));
+        return null;
+      }
+      return sid;
+    } catch (e) {
+      setState((prev) => ({ ...prev, isGenerating: false, error: e instanceof Error ? e.message : String(e) }));
+      return null;
+    }
+  }, [connect]);
+
   /** Abort the running agent turn. */
   const abort = useCallback(async () => {
     const sid = sessionIdRef.current;
@@ -294,5 +460,5 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     }
   }, []);
 
-  return { ...state, sendPrompt, abort, setModel, setThinkingLevel, disconnect };
+  return { ...state, sendPrompt, sendNewPrompt, abort, setModel, setThinkingLevel, disconnect };
 }

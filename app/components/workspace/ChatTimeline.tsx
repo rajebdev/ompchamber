@@ -20,6 +20,7 @@ interface ChatTimelineProps {
 export function ChatTimeline({ className = '', folders = [], appSettings = {}, onSessionTitle }: ChatTimelineProps) {
   const {
     sessionId,
+    folderId,
     isOmpSession,
     selectedFolderId,
     setSelectedFolderId,
@@ -52,8 +53,11 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
   const [newChatInitialContent, setNewChatInitialContent] = useState<string | null>(null);
 
   useEffect(() => {
-    onSessionTitle?.(sessionData?.title ?? null);
-  }, [sessionData?.title, onSessionTitle]);
+    // Pending client-side sessions ("new-…") show a default title until the
+    // real omp session metadata arrives.
+    const pending = sessionId?.startsWith('new-') ? 'Untitled session' : null;
+    onSessionTitle?.(pending ?? sessionData?.title ?? null);
+  }, [sessionId, sessionData?.title, onSessionTitle]);
 
   const handleScrollTo = (id: string) => {
     const el = document.getElementById(id);
@@ -67,7 +71,11 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
     ? sessionData.model.modelId
     : sessionData?.model;
 
-  if (!sessionId) {
+  const isPendingNoFolder = Boolean(sessionId?.startsWith('new-'))
+    && selectedFolderId === null
+    && !folderId;
+
+  if (!sessionId || isPendingNoFolder) {
     return (
       <EmptyWorkspacePrompt
         className={className}

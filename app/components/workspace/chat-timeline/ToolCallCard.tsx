@@ -110,6 +110,24 @@ export function ToolCallCard({
   const toolType = tool.type || 'terminal';
   const isReadFile = toolType === 'read_file' || toolType === 'view_file' || (tool.title && tool.title.toLowerCase().includes('read')) || (tool.title && tool.title.toLowerCase().includes('view file'));
 
+  // Live stopwatch while the tool is still running: counts up from mount and
+  // pauses once the tool call completes (status flips to success/error).
+  const [elapsedSecs, setElapsedSecs] = useState(0);
+  useEffect(() => {
+    if (tool.status !== 'running') return;
+    setElapsedSecs(0);
+    const start = Date.now();
+    const timer = setInterval(() => setElapsedSecs(Math.floor((Date.now() - start) / 1000)), 500);
+    return () => clearInterval(timer);
+  }, [tool.status, tool.id]);
+
+  const formatElapsed = (secs: number) => {
+    if (secs < 60) return `${secs}s`;
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}m ${s}s`;
+  };
+
   // Target file resolution
   const targetFilePath = tool.target || 
     (tool.diff && tool.diff.file) || 
@@ -173,7 +191,11 @@ export function ToolCallCard({
     }
   };
 
-  const hasExpandableContent = Boolean(
+  const isRunning = status === 'running';
+  // While still running, show only the header + live stopwatch: the input may
+  // be incomplete and the output has not arrived yet. Full input/output render
+  // once the tool call completes.
+  const hasExpandableContent = !isRunning && Boolean(
     outputText || 
     commandOrInput || 
     tool.diff || 
@@ -255,7 +277,12 @@ export function ToolCallCard({
 
         {/* Right metadata & shortcut buttons */}
         <div className="flex items-center space-x-2 flex-shrink-0 text-[11px] font-mono">
-          {tool.duration || tool.time ? (
+          {status === 'running' ? (
+            <span className="inline-flex items-center space-x-1.5 text-ink/70">
+              <Loader2 size={11} className="animate-spin" />
+              <span>{formatElapsed(elapsedSecs)}</span>
+            </span>
+          ) : tool.duration || tool.time ? (
             <span className="text-ink/50">{tool.duration || tool.time}</span>
           ) : null}
 

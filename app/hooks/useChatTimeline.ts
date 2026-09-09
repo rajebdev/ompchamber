@@ -57,16 +57,70 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   const [localMessages, setLocalMessages] = useState<ChatMessageData[]>([]);
   const [sessionData, setSessionData] = useState<{ id?: string; title?: string; model?: string | { provider: string; modelId: string }; thinkingLevel?: string; messages?: any[] } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const isGeneratingRef = useRef(false);
+  const setGenerating = (v: boolean) => {
+    isGeneratingRef.current = v;
+    setIsGenerating(v);
+  };
   const [generatingVerb, setGeneratingVerb] = useState('');
   const abortControllerRef = useRef<AbortController | null>(null);
+  const prevSessionIdRef = useRef<string | null>(null);
 
   // omp sessions are string UUIDs; chamber-created (mock/numeric) sessions are
-  // integers. Only omp UUIDs route through the live agent bridge.
-  const isOmpSession = Boolean(sessionId) && Number.isNaN(Number(sessionId));
+  // integers. Only omp UUIDs route through the live agent bridge. Pending
+  // client-side sessions ("new-…", created before the omp spawn) are treated
+  // as not-yet-omp so executeSend spawns the real session on first send.
+  const isOmpSession = Boolean(sessionId) && !String(sessionId).startsWith('new-') && Number.isNaN(Number(sessionId));
+  const sessionIdRef = useRef(sessionId);
+  sessionIdRef.current = sessionId;
+
+  /** Re-fetch the session's title/metadata after the omp JSONL has been
+   *  written (spawn or agent end) so the navbar and context panel show the
+   *  real session title instead of the default. Retries (fast) until the JSONL
+   *  actually carries messages (omp writes the user turn on agent start), so
+   *  the sidebar refresh lands as soon as the first chunk arrives. */
+  const refreshSessionMeta = useCallback((sid: string) => {
+    if (new URLSearchParams(window.location.search).get('sessionId') !== sid) return;
+    let attempts = 0;
+    const tryFetch = () => {
+      attempts += 1;
+      fetch(`/api/chat/${encodeURIComponent(sid)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (!data?.session) return;
+          setSessionData(data.session);
+          // Only signal the sidebar once the JSONL carries the user turn, so
+          // the item appears with its real title (not the default).
+          if ((data.session.messages?.length ?? 0) > 0) {
+            window.dispatchEvent(new CustomEvent('omp:session-updated', { detail: { sessionId: sid } }));
+          } else if (attempts < 40) {
+            // The omp JSONL may be written well after agent_start: keep
+            // polling (20s) until the user turn lands so the sidebar item
+            // appears as soon as the chunk arrives.
+            setTimeout(tryFetch, 500);
+          }
+        })
+        .catch(() => {});
+    };
+    tryFetch();
+  }, []);
 
   // Fetch session messages and details from API
   useEffect(() => {
     let active = true;
+    // Track the previous session id so a session switch (including "New
+    // Session" → new-…) clears the timeline, while the optimistic spawn
+    // transition (new-… → real UUID) keeps its bubbles.
+    if (sessionId !== prevSessionIdRef.current) {
+      const isSpawnAdopt = sessionId && !sessionId.startsWith('new-') && prevSessionIdRef.current?.startsWith('new-');
+      if (!isSpawnAdopt) {
+        setLocalMessages([]);
+        setGenerating(false);
+        adoptedSessionIdRef.current = null;
+        metaRefreshedRef.current = null;
+      }
+      prevSessionIdRef.current = sessionId;
+    }
     if (sessionId) {
       fetch(`/api/chat/${sessionId}`)
         .then(res => res.json())
@@ -74,15 +128,23 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
           if (!active) return;
           if (data?.session) {
             setSessionData(data.session);
-            setLocalMessages(data.session.messages || []);
+            // Only replace the timeline when the fetch actually has messages.
+            // A pending "new-…" session or a just-spawned omp session whose
+            // JSONL is not written yet must not wipe the optimistic bubbles.
+            const fetched = data.session.messages || [];
+            if (fetched.length > 0) {
+              setLocalMessages(fetched);
+            } else if (!sessionId.startsWith('new-') && !isGeneratingRef.current) {
+              setLocalMessages([]);
+            }
           } else {
             setSessionData(null);
-            setLocalMessages([]);
+            if (!isGeneratingRef.current) setLocalMessages([]);
           }
         })
         .catch(err => {
           console.error('Error loading session from API:', err);
-          if (active) {
+          if (active && !isGeneratingRef.current) {
             setSessionData(null);
             setLocalMessages([]);
           }
@@ -154,11 +216,24 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
 
   // ── Live omp agent bridge (real mode) ──────────────────────────────────────
   const aiPlaceholderIdRef = useRef<string | null>(null);
+  // Real session id adopted by a fresh spawn ("new-…" → UUID). onAgentStart
+  // may fire before React re-renders with the new URL, so it reads the id
+  // from here instead of the (still-stale) sessionId prop.
+  const adoptedSessionIdRef = useRef<string | null>(null);
+  // Fire the sidebar/metadata refresh once per session when the AI starts
+  // responding (agent_start = first chunk) — the omp JSONL now carries the
+  // user turn, so the sidebar item + real title appear immediately.
+  const metaRefreshedRef = useRef<string | null>(null);
   const ompAgent = useOmpAgent(isOmpSession ? sessionId : null, {
     onAgentStart: () => {
-      setIsGenerating(true);
+      setGenerating(true);
       setGeneratingVerb('Deep reasoning');
       setTimeout(() => scrollToBottom('smooth'), 50);
+      const sid = adoptedSessionIdRef.current ?? sessionIdRef.current;
+      if (sid && metaRefreshedRef.current !== sid) {
+        metaRefreshedRef.current = sid;
+        setTimeout(() => refreshSessionMeta(sid), 100);
+      }
     },
     // omp-web mirrors this exactly: streaming updates live in a SEPARATE
     // slot that is replaced wholesale on every update (never merged into the
@@ -194,11 +269,14 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
         if (placeholderId && prev.some(m => m.id === placeholderId)) {
           updated = prev.map(m => (m.id === placeholderId ? msg : m));
         } else {
-          // Replace the trailing in-flight AI message; notice rows appended
-          // after it must survive.
+          // omp emits one message_end per content segment, each a distinct
+          // message id. Only replace the trailing in-flight AI message when
+          // the ids match (an update of the same message); otherwise append
+          // as a new message so thinking/toolCalls from earlier segments are
+          // not lost. Notice rows appended after it must survive.
           let idx = prev.length - 1;
           while (idx >= 0 && prev[idx].notice) idx--;
-          if (idx >= 0 && prev[idx].role === 'ai') {
+          if (idx >= 0 && prev[idx].role === 'ai' && prev[idx].id === msg.id) {
             updated = [...prev.slice(0, idx), msg, ...prev.slice(idx + 1)];
           } else {
             updated = [...prev, msg];
@@ -210,13 +288,17 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
       });
     },
     onAgentEnd: () => {
-      setIsGenerating(false);
+      setGenerating(false);
       abortControllerRef.current = null;
       triggerChatCompletionSound(appSettings);
       setTimeout(() => scrollToBottom('smooth'), 50);
+      // The omp JSONL has the final title/messages now — refresh session
+      // metadata so navbar/context panel show the real title.
+      const sid = sessionIdRef.current;
+      if (sid) refreshSessionMeta(sid);
     },
     onPromptError: (errorMessage) => {
-      setIsGenerating(false);
+      setGenerating(false);
       abortControllerRef.current = null;
       console.error('OMP prompt error:', errorMessage);
     },
@@ -224,7 +306,6 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
       console.info('OMP notice:', message);
     },
   });
-
   const executeSend = useCallback(async (text: string, attachments: Attachment[]) => {
     const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     const userMsgId = `msg-${Date.now()}-user`;
@@ -272,7 +353,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
       return next;
     });
 
-    setIsGenerating(true);
+    setGenerating(true);
     const verbs = ['Synthesizing solution', 'Deep reasoning', 'Architecting patch', 'Compiling edge routes'];
     setGeneratingVerb(verbs[Math.floor(Math.random() * verbs.length)]);
     setTimeout(() => scrollToBottom('smooth'), 50);
@@ -299,9 +380,44 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
         // Roll back the optimistic bubbles on a failed send.
         setLocalMessages(prev => prev.filter(m => m.id !== userMsgId && m.id !== aiPlaceholderId));
         aiPlaceholderIdRef.current = null;
-        setIsGenerating(false);
+        setGenerating(false);
       }
       return;
+    }
+
+    // No active session (fresh "New Session"): in real mode spawn a brand-new
+    // omp session and adopt its id; fall back to the mock/simulated path only
+    // when the spawn fails (e.g. MOCK=true or no workspace context).
+    if (!isOmpSession) {
+      const currentFolder = folders.find(f => String(f.id) === String(selectedFolderId));
+      const cwd = currentFolder?.project_path || currentFolder?.name;
+      if (cwd) {
+        const images = attachments
+          .filter(a => a.file.type.startsWith('image/') && a.dataBase64)
+          .map(a => ({ data: a.dataBase64 as string, mimeType: a.file.type }));
+        const textFiles = attachments
+          .filter(a => textFileContents.has(a.id))
+          .map(a => ({
+            name: a.file.name,
+            mimeType: a.file.type,
+            content: textFileContents.get(a.id) as string,
+            size: a.file.size,
+          }));
+        const promptText = composeMessageWithTextAttachments(text, textFiles);
+        const newSessionId = await ompAgent.sendNewPrompt(promptText, cwd, images.length ? images : undefined);
+        if (newSessionId) {
+          adoptedSessionIdRef.current = newSessionId;
+          aiPlaceholderIdRef.current = aiPlaceholderId;
+          setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            next.set('sessionId', newSessionId);
+            return next;
+          }, { replace: true });
+          // The agent_start event refreshes the session metadata/sidebar once
+          // the JSONL has the user turn; no immediate refresh is needed here.
+          return;
+        }
+      }
     }
 
     // Mock / chamber-created session: existing Gemini/simulated SSE path.
@@ -449,18 +565,18 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
             persistMessages(updated);
             return updated;
           });
-          setIsGenerating(false);
+          setGenerating(false);
           abortControllerRef.current = null;
           triggerChatCompletionSound(appSettings);
           setTimeout(() => scrollToBottom('smooth'), 50);
         },
         onError: () => {
-          setIsGenerating(false);
+          setGenerating(false);
           abortControllerRef.current = null;
         },
       }
     );
-  }, [appSettings, folders, isOmpSession, ompAgent, selectedFolderId, sessionId, scrollToBottom, persistMessages]);
+  }, [appSettings, folders, isOmpSession, ompAgent, selectedFolderId, sessionId, scrollToBottom, persistMessages, refreshSessionMeta]);
 
   // Auto-process queue
   useEffect(() => {
@@ -483,7 +599,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
           abortControllerRef.current.abort();
           abortControllerRef.current = null;
         }
-        setIsGenerating(false);
+        setGenerating(false);
         setInputValue('');
         setTimeout(() => executeSend(textToSend, attachments), 0);
         return;
@@ -518,7 +634,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
         abortControllerRef.current.abort();
         abortControllerRef.current = null;
       }
-      setIsGenerating(false);
+      setGenerating(false);
       setTimeout(() => executeSend(item.text, item.attachments), 0);
     } else {
       executeSend(item.text, item.attachments);
@@ -533,7 +649,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
         abortControllerRef.current.abort();
         abortControllerRef.current = null;
       }
-      setIsGenerating(false);
+      setGenerating(false);
     }
 
     if (content) {
@@ -556,7 +672,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
         abortControllerRef.current.abort();
         abortControllerRef.current = null;
       }
-      setIsGenerating(false);
+      setGenerating(false);
     }
 
     setLocalMessages(prev => {
@@ -575,14 +691,14 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   }, [isGenerating, executeSend, persistMessages, isOmpSession, ompAgent]);
 
   const submitNewChat = useCallback((text: string, attachments: any[]) => {
+    // Client-side pending session id: the sidebar/navbar show a default title
+    // immediately; the real omp session id replaces it on first send.
+    const pendingId = `new-${Date.now()}`;
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
-      // Numeric id: chamber-created sessions live in SQLite and are NOT omp
-      // sessions, so `isOmpSession` (numeric → false) keeps them on the mock
-      // Gemini/simulated path.
-      next.set('sessionId', String(Date.now()));
+      next.set('sessionId', pendingId);
       return next;
-    }, { replace: false });
+    }, { replace: true });
 
     setLocalMessages([]);
     setTimeout(() => {
@@ -597,7 +713,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
-    setIsGenerating(false);
+    setGenerating(false);
   }, [isOmpSession, ompAgent]);
 
   const handleThinkingLevelChange = useCallback((level: string) => {
@@ -611,6 +727,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
 
   return {
     sessionId,
+    folderId,
     isOmpSession,
     selectedFolderId,
     setSelectedFolderId: selectContextFolder,

@@ -132,7 +132,10 @@ export function scanSessionInfo(filePath: string): OmpSessionInfo | undefined {
 // ============================================================================
 
 interface SessionFileListCacheEntry {
-  rootMtimeMs: number;
+  /** mtimeMs of every project subdirectory, keyed by directory name. A new
+   *  session file bumps its project dir's mtime, so the cache invalidates for
+   *  free on add/remove even though the sessions root itself never changes. */
+  dirMtimes: Map<string, number>;
   files: string[];
 }
 
@@ -150,9 +153,8 @@ const MAX_SESSION_SCAN_CACHE_ENTRIES = 2048;
  * longer exists yields [] rather than throwing.
  */
 export function listSessionFiles(sessionsRoot: string = getSessionsDir()): string[] {
-  let rootStat: { mtimeMs: number };
   try {
-    rootStat = statSync(sessionsRoot);
+    statSync(sessionsRoot);
   } catch {
     return [];
   }
@@ -161,11 +163,26 @@ export function listSessionFiles(sessionsRoot: string = getSessionsDir()): strin
   }
   const cache = globalThis.__ompChamberSessionFileListCache;
   const cached = cache.get(sessionsRoot);
-  if (cached && cached.rootMtimeMs === rootStat.mtimeMs) {
-    return cached.files;
+  if (cached) {
+    let fresh = true;
+    for (const dirent of readdirSync(sessionsRoot, { withFileTypes: true })) {
+      if (!dirent.isDirectory()) continue;
+      try {
+        const stat = statSync(path.join(sessionsRoot, dirent.name));
+        if (cached.dirMtimes.get(dirent.name) !== stat.mtimeMs) {
+          fresh = false;
+          break;
+        }
+      } catch {
+        fresh = false;
+        break;
+      }
+    }
+    if (fresh && cached.dirMtimes.size > 0) return cached.files;
   }
 
   const files: string[] = [];
+  const dirMtimes = new Map<string, number>();
   let dirents: Dirent[] = [];
   try {
     dirents = readdirSync(sessionsRoot, { withFileTypes: true });
@@ -175,6 +192,11 @@ export function listSessionFiles(sessionsRoot: string = getSessionsDir()): strin
   for (const dirent of dirents) {
     if (!dirent.isDirectory()) continue;
     const projectDir = path.join(sessionsRoot, dirent.name);
+    try {
+      dirMtimes.set(dirent.name, statSync(projectDir).mtimeMs);
+    } catch {
+      continue;
+    }
     let entries: Dirent[] = [];
     try {
       entries = readdirSync(projectDir, { withFileTypes: true });
@@ -189,7 +211,7 @@ export function listSessionFiles(sessionsRoot: string = getSessionsDir()): strin
     }
   }
 
-  cache.set(sessionsRoot, { rootMtimeMs: rootStat.mtimeMs, files });
+  cache.set(sessionsRoot, { dirMtimes, files });
   return files;
 }
 
