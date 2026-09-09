@@ -31,18 +31,20 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
   const [showLeftPanel, setShowLeftPanel] = useState(appSettings.showLeftPanel ?? true);
   const [showRightPanel, setShowRightPanel] = useState(appSettings.showRightPanel ?? true);
   const [activeRightPanel, setActiveRightPanel] = useState<RightPanelType>(appSettings.activeRightPanel ?? 'files');
-  const initialLayoutSizes = appSettings.desktopLayoutSizes || {};
-  const leftSizeRef = useRef<number | undefined>(undefined);
-  const innerSizesRef = useRef<Record<string, number>>({ ...initialLayoutSizes });
+  const [layoutWeights, setLayoutWeights] = useState<Record<string, number>>(appSettings.desktopLayoutSizes || {});
+  const weightsRef = useRef<Record<string, number>>(appSettings.desktopLayoutSizes || {});
   const layoutSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [openedFiles, setOpenedFiles] = useState<any[]>([]);
   const [activeFileId, setActiveFileId] = useState<number | null>(null);
   const editorPanelRef = useRef<PanelImperativeHandle>(null);
   const rightPanelRef = useRef<PanelImperativeHandle>(null);
-  const shouldShowEditor = openedFiles.length > 0 && activeRightPanel !== 'search' && activeRightPanel !== 'git' && activeRightPanel !== 'terminal' && activeRightPanel !== 'context';
+  const leftPanelRef = useRef<PanelImperativeHandle>(null);
   const [userToggledEditor, setUserToggledEditor] = useState<boolean | null>(appSettings.userToggledEditor ?? null);
-  const showEditor = userToggledEditor !== null ? userToggledEditor : shouldShowEditor;
+  // The editor only ever renders while files are open. A persisted manual
+  // toggle is honored only then, so a reload with no open files never mounts
+  // the editor just to unmount it a frame later (the "editor blip").
+  const showEditor = openedFiles.length > 0 && (userToggledEditor ?? true);
 
   // The right-panel developer tools are scoped to the active workspace
   // context: the folder owning the selected session, or — when creating a
@@ -74,23 +76,20 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
     }).catch(console.error);
   };
 
-  // Single-owner layout persistence: merge the live sizes of BOTH groups (the
+  // Single-owner layout persistence: merge the live weights of BOTH groups (the
   // outer left panel and the inner center/editor/right stack) into one complete
   // map before writing, so no group clobbers the other's widths.
   const persistLayout = useCallback(() => {
     if (layoutSaveTimerRef.current) clearTimeout(layoutSaveTimerRef.current);
     layoutSaveTimerRef.current = setTimeout(() => {
-      const complete: Record<string, number> = {
-        ...innerSizesRef.current,
-        ...(leftSizeRef.current !== undefined ? { left: leftSizeRef.current } : {}),
-      };
-      saveSetting('desktopLayoutSizes', complete);
+      saveSetting('desktopLayoutSizes', { ...weightsRef.current });
     }, 500);
   }, [saveSetting]);
 
   const handleWorkspaceLayout = useCallback(
     (inner: Record<string, number>) => {
-      innerSizesRef.current = { ...innerSizesRef.current, ...inner };
+      weightsRef.current = { ...weightsRef.current, ...inner };
+      setLayoutWeights(weightsRef.current);
       persistLayout();
     },
     [persistLayout],
@@ -139,8 +138,6 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
       setUserToggledEditor(false);
     } else if (openedFiles.length > 0) {
       setUserToggledEditor(true);
-    } else {
-      setUserToggledEditor(false);
     }
   }, [activeRightPanel, openedFiles.length]);
 
@@ -264,18 +261,19 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
           </div>
         )}
 
-        <Group 
-          orientation="horizontal" 
+        <Group
+          orientation="horizontal"
           id="ompchamber-main"
-          onLayoutChanged={(sizes) => {
-            const left = showLeftPanel ? sizes[0] : undefined;
-            if (left !== undefined) leftSizeRef.current = left;
-            persistLayout();
+          onLayoutChanged={(_, meta) => {
+            if (meta.isUserInteraction) {
+              const left = leftPanelRef.current?.getSize()?.inPixels;
+              if (left != null && left > 0) handleWorkspaceLayout({ left });
+            }
           }}
         >
           {showLeftPanel && (
             <>
-              <Panel id="left-panel" defaultSize={initialLayoutSizes?.left != null ? `${initialLayoutSizes.left}%` : 268} minSize={200} maxSize={600} collapsible>
+              <Panel panelRef={leftPanelRef} id="left-panel" defaultSize={layoutWeights.left ?? 268} minSize={200} maxSize={600} collapsible>
                 <SessionSidebar className="w-full h-full" folders={folders} onClose={() => handleToggleLeftPanel(false)} appSettings={appSettings} />
               </Panel>
               <CustomResizeHandle />
@@ -303,7 +301,7 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
                 showRightPanel={showRightPanel}
                 activeRightPanel={activeRightPanel}
                 rightPanelRef={rightPanelRef}
-                initialLayoutSizes={initialLayoutSizes}
+                initialLayoutSizes={layoutWeights}
                 hasActiveContext={hasActiveContext}
                 activeProjectPath={activeProjectPath}
                 openedFiles={openedFiles}

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Group, Panel, Separator, type PanelImperativeHandle } from 'react-resizable-panels';
 import { ChatTimeline } from '@/components/workspace/ChatTimeline';
 import { Editor } from '@/components/workspace/Editor';
@@ -42,9 +42,6 @@ function CustomResizeHandle() {
   );
 }
 
-const pctOr = (saved: number | undefined, fallback?: number | string): number | string | undefined =>
-  saved != null ? `${saved}%` : fallback;
-
 export function WorkspacePanels(props: WorkspacePanelsProps) {
   const {
     folders,
@@ -70,28 +67,44 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
     onWorkspaceLayout,
   } = props;
 
+  // Live pixel sizes of the inner panels, kept in sync on every layout commit
+  // (including imperative resizes) but only persisted to the server on real
+  // user drags. Pixel sizes are stable across panel mount/unmount, so toggling
+  // the editor or right panel never re-distributes the chat panel's width.
+  const savedSizesRef = useRef<Record<string, number>>({ ...(initialLayoutSizes ?? {}) });
+
+  const readPanelSizes = () => {
+    const sizes: Record<string, number> = {};
+    const editorSize = editorPanelRef.current?.getSize()?.inPixels;
+    const rightSize = rightPanelRef.current?.getSize()?.inPixels;
+    if (editorSize != null && editorSize > 0) sizes.editor = editorSize;
+    if (rightSize != null && rightSize > 0) sizes.right = rightSize;
+    return sizes;
+  };
+
+  const rightDefault = (activeRightPanel === 'terminal' || activeRightPanel === 'context') ? 536 : 268;
+
   return (
     <div className="flex flex-1 overflow-hidden">
       <Group
         orientation="horizontal"
         id="ompchamber-layout"
-        onLayoutChanged={(sizes) => {
-          const layoutMap: Record<string, number> = {};
-          let i = 0;
-          layoutMap.center = sizes[i++];
-          if (showEditor) layoutMap.editor = sizes[i++];
-          if (showRightPanel) layoutMap.right = sizes[i++];
-          onWorkspaceLayout(layoutMap);
+        onLayoutChanged={(_, meta) => {
+          const sizes = readPanelSizes();
+          savedSizesRef.current = { ...savedSizesRef.current, ...sizes };
+          // Persist only real user drags; ignore mount/remount/constraint
+          // recomputes so a reload never rewrites the saved layout.
+          if (meta.isUserInteraction) onWorkspaceLayout(sizes);
         }}
       >
-        <Panel id="center-panel" defaultSize={pctOr(initialLayoutSizes?.center)} minSize="540px">
+        <Panel id="center-panel" minSize="540px">
           <ChatTimeline className="w-full h-full" folders={folders} appSettings={appSettings} onSessionTitle={onSessionTitle} />
         </Panel>
 
         {showEditor && (
           <>
             <CustomResizeHandle />
-            <Panel panelRef={editorPanelRef} id="editor-panel" defaultSize={pctOr(initialLayoutSizes?.editor, 536)} minSize={300}>
+            <Panel panelRef={editorPanelRef} id="editor-panel" defaultSize={savedSizesRef.current.editor ?? 536} minSize={300}>
               <Editor
                 className="w-full h-full"
                 openedFiles={openedFiles}
@@ -108,7 +121,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
         {showRightPanel && (
           <>
             <CustomResizeHandle />
-            <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={pctOr(initialLayoutSizes?.right, (activeRightPanel === 'terminal' || activeRightPanel === 'context') ? 536 : 268)} minSize={activeRightPanel === 'context' ? 420 : activeRightPanel === 'git' ? 260 : 200} maxSize={800} collapsible>
+            <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={savedSizesRef.current.right ?? rightDefault} minSize={activeRightPanel === 'context' ? 420 : activeRightPanel === 'git' ? 260 : 200} maxSize={800} collapsible>
               {activeRightPanel === 'files' && <FileExplorer className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} onOpenFile={onOpenFile} refreshKey={refreshKey} onRefresh={onRefreshWorkspace} />}
               {activeRightPanel === 'search' && <SearchPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} />}
               {activeRightPanel === 'git' && <GitPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} refreshKey={refreshKey} />}
