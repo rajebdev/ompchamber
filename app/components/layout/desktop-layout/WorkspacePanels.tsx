@@ -7,6 +7,7 @@ import { SearchPanel } from '@/components/workspace/SearchPanel';
 import { GitPanel } from '@/components/workspace/GitPanel';
 import { TerminalPanel } from '@/components/workspace/TerminalPanel';
 import { ContextPanel } from '@/components/workspace/ContextPanel';
+import { BrowserPanel } from '@/components/workspace/BrowserPanel';
 import { RightActivityBar, type RightPanelType } from '@/components/layout/RightActivityBar';
 import type { WorkspaceFolderData } from '@/types';
 
@@ -82,7 +83,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
     return sizes;
   };
 
-  const rightDefault = (activeRightPanel === 'terminal' || activeRightPanel === 'context') ? 536 : 268;
+  const rightDefault = activeRightPanel === 'browser' ? 804 : (activeRightPanel === 'terminal' || activeRightPanel === 'context') ? 536 : 268;
 
   return (
     <div className="flex flex-1 overflow-hidden">
@@ -121,13 +122,16 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
         {showRightPanel && (
           <>
             <CustomResizeHandle />
-            <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={savedSizesRef.current.right ?? rightDefault} minSize={activeRightPanel === 'context' ? 420 : activeRightPanel === 'git' ? 260 : 200} maxSize={800} collapsible>
+            <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={savedSizesRef.current.right ?? rightDefault} minSize={activeRightPanel === 'browser' ? 320 : activeRightPanel === 'context' ? 420 : activeRightPanel === 'git' ? 260 : 200} maxSize={1200} collapsible>
               {activeRightPanel === 'files' && <FileExplorer className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} onOpenFile={onOpenFile} refreshKey={refreshKey} onRefresh={onRefreshWorkspace} />}
               {activeRightPanel === 'search' && <SearchPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} />}
               {activeRightPanel === 'git' && <GitPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} refreshKey={refreshKey} />}
               {activeRightPanel === 'context' && <ContextPanel className="w-full h-full" enabled={hasActiveContext} refreshKey={refreshKey} onClose={onToggleRightPanel} />}
               <div className={`w-full h-full ${activeRightPanel === 'terminal' ? 'block' : 'hidden'}`}>
                 <TerminalPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} />
+              </div>
+              <div className={`w-full h-full ${activeRightPanel === 'browser' ? 'block' : 'hidden'}`}>
+                <BrowserPanel className="w-full h-full" />
               </div>
             </Panel>
           </>

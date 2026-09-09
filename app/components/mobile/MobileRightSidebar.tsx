@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { GitBranch, Files, Search, Terminal, Layers, X } from 'lucide-react';
+import { GitBranch, Files, Search, Terminal, Layers, Globe, X } from 'lucide-react';
 import { FileExplorer } from '@/components/workspace/FileExplorer';
 import { SearchPanel } from '@/components/workspace/SearchPanel';
 import { GitPanel } from '@/components/workspace/GitPanel';
 import { TerminalPanel } from '@/components/workspace/TerminalPanel';
 import { ContextPanel } from '@/components/workspace/ContextPanel';
+import { BrowserPanel } from '@/components/workspace/BrowserPanel';
 
 interface MobileRightSidebarProps {
   enabled?: boolean;
@@ -13,7 +14,7 @@ interface MobileRightSidebarProps {
   onClose: () => void;
 }
 
-type MobileTab = 'git' | 'files' | 'search' | 'context' | 'terminal';
+type MobileTab = 'git' | 'files' | 'search' | 'context' | 'terminal' | 'browser';
 
 export function MobileRightSidebar({
   enabled = true,
@@ -99,6 +100,20 @@ export function MobileRightSidebar({
             <Terminal size={14} className="flex-shrink-0" />
             {activeTab === 'terminal' && <span>Terminal</span>}
           </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('browser')}
+            className={`flex items-center transition-all cursor-pointer ${
+              activeTab === 'browser'
+                ? 'space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-ink text-canvas shadow-sm'
+                : 'p-2 rounded-lg text-ink/70 hover:bg-ink/5'
+            }`}
+            title="Browser"
+          >
+            <Globe size={14} className="flex-shrink-0" />
+            {activeTab === 'browser' && <span>Browser</span>}
+          </button>
         </div>
 
         <button
@@ -134,6 +149,9 @@ export function MobileRightSidebar({
             )}
             <div className={`h-full w-full ${activeTab === 'terminal' ? 'block' : 'hidden'}`}>
               <TerminalPanel className="h-full w-full" enabled={enabled} rootPath={rootPath} showHeader={false} />
+            </div>
+            <div className={`h-full w-full ${activeTab === 'browser' ? 'block' : 'hidden'}`}>
+              <BrowserPanel className="h-full w-full" />
             </div>
           </>
         )}

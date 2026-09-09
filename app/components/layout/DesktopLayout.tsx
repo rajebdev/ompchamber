@@ -134,7 +134,7 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
   }, []);
 
   useEffect(() => {
-    if (activeRightPanel === 'search' || activeRightPanel === 'git' || activeRightPanel === 'terminal' || activeRightPanel === 'context') {
+    if (activeRightPanel === 'search' || activeRightPanel === 'git' || activeRightPanel === 'terminal' || activeRightPanel === 'context' || activeRightPanel === 'browser') {
       setUserToggledEditor(false);
     } else if (openedFiles.length > 0) {
       setUserToggledEditor(true);
@@ -207,10 +207,10 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
     setShowRightPanel(nextShow);
     setActiveRightPanel(nextActive);
 
-    // Adjust width dynamically (terminal/context = 536px [2x268], others = 268px)
+    // Adjust width dynamically (browser = 804px [3x268], terminal/context = 536px [2x268], others = 268px)
     if (nextShow && rightPanelRef.current) {
       setTimeout(() => {
-        const targetPx = (nextActive === 'terminal' || nextActive === 'context') ? 536 : 268;
+        const targetPx = nextActive === 'browser' ? (268 * 3) : (nextActive === 'terminal' || nextActive === 'context') ? 536 : 268;
         rightPanelRef.current?.resize(targetPx);
       }, 50);
     }
