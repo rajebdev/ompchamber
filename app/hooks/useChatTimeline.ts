@@ -244,6 +244,14 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
         setTimeout(() => refreshSessionMeta(sid), 100);
       }
     },
+    // Reload recovery: the omp process kept running server-side, so the SSE
+    // stream is reattached and the generating UI must resume (the timeline
+    // fetch already loaded the committed messages; live updates continue).
+    onResumeStream: () => {
+      setGenerating(true);
+      setGeneratingVerb('Deep reasoning');
+      setTimeout(() => scrollToBottom('smooth'), 50);
+    },
     // omp-web mirrors this exactly: streaming updates live in a SEPARATE
     // slot that is replaced wholesale on every update (never merged into the
     // committed list), and only flushed to history on message_end. omp's
@@ -265,15 +273,13 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
         if (placeholderId && prev.some(m => m.id === placeholderId)) {
           return prev.map(m => (m.id === placeholderId ? msg : m));
         }
-        // omp streams one segment per message id, each carrying the FULL
-        // accumulated message (latest-wins). Replace the trailing in-flight
-        // AI message — skipping notice rows — whether or not the ids match,
-        // so earlier segments never linger as duplicate thinking bubbles and
-        // notice rows are never clobbered by the empty-content fallthrough.
-        let idx = prev.length - 1;
-        while (idx >= 0 && prev[idx].notice) idx--;
-        if (idx >= 0 && prev[idx].role === 'ai') {
-          return [...prev.slice(0, idx), msg, ...prev.slice(idx + 1)];
+        // omp emits one message_update per segment, each a distinct message
+        // id carrying that segment's FULL accumulated content. Same id →
+        // in-place update; a new id → append (replacing the trailing AI
+        // message would wipe the previous segment's thinking/tool bubbles).
+        const existingIdx = prev.findIndex(m => m.id === msg.id);
+        if (existingIdx !== -1) {
+          return [...prev.slice(0, existingIdx), msg, ...prev.slice(existingIdx + 1)];
         }
         return [...prev, msg];
       });
@@ -286,15 +292,13 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
         if (placeholderId && prev.some(m => m.id === placeholderId)) {
           updated = prev.map(m => (m.id === placeholderId ? msg : m));
         } else {
-          // omp emits one message_end per content segment, each a distinct
-          // message id carrying the FULL accumulated segment (latest-wins).
-          // Replace the trailing in-flight AI message (skipping notice rows)
-          // so segments of the same turn never stack into duplicate
-          // thinking/tool bubbles; notice rows appended after it survive.
-          let idx = prev.length - 1;
-          while (idx >= 0 && prev[idx].notice) idx--;
-          if (idx >= 0 && prev[idx].role === 'ai') {
-            updated = [...prev.slice(0, idx), msg, ...prev.slice(idx + 1)];
+          // omp emits one message_end per segment, each a distinct message
+          // id carrying that segment's FULL accumulated content. Same id →
+          // in-place finalize; a new id → append so segments of the same
+          // turn stack (thinking/tool bubbles from earlier segments survive).
+          const existingIdx = prev.findIndex(m => m.id === msg.id);
+          if (existingIdx !== -1) {
+            updated = [...prev.slice(0, existingIdx), msg, ...prev.slice(existingIdx + 1)];
           } else {
             updated = [...prev, msg];
           }

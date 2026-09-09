@@ -74,6 +74,9 @@ export interface OmpAgentCallbacks {
   onPromptError?: (errorMessage: string) => void;
   onNotice?: (level: string, message: string) => void;
   onConnected?: () => void;
+  /** Mount-time probe found the session mid-run → the stream was reattached
+   *  and the UI should resume its generating state. */
+  onResumeStream?: () => void;
   /** Ask/approval dialog diminta omp — blocking sampai di-respond. */
   onExtensionUiRequest?: (request: IncomingExtensionUiRequest) => void;
 }
@@ -376,8 +379,28 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     // process is spawned (POST /api/agent/:id), and an EventSource to a 409
     // loops network errors in the console. connect() is called lazily by
     // sendPrompt after the spawn succeeds.
-    return () => disconnect();
-  }, [sessionId, disconnect]);
+    let cancelled = false;
+    // Reload/remount recovery: the omp process keeps running server-side
+    // after a page refresh, so a mid-run session must reattach its SSE stream
+    // or the in-flight response appears frozen. Probe get_state; when the
+    // wrapper reports streaming/prompt-running, reconnect and let the caller
+    // resume the generating UI.
+    fetch(`/api/agent/${encodeURIComponent(sessionId)}`)
+      .then(res => (res.ok ? res.json() : null))
+      .then((data: { running?: boolean; state?: { isStreaming?: boolean; isPromptRunning?: boolean } } | null) => {
+        if (cancelled || !data?.running) return;
+        const state = data.state;
+        if (state && (state.isStreaming || state.isPromptRunning)) {
+          connect(sessionId);
+          callbacksRef.current.onResumeStream?.();
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      disconnect();
+    };
+  }, [sessionId, disconnect, connect]);
 
   /** Send a prompt to the omp session via the RPC bridge. */
   const sendPrompt = useCallback(async (message: string, images?: { data: string; mimeType: string }[]) => {
