@@ -124,15 +124,22 @@ export function EmptyWorkspacePrompt({
             <div className="mx-auto w-full max-w-[970px]">
               {localMessages.map((msg, idx) => {
                 const prev = localMessages[idx - 1];
-                const isLoading = isGenerating && idx === localMessages.length - 1 && msg.role === 'ai';
+                let lastAiIdx = localMessages.length - 1;
+                while (lastAiIdx >= 0 && localMessages[lastAiIdx].notice) lastAiIdx--;
+                const isLoading = isGenerating && idx === lastAiIdx && msg.role === 'ai';
                 const isAiFragment = msg.role !== 'user' && prev && prev.role !== 'user';
+                // Notice rows are transparent for footer purposes — the last
+                // real AI message of a run still owns the footer (mirror
+                // ChatTimeline) and the notice itself never gets one.
+                const nextReal = localMessages.slice(idx + 1).find(m => !m.notice);
+                const isLastAi = msg.role !== 'user' && !msg.notice && (!nextReal || nextReal.role === 'user');
                 return (
                   <ChatMessageItem
                     key={msg.id}
                     msg={msg}
                     modelName={modelName}
                     isStreaming={isLoading}
-                    footerVisible={msg.role !== 'user' && msg.role !== 'assistant'}
+                    footerVisible={isLastAi}
                     className={isAiFragment ? 'mt-1' : 'mt-8'}
                   />
                 );

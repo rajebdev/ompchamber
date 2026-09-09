@@ -116,7 +116,12 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
           <div className="mx-auto w-full max-w-[970px]">
             {localMessages.map((msg, idx) => {
               const prev = localMessages[idx - 1];
-              const isLoading = isGenerating && idx === localMessages.length - 1 && msg.role === 'ai';
+              // The streaming AI message is the last non-notice row: notice
+              // rows sit above the turn, so a plain "last item" check would
+              // mark the notice as streaming and render the footer early.
+              let lastAiIdx = localMessages.length - 1;
+              while (lastAiIdx >= 0 && localMessages[lastAiIdx].notice) lastAiIdx--;
+              const isLoading = isGenerating && idx === lastAiIdx && msg.role === 'ai';
               // Notice rows are transparent for footer purposes: the last real
               // AI message of a run still owns the footer even when a notice
               // row follows it.

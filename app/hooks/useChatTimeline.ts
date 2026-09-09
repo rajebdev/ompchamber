@@ -250,21 +250,29 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     onMessageUpdate: (msg) => {
       setLocalMessages(prev => {
         const placeholderId = aiPlaceholderIdRef.current;
-        // Notice rows are independent of the streaming bubble — append them
-        // (deduped by id) without touching the placeholder.
+        // Notice rows are independent of the streaming bubble — insert them
+        // above the turn (before the last user message, deduped by id) so
+        // the order matches the JSONL reload: notice → user → assistant.
         if (msg.notice) {
           if (prev.some(m => m.id === msg.id)) return prev;
-          return [...prev, msg];
+          let insertAt = prev.length;
+          for (let i = prev.length - 1; i >= 0; i--) {
+            if (prev[i].role === 'user') { insertAt = i; break; }
+          }
+          return [...prev.slice(0, insertAt), msg, ...prev.slice(insertAt)];
         }
         if (placeholderId && prev.some(m => m.id === placeholderId)) {
           return prev.map(m => (m.id === placeholderId ? msg : m));
         }
-        const last = prev[prev.length - 1];
-        if (last && last.role === 'ai' && msg.id === last.id) {
-          return [...prev.slice(0, -1), msg];
-        }
-        if (last && last.role === 'ai' && /\S/.test(last.content) === false && !last.toolCalls?.length) {
-          return [...prev.slice(0, -1), msg];
+        // omp streams one segment per message id, each carrying the FULL
+        // accumulated message (latest-wins). Replace the trailing in-flight
+        // AI message — skipping notice rows — whether or not the ids match,
+        // so earlier segments never linger as duplicate thinking bubbles and
+        // notice rows are never clobbered by the empty-content fallthrough.
+        let idx = prev.length - 1;
+        while (idx >= 0 && prev[idx].notice) idx--;
+        if (idx >= 0 && prev[idx].role === 'ai') {
+          return [...prev.slice(0, idx), msg, ...prev.slice(idx + 1)];
         }
         return [...prev, msg];
       });
@@ -278,13 +286,13 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
           updated = prev.map(m => (m.id === placeholderId ? msg : m));
         } else {
           // omp emits one message_end per content segment, each a distinct
-          // message id. Only replace the trailing in-flight AI message when
-          // the ids match (an update of the same message); otherwise append
-          // as a new message so thinking/toolCalls from earlier segments are
-          // not lost. Notice rows appended after it must survive.
+          // message id carrying the FULL accumulated segment (latest-wins).
+          // Replace the trailing in-flight AI message (skipping notice rows)
+          // so segments of the same turn never stack into duplicate
+          // thinking/tool bubbles; notice rows appended after it survive.
           let idx = prev.length - 1;
           while (idx >= 0 && prev[idx].notice) idx--;
-          if (idx >= 0 && prev[idx].role === 'ai' && prev[idx].id === msg.id) {
+          if (idx >= 0 && prev[idx].role === 'ai') {
             updated = [...prev.slice(0, idx), msg, ...prev.slice(idx + 1)];
           } else {
             updated = [...prev, msg];
