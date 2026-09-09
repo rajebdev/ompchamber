@@ -34,6 +34,15 @@ interface ChatMessageItemProps {
   durationMs?: number | null;
 }
 
+function capitalizeFirstLetter(text: string): string {
+  if (!text) return text;
+  const match = text.match(/^(\s*)([a-zA-Z\u00C0-\u024F])(.*)$/s);
+  if (match) {
+    return match[1] + match[2].toUpperCase() + match[3];
+  }
+  return text;
+}
+
 export function ChatMessageItem({ 
   msg, 
   modelName, 
@@ -217,13 +226,24 @@ export function ChatMessageItem({
           />
         )}
 
-        {/* Tool Call Intent */}
-        {msg.intent && (
-          <div className="text-[12px] text-ink/80 leading-relaxed font-sans px-3 py-0.5 select-text">
-            {(() => {
-              const clean = msg.intent.replace(/^[.\s]+/, '');
-              return clean.charAt(0).toUpperCase() + clean.slice(1);
-            })()}
+        {/* Main AI Response Content (Rich Markdown with code blocks, tables, lists) rendered before tool calls */}
+        {hasRenderableContent && (
+          <div className="text-[13px] text-ink leading-relaxed font-sans bg-transparent px-3 py-1 select-text">
+            <MarkdownRenderer content={capitalizeFirstLetter(msg.content)} />
+            {isStreaming && (
+              <span className="inline-block w-1.5 h-3.5 bg-ink/70 ml-1 translate-y-0.5 animate-pulse" />
+            )}
+          </div>
+        )}
+
+        {/* Tool Call Intent (rendered right before Tool Calling) */}
+        {msg.intent && (!hasRenderableContent || !msg.content.toLowerCase().includes(msg.intent.toLowerCase().trim())) && (
+          <div className={`leading-relaxed font-sans px-3 select-text ${
+            hasRenderableContent
+              ? 'text-[12px] text-ink/70 py-0.5'
+              : 'text-[13px] text-ink py-1'
+          }`}>
+            {capitalizeFirstLetter(msg.intent.replace(/^[.\s]+/, ''))}
           </div>
         )}
 
@@ -253,16 +273,6 @@ export function ChatMessageItem({
             title={`Follow-up Tools (${secondaryToolCalls.length})`}
             defaultExpanded={true}
           />
-        )}
-
-        {/* Main AI Response Content (Rich Markdown with code blocks, tables, lists) */}
-        {hasRenderableContent && (
-          <div className="text-[13px] text-ink leading-relaxed font-sans bg-transparent px-3 py-1 select-text">
-            <MarkdownRenderer content={msg.content} />
-            {isStreaming && (
-              <span className="inline-block w-1.5 h-3.5 bg-ink/70 ml-1 translate-y-0.5 animate-pulse" />
-            )}
-          </div>
         )}
 
         {/* AI Final Summary / Conclusion Card (Only shown when not streaming) */}

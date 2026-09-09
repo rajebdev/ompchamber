@@ -66,7 +66,9 @@ export function MobileHeader({
             onClick={() => setShowSessionPicker(!showSessionPicker)}
             className="flex items-center space-x-1 text-xs font-semibold text-ink hover:text-ink/80 transition-colors py-1 truncate max-w-[130px]"
           >
-            <span className="truncate">{activeSessionTitle}</span>
+            <span className="truncate">
+              {activeSessionTitle ? activeSessionTitle.charAt(0).toUpperCase() + activeSessionTitle.slice(1) : ''}
+            </span>
             <ChevronDown size={13} className="text-ink/50 flex-shrink-0" />
           </button>
 
@@ -90,7 +92,7 @@ export function MobileHeader({
                     onClick={() => { onSelectSession(s.id); setShowSessionPicker(false); }}
                     className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between transition-colors ${activeSessionId === s.id ? 'bg-ink/10 font-semibold text-ink' : 'hover:bg-ink/5 text-ink/80'}`}
                   >
-                    <span className="truncate">{s.title}</span>
+                    <span className="truncate">{s.title ? s.title.charAt(0).toUpperCase() + s.title.slice(1) : ''}</span>
                     {activeSessionId === s.id && <Check size={12} />}
                   </button>
                 ))}

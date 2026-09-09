@@ -344,7 +344,16 @@ function collectToolOutputs(records: Record<string, unknown>[]): Map<string, Col
     if (!callId) continue;
     const text = resultOutput(msg);
     const existing = outputs.get(callId);
-    const output = existing ? `${existing.output}\n${text}` : text;
+    let output = text;
+    if (existing) {
+      if (existing.output.trim() === text.trim() || existing.output.includes(text)) {
+        output = existing.output;
+      } else if (text.includes(existing.output)) {
+        output = text;
+      } else {
+        output = `${existing.output}\n${text}`;
+      }
+    }
     const details = (isRecord(msg.details) ? (msg.details as Record<string, unknown>) : undefined) || existing?.details;
     const isError = msg.isError === true || existing?.isError;
     outputs.set(callId, { output, details, isError });

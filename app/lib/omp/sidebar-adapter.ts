@@ -19,9 +19,15 @@ import type { OmpSession, OmpSidebarData, OmpProject } from '@/types/omp';
 
 /** Display title of a session: name, else first message, else fallback. */
 export function sessionTitleFor(session: OmpSession): string {
-  if (session.name?.trim()) return session.name;
+  if (session.name?.trim()) {
+    const n = session.name.trim();
+    return n.charAt(0).toUpperCase() + n.slice(1);
+  }
   const first = (session.firstMessage || '').trim();
-  if (first && first !== '(no messages)') return first.slice(0, 120);
+  if (first && first !== '(no messages)') {
+    const text = first.slice(0, 120);
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }
   return 'Untitled session';
 }
 

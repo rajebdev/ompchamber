@@ -37,7 +37,9 @@ export function TopNavbar({
         {sessionTitle && (
           <>
             <span className="font-bold text-sm tracking-tight hidden sm:flex items-center">
-              <span className="font-semibold text-xs text-ink truncate">{sessionTitle}</span>
+              <span className="font-semibold text-xs text-ink truncate">
+                {sessionTitle.charAt(0).toUpperCase() + sessionTitle.slice(1)}
+              </span>
             </span>
             <MoreHorizontal size={14} className="text-ink/40 hover:text-ink cursor-pointer flex-shrink-0" />
           </>
