@@ -173,6 +173,7 @@
 
 .prose-content {
   line-height: var(--markdown-body-line-height);
+  white-space: normal;
 }
 .prose-content > *:first-child { margin-top: 0; }
 .prose-content > *:last-child { margin-bottom: 0; }

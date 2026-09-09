@@ -8,7 +8,7 @@
  *
  * Stack (run in order, all server/client safe — parsed synchronously):
  *   1. remend  — heal incomplete markdown while streaming (before parse)
- *   2. marked  — GFM true, breaks false, autolink via marked-linkify-it (CJK
+ *   2. marked  — GFM true, breaks true, autolink via marked-linkify-it (CJK
  *      punctuation is not swallowed into URLs), plus a KaTeX extension for
  *      \(...\) inline, \[...\] block, and $$...$$ display math
  *
@@ -73,7 +73,7 @@ interface TokenLike {
 
 const marked = new Marked({
   gfm: true,
-  breaks: false,
+  breaks: true,
 });
 
 marked.use(markedLinkifyIt());

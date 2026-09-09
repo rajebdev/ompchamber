@@ -114,7 +114,7 @@ export function ChatMessageItem({
     return (
       <div id={msg.id} className={`flex flex-col items-end space-y-1.5 w-full max-w-full ${className}`}>
         {/* User bubble - standardized to text-[13px] with markdown support */}
-        <div className="bg-paper p-3.5 sm:p-4 rounded-xl border border-ink/15 text-[13px] text-ink shadow-xs max-w-[92%] sm:max-w-[85%] break-words whitespace-pre-wrap overflow-hidden flex flex-col space-y-2 font-sans select-text mx-3" style={{ lineHeight: 'var(--markdown-body-line-height)' }}>
+        <div className="bg-paper p-3.5 sm:p-4 rounded-xl border border-ink/15 text-[13px] text-ink shadow-xs max-w-[92%] sm:max-w-[85%] break-words overflow-hidden flex flex-col space-y-2 font-sans select-text mx-3" style={{ lineHeight: 'var(--markdown-body-line-height)' }}>
           <MarkdownRenderer content={msg.content.trim()} />
           
           <AttachmentChips

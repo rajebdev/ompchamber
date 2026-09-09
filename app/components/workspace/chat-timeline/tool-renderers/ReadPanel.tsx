@@ -2,64 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { FileText, Folder, FolderOpen, Loader2, Check, Copy, Info, FileCode } from 'lucide-react';
 import { copyToClipboard } from '@/hooks/useClipboard';
 import { highlightCode, getLanguageFromPath } from '@/lib/syntax-highlight';
-
-interface DirEntry {
-  indent: number;
-  isDir: boolean;
-  name: string;
-  size?: string;
-  time?: string;
-}
-
-function parseDirListing(text: string): { isDirectory: boolean; entries: DirEntry[]; notice?: string } {
-  const lines = text.split(/\r?\n/).filter(Boolean);
-  if (lines.length === 0) return { isDirectory: false, entries: [] };
-
-  const firstLine = lines[0].trim();
-  const hasTreePattern = lines.some((l) => l.trimStart().startsWith('- ') || l.trimStart().startsWith('├──') || l.trimStart().startsWith('└──'));
-  if (firstLine !== '.' && !hasTreePattern) {
-    return { isDirectory: false, entries: [] };
-  }
-
-  const entries: DirEntry[] = [];
-  let notice: string | undefined;
-
-  for (const line of lines) {
-    if (line.startsWith('[') && line.endsWith(']')) {
-      notice = line.slice(1, -1);
-      continue;
-    }
-    if (line.trim() === '.') {
-      entries.push({ indent: 0, isDir: true, name: '.' });
-      continue;
-    }
-
-    const match = line.match(/^(\s*)-\s+([^\s]+)\s*(.*)$/);
-    if (match) {
-      const indent = Math.floor(match[1].length / 2);
-      const rawName = match[2];
-      const remainder = match[3].trim();
-      const isDir = rawName.endsWith('/');
-      const name = isDir ? rawName.slice(0, -1) : rawName;
-
-      let size: string | undefined;
-      let time: string | undefined;
-
-      const remParts = remainder.split(/\s{2,}|\t+/).filter(Boolean);
-      if (remParts.length === 2) {
-        size = remParts[0];
-        time = remParts[1];
-      } else if (remParts.length === 1) {
-        if (remParts[0].endsWith('ago')) time = remParts[0];
-        else size = remParts[0];
-      }
-
-      entries.push({ indent, isDir, name, size, time });
-    }
-  }
-
-  return { isDirectory: entries.length > 0, entries, notice };
-}
+import { parseDirListing, parseNumberedCode } from '@/lib/code-parser';
 
 interface ReadPanelProps {
   targetFilePath?: string;
@@ -115,17 +58,30 @@ export function ReadPanel({ targetFilePath, output }: ReadPanelProps) {
     return { displayContent: codeLines.join('\n'), elisionNotices: notices };
   }, [rawContent, dirInfo.isDirectory]);
 
+  const parsedCode = useMemo(() => {
+    if (dirInfo.isDirectory || !displayContent) {
+      return { lines: [], cleanCode: '', hasLineNumbers: false };
+    }
+    return parseNumberedCode(displayContent);
+  }, [displayContent, dirInfo.isDirectory]);
+
+  const isDir = dirInfo.isDirectory;
+  const lang = getLanguageFromPath(filePath);
+
+  const highlightedCode = useMemo(() => {
+    if (!parsedCode.cleanCode) return '';
+    return highlightCode(parsedCode.cleanCode, lang);
+  }, [parsedCode.cleanCode, lang]);
+
   const handleCopy = async () => {
-    if (!rawContent) return;
-    const success = await copyToClipboard(rawContent);
+    const textToCopy = parsedCode.hasLineNumbers ? parsedCode.cleanCode : (rawContent || '');
+    if (!textToCopy) return;
+    const success = await copyToClipboard(textToCopy);
     if (success) {
       setCopiedOutput(true);
       setTimeout(() => setCopiedOutput(false), 2000);
     }
   };
-
-  const isDir = dirInfo.isDirectory;
-  const lang = getLanguageFromPath(filePath);
 
   return (
     <div className="space-y-2">
@@ -200,17 +156,25 @@ export function ReadPanel({ targetFilePath, output }: ReadPanelProps) {
           )}
         </div>
       ) : rawContent ? (
-        /* Render Code Content */
+        /* Render Code Content with synchronized, straight line numbers and clean code */
         <div className="space-y-1.5">
-          <div className="flex max-h-80 items-start overflow-x-auto rounded-lg border border-ink/8 bg-paper font-mono text-[11px] leading-relaxed overscroll-contain select-text">
-            <div className="sticky left-0 flex-shrink-0 select-none border-r border-ink/8 bg-canvas/60 py-2.5 pl-2.5 pr-2 text-right text-[10px] leading-relaxed text-ink/25">
-              {displayContent.split('\n').map((_, idx) => (
-                <div key={idx}>{idx + 1}</div>
+          <div className="relative flex max-h-80 items-start overflow-auto rounded-lg border border-ink/8 bg-paper font-mono text-[11px] leading-[20px] select-text overscroll-contain">
+            {/* Gutter: Line numbers */}
+            <div
+              className="sticky left-0 z-10 flex-shrink-0 select-none border-r border-ink/8 bg-canvas/90 py-2.5 pl-3 pr-2.5 text-right font-mono text-[11px] leading-[20px] tabular-nums text-ink/35 backdrop-blur-xs"
+              aria-hidden="true"
+            >
+              {parsedCode.lines.map((line, idx) => (
+                <div key={idx} className="h-[20px] leading-[20px]">
+                  {line.lineNum}
+                </div>
               ))}
             </div>
-            <div
-              className="flex-1 overflow-x-auto p-2.5 whitespace-pre text-ink/85"
-              dangerouslySetInnerHTML={{ __html: highlightCode(displayContent, lang) }}
+
+            {/* Code Body */}
+            <pre
+              className="m-0 flex-1 min-w-max overflow-visible py-2.5 pl-3 pr-4 font-mono text-[11px] leading-[20px] whitespace-pre text-ink/85 focus:outline-none"
+              dangerouslySetInnerHTML={{ __html: highlightedCode }}
             />
           </div>
 
