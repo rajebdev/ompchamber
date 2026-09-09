@@ -8,15 +8,14 @@ interface ToolCallingSectionProps {
   defaultExpanded?: boolean;
 }
 
-// Convert legacy AgentActionData to ToolCallData with a stable ID
 function normalizeToolData(action: ToolCallData | AgentActionData, index: number): ToolCallData {
   if ('id' in action && action.id) {
     return action as ToolCallData;
   }
-  
+
   const rawTitle = action.title || '';
   const lowerTitle = rawTitle.toLowerCase();
-  
+
   let type: ToolCallData['type'] = 'terminal';
   if (lowerTitle.includes('shell') || lowerTitle.includes('command') || lowerTitle.includes('bun') || lowerTitle.includes('git')) {
     type = 'bash';
@@ -48,21 +47,14 @@ function normalizeToolData(action: ToolCallData | AgentActionData, index: number
   };
 }
 
-export function ToolCallingSection({
-  tools
-}: ToolCallingSectionProps) {
-  // Memoize normalized tools to maintain stable IDs across renders
+export function ToolCallingSection({ tools, title }: ToolCallingSectionProps) {
   const normalizedTools = useMemo(() => {
     return (tools || []).map((t, i) => normalizeToolData(t, i));
   }, [tools]);
 
-  // Keep a map of open/closed status for each tool
   const [openMap, setOpenMap] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
     normalizedTools.forEach((tool) => {
-      // Default: only errors are expanded. Long successful outputs (agent
-      // reports, file reads) stay collapsed so a single card never owns a
-      // second scrollbar beside the timeline one.
       initial[tool.id] = tool.status === 'error';
     });
     return initial;
@@ -78,7 +70,15 @@ export function ToolCallingSection({
   };
 
   return (
-    <div className="w-full font-sans space-y-1.5">
+    <div className="mx-3 space-y-1.5">
+      {title && (
+        <div className="flex items-center gap-2 px-1 pt-0.5">
+          <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-ink/35">
+            {title}
+          </span>
+          <span className="h-px flex-1 bg-ink/8" />
+        </div>
+      )}
       {normalizedTools.map((tool) => (
         <ToolCallCard
           key={tool.id}

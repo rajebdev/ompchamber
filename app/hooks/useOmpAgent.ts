@@ -44,6 +44,28 @@ export interface OmpAgentEvent {
   [key: string]: unknown;
 }
 
+/** Frame `extension_ui_request` dari omp (ask dialog, approval, OAuth). */
+export type ExtensionUiDialogMethod = 'select' | 'confirm' | 'input' | 'editor';
+
+export interface ExtensionUiDialogRequest {
+  type: 'extension_ui_request';
+  id: string;
+  method: ExtensionUiDialogMethod;
+  title: string;
+  options?: string[];
+  optionDetails?: { description?: string }[];
+  message?: string;
+  placeholder?: string;
+  prefill?: string;
+  timeout?: number;
+}
+
+export type IncomingExtensionUiRequest =
+  | ExtensionUiDialogRequest
+  | { type: 'extension_ui_request'; id: string; method: 'cancel'; targetId: string }
+  | { type: 'extension_ui_request'; id: string; method: 'notify'; message: string; notifyType?: 'info' | 'warning' | 'error' }
+  | { type: 'extension_ui_request'; id: string; method: 'open_url'; url: string; launchUrl?: string; instructions?: string };
+
 export interface OmpAgentCallbacks {
   onAgentStart?: () => void;
   onMessageUpdate?: (msg: ChatMessageData) => void;
@@ -52,6 +74,8 @@ export interface OmpAgentCallbacks {
   onPromptError?: (errorMessage: string) => void;
   onNotice?: (level: string, message: string) => void;
   onConnected?: () => void;
+  /** Ask/approval dialog diminta omp — blocking sampai di-respond. */
+  onExtensionUiRequest?: (request: IncomingExtensionUiRequest) => void;
 }
 
 interface OmpAgentState {
@@ -94,7 +118,7 @@ function toChatMessage(raw: Record<string, unknown>, streaming = true): ChatMess
       const thoughtParts: string[] = [];
       for (const block of content) {
         if (!block || typeof block !== 'object') continue;
-        const b = block as { type?: unknown; text?: unknown; thinking?: unknown; toolCallId?: unknown; toolName?: unknown; name?: unknown; id?: unknown; input?: unknown; arguments?: unknown; duration?: unknown };
+        const b = block as { type?: unknown; text?: unknown; thinking?: unknown; toolCallId?: unknown; toolName?: unknown; name?: unknown; id?: unknown; input?: unknown; arguments?: unknown; duration?: unknown; durationMs?: unknown; isError?: unknown; details?: unknown };
         if (b.type === 'text' && typeof b.text === 'string') {
           text += b.text;
         } else if (b.type === 'thinking') {
@@ -102,14 +126,17 @@ function toChatMessage(raw: Record<string, unknown>, streaming = true): ChatMess
           else if (typeof b.text === 'string') thoughtParts.push(b.text);
         } else if (b.type === 'toolCall') {
           const tcId = typeof b.toolCallId === 'string' ? b.toolCallId : (typeof b.id === 'string' ? b.id : `tc-${Date.now()}`);
+          const toolName = typeof b.toolName === 'string' ? b.toolName : (typeof b.name === 'string' ? b.name : 'Tool');
+          const rawInput = (b.input ?? b.arguments) as Record<string, unknown> | undefined;
           blocks.push({
             id: tcId,
-            _toolCallId: tcId,
-            type: 'bash',
-            title: typeof b.toolName === 'string' ? b.toolName : (typeof b.name === 'string' ? b.name : 'Tool'),
+            type: toolName as ToolCallData['type'],
+            title: toolName,
+            name: toolName,
+            intent: rawInput && typeof rawInput.i === 'string' ? rawInput.i : undefined,
             target: '',
             command: '',
-            input: (b.input ?? b.arguments) as Record<string, unknown> | undefined,
+            input: rawInput,
             status: streaming ? 'running' : 'success',
           });
         } else if (b.type === 'toolResult') {
@@ -120,6 +147,18 @@ function toChatMessage(raw: Record<string, unknown>, streaming = true): ChatMess
             found.output = resultText;
             found.status = 'success';
             if (typeof b.duration === 'string') found.duration = b.duration;
+            if (typeof b.durationMs === 'number') found.durationMs = b.durationMs;
+            if (b.isError === true) {
+              found.isError = true;
+              found.status = 'error';
+            }
+            if (b.details && typeof b.details === 'object') {
+              found.details = b.details as Record<string, any>;
+              if ((b.details as Record<string, unknown>).__synthetic === true) {
+                found.synthetic = true;
+                found.status = 'skipped';
+              }
+            }
           }
         }
       }
@@ -308,6 +347,10 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
           );
           break;
         }
+        case 'extension_ui_request': {
+          callbacksRef.current.onExtensionUiRequest?.(data as unknown as IncomingExtensionUiRequest);
+          break;
+        }
         case 'thinking_level_changed':
         case 'model_changed':
         case 'config_update':
@@ -464,5 +507,23 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     }
   }, []);
 
-  return { ...state, sendPrompt, sendNewPrompt, abort, setModel, setThinkingLevel, disconnect };
+  /** Jawab dialog ask/approval (extension_ui_response) — melepas blocking tool call. */
+  const respondToExtensionUi = useCallback(async (
+    request: ExtensionUiDialogRequest,
+    response: { value: string } | { confirmed: boolean } | { cancelled: true },
+  ): Promise<void> => {
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    try {
+      await fetch(`/api/agent/${encodeURIComponent(sid)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'extension_ui_response', id: request.id, ...response }),
+      });
+    } catch {
+      // Best-effort; omp surfaces the failure on its side.
+    }
+  }, []);
+
+  return { ...state, sendPrompt, sendNewPrompt, abort, setModel, setThinkingLevel, respondToExtensionUi, disconnect };
 }

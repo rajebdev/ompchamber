@@ -13,18 +13,50 @@ export interface Attachment {
 
 export type ChatAttachment = Attachment;
 
-export type ToolType = 
-  | 'bash' 
-  | 'terminal' 
-  | 'edit_file' 
-  | 'read_file' 
-  | 'view_file'
-  | 'create_file' 
-  | 'search_fs' 
-  | 'web_search' 
-  | 'custom';
+/** Nama tool omp asli (built-in + hidden + MCP). `string` menampung tool
+ *  custom/plugin dan MCP (`mcp__<server>_<tool>`). */
+export type ToolType =
+  | 'bash'
+  | 'terminal'
+  | 'read'
+  | 'edit'
+  | 'write'
+  | 'ast_grep'
+  | 'ast_edit'
+  | 'ask'
+  | 'debug'
+  | 'eval'
+  | 'github'
+  | 'glob'
+  | 'grep'
+  | 'lsp'
+  | 'checkpoint'
+  | 'rewind'
+  | 'context_notes'
+  | 'new_context'
+  | 'security_scan'
+  | 'task'
+  | 'hub'
+  | 'todo'
+  | 'web_search'
+  | 'memory_edit'
+  | 'retain'
+  | 'recall'
+  | 'reflect'
+  | 'learn'
+  | 'manage_skill'
+  | 'yield'
+  | 'goal'
+  | 'think'
+  | 'edit_file' // legacy alias (MOCK path)
+  | 'read_file' // legacy alias (MOCK path)
+  | 'view_file' // legacy alias (MOCK path)
+  | 'create_file' // legacy alias (MOCK path)
+  | 'search_fs' // legacy alias (MOCK path)
+  | 'custom'
+  | (string & {});
 
-export type ToolStatus = 'success' | 'running' | 'error' | 'pending';
+export type ToolStatus = 'pending' | 'running' | 'success' | 'error' | 'aborted' | 'skipped';
 
 export interface ToolDiffChunk {
   file: string;
@@ -34,18 +66,29 @@ export interface ToolDiffChunk {
 }
 
 export interface ToolCallData {
+  /** toolCallId dari omp — kunci pairing dengan toolResult. */
   id: string;
   type: ToolType;
   title: string;
   name?: string;
+  /** Short human intent (omp arguments.i) — ditampilkan sebelum tools. */
+  intent?: string;
   target?: string;
   command?: string;
+  /** Raw arguments tool call (object dari omp, string dari MOCK path). */
   input?: string | Record<string, any>;
   output?: string;
   error?: string;
   status?: ToolStatus;
   duration?: string;
+  /** Raw duration ms dari toolResult (untuk format ulang). */
+  durationMs?: number;
   diff?: ToolDiffChunk;
+  /** RAW details toolResult — dipakai renderer diff/task/usage. */
+  details?: Record<string, any>;
+  isError?: boolean;
+  /** details.__synthetic === true → call emitted tapi tidak dieksekusi. */
+  synthetic?: boolean;
   icon?: React.ReactNode;
   detail?: string;
   time?: string;

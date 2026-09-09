@@ -14,6 +14,7 @@ import {
 import type { ChatMessageData } from '@/types';
 import { ThinkingSection } from '@/components/workspace/chat-timeline/ThinkingSection';
 import { ToolCallingSection } from '@/components/workspace/chat-timeline/ToolCallingSection';
+import { SystemNotice } from '@/components/workspace/chat-timeline/SystemNotice';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
 import { AttachmentChips } from '@/components/workspace/chat-timeline/AttachmentChips';
 import { copyToClipboard } from '@/hooks/useClipboard';
@@ -217,19 +218,7 @@ export function ChatMessageItem({
         )}
 
         {/* System Notice Alert */}
-        {msg.notice && (
-          <div className="flex items-start space-x-2.5 bg-canvas/80 border border-ink/20 rounded-lg mx-3 px-3.5 py-2.5 text-[12px] text-ink select-text">
-            <div className="w-6 h-6 rounded-full bg-ink/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <Info size={13} className="text-ink/70" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-[10px] font-mono uppercase tracking-wider text-ink/50 font-semibold mb-0.5">
-                System Notice
-              </div>
-              <p className="text-ink/85 leading-relaxed whitespace-pre-wrap break-words">{msg.notice}</p>
-            </div>
-          </div>
-        )}
+        {msg.notice && <SystemNotice notice={msg.notice} />}
 
         {/* Thinking / Reasoning Accordion */}
         {thinkingData && (

@@ -4,7 +4,7 @@ import type { Attachment, ChatMessageData } from '@/types';
 import type { QueuedMessage } from '@/components/workspace/chat-timeline/QueueList';
 import { triggerChatCompletionSound } from '@/hooks/useNotificationSound';
 import { streamChatResponse } from '@/hooks/useChatStream';
-import { useOmpAgent } from '@/hooks/useOmpAgent';
+import { useOmpAgent, type ExtensionUiDialogRequest } from '@/hooks/useOmpAgent';
 import { isTextAttachmentFile, composeMessageWithTextAttachments } from '@/lib/chat-attachments';
 
 interface UseChatTimelineOptions {
@@ -195,6 +195,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   }, [sessionId, folders]);
 
   const [messageQueue, setMessageQueueLocal] = useState<QueuedMessage[]>([]);
+  const [extensionDialog, setExtensionDialog] = useState<ExtensionUiDialogRequest | null>(null);
 
   // Initialize queue from DB on mount or session change
   useEffect(() => {
@@ -320,6 +321,13 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     },
     onNotice: (_level, message) => {
       console.info('OMP notice:', message);
+    },
+    onExtensionUiRequest: (request) => {
+      if (request.method === 'select' || request.method === 'confirm' || request.method === 'input' || request.method === 'editor') {
+        setExtensionDialog(request);
+      } else if (request.method === 'cancel') {
+        setExtensionDialog((current) => (current?.id === request.targetId ? null : current));
+      }
     },
   });
   const executeSend = useCallback(async (text: string, attachments: Attachment[]) => {
@@ -741,6 +749,10 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     void ompAgent.setModel(provider, modelId);
   }, [ompAgent]);
 
+  const closeExtensionDialog = useCallback(() => {
+    setExtensionDialog(null);
+  }, []);
+
   return {
     sessionId,
     folderId,
@@ -771,5 +783,8 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     stopGenerating,
     handleThinkingLevelChange,
     handleModelChange,
+    extensionDialog,
+    closeExtensionDialog,
+    respondToExtensionUi: ompAgent.respondToExtensionUi,
   };
 }

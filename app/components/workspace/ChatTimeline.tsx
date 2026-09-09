@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { ArrowDown } from 'lucide-react';
 import { ChatInput } from '@/components/workspace/chat-timeline/ChatInput';
 import { ChatMessageItem } from '@/components/workspace/chat-timeline/ChatMessageItem';
+import { AskDialog } from '@/components/workspace/chat-timeline/tool-renderers/AskDialog';
 import { MinimapShortcuts } from '@/components/workspace/chat-timeline/MinimapShortcuts';
 import { EmptyWorkspacePrompt } from '@/components/workspace/chat-timeline/EmptyWorkspacePrompt';
 import { GeneratingIndicator } from '@/components/workspace/chat-timeline/GeneratingIndicator';
@@ -47,6 +48,9 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
     stopGenerating,
     handleThinkingLevelChange,
     handleModelChange,
+    extensionDialog,
+    closeExtensionDialog,
+    respondToExtensionUi,
   } = useChatTimeline({ folders, appSettings });
 
   const [newChatInitialContent, setNewChatInitialContent] = useState<string | null>(null);
@@ -200,6 +204,16 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
           onClose={() => setNewChatInitialContent(null)}
           onSend={submitNewChat}
           appSettings={appSettings}
+        />
+      )}
+
+      {extensionDialog && (
+        <AskDialog
+          request={extensionDialog}
+          onRespond={(request, response) => {
+            void respondToExtensionUi(request, response);
+            closeExtensionDialog();
+          }}
         />
       )}
     </div>

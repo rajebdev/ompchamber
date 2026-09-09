@@ -608,6 +608,15 @@ export class AgentSessionWrapper {
         }
       }
 
+      case 'extension_ui_response': {
+        // Fire-and-forget: omp answers ask/approval dialogs without a response
+        // frame, so a request/response round-trip would time out.
+        const { id, ...rest } = command as { id: string; [key: string]: unknown };
+        if (!id) throw new Error('extension_ui_response requires an id');
+        this.proc.sendFrame({ type: 'extension_ui_response', id, ...rest });
+        return null;
+      }
+
       default: {
         if (PASSTHROUGH_COMMANDS.has(type)) {
           const result: unknown = await this.proc.sendCommand(command as { type: string });
