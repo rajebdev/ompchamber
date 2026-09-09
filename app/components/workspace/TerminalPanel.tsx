@@ -1,5 +1,6 @@
 import { useRef, useCallback, useState } from 'react';
 import { useTerminal } from '@/hooks/useTerminal';
+import { useTheme } from '@/hooks/useTheme';
 import { TerminalHeader } from '@/components/workspace/terminal-panel/TerminalHeader';
 import { TerminalQuickActions } from '@/components/workspace/terminal-panel/TerminalQuickActions';
 import { TerminalInputBar } from '@/components/workspace/terminal-panel/TerminalInputBar';
@@ -13,6 +14,7 @@ interface TerminalPanelProps {
 }
 
 export function TerminalPanel({ className = '', enabled = true, rootPath, showHeader = true }: TerminalPanelProps) {
+  const { isDark, toggleTheme } = useTheme();
   const xtermRef = useRef<RealtimeXtermHandle>(null);
   const [activeRepo, setActiveRepo] = useState('.');
 
@@ -87,6 +89,8 @@ export function TerminalPanel({ className = '', enabled = true, rootPath, showHe
           rootPath={rootPath}
           activeRepo={activeRepo}
           onSelectRepo={setActiveRepo}
+          isDark={isDark}
+          onToggleTheme={toggleTheme}
         />
       )}
 
@@ -97,7 +101,7 @@ export function TerminalPanel({ className = '', enabled = true, rootPath, showHe
       />
 
       {/* Real-time Xterm Terminal Canvas */}
-      <div className="flex-1 w-full min-h-0 bg-[#141310] overflow-hidden">
+      <div className="flex-1 w-full min-h-0 bg-canvas overflow-hidden">
         <RealtimeXtermView
           ref={xtermRef}
           cwd={cwd}

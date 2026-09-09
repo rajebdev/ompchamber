@@ -1,26 +1,58 @@
-export const XTERM_THEME = {
-  background: '#141310',
-  foreground: '#f4f1ea',
-  cursor: '#f4f1ea',
-  cursorAccent: '#141310',
-  selectionBackground: '#3a3832',
+export const XTERM_LIGHT_THEME = {
+  background: '#f4f1ea',
+  foreground: '#141310',
+  cursor: '#141310',
+  cursorAccent: '#f4f1ea',
+  selectionBackground: '#ded8ce',
+  selectionForeground: '#141310',
   black: '#141310',
   red: '#c8321e',
-  green: '#10b981',
-  yellow: '#f59e0b',
-  blue: '#3b82f6',
-  magenta: '#ec4899',
-  cyan: '#06b6d4',
-  white: '#f4f1ea',
-  brightBlack: '#48453d',
-  brightRed: '#ef4444',
-  brightGreen: '#34d399',
-  brightYellow: '#fbbf24',
-  brightBlue: '#60a5fa',
-  brightMagenta: '#f472b6',
-  brightCyan: '#38bdf8',
+  green: '#047857',
+  yellow: '#b45309',
+  blue: '#1d4ed8',
+  magenta: '#9333ea',
+  cyan: '#0284c7',
+  white: '#faf8f3',
+  brightBlack: '#78716c',
+  brightRed: '#dc2626',
+  brightGreen: '#059669',
+  brightYellow: '#d97706',
+  brightBlue: '#2563eb',
+  brightMagenta: '#a855f7',
+  brightCyan: '#0ea5e9',
+  brightWhite: '#292524',
+};
+
+export const XTERM_DARK_THEME = {
+  background: '#21252b',
+  foreground: '#abb2bf',
+  cursor: '#528bff',
+  cursorAccent: '#21252b',
+  selectionBackground: '#3e4451',
+  selectionForeground: '#abb2bf',
+  black: '#282c34',
+  red: '#e06c75',
+  green: '#98c379',
+  yellow: '#e5c07b',
+  blue: '#61afef',
+  magenta: '#c678dd',
+  cyan: '#56b6c2',
+  white: '#abb2bf',
+  brightBlack: '#5c6370',
+  brightRed: '#e06c75',
+  brightGreen: '#98c379',
+  brightYellow: '#e5c07b',
+  brightBlue: '#61afef',
+  brightMagenta: '#c678dd',
+  brightCyan: '#56b6c2',
   brightWhite: '#ffffff',
 };
+
+export function getXtermTheme(isDark: boolean) {
+  return isDark ? XTERM_DARK_THEME : XTERM_LIGHT_THEME;
+}
+
+export const XTERM_THEME = XTERM_DARK_THEME;
 
 export const XTERM_FONT_FAMILY = "'Fira Code', Menlo, Monaco, 'Courier New', monospace";
 

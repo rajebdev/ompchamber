@@ -2,8 +2,9 @@ import { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallba
 import { ArrowDown } from 'lucide-react';
 import type { Terminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
+import { useTheme } from '@/hooks/useTheme';
 import {
-  XTERM_THEME,
+  getXtermTheme,
   XTERM_FONT_FAMILY,
   safePatchFitAddon,
   safePatchRenderService,
@@ -42,6 +43,7 @@ function handleKeyNavigation(term: Terminal, event: KeyboardEvent): boolean {
 
 export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermViewProps>(
   ({ onCommandSubmit, cwd: _cwd }, ref) => {
+    const { isDark } = useTheme();
     const containerRef = useRef<HTMLDivElement>(null);
     const terminalRef = useRef<Terminal | null>(null);
     const fitAddonRef = useRef<FitAddon | null>(null);
@@ -49,6 +51,13 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
     const pendingWritesRef = useRef<string[]>([]);
     const [isScrolledUp, setIsScrolledUp] = useState(false);
     const onCommandSubmitRef = useRef(onCommandSubmit);
+
+    useEffect(() => {
+      if (terminalRef.current) {
+        terminalRef.current.options.theme = getXtermTheme(isDark);
+        terminalRef.current.refresh(0, terminalRef.current.rows - 1);
+      }
+    }, [isDark]);
 
     useEffect(() => {
       onCommandSubmitRef.current = onCommandSubmit;
@@ -164,7 +173,7 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
           fontSize: 12,
           lineHeight: 1.25,
           fontFamily: XTERM_FONT_FAMILY,
-          theme: XTERM_THEME,
+          theme: getXtermTheme(isDark),
           convertEol: true,
           scrollback: 10000,
           scrollSensitivity: 1.5,
@@ -302,7 +311,7 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
     }, []);
 
     return (
-      <div className="relative flex-1 w-full h-full bg-ink overflow-hidden">
+      <div className="relative flex-1 w-full h-full bg-canvas overflow-hidden">
         <div
           ref={containerRef}
           className="w-full h-full cursor-text p-1.5"
@@ -313,10 +322,10 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
           <button
             type="button"
             onClick={scrollToBottom}
-            className="absolute bottom-3 right-4 z-20 flex items-center space-x-1.5 px-2.5 py-1 bg-[#24221d] hover:bg-[#34322a] text-[#faf8f3] border border-[#faf8f3]/15 rounded-full shadow-lg text-[11px] font-mono transition-all animate-fade-in cursor-pointer active:scale-95"
+            className="absolute bottom-3 right-4 z-20 flex items-center space-x-1.5 px-2.5 py-1 bg-paper hover:bg-canvas text-ink border border-ink/20 rounded-full shadow-lg text-[11px] font-mono transition-all animate-fade-in cursor-pointer active:scale-95"
             title="Scroll to latest output (Shift+End)"
           >
-            <ArrowDown size={12} className="text-amber-400" />
+            <ArrowDown size={12} className="text-warning" />
             <span>Latest</span>
           </button>
         )}

@@ -13,15 +13,15 @@ export function TerminalLogEntry({ item }: TerminalLogEntryProps) {
   return (
     <div className="space-y-1 font-mono text-[11px] leading-relaxed select-text">
       {/* Command prompt line */}
-      <div className="flex items-center justify-between text-canvas/90 bg-ink/40 px-2 py-0.5 rounded border border-canvas/5">
+      <div className="flex items-center justify-between text-ink bg-canvas px-2.5 py-1 rounded border border-ink/15">
         <div className="flex items-center space-x-2 min-w-0">
-          <span className="text-amber-400 font-bold select-none">$</span>
-          <span className="font-semibold text-amber-200 truncate">{item.command}</span>
+          <span className="text-warning font-bold select-none">$</span>
+          <span className="font-semibold text-ink truncate">{item.command}</span>
         </div>
 
-        <div className="flex items-center space-x-2 text-[10px] text-canvas/50 flex-shrink-0 ml-2 select-none">
+        <div className="flex items-center space-x-2 text-[10px] text-ink/50 flex-shrink-0 ml-2 select-none">
           {isRunning ? (
-            <span className="flex items-center space-x-1 text-amber-300">
+            <span className="flex items-center space-x-1 text-warning">
               <Loader2 size={10} className="animate-spin" />
               <span>executing...</span>
             </span>
@@ -54,14 +54,14 @@ export function TerminalLogEntry({ item }: TerminalLogEntryProps) {
 
       {/* Stdout block */}
       {item.stdout && (
-        <pre className="text-canvas/85 whitespace-pre-wrap break-all px-2 py-0.5 overflow-x-auto selection:bg-canvas/20">
+        <pre className="text-ink/85 whitespace-pre-wrap break-all px-2.5 py-1 overflow-x-auto selection:bg-ink/15 bg-canvas/40 rounded">
           {item.stdout}
         </pre>
       )}
 
       {/* Stderr block in signal red */}
       {item.stderr && (
-        <pre className="text-error font-medium whitespace-pre-wrap break-all px-2 py-0.5 bg-error/10 rounded border border-error/20 selection:bg-error/30">
+        <pre className="text-error font-medium whitespace-pre-wrap break-all px-2.5 py-1 bg-error/10 rounded border border-error/20 selection:bg-error/30">
           {item.stderr}
         </pre>
       )}
