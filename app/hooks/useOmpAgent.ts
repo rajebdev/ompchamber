@@ -79,6 +79,8 @@ export interface OmpAgentCallbacks {
   onResumeStream?: () => void;
   /** Ask/approval dialog diminta omp — blocking sampai di-respond. */
   onExtensionUiRequest?: (request: IncomingExtensionUiRequest) => void;
+  /** User-message turn delivered by omp (queued steer/follow-up picked up). */
+  onQueuedMessageDelivered?: (text: string) => void;
 }
 
 interface OmpAgentState {
@@ -217,6 +219,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
   // Last assistant message that carried tool calls, so tool_execution_end
   // events arriving after message_end can re-emit it with the result paired.
   const lastToolMessageRef = useRef<ChatMessageData | null>(null);
+  const interruptPendingRef = useRef(false);
 
   const pairToolOutputs = (msg: ChatMessageData): ChatMessageData => {
     if (!msg.toolCalls?.length) return msg;
@@ -268,6 +271,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
           // turn so results always pair with the current tool calls.
           toolResultsRef.current.clear();
           lastToolMessageRef.current = null;
+          interruptPendingRef.current = false;
           callbacksRef.current.onAgentStart?.();
           break;
         case 'message_start':
@@ -310,6 +314,11 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
           // message_update frames (deduped by id in the timeline); emitting
           // them again on message_end duplicates the notice row.
           if (completed.role === 'custom') break;
+          if (completed.role === 'user') {
+            const delivered = extractTextFromContent(completed.content);
+            if (delivered) callbacksRef.current.onQueuedMessageDelivered?.(delivered);
+            break;
+          }
           if (completed.role !== 'toolResult' && completed.role !== 'user') {
             const converted = toChatMessage(completed, false);
             if (converted) {
@@ -358,6 +367,10 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
         }
         case 'agent_end': {
           setState((prev) => ({ ...prev, isGenerating: false }));
+          if (interruptPendingRef.current) {
+            interruptPendingRef.current = false;
+            break;
+          }
           callbacksRef.current.onAgentEnd?.({
             errorMessage: typeof data.errorMessage === 'string' ? data.errorMessage : undefined,
             message: typeof data.message === 'string' ? data.message : undefined,
@@ -366,6 +379,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
         }
         case 'prompt_error': {
           setState((prev) => ({ ...prev, isGenerating: false, error: typeof data.errorMessage === 'string' ? data.errorMessage : 'Prompt failed' }));
+          interruptPendingRef.current = false;
           callbacksRef.current.onPromptError?.(typeof data.errorMessage === 'string' ? data.errorMessage : 'Prompt failed');
           break;
         }
@@ -514,6 +528,9 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
   const abort = useCallback(async () => {
     const sid = sessionIdRef.current;
     if (!sid) return;
+    // A user stop supersedes an in-flight interrupt-and-reply: clearing the
+    // guard lets the aborted turn's agent_end reach onAgentEnd (no stuck spinner).
+    interruptPendingRef.current = false;
     try {
       await fetch(`/api/agent/${encodeURIComponent(sid)}`, {
         method: 'POST',
@@ -524,6 +541,70 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
       // Abort is best-effort; the SSE stream will surface the terminal state.
     }
     setState((prev) => ({ ...prev, isGenerating: false }));
+  }, []);
+
+  /** Interrupt the running agent and immediately start the message as a fresh
+   *  prompt (abort_and_prompt). Keeps the run alive until the new agent_start
+   *  arrives via the interruptPending guard. */
+  const sendInterruptAndReply = useCallback(async (
+    message: string,
+    images?: { data: string; mimeType: string }[],
+  ): Promise<boolean> => {
+    const sid = sessionIdRef.current;
+    if (!sid) return false;
+    interruptPendingRef.current = true;
+    setState((prev) => ({ ...prev, isGenerating: true, error: null }));
+    try {
+      const res = await fetch(`/api/agent/${encodeURIComponent(sid)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'abort_and_prompt',
+          message,
+          ...(images?.length ? { images } : {}),
+        }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      if (!res.ok || body.error) {
+        interruptPendingRef.current = false;
+        setState((prev) => ({ ...prev, isGenerating: false, error: body.error ?? `HTTP ${res.status}` }));
+        return false;
+      }
+      return true;
+    } catch (e) {
+      interruptPendingRef.current = false;
+      setState((prev) => ({ ...prev, isGenerating: false, error: e instanceof Error ? e.message : String(e) }));
+      return false;
+    }
+  }, []);
+
+  /** Enqueue a follow-up message the agent processes after the current turn. */
+  const sendFollowUp = useCallback(async (
+    message: string,
+    images?: { data: string; mimeType: string }[],
+  ): Promise<boolean> => {
+    const sid = sessionIdRef.current;
+    if (!sid) return false;
+    try {
+      const res = await fetch(`/api/agent/${encodeURIComponent(sid)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'follow_up',
+          message,
+          ...(images?.length ? { images } : {}),
+        }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      if (!res.ok || body.error) {
+        setState((prev) => ({ ...prev, error: body.error ?? `HTTP ${res.status}` }));
+        return false;
+      }
+      return true;
+    } catch (e) {
+      setState((prev) => ({ ...prev, error: e instanceof Error ? e.message : String(e) }));
+      return false;
+    }
   }, []);
 
   /** Set the model for the live session (set_model RPC). */
@@ -574,5 +655,16 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     }
   }, []);
 
-  return { ...state, sendPrompt, sendNewPrompt, abort, setModel, setThinkingLevel, respondToExtensionUi, disconnect };
+  return {
+    ...state,
+    sendPrompt,
+    sendNewPrompt,
+    sendInterruptAndReply,
+    sendFollowUp,
+    abort,
+    setModel,
+    setThinkingLevel,
+    respondToExtensionUi,
+    disconnect,
+  };
 }

@@ -33,6 +33,8 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
     generatingVerb,
     messageQueue,
     setMessageQueue,
+    steeringQueue,
+    setSteeringQueue,
     inputValue,
     setInputValue,
     inputAttachments,
@@ -202,7 +204,12 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
             onEdit={handleEditQueueItem} 
             onSendNow={handleSendNowQueueItem}
           />
-          <ChatInput 
+          <QueueList
+            queue={steeringQueue}
+            setQueue={setSteeringQueue}
+            isSteering
+          />
+          <ChatInput
             value={inputValue}
             onChange={setInputValue}
             attachments={inputAttachments}

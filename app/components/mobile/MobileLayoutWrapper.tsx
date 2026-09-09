@@ -279,11 +279,12 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
     }
   }, [isGenerating, messageQueue, executeSendMessage, setMessageQueue]);
 
-  const handleSendMessage = (text: string, attachments: Attachment[], options?: { steering?: boolean }) => {
+  const handleSendMessage = async (text: string, attachments: Attachment[], options?: { steering?: boolean }) => {
     if (!text.trim() && attachments.length === 0) return;
 
     if (isGenerating) {
       if (options?.steering) {
+        // Steering interrupt on the mock/chamber SSE stream is abort + resend.
         if (abortControllerRef.current) {
           abortControllerRef.current.abort();
           abortControllerRef.current = null;
@@ -291,10 +292,20 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
         setIsGenerating(false);
         setTimeout(() => executeSendMessage(text, attachments), 0);
         return;
-      } else {
-        setMessageQueue(prev => [...prev, { id: `queue-${Date.now()}`, text, attachments }]);
+      }
+      // Non-steering submit while running honors the Follow-up Dispatch setting.
+      const behavior = appSettings.omp_chamber_settings?.followUpBehavior ?? appSettings.followUpBehavior ?? 'queue';
+      if (behavior === 'steering') {
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+          abortControllerRef.current = null;
+        }
+        setIsGenerating(false);
+        setTimeout(() => executeSendMessage(text, attachments), 0);
         return;
       }
+      setMessageQueue(prev => [...prev, { id: `queue-${Date.now()}`, text, attachments }]);
+      return;
     }
 
     executeSendMessage(text, attachments);

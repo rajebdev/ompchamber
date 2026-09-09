@@ -98,6 +98,9 @@ export class WebRpcError extends Error {
 const PASSTHROUGH_COMMANDS = new Set([
   'abort',
   'abort_and_prompt',
+  // steer: interrupt/redirect the running agent; follow_up: enqueue a message the agent handles after the current turn.
+  'steer',
+  'follow_up',
   'set_thinking_level',
   'cycle_thinking_level',
   'cycle_model',
@@ -614,6 +617,19 @@ export class AgentSessionWrapper {
         const { id, ...rest } = command as { id: string; [key: string]: unknown };
         if (!id) throw new Error('extension_ui_response requires an id');
         this.proc.sendFrame({ type: 'extension_ui_response', id, ...rest });
+        return null;
+      }
+
+      case 'steer':
+      case 'follow_up': {
+        if (!this.isRunning()) {
+          throw new WebRpcError('The session is idle — start a prompt first.', 'session_idle');
+        }
+        await this.proc.sendCommand({
+          type,
+          message: command.message as string,
+          ...(toImageContents(command.images) ? { images: toImageContents(command.images) } : {}),
+        });
         return null;
       }
 

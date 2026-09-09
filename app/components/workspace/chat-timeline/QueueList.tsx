@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import { useRef } from 'react';
 import { GripVertical, X, Pencil, Send } from 'lucide-react';
 import type { Attachment } from '@/types';
 
@@ -11,11 +11,19 @@ export interface QueuedMessage {
 interface QueueListProps {
   queue: QueuedMessage[];
   setQueue: React.Dispatch<React.SetStateAction<QueuedMessage[]>>;
+  /** True when every row in this panel is a steering delivery. */
+  isSteering?: boolean;
   onEdit?: (item: QueuedMessage) => void;
+  /** Deliver the item now (Send Now / steer). */
   onSendNow?: (item: QueuedMessage) => void;
 }
 
-export function QueueList({ queue, setQueue, onEdit, onSendNow }: QueueListProps) {
+const KIND_LABEL: Record<string, string> = {
+  steer: 'steer',
+  followup: 'follow-up',
+};
+
+export function QueueList({ queue, setQueue, isSteering = false, onEdit, onSendNow }: QueueListProps) {
   const dragItem = useRef<number | null>(null);
   const dragOverItem = useRef<number | null>(null);
 
@@ -30,6 +38,7 @@ export function QueueList({ queue, setQueue, onEdit, onSendNow }: QueueListProps
   };
 
   if (queue.length === 0) return null;
+  const kind = isSteering ? 'steer' : 'followup';
 
   return (
     <div className="max-h-[150px] scrollbar-overlay-container scrollbar-overlay-static mb-2 space-y-1">
@@ -46,10 +55,17 @@ export function QueueList({ queue, setQueue, onEdit, onSendNow }: QueueListProps
           <div className="cursor-grab text-ink/40 group-hover:text-ink/80">
             <GripVertical size={14} />
           </div>
+          <span
+            className={`shrink-0 text-[9px] font-mono uppercase tracking-wider px-1 py-px rounded ${
+              kind === 'steer' ? 'bg-error/10 text-error' : 'bg-ink/10 text-ink/70'
+            }`}
+          >
+            {KIND_LABEL[kind]}
+          </span>
           <div className="flex-1 truncate text-ink/80 pr-2">
             {item.text || (item.attachments.length > 0 ? `[${item.attachments.length} attachment${item.attachments.length > 1 ? 's' : ''}]` : 'Empty message')}
           </div>
-          {onSendNow && (
+          {onSendNow && kind === 'followup' && (
             <button
               onClick={() => onSendNow(item)}
               className="text-ink/40 hover:text-ink/80 opacity-0 group-hover:opacity-100 transition-opacity"

@@ -196,23 +196,15 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   }, [sessionId, folders]);
 
   const [messageQueue, setMessageQueueLocal] = useState<QueuedMessage[]>([]);
+  const [steeringQueue, setSteeringQueueLocal] = useState<QueuedMessage[]>([]);
   const [extensionDialog, setExtensionDialog] = useState<ExtensionUiDialogRequest | null>(null);
-
-  // Initialize queue from DB on mount or session change
-  useEffect(() => {
-    if (currentSession && currentSession.queue_list) {
-      setMessageQueueLocal(currentSession.queue_list);
-    } else {
-      setMessageQueueLocal([]);
-    }
-  }, [currentSession]);
 
   const setMessageQueue = useCallback((updater: React.SetStateAction<QueuedMessage[]>) => {
     setMessageQueueLocal(prev => {
       const newQueue = typeof updater === 'function' ? updater(prev) : updater;
       // Queue persistence targets the SQLite `sessions` table (mock/numeric
-      // sessions). omp sessions (string UUIDs) have no such row — keep the
-      // queue client-side only for this session.
+      // sessions). omp sessions (string UUIDs) have no such row — the follow-up
+      // queue is delivered to omp immediately and lives there server-side.
       if (sessionId && !Number.isNaN(Number(sessionId))) {
         fetch(`/api/sessions/${sessionId}/queue`, {
           method: 'POST',
@@ -223,6 +215,23 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
       return newQueue;
     });
   }, [sessionId]);
+
+  const setSteeringQueue = useCallback((updater: React.SetStateAction<QueuedMessage[]>) => {
+    setSteeringQueueLocal(prev => {
+      const newQueue = typeof updater === 'function' ? updater(prev) : updater;
+      return newQueue;
+    });
+  }, []);
+
+  // Initialize queue from DB on mount or session change
+  useEffect(() => {
+    if (currentSession && currentSession.queue_list) {
+      setMessageQueueLocal(currentSession.queue_list);
+    } else {
+      setMessageQueueLocal([]);
+    }
+    setSteeringQueueLocal([]);
+  }, [currentSession]);
 
   // ── Live omp agent bridge (real mode) ──────────────────────────────────────
   const aiPlaceholderIdRef = useRef<string | null>(null);
@@ -235,6 +244,14 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   // user turn, so the sidebar item + real title appear immediately.
   const metaRefreshedRef = useRef<string | null>(null);
   const ompAgent = useOmpAgent(isOmpSession ? sessionId : null, {
+    // A queued steer/follow-up text was picked up by the agent (user turn
+    // arrived) — drop it from whichever queue mirrors it so the panel stays
+    // truthful without a chat bubble for every delivery.
+    onQueuedMessageDelivered: (text) => {
+      const exact = (q: QueuedMessage[]) => q.some(i => i.text === text);
+      setSteeringQueue(q => (exact(q) ? q.filter(i => i.text !== text) : q));
+      setMessageQueue(q => (exact(q) ? q.filter(i => i.text !== text) : q));
+    },
     onAgentStart: () => {
       setGenerating(true);
       setGeneratingVerb('Deep reasoning');
@@ -335,6 +352,46 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
       }
     },
   });
+  // Reads text-file attachments and builds the prompt + image payload for an
+  // omp delivery (mirror of executeSend's assembly block).
+  const prepareDeliverable = useCallback(async (
+    text: string,
+    attachments: Attachment[],
+  ): Promise<{ promptText: string; images?: { data: string; mimeType: string }[] }> => {
+    const textFileContents = new Map<string, string>();
+    try {
+      await Promise.all(
+        attachments
+          .filter(a => isTextAttachmentFile(a.file))
+          .map(async a => {
+            textFileContents.set(a.id, await a.file.text());
+          })
+      );
+    } catch {
+      // Fall back to prompt without inlined contents if a file cannot be read.
+    }
+    const textFiles = attachments
+      .filter(a => textFileContents.has(a.id))
+      .map(a => ({
+        name: a.file.name,
+        mimeType: a.file.type,
+        content: textFileContents.get(a.id) as string,
+        size: a.file.size,
+      }));
+    const promptText = composeMessageWithTextAttachments(text, textFiles);
+    const images = attachments
+      .filter(a => a.file.type.startsWith('image/') && a.dataBase64)
+      .map(a => ({ data: a.dataBase64 as string, mimeType: a.file.type }));
+    return { promptText, images: images.length ? images : undefined };
+  }, []);
+
+  // Steer the running omp agent with a fresh prompt (interrupt-and-reply).
+  const steerOmpAgent = useCallback(async (text: string, attachments: Attachment[]) => {
+    const { promptText, images } = await prepareDeliverable(text, attachments);
+    const ok = await ompAgent.sendInterruptAndReply(promptText, images);
+    if (!ok) setInputValue(text);
+  }, [ompAgent, prepareDeliverable]);
+
   const executeSend = useCallback(async (text: string, attachments: Attachment[]) => {
     const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     const userMsgId = `msg-${Date.now()}-user`;
@@ -607,45 +664,67 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     );
   }, [appSettings, folders, isOmpSession, ompAgent, selectedFolderId, sessionId, scrollToBottom, persistMessages, refreshSessionMeta]);
 
-  // Auto-process queue
+  // Auto-process queue: follow-ups queued by the mock/chamber path deliver
+  // when the run ends. omp sessions need no client delivery — omp runs the
+  // queued follow-up natively and its user message_end removes the mirror.
   useEffect(() => {
-    if (!isGenerating && messageQueue.length > 0) {
+    if (!isOmpSession && !isGenerating && messageQueue.length > 0) {
       const nextMessage = messageQueue[0];
       setMessageQueue(q => q.slice(1));
       executeSend(nextMessage.text, nextMessage.attachments);
     }
-  }, [isGenerating, messageQueue, executeSend, setMessageQueue]);
+  }, [isOmpSession, isGenerating, messageQueue, executeSend, setMessageQueue]);
 
-  const handleSend = useCallback((attachments: Attachment[], options?: { steering?: boolean }) => {
+  const handleSend = useCallback(async (attachments: Attachment[], options?: { steering?: boolean }) => {
     const textToSend = inputValue.trim();
     if (!textToSend && attachments.length === 0) return;
 
     if (isGenerating) {
       if (options?.steering) {
+        // Explicit steering while a run is active.
+        setInputValue('');
         if (isOmpSession) {
-          void ompAgent.abort();
-        } else if (abortControllerRef.current) {
-          abortControllerRef.current.abort();
-          abortControllerRef.current = null;
+          await steerOmpAgent(textToSend, attachments);
+        } else {
+          if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+          }
+          setGenerating(false);
+          executeSend(textToSend, attachments);
         }
-        setGenerating(false);
-        setInputValue('');
-        setTimeout(() => executeSend(textToSend, attachments), 0);
-        return;
-      } else {
-        setMessageQueue(prev => [...prev, {
-          id: `queue-${Date.now()}`,
-          text: textToSend,
-          attachments: attachments
-        }]);
-        setInputValue('');
         return;
       }
+      // Non-steering submit while running: honor the Follow-up Dispatch
+      // setting — queue the follow-up, or steer the running agent.
+      const behavior = appSettings.omp_chamber_settings?.followUpBehavior ?? appSettings.followUpBehavior ?? 'queue';
+      if (behavior === 'steering' && isOmpSession) {
+        setInputValue('');
+        await steerOmpAgent(textToSend, attachments);
+        return;
+      }
+      const queuedItem = {
+        id: `queue-${Date.now()}`,
+        text: textToSend,
+        attachments,
+      };
+      if (isOmpSession) {
+        // omp owns the follow-up queue; keep a client mirror for the panel.
+        setInputValue('');
+        setMessageQueue(prev => [...prev, queuedItem]);
+        const { promptText, images } = await prepareDeliverable(textToSend, attachments);
+        const ok = await ompAgent.sendFollowUp(promptText, images);
+        if (!ok) setMessageQueue(q => q.filter(i => i.id !== queuedItem.id));
+      } else {
+        setMessageQueue(prev => [...prev, queuedItem]);
+        setInputValue('');
+      }
+      return;
     }
 
     setInputValue('');
     executeSend(textToSend, attachments);
-  }, [inputValue, isGenerating, executeSend, setMessageQueue, isOmpSession, ompAgent]);
+  }, [inputValue, isGenerating, executeSend, setMessageQueue, isOmpSession, ompAgent, appSettings, steerOmpAgent, prepareDeliverable]);
 
   const handleEditQueueItem = useCallback((item: QueuedMessage) => {
     setMessageQueue(q => q.filter(i => i.id !== item.id));
@@ -653,22 +732,24 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     setInputAttachments(item.attachments);
   }, [setMessageQueue]);
 
-  const handleSendNowQueueItem = useCallback((item: QueuedMessage) => {
+  const handleSendNowQueueItem = useCallback(async (item: QueuedMessage) => {
     setMessageQueue(q => q.filter(i => i.id !== item.id));
 
     if (isGenerating) {
       if (isOmpSession) {
-        void ompAgent.abort();
-      } else if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
+        void steerOmpAgent(item.text, item.attachments);
+      } else {
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+          abortControllerRef.current = null;
+        }
+        setGenerating(false);
+        setTimeout(() => executeSend(item.text, item.attachments), 0);
       }
-      setGenerating(false);
-      setTimeout(() => executeSend(item.text, item.attachments), 0);
     } else {
       executeSend(item.text, item.attachments);
     }
-  }, [isGenerating, executeSend, setMessageQueue, isOmpSession, ompAgent]);
+  }, [isGenerating, executeSend, setMessageQueue, isOmpSession, steerOmpAgent]);
 
   const handleUndo = useCallback((msgId: string, content?: string) => {
     if (isGenerating) {
@@ -770,6 +851,8 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     generatingVerb,
     messageQueue,
     setMessageQueue,
+    steeringQueue,
+    setSteeringQueue,
     inputValue,
     setInputValue,
     inputAttachments,
