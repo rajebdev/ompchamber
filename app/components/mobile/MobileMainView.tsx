@@ -181,6 +181,7 @@ export function MobileMainView({
                     isStreaming={isLoading}
                     footerVisible={isLastAi}
                     durationMs={isLastAi ? responseRunDurationMs(messages, idx) : null}
+                    isPrevAssistant={Boolean(isAiFragment)}
                     className={isAiFragment ? 'mt-1' : 'mt-6'}
                     onUndo={(_id, content) => {
                       if (content) setInputValue(content);

@@ -6,9 +6,14 @@ import { copyToClipboard } from '@/hooks/useClipboard';
 interface ThinkingSectionProps {
   thinking: ThinkingData | string;
   defaultExpanded?: boolean;
+  showSeparator?: boolean;
 }
 
-export function ThinkingSection({ thinking, defaultExpanded = false }: ThinkingSectionProps) {
+export function ThinkingSection({ 
+  thinking, 
+  defaultExpanded = false,
+  showSeparator = false
+}: ThinkingSectionProps) {
   const isGenerating = typeof thinking === 'object' ? Boolean(thinking.isGenerating) : false;
   const [isOpen, setIsOpen] = useState(defaultExpanded || isGenerating);
   const [copied, setCopied] = useState(false);
@@ -47,10 +52,19 @@ export function ThinkingSection({ thinking, defaultExpanded = false }: ThinkingS
   if (!cleanThought) return null;
 
   return (
-    <div className="mx-3 overflow-hidden rounded-xl border border-ink/10 bg-paper transition-colors hover:border-ink/20">
-      <button
-        type="button"
-        onClick={toggleOpen}
+    <div className={`mx-3 ${showSeparator ? 'space-y-1.5' : ''}`}>
+      {showSeparator && (
+        <div className="flex items-center gap-2 px-1 pt-0.5">
+          <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-ink/35">
+            Thinking
+          </span>
+          <span className="h-px flex-1 bg-ink/8" />
+        </div>
+      )}
+      <div className="overflow-hidden rounded-xl border border-ink/10 bg-paper transition-colors hover:border-ink/20">
+        <button
+          type="button"
+          onClick={toggleOpen}
         className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-ink/[0.03] cursor-pointer select-none"
         aria-expanded={isOpen}
       >
@@ -116,6 +130,7 @@ export function ThinkingSection({ thinking, defaultExpanded = false }: ThinkingS
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

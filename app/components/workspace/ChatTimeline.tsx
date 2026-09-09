@@ -150,6 +150,10 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
               const isLastAi = msg.role !== 'user' && !msg.notice && (!nextReal || nextReal.role === 'user');
               const isPrevNotice = Boolean(prev?.notice);
               const isAiFragment = msg.role !== 'user' && prev && prev.role !== 'user' && !isPrevNotice;
+              let prevRealIdx = idx - 1;
+              while (prevRealIdx >= 0 && orderedMessages[prevRealIdx].notice) prevRealIdx--;
+              const prevReal = prevRealIdx >= 0 ? orderedMessages[prevRealIdx] : null;
+              const isPrevAssistant = Boolean(msg.role !== 'user' && prevReal && prevReal.role !== 'user');
               return (
                 <ChatMessageItem
                   key={msg.id}
@@ -161,6 +165,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
                   onNewChat={(content) => setNewChatInitialContent(content)}
                   footerVisible={isLastAi}
                   durationMs={isLastAi ? responseRunDurationMs(orderedMessages, idx) : null}
+                  isPrevAssistant={isPrevAssistant}
                   className={msg.notice ? 'mt-3 mb-1' : isAiFragment ? 'mt-1' : 'mt-3'}
                 />
               );

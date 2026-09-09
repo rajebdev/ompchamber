@@ -32,6 +32,8 @@ interface ChatMessageItemProps {
   className?: string;
   /** Elapsed ms of the whole AI response run — shown as ⏳ duration. */
   durationMs?: number | null;
+  /** Whether the message immediately preceding this one was also an assistant message. */
+  isPrevAssistant?: boolean;
 }
 
 function capitalizeFirstLetter(text: string): string {
@@ -52,7 +54,8 @@ export function ChatMessageItem({
   onNewChat,
   footerVisible = true,
   className = '',
-  durationMs = null
+  durationMs = null,
+  isPrevAssistant = false,
 }: ChatMessageItemProps) {
   const [copied, setCopied] = useState(false);
 
@@ -223,6 +226,7 @@ export function ChatMessageItem({
           <ThinkingSection 
             thinking={thinkingData} 
             defaultExpanded={false}
+            showSeparator={isPrevAssistant}
           />
         )}
 
