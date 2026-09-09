@@ -1,6 +1,5 @@
 import { useRef, useCallback, useState } from 'react';
 import { useTerminal } from '@/hooks/useTerminal';
-import { useTheme } from '@/hooks/useTheme';
 import { TerminalHeader } from '@/components/workspace/terminal-panel/TerminalHeader';
 import { TerminalQuickActions } from '@/components/workspace/terminal-panel/TerminalQuickActions';
 import { TerminalInputBar } from '@/components/workspace/terminal-panel/TerminalInputBar';
@@ -14,11 +13,8 @@ interface TerminalPanelProps {
 }
 
 export function TerminalPanel({ className = '', enabled = true, rootPath, showHeader = true }: TerminalPanelProps) {
-  const { isDark, toggleTheme } = useTheme();
   const xtermRef = useRef<RealtimeXtermHandle>(null);
   const [activeRepo, setActiveRepo] = useState('.');
-
-  const rootName = rootPath ? rootPath.replace(/\/+$/, '').split('/').pop() : undefined;
 
   const handleStreamChunk = useCallback((text: string) => {
     xtermRef.current?.write(text);
@@ -46,9 +42,7 @@ export function TerminalPanel({ className = '', enabled = true, rootPath, showHe
     setTerminalInput,
     isRunning,
     cwd,
-    systemInfo,
     executeCommand,
-    clearLogs,
     cancelRunningCommand,
     handleKeyDown,
   } = useTerminal({
@@ -59,11 +53,6 @@ export function TerminalPanel({ className = '', enabled = true, rootPath, showHe
     root: enabled ? rootPath : undefined,
     repo: activeRepo,
   });
-
-  const handleClear = useCallback(() => {
-    clearLogs();
-    xtermRef.current?.clear();
-  }, [clearLogs]);
 
   const handleCommandSubmit = useCallback((cmd: string, options?: { fromXterm?: boolean }) => {
     executeCommand(cmd, options);
@@ -81,16 +70,10 @@ export function TerminalPanel({ className = '', enabled = true, rootPath, showHe
     <div className={`flex flex-col h-full w-full bg-paper text-ink overflow-hidden ${className}`}>
       {showHeader && (
         <TerminalHeader
-          cwd={cwd}
-          rootName={rootName}
           isRunning={isRunning}
-          bunVersion={systemInfo.bunVersion}
-          onClear={handleClear}
           rootPath={rootPath}
           activeRepo={activeRepo}
           onSelectRepo={setActiveRepo}
-          isDark={isDark}
-          onToggleTheme={toggleTheme}
         />
       )}
 

@@ -18,8 +18,8 @@ const PRESET_COMMANDS = [
 
 export function TerminalQuickActions({ onSelectCommand, disabled }: TerminalQuickActionsProps) {
   return (
-    <div className="flex items-center space-x-1.5 overflow-x-auto no-scrollbar px-3 py-1.5 bg-paper border-b border-ink/10 flex-shrink-0">
-      <div className="flex items-center space-x-1 text-[10px] font-mono text-ink/50 uppercase tracking-wider flex-shrink-0 mr-1 select-none">
+    <div className="flex flex-wrap items-center gap-1.5 px-3 py-1.5 bg-paper border-b border-ink/10 flex-shrink-0">
+      <div className="flex items-center space-x-1 text-[10px] font-mono text-ink/50 uppercase tracking-wider flex-shrink-0 select-none">
         <Zap size={11} className="text-warning" />
         <span>Quick:</span>
       </div>
