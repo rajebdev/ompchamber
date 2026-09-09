@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { FileEdit, FilePlus, Check, Copy, ArrowRight, FileCode } from 'lucide-react';
 import type { ToolCallData } from '@/types';
 import { copyToClipboard } from '@/hooks/useClipboard';
@@ -11,6 +11,57 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+/** Synthesize a standard unified diff from old_string and new_string */
+function createUnifiedDiff(oldStr: string, newStr: string, filePath = 'diff'): string {
+  const oldLines = oldStr ? oldStr.split(/\r?\n/) : [];
+  const newLines = newStr ? newStr.split(/\r?\n/) : [];
+
+  let prefix = 0;
+  while (
+    prefix < oldLines.length &&
+    prefix < newLines.length &&
+    oldLines[prefix] === newLines[prefix]
+  ) {
+    prefix++;
+  }
+
+  let suffix = 0;
+  while (
+    suffix < oldLines.length - prefix &&
+    suffix < newLines.length - prefix &&
+    oldLines[oldLines.length - 1 - suffix] === newLines[newLines.length - 1 - suffix]
+  ) {
+    suffix++;
+  }
+
+  const contextBefore = oldLines.slice(Math.max(0, prefix - 2), prefix);
+  const removed = oldLines.slice(prefix, oldLines.length - suffix);
+  const added = newLines.slice(prefix, newLines.length - suffix);
+  const contextAfter = oldLines.slice(oldLines.length - suffix, oldLines.length - suffix + 2);
+
+  const cleanPath = filePath || 'diff';
+  const diffLines: string[] = [
+    `--- a/${cleanPath}`,
+    `+++ b/${cleanPath}`,
+    `@@ -1,${oldLines.length || 1} +1,${newLines.length || 1} @@`,
+  ];
+
+  for (const line of contextBefore) {
+    diffLines.push(` ${line}`);
+  }
+  for (const line of removed) {
+    diffLines.push(`-${line}`);
+  }
+  for (const line of added) {
+    diffLines.push(`+${line}`);
+  }
+  for (const line of contextAfter) {
+    diffLines.push(` ${line}`);
+  }
+
+  return diffLines.join('\n');
+}
+
 /** Panel khusus untuk operasi edit file (write, edit, edit_file, create_file). */
 export function EditPanel({ tool }: { tool: ToolCallData }) {
   const [copied, setCopied] = useState(false);
@@ -21,17 +72,65 @@ export function EditPanel({ tool }: { tool: ToolCallData }) {
   const targetPath =
     tool.target ||
     (inputObj?.path as string) ||
+    (inputObj?.TargetFile as string) ||
+    (inputObj?.targetFile as string) ||
+    (inputObj?.FilePath as string) ||
+    (inputObj?.filePath as string) ||
+    (inputObj?.AbsolutePath as string) ||
+    (inputObj?.absolutePath as string) ||
     (typeof input === 'string' && (input.includes('/') || input.includes('.')) ? input : undefined) ||
     '';
 
-  const newContent = typeof inputObj?.content === 'string' ? inputObj.content : undefined;
-  const oldString = typeof inputObj?.old_string === 'string' ? inputObj.old_string : undefined;
-  const newString = typeof inputObj?.new_string === 'string' ? inputObj.new_string : undefined;
+  const newContent =
+    typeof inputObj?.content === 'string'
+      ? inputObj.content
+      : typeof inputObj?.Content === 'string'
+        ? inputObj.Content
+        : undefined;
 
-  const diffText =
+  const oldString =
+    typeof inputObj?.old_string === 'string'
+      ? inputObj.old_string
+      : typeof inputObj?.oldString === 'string'
+        ? inputObj.oldString
+        : typeof inputObj?.TargetContent === 'string'
+          ? inputObj.TargetContent
+          : typeof inputObj?.targetContent === 'string'
+            ? inputObj.targetContent
+            : undefined;
+
+  const newString =
+    typeof inputObj?.new_string === 'string'
+      ? inputObj.new_string
+      : typeof inputObj?.newString === 'string'
+        ? inputObj.newString
+        : typeof inputObj?.ReplacementContent === 'string'
+          ? inputObj.ReplacementContent
+          : typeof inputObj?.replacementContent === 'string'
+            ? inputObj.replacementContent
+            : undefined;
+
+  const replacementChunks = Array.isArray(inputObj?.ReplacementChunks)
+    ? (inputObj.ReplacementChunks as Array<{ TargetContent?: string; ReplacementContent?: string }>)
+    : undefined;
+
+  const explicitDiff =
     tool.diff?.diffText ||
     (typeof tool.details?.diff === 'string' ? tool.details.diff : undefined) ||
     (typeof tool.details?.patch === 'string' ? tool.details.patch : undefined);
+
+  const diffText = useMemo(() => {
+    if (explicitDiff) return explicitDiff;
+    if (replacementChunks && replacementChunks.length > 0) {
+      return replacementChunks
+        .map((chunk) => createUnifiedDiff(chunk.TargetContent || '', chunk.ReplacementContent || '', targetPath))
+        .join('\n');
+    }
+    if (oldString || newString) {
+      return createUnifiedDiff(oldString || '', newString || '', targetPath);
+    }
+    return undefined;
+  }, [explicitDiff, replacementChunks, oldString, newString, targetPath]);
 
   const output = tool.output || '';
   const lang = getLanguageFromPath(targetPath);

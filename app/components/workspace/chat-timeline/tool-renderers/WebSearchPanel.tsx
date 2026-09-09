@@ -22,10 +22,26 @@ function resultSnippet(r: SearchResult): string {
   return typeof r.description === 'string' ? r.description : '';
 }
 
+function parseWebSearchResults(output: string): SearchResult[] {
+  if (!output) return [];
+  try {
+    const data = JSON.parse(output);
+    if (Array.isArray(data)) return data;
+    if (data && typeof data === 'object') {
+      if (Array.isArray(data.results)) return data.results;
+      if (Array.isArray(data.organic)) return data.organic;
+      if (Array.isArray(data.items)) return data.items;
+    }
+  } catch {}
+  return [];
+}
+
 /** Hasil pencarian untuk tool `web_search` — details.results[] atau output. */
 export function WebSearchPanel({ tool }: { tool: ToolCallData }) {
   const details = tool.details ?? {};
-  const items: SearchResult[] = Array.isArray(details.results) ? details.results : [];
+  const items: SearchResult[] = Array.isArray(details.results)
+    ? details.results
+    : parseWebSearchResults(tool.output ?? '');
 
   if (items.length === 0) {
     const lines = (tool.output ?? '').split(/\r?\n/).filter(Boolean);

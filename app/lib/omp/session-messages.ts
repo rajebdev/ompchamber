@@ -86,37 +86,44 @@ function inferToolType(name?: string): ToolType {
   }
   if (lower.includes('create')) return 'create_file';
   if (lower.includes('read') || lower.includes('view') || lower.includes('list')) return 'read_file';
-  if (lower.includes('search') || lower.includes('grep') || lower.includes('find') || lower.includes('glob')) {
-    return 'search_fs';
-  }
+  if (lower.includes('grep') || lower.includes('glob')) return 'grep';
+  if (lower.includes('search') || lower.includes('find')) return 'search_fs';
   if (lower.includes('web') || lower.includes('fetch') || lower.includes('http')) return 'web_search';
+  if (lower.includes('todo')) return 'todo';
+  if (lower.includes('task')) return 'task';
+  if (lower.includes('lsp')) return 'lsp';
+  if (lower.includes('eval')) return 'eval';
+  if (lower.includes('github')) return 'github';
+  if (lower.includes('security')) return 'security_scan';
   return 'custom';
 }
 
 function toolTitleFor(block: OmpBlock): string {
   const name = typeof block.name === 'string' ? block.name : 'tool';
-  const args = isRecord(block.arguments) ? block.arguments : {};
-  const command =
-    typeof args.command === 'string'
-      ? args.command
-      : typeof args.cmd === 'string'
-        ? args.cmd
-        : undefined;
-  const path = typeof args.path === 'string' ? args.path : undefined;
-  const detail = command || path;
+  const detail = commandFor(block) || targetFor(block);
   return detail ? `${name} — ${detail}` : name;
 }
 
 function targetFor(block: OmpBlock): string | undefined {
   if (!isRecord(block.arguments)) return undefined;
-  const path = block.arguments.path;
-  return typeof path === 'string' ? path : undefined;
+  const args = block.arguments;
+  if (typeof args.path === 'string') return args.path;
+  if (typeof args.TargetFile === 'string') return args.TargetFile;
+  if (typeof args.targetFile === 'string') return args.targetFile;
+  if (typeof args.FilePath === 'string') return args.FilePath;
+  if (typeof args.filePath === 'string') return args.filePath;
+  if (typeof args.AbsolutePath === 'string') return args.AbsolutePath;
+  if (typeof args.file === 'string') return args.file;
+  return undefined;
 }
 
 function commandFor(block: OmpBlock): string | undefined {
   if (!isRecord(block.arguments)) return undefined;
-  if (typeof block.arguments.command === 'string') return block.arguments.command as string;
-  if (typeof block.arguments.cmd === 'string') return block.arguments.cmd as string;
+  const args = block.arguments;
+  if (typeof args.command === 'string') return args.command;
+  if (typeof args.cmd === 'string') return args.cmd;
+  if (typeof args.CommandLine === 'string') return args.CommandLine;
+  if (typeof args.commandLine === 'string') return args.commandLine;
   return undefined;
 }
 
@@ -311,18 +318,24 @@ function toChatMessage(entry: OmpMessageEntry): ChatMessageData | null {
   return message;
 }
 
+interface CollectedToolResult {
+  output: string;
+  details?: Record<string, unknown>;
+  isError?: boolean;
+}
+
 interface SequenceState {
   messages: ChatMessageData[];
-  /** toolCallId → output text accumulated from later toolResult entries. */
-  outputsByCall: Map<string, string>;
+  /** toolCallId → output and details accumulated from later toolResult entries. */
+  outputsByCall: Map<string, CollectedToolResult>;
 }
 
 /**
  * First pass: collect every toolResult output (entry-level) into a map keyed
  * by toolCallId so assistant tool calls rendered later can show their result.
  */
-function collectToolOutputs(records: Record<string, unknown>[]): Map<string, string> {
-  const outputs = new Map<string, string>();
+function collectToolOutputs(records: Record<string, unknown>[]): Map<string, CollectedToolResult> {
+  const outputs = new Map<string, CollectedToolResult>();
   for (const record of records) {
     if (record?.type !== 'message') continue;
     const msg = (record as unknown as OmpMessageEntry).message;
@@ -330,8 +343,11 @@ function collectToolOutputs(records: Record<string, unknown>[]): Map<string, str
     const callId = typeof msg.toolCallId === 'string' ? msg.toolCallId : undefined;
     if (!callId) continue;
     const text = resultOutput(msg);
-    const existing = outputs.get(callId) ?? '';
-    outputs.set(callId, existing ? `${existing}\n${text}` : text);
+    const existing = outputs.get(callId);
+    const output = existing ? `${existing.output}\n${text}` : text;
+    const details = (isRecord(msg.details) ? (msg.details as Record<string, unknown>) : undefined) || existing?.details;
+    const isError = msg.isError === true || existing?.isError;
+    outputs.set(callId, { output, details, isError });
   }
   return outputs;
 }
@@ -392,10 +408,15 @@ export function loadSessionMessages(filePath: string): ChatMessageData[] {
     if (!mapped) continue;
     // Fold the collected outputs into this message's tool calls.
     if (mapped.toolCalls?.length) {
-      mapped.toolCalls = mapped.toolCalls.map((call) => ({
-        ...call,
-        output: call.output || state.outputsByCall.get(call.id) || undefined,
-      }));
+      mapped.toolCalls = mapped.toolCalls.map((call) => {
+        const collected = state.outputsByCall.get(call.id);
+        return {
+          ...call,
+          output: call.output || collected?.output || undefined,
+          details: (call.details || collected?.details || undefined) as Record<string, any> | undefined,
+          status: collected?.isError ? 'error' : call.status,
+        };
+      });
     }
     state.messages.push(mapped);
   }

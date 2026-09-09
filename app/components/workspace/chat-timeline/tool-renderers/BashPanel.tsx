@@ -30,14 +30,25 @@ export function BashPanel({ tool }: { tool: ToolCallData }) {
 
   const details = tool.details ?? {};
   const meta = details as BashMeta;
-  const command = tool.command || (typeof tool.input === 'string' ? tool.input : '');
+  const inputObj = typeof tool.input === 'object' && tool.input !== null ? (tool.input as Record<string, any>) : undefined;
+  const command =
+    tool.command ||
+    (typeof inputObj?.command === 'string' ? inputObj.command : undefined) ||
+    (typeof inputObj?.cmd === 'string' ? inputObj.cmd : undefined) ||
+    (typeof inputObj?.CommandLine === 'string' ? inputObj.CommandLine : undefined) ||
+    (typeof inputObj?.commandLine === 'string' ? inputObj.commandLine : undefined) ||
+    (typeof tool.input === 'string' ? tool.input : '');
   const rawOutput = tool.output || (tool.error ? `Error: ${tool.error}` : '');
 
   const { cleanText: output, wallTime } = parseWallTime(rawOutput);
 
   const exitCode = typeof meta.exitCode === 'number' ? meta.exitCode : tool.isError ? 1 : undefined;
-  const cwd = typeof meta.cwd === 'string' ? meta.cwd : undefined;
-  const duration = tool.duration || wallTime;
+  const cwd =
+    (typeof meta.cwd === 'string' ? meta.cwd : undefined) ||
+    (typeof inputObj?.cwd === 'string' ? inputObj.cwd : undefined) ||
+    (typeof inputObj?.Cwd === 'string' ? inputObj.Cwd : undefined);
+  const durationMs = typeof meta.durationMs === 'number' ? meta.durationMs : tool.durationMs;
+  const duration = tool.duration || wallTime || (durationMs ? `${durationMs}ms` : undefined);
 
   const isSilent = !output || output === '(no output)';
 

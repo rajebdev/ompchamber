@@ -28,10 +28,25 @@ const STATUS_STYLES = {
   removed: 'bg-error/10 text-error',
 } as const;
 
+function parseSkills(output: string): SkillItem[] {
+  if (!output) return [];
+  try {
+    const data = JSON.parse(output);
+    if (Array.isArray(data)) return data;
+    if (data && typeof data === 'object') {
+      if (Array.isArray(data.skills)) return data.skills;
+      if (Array.isArray(data.items)) return data.items;
+    }
+  } catch {}
+  return [];
+}
+
 /** Panel untuk tool `manage_skill` — daftar skill terkelola. */
 export function ManageSkillPanel({ tool }: { tool: ToolCallData }) {
   const details = tool.details ?? {};
-  const items: SkillItem[] = Array.isArray(details.skills) ? details.skills : [];
+  const items: SkillItem[] = Array.isArray(details.skills)
+    ? details.skills
+    : parseSkills(tool.output ?? '');
 
   if (items.length === 0) {
     const lines = (tool.output ?? '').split(/\r?\n/).filter(Boolean);

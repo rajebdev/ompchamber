@@ -24,10 +24,26 @@ const STATE_STYLES = {
   closed: 'bg-error/10 text-error',
 } as const;
 
+function parseGithubItems(output: string): GithubItem[] {
+  if (!output) return [];
+  try {
+    const data = JSON.parse(output);
+    if (Array.isArray(data)) return data;
+    if (data && typeof data === 'object') {
+      if (Array.isArray(data.items)) return data.items;
+      if (Array.isArray(data.pullRequests)) return data.pullRequests;
+      if (Array.isArray(data.issues)) return data.issues;
+    }
+  } catch {}
+  return [];
+}
+
 /** Ringkasan PR/issue untuk tool `github` — details.items[] atau output. */
 export function GithubPanel({ tool }: { tool: ToolCallData }) {
   const details = tool.details ?? {};
-  const items: GithubItem[] = Array.isArray(details.items) ? details.items : [];
+  const items: GithubItem[] = Array.isArray(details.items)
+    ? details.items
+    : parseGithubItems(tool.output ?? '');
 
   if (items.length === 0) {
     const lines = (tool.output ?? '').split(/\r?\n/).filter(Boolean);

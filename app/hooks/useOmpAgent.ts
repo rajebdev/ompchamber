@@ -131,14 +131,32 @@ function toChatMessage(raw: Record<string, unknown>, streaming = true): ChatMess
           const tcId = typeof b.toolCallId === 'string' ? b.toolCallId : (typeof b.id === 'string' ? b.id : `tc-${Date.now()}`);
           const toolName = typeof b.toolName === 'string' ? b.toolName : (typeof b.name === 'string' ? b.name : 'Tool');
           const rawInput = (b.input ?? b.arguments) as Record<string, unknown> | undefined;
+          const command =
+            rawInput && typeof rawInput.command === 'string'
+              ? rawInput.command
+              : rawInput && typeof rawInput.cmd === 'string'
+                ? rawInput.cmd
+                : rawInput && typeof rawInput.CommandLine === 'string'
+                  ? rawInput.CommandLine
+                  : '';
+          const target =
+            rawInput && typeof rawInput.path === 'string'
+              ? rawInput.path
+              : rawInput && typeof rawInput.TargetFile === 'string'
+                ? rawInput.TargetFile
+                : rawInput && typeof rawInput.targetFile === 'string'
+                  ? rawInput.targetFile
+                  : rawInput && typeof rawInput.file === 'string'
+                    ? rawInput.file
+                    : '';
           blocks.push({
             id: tcId,
             type: toolName as ToolCallData['type'],
-            title: toolName,
+            title: command || target ? `${toolName} — ${command || target}` : toolName,
             name: toolName,
             intent: rawInput && typeof rawInput.i === 'string' ? rawInput.i : undefined,
-            target: '',
-            command: '',
+            target,
+            command,
             input: rawInput,
             status: streaming ? 'running' : 'success',
           });
@@ -195,7 +213,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
   // Tool results arrive as separate events (tool_execution_end) or as
   // toolResult messages AFTER the assistant message with the toolCall block.
   // Accumulate them here and merge into the matching tool call on message_end.
-  const toolResultsRef = useRef<Map<string, { output: string; isError?: boolean }>>(new Map());
+  const toolResultsRef = useRef<Map<string, { output: string; isError?: boolean; details?: Record<string, any> }>>(new Map());
   // Last assistant message that carried tool calls, so tool_execution_end
   // events arriving after message_end can re-emit it with the result paired.
   const lastToolMessageRef = useRef<ChatMessageData | null>(null);
@@ -205,7 +223,12 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     const toolCalls = msg.toolCalls.map(tc => {
       const res = toolResultsRef.current.get(tc.id);
       return res
-        ? { ...tc, output: res.output, status: (res.isError ? 'error' : 'success') as ToolCallData['status'] }
+        ? {
+            ...tc,
+            output: res.output,
+            details: tc.details || res.details || undefined,
+            status: (res.isError ? 'error' : 'success') as ToolCallData['status'],
+          }
         : tc;
     });
     return { ...msg, toolCalls };
@@ -257,8 +280,9 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
           if (msg.role === 'toolResult') {
             const callId = typeof msg.toolCallId === 'string' ? msg.toolCallId : undefined;
             const text = extractTextFromContent(msg.content);
+            const details = (msg.details && typeof msg.details === 'object' ? msg.details : undefined) as Record<string, any> | undefined;
             if (callId) {
-              toolResultsRef.current.set(callId, { output: text });
+              toolResultsRef.current.set(callId, { output: text, details });
             }
             break;
           }
@@ -276,8 +300,9 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
           if (completed.role === 'toolResult') {
             const callId = typeof completed.toolCallId === 'string' ? completed.toolCallId : undefined;
             const text = extractTextFromContent(completed.content);
+            const details = (completed.details && typeof completed.details === 'object' ? completed.details : undefined) as Record<string, any> | undefined;
             if (callId) {
-              toolResultsRef.current.set(callId, { output: text });
+              toolResultsRef.current.set(callId, { output: text, details });
             }
             break;
           }
@@ -320,10 +345,11 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
           const callId = typeof data.toolCallId === 'string' ? data.toolCallId : undefined;
           const result = toolResultText(data.result);
           const isError = data.isError === true;
+          const details = (data.details && typeof data.details === 'object' ? data.details : undefined) as Record<string, any> | undefined;
           if (callId) {
             // The final result is complete; replace accumulated partials so
             // the displayed output is not duplicated (partials + final).
-            toolResultsRef.current.set(callId, { output: result, isError });
+            toolResultsRef.current.set(callId, { output: result, isError, details });
             if (lastToolMessageRef.current?.toolCalls?.some(tc => tc.id === callId)) {
               callbacksRef.current.onMessageUpdate?.(pairToolOutputs(lastToolMessageRef.current));
             }

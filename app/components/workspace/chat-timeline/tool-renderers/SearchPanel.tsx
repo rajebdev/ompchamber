@@ -22,12 +22,15 @@ function queryOf(tool: ToolCallData): string {
     if (typeof input.pattern === 'string') return input.pattern;
     if (typeof input.query === 'string') return input.query;
     if (typeof input.glob === 'string') return input.glob;
+    if (typeof input.regex === 'string') return input.regex;
+    if (typeof input.search === 'string') return input.search;
+    if (typeof input.text === 'string') return input.text;
   }
   if (typeof tool.target === 'string' && tool.target !== '.') return tool.target;
   return '';
 }
 
-/** Parses markdown hierarchical output from ripgrep/grep tool */
+/** Parses markdown hierarchical output or standard ripgrep/grep tool output */
 function parseGrepOutput(output: string): { files: ParsedFileMatches[]; totalMatches: number; isGlobList: boolean } {
   const lines = output.split(/\r?\n/);
   const files: ParsedFileMatches[] = [];
@@ -39,7 +42,50 @@ function parseGrepOutput(output: string): { files: ParsedFileMatches[]; totalMat
     const trimmed = rawLine.trimEnd();
     if (!trimmed) continue;
 
-    // Detect heading lines like "# app/", "## components/", "#### File.tsx"
+    // 1. Detect standard ripgrep format: "path/to/file.tsx:18:code" or "path/to/file.tsx:18:5:code"
+    const standardRgMatch = trimmed.match(/^([^:\n]+(?:\.[a-zA-Z0-9_-]+|\/[^:\n]+)):(\d+)(?::\d+)?:(.*)$/);
+    if (standardRgMatch) {
+      isGlobList = false;
+      const filePath = standardRgMatch[1].trim();
+      const lineNum = parseInt(standardRgMatch[2], 10) || 1;
+      const text = standardRgMatch[3];
+
+      let targetFile = files.find((f) => f.path === filePath);
+      if (!targetFile) {
+        if (currentFile && currentFile.lines.length > 0 && !files.includes(currentFile)) {
+          files.push(currentFile);
+        }
+        targetFile = { path: filePath, lines: [], matchCount: 0 };
+        files.push(targetFile);
+        currentFile = targetFile;
+      }
+      targetFile.lines.push({ lineNum, text, isMatch: true });
+      targetFile.matchCount++;
+      continue;
+    }
+
+    // 1b. Detect standard ripgrep context line: "path/to/file.tsx-17-code"
+    const standardRgCtx = trimmed.match(/^([^:\n]+(?:\.[a-zA-Z0-9_-]+|\/[^:\n]+))-(\d+)-(.*)$/);
+    if (standardRgCtx) {
+      isGlobList = false;
+      const filePath = standardRgCtx[1].trim();
+      const lineNum = parseInt(standardRgCtx[2], 10) || 1;
+      const text = standardRgCtx[3];
+
+      let targetFile = files.find((f) => f.path === filePath);
+      if (!targetFile) {
+        if (currentFile && currentFile.lines.length > 0 && !files.includes(currentFile)) {
+          files.push(currentFile);
+        }
+        targetFile = { path: filePath, lines: [], matchCount: 0 };
+        files.push(targetFile);
+        currentFile = targetFile;
+      }
+      targetFile.lines.push({ lineNum, text, isMatch: false });
+      continue;
+    }
+
+    // 2. Detect heading lines like "# app/", "## components/", "#### File.tsx"
     const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
     if (headingMatch) {
       const level = headingMatch[1].length;
@@ -52,7 +98,7 @@ function parseGrepOutput(output: string): { files: ParsedFileMatches[]; totalMat
         dirStack[level - 1] = name;
       } else {
         // File heading
-        if (currentFile && currentFile.lines.length > 0) {
+        if (currentFile && currentFile.lines.length > 0 && !files.includes(currentFile)) {
           files.push(currentFile);
         }
         const fullDir = dirStack.filter(Boolean).join('');
@@ -62,7 +108,7 @@ function parseGrepOutput(output: string): { files: ParsedFileMatches[]; totalMat
       continue;
     }
 
-    // Match code line format: " 18|..." or "*19|..." or "18:..."
+    // 3. Match code line format: " 18|..." or "*19|..." or "18:..."
     const codeMatch = trimmed.match(/^(\*?)(\s*\d+)[|:](.*)$/);
     if (codeMatch) {
       isGlobList = false;
@@ -72,6 +118,7 @@ function parseGrepOutput(output: string): { files: ParsedFileMatches[]; totalMat
 
       if (!currentFile) {
         currentFile = { path: 'Results', lines: [], matchCount: 0 };
+        files.push(currentFile);
       }
 
       currentFile.lines.push({ lineNum, text, isMatch });
@@ -79,7 +126,7 @@ function parseGrepOutput(output: string): { files: ParsedFileMatches[]; totalMat
       continue;
     }
 
-    // Handle plain file list output (glob format)
+    // 4. Handle plain file list output (glob format)
     if (!trimmed.startsWith('#') && !codeMatch) {
       if (trimmed.includes('|') || trimmed.includes(':')) {
         isGlobList = false;
@@ -94,7 +141,7 @@ function parseGrepOutput(output: string): { files: ParsedFileMatches[]; totalMat
     }
   }
 
-  if (currentFile && currentFile.lines.length > 0) {
+  if (currentFile && currentFile.lines.length > 0 && !files.includes(currentFile)) {
     files.push(currentFile);
   }
 

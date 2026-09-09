@@ -45,10 +45,41 @@ function locationOf(d: Diagnostic): string {
   return col === undefined ? `${file}:${line}` : `${file}:${line}:${col}`;
 }
 
+function parseLspOutput(output: string): Diagnostic[] {
+  if (!output) return [];
+  try {
+    const data = JSON.parse(output);
+    if (Array.isArray(data)) return data;
+    if (data && typeof data === 'object') {
+      if (Array.isArray(data.diagnostics)) return data.diagnostics;
+      if (Array.isArray(data.errors)) return data.errors;
+    }
+  } catch {}
+
+  const lines = output.split(/\r?\n/).filter(Boolean);
+  const parsed: Diagnostic[] = [];
+  for (const line of lines) {
+    const match = line.match(/^([^:\n]+):(\d+)(?::(\d+))?\s*[-:]?\s*(error|warning|info)?\s*(?:(TS\d+|[A-Za-z0-9_-]+):)?\s*(.*)$/i);
+    if (match) {
+      parsed.push({
+        file: match[1].trim(),
+        line: parseInt(match[2], 10),
+        column: match[3] ? parseInt(match[3], 10) : undefined,
+        severity: match[4] ? match[4].toLowerCase() : 'error',
+        code: match[5] || undefined,
+        message: match[6]?.trim() || line,
+      });
+    }
+  }
+  return parsed;
+}
+
 /** Daftar diagnostics untuk tool `lsp` — details.diagnostics[] atau output. */
 export function LspPanel({ tool }: { tool: ToolCallData }) {
   const details = tool.details ?? {};
-  const items: Diagnostic[] = Array.isArray(details.diagnostics) ? details.diagnostics : [];
+  const items: Diagnostic[] = Array.isArray(details.diagnostics)
+    ? details.diagnostics
+    : parseLspOutput(tool.output ?? '');
 
   if (items.length === 0) {
     const lines = (tool.output ?? '').split(/\r?\n/).filter(Boolean);

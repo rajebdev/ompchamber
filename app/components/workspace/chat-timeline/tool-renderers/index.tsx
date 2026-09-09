@@ -26,8 +26,16 @@ import { EditPanel } from '@/components/workspace/chat-timeline/tool-renderers/E
 function resolveTargetFile(tool: ToolCallData): string | undefined {
   if (tool.target) return tool.target;
   if (tool.diff?.file) return tool.diff.file;
-  if (tool.input && typeof tool.input === 'object' && typeof (tool.input as any).path === 'string') {
-    return (tool.input as any).path;
+  if (tool.input && typeof tool.input === 'object') {
+    const obj = tool.input as Record<string, unknown>;
+    if (typeof obj.path === 'string') return obj.path;
+    if (typeof obj.TargetFile === 'string') return obj.TargetFile;
+    if (typeof obj.targetFile === 'string') return obj.targetFile;
+    if (typeof obj.FilePath === 'string') return obj.FilePath;
+    if (typeof obj.filePath === 'string') return obj.filePath;
+    if (typeof obj.AbsolutePath === 'string') return obj.AbsolutePath;
+    if (typeof obj.absolutePath === 'string') return obj.absolutePath;
+    if (typeof obj.file === 'string') return obj.file;
   }
   if (typeof tool.input === 'string' && (tool.input.includes('.') || tool.input.includes('/'))) {
     return tool.input;
@@ -50,7 +58,7 @@ export function resolveToolKey(tool: ToolCallData): string {
 
   // Check title prefix if e.g. "grep — .", "read — app/...", "write — app/..."
   const titlePrefix = rawTitle.split(/[\s—\-:]+/)[0]?.trim();
-  if (['grep', 'glob', 'read', 'write', 'edit', 'bash', 'terminal', 'todo', 'eval', 'hub', 'lsp', 'github', 'task'].includes(titlePrefix)) {
+  if (['grep', 'glob', 'read', 'write', 'edit', 'bash', 'terminal', 'run_command', 'todo', 'eval', 'hub', 'lsp', 'github', 'task'].includes(titlePrefix)) {
     return titlePrefix;
   }
 
@@ -62,13 +70,21 @@ export function ToolDetailsPanel({ tool }: { tool: ToolCallData }): ReactNode {
   const key = resolveToolKey(tool);
 
   // File Read Family
-  if (key === 'read' || key === 'read_file' || key === 'view_file') {
+  if (key === 'read' || key === 'read_file' || key === 'view_file' || key === 'read_file_content') {
     const targetFile = resolveTargetFile(tool);
     return <ReadPanel targetFilePath={targetFile} output={tool.output || ''} />;
   }
 
   // File Edit / Write Family
-  if (key === 'edit' || key === 'write' || key === 'edit_file' || key === 'create_file') {
+  if (
+    key === 'edit' ||
+    key === 'write' ||
+    key === 'edit_file' ||
+    key === 'create_file' ||
+    key === 'write_to_file' ||
+    key === 'replace_file_content' ||
+    key === 'multi_edit_file'
+  ) {
     return <EditPanel tool={tool} />;
   }
 
@@ -82,7 +98,7 @@ export function ToolDetailsPanel({ tool }: { tool: ToolCallData }): ReactNode {
   if (key === 'web_search') return <WebSearchPanel tool={tool} />;
 
   // Code & Terminal Execution
-  if (key === 'bash' || key === 'terminal') return <BashPanel tool={tool} />;
+  if (key === 'bash' || key === 'terminal' || key === 'run_command') return <BashPanel tool={tool} />;
   if (key === 'eval') return <EvalPanel tool={tool} />;
   if (key === 'lsp') return <LspPanel tool={tool} />;
   if (key === 'ast_edit') return <AstEditPanel tool={tool} />;

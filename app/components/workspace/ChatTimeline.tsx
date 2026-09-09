@@ -89,6 +89,8 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
     ? sessionData.model.modelId
     : sessionData?.model;
 
+  const orderedMessages = useMemo(() => normalizeNoticePositions(localMessages), [localMessages]);
+
   // A pending "new-…" session has no messages yet, so the workspace picker
   // must stay available until the first chat is sent (which spawns the real
   // omp session). Never lock the user into a folder before sending.
@@ -113,8 +115,6 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
       />
     );
   }
-
-  const orderedMessages = useMemo(() => normalizeNoticePositions(localMessages), [localMessages]);
 
   return (
     <div className={`flex flex-col h-full min-h-0 overflow-hidden bg-canvas relative ${className}`}>

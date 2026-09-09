@@ -26,10 +26,26 @@ const TOOL_META: Record<string, { label: string; icon: React.ReactNode }> = {
   learn: { label: 'Learned', icon: <GraduationCap size={11} /> },
 };
 
+function parseMemoryItems(output: string): MemoryItem[] {
+  if (!output) return [];
+  try {
+    const data = JSON.parse(output);
+    if (Array.isArray(data)) return data;
+    if (data && typeof data === 'object') {
+      if (Array.isArray(data.items)) return data.items;
+      if (Array.isArray(data.memories)) return data.memories;
+      if (Array.isArray(data.results)) return data.results;
+    }
+  } catch {}
+  return [];
+}
+
 /** Panel untuk tool memory — retain/recall/reflect/learn/memory_edit. */
 export function MemoryPanel({ tool }: { tool: ToolCallData }) {
   const details = tool.details ?? {};
-  const items: MemoryItem[] = Array.isArray(details.items) ? details.items : [];
+  const items: MemoryItem[] = Array.isArray(details.items)
+    ? details.items
+    : parseMemoryItems(tool.output ?? '');
   const meta = TOOL_META[tool.type] ?? { label: 'Memory', icon: <Brain size={11} /> };
 
   if (items.length === 0) {

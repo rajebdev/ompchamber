@@ -31,10 +31,26 @@ function countBySeverity(findings: ScanFinding[]): Record<string, number> {
   return counts;
 }
 
+function parseScanFindings(output: string): ScanFinding[] {
+  if (!output) return [];
+  try {
+    const data = JSON.parse(output);
+    if (Array.isArray(data)) return data;
+    if (data && typeof data === 'object') {
+      if (Array.isArray(data.findings)) return data.findings;
+      if (Array.isArray(data.vulnerabilities)) return data.vulnerabilities;
+      if (Array.isArray(data.issues)) return data.issues;
+    }
+  } catch {}
+  return [];
+}
+
 /** Panel untuk tool `security_scan` — ringkasan + temuan scan. */
 export function SecurityScanPanel({ tool }: { tool: ToolCallData }) {
   const details = tool.details ?? {};
-  const findings: ScanFinding[] = Array.isArray(details.findings) ? details.findings : [];
+  const findings: ScanFinding[] = Array.isArray(details.findings)
+    ? details.findings
+    : parseScanFindings(tool.output ?? '');
 
   if (findings.length === 0) {
     const lines = (tool.output ?? '').split(/\r?\n/).filter(Boolean);

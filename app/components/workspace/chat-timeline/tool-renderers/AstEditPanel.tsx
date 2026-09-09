@@ -17,10 +17,25 @@ function itemMessage(i: AstEditItem): string {
   return typeof i.message === 'string' ? i.message : '';
 }
 
+function parseAstChanges(output: string): AstEditItem[] {
+  if (!output) return [];
+  try {
+    const data = JSON.parse(output);
+    if (Array.isArray(data)) return data;
+    if (data && typeof data === 'object') {
+      if (Array.isArray(data.changes)) return data.changes;
+      if (Array.isArray(data.edits)) return data.edits;
+    }
+  } catch {}
+  return [];
+}
+
 /** Panel untuk tool `ast_edit` — perubahan AST terstruktur. */
 export function AstEditPanel({ tool }: { tool: ToolCallData }) {
   const details = tool.details ?? {};
-  const items: AstEditItem[] = Array.isArray(details.changes) ? details.changes : [];
+  const items: AstEditItem[] = Array.isArray(details.changes)
+    ? details.changes
+    : parseAstChanges(tool.output ?? '');
 
   if (items.length === 0) {
     const lines = (tool.output ?? '').split(/\r?\n/).filter(Boolean);

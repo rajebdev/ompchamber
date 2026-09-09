@@ -37,6 +37,17 @@ export function SearchFsPanel({ tool }: { tool: ToolCallData }) {
 
   const items: FsItem[] = useMemo(() => {
     if (rawItems.length > 0) return rawItems;
+    if (tool.output) {
+      try {
+        const data = JSON.parse(tool.output);
+        if (Array.isArray(data)) return data;
+        if (data && typeof data === 'object') {
+          if (Array.isArray(data.results)) return data.results;
+          if (Array.isArray(data.items)) return data.items;
+          if (Array.isArray(data.files)) return data.files;
+        }
+      } catch {}
+    }
     const lines = (tool.output ?? '').split(/\r?\n/).filter(Boolean);
     return lines.map((line) => {
       const isDir = line.endsWith('/');
