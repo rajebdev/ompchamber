@@ -161,7 +161,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
                   onNewChat={(content) => setNewChatInitialContent(content)}
                   footerVisible={isLastAi}
                   durationMs={isLastAi ? responseRunDurationMs(orderedMessages, idx) : null}
-                  className={msg.notice ? 'mt-3 mb-1' : isAiFragment ? 'mt-1' : 'mt-8'}
+                  className={msg.notice ? 'mt-3 mb-1' : isAiFragment ? 'mt-1' : 'mt-3'}
                 />
               );
             })}
