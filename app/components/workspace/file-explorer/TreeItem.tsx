@@ -96,7 +96,11 @@ export function FileTreeItem({
       }
     } else {
       if (onOpenFile) {
-        onOpenFile(file);
+        onOpenFile({
+          ...file,
+          root: rootPath,
+          repo: repo || '.',
+        });
       }
     }
   };
@@ -116,7 +120,13 @@ export function FileTreeItem({
   const handleAction = (actionType: string) => {
     setContextMenu(null);
     if (actionType === 'view') {
-      if (onOpenFile) onOpenFile(file);
+      if (onOpenFile) {
+        onOpenFile({
+          ...file,
+          root: rootPath,
+          repo: repo || '.',
+        });
+      }
     } else if (actionType === 'diff') {
       window.dispatchEvent(new CustomEvent('omp:open-diff', {
         detail: {
@@ -197,7 +207,7 @@ export function FileTreeItem({
           <span
             className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
               folderStatus.hasDeleted ? 'bg-error' :
-              folderStatus.hasModified || folderStatus.hasStaged ? 'bg-warning' : 'bg-success'
+              folderStatus.hasModified || folderStatus.hasStaged ? 'bg-info' : 'bg-success'
             }`}
             title={`${folderStatus.count} changed file${folderStatus.count > 1 ? 's' : ''}`}
           />

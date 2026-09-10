@@ -12,7 +12,17 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return json({ error: 'Missing path' }, { status: 400 });
   }
 
-  const baseDir = await resolveRoot(url.searchParams.get('root'), getDefaultFsRoot(isMockMode()));
+  let baseDir = await resolveRoot(url.searchParams.get('root'), getDefaultFsRoot(isMockMode()));
+
+  // If repo is specified (e.g. nested git project), resolve inside the repo
+  const repo = url.searchParams.get('repo');
+  if (repo && repo !== '.') {
+    const repoDir = path.resolve(baseDir, repo);
+    if (repoDir === baseDir || repoDir.startsWith(baseDir + path.sep)) {
+      baseDir = repoDir;
+    }
+  }
+
   const cleanPath = filePath.replace(/^\/+/, '');
   const fullPath = path.resolve(baseDir, cleanPath);
 

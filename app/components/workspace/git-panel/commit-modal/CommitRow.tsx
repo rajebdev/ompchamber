@@ -116,7 +116,7 @@ export function CommitRow({
             {commit.files.map((file, fileIdx) => {
               const isExpanded = isExpandedFile(commit.hash, file.file);
               const diffKey = `${commit.hash}:${file.file}`;
-              const activeDiff = fileDiffs[diffKey] || file.diff;
+              const activeDiff = fileDiffs[diffKey] !== undefined ? fileDiffs[diffKey] : file.diff;
               const isLoading = isLoadingFile(commit.hash, file.file);
 
               const statusColor =

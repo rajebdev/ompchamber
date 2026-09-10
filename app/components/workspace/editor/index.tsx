@@ -65,6 +65,7 @@ export function Editor({
       } else if (activeFile.path) {
         const params = new URLSearchParams({ path: activeFile.path });
         if (activeFile.root) params.set('root', activeFile.root);
+        if (activeFile.repo && activeFile.repo !== '.') params.set('repo', activeFile.repo);
         fetch(`/api/fs/read?${params.toString()}`)
           .then(res => res.json())
           .then(data => {
@@ -106,6 +107,7 @@ export function Editor({
     formData.append('path', fileToSave.path);
     formData.append('content', content);
     if (fileToSave.root) formData.append('root', fileToSave.root);
+    if (fileToSave.repo && fileToSave.repo !== '.') formData.append('repo', fileToSave.repo);
 
     fetch('/api/fs/action', { method: 'POST', body: formData })
       .then(res => res.json())

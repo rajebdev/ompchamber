@@ -33,7 +33,7 @@ export function useCommitInteractions({
         return next;
       });
 
-      if (isExpanding && !fileDiffs[diffKey] && !file.diff) {
+      if (isExpanding && fileDiffs[diffKey] === undefined && !file.diff) {
         setLoadingFiles((prev) => new Set(prev).add(diffKey));
         try {
           const formData = new FormData();
@@ -41,15 +41,18 @@ export function useCommitInteractions({
           formData.set('hash', commitHash);
           formData.set('file', file.file);
           if (rootPath) formData.set('root', rootPath);
-          if (activeRepo) formData.set('repo', activeRepo);
+          if (activeRepo && activeRepo !== '.') formData.set('repo', activeRepo);
 
           const res = await fetch('/api/fs/git', { method: 'POST', body: formData });
           const json = await res.json();
-          if (json && json.diff) {
+          if (json && typeof json.diff === 'string') {
             setFileDiffs((prev) => ({ ...prev, [diffKey]: json.diff }));
+          } else if (json && json.error) {
+            setFileDiffs((prev) => ({ ...prev, [diffKey]: `// Error: ${json.error}` }));
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error('Failed to load file diff:', err);
+          setFileDiffs((prev) => ({ ...prev, [diffKey]: `// Error loading diff: ${err?.message || 'Network error'}` }));
         } finally {
           setLoadingFiles((prev) => {
             const next = new Set(prev);

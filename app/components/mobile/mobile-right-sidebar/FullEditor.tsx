@@ -31,6 +31,7 @@ interface MobileFullEditorProps {
     path?: string;
     content?: string;
     root?: string;
+    repo?: string;
   };
   onClose: () => void;
 }
@@ -84,6 +85,7 @@ export function MobileFullEditor({ file, onClose }: MobileFullEditorProps) {
       setIsLoading(true);
       const params = new URLSearchParams({ path: file.path });
       if (file.root) params.set('root', file.root);
+      if (file.repo && file.repo !== '.') params.set('repo', file.repo);
       fetch(`/api/fs/read?${params.toString()}`)
         .then(res => res.json())
         .then(data => {
