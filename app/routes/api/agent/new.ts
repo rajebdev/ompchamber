@@ -1,8 +1,27 @@
 import { json } from '@remix-run/node';
 import type { ActionFunctionArgs } from '@remix-run/node';
 import { randomUUID } from 'crypto';
+import { getDb } from '@/db.server';
 import { startRpcSession, WebRpcError } from '@/lib/omp/rpc/manager';
 import { RpcCommandError, RpcCommandTimeoutError } from '@/lib/omp/rpc/process';
+
+/** The model-dropdown persists its selection here (actionType 'selectModel');
+ *  a spawn that arrives without an explicit provider/modelId falls back to it. */
+const SELECTED_MODEL_KEY = 'omp_selected_model';
+
+async function loadPersistedModel(): Promise<{ provider: string; modelId: string } | null> {
+  try {
+    const db = await getDb();
+    const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SELECTED_MODEL_KEY]);
+    if (!row?.value) return null;
+    const parsed = JSON.parse(row.value) as { provider?: unknown; modelId?: unknown; id?: unknown };
+    const provider = typeof parsed.provider === 'string' ? parsed.provider : undefined;
+    const modelId = typeof parsed.modelId === 'string' ? parsed.modelId : (typeof parsed.id === 'string' ? parsed.id : undefined);
+    return provider && modelId ? { provider, modelId } : null;
+  } catch {
+    return null;
+  }
+}
 
 function newSessionErrorResponse(error: unknown) {
   if (error instanceof WebRpcError) {
@@ -45,8 +64,9 @@ export async function action({ request }: ActionFunctionArgs) {
       thinkingLevel?: string;
     };
 
-    if (provider && modelId) {
-      await session.send({ type: 'set_model', provider, modelId }).catch(() => {});
+    const effectiveModel = provider && modelId ? { provider, modelId } : await loadPersistedModel();
+    if (effectiveModel) {
+      await session.send({ type: 'set_model', ...effectiveModel }).catch(() => {});
     }
     if (thinkingLevel) {
       await session.send({ type: 'set_thinking_level', level: thinkingLevel }).catch(() => {});
