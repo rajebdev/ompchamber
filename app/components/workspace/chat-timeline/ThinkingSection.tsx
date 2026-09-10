@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type MouseEvent } from 'react';
 import { Sparkles, ChevronDown, Copy, Check, BrainCircuit } from 'lucide-react';
 import type { ThinkingData } from '@/types';
 import { copyToClipboard } from '@/hooks/ui/clipboard';
+import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
 
 interface ThinkingSectionProps {
   thinking: ThinkingData | string;
@@ -38,7 +39,7 @@ export function ThinkingSection({
     if (el) el.scrollTop = el.scrollHeight;
   }, [isOpen, cleanThought, isGenerating]);
 
-  const handleCopy = async (e: React.MouseEvent) => {
+  const handleCopy = async (e: MouseEvent) => {
     e.stopPropagation();
     const success = await copyToClipboard(cleanThought);
     if (success) {
@@ -117,16 +118,24 @@ export function ThinkingSection({
                 <div className="mb-0.5 text-[9.5px] font-semibold uppercase tracking-[0.12em] text-ink/50">
                   System Notice
                 </div>
-                <div className="text-[12px] leading-relaxed text-ink/85">{noticeText}</div>
+                <div className="text-[12px] leading-relaxed text-ink/85">
+                  <MarkdownRenderer content={noticeText} className="text-[12px] text-ink/85 leading-relaxed" />
+                </div>
               </div>
             </div>
           )}
 
           <div
             ref={thoughtBodyRef}
-            className="max-h-72 overflow-auto border-l-2 border-ink/15 py-1 pl-3 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap break-words text-ink/80 scrollbar-overlay-container scrollbar-overlay-static select-text"
+            className="max-h-72 overflow-auto border-l-2 border-ink/15 py-1 pl-3 text-ink/80 scrollbar-overlay-container scrollbar-overlay-static select-text"
           >
-            {cleanThought}
+            <MarkdownRenderer
+              content={cleanThought}
+              className="text-[12px] leading-relaxed text-ink/85 [&_.code-block]:my-2 [&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5"
+            />
+            {isGenerating && (
+              <span className="inline-block h-3 w-1 bg-ink/60 ml-0.5 align-middle animate-pulse" />
+            )}
           </div>
         </div>
       )}
