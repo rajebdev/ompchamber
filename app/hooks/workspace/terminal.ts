@@ -1,5 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSessionState } from '@/hooks/workspace/session-state';
+import { useSessionStateContext } from '@/hooks/workspace/session-state/context';
 import type { TerminalLogItem } from '@/types';
+
+const DEFAULT_COMMAND_HISTORY = ['bun --version', 'bun run build', 'git status -s'];
 
 export interface UseTerminalOptions {
   onStreamChunk?: (text: string) => void;
@@ -12,14 +16,10 @@ export interface UseTerminalOptions {
 
 export function useTerminal(options?: UseTerminalOptions) {
   const [terminalLogs, setTerminalLogs] = useState<TerminalLogItem[]>([]);
-  const [terminalInput, setTerminalInput] = useState('');
+  const [terminalInput, setTerminalInput] = useSessionState<string>('terminal.input', '');
   const [isRunning, setIsRunning] = useState(false);
-  const [cwd, setCwd] = useState('.');
-  const [commandHistory, setCommandHistory] = useState<string[]>([
-    'bun --version',
-    'bun run build',
-    'git status -s',
-  ]);
+  const [cwd, setCwd] = useSessionState<string>('terminal.cwd', '.');
+  const [commandHistory, setCommandHistory] = useSessionState<string[]>('terminal.commandHistory', DEFAULT_COMMAND_HISTORY);
   const [historyPointer, setHistoryPointer] = useState<number>(-1);
   const [systemInfo, setSystemInfo] = useState<{
     bunVersion: string;
@@ -52,6 +52,25 @@ export function useTerminal(options?: UseTerminalOptions) {
   repoRef.current = options?.repo;
   const prevRepoRef = useRef(options?.repo);
 
+  const { sessionId, ready } = useSessionStateContext();
+  const sessionIdRef = useRef(sessionId);
+  const absorbRestoreRef = useRef(true);
+
+  // Absorb the repo/cwd prop changes produced by a session restore (skip the
+  // reset for one tick after the blob loads), while genuine repo changes on a
+  // settled session still clear cwd/logs.
+  useEffect(() => {
+    if (sessionIdRef.current !== sessionId) {
+      sessionIdRef.current = sessionId;
+      absorbRestoreRef.current = true;
+    }
+    if (!ready || !absorbRestoreRef.current) return;
+    const timer = setTimeout(() => {
+      absorbRestoreRef.current = false;
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [sessionId, ready]);
+
   // Fetch real system environment on mount / when the scoped root or repo changes
   useEffect(() => {
     const root = options?.root;
@@ -59,9 +78,11 @@ export function useTerminal(options?: UseTerminalOptions) {
     if (prevRootRef.current !== root || prevRepoRef.current !== repo) {
       prevRootRef.current = root;
       prevRepoRef.current = repo;
-      setCwd('.');
-      setTerminalLogs([]);
-      clearCallbackRef.current?.();
+      if (!absorbRestoreRef.current) {
+        setCwd('.');
+        setTerminalLogs([]);
+        clearCallbackRef.current?.();
+      }
     }
     const rootQuery = root ? `?root=${encodeURIComponent(root)}` : '';
     const repoQuery = repo && repo !== '.' ? `&repo=${encodeURIComponent(repo)}` : '';
@@ -194,7 +215,7 @@ export function useTerminal(options?: UseTerminalOptions) {
         ]);
       }
     },
-    [terminalInput, isRunning, cwd]
+    [terminalInput, isRunning, cwd, sessionId]
   );
 
   const cancelRunningCommand = useCallback(() => {
@@ -235,7 +256,7 @@ export function useTerminal(options?: UseTerminalOptions) {
         clearCallbackRef.current?.();
       }
     },
-    [commandHistory, historyPointer, isRunning, cancelRunningCommand, clearLogs]
+    [commandHistory, historyPointer, isRunning, cancelRunningCommand, clearLogs, sessionId]
   );
 
   return {

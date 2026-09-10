@@ -3,14 +3,13 @@ import { ArrowDown } from 'lucide-react';
 import type { Terminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
 import { useTheme } from '@/hooks/ui/theme';
+import { useTerminalOutputSync } from '@/hooks/workspace/terminal-output';
 import {
   getXtermTheme,
   XTERM_FONT_FAMILY,
   safePatchFitAddon,
   safePatchRenderService,
   getTerminalSessionOutput,
-  appendTerminalSessionOutput,
-  clearTerminalSessionOutput,
 } from '@/data/theme/terminal';
 
 export interface RealtimeXtermHandle {
@@ -51,6 +50,7 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
     const pendingWritesRef = useRef<string[]>([]);
     const [isScrolledUp, setIsScrolledUp] = useState(false);
     const onCommandSubmitRef = useRef(onCommandSubmit);
+    const { recordOutput, clearOutput } = useTerminalOutputSync(terminalRef);
 
     useEffect(() => {
       if (terminalRef.current) {
@@ -80,7 +80,7 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
 
     useImperativeHandle(ref, () => ({
       write: (data: string) => {
-        appendTerminalSessionOutput(data);
+        recordOutput(data);
         if (terminalRef.current) {
           const term = terminalRef.current;
           const wasAtBottom = term.buffer.active.viewportY === term.buffer.active.baseY;
@@ -92,7 +92,7 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
         }
       },
       writeln: (line: string) => {
-        appendTerminalSessionOutput(line + '\r\n');
+        recordOutput(line + '\r\n');
         if (terminalRef.current) {
           const term = terminalRef.current;
           const wasAtBottom = term.buffer.active.viewportY === term.buffer.active.baseY;
@@ -104,11 +104,11 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
         }
       },
       clear: () => {
-        clearTerminalSessionOutput();
+        clearOutput();
         if (terminalRef.current) {
           terminalRef.current.clear();
           terminalRef.current.write('\r\x1b[33m$\x1b[0m ');
-          appendTerminalSessionOutput('\r\x1b[33m$\x1b[0m ');
+          recordOutput('\r\x1b[33m$\x1b[0m ');
           setIsScrolledUp(false);
         } else {
           pendingWritesRef.current = [];
@@ -210,7 +210,7 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
         } else {
           const welcome = '\x1b[1;33m[OMPChamber Realtime Terminal]\x1b[0m\r\n\x1b[90mRuntime: Bun v1.4.0 • Node v22 • remisJS Edge\x1b[0m\r\n\x1b[90mStream connected. Live xterm canvas active.\x1b[0m\r\n\r\n\x1b[33m$\x1b[0m ';
           term.write(welcome);
-          appendTerminalSessionOutput(welcome);
+          recordOutput(welcome);
         }
 
         if (pendingWritesRef.current.length > 0) {
@@ -227,11 +227,11 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
             term.write('\r\n');
             inputBufferRef.current = '';
             if (cmd && onCommandSubmitRef.current) {
-              appendTerminalSessionOutput(cmd + '\r\n');
+              recordOutput(cmd + '\r\n');
               onCommandSubmitRef.current(cmd, { fromXterm: true });
             } else {
               term.write('\x1b[33m$\x1b[0m ');
-              appendTerminalSessionOutput('\r\n\x1b[33m$\x1b[0m ');
+              recordOutput('\r\n\x1b[33m$\x1b[0m ');
             }
           } else if (data === '\x7f' || data === '\b') {
             if (inputBufferRef.current.length > 0) {
@@ -241,12 +241,12 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
           } else if (data === '\x03') {
             inputBufferRef.current = '';
             term.write('^C\r\n\x1b[33m$\x1b[0m ');
-            appendTerminalSessionOutput('^C\r\n\x1b[33m$\x1b[0m ');
+            recordOutput('^C\r\n\x1b[33m$\x1b[0m ');
           } else if (data === '\x0c') {
-            clearTerminalSessionOutput();
+            clearOutput();
             term.clear();
             term.write('\x1b[33m$\x1b[0m ');
-            appendTerminalSessionOutput('\x1b[33m$\x1b[0m ');
+            recordOutput('\x1b[33m$\x1b[0m ');
           } else if (data >= ' ') {
             inputBufferRef.current += data;
             term.write(data);

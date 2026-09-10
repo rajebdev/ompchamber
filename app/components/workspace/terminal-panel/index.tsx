@@ -1,5 +1,6 @@
-import { useRef, useCallback, useState } from 'react';
+import { useRef, useCallback } from 'react';
 import { useTerminal } from '@/hooks/workspace/terminal';
+import { useSessionState } from '@/hooks/workspace/session-state';
 import { TerminalHeader } from '@/components/workspace/terminal-panel/Header';
 import { TerminalQuickActions } from '@/components/workspace/terminal-panel/QuickActions';
 import { TerminalInputBar } from '@/components/workspace/terminal-panel/InputBar';
@@ -14,7 +15,7 @@ interface TerminalPanelProps {
 
 export function TerminalPanel({ className = '', enabled = true, rootPath, showHeader = true }: TerminalPanelProps) {
   const xtermRef = useRef<RealtimeXtermHandle>(null);
-  const [activeRepo, setActiveRepo] = useState('.');
+  const [activeRepo, setActiveRepo] = useSessionState<string>('terminal.activeRepo', '.');
 
   const handleStreamChunk = useCallback((text: string) => {
     xtermRef.current?.write(text);

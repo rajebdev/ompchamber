@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { BrowserAddressBar } from '@/components/workspace/browser-panel/AddressBar';
 import { BrowserViewport } from '@/components/workspace/browser-panel/Viewport';
+import { useSessionState } from '@/hooks/workspace/session-state';
 import type { ViewportMode } from '@/types';
 
 interface BrowserPanelProps {
@@ -12,25 +13,25 @@ export function BrowserPanel({
   className = '',
   defaultUrl = ''
 }: BrowserPanelProps) {
-  const [history, setHistory] = useState<string[]>(defaultUrl ? [defaultUrl] : []);
-  const [historyIndex, setHistoryIndex] = useState(defaultUrl ? 0 : -1);
-  const [inputUrl, setInputUrl] = useState(defaultUrl);
+  const [history, setHistory] = useSessionState<string[]>('browser.history', defaultUrl ? [defaultUrl] : []);
+  const [historyIndex, setHistoryIndex] = useSessionState<number>('browser.historyIndex', 0);
+  const [inputUrl, setInputUrl] = useSessionState<string>('browser.inputUrl', defaultUrl);
   const [reloadKey, setReloadKey] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [viewportMode, setViewportMode] = useState<ViewportMode>('responsive');
-  const [zoomLevel, setZoomLevel] = useState(100);
+  const [viewportMode, setViewportMode] = useSessionState<ViewportMode>('browser.viewportMode', 'responsive');
+  const [zoomLevel, setZoomLevel] = useSessionState<number>('browser.zoomLevel', 100);
 
-  const handleZoomIn = useCallback(() => {
+  const handleZoomIn = () => {
     setZoomLevel(prev => Math.min(200, prev + 10));
-  }, []);
+  };
 
-  const handleZoomOut = useCallback(() => {
+  const handleZoomOut = () => {
     setZoomLevel(prev => Math.max(50, prev - 10));
-  }, []);
+  };
 
-  const handleResetZoom = useCallback(() => {
+  const handleResetZoom = () => {
     setZoomLevel(100);
-  }, []);
+  };
 
   const currentUrl = historyIndex >= 0 ? (history[historyIndex] || '') : '';
 
@@ -49,7 +50,7 @@ export function BrowserPanel({
     return `https://${trimmed}`;
   };
 
-  const navigateTo = useCallback((target: string) => {
+  const navigateTo = (target: string) => {
     const nextUrl = normalizeUrl(target);
     if (!nextUrl) return;
     setIsLoading(true);
@@ -60,7 +61,7 @@ export function BrowserPanel({
     });
     setHistoryIndex(prev => prev + 1);
     setReloadKey(k => k + 1);
-  }, [historyIndex]);
+  };
 
   const handleSubmitUrl = (e?: React.FormEvent) => {
     if (e) e.preventDefault();

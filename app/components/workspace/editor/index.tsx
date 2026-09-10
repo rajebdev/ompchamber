@@ -15,6 +15,9 @@ import { useScrollbarFade } from '@/hooks/ui/scrollbar-fade';
 import { EditorTabs } from '@/components/workspace/editor/Tabs';
 import { EditorToolbar } from '@/components/workspace/editor/Toolbar';
 import { getDefaultContent, getLanguage } from '@/components/workspace/editor/utils';
+import { useSessionState } from '@/hooks/workspace/session-state';
+import { useSessionStateContext } from '@/hooks/workspace/session-state/context';
+import { getSessionValue } from '@/lib/workspace/session-state/store';
 
 interface EditorProps {
   className?: string;
@@ -38,11 +41,13 @@ export function Editor({
   const activeFile = openedFiles.find(f => f.id === activeFileId);
   
   const [contents, setContents] = useState<Record<number, string>>({});
-  const [previewMode, setPreviewMode] = useState<Record<number, boolean>>({});
-  const [zoomLevel, setZoomLevel] = useState(12);
+  const [previewMode, setPreviewMode, previewReady] = useSessionState<Record<string | number, boolean>>('editor.previewMode', {});
+  const [zoomLevel, setZoomLevel] = useSessionState<number>('editor.zoomLevel', 12);
   const [isMaximized, setIsMaximized] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
-  const [wordWrap, setWordWrap] = useState(true);
+  const [wordWrap, setWordWrap] = useSessionState<boolean>('editor.wordWrap', true);
+  const autoPreviewRef = useRef<number | null>(null);
+  const { sessionId } = useSessionStateContext();
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { isScrolling, handleScroll } = useScrollbarFade();
 
@@ -75,10 +80,22 @@ export function Editor({
         setContents(prev => ({ ...prev, [activeFile.id]: getDefaultContent(activeFile.name) }));
       }
       if (activeFile.name.endsWith('.md')) {
-        setPreviewMode(prev => ({ ...prev, [activeFile.id]: true }));
+        autoPreviewRef.current = activeFile.id;
       }
     }
   }, [activeFile, contents]);
+
+  // Auto-open Markdown preview only when no persisted choice exists for the
+  // file; deferred until the session blob loaded so restored state wins.
+  useEffect(() => {
+    if (!previewReady) return;
+    const id = autoPreviewRef.current;
+    if (id === null) return;
+    autoPreviewRef.current = null;
+    const stored = getSessionValue<Record<string | number, boolean>>(sessionId, 'editor.previewMode');
+    if (stored && stored[id] !== undefined) return;
+    setPreviewMode(prev => (prev[id] === undefined ? { ...prev, [id]: true } : prev));
+  }, [previewReady, activeFile]);
 
   const saveFileToDisk = useCallback((fileToSave: any, content: string) => {
     if (!fileToSave || !fileToSave.path) return;

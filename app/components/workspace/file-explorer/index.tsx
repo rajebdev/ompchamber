@@ -4,15 +4,26 @@ import { setChildrenAt, rehydrateTree } from '@/components/workspace/file-explor
 import { GitRepoDropdown } from '@/components/workspace/file-explorer/GitRepoDropdown';
 import { FileTreeItem } from '@/components/workspace/file-explorer/TreeItem';
 import { useScrollbarFade } from '@/hooks/ui/scrollbar-fade';
+import { useSessionState } from '@/hooks/workspace/session-state';
 
 export function FileExplorer({ className = '', enabled = true, rootPath, onOpenFile, refreshKey = 0, onRefresh }: { className?: string, enabled?: boolean, rootPath?: string, onOpenFile?: (file: any) => void, refreshKey?: number, onRefresh?: () => void }) {
   const [tree, setTree] = useState<any[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useSessionState<string>('files.searchQuery', '');
   const [isLoading, setIsLoading] = useState(false);
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+  const [storedExpandedPaths, setStoredExpandedPaths, expandedPathsReady] = useSessionState<string[]>('files.expandedPaths', []);
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set(storedExpandedPaths));
   const childrenCacheRef = useRef<Record<string, any[]>>({});
-  const [activeRepo, setActiveRepo] = useState('.');
+  const [activeRepo, setActiveRepo] = useSessionState<string>('files.activeRepo', '.');
   const { isScrolling, handleScroll } = useScrollbarFade();
+
+  useEffect(() => {
+    if (!expandedPathsReady) return;
+    setExpandedPaths(prev => {
+      const next = new Set(storedExpandedPaths);
+      if (prev.size === next.size && Array.from(next).every(path => prev.has(path))) return prev;
+      return next;
+    });
+  }, [expandedPathsReady, storedExpandedPaths]);
 
   const listUrl = (path?: string) => {
     const params = new URLSearchParams();
@@ -38,8 +49,9 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
   };
 
   useEffect(() => {
+    if (!expandedPathsReady) return;
     loadFiles();
-  }, [refreshKey, rootPath, enabled, activeRepo]);
+  }, [refreshKey, rootPath, enabled, activeRepo, expandedPathsReady]);
 
   const loadChildren = (path: string) => {
     return fetch(listUrl(path))
@@ -54,18 +66,18 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
   };
 
   const handleToggleFolder = (path: string, open: boolean) => {
-    setExpandedPaths(prev => {
-      const next = new Set(prev);
-      if (open) next.add(path);
-      else next.delete(path);
-      return next;
-    });
+    const next = new Set(expandedPaths);
+    if (open) next.add(path);
+    else next.delete(path);
+    setExpandedPaths(next);
+    setStoredExpandedPaths(Array.from(next));
   };
 
   const handleSelectRepo = (repo: string) => {
     if (repo === activeRepo) return;
     childrenCacheRef.current = {};
     setExpandedPaths(new Set());
+    setStoredExpandedPaths([]);
     setActiveRepo(repo);
   };
 
