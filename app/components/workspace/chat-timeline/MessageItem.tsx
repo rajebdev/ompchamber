@@ -174,7 +174,6 @@ export function ChatMessageItem({
   const thinkingData = msg.thinking || (msg.monologue ? { thought: msg.monologue } : undefined);
   const allToolCalls = msg.toolCalls || msg.actions;
   const secondaryToolCalls = msg.actions2;
-  const currentModel = modelName || 'DeepSeek V4 Pro';
   const cleanIntent = msg.intent ? capitalizeFirstLetter(msg.intent.replace(/^[.\s]+/, '')) : null;
   const hasToolCalls = Boolean(allToolCalls && allToolCalls.length > 0);
   const toolTitle = cleanIntent || (allToolCalls?.length === 1 ? 'Tool Execution (1 step)' : `Tool Executions (${allToolCalls?.length} steps)`);
@@ -297,7 +296,7 @@ export function ChatMessageItem({
       {/* Bottom AI Metadata & Actions Toolbar (Only shown once completed) */}
       {!isStreaming && footerVisible && (
         <AiMessageFooter
-          currentModel={currentModel}
+          currentModel={modelName || ''}
           dateStr={formatFooterDate()}
           durationMs={durationMs}
           content={msg.content}

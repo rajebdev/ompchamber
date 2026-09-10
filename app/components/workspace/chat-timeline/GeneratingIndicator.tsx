@@ -16,7 +16,6 @@ const COOL_VERBS = [
 ];
 
 export function GeneratingIndicator({ modelName, generatingVerb }: GeneratingIndicatorProps) {
-  const currentModel = modelName || 'DeepSeek V4 Pro';
   const [activeVerbIndex, setActiveVerbIndex] = useState(0);
 
   // Rotate action verb every 2.8s
@@ -69,7 +68,7 @@ export function GeneratingIndicator({ modelName, generatingVerb }: GeneratingInd
         {/* Model name & dynamic verb with dots */}
         <div className="flex items-center space-x-1.5 min-w-0 truncate">
           <span className="font-semibold text-ink truncate">
-            {currentModel}
+            {modelName}
           </span>
           <span className="text-ink/40 shrink-0">•</span>
           <span className="text-ink/75 flex items-center space-x-1 shrink-0 font-medium">

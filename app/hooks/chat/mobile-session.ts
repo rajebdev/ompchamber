@@ -14,6 +14,7 @@ export interface UseMobileChatSessionParams {
 
 export function useMobileChatSession({ folders, sessionId, selectedFolderId, appSettings }: UseMobileChatSessionParams) {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
+  const [sessionModel, setSessionModel] = useState<{ provider: string; modelId: string } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -26,13 +27,18 @@ export function useMobileChatSession({ folders, sessionId, selectedFolderId, app
         .then(data => {
           if (!active) return;
           setMessages(data?.session?.messages || []);
+          setSessionModel(data?.session?.model ?? null);
         })
         .catch(err => {
           console.error('Mobile chat API error:', err);
-          if (active) setMessages([]);
+          if (active) {
+            setMessages([]);
+            setSessionModel(null);
+          }
         });
     } else {
       setMessages([]);
+      setSessionModel(null);
     }
     return () => { active = false; };
   }, [sessionId]);
@@ -243,6 +249,7 @@ export function useMobileChatSession({ folders, sessionId, selectedFolderId, app
   return {
     messages,
     setMessages,
+    sessionModel,
     isGenerating,
     messageQueue,
     setMessageQueue,

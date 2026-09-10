@@ -38,6 +38,7 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
   const {
     messages,
     setMessages,
+    sessionModel,
     isGenerating,
     messageQueue,
     setMessageQueue,
@@ -129,6 +130,7 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
           onOpenSessionSidebar={() => setCurrentScreen('session')}
           onOpenRightSidebar={() => setCurrentScreen('right')}
           messages={messages}
+          sessionModel={sessionModel}
           onSendMessage={handleSendMessage}
           isGenerating={isGenerating}
           onStop={handleStopGenerating}

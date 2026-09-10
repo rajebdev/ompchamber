@@ -26,6 +26,7 @@ interface MobileMainViewProps {
   onOpenSessionSidebar: () => void;
   onOpenRightSidebar: () => void;
   messages: any[];
+  sessionModel?: { provider: string; modelId: string } | null;
   onSendMessage: (text: string, attachments: Attachment[], options?: { steering?: boolean }) => void;
   isGenerating?: boolean;
   onStop?: () => void;
@@ -44,6 +45,7 @@ export function MobileMainView({
   onOpenSessionSidebar,
   onOpenRightSidebar,
   messages,
+  sessionModel,
   onSendMessage,
   isGenerating = false,
   onStop,
@@ -177,7 +179,7 @@ export function MobileMainView({
                   <ChatMessageItem
                     key={msg.id}
                     msg={msg}
-                    modelName="DeepSeek V4 Pro"
+                    modelName={sessionModel?.modelId}
                     isStreaming={isLoading}
                     footerVisible={isLastAi}
                     durationMs={isLastAi ? responseRunDurationMs(messages, idx) : null}
@@ -208,9 +210,9 @@ export function MobileMainView({
         {/* Bottom Section: Workspace Selector + Docked Generating Indicator + Queue + Chat Input Box */}
         <div className="p-3 pt-1 bg-transparent border-t-0 flex-shrink-0 space-y-2">
           {isGenerating && (
-            <GeneratingIndicator 
-              modelName="DeepSeek V4 Pro" 
-              generatingVerb="thinking" 
+            <GeneratingIndicator
+              modelName={sessionModel?.modelId}
+              generatingVerb="thinking"
             />
           )}
           
