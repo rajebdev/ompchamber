@@ -29,6 +29,17 @@ export interface ComputedCommitNode {
   color: string;
 }
 
+/** Helper to match full hashes and short hashes (e.g. 7-char parent with 40-char commit hash) */
+function isSameHash(h1: string | null | undefined, h2: string | null | undefined): boolean {
+  if (!h1 || !h2) return false;
+  if (h1 === h2) return true;
+  const minLen = Math.min(h1.length, h2.length);
+  if (minLen >= 4) {
+    return h1.substring(0, minLen) === h2.substring(0, minLen);
+  }
+  return false;
+}
+
 /** Assign lanes to commits based on parent-child topology */
 export function computeCommitLanes(commits: GitCommit[]): Map<string, number> {
   const laneMap = new Map<string, number>();
@@ -41,8 +52,11 @@ export function computeCommitLanes(commits: GitCommit[]): Map<string, number> {
       continue;
     }
 
-    // Check if an active lane points to this commit
-    let lane = activeLanes.indexOf(commit.hash);
+    // Check if an active lane points to this commit (matching full or short hash)
+    let lane = activeLanes.findIndex(
+      (target) => isSameHash(target, commit.hash) || isSameHash(target, commit.shortHash)
+    );
+
     if (lane === -1) {
       // Find the first free slot
       lane = activeLanes.indexOf(null);
@@ -57,7 +71,7 @@ export function computeCommitLanes(commits: GitCommit[]): Map<string, number> {
     laneMap.set(commit.hash, lane);
 
     // Update active lanes with parents
-    const firstParent = commit.parents[0];
+    const firstParent = commit.parents && commit.parents[0];
     if (firstParent) {
       activeLanes[lane] = firstParent;
     } else {
@@ -65,14 +79,17 @@ export function computeCommitLanes(commits: GitCommit[]): Map<string, number> {
     }
 
     // Additional parents (merge branches) get other slots
-    for (let i = 1; i < commit.parents.length; i++) {
-      const parent = commit.parents[i];
-      if (!activeLanes.includes(parent)) {
-        const freeSlot = activeLanes.indexOf(null);
-        if (freeSlot === -1) {
-          activeLanes.push(parent);
-        } else {
-          activeLanes[freeSlot] = parent;
+    if (commit.parents && commit.parents.length > 1) {
+      for (let i = 1; i < commit.parents.length; i++) {
+        const parent = commit.parents[i];
+        const alreadyTracked = activeLanes.some((target) => isSameHash(target, parent));
+        if (!alreadyTracked) {
+          const freeSlot = activeLanes.indexOf(null);
+          if (freeSlot === -1) {
+            activeLanes.push(parent);
+          } else {
+            activeLanes[freeSlot] = parent;
+          }
         }
       }
     }
@@ -93,7 +110,12 @@ export function computeGraphLinks(
 
   commits.forEach((c, idx) => {
     hashToIndex.set(c.hash, idx);
-    hashToIndex.set(c.shortHash, idx);
+    if (c.shortHash) {
+      hashToIndex.set(c.shortHash, idx);
+    }
+    if (c.hash.length >= 7) {
+      hashToIndex.set(c.hash.substring(0, 7), idx);
+    }
   });
 
   for (const commit of commits) {
@@ -106,7 +128,11 @@ export function computeGraphLinks(
     }
 
     for (const parentHash of commit.parents) {
-      const parentIdx = hashToIndex.get(parentHash);
+      let parentIdx = hashToIndex.get(parentHash);
+      if (typeof parentIdx !== 'number' && parentHash.length >= 7) {
+        parentIdx = hashToIndex.get(parentHash.substring(0, 7));
+      }
+
       if (typeof parentIdx === 'number') {
         const parentCommit = commits[parentIdx];
         const toLane = laneMap.get(parentCommit.hash) ?? fromLane;
