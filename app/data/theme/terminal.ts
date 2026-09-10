@@ -124,3 +124,14 @@ export function appendTerminalSessionOutput(chunk: string): void {
 export function clearTerminalSessionOutput(): void {
   terminalSessionOutput = '';
 }
+
+const TERMINAL_OUTPUT_SNAPSHOT_LIMIT = 8000;
+
+export function getTerminalOutputSnapshot(): string {
+  if (terminalSessionOutput.length <= TERMINAL_OUTPUT_SNAPSHOT_LIMIT) return terminalSessionOutput;
+  return terminalSessionOutput.slice(-TERMINAL_OUTPUT_SNAPSHOT_LIMIT);
+}
+
+export function setTerminalOutputSnapshot(value: string): void {
+  terminalSessionOutput = value;
+}
