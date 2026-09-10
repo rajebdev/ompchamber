@@ -4,6 +4,7 @@ import util from 'util';
 import path from 'path';
 import fs from 'fs';
 import { resolveRoot } from '@/lib/fs/root';
+import { fetchGitCommits, fetchFileDiff } from '@/lib/fs/git-log';
 
 const execAsync = util.promisify(exec);
 
@@ -245,38 +246,30 @@ export async function action({ request }: ActionFunctionArgs) {
     } else if (actionType === 'create_branch') {
       const branch = formData.get('branch') as string;
       await execAsync(`git checkout -b "${branch}"`, { cwd: targetDir });
-    } else if (actionType === 'history') {
-      const { stdout } = await execAsync(
-        `git log -n 50 --date-order --pretty=format:"|~|%h|~|%an|~|%ar|~|%s"`,
-        { cwd: targetDir }
-      );
-      const parsedData = stdout.split('\n').filter(Boolean).map(line => {
-        const parts = line.split('|~|');
-        return {
-          graph: parts.length > 1 ? parts[0] : '',
-          hash: parts.length > 2 ? parts[1] : '',
-          author: parts.length > 3 ? parts[2] : '',
-          time: parts.length > 4 ? parts[3] : '',
-          message: parts.length > 4 ? parts[4] : parts[0] || '',
-        };
-      });
-      return json({ success: true, type: 'history', data: parsedData });
-    } else if (actionType === 'graph') {
-      const { stdout } = await execAsync(
-        `git log --graph --all --date-order --pretty=format:"|~|%h|~|%an|~|%ar|~|%s" -n 50`,
-        { cwd: targetDir }
-      );
-      const parsedData = stdout.split('\n').filter(Boolean).map(line => {
-        const parts = line.split('|~|');
-        return {
-          graph: parts[0] || '',
-          hash: parts[1] || '',
-          author: parts[2] || '',
-          time: parts[3] || '',
-          message: parts[4] || '',
-        };
-      });
-      return json({ success: true, type: 'graph', data: parsedData });
+    } else if (actionType === 'history' || actionType === 'graph') {
+      const commits = await fetchGitCommits(targetDir);
+      return json({ success: true, type: actionType, data: commits });
+    } else if (actionType === 'commit_diff') {
+      const hash = (formData.get('hash') as string) || '';
+      const file = (formData.get('file') as string) || '';
+      const diff = await fetchFileDiff(targetDir, hash, file);
+      return json({ success: true, diff });
+    } else if (actionType === 'cherry_pick') {
+      const hash = formData.get('hash') as string;
+      await execAsync(`git cherry-pick "${hash}"`, { cwd: targetDir });
+    } else if (actionType === 'revert_commit') {
+      const hash = formData.get('hash') as string;
+      await execAsync(`git revert --no-edit "${hash}"`, { cwd: targetDir });
+    } else if (actionType === 'reset_commit') {
+      const hash = formData.get('hash') as string;
+      const mode = (formData.get('mode') as string) || 'soft';
+      await execAsync(`git reset --${mode} "${hash}"`, { cwd: targetDir });
+    } else if (actionType === 'merge_commit') {
+      const hash = formData.get('hash') as string;
+      await execAsync(`git merge "${hash}"`, { cwd: targetDir });
+    } else if (actionType === 'rebase_commit') {
+      const hash = formData.get('hash') as string;
+      await execAsync(`git rebase "${hash}"`, { cwd: targetDir });
     } else if (actionType === 'push') {
       await execAsync('git push', { cwd: targetDir, timeout: 120000 });
     } else if (actionType === 'pull') {

@@ -235,6 +235,14 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
           <GitOutputModal 
             output={viewingOutput}
             onClose={() => setViewingOutput(null)}
+            onRefresh={() => {
+              if (viewingOutput) {
+                executeAction(viewingOutput.title.toLowerCase().includes('graph') ? 'graph' : 'history');
+              }
+            }}
+            onExecuteAction={(actionType, file, extra) => executeAction(actionType, file, extra)}
+            rootPath={rootPath}
+            activeRepo={activeRepo}
           />
         </>
       )}

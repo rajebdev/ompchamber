@@ -1,5 +1,8 @@
-import React, { useCallback } from 'react';
-import { X, History, GitMerge, AlertTriangle } from 'lucide-react';
+import type React from 'react';
+import { useCallback } from 'react';
+import { GitMerge, AlertTriangle } from 'lucide-react';
+
+export { GitCommitModal as GitOutputModal } from '@/components/workspace/git-panel/commit-modal';
 
 function ModalShell({ children, onClose, wide }: { children: React.ReactNode; onClose: () => void; wide?: boolean }) {
   return (
@@ -16,50 +19,6 @@ function ModalShell({ children, onClose, wide }: { children: React.ReactNode; on
         {children}
       </div>
     </div>
-  );
-}
-
-export function GitOutputModal({ output, onClose }: { output: { title: string; data: any[] } | null; onClose: () => void }) {
-  if (!output) return null;
-  const rows = output.data || [];
-  const isGraph = output.title.toLowerCase().includes('graph');
-
-  return (
-    <ModalShell onClose={onClose} wide>
-      <div className="flex items-center justify-between px-4 py-3 border-b border-ink/10">
-        <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
-          {isGraph ? <GitMerge size={14} className="text-ink/60" /> : <History size={14} className="text-ink/60" />}
-          {output.title}
-          <span className="text-[11px] font-normal text-ink/40">{rows.length} commits</span>
-        </h3>
-        <button
-          type="button"
-          onClick={onClose}
-          className="p-1 rounded hover:bg-ink/5 text-ink/60 hover:text-ink transition-colors cursor-pointer"
-          title="Close"
-        >
-          <X size={16} />
-        </button>
-      </div>
-
-      <div className="flex-1 scrollbar-overlay-container scrollbar-overlay-static p-3 font-mono text-[11px] text-ink/80">
-        {rows.length === 0 ? (
-          <div className="text-ink/40 text-center py-10">No commits found.</div>
-        ) : (
-          rows.map((row: any, i: number) => (
-            <div key={i} className="flex items-start gap-3 py-1.5 border-b border-ink/5 last:border-0">
-              <span className="whitespace-pre text-ink/30 flex-shrink-0 overflow-hidden max-w-[90px]" title={row.graph || ''}>
-                {row.graph || ''}
-              </span>
-              <span className="text-ink/70 flex-shrink-0">{row.hash}</span>
-              <span className="text-ink/50 flex-shrink-0">{row.author}</span>
-              <span className="text-ink/30 flex-shrink-0">{row.time}</span>
-              <span className="text-ink truncate flex-1 min-w-0">{row.message}</span>
-            </div>
-          ))
-        )}
-      </div>
-    </ModalShell>
   );
 }
 

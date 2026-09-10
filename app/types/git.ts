@@ -6,6 +6,26 @@ export interface GitChange {
   deletions?: number;
 }
 
+export interface GitCommitFile {
+  file: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  diff?: string;
+}
+
+export interface GitCommit {
+  hash: string;
+  shortHash: string;
+  author: string;
+  date: string;
+  message: string;
+  parents: string[];
+  refs?: string[];
+  files?: GitCommitFile[];
+  lane?: number;
+}
+
 export type GitViewMode = 'flat' | 'tree';
 
 export interface GitTreeNode {
