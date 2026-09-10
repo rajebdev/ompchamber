@@ -63,6 +63,7 @@ export function toChatMessage(raw: Record<string, unknown>, streaming = true): C
     let text = '';
     let thinking: ChatMessageData['thinking'];
     let toolCalls: ChatMessageData['toolCalls'];
+    let messageIntent: string | undefined;
     if (typeof content === 'string') {
       text = content;
     } else if (Array.isArray(content)) {
@@ -109,6 +110,9 @@ export function toChatMessage(raw: Record<string, unknown>, streaming = true): C
             input: rawInput,
             status: streaming ? 'running' : 'success',
           });
+          if (!messageIntent && rawInput && typeof rawInput.i === 'string') {
+            messageIntent = rawInput.i;
+          }
         } else if (b.type === 'toolResult') {
           const targetId = typeof b.toolCallId === 'string' ? b.toolCallId : undefined;
           const resultText = typeof b.text === 'string' ? b.text : '';
@@ -135,6 +139,9 @@ export function toChatMessage(raw: Record<string, unknown>, streaming = true): C
       blocks.forEach((tc) => { delete tc._toolCallId; });
       if (thoughtParts.length) thinking = { thought: thoughtParts.join('\n'), isGenerating: streaming };
       if (blocks.length) toolCalls = blocks;
+      // Lift the first tool call's short human intent (omp arguments.i) to the
+      // message level — mirrors the JSONL reload parser (messages-map.ts) so
+      // the tool section title shows the intent live, not only after reload.
     }
   const id = typeof raw.id === 'string' ? raw.id : `msg-${raw.timestamp ?? Date.now()}-ai`;
   const role = raw.role === 'user' ? 'user' : 'ai';
@@ -145,6 +152,7 @@ export function toChatMessage(raw: Record<string, unknown>, streaming = true): C
     date: timestamp ? `Today, ${timestamp}` : undefined,
     timestamp,
     content: text,
+    intent: messageIntent,
     thinking: thinking ?? (raw.thinking as ChatMessageData['thinking']),
     toolCalls: toolCalls ?? (raw.toolCalls as ChatMessageData['toolCalls']),
     summary: typeof raw.summary === 'string' ? raw.summary : undefined,
