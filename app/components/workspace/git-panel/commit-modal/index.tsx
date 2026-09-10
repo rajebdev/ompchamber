@@ -1,13 +1,14 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
-import type { GitCommit, GitCommitFile } from '@/types/git';
-import { SAMPLE_GIT_COMMITS } from '@/data/mock/git-commits';
+import { Loader2 } from 'lucide-react';
 import { Header } from '@/components/workspace/git-panel/commit-modal/Header';
 import { GraphCanvas } from '@/components/workspace/git-panel/commit-modal/GraphCanvas';
 import { CommitRow } from '@/components/workspace/git-panel/commit-modal/CommitRow';
 import { computeCommitLanes } from '@/components/workspace/git-panel/commit-modal/graph-utils';
+import { useCommitPagination } from '@/components/workspace/git-panel/commit-modal/use-commit-pagination';
+import { useCommitInteractions } from '@/components/workspace/git-panel/commit-modal/use-commit-interactions';
 
 interface GitCommitModalProps {
-  output: { title: string; data: any[] } | null;
+  output: { title: string; data: any[]; hasMore?: boolean; total?: number } | null;
   onClose: () => void;
   onRefresh?: () => void;
   onExecuteAction?: (actionType: string, file?: string, extra?: Record<string, string>) => void;
@@ -29,44 +30,45 @@ export function GitCommitModal({
   const [isGraphMode, setIsGraphMode] = useState(initialGraphMode);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedHash, setSelectedHash] = useState<string>('');
-  const [fileDiffs, setFileDiffs] = useState<Record<string, string>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Normalize incoming commits or fallback to sample commits
-  const rawCommits: GitCommit[] = useMemo(() => {
-    const raw = output.data || [];
-    if (raw.length === 0) return SAMPLE_GIT_COMMITS;
+  const {
+    commits,
+    hasMore,
+    totalCount,
+    isLoadingMore,
+    handleLoadMore,
+  } = useCommitPagination({
+    output,
+    isGraphMode,
+    rootPath,
+    activeRepo,
+  });
 
-    // Check if raw items already match GitCommit shape
-    if (raw[0] && typeof raw[0] === 'object' && ('hash' in raw[0] || 'shortHash' in raw[0])) {
-      return raw.map((c: any) => ({
-        hash: c.hash || c.shortHash || 'unknown',
-        shortHash: c.shortHash || (c.hash ? c.hash.slice(0, 8) : 'unknown'),
-        author: c.author || 'Unknown',
-        date: c.date || c.time || '',
-        message: c.message || '',
-        parents: Array.isArray(c.parents) ? c.parents : [],
-        refs: Array.isArray(c.refs) ? c.refs : [],
-        files: Array.isArray(c.files) ? c.files : [],
-        lane: typeof c.lane === 'number' ? c.lane : undefined,
-      }));
-    }
-
-    return SAMPLE_GIT_COMMITS;
-  }, [output.data]);
+  const {
+    fileDiffs,
+    expandedFiles,
+    loadingFiles,
+    handleToggleFile,
+    handleCommitAction,
+  } = useCommitInteractions({
+    onExecuteAction,
+    rootPath,
+    activeRepo,
+  });
 
   // Set initial selected commit
   useEffect(() => {
-    if (rawCommits.length > 0 && !selectedHash) {
-      setSelectedHash(rawCommits[0].hash);
+    if (commits.length > 0 && !selectedHash) {
+      setSelectedHash(commits[0].hash);
     }
-  }, [rawCommits, selectedHash]);
+  }, [commits, selectedHash]);
 
   // Filter commits based on search query
   const filteredCommits = useMemo(() => {
-    if (!searchQuery.trim()) return rawCommits;
+    if (!searchQuery.trim()) return commits;
     const q = searchQuery.toLowerCase().trim();
-    return rawCommits.filter(
+    return commits.filter(
       (c) =>
         c.message.toLowerCase().includes(q) ||
         c.author.toLowerCase().includes(q) ||
@@ -74,16 +76,33 @@ export function GitCommitModal({
         c.hash.toLowerCase().includes(q) ||
         c.refs?.some((r) => r.toLowerCase().includes(q))
     );
-  }, [rawCommits, searchQuery]);
+  }, [commits, searchQuery]);
 
   // Measure dynamic positions of each commit node so lines never break
   const containerRef = useRef<HTMLDivElement>(null);
   const rowsContainerRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const headerRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [nodePositions, setNodePositions] = useState<Record<string, number>>({});
   const [totalHeight, setTotalHeight] = useState<number>(800);
-  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
-  const [loadingFiles, setLoadingFiles] = useState<Set<string>>(new Set());
+
+  // Infinite scroll intersection observer
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !hasMore || isLoadingMore || searchQuery.trim()) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          handleLoadMore();
+        }
+      },
+      { root: containerRef.current, threshold: 0.1 }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, isLoadingMore, searchQuery, handleLoadMore]);
 
   const measurePositions = useCallback(() => {
     if (!containerRef.current || !rowsContainerRef.current) return;
@@ -94,7 +113,6 @@ export function GitCommitModal({
     filteredCommits.forEach((commit, idx) => {
       const el = headerRefs.current[commit.hash];
       if (el) {
-        // Center of the subject message text
         const rect = el.getBoundingClientRect();
         newPositions[commit.hash] = rect.top + rect.height / 2 - containerRect.top + scrollTop;
       } else {
@@ -103,7 +121,6 @@ export function GitCommitModal({
     });
 
     setNodePositions(newPositions);
-    // Measure rows container height directly so collapsing file diff immediately reduces totalHeight
     const contentH = rowsContainerRef.current.offsetHeight;
     setTotalHeight(Math.max(contentH, containerRef.current.clientHeight, 600));
   }, [filteredCommits]);
@@ -140,87 +157,6 @@ export function GitCommitModal({
   const paddingLeft = 16;
   const graphWidth = isGraphMode ? (maxLane + 1) * laneWidth + paddingLeft * 2 : 36;
 
-  // Toggle expand/collapse for a file and fetch unified diff if needed
-  const handleToggleFile = useCallback(
-    async (commitHash: string, file: GitCommitFile) => {
-      const diffKey = `${commitHash}:${file.file}`;
-      let isExpanding = false;
-
-      setExpandedFiles((prev) => {
-        const next = new Set(prev);
-        if (next.has(diffKey)) {
-          next.delete(diffKey);
-          isExpanding = false;
-        } else {
-          next.add(diffKey);
-          isExpanding = true;
-        }
-        return next;
-      });
-
-      if (isExpanding && !fileDiffs[diffKey] && !file.diff) {
-        setLoadingFiles((prev) => new Set(prev).add(diffKey));
-        try {
-          const formData = new FormData();
-          formData.set('actionType', 'commit_diff');
-          formData.set('hash', commitHash);
-          formData.set('file', file.file);
-          if (rootPath) formData.set('root', rootPath);
-          if (activeRepo) formData.set('repo', activeRepo);
-
-          const res = await fetch('/api/fs/git', { method: 'POST', body: formData });
-          const json = await res.json();
-          if (json && json.diff) {
-            setFileDiffs((prev) => ({ ...prev, [diffKey]: json.diff }));
-          }
-        } catch (err) {
-          console.error('Failed to load file diff:', err);
-        } finally {
-          setLoadingFiles((prev) => {
-            const next = new Set(prev);
-            next.delete(diffKey);
-            return next;
-          });
-        }
-      }
-    },
-    [fileDiffs, rootPath, activeRepo]
-  );
-
-  const handleCommitAction = (action: string, commit: GitCommit) => {
-    if (!onExecuteAction) return;
-
-    if (action === 'checkout') {
-      onExecuteAction('checkout', undefined, { branch: commit.hash });
-    } else if (action === 'create_branch_here') {
-      const name = window.prompt(`Create new branch at commit ${commit.shortHash}:`, `branch-${commit.shortHash}`);
-      if (name?.trim()) {
-        onExecuteAction('create_branch', undefined, { branch: name.trim() });
-      }
-    } else if (action === 'cherry_pick') {
-      if (window.confirm(`Cherry-pick commit ${commit.shortHash} onto current branch?`)) {
-        onExecuteAction('cherry_pick', undefined, { hash: commit.hash });
-      }
-    } else if (action === 'revert') {
-      if (window.confirm(`Revert commit ${commit.shortHash}?`)) {
-        onExecuteAction('revert_commit', undefined, { hash: commit.hash });
-      }
-    } else if (action === 'reset') {
-      const mode = window.prompt(`Reset current branch to ${commit.shortHash} (soft, mixed, hard):`, 'soft');
-      if (mode && ['soft', 'mixed', 'hard'].includes(mode.toLowerCase())) {
-        onExecuteAction('reset_commit', undefined, { hash: commit.hash, mode: mode.toLowerCase() });
-      }
-    } else if (action === 'merge') {
-      if (window.confirm(`Merge commit ${commit.shortHash} into current branch?`)) {
-        onExecuteAction('merge_commit', undefined, { hash: commit.hash });
-      }
-    } else if (action === 'rebase') {
-      if (window.confirm(`Rebase current branch onto commit ${commit.shortHash}?`)) {
-        onExecuteAction('rebase_commit', undefined, { hash: commit.hash });
-      }
-    }
-  };
-
   const handleRefresh = async () => {
     setIsRefreshing(true);
     if (onRefresh) {
@@ -250,6 +186,7 @@ export function GitCommitModal({
           onClose={onClose}
           isRefreshing={isRefreshing}
           totalCommits={filteredCommits.length}
+          totalCount={totalCount}
         />
 
         {/* Commits Container with Unified Continuous SVG Canvas */}
@@ -262,7 +199,7 @@ export function GitCommitModal({
               No matching commits found.
             </div>
           ) : (
-            <div className="relative min-h-full">
+            <div className="relative min-h-full pb-8">
               {/* Continuous Graph Canvas (Single unbroken SVG spanning the whole scroll list) */}
               <GraphCanvas
                 commits={filteredCommits}
@@ -297,6 +234,28 @@ export function GitCommitModal({
                     }}
                   />
                 ))}
+
+                {/* Lazy Load Sentinel & Controls */}
+                <div ref={sentinelRef} className="pt-3 pb-4 px-4 flex items-center justify-center">
+                  {isLoadingMore ? (
+                    <div className="flex items-center gap-2 text-xs text-ink/60 font-mono py-2">
+                      <Loader2 size={14} className="animate-spin text-info" />
+                      <span>Loading more commits...</span>
+                    </div>
+                  ) : hasMore && !searchQuery.trim() ? (
+                    <button
+                      type="button"
+                      onClick={handleLoadMore}
+                      className="px-3 py-1.5 text-xs font-mono text-ink/70 hover:text-ink bg-ink/5 hover:bg-ink/10 rounded-md border border-ink/10 transition-colors cursor-pointer"
+                    >
+                      Load more commits...
+                    </button>
+                  ) : filteredCommits.length > 10 ? (
+                    <div className="text-[11px] font-mono text-ink/40 py-2">
+                      End of commit history ({filteredCommits.length} commits)
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
           )}

@@ -36,6 +36,11 @@ export function parseUnifiedDiff(rawDiff: string, ignoreWhitespace: boolean = fa
   }
 
   const rawLines = rawDiff.split(/\r?\n/);
+  const hasHunk = rawLines.some((l) => l.startsWith('@@'));
+  const linesToProcess = hasHunk
+    ? rawLines
+    : [`@@ -1,${rawLines.length} +1,${rawLines.length} @@`, ...rawLines];
+
   let oldCounter = 1;
   let newCounter = 1;
 
@@ -55,8 +60,19 @@ export function parseUnifiedDiff(rawDiff: string, ignoreWhitespace: boolean = fa
     addBuffer = [];
   };
 
-  for (const rawLine of rawLines) {
-    if (rawLine.startsWith('diff --git') || rawLine.startsWith('index ') || rawLine.startsWith('---') || rawLine.startsWith('+++')) {
+  for (const rawLine of linesToProcess) {
+    if (
+      rawLine.startsWith('diff --git') ||
+      rawLine.startsWith('index ') ||
+      rawLine.startsWith('---') ||
+      rawLine.startsWith('+++') ||
+      rawLine.startsWith('new file mode') ||
+      rawLine.startsWith('deleted file mode') ||
+      rawLine.startsWith('similarity index') ||
+      rawLine.startsWith('old mode') ||
+      rawLine.startsWith('new mode') ||
+      rawLine.startsWith('\\ No newline')
+    ) {
       continue;
     }
 

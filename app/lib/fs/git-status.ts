@@ -23,8 +23,8 @@ export interface FolderGitStatusInfo {
 export function getGitStatusInfo(status: string, isStaged: boolean = false): GitStatusInfo {
   let charStatus = 'M';
   let label = 'Modified';
-  let colorClass = 'text-warning';
-  let badgeBgClass = 'bg-warning/10 text-warning border-warning/25';
+  let colorClass = 'text-info';
+  let badgeBgClass = 'bg-info/10 text-info border-info/25';
 
   if (isStaged) {
     const s = status?.[0] || 'M';
@@ -46,8 +46,8 @@ export function getGitStatusInfo(status: string, isStaged: boolean = false): Git
     } else {
       charStatus = 'M';
       label = 'Modified (Staged)';
-      colorClass = 'text-warning';
-      badgeBgClass = 'bg-warning/10 text-warning border-warning/25';
+      colorClass = 'text-info';
+      badgeBgClass = 'bg-info/10 text-info border-info/25';
     }
   } else {
     if (status === '??' || status === '?') {
@@ -75,8 +75,8 @@ export function getGitStatusInfo(status: string, isStaged: boolean = false): Git
       } else {
         charStatus = 'M';
         label = 'Modified';
-        colorClass = 'text-warning';
-        badgeBgClass = 'bg-warning/10 text-warning border-warning/25';
+        colorClass = 'text-info';
+        badgeBgClass = 'bg-info/10 text-info border-info/25';
       }
     }
   }
@@ -116,7 +116,7 @@ export function buildGitStatusMaps(changes: GitChange[]): {
         hasUntracked: false,
         hasStaged: false,
         hasDeleted: false,
-        colorClass: 'text-warning',
+        colorClass: 'text-info',
       };
 
       existing.count += 1;
@@ -131,9 +131,9 @@ export function buildGitStatusMaps(changes: GitChange[]): {
         existing.hasModified = true;
       }
 
-      // Priority of folder indicator color: Staged / Modified (warning) > Untracked (success) > Deleted (error)
+      // Priority of folder indicator color: Staged / Modified (info/blue) > Untracked (success/green) > Deleted (error/red)
       if (existing.hasModified || existing.hasStaged) {
-        existing.colorClass = 'text-warning';
+        existing.colorClass = 'text-info';
       } else if (existing.hasUntracked) {
         existing.colorClass = 'text-success';
       } else if (existing.hasDeleted) {

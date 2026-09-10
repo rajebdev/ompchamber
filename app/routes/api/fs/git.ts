@@ -104,6 +104,21 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
   }
 
+  // Commits history / graph endpoint
+  if (url.searchParams.get('commits') === '1' || url.searchParams.get('history') === '1' || url.searchParams.get('graph') === '1') {
+    const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+    const skip = parseInt(url.searchParams.get('skip') || '0', 10);
+    const result = await fetchGitCommits(targetDir, limit, skip);
+    return json({
+      success: true,
+      data: result.commits,
+      hasMore: result.hasMore,
+      total: result.total,
+      limit,
+      skip,
+    });
+  }
+
   try {
     // Use --porcelain=v1 -uall so all individual edited/untracked files are listed
     const { stdout: statusOut } = await execAsync('git status --porcelain=v1 -uall', { cwd: targetDir });
@@ -258,8 +273,18 @@ export async function action({ request }: ActionFunctionArgs) {
       const branch = formData.get('branch') as string;
       await execAsync(`git checkout -b "${branch}"`, { cwd: targetDir });
     } else if (actionType === 'history' || actionType === 'graph') {
-      const commits = await fetchGitCommits(targetDir);
-      return json({ success: true, type: actionType, data: commits });
+      const limit = parseInt((formData.get('limit') as string) || '50', 10);
+      const skip = parseInt((formData.get('skip') as string) || '0', 10);
+      const result = await fetchGitCommits(targetDir, limit, skip);
+      return json({
+        success: true,
+        type: actionType,
+        data: result.commits,
+        hasMore: result.hasMore,
+        total: result.total,
+        limit,
+        skip,
+      });
     } else if (actionType === 'commit_diff') {
       const hash = (formData.get('hash') as string) || '';
       const file = (formData.get('file') as string) || '';

@@ -73,15 +73,40 @@ export function parseGitLogOutput(stdout: string): GitCommit[] {
   return commits.length > 0 ? commits : SAMPLE_GIT_COMMITS;
 }
 
-export async function fetchGitCommits(targetDir: string): Promise<GitCommit[]> {
+export interface FetchCommitsResult {
+  commits: GitCommit[];
+  hasMore: boolean;
+  total?: number;
+}
+
+export async function fetchGitCommits(
+  targetDir: string,
+  limit: number = 50,
+  skip: number = 0
+): Promise<FetchCommitsResult> {
   try {
+    let total = 0;
+    try {
+      const { stdout: countOut } = await execAsync('git rev-list --count HEAD', { cwd: targetDir, timeout: 5000 });
+      total = parseInt(countOut.trim(), 10) || 0;
+    } catch {
+      total = 0;
+    }
+
     const { stdout } = await execAsync(
-      `git log -n 50 --numstat --date-order --pretty=format:"COMMIT_SPLIT|~|%H|~|%h|~|%an|~|%ad|~|%s|~|%D|~|%p" --date=format:"%b %d, %Y, %I:%M %p"`,
+      `git log -n ${limit} --skip=${skip} --numstat --date-order --pretty=format:"COMMIT_SPLIT|~|%H|~|%h|~|%an|~|%ad|~|%s|~|%D|~|%p" --date=format:"%b %d, %Y, %I:%M %p"`,
       { cwd: targetDir, timeout: 15000 }
     );
-    return parseGitLogOutput(stdout);
+    const commits = parseGitLogOutput(stdout);
+    const hasMore = total > 0 ? skip + commits.length < total : commits.length === limit;
+    return { commits, hasMore, total };
   } catch {
-    return SAMPLE_GIT_COMMITS;
+    const paged = SAMPLE_GIT_COMMITS.slice(skip, skip + limit);
+    return {
+      commits: paged,
+      hasMore: skip + paged.length < SAMPLE_GIT_COMMITS.length,
+      total: SAMPLE_GIT_COMMITS.length,
+    };
   }
 }
 

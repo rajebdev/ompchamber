@@ -103,74 +103,76 @@ export function CommitDiffViewer({ diffText, isLoading }: CommitDiffViewerProps)
         </button>
       </div>
 
-      <div className="overflow-x-auto max-h-72 select-text divide-y divide-ink/[0.04]">
-        {lines.map((line, idx) => {
-          if (line.type === 'meta') {
+      <div className="overflow-x-auto max-h-72 select-text">
+        <div className="w-max min-w-full divide-y divide-ink/[0.04]">
+          {lines.map((line, idx) => {
+            if (line.type === 'meta') {
+              return (
+                <div
+                  key={idx}
+                  className="flex items-center gap-2 px-3 py-1 bg-canvas border-y border-ink/10 text-meta text-[10px] font-semibold"
+                >
+                  <span>↕</span>
+                  <span>{line.text}</span>
+                </div>
+              );
+            }
+
+            const isAdd = line.type === 'add';
+            const isDel = line.type === 'del';
+
             return (
               <div
                 key={idx}
-                className="flex items-center gap-2 px-3 py-1 bg-canvas border-y border-ink/10 text-meta text-[10px] font-semibold"
+                className={`flex items-start font-mono ${
+                  isAdd
+                    ? 'bg-success/10 hover:bg-success/15'
+                    : isDel
+                    ? 'bg-error/10 hover:bg-error/15'
+                    : 'text-ink hover:bg-ink/[0.02]'
+                }`}
               >
-                <span>↕</span>
-                <span>{line.text}</span>
+                {/* Line numbers column */}
+                <div
+                  className={`w-10 flex-shrink-0 text-right pr-2 py-0.5 select-none border-r border-ink/10 text-[10px] tabular-nums font-mono ${
+                    isDel
+                      ? 'bg-error/15 text-error font-semibold'
+                      : isAdd
+                      ? 'bg-success/15 text-success/70'
+                      : 'bg-canvas/50 text-ink/40'
+                  }`}
+                >
+                  {line.oldNum ?? (isAdd ? '+' : '')}
+                </div>
+                <div
+                  className={`w-10 flex-shrink-0 text-right pr-2 py-0.5 select-none border-r border-ink/10 text-[10px] tabular-nums font-mono ${
+                    isAdd
+                      ? 'bg-success/15 text-success font-semibold'
+                      : isDel
+                      ? 'bg-error/15 text-error/70'
+                      : 'bg-canvas/50 text-ink/40'
+                  }`}
+                >
+                  {line.newNum ?? (isDel ? '-' : '')}
+                </div>
+
+                {/* Diff marker */}
+                <div
+                  className={`w-4 flex-shrink-0 text-center py-0.5 select-none font-bold ${
+                    isAdd ? 'text-success' : isDel ? 'text-error' : 'opacity-0'
+                  }`}
+                >
+                  {isAdd ? '+' : isDel ? '-' : ' '}
+                </div>
+
+                {/* Code text */}
+                <div className="flex-1 py-0.5 pr-3 whitespace-pre text-ink">
+                  {line.text || ' '}
+                </div>
               </div>
             );
-          }
-
-          const isAdd = line.type === 'add';
-          const isDel = line.type === 'del';
-
-          return (
-            <div
-              key={idx}
-              className={`flex items-start font-mono ${
-                isAdd
-                  ? 'bg-success/10 hover:bg-success/15'
-                  : isDel
-                  ? 'bg-error/10 hover:bg-error/15'
-                  : 'text-ink hover:bg-ink/[0.02]'
-              }`}
-            >
-              {/* Line numbers column */}
-              <div
-                className={`w-10 flex-shrink-0 text-right pr-2 py-0.5 select-none border-r border-ink/10 text-[10px] tabular-nums font-mono ${
-                  isDel
-                    ? 'bg-error/15 text-error font-semibold'
-                    : isAdd
-                    ? 'bg-success/15 text-success/70'
-                    : 'bg-canvas/50 text-ink/40'
-                }`}
-              >
-                {line.oldNum ?? (isAdd ? '+' : '')}
-              </div>
-              <div
-                className={`w-10 flex-shrink-0 text-right pr-2 py-0.5 select-none border-r border-ink/10 text-[10px] tabular-nums font-mono ${
-                  isAdd
-                    ? 'bg-success/15 text-success font-semibold'
-                    : isDel
-                    ? 'bg-error/15 text-error/70'
-                    : 'bg-canvas/50 text-ink/40'
-                }`}
-              >
-                {line.newNum ?? (isDel ? '-' : '')}
-              </div>
-
-              {/* Diff marker */}
-              <div
-                className={`w-4 flex-shrink-0 text-center py-0.5 select-none font-bold ${
-                  isAdd ? 'text-success' : isDel ? 'text-error' : 'opacity-0'
-                }`}
-              >
-                {isAdd ? '+' : isDel ? '-' : ' '}
-              </div>
-
-              {/* Code text */}
-              <div className="flex-1 py-0.5 pr-3 whitespace-pre text-ink">
-                {line.text || ' '}
-              </div>
-            </div>
-          );
-        })}
+          })}
+        </div>
       </div>
     </div>
   );

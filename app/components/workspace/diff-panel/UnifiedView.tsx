@@ -15,7 +15,7 @@ export function UnifiedView({ lines }: UnifiedViewProps) {
 
   return (
     <div className="w-full h-full overflow-auto font-mono text-xs select-text bg-paper text-ink">
-      <table className="min-w-full border-collapse">
+      <table className="w-max min-w-full border-collapse">
         <tbody>
           {lines.map((line, idx) => {
             if (line.type === 'meta') {

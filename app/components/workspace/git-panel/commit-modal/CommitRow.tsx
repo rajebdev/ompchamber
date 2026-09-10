@@ -124,7 +124,9 @@ export function CommitRow({
                   ? 'text-success font-bold'
                   : file.status === 'D'
                   ? 'text-error font-bold'
-                  : 'text-warning font-bold';
+                  : file.status === 'R'
+                  ? 'text-meta font-bold'
+                  : 'text-info font-bold';
 
               return (
                 <div key={fileIdx} className="flex flex-col">

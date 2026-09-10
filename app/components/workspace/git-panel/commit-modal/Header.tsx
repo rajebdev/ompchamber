@@ -9,6 +9,7 @@ interface HeaderProps {
   onClose: () => void;
   isRefreshing?: boolean;
   totalCommits: number;
+  totalCount?: number;
 }
 
 export function Header({
@@ -20,6 +21,7 @@ export function Header({
   onClose,
   isRefreshing,
   totalCommits,
+  totalCount,
 }: HeaderProps) {
   return (
     <div className="flex flex-col gap-2 px-5 py-3.5 border-b border-ink/10 bg-paper select-none">
@@ -31,7 +33,9 @@ export function Header({
               {isGraphMode ? 'Graph' : 'History'}
             </h2>
             <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-ink/5 text-ink/50 border border-ink/10">
-              {totalCommits} commits
+              {totalCount && totalCount > totalCommits
+                ? `${totalCommits} of ${totalCount} commits`
+                : `${totalCommits} commits`}
             </span>
           </div>
           <p className="text-xs text-ink/50 mt-0.5">

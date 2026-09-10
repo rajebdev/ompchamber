@@ -14,7 +14,8 @@ export async function fetchWorkingFileDiff(
   file: string,
   staged: boolean = false
 ): Promise<FileDiffData> {
-  const fullPath = path.join(targetDir, file);
+  const cleanFile = file.replace(/^[./\\]+/, '').replace(/\\/g, '/');
+  const fullPath = path.join(targetDir, cleanFile);
   let status = 'M';
   let diff = '';
   let oldContent = '';
@@ -24,10 +25,14 @@ export async function fetchWorkingFileDiff(
 
   try {
     // Check porcelain status of this file
-    const { stdout: statusOut } = await execAsync(`git status --porcelain=v1 -- "${file}"`, { cwd: targetDir });
-    const statusLine = statusOut.trim();
-    if (statusLine) {
-      status = statusLine.slice(0, 2).trim() || 'M';
+    try {
+      const { stdout: statusOut } = await execAsync(`git status --porcelain=v1 -- "${cleanFile}"`, { cwd: targetDir });
+      const statusLine = statusOut.trim();
+      if (statusLine) {
+        status = statusLine.slice(0, 2).trim() || 'M';
+      }
+    } catch {
+      // ignore status check failure
     }
 
     // Try reading current new content from disk if it exists
@@ -39,72 +44,106 @@ export async function fetchWorkingFileDiff(
       }
     }
 
-    if (staged) {
-      // Staged diff (index vs HEAD)
+    // Read old content from index or HEAD
+    try {
+      const { stdout: headOut } = await execAsync(`git show HEAD:"${cleanFile}"`, { cwd: targetDir, timeout: 5000 });
+      oldContent = headOut;
+    } catch {
       try {
-        const { stdout: diffOut } = await execAsync(`git diff --cached -- "${file}"`, { cwd: targetDir, timeout: 10000 });
-        diff = diffOut;
-      } catch (err: any) {
-        if (err?.stdout) diff = err.stdout;
-      }
-
-      // Try reading old content from HEAD
-      try {
-        const { stdout: headOut } = await execAsync(`git show HEAD:"${file}"`, { cwd: targetDir, timeout: 5000 });
-        oldContent = headOut;
+        const { stdout: indexOut } = await execAsync(`git show :0:"${cleanFile}"`, { cwd: targetDir, timeout: 5000 });
+        oldContent = indexOut;
       } catch {
         oldContent = '';
       }
+    }
+
+    if (staged) {
+      // 1. Try staged diff (index vs HEAD)
+      try {
+        const { stdout: diffOut } = await execAsync(`git diff --cached -- "${cleanFile}"`, { cwd: targetDir, timeout: 10000 });
+        if (diffOut && diffOut.trim()) diff = diffOut;
+      } catch (err: any) {
+        if (err?.stdout && err.stdout.trim()) diff = err.stdout;
+      }
+
+      // 2. Fallback to git diff HEAD
+      if (!diff.trim()) {
+        try {
+          const { stdout: headDiff } = await execAsync(`git diff HEAD -- "${cleanFile}"`, { cwd: targetDir, timeout: 10000 });
+          if (headDiff && headDiff.trim()) diff = headDiff;
+        } catch (err: any) {
+          if (err?.stdout && err.stdout.trim()) diff = err.stdout;
+        }
+      }
+
+      // 3. Fallback to unstaged diff
+      if (!diff.trim()) {
+        try {
+          const { stdout: workingDiff } = await execAsync(`git diff -- "${cleanFile}"`, { cwd: targetDir, timeout: 10000 });
+          if (workingDiff && workingDiff.trim()) diff = workingDiff;
+        } catch (err: any) {
+          if (err?.stdout && err.stdout.trim()) diff = err.stdout;
+        }
+      }
     } else {
-      // Unstaged diff (working copy vs index/HEAD)
+      // Unstaged diff
       if (status === '??') {
         // Untracked file: create synthetic diff
         try {
-          const { stdout: diffOut } = await execAsync(`git diff --no-index /dev/null "${file}"`, { cwd: targetDir, timeout: 10000 });
-          diff = diffOut;
+          const { stdout: diffOut } = await execAsync(`git diff --no-index /dev/null "${cleanFile}"`, { cwd: targetDir, timeout: 10000 });
+          if (diffOut && diffOut.trim()) diff = diffOut;
         } catch (err: any) {
-          // git diff --no-index returns exit code 1 when diff exists
-          if (err?.stdout) {
+          if (err?.stdout && err.stdout.trim()) {
             diff = err.stdout;
-          } else if (newContent) {
-            const lines = newContent.split('\n');
-            diff = `--- /dev/null\n+++ b/${file}\n@@ -0,0 +1,${lines.length} @@\n` + lines.map(l => `+${l}`).join('\n');
           }
         }
-        oldContent = '';
       } else {
-        // Tracked modified or deleted file
+        // 1. Try working tree diff
         try {
-          const { stdout: diffOut } = await execAsync(`git diff -- "${file}"`, { cwd: targetDir, timeout: 10000 });
-          diff = diffOut;
+          const { stdout: diffOut } = await execAsync(`git diff -- "${cleanFile}"`, { cwd: targetDir, timeout: 10000 });
+          if (diffOut && diffOut.trim()) diff = diffOut;
         } catch (err: any) {
-          if (err?.stdout) diff = err.stdout;
+          if (err?.stdout && err.stdout.trim()) diff = err.stdout;
         }
 
-        // If unstaged diff is empty (e.g. file is staged or modified vs HEAD), check git diff HEAD
+        // 2. Fallback to git diff --cached (if file was staged already)
         if (!diff.trim()) {
           try {
-            const { stdout: headDiff } = await execAsync(`git diff HEAD -- "${file}"`, { cwd: targetDir, timeout: 10000 });
-            if (headDiff.trim()) {
-              diff = headDiff;
-            }
+            const { stdout: cachedDiff } = await execAsync(`git diff --cached -- "${cleanFile}"`, { cwd: targetDir, timeout: 10000 });
+            if (cachedDiff && cachedDiff.trim()) diff = cachedDiff;
           } catch (err: any) {
-            if (err?.stdout) diff = err.stdout;
+            if (err?.stdout && err.stdout.trim()) diff = err.stdout;
           }
         }
 
-        // Try reading old content from index or HEAD
-        try {
-          const { stdout: indexOut } = await execAsync(`git show :0:"${file}"`, { cwd: targetDir, timeout: 5000 });
-          oldContent = indexOut;
-        } catch {
+        // 3. Fallback to git diff HEAD
+        if (!diff.trim()) {
           try {
-            const { stdout: headOut } = await execAsync(`git show HEAD:"${file}"`, { cwd: targetDir, timeout: 5000 });
-            oldContent = headOut;
-          } catch {
-            oldContent = '';
+            const { stdout: headDiff } = await execAsync(`git diff HEAD -- "${cleanFile}"`, { cwd: targetDir, timeout: 10000 });
+            if (headDiff && headDiff.trim()) diff = headDiff;
+          } catch (err: any) {
+            if (err?.stdout && err.stdout.trim()) diff = err.stdout;
           }
         }
+      }
+    }
+
+    // 4. If git diff is still empty but new content exists:
+    if (!diff.trim()) {
+      if (oldContent && newContent && oldContent !== newContent) {
+        // Synthesize diff from old and new lines
+        const oldLines = oldContent.split(/\r?\n/);
+        const newLines = newContent.split(/\r?\n/);
+        const diffBody = [
+          ...oldLines.map((l) => `-${l}`),
+          ...newLines.map((l) => `+${l}`),
+        ].join('\n');
+        diff = `--- a/${cleanFile}\n+++ b/${cleanFile}\n@@ -1,${oldLines.length} +1,${newLines.length} @@\n${diffBody}`;
+      } else if (newContent) {
+        const lines = newContent.split(/\r?\n/);
+        const prefix = status === 'A' || status === '??' ? '+' : ' ';
+        const diffBody = lines.map((l) => `${prefix}${l}`).join('\n');
+        diff = `--- a/${cleanFile}\n+++ b/${cleanFile}\n@@ -1,${lines.length} +1,${lines.length} @@\n${diffBody}`;
       }
     }
 
@@ -119,8 +158,8 @@ export async function fetchWorkingFileDiff(
     }
 
     return {
-      file,
-      diff: diff || (newContent ? `--- a/${file}\n+++ b/${file}\n@@ -1 +1 @@\n ${newContent.slice(0, 100)}` : 'No differences found'),
+      file: cleanFile,
+      diff: diff || (newContent ? `--- a/${cleanFile}\n+++ b/${cleanFile}\n@@ -1,1 +1,1 @@\n ${newContent.slice(0, 100)}` : 'No differences found'),
       oldContent,
       newContent,
       staged,
@@ -130,8 +169,8 @@ export async function fetchWorkingFileDiff(
     };
   } catch (error: any) {
     return {
-      file,
-      diff: `// Unable to compute diff for ${file}: ${error?.message || 'Unknown error'}`,
+      file: cleanFile,
+      diff: `// Unable to compute diff for ${cleanFile}: ${error?.message || 'Unknown error'}`,
       oldContent: '',
       newContent,
       staged,
