@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { ChatMessageData, ToolCallData } from '@/types/chat';
+import type { ChatMessageData } from '@/types/chat';
 import {
   isRecord,
   extractText,
@@ -66,11 +66,11 @@ export function toChatMessage(entry: OmpMessageEntry): ChatMessageData | null {
   if (parsed.thinking) message.thinking = { thought: parsed.thinking, isGenerating: false };
   if (parsed.intent) message.intent = parsed.intent;
   if (parsed.toolCalls.length > 0) {
-    message.toolCalls = parsed.toolCalls.map((call) => ({
-      ...call,
-      output: parsed.outputs.get(call.id) || undefined,
-      status: (msg.isError ? 'error' : 'success') as ToolCallData['status'],
-    }));
+    // Inline toolResult blocks (same-entry) are already paired by the shared
+    // core parser; pass 2 (collectToolOutputs) overrides with later entries.
+    message.toolCalls = msg.isError
+      ? parsed.toolCalls.map((call) => ({ ...call, status: 'error' as const }))
+      : parsed.toolCalls;
   }
   // Error turns are kept even when they carry no text/tools so the failure is
   // visible in the timeline instead of silently vanishing.
