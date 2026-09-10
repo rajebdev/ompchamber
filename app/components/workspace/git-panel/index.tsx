@@ -21,11 +21,15 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
   const fetcher = useFetcher<{ changes: GitChange[], branch: string, branches: string[], remoteBranches?: string[], repos: string[], reposPending?: boolean, activeRepo: string, syncCount?: { ahead: number, behind: number } }>();
   const actionFetcher = useFetcher<{ success: boolean, type?: string, data?: any, error?: string }>();
 
+  const [storedActiveRepo, setStoredActiveRepo, activeRepoReady] = useSessionState<string>('git.activeRepo', '.');
+  const activeRepo = fetcher.data?.activeRepo || storedActiveRepo || '.';
+
   const loadRepo = (repo?: string) => {
     if (!enabled) return;
+    const targetRepo = repo !== undefined ? repo : storedActiveRepo;
     const params = new URLSearchParams();
     if (rootPath) params.set('root', rootPath);
-    if (repo) params.set('repo', repo);
+    if (targetRepo && targetRepo !== '.') params.set('repo', targetRepo);
     params.set('t', String(Date.now()));
     fetcher.load(`/api/fs/git?${params.toString()}`);
   };
@@ -63,8 +67,18 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
 
   useEffect(() => {
     setMounted(true);
-    loadRepo();
-  }, [refreshKey, rootPath, enabled]);
+  }, []);
+
+  useEffect(() => {
+    if (!activeRepoReady) return;
+    loadRepo(storedActiveRepo);
+  }, [refreshKey, rootPath, enabled, activeRepoReady]);
+
+  useEffect(() => {
+    if (fetcher.data?.activeRepo && fetcher.data.activeRepo !== storedActiveRepo) {
+      setStoredActiveRepo(fetcher.data.activeRepo);
+    }
+  }, [fetcher.data?.activeRepo, storedActiveRepo, setStoredActiveRepo]);
 
   useEffect(() => {
     if (fetcher.data?.reposPending) setPollingRepos(true);
@@ -94,11 +108,11 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
         setExtraRepos(data.repos);
         setPollingRepos(false);
         setRescanningRepos(false);
-        loadRepo(activeRepo);
+        loadRepo(storedActiveRepo);
       }
     }, 1500);
     return () => clearInterval(id);
-  }, [pollingRepos, rootPath, loadRepo]);
+  }, [pollingRepos, rootPath, storedActiveRepo]);
 
   // Focus input when branch prompt opens
   useEffect(() => {
@@ -169,7 +183,6 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
     }
   };
 
-  const activeRepo = fetcher.data?.activeRepo || '.';
   const branch = fetcher.data?.branch || 'main';
   const branches = fetcher.data?.branches || ['main'];
   const remoteBranches = fetcher.data?.remoteBranches || [];
@@ -261,7 +274,10 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
         isLoading={isLoading}
         rootPath={rootPath}
         reposScanning={pollingRepos || rescanningRepos}
-        onSelectRepo={(r) => loadRepo(r)}
+        onSelectRepo={(r) => {
+          setStoredActiveRepo(r);
+          loadRepo(r);
+        }}
         onRefresh={() => loadRepo(activeRepo)}
         onRefreshRepos={refreshRepos}
       />
