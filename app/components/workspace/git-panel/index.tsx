@@ -318,6 +318,8 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
         changes={changes}
         isLoading={isLoading}
         viewMode={viewMode}
+        repo={activeRepo}
+        rootPath={rootPath}
         onAction={handleAction}
       />
     </div>

@@ -16,6 +16,8 @@ interface GitTreeItemProps {
   toggleFolder: (id: string) => void;
   onAction: (actionType: string, file?: string) => void;
   depth?: number;
+  repo?: string;
+  rootPath?: string;
 }
 
 export function GitTreeItem({
@@ -25,6 +27,8 @@ export function GitTreeItem({
   toggleFolder,
   onAction,
   depth = 0,
+  repo,
+  rootPath,
 }: GitTreeItemProps) {
   const isFolder = node.type === 'folder';
   const isOpen = isFolder ? isFolderOpen(node.id) : false;
@@ -103,6 +107,8 @@ export function GitTreeItem({
                 toggleFolder={toggleFolder}
                 onAction={onAction}
                 depth={depth + 1}
+                repo={repo}
+                rootPath={rootPath}
               />
             ))}
           </div>
@@ -125,6 +131,8 @@ export function GitTreeItem({
         file: filePath,
         staged: isStaged,
         status: charStatus,
+        repo: repo || '.',
+        root: rootPath,
       }
     }));
   };

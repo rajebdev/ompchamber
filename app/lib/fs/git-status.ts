@@ -26,8 +26,11 @@ export function getGitStatusInfo(status: string, isStaged: boolean = false): Git
   let colorClass = 'text-info';
   let badgeBgClass = 'bg-info/10 text-info border-info/25';
 
+  const raw = (status || '').trim();
+  const normalized = raw.toUpperCase();
+
   if (isStaged) {
-    const s = status?.[0] || 'M';
+    const s = normalized[0] || 'M';
     if (s === 'A') {
       charStatus = 'A';
       label = 'Added (Staged)';
@@ -43,6 +46,11 @@ export function getGitStatusInfo(status: string, isStaged: boolean = false): Git
       label = 'Renamed (Staged)';
       colorClass = 'text-meta';
       badgeBgClass = 'bg-meta/10 text-meta border-meta/25';
+    } else if (s === 'U' || s === '?') {
+      charStatus = 'U';
+      label = 'Untracked';
+      colorClass = 'text-success';
+      badgeBgClass = 'bg-success/10 text-success border-success/25';
     } else {
       charStatus = 'M';
       label = 'Modified (Staged)';
@@ -50,13 +58,13 @@ export function getGitStatusInfo(status: string, isStaged: boolean = false): Git
       badgeBgClass = 'bg-info/10 text-info border-info/25';
     }
   } else {
-    if (status === '??' || status === '?') {
+    if (normalized === '??' || normalized === '?' || normalized === 'U' || normalized === 'UNTRACKED') {
       charStatus = 'U';
       label = 'Untracked';
       colorClass = 'text-success';
       badgeBgClass = 'bg-success/10 text-success border-success/25';
     } else {
-      const s = status?.[1] || status?.[0] || 'M';
+      const s = normalized[1] || normalized[0] || 'M';
       if (s === 'A') {
         charStatus = 'A';
         label = 'Added';
@@ -72,6 +80,11 @@ export function getGitStatusInfo(status: string, isStaged: boolean = false): Git
         label = 'Renamed';
         colorClass = 'text-meta';
         badgeBgClass = 'bg-meta/10 text-meta border-meta/25';
+      } else if (s === 'U' || s === '?') {
+        charStatus = 'U';
+        label = 'Untracked';
+        colorClass = 'text-success';
+        badgeBgClass = 'bg-success/10 text-success border-success/25';
       } else {
         charStatus = 'M';
         label = 'Modified';

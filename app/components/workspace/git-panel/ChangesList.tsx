@@ -8,10 +8,12 @@ interface GitChangesListProps {
   changes: GitChange[];
   isLoading: boolean;
   viewMode: 'flat' | 'tree';
+  repo?: string;
+  rootPath?: string;
   onAction: (actionType: string, file?: string) => void;
 }
 
-export function GitChangesList({ changes, isLoading, viewMode, onAction }: GitChangesListProps) {
+export function GitChangesList({ changes, isLoading, viewMode, repo, rootPath, onAction }: GitChangesListProps) {
   const [stagedExpanded, setStagedExpanded] = useSessionState<boolean>('git.stagedExpanded', true);
   const [unstagedExpanded, setUnstagedExpanded] = useSessionState<boolean>('git.unstagedExpanded', true);
 
@@ -77,6 +79,8 @@ export function GitChangesList({ changes, isLoading, viewMode, onAction }: GitCh
                 <GitTreeView
                   changes={stagedChanges}
                   isStaged={true}
+                  repo={repo}
+                  rootPath={rootPath}
                   onAction={onAction}
                 />
               ) : (
@@ -85,6 +89,8 @@ export function GitChangesList({ changes, isLoading, viewMode, onAction }: GitCh
                     key={c.file + 'staged'}
                     change={c}
                     isStaged={true}
+                    repo={repo}
+                    rootPath={rootPath}
                     onAction={onAction}
                   />
                 ))
@@ -137,6 +143,8 @@ export function GitChangesList({ changes, isLoading, viewMode, onAction }: GitCh
                 <GitTreeView
                   changes={unstagedChanges}
                   isStaged={false}
+                  repo={repo}
+                  rootPath={rootPath}
                   onAction={onAction}
                 />
               ) : (
@@ -145,6 +153,8 @@ export function GitChangesList({ changes, isLoading, viewMode, onAction }: GitCh
                     key={c.file + 'unstaged'}
                     change={c}
                     isStaged={false}
+                    repo={repo}
+                    rootPath={rootPath}
                     onAction={onAction}
                   />
                 ))

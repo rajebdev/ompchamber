@@ -7,10 +7,12 @@ interface GitFileItemProps {
   change: GitChange;
   isStaged: boolean;
   viewMode?: 'flat' | 'tree';
+  repo?: string;
+  rootPath?: string;
   onAction: (actionType: string, file?: string) => void;
 }
 
-export function GitFileItem({ change, isStaged, onAction }: GitFileItemProps) {
+export function GitFileItem({ change, isStaged, repo, rootPath, onAction }: GitFileItemProps) {
   const statusInfo = getGitStatusInfo(change.status, isStaged);
   const charStatus = statusInfo.charStatus;
   const colorClass = statusInfo.colorClass;
@@ -25,6 +27,8 @@ export function GitFileItem({ change, isStaged, onAction }: GitFileItemProps) {
         file: change.file,
         staged: isStaged,
         status: charStatus,
+        repo: repo || '.',
+        root: rootPath,
       }
     }));
   };

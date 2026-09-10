@@ -12,11 +12,12 @@ const execAsync = util.promisify(exec);
 export async function fetchWorkingFileDiff(
   targetDir: string,
   file: string,
-  staged: boolean = false
+  staged: boolean = false,
+  requestedStatus?: string
 ): Promise<FileDiffData> {
   const cleanFile = file.replace(/^[./\\]+/, '').replace(/\\/g, '/');
   const fullPath = path.join(targetDir, cleanFile);
-  let status = 'M';
+  let status = requestedStatus && requestedStatus.trim() ? requestedStatus.trim() : 'M';
   let diff = '';
   let oldContent = '';
   let newContent = '';
@@ -29,7 +30,7 @@ export async function fetchWorkingFileDiff(
       const { stdout: statusOut } = await execAsync(`git status --porcelain=v1 -- "${cleanFile}"`, { cwd: targetDir });
       const statusLine = statusOut.trim();
       if (statusLine) {
-        status = statusLine.slice(0, 2).trim() || 'M';
+        status = statusLine.slice(0, 2).trim() || status;
       }
     } catch {
       // ignore status check failure
@@ -87,7 +88,7 @@ export async function fetchWorkingFileDiff(
       }
     } else {
       // Unstaged diff
-      if (status === '??') {
+      if (status === '??' || status === 'U' || status === '?') {
         // Untracked file: create synthetic diff
         try {
           const { stdout: diffOut } = await execAsync(`git diff --no-index /dev/null "${cleanFile}"`, { cwd: targetDir, timeout: 10000 });

@@ -5,10 +5,12 @@ import { GitTreeItem } from '@/components/workspace/git-panel/TreeItem';
 interface GitTreeViewProps {
   changes: GitChange[];
   isStaged: boolean;
+  repo?: string;
+  rootPath?: string;
   onAction: (actionType: string, file?: string) => void;
 }
 
-export function GitTreeView({ changes, isStaged, onAction }: GitTreeViewProps) {
+export function GitTreeView({ changes, isStaged, repo, rootPath, onAction }: GitTreeViewProps) {
   const { tree, isFolderOpen, toggleFolder } = useGitTree(changes);
 
   if (tree.length === 0) {
@@ -25,6 +27,8 @@ export function GitTreeView({ changes, isStaged, onAction }: GitTreeViewProps) {
           isFolderOpen={isFolderOpen}
           toggleFolder={toggleFolder}
           onAction={onAction}
+          repo={repo}
+          rootPath={rootPath}
         />
       ))}
     </div>

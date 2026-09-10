@@ -53,6 +53,7 @@ export function DiffPanel({
         staged: currentStaged ? '1' : '0',
         repo: repo || '.',
       });
+      if (status || currentStatus) params.set('status', status || currentStatus);
       if (root) params.set('root', root);
 
       const res = await fetch(`/api/fs/git?${params.toString()}`);
