@@ -9,11 +9,16 @@ export interface FsNode {
 }
 
 export interface OpenedFile {
-  id: number;
+  id: number | string;
   name: string;
   path: string;
-  content: string;
+  content?: string;
   isDirty?: boolean;
+  root?: string;
+  repo?: string;
+  isDiff?: boolean;
+  diffStatus?: string;
+  diffStaged?: boolean;
 }
 
 export interface SearchResultItem {

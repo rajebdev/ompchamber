@@ -23,10 +23,10 @@ interface WorkspacePanelsProps {
   hasActiveContext: boolean;
   activeProjectPath?: string | null;
   openedFiles: any[];
-  activeFileId: number | null;
+  activeFileId: number | string | null;
   refreshKey: number;
-  onSetActiveFileId: (id: number | null) => void;
-  onCloseFile: (id: number) => void;
+  onSetActiveFileId: (id: number | string | null) => void;
+  onCloseFile: (id: number | string) => void;
   onOpenFile: (file: any) => void;
   onRefreshWorkspace: () => void;
   onChangeRightPanel: (panel: RightPanelType) => void;

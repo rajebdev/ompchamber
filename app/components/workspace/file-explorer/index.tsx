@@ -5,6 +5,7 @@ import { GitRepoDropdown } from '@/components/workspace/file-explorer/GitRepoDro
 import { FileTreeItem } from '@/components/workspace/file-explorer/TreeItem';
 import { useScrollbarFade } from '@/hooks/ui/scrollbar-fade';
 import { useSessionState } from '@/hooks/workspace/session-state';
+import { useGitStatus } from '@/hooks/workspace/git-status';
 
 export function FileExplorer({ className = '', enabled = true, rootPath, onOpenFile, refreshKey = 0, onRefresh }: { className?: string, enabled?: boolean, rootPath?: string, onOpenFile?: (file: any) => void, refreshKey?: number, onRefresh?: () => void }) {
   const [tree, setTree] = useState<any[]>([]);
@@ -15,6 +16,7 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
   const childrenCacheRef = useRef<Record<string, any[]>>({});
   const [activeRepo, setActiveRepo] = useSessionState<string>('files.activeRepo', '.');
   const { isScrolling, handleScroll } = useScrollbarFade();
+  const { fileMap: gitFileMap, folderMap: gitFolderMap, refreshGitStatus } = useGitStatus(rootPath, activeRepo, refreshKey, enabled);
 
   useEffect(() => {
     if (!expandedPathsReady) return;
@@ -117,7 +119,11 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
   };
 
   const files = getFilteredFiles();
-  const refresh = onRefresh ? onRefresh : loadFiles;
+  const refresh = () => {
+    refreshGitStatus();
+    if (onRefresh) onRefresh();
+    else loadFiles();
+  };
 
   return (
     <div className={`flex flex-col h-full bg-paper ${className}`}>
@@ -155,7 +161,19 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
           </div>
         ) : (
           files.map(file => (
-            <FileTreeItem key={file.id} file={file} rootPath={rootPath} repo={activeRepo} onLoadChildren={loadChildren} onOpenFile={onOpenFile} onActionComplete={loadFiles} expandedPaths={expandedPaths} onToggleFolder={handleToggleFolder} />
+            <FileTreeItem
+              key={file.id}
+              file={file}
+              rootPath={rootPath}
+              repo={activeRepo}
+              onLoadChildren={loadChildren}
+              onOpenFile={onOpenFile}
+              onActionComplete={refresh}
+              expandedPaths={expandedPaths}
+              onToggleFolder={handleToggleFolder}
+              gitFileMap={gitFileMap}
+              gitFolderMap={gitFolderMap}
+            />
           ))
         )}
       </div>

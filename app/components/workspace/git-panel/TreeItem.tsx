@@ -135,8 +135,21 @@ export function GitTreeItem({
 
   const filePath = change ? change.file : node.path;
 
+  const handleOpenDiff = () => {
+    window.dispatchEvent(new CustomEvent('omp:open-diff', {
+      detail: {
+        file: filePath,
+        staged: isStaged,
+        status: charStatus,
+      }
+    }));
+  };
+
   return (
-    <div className="flex items-center justify-between px-2 py-0.5 hover:bg-ink/5 cursor-pointer rounded group transition-colors text-[11px]">
+    <div 
+      className="flex items-center justify-between px-2 py-0.5 hover:bg-ink/5 cursor-pointer rounded group transition-colors text-[11px]"
+      onClick={handleOpenDiff}
+    >
       <div className="flex items-center space-x-1.5 flex-1 min-w-0 pr-1">
         <span className="w-3.5 h-3.5 flex items-center justify-center flex-shrink-0">
           <span className={`font-bold font-mono text-[9px] ${colorClass}`} title={`Status: ${charStatus}`}>

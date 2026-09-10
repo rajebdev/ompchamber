@@ -1,17 +1,18 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { Eye, ExternalLink, Copy, History, Edit2, Trash2, X, RefreshCw } from 'lucide-react';
+import { Eye, ExternalLink, Copy, History, Edit2, Trash2, X, RefreshCw, GitCompare } from 'lucide-react';
 
 interface ContextMenuProps {
   x: number;
   y: number;
   isFolder: boolean;
+  hasGitStatus?: boolean;
   onAction: (actionType: string) => void;
 }
 
-export function FileContextMenu({ x, y, isFolder, onAction }: ContextMenuProps) {
+export function FileContextMenu({ x, y, isFolder, hasGitStatus, onAction }: ContextMenuProps) {
   const menuWidth = 190;
-  const menuHeight = isFolder ? 220 : 255;
+  const menuHeight = isFolder ? 220 : hasGitStatus ? 285 : 255;
   
   const posX = typeof window !== 'undefined' ? Math.max(10, Math.min(x, window.innerWidth - menuWidth - 12)) : x;
   const posY = typeof window !== 'undefined' ? Math.max(10, Math.min(y, window.innerHeight - menuHeight - 12)) : y;
@@ -28,10 +29,18 @@ export function FileContextMenu({ x, y, isFolder, onAction }: ContextMenuProps) 
         onClick={e => e.stopPropagation()}
       >
         {!isFolder && (
-          <button onClick={() => onAction('view')} className="w-full text-left px-3 py-1.5 hover:bg-ink/5 flex items-center space-x-2 transition-colors">
-            <Eye size={13} className="text-ink/60" />
-            <span>View</span>
-          </button>
+          <>
+            <button onClick={() => onAction('view')} className="w-full text-left px-3 py-1.5 hover:bg-ink/5 flex items-center space-x-2 transition-colors">
+              <Eye size={13} className="text-ink/60" />
+              <span>View</span>
+            </button>
+            {hasGitStatus && (
+              <button onClick={() => onAction('diff')} className="w-full text-left px-3 py-1.5 hover:bg-ink/5 flex items-center space-x-2 transition-colors text-ink">
+                <GitCompare size={13} className="text-amber-600 dark:text-amber-400" />
+                <span className="font-medium">Open in Diff Panel</span>
+              </button>
+            )}
+          </>
         )}
         <button onClick={() => onAction('explorer')} className="w-full text-left px-3 py-1.5 hover:bg-ink/5 flex items-center space-x-2 transition-colors">
           <ExternalLink size={13} className="text-ink/60" />

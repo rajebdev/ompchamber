@@ -49,6 +49,8 @@ export function useSessionState<T>(key: string, fallback: T): [T, (value: T | ((
   return [local, setValue, ready];
 }
 
+export const useSessionUiState = useSessionState;
+
 /** One-shot restore helper for non-hook contexts (event handlers, stores). */
 export function useSessionStateSnapshot(): { sessionId: string; ready: boolean; read: <T>(key: string, fallback: T) => T; hydrate: (state: LoadedState) => void } {
   const { sessionId, ready } = useSessionStateContext();

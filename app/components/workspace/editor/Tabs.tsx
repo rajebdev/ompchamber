@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { FileIcon } from '@/components/common/FileIcon';
-import { X, ChevronDown } from 'lucide-react';
+import { X, ChevronDown, GitCompare } from 'lucide-react';
 import { useOnClickOutside } from '@/hooks/ui/on-click-outside';
+import { getGitStatusInfo } from '@/lib/fs/git-status';
 
 interface EditorTabsProps {
   openedFiles: any[];
-  activeFileId: number | null;
-  onSelectFile: (id: number) => void;
-  onCloseFile: (id: number) => void;
+  activeFileId: number | string | null;
+  onSelectFile: (id: number | string) => void;
+  onCloseFile: (id: number | string) => void;
 }
 
 export function EditorTabs({ openedFiles, activeFileId, onSelectFile, onCloseFile }: EditorTabsProps) {
@@ -40,7 +41,7 @@ export function EditorTabs({ openedFiles, activeFileId, onSelectFile, onCloseFil
     visibleTabs = openedFiles;
   } else {
     const activeIndex = openedFiles.findIndex(f => f.id === activeFileId);
-    const visibleSet = new Set<number>();
+    const visibleSet = new Set<number | string>();
 
     if (activeIndex !== -1 && activeFileId !== null) {
       visibleSet.add(activeFileId);
@@ -60,16 +61,29 @@ export function EditorTabs({ openedFiles, activeFileId, onSelectFile, onCloseFil
       <div className="flex overflow-hidden">
         {visibleTabs.map(file => {
           const isActive = file.id === activeFileId;
+          const isDiff = Boolean(file.isDiff);
+          const statusInfo = isDiff ? getGitStatusInfo(file.diffStatus || 'M', file.diffStaged) : null;
+
           return (
             <div
               key={file.id}
               onClick={() => onSelectFile(file.id)}
-              className={`flex items-center space-x-2 px-3 py-1.5 cursor-pointer border-r border-ink/10 min-w-[120px] max-w-[200px] group ${
+              className={`flex items-center space-x-1.5 px-3 py-1.5 cursor-pointer border-r border-ink/10 min-w-[120px] max-w-[210px] group ${
                 isActive ? 'bg-paper border-t-2 border-t-ink text-ink' : 'bg-transparent border-t-2 border-t-transparent text-ink/60 hover:bg-paper/50'
               }`}
+              title={file.path}
             >
-              <FileIcon name={file.name} size={14} className={isActive ? '' : 'opacity-60'} />
+              {isDiff ? (
+                <GitCompare size={14} className={isActive ? 'text-blue-600 dark:text-blue-400 flex-shrink-0' : 'opacity-60 flex-shrink-0'} />
+              ) : (
+                <FileIcon name={file.name} size={14} className={isActive ? 'flex-shrink-0' : 'opacity-60 flex-shrink-0'} />
+              )}
               <span className="text-xs font-mono truncate flex-1">{file.name}</span>
+              {statusInfo && (
+                <span className={`px-1 text-[9px] font-mono font-bold rounded ${statusInfo.badgeBgClass}`}>
+                  {statusInfo.charStatus}
+                </span>
+              )}
               <div
                 className={`p-0.5 rounded hover:bg-ink/10 ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                 onClick={(e) => {
@@ -95,7 +109,7 @@ export function EditorTabs({ openedFiles, activeFileId, onSelectFile, onCloseFil
           </button>
 
           {showDropdown && (
-            <div className="absolute right-0 top-full mt-1 w-48 bg-paper border border-ink/10 rounded shadow-lg z-50 py-1">
+            <div className="absolute right-0 top-full mt-1 w-52 bg-paper border border-ink/10 rounded shadow-lg z-50 py-1">
               <div className="px-3 py-1 text-[10px] uppercase font-mono text-ink/40 border-b border-ink/10 mb-1">
                 Older Tabs
               </div>
@@ -108,7 +122,11 @@ export function EditorTabs({ openedFiles, activeFileId, onSelectFile, onCloseFil
                   }}
                   className="flex items-center space-x-2 px-3 py-1.5 hover:bg-ink/5 cursor-pointer group"
                 >
-                  <FileIcon name={file.name} size={14} className="opacity-60" />
+                  {file.isDiff ? (
+                    <GitCompare size={14} className="text-blue-600 opacity-70" />
+                  ) : (
+                    <FileIcon name={file.name} size={14} className="opacity-60" />
+                  )}
                   <span className="text-xs font-mono truncate flex-1 text-ink/80">{file.name}</span>
                   <div
                     className="p-0.5 rounded hover:bg-ink/10 opacity-0 group-hover:opacity-100"

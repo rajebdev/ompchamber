@@ -33,8 +33,21 @@ export function GitFileItem({ change, isStaged, onAction }: GitFileItemProps) {
   const fileName = parts.pop() || change.file;
   const dirPath = parts.length > 0 ? parts.join('/') : '';
 
+  const handleOpenDiff = () => {
+    window.dispatchEvent(new CustomEvent('omp:open-diff', {
+      detail: {
+        file: change.file,
+        staged: isStaged,
+        status: charStatus,
+      }
+    }));
+  };
+
   return (
-    <div className="flex items-center justify-between px-3 py-1 hover:bg-ink/5 cursor-pointer group text-[11px] transition-colors">
+    <div 
+      className="flex items-center justify-between px-3 py-1 hover:bg-ink/5 cursor-pointer group text-[11px] transition-colors"
+      onClick={handleOpenDiff}
+    >
       <div className="flex items-center space-x-1.5 flex-1 min-w-0 pr-2">
         <span className={`font-bold font-mono text-[9px] w-3 flex-shrink-0 text-center ${colorClass}`} title={`Status: ${charStatus}`}>
           {charStatus}

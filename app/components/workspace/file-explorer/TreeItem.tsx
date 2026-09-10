@@ -3,6 +3,8 @@ import { ChevronRight, ChevronDown } from 'lucide-react';
 import { useFetcher } from '@remix-run/react';
 import { FileIcon } from '@/components/common/FileIcon';
 import { FileContextMenu, FileDeleteModal, FileRenameModal, FileHistoryModal } from '@/components/workspace/file-explorer/Modals';
+import { getGitStatusInfo, type FolderGitStatusInfo } from '@/lib/fs/git-status';
+import type { GitChange } from '@/types/git';
 
 interface FileTreeItemProps {
   file: any;
@@ -13,9 +15,22 @@ interface FileTreeItemProps {
   onActionComplete: () => void;
   expandedPaths?: Set<string>;
   onToggleFolder?: (path: string, open: boolean) => void;
+  gitFileMap?: Map<string, GitChange>;
+  gitFolderMap?: Map<string, FolderGitStatusInfo>;
 }
 
-export function FileTreeItem({ file, rootPath, repo, onLoadChildren, onOpenFile, onActionComplete, expandedPaths, onToggleFolder }: FileTreeItemProps) {
+export function FileTreeItem({
+  file,
+  rootPath,
+  repo,
+  onLoadChildren,
+  onOpenFile,
+  onActionComplete,
+  expandedPaths,
+  onToggleFolder,
+  gitFileMap,
+  gitFolderMap,
+}: FileTreeItemProps) {
   const [isOpen, setIsOpen] = useState(file.is_expanded === 1);
   const [isLoadingChildren, setIsLoadingChildren] = useState(false);
   const actionFetcher = useFetcher<any>();
@@ -29,6 +44,12 @@ export function FileTreeItem({ file, rootPath, repo, onLoadChildren, onOpenFile,
 
   const isFolder = file.type === 'folder';
   const children = Array.isArray(file.children) ? file.children : [];
+
+  const normalizedPath = (file.path || '').replace(/^\/+/, '');
+  const gitChange = !isFolder ? (gitFileMap?.get(normalizedPath) || gitFileMap?.get(file.path)) : undefined;
+  const gitStatusInfo = gitChange ? getGitStatusInfo(gitChange.status, gitChange.staged) : null;
+  const folderStatus = isFolder ? (gitFolderMap?.get(normalizedPath) || gitFolderMap?.get(file.path)) : null;
+  const hasGitStatus = Boolean(gitStatusInfo);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -96,6 +117,16 @@ export function FileTreeItem({ file, rootPath, repo, onLoadChildren, onOpenFile,
     setContextMenu(null);
     if (actionType === 'view') {
       if (onOpenFile) onOpenFile(file);
+    } else if (actionType === 'diff') {
+      window.dispatchEvent(new CustomEvent('omp:open-diff', {
+        detail: {
+          file: file.path,
+          staged: gitChange?.staged || (gitChange?.status && gitChange.status[0] !== ' ' && gitChange.status[0] !== '?'),
+          status: gitStatusInfo?.charStatus || 'M',
+          repo: repo || '.',
+          root: rootPath,
+        }
+      }));
     } else if (actionType === 'explorer') {
       const fd = new FormData();
       fd.append('actionType', 'open_explorer');
@@ -149,7 +180,28 @@ export function FileTreeItem({ file, rootPath, repo, onLoadChildren, onOpenFile,
         )}
 
         <FileIcon name={file.name} isFolder={isFolder} isOpen={actualIsOpen} size={12} className="flex-shrink-0" />
-        <span className="truncate min-w-0 flex-1">{file.name}</span>
+        <span className={`truncate min-w-0 flex-1 ${gitStatusInfo ? gitStatusInfo.colorClass : folderStatus ? folderStatus.colorClass : ''}`}>
+          {file.name}
+        </span>
+
+        {gitStatusInfo && (
+          <span
+            className={`font-mono text-[9px] font-bold px-1 rounded flex-shrink-0 ${gitStatusInfo.colorClass}`}
+            title={`Git: ${gitStatusInfo.label}`}
+          >
+            {gitStatusInfo.charStatus}
+          </span>
+        )}
+
+        {folderStatus && (
+          <span
+            className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+              folderStatus.hasDeleted ? 'bg-error' :
+              folderStatus.hasModified || folderStatus.hasStaged ? 'bg-amber-500' : 'bg-emerald-500'
+            }`}
+            title={`${folderStatus.count} changed file${folderStatus.count > 1 ? 's' : ''}`}
+          />
+        )}
       </div>
 
       {actualIsOpen && isLoadingChildren && (
@@ -159,7 +211,19 @@ export function FileTreeItem({ file, rootPath, repo, onLoadChildren, onOpenFile,
       {actualIsOpen && !isLoadingChildren && children.length > 0 && (
         <div className="ml-3 border-l border-ink/10 pl-1">
           {children.map((child: any) => (
-            <FileTreeItem key={child.id} file={child} rootPath={rootPath} repo={repo} onLoadChildren={onLoadChildren} onOpenFile={onOpenFile} onActionComplete={onActionComplete} expandedPaths={expandedPaths} onToggleFolder={onToggleFolder} />
+            <FileTreeItem
+              key={child.id}
+              file={child}
+              rootPath={rootPath}
+              repo={repo}
+              onLoadChildren={onLoadChildren}
+              onOpenFile={onOpenFile}
+              onActionComplete={onActionComplete}
+              expandedPaths={expandedPaths}
+              onToggleFolder={onToggleFolder}
+              gitFileMap={gitFileMap}
+              gitFolderMap={gitFolderMap}
+            />
           ))}
         </div>
       )}
@@ -169,6 +233,7 @@ export function FileTreeItem({ file, rootPath, repo, onLoadChildren, onOpenFile,
           x={contextMenu.x}
           y={contextMenu.y}
           isFolder={isFolder}
+          hasGitStatus={hasGitStatus}
           onAction={handleAction}
         />
       )}
@@ -206,3 +271,4 @@ export function FileTreeItem({ file, rootPath, repo, onLoadChildren, onOpenFile,
     </div>
   );
 }
+

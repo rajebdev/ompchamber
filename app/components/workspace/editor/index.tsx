@@ -15,6 +15,7 @@ import { useScrollbarFade } from '@/hooks/ui/scrollbar-fade';
 import { EditorTabs } from '@/components/workspace/editor/Tabs';
 import { EditorToolbar } from '@/components/workspace/editor/Toolbar';
 import { getDefaultContent, getLanguage } from '@/components/workspace/editor/utils';
+import { DiffPanel } from '@/components/workspace/diff-panel';
 import { useSessionState } from '@/hooks/workspace/session-state';
 import { useSessionStateContext } from '@/hooks/workspace/session-state/context';
 import { getSessionValue } from '@/lib/workspace/session-state/store';
@@ -22,9 +23,9 @@ import { getSessionValue } from '@/lib/workspace/session-state/store';
 interface EditorProps {
   className?: string;
   openedFiles: any[];
-  activeFileId: number | null;
-  onSelectFile: (id: number) => void;
-  onCloseFile: (id: number) => void;
+  activeFileId: number | string | null;
+  onSelectFile: (id: number | string) => void;
+  onCloseFile: (id: number | string) => void;
   refreshKey?: number;
   onFileSaved?: () => void;
 }
@@ -195,65 +196,82 @@ export function Editor({
       />
 
       {activeFile ? (
-        <>
-          <EditorToolbar
-            path={activeFile.path}
-            saveStatus={saveStatus}
-            wordWrap={wordWrap}
-            isMd={isMd}
-            isPreview={isPreview}
-            onSave={() => saveFileToDisk(activeFile, currentContent)}
-            onTogglePreview={togglePreview}
-            onToggleWordWrap={() => setWordWrap(!wordWrap)}
-            onZoomIn={() => setZoomLevel(z => Math.min(24, z + 1))}
-            onZoomOut={() => setZoomLevel(z => Math.max(8, z - 1))}
-            onCopy={handleCopy}
-            onDownload={handleDownload}
-            onToggleMaximize={() => setIsMaximized(!isMaximized)}
+        activeFile.isDiff ? (
+          <DiffPanel
+            filePath={activeFile.path}
+            status={activeFile.diffStatus || 'M'}
+            isStaged={Boolean(activeFile.diffStaged)}
+            root={activeFile.root}
+            repo={activeFile.repo || '.'}
+            onOpenInEditor={() => {
+              // Convert diff tab to regular editor tab
+              activeFile.isDiff = false;
+              onSelectFile(activeFile.id);
+            }}
+            onFileSaved={onFileSaved}
+            className="flex-1"
           />
+        ) : (
+          <>
+            <EditorToolbar
+              path={activeFile.path}
+              saveStatus={saveStatus}
+              wordWrap={wordWrap}
+              isMd={isMd}
+              isPreview={isPreview}
+              onSave={() => saveFileToDisk(activeFile, currentContent)}
+              onTogglePreview={togglePreview}
+              onToggleWordWrap={() => setWordWrap(!wordWrap)}
+              onZoomIn={() => setZoomLevel(z => Math.min(24, z + 1))}
+              onZoomOut={() => setZoomLevel(z => Math.max(8, z - 1))}
+              onCopy={handleCopy}
+              onDownload={handleDownload}
+              onToggleMaximize={() => setIsMaximized(!isMaximized)}
+            />
 
-          <div onScroll={handleScroll} className={`flex-1 overflow-auto bg-paper flex ${isScrolling ? 'scrollbar-overlay-scrolling' : 'scrollbar-overlay'}`}>
-            {(isMd && isPreview) ? (
-              <div className="p-6 prose prose-sm max-w-4xl mx-auto font-sans flex-1" style={{ fontSize: `${zoomLevel}px` }}>
-                <MarkdownRenderer content={currentContent} />
-              </div>
-            ) : (
-              <>
-                <div 
-                  className="flex flex-col text-right pl-4 pr-3 select-none text-ink/30 font-mono border-r border-ink/10 bg-canvas sticky left-0 z-10" 
-                  style={{ 
-                    fontSize: zoomLevel, 
-                    paddingTop: 16, 
-                    paddingBottom: 16,
-                    lineHeight: 1.5,
-                    fontFamily: '"Fira Code", "JetBrains Mono", "SF Mono", Consolas, monospace',
-                  }}
-                >
-                  {currentContent.split('\n').map((_, i) => (
-                    <div key={i + 1} className="min-w-[1.5rem]">{i + 1}</div>
-                  ))}
+            <div onScroll={handleScroll} className={`flex-1 overflow-auto bg-paper flex ${isScrolling ? 'scrollbar-overlay-scrolling' : 'scrollbar-overlay'}`}>
+              {(isMd && isPreview) ? (
+                <div className="p-6 prose prose-sm max-w-4xl mx-auto font-sans flex-1" style={{ fontSize: `${zoomLevel}px` }}>
+                  <MarkdownRenderer content={currentContent} />
                 </div>
-                <div className="flex-1 min-w-max">
-                  <CodeEditor
-                    value={currentContent}
-                    onValueChange={handleContentChange}
-                    highlight={code => Prism.highlight(code, Prism.languages[lang] || Prism.languages.javascript, lang)}
-                    padding={16}
-                    textareaClassName={`focus:outline-none ${wordWrap ? '!whitespace-pre-wrap !break-words' : '!whitespace-pre !break-normal'}`}
-                    preClassName={`${wordWrap ? '!whitespace-pre-wrap !break-words' : '!whitespace-pre !break-normal'}`}
-                    style={{
-                      fontFamily: '"Fira Code", "JetBrains Mono", "SF Mono", Consolas, monospace',
-                      fontSize: zoomLevel,
+              ) : (
+                <>
+                  <div 
+                    className="flex flex-col text-right pl-4 pr-3 select-none text-ink/30 font-mono border-r border-ink/10 bg-canvas sticky left-0 z-10" 
+                    style={{ 
+                      fontSize: zoomLevel, 
+                      paddingTop: 16, 
+                      paddingBottom: 16,
                       lineHeight: 1.5,
-                      minHeight: '100%',
+                      fontFamily: '"Fira Code", "JetBrains Mono", "SF Mono", Consolas, monospace',
                     }}
-                    className="font-mono focus:outline-none"
-                  />
-                </div>
-              </>
-            )}
-          </div>
-        </>
+                  >
+                    {currentContent.split('\n').map((_, i) => (
+                      <div key={i + 1} className="min-w-[1.5rem]">{i + 1}</div>
+                    ))}
+                  </div>
+                  <div className="flex-1 min-w-max">
+                    <CodeEditor
+                      value={currentContent}
+                      onValueChange={handleContentChange}
+                      highlight={code => Prism.highlight(code, Prism.languages[lang] || Prism.languages.javascript, lang)}
+                      padding={16}
+                      textareaClassName={`focus:outline-none ${wordWrap ? '!whitespace-pre-wrap !break-words' : '!whitespace-pre !break-normal'}`}
+                      preClassName={`${wordWrap ? '!whitespace-pre-wrap !break-words' : '!whitespace-pre !break-normal'}`}
+                      style={{
+                        fontFamily: '"Fira Code", "JetBrains Mono", "SF Mono", Consolas, monospace',
+                        fontSize: zoomLevel,
+                        lineHeight: 1.5,
+                        minHeight: '100%',
+                      }}
+                      className="font-mono focus:outline-none"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          </>
+        )
       ) : (
         <div className="flex-1 flex items-center justify-center text-ink/40">
           <p className="font-mono text-sm">Select a tab to view content</p>

@@ -4,13 +4,11 @@ import { Group, Panel, Separator, type PanelImperativeHandle } from 'react-resiz
 import { SessionSidebar } from '@/components/layout/session-sidebar/index';
 import { type RightPanelType } from '@/components/layout/RightActivityBar';
 import { SettingsModal } from '@/components/settings/Modal';
-import {
-  PanelLeft
-} from 'lucide-react';
+import { PanelLeft } from 'lucide-react';
 import type { WorkspaceFolderData, SettingsCategoryId } from '@/types';
 import { activeProjectForSession } from '@/lib/workspace/active-project';
+import { useFileTabs } from '@/hooks/workspace/file-tabs';
 import { useSessionState } from '@/hooks/workspace/session-state';
-import { useSessionStateContext } from '@/hooks/workspace/session-state/context';
 import { TopNavbar } from '@/components/layout/desktop-layout/TopNavbar';
 import { WorkspacePanels } from '@/components/layout/desktop-layout/WorkspacePanels';
 
@@ -37,45 +35,31 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
   const weightsRef = useRef<Record<string, number>>(appSettings.desktopLayoutSizes || {});
   const layoutSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [openedFiles, setOpenedFiles] = useSessionState<any[]>('layout.openedFiles', []);
-  const [activeFileId, setActiveFileId] = useSessionState<number | null>('layout.activeFileId', null);
   const editorPanelRef = useRef<PanelImperativeHandle>(null);
   const rightPanelRef = useRef<PanelImperativeHandle>(null);
   const leftPanelRef = useRef<PanelImperativeHandle>(null);
   const [userToggledEditor, setUserToggledEditor] = useState<boolean | null>(appSettings.userToggledEditor ?? null);
-  // The editor only ever renders while files are open. A persisted manual
-  // toggle is honored only then, so a reload with no open files never mounts
-  // the editor just to unmount it a frame later (the "editor blip").
-  const showEditor = openedFiles.length > 0 && (userToggledEditor ?? true);
 
-  // The right-panel developer tools are scoped to the active workspace
-  // context: the folder owning the selected session, or — when creating a
-  // new session — the folder picked from the context dropdown / the "+" next
-  // to a folder (mirrored into the `folderId` URL param).
   const [searchParams] = useSearchParams();
   const folderIdParam = searchParams.get('folderId');
   const activeProject = useMemo(() => {
-    const sessionFolder = activeProjectForSession(folders, sessionId).folder;
+    const sessionFolder = activeProjectForSession(folders, sessionId || '').folder;
     if (sessionFolder) return sessionFolder;
     if (folderIdParam) return folders.find(f => String(f.id) === String(folderIdParam)) ?? null;
     return null;
   }, [folders, sessionId, folderIdParam]);
   const activeProjectPath = activeProject?.project_path ?? null;
   const hasActiveContext = !!activeProject;
-  const activeRootRef = useRef<string | null | undefined>(undefined);
-  const { ready: layoutReady } = useSessionStateContext();
-  const wipedRootRef = useRef<string | null | undefined>(undefined);
-  useEffect(() => {
-    if (activeRootRef.current === activeProjectPath) return;
-    activeRootRef.current = activeProjectPath;
-    // Defer the wipe until the incoming session's blob has loaded: writing
-    // `[]` pre-restore would be merged over the stored opened-files list by
-    // loadSession and permanently drop it. Each root wipes at most once.
-    if (!layoutReady || wipedRootRef.current === activeProjectPath) return;
-    wipedRootRef.current = activeProjectPath;
-    setOpenedFiles([]);
-    setActiveFileId(null);
-  }, [activeProjectPath, sessionId, layoutReady, setOpenedFiles, setActiveFileId]);
+
+  const {
+    openedFiles,
+    activeFileId,
+    setActiveFileId,
+    handleOpenFile,
+    handleCloseFile,
+  } = useFileTabs(activeProjectPath, sessionId || '', () => setUserToggledEditor(true));
+
+  const showEditor = openedFiles.length > 0 && (userToggledEditor ?? true);
 
   const saveSetting = (key: string, value: any) => {
     fetch('/api/settings', {
@@ -149,58 +133,6 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
       setUserToggledEditor(true);
     }
   }, [activeRightPanel, openedFiles.length]);
-
-  const handleOpenFile = (file: any) => {
-    const fileEntry = { ...file, root: file.root ?? activeProjectPath ?? undefined };
-    setOpenedFiles(prev => {
-      const existing = prev.find(f => f.id === fileEntry.id || (f.path && fileEntry.path && f.path === fileEntry.path));
-      if (existing) {
-        setActiveFileId(existing.id);
-        return prev;
-      }
-      return [...prev, fileEntry];
-    });
-    setActiveFileId(fileEntry.id);
-    setUserToggledEditor(true);
-  };
-
-  // Listen to global open-file events from tool calling cards or buttons
-  useEffect(() => {
-    const handleCustomOpenFile = (e: Event) => {
-      const customEvent = e as CustomEvent<{ path: string; name?: string; id?: number; content?: string }>;
-      if (!customEvent.detail || !customEvent.detail.path) return;
-      
-      const rawPath = customEvent.detail.path.replace(/^\/+/, '');
-      const name = customEvent.detail.name || rawPath.split('/').pop() || 'file';
-      // Deterministic numeric ID based on path string
-      let hash = 0;
-      for (let i = 0; i < rawPath.length; i++) {
-        hash = ((hash << 5) - hash) + rawPath.charCodeAt(i);
-        hash |= 0;
-      }
-      const id = customEvent.detail.id || Math.abs(hash) || Date.now();
-
-      handleOpenFile({
-        id,
-        name,
-        path: rawPath,
-        content: customEvent.detail.content
-      });
-    };
-
-    window.addEventListener('omp:open-file', handleCustomOpenFile);
-    return () => window.removeEventListener('omp:open-file', handleCustomOpenFile);
-  }, []);
-
-  const handleCloseFile = (id: number) => {
-    setOpenedFiles(prev => {
-      const next = prev.filter(f => f.id !== id);
-      if (activeFileId === id) {
-        setActiveFileId(next.length > 0 ? next[next.length - 1].id : null);
-      }
-      return next;
-    });
-  };
 
   const handleChangeRightPanel = (panel: RightPanelType) => {
     let nextShow = showRightPanel;

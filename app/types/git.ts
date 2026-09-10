@@ -46,3 +46,15 @@ export interface GitStatusData {
   activeRepo: string;
   syncCount?: { ahead: number; behind: number };
 }
+
+export interface FileDiffData {
+  file: string;
+  diff: string;
+  oldContent?: string;
+  newContent?: string;
+  staged: boolean;
+  status: string;
+  additions?: number;
+  deletions?: number;
+}
+

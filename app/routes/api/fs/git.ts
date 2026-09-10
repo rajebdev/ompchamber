@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { resolveRoot } from '@/lib/fs/root';
 import { fetchGitCommits, fetchFileDiff } from '@/lib/fs/git-log';
+import { fetchWorkingFileDiff } from '@/lib/fs/git-diff';
 
 const execAsync = util.promisify(exec);
 
@@ -91,6 +92,16 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const targetDir = repo === '.' ? rootDir : path.join(rootDir, repo);
   if (targetDir !== rootDir && !targetDir.startsWith(rootDir + path.sep)) {
     return json({ error: 'Invalid repo path' }, { status: 403 });
+  }
+
+  // File diff endpoint
+  if (url.searchParams.get('fileDiff') === '1' || url.searchParams.get('diff') === '1') {
+    const targetFile = url.searchParams.get('file');
+    if (targetFile) {
+      const staged = url.searchParams.get('staged') === '1' || url.searchParams.get('staged') === 'true';
+      const diffData = await fetchWorkingFileDiff(targetDir, targetFile, staged);
+      return json({ success: true, ...diffData });
+    }
   }
 
   try {
@@ -254,6 +265,11 @@ export async function action({ request }: ActionFunctionArgs) {
       const file = (formData.get('file') as string) || '';
       const diff = await fetchFileDiff(targetDir, hash, file);
       return json({ success: true, diff });
+    } else if (actionType === 'file_diff') {
+      const file = (formData.get('file') as string) || '';
+      const staged = formData.get('staged') === '1' || formData.get('staged') === 'true';
+      const diffData = await fetchWorkingFileDiff(targetDir, file, staged);
+      return json({ success: true, ...diffData });
     } else if (actionType === 'cherry_pick') {
       const hash = formData.get('hash') as string;
       await execAsync(`git cherry-pick "${hash}"`, { cwd: targetDir });
