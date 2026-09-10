@@ -89,6 +89,12 @@ export async function getDb(): Promise<Database> {
         session_id TEXT PRIMARY KEY,
         archived_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS session_ui_state (
+        session_id TEXT PRIMARY KEY,
+        state TEXT NOT NULL DEFAULT '{}',
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
     `);
 
     // Attempt to add column to existing tables if it doesn't exist
