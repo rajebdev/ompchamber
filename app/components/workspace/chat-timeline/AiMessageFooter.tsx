@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Bot, Hourglass, RotateCcw, Copy, Check, MessageSquarePlus } from 'lucide-react';
-import { copyToClipboard } from '@/hooks/useClipboard';
-import { formatDuration } from '@/lib/chat-duration';
+import { copyToClipboard } from '@/hooks/ui/clipboard';
+import { formatDuration } from '@/lib/chat/duration';
 
 interface AiMessageFooterProps {
   currentModel: string;

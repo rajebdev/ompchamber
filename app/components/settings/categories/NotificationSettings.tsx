@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Volume2, VolumeX, Sparkles } from 'lucide-react';
 import type { SettingsState } from '@/types';
-import { playNotificationSound } from '@/hooks/useNotificationSound';
+import { playNotificationSound } from '@/hooks/ui/notification-sound';
 
 interface NotificationSettingsProps {
   settings: SettingsState;

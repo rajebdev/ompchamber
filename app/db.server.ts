@@ -160,7 +160,7 @@ export async function getDb(): Promise<Database> {
 
       // Pre-seed sample sessions data
       try {
-        const { getSampleToolsSession, SAMPLE_TOOLS_SESSION_ID } = await import('@/data/sampleToolsSession');
+        const { getSampleToolsSession, SAMPLE_TOOLS_SESSION_ID } = await import('@/data/samples/tools-session');
         const sample = getSampleToolsSession();
         const jsonStr = JSON.stringify(sample.messages);
         await db.run(
@@ -172,7 +172,7 @@ export async function getDb(): Promise<Database> {
           [SAMPLE_TOOLS_SESSION_ID, sample.title, jsonStr]
         );
 
-        const { getSampleDialogueSession, SAMPLE_DIALOGUE_SESSION_ID } = await import('@/data/sampleDialogueSession');
+        const { getSampleDialogueSession, SAMPLE_DIALOGUE_SESSION_ID } = await import('@/data/samples/dialogue-session');
         const sample2 = getSampleDialogueSession();
         const jsonStr2 = JSON.stringify(sample2.messages);
         await db.run(
@@ -289,8 +289,8 @@ export async function getDb(): Promise<Database> {
  * `deleted_workspaces`), so a deleted workspace stays deleted.
  */
 async function syncWorkspaceFoldersWithOmp(db: Database): Promise<void> {
-  const { loadOmpSidebarData } = await import('@/lib/omp/session-reader');
-  const { orderedOmpProjects, projectDisplayName } = await import('@/lib/omp/sidebar-adapter');
+  const { loadOmpSidebarData } = await import('@/lib/omp/session/reader');
+  const { orderedOmpProjects, projectDisplayName } = await import('@/lib/omp/session/sidebar');
 
   const data = await loadOmpSidebarData();
   const existing = await db.all('SELECT id, name, project_path FROM workspace_folders');

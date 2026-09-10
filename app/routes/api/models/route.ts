@@ -1,11 +1,11 @@
 import { json } from '@remix-run/node';
 import type { LoaderFunctionArgs, ActionFunctionArgs } from '@remix-run/node';
 import { getDb } from '@/db.server';
-import { INITIAL_MODELS_CATALOG } from '@/data/modelCatalogData';
+import { INITIAL_MODELS_CATALOG } from '@/data/models/catalog';
 import { isMockMode } from '@/mock.server';
 import type { AIModelOption, ModelsData, ModelEntry } from '@/types';
-import { runUtilityCommand, type OmpModel } from '@/lib/omp/rpc-utility';
-import { readDisabledProviders } from '@/lib/omp/model-roles';
+import { runUtilityCommand, type OmpModel } from '@/lib/omp/rpc/utility';
+import { readDisabledProviders } from '@/lib/omp/config/roles';
 
 const MODELS_CATALOG_KEY = 'omp_models_catalog';
 const SELECTED_MODEL_KEY = 'omp_selected_model';

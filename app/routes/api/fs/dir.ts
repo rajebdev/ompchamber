@@ -2,7 +2,7 @@ import { json, type LoaderFunctionArgs } from '@remix-run/node';
 import fs from 'fs';
 import path from 'path';
 import { isMockMode } from '@/mock.server';
-import { getDefaultFsRoot, resolveRoot } from '@/lib/fs-root';
+import { getDefaultFsRoot, resolveRoot } from '@/lib/fs/root';
 
 // Lazy listing: return only the immediate children of a directory. Folders are
 // emitted with `children: null` meaning "not loaded yet" so the client can

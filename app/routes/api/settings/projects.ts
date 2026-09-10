@@ -1,7 +1,7 @@
 import { json } from '@remix-run/node';
 import type { LoaderFunctionArgs, ActionFunctionArgs } from '@remix-run/node';
 import { getDb } from '@/db.server';
-import { DEFAULT_PROJECTS_LIST, AVAILABLE_PROJECT_MODELS, ACCENT_COLOR_OPTIONS } from '@/data/projectData';
+import { DEFAULT_PROJECTS_LIST, AVAILABLE_PROJECT_MODELS, ACCENT_COLOR_OPTIONS } from '@/data/settings/project';
 import { isMockMode } from '@/mock.server';
 import type { ProjectConfigItem } from '@/types';
 

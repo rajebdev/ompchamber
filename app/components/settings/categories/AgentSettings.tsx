@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { AgentItem, SettingsState } from '@/types';
-import { AgentSidebarList } from '@/components/settings/categories/agent-settings/AgentSidebarList';
-import { AgentDetailPane } from '@/components/settings/categories/agent-settings/AgentDetailPane';
+import { AgentSidebarList } from '@/components/settings/categories/agent-settings/SidebarList';
+import { AgentDetailPane } from '@/components/settings/categories/agent-settings/DetailPane';
 
 interface AgentSettingsProps {
   settings: SettingsState;

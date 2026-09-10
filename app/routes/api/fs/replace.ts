@@ -2,8 +2,8 @@ import { json, type ActionFunctionArgs } from '@remix-run/node';
 import fs from 'fs/promises';
 import path from 'path';
 import { isMockMode } from '@/mock.server';
-import { getDefaultFsRoot, resolveRoot } from '@/lib/fs-root';
-import { scopeToRepo } from '@/lib/repo-scope';
+import { getDefaultFsRoot, resolveRoot } from '@/lib/fs/root';
+import { scopeToRepo } from '@/lib/fs/repo-scope';
 
 export async function action({ request }: ActionFunctionArgs) {
   const formData = await request.formData();

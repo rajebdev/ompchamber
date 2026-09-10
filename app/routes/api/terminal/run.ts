@@ -3,8 +3,8 @@ import { exec } from 'child_process';
 import util from 'util';
 import path from 'path';
 import fs from 'fs';
-import { resolveRoot } from '@/lib/fs-root';
-import { scopeToRepo } from '@/lib/repo-scope';
+import { resolveRoot } from '@/lib/fs/root';
+import { scopeToRepo } from '@/lib/fs/repo-scope';
 
 const execAsync = util.promisify(exec);
 

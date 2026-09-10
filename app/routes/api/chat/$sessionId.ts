@@ -1,7 +1,7 @@
 import { json } from '@remix-run/node';
 import type { LoaderFunctionArgs, ActionFunctionArgs } from '@remix-run/node';
 import { getDb } from '@/db.server';
-import { getSessionData } from '@/data/chatMockData';
+import { getSessionData } from '@/data/mock/chat';
 import { isMockMode } from '@/mock.server';
 
 interface StoredAttachment {
@@ -59,8 +59,8 @@ export async function loader({ params }: LoaderFunctionArgs) {
     // chat_sessions overlay is only for chamber-created sessions (mock or
     // synthetic ids).
     if (!mock) {
-      const { findSessionFileById } = await import('@/lib/omp/session-locator');
-      const { loadSessionMessages, loadSessionTitle, loadSessionModel, loadSessionThinkingLevel } = await import('@/lib/omp/session-messages');
+      const { findSessionFileById } = await import('@/lib/omp/session/locator');
+      const { loadSessionMessages, loadSessionTitle, loadSessionModel, loadSessionThinkingLevel } = await import('@/lib/omp/session/messages');
       const filePath = findSessionFileById(sessionId);
       if (filePath) {
         const messages = loadSessionMessages(filePath);

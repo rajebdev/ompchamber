@@ -1,4 +1,4 @@
-import { getRpcSession } from '@/lib/omp/rpc-manager';
+import { getRpcSession } from '@/lib/omp/rpc/manager';
 
 // GET /api/agent/:sessionId/events — SSE stream of agent events.
 // SSE is observer-only: listing or opening a saved session must not create

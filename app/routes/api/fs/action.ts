@@ -4,7 +4,7 @@ import path from 'path';
 import { exec } from 'child_process';
 import util from 'util';
 import { isMockMode } from '@/mock.server';
-import { getDefaultFsRoot, resolveRoot } from '@/lib/fs-root';
+import { getDefaultFsRoot, resolveRoot } from '@/lib/fs/root';
 
 const execAsync = util.promisify(exec);
 

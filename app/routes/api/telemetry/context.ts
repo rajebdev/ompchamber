@@ -1,7 +1,7 @@
 import { json } from '@remix-run/node';
 import type { LoaderFunctionArgs } from '@remix-run/node';
-import { computeSessionContextTelemetry, emptyTelemetry } from '@/data/contextData';
-import { getSessionData } from '@/data/chatMockData';
+import { computeSessionContextTelemetry, emptyTelemetry } from '@/data/context-data';
+import { getSessionData } from '@/data/mock/chat';
 import { getDb } from '@/db.server';
 import { isMockMode } from '@/mock.server';
 
@@ -27,8 +27,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const db = await getDb();
     if (sessionId) {
       // JSONL-first: omp sessions live on disk, so the raw panel shows full entries.
-      const { findSessionFileById } = await import('@/lib/omp/session-locator');
-      const { computeRealSessionTelemetry } = await import('@/lib/omp/session-telemetry');
+      const { findSessionFileById } = await import('@/lib/omp/session/locator');
+      const { computeRealSessionTelemetry } = await import('@/lib/omp/session/telemetry');
       const filePath = findSessionFileById(sessionId);
       if (filePath) {
         const telemetry = computeRealSessionTelemetry(filePath, sessionId);

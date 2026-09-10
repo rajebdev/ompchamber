@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Sparkles, ChevronDown, Copy, Check, BrainCircuit } from 'lucide-react';
 import type { ThinkingData } from '@/types';
-import { copyToClipboard } from '@/hooks/useClipboard';
+import { copyToClipboard } from '@/hooks/ui/clipboard';
 
 interface ThinkingSectionProps {
   thinking: ThinkingData | string;

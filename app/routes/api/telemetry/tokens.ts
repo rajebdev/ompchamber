@@ -1,6 +1,6 @@
 import { json } from '@remix-run/node';
 import type { LoaderFunctionArgs, ActionFunctionArgs } from '@remix-run/node';
-import { TIME_RANGES, MOCK_RANGE_DATA, BREAKDOWN_DATA } from '@/data/tokenUsageMockData';
+import { TIME_RANGES, MOCK_RANGE_DATA, BREAKDOWN_DATA } from '@/data/mock/token-usage';
 import { isMockMode } from '@/mock.server';
 import { getDb } from '@/db.server';
 import type { TimeRangeType, BreakdownTab, TokenUsageMetricSet, BreakdownRow } from '@/types';

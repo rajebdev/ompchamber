@@ -19,18 +19,18 @@ import {
   Brain,
 } from 'lucide-react';
 import type { ToolCallData } from '@/types';
-import { copyToClipboard } from '@/hooks/useClipboard';
-import { ToolCardShell } from '@/components/workspace/chat-timeline/tool-renderers/ToolCardShell';
-import { DiffView } from '@/components/workspace/chat-timeline/tool-renderers/DiffView';
+import { copyToClipboard } from '@/hooks/ui/clipboard';
+import { ToolCardShell } from '@/components/workspace/chat-timeline/tool-renderers/shared/ToolCardShell';
+import { DiffView } from '@/components/workspace/chat-timeline/tool-renderers/shared/DiffView';
 import {
   ToolDetailsPanel,
   hasToolDetailsPanel,
   resolveToolKey,
 } from '@/components/workspace/chat-timeline/tool-renderers';
-import { toTitleCase } from '@/components/workspace/chat-timeline/tool-renderers/title-case';
-import { FallbackOutput } from '@/components/workspace/chat-timeline/tool-renderers/FallbackOutput';
-import { tryParseJson } from '@/lib/syntax-highlight';
-import { JsonCodeBlock } from '@/components/workspace/chat-timeline/tool-renderers/JsonCodeBlock';
+import { toTitleCase } from '@/components/workspace/chat-timeline/tool-renderers/shared/title-case';
+import { FallbackOutput } from '@/components/workspace/chat-timeline/tool-renderers/shared/FallbackOutput';
+import { tryParseJson } from '@/lib/code/syntax-highlight';
+import { JsonCodeBlock } from '@/components/workspace/chat-timeline/tool-renderers/shared/JsonCodeBlock';
 
 interface ToolCallCardProps {
   tool: ToolCallData;

@@ -1,13 +1,13 @@
 import React, { useRef } from 'react';
 import { Group, Panel, Separator, type PanelImperativeHandle } from 'react-resizable-panels';
-import { ChatTimeline } from '@/components/workspace/ChatTimeline';
-import { Editor } from '@/components/workspace/Editor';
-import { FileExplorer } from '@/components/workspace/FileExplorer';
+import { ChatTimeline } from '@/components/workspace/chat-timeline/index';
+import { Editor } from '@/components/workspace/editor/index';
+import { FileExplorer } from '@/components/workspace/file-explorer/index';
 import { SearchPanel } from '@/components/workspace/SearchPanel';
-import { GitPanel } from '@/components/workspace/GitPanel';
-import { TerminalPanel } from '@/components/workspace/TerminalPanel';
-import { ContextPanel } from '@/components/workspace/ContextPanel';
-import { BrowserPanel } from '@/components/workspace/BrowserPanel';
+import { GitPanel } from '@/components/workspace/git-panel/index';
+import { TerminalPanel } from '@/components/workspace/terminal-panel/index';
+import { ContextPanel } from '@/components/workspace/context-panel/index';
+import { BrowserPanel } from '@/components/workspace/browser-panel/index';
 import { RightActivityBar, type RightPanelType } from '@/components/layout/RightActivityBar';
 import type { WorkspaceFolderData } from '@/types';
 

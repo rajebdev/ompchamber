@@ -1,9 +1,9 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { Folder, ChevronDown, Check } from 'lucide-react';
 import type { Attachment, ChatMessageData } from '@/types';
-import { useOnClickOutside } from '@/hooks/useOnClickOutside';
-import { ChatInput } from '@/components/workspace/chat-timeline/ChatInput';
-import { ChatMessageItem } from '@/components/workspace/chat-timeline/ChatMessageItem';
+import { useOnClickOutside } from '@/hooks/ui/on-click-outside';
+import { ChatInput } from '@/components/workspace/chat-timeline/chat-input/index';
+import { ChatMessageItem } from '@/components/workspace/chat-timeline/MessageItem';
 
 interface EmptyWorkspacePromptProps {
   className?: string;

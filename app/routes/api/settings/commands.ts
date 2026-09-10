@@ -1,7 +1,7 @@
 import { json } from '@remix-run/node';
 import type { LoaderFunctionArgs, ActionFunctionArgs } from '@remix-run/node';
 import { getDb } from '@/db.server';
-import { DEFAULT_COMMANDS_LIST } from '@/data/commandData';
+import { DEFAULT_COMMANDS_LIST } from '@/data/settings/command';
 import { isMockMode } from '@/mock.server';
 import type { CommandItem } from '@/types';
 

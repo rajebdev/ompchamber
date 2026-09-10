@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { Plus, MoreHorizontal, Pin, PinOff, Trash2, Archive, ArchiveRestore, Loader2, Check, Folder, ChevronDown, ChevronRight } from 'lucide-react';
 import { useFetcher, useRevalidator } from '@remix-run/react';
-import { useOnClickOutside } from '@/hooks/useOnClickOutside';
+import { useOnClickOutside } from '@/hooks/ui/on-click-outside';
 
 export function SessionItem({ title, isActive = false, isArchived = false, status, onClick, onArchive }: { title: string, isActive?: boolean, isArchived?: boolean, status?: 'processing' | 'done', onClick?: () => void, onArchive?: () => void }) {
   return (

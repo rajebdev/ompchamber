@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import { ChatInput } from '@/components/workspace/chat-timeline/ChatInput';
+import { ChatInput } from '@/components/workspace/chat-timeline/chat-input/index';
 
 interface NewChatModalProps {
   initialContent: string;

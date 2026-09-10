@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import type { ProviderItem, ProviderModel } from '@/types';
-import { ProviderSidebarList } from '@/components/settings/categories/provider-settings/ProviderSidebarList';
-import { ProviderHeader } from '@/components/settings/categories/provider-settings/ProviderHeader';
-import { ProviderAuthSection } from '@/components/settings/categories/provider-settings/ProviderAuthSection';
-import { ProviderModelsList } from '@/components/settings/categories/provider-settings/ProviderModelsList';
+import { ProviderSidebarList } from '@/components/settings/categories/provider-settings/SidebarList';
+import { ProviderHeader } from '@/components/settings/categories/provider-settings/Header';
+import { ProviderAuthSection } from '@/components/settings/categories/provider-settings/AuthSection';
+import { ProviderModelsList } from '@/components/settings/categories/provider-settings/ModelsList';
 import { AddProviderModal, type PresetProviderOption } from '@/components/settings/categories/provider-settings/AddProviderModal';
 import { ReconnectModal } from '@/components/settings/categories/provider-settings/ReconnectModal';
 import { ModelConfigModal } from '@/components/settings/categories/provider-settings/ModelConfigModal';

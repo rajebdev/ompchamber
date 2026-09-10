@@ -1,7 +1,7 @@
 import { json } from '@remix-run/node';
 import type { LoaderFunctionArgs, ActionFunctionArgs } from '@remix-run/node';
 import { getDb } from '@/db.server';
-import { DEFAULT_BEHAVIOR_RULES } from '@/data/behaviorData';
+import { DEFAULT_BEHAVIOR_RULES } from '@/data/settings/behavior';
 import { isMockMode } from '@/mock.server';
 
 const SETTINGS_KEY = 'omp_behavior_rules';

@@ -3,7 +3,7 @@ import { Search, CaseSensitive, WholeWord, Regex, Replace, ReplaceAll, MoreHoriz
 import { FileIcon } from '@/components/common/FileIcon';
 import { useFetcher } from '@remix-run/react';
 import { GitRepoDropdown } from '@/components/workspace/file-explorer/GitRepoDropdown';
-import { useScrollbarFade } from '@/hooks/useScrollbarFade';
+import { useScrollbarFade } from '@/hooks/ui/scrollbar-fade';
 
 export function SearchPanel({ className = '', enabled = true, rootPath }: { className?: string, enabled?: boolean, rootPath?: string }) {
   const [query, setQuery] = useState('');

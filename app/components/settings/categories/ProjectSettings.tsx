@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { ProjectConfigItem, AccentColorOption } from '@/types';
-import { ProjectSidebarList } from '@/components/settings/categories/project-settings/ProjectSidebarList';
-import { ProjectDetailsForm } from '@/components/settings/categories/project-settings/ProjectDetailsForm';
+import { ProjectSidebarList } from '@/components/settings/categories/project-settings/SidebarList';
+import { ProjectDetailsForm } from '@/components/settings/categories/project-settings/DetailsForm';
 
 export function ProjectSettings() {
   const [projects, setProjects] = useState<ProjectConfigItem[]>([]);

@@ -1,8 +1,8 @@
 import { json } from '@remix-run/node';
 import type { ActionFunctionArgs } from '@remix-run/node';
 import { randomUUID } from 'crypto';
-import { startRpcSession, WebRpcError } from '@/lib/omp/rpc-manager';
-import { RpcCommandError, RpcCommandTimeoutError } from '@/lib/omp/rpc-process';
+import { startRpcSession, WebRpcError } from '@/lib/omp/rpc/manager';
+import { RpcCommandError, RpcCommandTimeoutError } from '@/lib/omp/rpc/process';
 
 function newSessionErrorResponse(error: unknown) {
   if (error instanceof WebRpcError) {

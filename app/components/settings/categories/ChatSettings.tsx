@@ -1,6 +1,6 @@
 import type { SettingsState } from '@/types';
-import { ChatFollowUpSection } from '@/components/settings/categories/chat-settings/ChatFollowUpSection';
-import { ChatKeybindingsSection } from '@/components/settings/categories/chat-settings/ChatKeybindingsSection';
+import { ChatFollowUpSection } from '@/components/settings/categories/chat-settings/FollowUpSection';
+import { ChatKeybindingsSection } from '@/components/settings/categories/chat-settings/KeybindingsSection';
 
 interface ChatSettingsProps {
   settings: SettingsState;

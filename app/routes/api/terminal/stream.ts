@@ -2,8 +2,8 @@ import { type LoaderFunctionArgs } from '@remix-run/node';
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
-import { resolveRoot } from '@/lib/fs-root';
-import { scopeToRepo } from '@/lib/repo-scope';
+import { resolveRoot } from '@/lib/fs/root';
+import { scopeToRepo } from '@/lib/fs/repo-scope';
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);

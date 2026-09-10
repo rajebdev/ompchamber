@@ -1,7 +1,7 @@
 import { json } from '@remix-run/node';
 import type { LoaderFunctionArgs, ActionFunctionArgs } from '@remix-run/node';
 import { getDb } from '@/db.server';
-import { DEFAULT_MCP_SERVERS } from '@/data/mcpData';
+import { DEFAULT_MCP_SERVERS } from '@/data/settings/mcp';
 import { isMockMode } from '@/mock.server';
 import type { McpServerItem } from '@/types';
 

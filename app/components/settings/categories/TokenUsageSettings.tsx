@@ -7,8 +7,8 @@ import type {
   BreakdownTab,
   ChartMetric,
 } from '@/types';
-import { TokenUsageMetricsGrid } from '@/components/settings/categories/token-usage-settings/TokenUsageMetricsGrid';
-import { TokenUsageBreakdown } from '@/components/settings/categories/token-usage-settings/TokenUsageBreakdown';
+import { TokenUsageMetricsGrid } from '@/components/settings/categories/token-usage-settings/MetricsGrid';
+import { TokenUsageBreakdown } from '@/components/settings/categories/token-usage-settings/Breakdown';
 
 interface TokenUsageSettingsProps {
   settings: SettingsState;

@@ -23,7 +23,7 @@
  */
 
 import { json } from '@remix-run/node';
-import { loadOmpSidebarData } from '@/lib/omp/session-reader';
+import { loadOmpSidebarData } from '@/lib/omp/session/reader';
 
 export async function loader() {
   try {

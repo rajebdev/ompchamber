@@ -1,7 +1,7 @@
 import { json } from '@remix-run/node';
 import type { LoaderFunctionArgs, ActionFunctionArgs } from '@remix-run/node';
 import { getDb } from '@/db.server';
-import { getSessionData } from '@/data/chatMockData';
+import { getSessionData } from '@/data/mock/chat';
 import { isMockMode } from '@/mock.server';
 
 export async function loader({ request }: LoaderFunctionArgs) {

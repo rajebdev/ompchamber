@@ -2,7 +2,7 @@ import { json, type LoaderFunctionArgs } from '@remix-run/node';
 import fs from 'fs';
 import path from 'path';
 import { isMockMode } from '@/mock.server';
-import { getDefaultFsRoot, resolveRoot } from '@/lib/fs-root';
+import { getDefaultFsRoot, resolveRoot } from '@/lib/fs/root';
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);

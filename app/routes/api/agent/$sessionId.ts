@@ -1,9 +1,9 @@
 import { json } from '@remix-run/node';
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@remix-run/node';
-import { findSessionFileById } from '@/lib/omp/session-locator';
-import { readRawHeaderLine } from '@/lib/omp/session-files';
-import { startRpcSession, getRpcSession, resolveSpawnCwd, WebRpcError } from '@/lib/omp/rpc-manager';
-import { RpcCommandError, RpcCommandTimeoutError } from '@/lib/omp/rpc-process';
+import { findSessionFileById } from '@/lib/omp/session/locator';
+import { readRawHeaderLine } from '@/lib/omp/session/files';
+import { startRpcSession, getRpcSession, resolveSpawnCwd, WebRpcError } from '@/lib/omp/rpc/manager';
+import { RpcCommandError, RpcCommandTimeoutError } from '@/lib/omp/rpc/process';
 
 function commandErrorResponse(error: unknown) {
   if (error instanceof WebRpcError) {

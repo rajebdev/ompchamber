@@ -1,7 +1,7 @@
 import { json } from '@remix-run/node';
 import type { LoaderFunctionArgs, ActionFunctionArgs } from '@remix-run/node';
 import { getDb } from '@/db.server';
-import { DEFAULT_PROVIDERS_LIST, PRESET_NEW_PROVIDERS } from '@/data/providerData';
+import { DEFAULT_PROVIDERS_LIST, PRESET_NEW_PROVIDERS } from '@/data/settings/provider';
 import { isMockMode } from '@/mock.server';
 import type { ProviderItem } from '@/types';
 

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallba
 import { ArrowDown } from 'lucide-react';
 import type { Terminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
-import { useTheme } from '@/hooks/useTheme';
+import { useTheme } from '@/hooks/ui/theme';
 import {
   getXtermTheme,
   XTERM_FONT_FAMILY,
@@ -11,7 +11,7 @@ import {
   getTerminalSessionOutput,
   appendTerminalSessionOutput,
   clearTerminalSessionOutput,
-} from '@/data/terminalTheme';
+} from '@/data/theme/terminal';
 
 export interface RealtimeXtermHandle {
   write: (data: string) => void;

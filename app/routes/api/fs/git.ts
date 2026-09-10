@@ -3,7 +3,7 @@ import { exec } from 'child_process';
 import util from 'util';
 import path from 'path';
 import fs from 'fs';
-import { resolveRoot } from '@/lib/fs-root';
+import { resolveRoot } from '@/lib/fs/root';
 
 const execAsync = util.promisify(exec);
 

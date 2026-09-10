@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Info, ChevronDown, Bot, CheckCircle2, Clock } from 'lucide-react';
-import { highlightCode, isCodeLike } from '@/lib/syntax-highlight';
+import { highlightCode, isCodeLike } from '@/lib/code/syntax-highlight';
 
 interface SystemNoticeProps {
   notice: string;

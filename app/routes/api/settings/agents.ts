@@ -1,7 +1,7 @@
 import { json } from '@remix-run/node';
 import type { LoaderFunctionArgs, ActionFunctionArgs } from '@remix-run/node';
 import { getDb } from '@/db.server';
-import { DEFAULT_AGENTS_LIST } from '@/data/agentData';
+import { DEFAULT_AGENTS_LIST } from '@/data/agent-data';
 import { isMockMode } from '@/mock.server';
 import type { AgentItem } from '@/types';
 

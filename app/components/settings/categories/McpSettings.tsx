@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import type { McpServerItem, SettingsState } from '@/types';
-import { McpSidebarList } from '@/components/settings/categories/mcp-settings/McpSidebarList';
-import { McpDetailPane } from '@/components/settings/categories/mcp-settings/McpDetailPane';
-import { McpImportModal } from '@/components/settings/categories/mcp-settings/McpImportModal';
+import { McpSidebarList } from '@/components/settings/categories/mcp-settings/SidebarList';
+import { McpDetailPane } from '@/components/settings/categories/mcp-settings/DetailPane';
+import { McpImportModal } from '@/components/settings/categories/mcp-settings/ImportModal';
 
 interface McpSettingsProps {
   settings: SettingsState;

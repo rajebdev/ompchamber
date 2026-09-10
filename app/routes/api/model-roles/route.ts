@@ -1,6 +1,6 @@
 import { json } from '@remix-run/node';
 import type { LoaderFunctionArgs, ActionFunctionArgs } from '@remix-run/node';
-import { readModelRoles, writeModelRoles } from '@/lib/omp/model-roles';
+import { readModelRoles, writeModelRoles } from '@/lib/omp/config/roles';
 
 export async function loader(_args: LoaderFunctionArgs) {
   try {

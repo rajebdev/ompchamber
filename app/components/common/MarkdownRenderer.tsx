@@ -15,7 +15,7 @@
 import React, { useCallback, useMemo, useRef } from 'react';
 import { renderMarkdown } from '@/lib/markdown/marked';
 import { sanitizeHtml } from '@/lib/markdown/sanitize';
-import { copyToClipboard } from '@/hooks/useClipboard';
+import { copyToClipboard } from '@/hooks/ui/clipboard';
 
 interface MarkdownRendererProps {
   content: string;

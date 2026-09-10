@@ -9,10 +9,10 @@ import type { MetaFunction, LoaderFunctionArgs } from '@remix-run/node';
 import { useLoaderData, useSearchParams } from '@remix-run/react';
 import { getDb } from '@/db.server';
 import { isMockMode } from '@/mock.server';
-import { DesktopLayout } from '@/components/layout/DesktopLayout';
-import { MobileLayoutWrapper } from '@/components/mobile/MobileLayoutWrapper';
+import { DesktopLayout } from '@/components/layout/desktop-layout/index';
+import { MobileLayoutWrapper } from '@/components/mobile/LayoutWrapper';
 import type { WorkspaceFolderData } from '@/types';
-import type { OmpSession } from '@/types/omp';
+import type { OmpSession } from '@/types/omp/session';
 
 export const meta: MetaFunction = () => {
   return [
@@ -94,8 +94,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
  * no omp sessions (a local/empty workspace).
  */
 async function buildRealFolders(folderRows: any[], archivedIds: Set<string>): Promise<WorkspaceFolderData[]> {
-  const { loadOmpSidebarData } = await import('@/lib/omp/session-reader');
-  const { sessionTitleFor, groupSessionsByRoot } = await import('@/lib/omp/sidebar-adapter');
+  const { loadOmpSidebarData } = await import('@/lib/omp/session/reader');
+  const { sessionTitleFor, groupSessionsByRoot } = await import('@/lib/omp/session/sidebar');
 
   const data = await loadOmpSidebarData();
   const sessionsByRoot = groupSessionsByRoot(data.sessions);
