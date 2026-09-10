@@ -23,8 +23,26 @@ export function CommitDiffViewer({ diffText, isLoading }: CommitDiffViewerProps)
     let newCounter = 1;
 
     const rawLines = diffText.split(/\r?\n/);
-    for (const line of rawLines) {
-      if (line.startsWith('diff --git') || line.startsWith('index ') || line.startsWith('---') || line.startsWith('+++')) {
+    let hasHunk = rawLines.some((l) => l.startsWith('@@'));
+
+    // If no hunk header is found, but lines exist, wrap into a synthesized initial hunk
+    const linesToProcess = hasHunk
+      ? rawLines
+      : [`@@ -0,0 +1,${rawLines.length} @@`, ...rawLines.map((l) => (l.startsWith('+') || l.startsWith('-') ? l : `+${l}`))];
+
+    for (const line of linesToProcess) {
+      if (
+        line.startsWith('diff --git') ||
+        line.startsWith('index ') ||
+        line.startsWith('---') ||
+        line.startsWith('+++') ||
+        line.startsWith('new file mode') ||
+        line.startsWith('deleted file mode') ||
+        line.startsWith('similarity index') ||
+        line.startsWith('old mode') ||
+        line.startsWith('new mode') ||
+        line.startsWith('\\ No newline')
+      ) {
         continue;
       }
       if (line.startsWith('@@')) {
