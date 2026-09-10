@@ -15,7 +15,7 @@ export function SplitView({ rows }: SplitViewProps) {
 
   return (
     <div className="w-full h-full overflow-auto font-mono text-xs select-text bg-paper text-ink">
-      <div className="grid grid-cols-2 sticky top-0 z-10 bg-canvas border-b border-ink/10 text-[11px] text-ink/70 font-sans select-none shadow-xs">
+      <div className="grid grid-cols-2 sticky top-0 z-10 bg-canvas border-b border-ink/10 text-[11px] text-ink/70 font-sans select-none shadow-xs min-w-[700px]">
         <div className="px-3 py-1 font-medium border-r border-ink/10 flex items-center justify-between">
           <span>Original (HEAD / Base)</span>
         </div>
@@ -24,7 +24,7 @@ export function SplitView({ rows }: SplitViewProps) {
         </div>
       </div>
 
-      <table className="w-full border-collapse table-fixed">
+      <table className="w-full min-w-[700px] border-collapse table-fixed">
         <tbody>
           {rows.map((row, idx) => {
             if (row.isMeta) {
@@ -60,7 +60,7 @@ export function SplitView({ rows }: SplitViewProps) {
 
                 {/* Left Content (Original) */}
                 <td
-                  className={`w-[calc(50%-3rem)] py-0.5 px-2 whitespace-pre overflow-x-auto border-r border-ink/10 text-ink ${
+                  className={`w-[calc(50%-3rem)] py-0.5 px-2 whitespace-pre border-r border-ink/10 text-ink ${
                     isLeftDel
                       ? 'bg-error/10'
                       : left
@@ -95,7 +95,7 @@ export function SplitView({ rows }: SplitViewProps) {
 
                 {/* Right Content (Modified) */}
                 <td
-                  className={`w-[calc(50%-3rem)] py-0.5 px-2 whitespace-pre overflow-x-auto text-ink ${
+                  className={`w-[calc(50%-3rem)] py-0.5 px-2 whitespace-pre text-ink ${
                     isRightAdd
                       ? 'bg-success/10'
                       : right

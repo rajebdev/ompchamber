@@ -147,7 +147,7 @@ export function CommitDiffViewer({ diffText, isLoading }: CommitDiffViewerProps)
               </div>
 
               {/* Code text */}
-              <div className="flex-1 min-w-0 py-0.5 pr-3 whitespace-pre overflow-x-auto text-ink">
+              <div className="flex-1 py-0.5 pr-3 whitespace-pre text-ink">
                 {line.text || ' '}
               </div>
             </div>

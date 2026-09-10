@@ -15,7 +15,7 @@ export function UnifiedView({ lines }: UnifiedViewProps) {
 
   return (
     <div className="w-full h-full overflow-auto font-mono text-xs select-text bg-paper text-ink">
-      <table className="w-full border-collapse table-fixed">
+      <table className="min-w-full border-collapse">
         <tbody>
           {lines.map((line, idx) => {
             if (line.type === 'meta') {
@@ -69,7 +69,7 @@ export function UnifiedView({ lines }: UnifiedViewProps) {
                 </td>
 
                 {/* Change prefix & code text */}
-                <td className="py-0.5 px-3 whitespace-pre overflow-x-visible break-all text-ink">
+                <td className="py-0.5 px-3 whitespace-pre text-ink pr-6">
                   <span
                     className={`inline-block w-4 text-center select-none font-bold ${
                       isAdd ? 'text-success' : isDel ? 'text-error' : 'opacity-0'
