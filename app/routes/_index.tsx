@@ -11,6 +11,7 @@ import { getDb } from '@/db.server';
 import { isMockMode } from '@/mock.server';
 import { DesktopLayout } from '@/components/layout/desktop-layout/index';
 import { MobileLayoutWrapper } from '@/components/mobile/LayoutWrapper';
+import { SessionStateProvider } from '@/components/common/session-state-provider';
 import type { WorkspaceFolderData } from '@/types';
 import type { OmpSession } from '@/types/omp/session';
 
@@ -198,20 +199,24 @@ export default function App() {
 
   if (isMobileMode) {
     return (
-      <MobileLayoutWrapper 
-        folders={folders} 
-        onDesktopToggle={handleSwitchToDesktop}
-        appSettings={appSettings}
-      />
+      <SessionStateProvider sessionId={sessionId}>
+        <MobileLayoutWrapper
+          folders={folders}
+          onDesktopToggle={handleSwitchToDesktop}
+          appSettings={appSettings}
+        />
+      </SessionStateProvider>
     );
   }
 
   return (
-    <DesktopLayout 
-      folders={folders} 
-      sessionId={sessionId} 
-      onSwitchToMobile={handleSwitchToMobile} 
-      appSettings={appSettings}
-    />
+    <SessionStateProvider sessionId={sessionId}>
+      <DesktopLayout
+        folders={folders}
+        sessionId={sessionId}
+        onSwitchToMobile={handleSwitchToMobile}
+        appSettings={appSettings}
+      />
+    </SessionStateProvider>
   );
 }

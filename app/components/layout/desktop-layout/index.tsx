@@ -4,11 +4,13 @@ import { Group, Panel, Separator, type PanelImperativeHandle } from 'react-resiz
 import { SessionSidebar } from '@/components/layout/session-sidebar/index';
 import { type RightPanelType } from '@/components/layout/RightActivityBar';
 import { SettingsModal } from '@/components/settings/Modal';
-import { 
+import {
   PanelLeft
 } from 'lucide-react';
 import type { WorkspaceFolderData, SettingsCategoryId } from '@/types';
 import { activeProjectForSession } from '@/lib/workspace/active-project';
+import { useSessionState } from '@/hooks/workspace/session-state';
+import { useSessionStateContext } from '@/hooks/workspace/session-state/context';
 import { TopNavbar } from '@/components/layout/desktop-layout/TopNavbar';
 import { WorkspacePanels } from '@/components/layout/desktop-layout/WorkspacePanels';
 
@@ -28,15 +30,15 @@ function CustomResizeHandle() {
 }
 
 export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSettings = {} }: DesktopLayoutProps) {
+  const [showRightPanel, setShowRightPanel] = useSessionState<boolean>('layout.showRightPanel', appSettings.showRightPanel ?? true);
+  const [activeRightPanel, setActiveRightPanel] = useSessionState<RightPanelType>('layout.activeRightPanel', (appSettings.activeRightPanel as RightPanelType) ?? 'files');
   const [showLeftPanel, setShowLeftPanel] = useState(appSettings.showLeftPanel ?? true);
-  const [showRightPanel, setShowRightPanel] = useState(appSettings.showRightPanel ?? true);
-  const [activeRightPanel, setActiveRightPanel] = useState<RightPanelType>(appSettings.activeRightPanel ?? 'files');
   const [layoutWeights, setLayoutWeights] = useState<Record<string, number>>(appSettings.desktopLayoutSizes || {});
   const weightsRef = useRef<Record<string, number>>(appSettings.desktopLayoutSizes || {});
   const layoutSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [openedFiles, setOpenedFiles] = useState<any[]>([]);
-  const [activeFileId, setActiveFileId] = useState<number | null>(null);
+  const [openedFiles, setOpenedFiles] = useSessionState<any[]>('layout.openedFiles', []);
+  const [activeFileId, setActiveFileId] = useSessionState<number | null>('layout.activeFileId', null);
   const editorPanelRef = useRef<PanelImperativeHandle>(null);
   const rightPanelRef = useRef<PanelImperativeHandle>(null);
   const leftPanelRef = useRef<PanelImperativeHandle>(null);
@@ -61,12 +63,19 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
   const activeProjectPath = activeProject?.project_path ?? null;
   const hasActiveContext = !!activeProject;
   const activeRootRef = useRef<string | null | undefined>(undefined);
+  const { ready: layoutReady } = useSessionStateContext();
+  const wipedRootRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
     if (activeRootRef.current === activeProjectPath) return;
     activeRootRef.current = activeProjectPath;
+    // Defer the wipe until the incoming session's blob has loaded: writing
+    // `[]` pre-restore would be merged over the stored opened-files list by
+    // loadSession and permanently drop it. Each root wipes at most once.
+    if (!layoutReady || wipedRootRef.current === activeProjectPath) return;
+    wipedRootRef.current = activeProjectPath;
     setOpenedFiles([]);
     setActiveFileId(null);
-  }, [activeProjectPath, sessionId]);
+  }, [activeProjectPath, sessionId, layoutReady, setOpenedFiles, setActiveFileId]);
 
   const saveSetting = (key: string, value: any) => {
     fetch('/api/settings', {
