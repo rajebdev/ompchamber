@@ -31,7 +31,8 @@ export function FileTreeItem({
   gitFileMap,
   gitFolderMap,
 }: FileTreeItemProps) {
-  const [isOpen, setIsOpen] = useState(file.is_expanded === 1);
+  const isFolder = file.type === 'folder';
+  const [isOpen, setIsOpen] = useState(false);
   const [isLoadingChildren, setIsLoadingChildren] = useState(false);
   const actionFetcher = useFetcher<any>();
   const [mounted, setMounted] = useState(false);
@@ -42,7 +43,6 @@ export function FileTreeItem({
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [renameValue, setRenameValue] = useState(file.path);
 
-  const isFolder = file.type === 'folder';
   const children = Array.isArray(file.children) ? file.children : [];
 
   const normalizedPath = (file.path || '').replace(/^\/+/, '');
@@ -51,6 +51,9 @@ export function FileTreeItem({
   const folderStatus = isFolder ? (gitFolderMap?.get(normalizedPath) || gitFolderMap?.get(file.path)) : null;
   const hasGitStatus = Boolean(gitStatusInfo);
 
+  const isExpanded = expandedPaths ? expandedPaths.has(file.path) : isOpen;
+  const actualIsOpen = file.forceExpanded !== undefined ? file.forceExpanded : isExpanded;
+
   useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
@@ -58,6 +61,13 @@ export function FileTreeItem({
       setIsOpen(expandedPaths.has(file.path));
     }
   }, [expandedPaths, file.path, isFolder]);
+
+  useEffect(() => {
+    if (isFolder && actualIsOpen && (!file.children || file.children.length === 0) && onLoadChildren && !isLoadingChildren) {
+      setIsLoadingChildren(true);
+      Promise.resolve(onLoadChildren(file.path)).finally(() => setIsLoadingChildren(false));
+    }
+  }, [isFolder, actualIsOpen, file.children, file.path, onLoadChildren]);
 
   useEffect(() => {
     if (contextMenu) {
@@ -79,8 +89,6 @@ export function FileTreeItem({
     }
   }, [actionFetcher.state, actionFetcher.data]);
 
-  const actualIsOpen = file.forceExpanded !== undefined ? file.forceExpanded : isOpen;
-
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isFolder) {
@@ -90,7 +98,7 @@ export function FileTreeItem({
         file.forceExpanded = undefined;
       }
       onToggleFolder?.(file.path, next);
-      if (next && onLoadChildren) {
+      if (next && onLoadChildren && (!file.children || file.children.length === 0)) {
         setIsLoadingChildren(true);
         Promise.resolve(onLoadChildren(file.path)).finally(() => setIsLoadingChildren(false));
       }
