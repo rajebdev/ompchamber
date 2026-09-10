@@ -1,5 +1,6 @@
-import { RefObject, useState } from 'react';
+import { RefObject } from 'react';
 import { FolderGit2, ChevronDown, Check, RotateCcw, Search } from 'lucide-react';
+import { useSessionState } from '@/hooks/workspace/session-state';
 
 interface GitRepoHeaderProps {
   repoRef: RefObject<HTMLDivElement | null>;
@@ -34,7 +35,7 @@ export function GitRepoHeader({
   onRefresh,
   onRefreshRepos,
 }: GitRepoHeaderProps) {
-  const [repoQuery, setRepoQuery] = useState('');
+  const [repoQuery, setRepoQuery] = useSessionState<string>('git.repoQuery', '');
   const rootLabel = workspaceFolderName(rootPath);
 
   const filterLabel = (r: string) => (r === '.' ? rootLabel : r);

@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import { Plus, Minus, Undo2 } from 'lucide-react';
 import type { GitChange } from '@/types';
+import { useSessionState } from '@/hooks/workspace/session-state';
 import { GitFileItem } from '@/components/workspace/git-panel/FileItem';
 import { GitTreeView } from '@/components/workspace/git-panel/TreeView';
 
@@ -12,8 +12,8 @@ interface GitChangesListProps {
 }
 
 export function GitChangesList({ changes, isLoading, viewMode, onAction }: GitChangesListProps) {
-  const [stagedExpanded, setStagedExpanded] = useState(true);
-  const [unstagedExpanded, setUnstagedExpanded] = useState(true);
+  const [stagedExpanded, setStagedExpanded] = useSessionState<boolean>('git.stagedExpanded', true);
+  const [unstagedExpanded, setUnstagedExpanded] = useSessionState<boolean>('git.unstagedExpanded', true);
 
   const stagedChanges = changes.filter(c => {
     const status = c.status;

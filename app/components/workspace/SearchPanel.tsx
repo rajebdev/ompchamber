@@ -4,19 +4,20 @@ import { FileIcon } from '@/components/common/FileIcon';
 import { useFetcher } from '@remix-run/react';
 import { GitRepoDropdown } from '@/components/workspace/file-explorer/GitRepoDropdown';
 import { useScrollbarFade } from '@/hooks/ui/scrollbar-fade';
+import { useSessionState } from '@/hooks/workspace/session-state';
 
 export function SearchPanel({ className = '', enabled = true, rootPath }: { className?: string, enabled?: boolean, rootPath?: string }) {
-  const [query, setQuery] = useState('');
-  const [replaceQuery, setReplaceQuery] = useState('');
-  
-  const [matchCase, setMatchCase] = useState(false);
-  const [wholeWord, setWholeWord] = useState(false);
-  const [useRegex, setUseRegex] = useState(false);
-  
-  const [includeFiles, setIncludeFiles] = useState('');
+  const [query, setQuery] = useSessionState<string>('search.query', '');
+  const [replaceQuery, setReplaceQuery] = useSessionState<string>('search.replaceQuery', '');
+
+  const [matchCase, setMatchCase] = useSessionState<boolean>('search.matchCase', false);
+  const [wholeWord, setWholeWord] = useSessionState<boolean>('search.wholeWord', false);
+  const [useRegex, setUseRegex] = useSessionState<boolean>('search.useRegex', false);
+
+  const [includeFiles, setIncludeFiles] = useSessionState<string>('search.includeFiles', '');
   const [showMenu, setShowMenu] = useState(false);
-  const [showIncludeField, setShowIncludeField] = useState(false);
-  const [activeRepo, setActiveRepo] = useState('.');
+  const [showIncludeField, setShowIncludeField] = useSessionState<boolean>('search.showIncludeField', false);
+  const [activeRepo, setActiveRepo] = useSessionState<string>('search.activeRepo', '.');
   
   const menuRef = useRef<HTMLDivElement>(null);
   const { isScrolling, handleScroll } = useScrollbarFade();

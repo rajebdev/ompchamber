@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { ChevronDown, ChevronRight, ChevronsUpDown } from 'lucide-react';
+import { useSessionState } from '@/hooks/workspace/session-state';
 import type { RawMessageItem } from '@/types';
 import { RawJsonViewer } from '@/components/workspace/context-panel/RawJsonViewer';
 
@@ -45,8 +46,8 @@ interface RawMessagesListProps {
 
 export function RawMessagesList({ items }: RawMessagesListProps) {
   // All messages collapsed by default
-  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
-  const [filterRole, setFilterRole] = useState<'all' | 'assistant' | 'user'>('all');
+  const [expandedIds, setExpandedIds] = useSessionState<Record<string, boolean>>('context.rawExpandedIds', {});
+  const [filterRole, setFilterRole] = useSessionState<'all' | 'assistant' | 'user'>('context.rawFilterRole', 'all');
 
   const toggleExpand = (id: string) => {
     setExpandedIds(prev => ({

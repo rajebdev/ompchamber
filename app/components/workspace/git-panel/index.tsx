@@ -8,6 +8,7 @@ import { GitRepoHeader } from '@/components/workspace/git-panel/RepoHeader';
 import { GitChangesList } from '@/components/workspace/git-panel/ChangesList';
 import { Toast } from '@/components/common/Toast';
 import { useToasts } from '@/hooks/ui/toasts';
+import { useSessionState } from '@/hooks/workspace/session-state';
 
 interface GitPanelProps {
   className?: string;
@@ -29,8 +30,8 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
     fetcher.load(`/api/fs/git?${params.toString()}`);
   };
   
-  const [message, setMessage] = useState('');
-  const [viewMode, setViewMode] = useState<'flat' | 'tree'>('flat');
+  const [message, setMessage] = useSessionState<string>('git.commitDraft', '');
+  const [viewMode, setViewMode] = useSessionState<'flat' | 'tree'>('git.viewMode', 'flat');
   
   const [showOptions, setShowOptions] = useState(false);
   const optionsRef = useRef<HTMLDivElement>(null);

@@ -1,5 +1,6 @@
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useMemo, useCallback, useEffect, useRef } from 'react';
 import type { GitChange, GitTreeNode } from '@/types';
+import { useSessionState, useSessionStateSnapshot } from '@/hooks/workspace/session-state';
 
 export function buildGitTree(changes: GitChange[]): GitTreeNode[] {
   const root: GitTreeNode = {
@@ -79,6 +80,7 @@ export function buildGitTree(changes: GitChange[]): GitTreeNode[] {
 }
 
 export function useGitTree(changes: GitChange[]) {
+  const { sessionId, ready, read } = useSessionStateSnapshot();
   const tree = useMemo(() => buildGitTree(changes), [changes]);
 
   // Collect all folder IDs
@@ -98,19 +100,23 @@ export function useGitTree(changes: GitChange[]) {
     return ids;
   }, [tree]);
 
-  // Default: all folders expanded
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(allFolderIds);
+  // Persisted per-session expansion. A `Set` does not survive JSON, so the
+  // stored value is a string[] and the Set is derived for O(1) lookups.
+  const [expandedFolderList, setExpandedFolders] = useSessionState<string[]>('git.expandedFolders', []);
+  const expandedFolders = useMemo(() => new Set(expandedFolderList), [expandedFolderList]);
 
-  // Auto-expand new folders when changes change
+  // One auto-expand pass per session: when the session carries no stored
+  // selection (or a stored empty one) every folder opens; a restored non-empty
+  // selection wins. `read` inspects the hydrated blob directly so the previous
+  // session's value never leaks into a fresh one during the restore render.
+  const seededSessionRef = useRef<string | null>(null);
   useEffect(() => {
-    setExpandedFolders(prev => {
-      const next = new Set(prev);
-      for (const id of allFolderIds) {
-        next.add(id);
-      }
-      return next;
-    });
-  }, [allFolderIds]);
+    if (!ready || seededSessionRef.current === sessionId) return;
+    if (allFolderIds.size === 0) return;
+    seededSessionRef.current = sessionId;
+    if (read<string[]>('git.expandedFolders', []).length > 0) return;
+    setExpandedFolders(Array.from(allFolderIds));
+  }, [ready, sessionId, allFolderIds, read, setExpandedFolders]);
 
   const toggleFolder = useCallback((folderId: string) => {
     setExpandedFolders(prev => {
@@ -120,9 +126,9 @@ export function useGitTree(changes: GitChange[]) {
       } else {
         next.add(folderId);
       }
-      return next;
+      return Array.from(next);
     });
-  }, []);
+  }, [setExpandedFolders]);
 
   const isFolderOpen = useCallback(
     (folderId: string) => expandedFolders.has(folderId),
@@ -134,7 +140,7 @@ export function useGitTree(changes: GitChange[]) {
     expandedFolders,
     toggleFolder,
     isFolderOpen,
-    expandAll: () => setExpandedFolders(new Set(allFolderIds)),
-    collapseAll: () => setExpandedFolders(new Set()),
+    expandAll: () => setExpandedFolders(Array.from(allFolderIds)),
+    collapseAll: () => setExpandedFolders([]),
   };
 }
