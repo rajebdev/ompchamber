@@ -1,5 +1,6 @@
 import { Undo2, Plus, Minus } from 'lucide-react';
 import { FileIcon } from '@/components/common/FileIcon';
+import { getGitStatusInfo } from '@/lib/fs/git-status';
 import type { GitChange } from '@/types';
 
 interface GitFileItemProps {
@@ -10,24 +11,9 @@ interface GitFileItemProps {
 }
 
 export function GitFileItem({ change, isStaged, onAction }: GitFileItemProps) {
-  let charStatus = 'M';
-  let colorClass = 'text-ink';
-  
-  if (isStaged) {
-    charStatus = change.status?.[0] || 'M';
-    if (charStatus === 'A') colorClass = 'text-green-600';
-    else if (charStatus === 'M') colorClass = 'text-blue-600';
-    else if (charStatus === 'D') colorClass = 'text-error';
-  } else {
-    if (change.status === '??') {
-      charStatus = 'U';
-      colorClass = 'text-green-600';
-    } else {
-      charStatus = change.status?.[1] || change.status?.[0] || 'M';
-      if (charStatus === 'M') colorClass = 'text-blue-600';
-      else if (charStatus === 'D') colorClass = 'text-error';
-    }
-  }
+  const statusInfo = getGitStatusInfo(change.status, isStaged);
+  const charStatus = statusInfo.charStatus;
+  const colorClass = statusInfo.colorClass;
 
   const parts = change.file.split('/');
   const fileName = parts.pop() || change.file;
@@ -49,7 +35,7 @@ export function GitFileItem({ change, isStaged, onAction }: GitFileItemProps) {
       onClick={handleOpenDiff}
     >
       <div className="flex items-center space-x-1.5 flex-1 min-w-0 pr-2">
-        <span className={`font-bold font-mono text-[9px] w-3 flex-shrink-0 text-center ${colorClass}`} title={`Status: ${charStatus}`}>
+        <span className={`font-bold font-mono text-[9px] w-3 flex-shrink-0 text-center ${colorClass}`} title={`Status: ${statusInfo.label}`}>
           {charStatus}
         </span>
         <FileIcon name={fileName} size={12} className="flex-shrink-0" />

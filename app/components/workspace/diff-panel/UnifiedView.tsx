@@ -14,16 +14,16 @@ export function UnifiedView({ lines }: UnifiedViewProps) {
   }
 
   return (
-    <div className="w-full h-full overflow-auto font-mono text-xs select-text bg-paper">
+    <div className="w-full h-full overflow-auto font-mono text-xs select-text bg-paper text-ink">
       <table className="w-full border-collapse table-fixed">
         <tbody>
           {lines.map((line, idx) => {
             if (line.type === 'meta') {
               return (
-                <tr key={idx} className="bg-ink/[0.04] border-y border-ink/10 text-ink/50 select-none">
-                  <td className="w-12 text-center py-1 px-2 text-[10px] opacity-70">...</td>
-                  <td className="w-12 text-center py-1 px-2 text-[10px] opacity-70">...</td>
-                  <td className="py-1 px-3 text-[11px] font-medium text-ink/60">{line.text}</td>
+                <tr key={idx} className="bg-canvas border-y border-ink/10 text-meta select-none">
+                  <td className="w-12 text-center py-1 px-2 text-[10px] opacity-60 border-r border-ink/10 font-mono">...</td>
+                  <td className="w-12 text-center py-1 px-2 text-[10px] opacity-60 border-r border-ink/10 font-mono">...</td>
+                  <td className="py-1 px-3 text-[11px] font-semibold text-meta font-mono tracking-tight">{line.text}</td>
                 </tr>
               );
             }
@@ -36,25 +36,45 @@ export function UnifiedView({ lines }: UnifiedViewProps) {
                 key={idx}
                 className={`transition-colors group ${
                   isAdd
-                    ? 'bg-emerald-500/10 hover:bg-emerald-500/15 text-emerald-900 dark:text-emerald-200'
+                    ? 'bg-success/10 hover:bg-success/15'
                     : isDel
-                    ? 'bg-error/10 hover:bg-error/15 text-error dark:text-red-300'
-                    : 'hover:bg-ink/[0.03] text-ink'
+                    ? 'bg-error/10 hover:bg-error/15'
+                    : 'hover:bg-ink/[0.03]'
                 }`}
               >
                 {/* Old line number */}
-                <td className="w-12 py-0.5 px-2 text-right text-[10px] text-ink/40 select-none border-r border-ink/5 font-mono">
+                <td
+                  className={`w-12 py-0.5 px-2 text-right text-[10px] select-none border-r border-ink/10 font-mono ${
+                    isDel
+                      ? 'bg-error/15 text-error font-semibold'
+                      : isAdd
+                      ? 'bg-success/15 text-success/70'
+                      : 'bg-canvas/50 text-ink/40'
+                  }`}
+                >
                   {line.oldLineNumber || ''}
                 </td>
 
                 {/* New line number */}
-                <td className="w-12 py-0.5 px-2 text-right text-[10px] text-ink/40 select-none border-r border-ink/10 font-mono">
+                <td
+                  className={`w-12 py-0.5 px-2 text-right text-[10px] select-none border-r border-ink/10 font-mono ${
+                    isAdd
+                      ? 'bg-success/15 text-success font-semibold'
+                      : isDel
+                      ? 'bg-error/15 text-error/70'
+                      : 'bg-canvas/50 text-ink/40'
+                  }`}
+                >
                   {line.newLineNumber || ''}
                 </td>
 
                 {/* Change prefix & code text */}
-                <td className="py-0.5 px-3 whitespace-pre overflow-x-visible break-all">
-                  <span className="inline-block w-4 text-center select-none font-semibold opacity-75">
+                <td className="py-0.5 px-3 whitespace-pre overflow-x-visible break-all text-ink">
+                  <span
+                    className={`inline-block w-4 text-center select-none font-bold ${
+                      isAdd ? 'text-success' : isDel ? 'text-error' : 'opacity-0'
+                    }`}
+                  >
                     {isAdd ? '+' : isDel ? '-' : ' '}
                   </span>
                   <span>{line.text}</span>

@@ -6,6 +6,7 @@ import {
   Undo2 
 } from 'lucide-react';
 import { FileIcon } from '@/components/common/FileIcon';
+import { getGitStatusInfo } from '@/lib/fs/git-status';
 import type { GitTreeNode } from '@/types';
 
 interface GitTreeItemProps {
@@ -112,26 +113,9 @@ export function GitTreeItem({
 
   // File Node
   const change = node.change;
-  let charStatus = 'M';
-  let colorClass = 'text-ink';
-
-  if (change) {
-    if (isStaged) {
-      charStatus = change.status[0] || 'M';
-      if (charStatus === 'A') colorClass = 'text-green-600';
-      else if (charStatus === 'M') colorClass = 'text-blue-600';
-      else if (charStatus === 'D') colorClass = 'text-red-600';
-    } else {
-      if (change.status === '??') {
-        charStatus = 'U';
-        colorClass = 'text-green-600';
-      } else {
-        charStatus = change.status[1] || change.status[0] || 'M';
-        if (charStatus === 'M') colorClass = 'text-blue-600';
-        else if (charStatus === 'D') colorClass = 'text-red-600';
-      }
-    }
-  }
+  const statusInfo = getGitStatusInfo(change?.status || 'M', isStaged);
+  const charStatus = statusInfo.charStatus;
+  const colorClass = statusInfo.colorClass;
 
   const filePath = change ? change.file : node.path;
 
@@ -152,7 +136,7 @@ export function GitTreeItem({
     >
       <div className="flex items-center space-x-1.5 flex-1 min-w-0 pr-1">
         <span className="w-3.5 h-3.5 flex items-center justify-center flex-shrink-0">
-          <span className={`font-bold font-mono text-[9px] ${colorClass}`} title={`Status: ${charStatus}`}>
+          <span className={`font-bold font-mono text-[9px] ${colorClass}`} title={`Status: ${statusInfo.label}`}>
             {charStatus}
           </span>
         </span>

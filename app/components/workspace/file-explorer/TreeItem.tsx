@@ -197,7 +197,7 @@ export function FileTreeItem({
           <span
             className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
               folderStatus.hasDeleted ? 'bg-error' :
-              folderStatus.hasModified || folderStatus.hasStaged ? 'bg-amber-500' : 'bg-emerald-500'
+              folderStatus.hasModified || folderStatus.hasStaged ? 'bg-warning' : 'bg-success'
             }`}
             title={`${folderStatus.count} changed file${folderStatus.count > 1 ? 's' : ''}`}
           />

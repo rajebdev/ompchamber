@@ -51,13 +51,18 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
   const activeProjectPath = activeProject?.project_path ?? null;
   const hasActiveContext = !!activeProject;
 
+  const handleOpenTab = useCallback(() => {
+    setUserToggledEditor(true);
+    saveSetting('userToggledEditor', true);
+  }, []);
+
   const {
     openedFiles,
     activeFileId,
     setActiveFileId,
     handleOpenFile,
     handleCloseFile,
-  } = useFileTabs(activeProjectPath, sessionId || '', () => setUserToggledEditor(true));
+  } = useFileTabs(activeProjectPath, sessionId || '', handleOpenTab);
 
   const showEditor = openedFiles.length > 0 && (userToggledEditor ?? true);
 
@@ -125,14 +130,6 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
     window.addEventListener('omp:open-settings', handleCustomOpenSettings);
     return () => window.removeEventListener('omp:open-settings', handleCustomOpenSettings);
   }, []);
-
-  useEffect(() => {
-    if (activeRightPanel === 'search' || activeRightPanel === 'git' || activeRightPanel === 'terminal' || activeRightPanel === 'context' || activeRightPanel === 'browser') {
-      setUserToggledEditor(false);
-    } else if (openedFiles.length > 0) {
-      setUserToggledEditor(true);
-    }
-  }, [activeRightPanel, openedFiles.length]);
 
   const handleChangeRightPanel = (panel: RightPanelType) => {
     let nextShow = showRightPanel;

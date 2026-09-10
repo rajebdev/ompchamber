@@ -23,60 +23,60 @@ export interface FolderGitStatusInfo {
 export function getGitStatusInfo(status: string, isStaged: boolean = false): GitStatusInfo {
   let charStatus = 'M';
   let label = 'Modified';
-  let colorClass = 'text-blue-600 dark:text-blue-400';
-  let badgeBgClass = 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
+  let colorClass = 'text-warning';
+  let badgeBgClass = 'bg-warning/10 text-warning border-warning/25';
 
   if (isStaged) {
     const s = status?.[0] || 'M';
     if (s === 'A') {
       charStatus = 'A';
       label = 'Added (Staged)';
-      colorClass = 'text-emerald-600 dark:text-emerald-400';
-      badgeBgClass = 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
+      colorClass = 'text-success';
+      badgeBgClass = 'bg-success/10 text-success border-success/25';
     } else if (s === 'D') {
       charStatus = 'D';
       label = 'Deleted (Staged)';
       colorClass = 'text-error';
-      badgeBgClass = 'bg-error/10 text-error border-error/20';
+      badgeBgClass = 'bg-error/10 text-error border-error/25';
     } else if (s === 'R') {
       charStatus = 'R';
       label = 'Renamed (Staged)';
-      colorClass = 'text-purple-600 dark:text-purple-400';
-      badgeBgClass = 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20';
+      colorClass = 'text-meta';
+      badgeBgClass = 'bg-meta/10 text-meta border-meta/25';
     } else {
       charStatus = 'M';
       label = 'Modified (Staged)';
-      colorClass = 'text-blue-600 dark:text-blue-400';
-      badgeBgClass = 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
+      colorClass = 'text-warning';
+      badgeBgClass = 'bg-warning/10 text-warning border-warning/25';
     }
   } else {
     if (status === '??' || status === '?') {
       charStatus = 'U';
       label = 'Untracked';
-      colorClass = 'text-emerald-600 dark:text-emerald-400';
-      badgeBgClass = 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
+      colorClass = 'text-success';
+      badgeBgClass = 'bg-success/10 text-success border-success/25';
     } else {
       const s = status?.[1] || status?.[0] || 'M';
       if (s === 'A') {
         charStatus = 'A';
         label = 'Added';
-        colorClass = 'text-emerald-600 dark:text-emerald-400';
-        badgeBgClass = 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20';
+        colorClass = 'text-success';
+        badgeBgClass = 'bg-success/10 text-success border-success/25';
       } else if (s === 'D') {
         charStatus = 'D';
         label = 'Deleted';
         colorClass = 'text-error';
-        badgeBgClass = 'bg-error/10 text-error border-error/20';
+        badgeBgClass = 'bg-error/10 text-error border-error/25';
       } else if (s === 'R') {
         charStatus = 'R';
         label = 'Renamed';
-        colorClass = 'text-purple-600 dark:text-purple-400';
-        badgeBgClass = 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20';
+        colorClass = 'text-meta';
+        badgeBgClass = 'bg-meta/10 text-meta border-meta/25';
       } else {
         charStatus = 'M';
         label = 'Modified';
-        colorClass = 'text-amber-600 dark:text-amber-400';
-        badgeBgClass = 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20';
+        colorClass = 'text-warning';
+        badgeBgClass = 'bg-warning/10 text-warning border-warning/25';
       }
     }
   }
@@ -116,7 +116,7 @@ export function buildGitStatusMaps(changes: GitChange[]): {
         hasUntracked: false,
         hasStaged: false,
         hasDeleted: false,
-        colorClass: 'text-amber-600 dark:text-amber-400',
+        colorClass: 'text-warning',
       };
 
       existing.count += 1;
@@ -131,11 +131,11 @@ export function buildGitStatusMaps(changes: GitChange[]): {
         existing.hasModified = true;
       }
 
-      // Priority of folder indicator color: Staged / Modified (amber/blue) > Untracked (green)
+      // Priority of folder indicator color: Staged / Modified (warning) > Untracked (success) > Deleted (error)
       if (existing.hasModified || existing.hasStaged) {
-        existing.colorClass = 'text-amber-600 dark:text-amber-400';
+        existing.colorClass = 'text-warning';
       } else if (existing.hasUntracked) {
-        existing.colorClass = 'text-emerald-600 dark:text-emerald-400';
+        existing.colorClass = 'text-success';
       } else if (existing.hasDeleted) {
         existing.colorClass = 'text-error';
       }

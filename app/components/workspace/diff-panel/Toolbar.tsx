@@ -68,8 +68,8 @@ export function DiffToolbar({
 
         {(additions > 0 || deletions > 0) && (
           <div className="flex items-center space-x-1.5 text-[11px] font-mono flex-shrink-0 ml-1">
-            {additions > 0 && <span className="text-emerald-600 dark:text-emerald-400 font-medium">+{additions}</span>}
-            {deletions > 0 && <span className="text-error font-medium">-{deletions}</span>}
+            {additions > 0 && <span className="text-success font-semibold">+{additions}</span>}
+            {deletions > 0 && <span className="text-error font-semibold">-{deletions}</span>}
           </div>
         )}
       </div>
@@ -132,7 +132,7 @@ export function DiffToolbar({
           className="p-1.5 text-ink/50 hover:text-ink hover:bg-ink/5 rounded transition-colors"
           title="Copy Diff Text"
         >
-          {isCopied ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
+          {isCopied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
         </button>
 
         {/* Discard changes */}

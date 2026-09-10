@@ -36,7 +36,7 @@ export function FileContextMenu({ x, y, isFolder, hasGitStatus, onAction }: Cont
             </button>
             {hasGitStatus && (
               <button onClick={() => onAction('diff')} className="w-full text-left px-3 py-1.5 hover:bg-ink/5 flex items-center space-x-2 transition-colors text-ink">
-                <GitCompare size={13} className="text-amber-600 dark:text-amber-400" />
+                <GitCompare size={13} className="text-warning" />
                 <span className="font-medium">Open in Diff Panel</span>
               </button>
             )}
@@ -185,28 +185,28 @@ export function FileHistoryModal({ filePath, fetcherState, fetcherData, onClose 
             fetcherData?.type === 'history' ? (
               fetcherData.data.length > 0 ? (
                 <table className="w-full text-left border-collapse text-[11px]">
-                  <thead className="bg-canvas sticky top-0 z-10">
+                  <thead className="bg-canvas sticky top-0 z-10 border-b border-ink/10">
                     <tr>
-                      <th className="px-3 py-2 font-semibold text-ink/60 rounded-tl">Description</th>
-                      <th className="px-3 py-2 font-semibold text-ink/60 w-32">Date</th>
-                      <th className="px-3 py-2 font-semibold text-ink/60 w-32">Author</th>
-                      <th className="px-3 py-2 font-semibold text-ink/60 w-24 text-right rounded-tr">Commit</th>
+                      <th className="px-3 py-2 font-semibold text-ink/70 rounded-tl">Description</th>
+                      <th className="px-3 py-2 font-semibold text-ink/70 w-32">Date</th>
+                      <th className="px-3 py-2 font-semibold text-ink/70 w-32">Author</th>
+                      <th className="px-3 py-2 font-semibold text-ink/70 w-24 text-right rounded-tr">Commit</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-ink/5">
                     {fetcherData.data.map((row: any, i: number) => (
-                      <tr key={i} className="hover:bg-paper transition-colors group bg-paper">
-                        <td className="px-3 py-1.5 text-ink">
-                          {row.message ? <span className="font-medium">{row.message}</span> : null}
+                      <tr key={i} className="hover:bg-ink/[0.03] transition-colors group bg-paper">
+                        <td className="px-3 py-2 text-ink">
+                          {row.message ? <span className="font-medium text-ink/90 group-hover:text-ink">{row.message}</span> : null}
                         </td>
-                        <td className="px-3 py-1.5 text-ink/50 whitespace-nowrap">
+                        <td className="px-3 py-2 text-ink/60 whitespace-nowrap font-mono text-[10.5px]">
                           {row.time}
                         </td>
-                        <td className="px-3 py-1.5 text-ink/70 whitespace-nowrap truncate max-w-[120px]">
+                        <td className="px-3 py-2 text-ink/70 whitespace-nowrap truncate max-w-[120px]">
                           {row.author}
                         </td>
-                        <td className="px-3 py-1.5 text-right">
-                          {row.hash ? <span className="font-mono text-ink/40 group-hover:text-ink transition-colors">{row.hash}</span> : null}
+                        <td className="px-3 py-2 text-right">
+                          {row.hash ? <span className="font-mono text-ink/50 group-hover:text-ink font-semibold transition-colors bg-canvas px-1.5 py-0.5 rounded border border-ink/10">{row.hash}</span> : null}
                         </td>
                       </tr>
                     ))}

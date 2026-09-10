@@ -123,7 +123,7 @@ export function GraphCanvas({
           const isHovered = hoveredHash === commit.hash || hoveredHash === commit.shortHash;
           const laneColor = isGraphMode
             ? LANE_COLORS[lane % LANE_COLORS.length]
-            : '#22c55e'; // Green dot in History mode, matching screenshot 1
+            : 'var(--theme-success)'; // Theme success variable in History mode
 
           return (
             <g key={`node-${commit.hash}`}>
