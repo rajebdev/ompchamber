@@ -65,6 +65,14 @@ export function getSampleToolsSession() {
 You can inspect each card below to view detailed execution traces, syntax highlighting, diffs, and metrics.`,
       summary: 'All 38 tool calling types successfully executed and displayed in timeline.',
     },
+    {
+      id: '0eb26c5d',
+      role: 'ai',
+      date,
+      content: '',
+      notice:
+        '<system-reminder>\n`ast_edit` result above: PREVIEW — no files changed. Finalize now with `write`: write a one-sentence plain-text reason to `xd://resolve` to APPLY, or `xd://reject` to DISCARD.\n</system-reminder>',
+    },
   ];
 
   return {

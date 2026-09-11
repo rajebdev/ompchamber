@@ -266,6 +266,14 @@ export function getSampleDialogueSession(): {
         date: 'Sep 9, 04:44 AM',
       },
       {
+        id: '0eb26c5d',
+        role: 'ai',
+        content: '',
+        notice:
+          '<system-reminder>\n`ast_edit` result above: PREVIEW — no files changed. Finalize now with `write`: write a one-sentence plain-text reason to `xd://resolve` to APPLY, or `xd://reject` to DISCARD.\n</system-reminder>',
+        date: 'Sep 9, 04:44 AM',
+      },
+      {
         id: '65e71033',
         role: 'ai',
         content:

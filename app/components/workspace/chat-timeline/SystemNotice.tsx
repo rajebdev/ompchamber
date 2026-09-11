@@ -56,22 +56,48 @@ export function SystemNotice({ notice }: SystemNoticeProps) {
     };
   }, [notice]);
 
-  const displayTitle = taskNotice?.intro || reminderInfo?.title || genericInfo.firstLine || notice;
+  const rawTitle = taskNotice?.intro || reminderInfo?.title || genericInfo.firstLine || notice;
+  const displayTitle = rawTitle.slice(0, 100) + (rawTitle.length > 100 ? '...' : '');
+
+  // If notice has only 1 line of content (and is not a structured taskNotice), disable expand
+  const isExpandable = useMemo(() => {
+    if (taskNotice) return true;
+    const clean = notice
+      .replace(/<\/?(?:system-notice|system-reminder)[^>]*>/gi, '')
+      .trim();
+    const lines = clean
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    return lines.length > 1;
+  }, [taskNotice, notice]);
+
+  const handleToggle = () => {
+    if (!isExpandable) return;
+    setIsOpen((prev) => !prev);
+  };
 
   return (
-    <div className="mx-3 overflow-hidden rounded-xl border border-ink/10 bg-paper text-[12px] text-ink transition-colors hover:border-ink/20 select-text">
+    <div
+      className={`mx-3 overflow-hidden rounded-xl border border-ink/10 bg-paper text-[12px] text-ink transition-colors ${
+        isExpandable ? 'hover:border-ink/20' : ''
+      } select-text`}
+    >
       <button
         type="button"
-        onClick={() => setIsOpen((prev) => !prev)}
-        aria-expanded={isOpen}
-        className="flex w-full cursor-pointer items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-ink/[0.03]"
+        onClick={handleToggle}
+        disabled={!isExpandable}
+        aria-expanded={isExpandable ? isOpen : undefined}
+        className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors ${
+          isExpandable ? 'cursor-pointer hover:bg-ink/[0.03]' : 'cursor-default'
+        } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/20`}
       >
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-ink/10 text-ink/70">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-ink/5 text-ink/70">
           {reminderInfo ? <Bell size={13} /> : <Info size={13} />}
         </span>
-        <span className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="block text-[9.5px] font-semibold uppercase tracking-[0.12em] text-ink/50">
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="truncate text-[12px] font-semibold tracking-tight text-ink">
               {taskNotice ? 'Task Result' : reminderInfo ? 'System Reminder' : 'System Notice'}
             </span>
             {taskNotice?.agent && (
@@ -98,18 +124,22 @@ export function SystemNotice({ notice }: SystemNoticeProps) {
                 {taskNotice.meta.size}
               </span>
             )}
-          </div>
-          <span className="block truncate text-[12px] font-medium text-ink">
-            {displayTitle}
           </span>
+          {!isOpen && displayTitle && (
+            <span className="truncate font-mono text-[10.5px] text-ink/45" title={rawTitle}>
+              {displayTitle}
+            </span>
+          )}
         </span>
-        <ChevronDown
-          size={14}
-          className={`shrink-0 text-ink/35 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
-        />
+        {isExpandable && (
+          <ChevronDown
+            size={14}
+            className={`shrink-0 text-ink/35 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+          />
+        )}
       </button>
 
-      {isOpen && (
+      {isOpen && isExpandable && (
         <div className="border-t border-ink/8 bg-canvas/40 px-3.5 py-2.5">
           {taskNotice ? (
             <TaskResultContent task={taskNotice} />
