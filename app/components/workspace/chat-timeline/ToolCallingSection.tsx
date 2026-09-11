@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import type { ToolCallData, AgentActionData, ToolType } from '@/types';
+import { isSkippedTool } from '@/lib/chat/tool-status';
 import { ToolCallCard } from '@/components/workspace/chat-timeline/ToolCallCard';
 
 interface ToolCallingSectionProps {
@@ -47,15 +48,17 @@ function normalizeToolData(action: ToolCallData | AgentActionData, index: number
   };
 }
 
-export function ToolCallingSection({ tools, title }: ToolCallingSectionProps) {
+export function ToolCallingSection({ tools, title, defaultExpanded = false }: ToolCallingSectionProps) {
   const normalizedTools = useMemo(() => {
     return (tools || []).map((t, i) => normalizeToolData(t, i));
   }, [tools]);
 
   const [openMap, setOpenMap] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
-    normalizedTools.forEach((tool) => {
-      initial[tool.id] = tool.status === 'error';
+    normalizedTools.forEach((tool, idx) => {
+      const isSkipped = isSkippedTool(tool);
+      const isAutoOpen = !isSkipped && (tool.status === 'error' || (defaultExpanded && idx === 0));
+      initial[tool.id] = isAutoOpen;
     });
     return initial;
   });

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Info, ChevronDown, Bot, CheckCircle2, Clock, Layers, Bell } from 'lucide-react';
+import { Info, ChevronDown, Bot, CheckCircle2, AlertCircle, Clock, Layers, Bell } from 'lucide-react';
 import { highlightCode, isCodeLike } from '@/lib/code/syntax-highlight';
 import { parseTaskNotice } from '@/lib/chat/task-result-parser';
 import { TaskResultContent } from '@/components/workspace/chat-timeline/TaskResultContent';
@@ -57,9 +57,12 @@ export function SystemNotice({ notice }: SystemNoticeProps) {
   }, [notice]);
 
   const rawTitle = taskNotice?.intro || reminderInfo?.title || genericInfo.firstLine || notice;
-  const displayTitle = rawTitle.slice(0, 100) + (rawTitle.length > 100 ? '...' : '');
+  const isTruncated = rawTitle.length > 100;
+  const displayTitle = rawTitle.slice(0, 100) + (isTruncated ? '...' : '');
 
-  // If notice has only 1 line of content (and is not a structured taskNotice), disable expand
+  // If notice has only 1 line of content AND does not exceed the 100-character ellipsis limit,
+  // disable expand since the entire text is already fully visible in the sub-header.
+  // If it exceeds the ellipsis limit (>100 chars) or has multiple lines, keep expand active.
   const isExpandable = useMemo(() => {
     if (taskNotice) return true;
     const clean = notice
@@ -69,8 +72,42 @@ export function SystemNotice({ notice }: SystemNoticeProps) {
       .split(/\r?\n/)
       .map((l) => l.trim())
       .filter(Boolean);
-    return lines.length > 1;
-  }, [taskNotice, notice]);
+    return lines.length > 1 || clean.length > 100 || rawTitle.length > 100;
+  }, [taskNotice, notice, rawTitle]);
+
+  const noticeStyle = useMemo(() => {
+    if (taskNotice) {
+      const isError = taskNotice.status === 'failed' || taskNotice.status === 'error';
+      if (isError) {
+        return {
+          icon: <AlertCircle size={13} />,
+          badgeClass: 'bg-error/10 text-error',
+          label: 'Task Result',
+          isError: true,
+        };
+      }
+      return {
+        icon: <CheckCircle2 size={13} />,
+        badgeClass: 'bg-success/10 text-success',
+        label: 'Task Result',
+        isError: false,
+      };
+    }
+    if (reminderInfo) {
+      return {
+        icon: <Bell size={13} />,
+        badgeClass: 'bg-warning/10 text-warning',
+        label: 'System Reminder',
+        isError: false,
+      };
+    }
+    return {
+      icon: <Info size={13} />,
+      badgeClass: 'bg-info/10 text-info',
+      label: 'System Notice',
+      isError: false,
+    };
+  }, [taskNotice, reminderInfo]);
 
   const handleToggle = () => {
     if (!isExpandable) return;
@@ -92,13 +129,13 @@ export function SystemNotice({ notice }: SystemNoticeProps) {
           isExpandable ? 'cursor-pointer hover:bg-ink/[0.03]' : 'cursor-default'
         } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/20`}
       >
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-ink/5 text-ink/70">
-          {reminderInfo ? <Bell size={13} /> : <Info size={13} />}
+        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${noticeStyle.badgeClass}`}>
+          {noticeStyle.icon}
         </span>
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex flex-wrap items-center gap-2">
             <span className="truncate text-[12px] font-semibold tracking-tight text-ink">
-              {taskNotice ? 'Task Result' : reminderInfo ? 'System Reminder' : 'System Notice'}
+              {noticeStyle.label}
             </span>
             {taskNotice?.agent && (
               <span className="flex items-center gap-1 rounded bg-ink/5 px-1.5 py-0.2 font-mono text-[9px] text-ink/60">
@@ -107,8 +144,12 @@ export function SystemNotice({ notice }: SystemNoticeProps) {
               </span>
             )}
             {taskNotice?.status && (
-              <span className="flex items-center gap-1 rounded bg-success/10 px-1.5 py-0.2 font-mono text-[9px] font-semibold text-success uppercase">
-                <CheckCircle2 size={10} />
+              <span
+                className={`flex items-center gap-1 rounded px-1.5 py-0.2 font-mono text-[9px] font-semibold uppercase ${
+                  noticeStyle.isError ? 'bg-error/10 text-error' : 'bg-success/10 text-success'
+                }`}
+              >
+                {noticeStyle.isError ? <AlertCircle size={10} /> : <CheckCircle2 size={10} />}
                 {taskNotice.status}
               </span>
             )}

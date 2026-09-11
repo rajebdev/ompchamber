@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { ChevronDown, Loader2, AlertCircle, CircleSlash, Check } from 'lucide-react';
 import type { ToolCallData } from '@/types';
+import { isSkippedTool } from '@/lib/chat/tool-status';
 
 interface ToolCardShellProps {
   tool: ToolCallData;
@@ -12,15 +13,6 @@ interface ToolCardShellProps {
   onToggle?: () => void;
   defaultExpanded?: boolean;
   children?: ReactNode;
-}
-
-function isSkippedTool(tool: ToolCallData): boolean {
-  if (tool.synthetic === true || tool.status === 'skipped' || tool.status === 'aborted') return true;
-  const details = tool.details as Record<string, any> | undefined;
-  if (details?.__synthetic === true || details?.source === 'assistant_stop_skipped' || details?.executed === false) {
-    return true;
-  }
-  return false;
 }
 
 function statusDot(status: ToolCallData['status'], isSkipped: boolean) {
