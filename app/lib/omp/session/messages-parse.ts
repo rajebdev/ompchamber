@@ -23,9 +23,12 @@ import {
 
 export interface OmpMessageEntry {
   type?: string;
+  customType?: string;
   id?: string;
   timestamp?: string;
   parentId?: string | null;
+  content?: unknown;
+  details?: unknown;
   message?: {
     role?: string;
     content?: unknown;

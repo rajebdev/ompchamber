@@ -213,6 +213,11 @@ export function useSubagentTranscript(
       readyRef.current = !viaHistory;
       setMessages(prev => mergeMessages(prev, collected));
       setIsLoading(false);
+      // A transcript served from disk belongs to a finished process — the
+      // registry can still say "started" long after the fact.
+      if (viaHistory) {
+        setStatus(prev => (prev && !isTerminal(prev.status) ? { ...prev, status: 'completed' } : prev));
+      }
     };
 
     const readDetail = (event: Event): SubagentFrameDetail | null => {
