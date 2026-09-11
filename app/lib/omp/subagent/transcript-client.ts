@@ -1,0 +1,117 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * Subagent transcript page plumbing shared by the live RPC path
+ * (`get_subagent_messages`) and the on-disk history route
+ * (`GET /api/sessions/:id/subagents/:subagentId`): wire → ChatMessageData
+ * conversion and byte-offset paging.
+ */
+
+import type { ChatMessageData, SubagentMessagesPage } from '@/types';
+import { toChatMessage } from '@/lib/omp/session/mapper';
+import { isRecord } from '@/lib/omp/session/parse-message-blocks';
+
+/** Normalize one wire message: the RPC may hand back bare omp AgentMessages
+ *  or JSONL entries wrapping them as `{ message: {...} }`. */
+function normalizeRawMessage(value: unknown): Record<string, unknown> | null {
+  if (!isRecord(value)) return null;
+  const inner = isRecord(value.message) ? value.message : null;
+  if (!inner) return value;
+  const out: Record<string, unknown> = { ...inner };
+  if (out.id === undefined && typeof value.id === 'string') out.id = value.id;
+  if (out.timestamp === undefined && typeof value.timestamp === 'number') out.timestamp = value.timestamp;
+  return out;
+}
+
+export function convertMessages(raw: unknown[], streaming: boolean): ChatMessageData[] {
+  const out: ChatMessageData[] = [];
+  for (const item of raw) {
+    const record = normalizeRawMessage(item);
+    if (!record) continue;
+    // toolResult rows are plumbing; their output is paired with the tool call.
+    if (record.role === 'toolResult') continue;
+    const converted = toChatMessage(record, streaming);
+    if (converted) out.push(converted);
+  }
+  return out;
+}
+
+/** Append/replace by message id so tail refetches do not duplicate rows and a
+ *  streamed message is replaced in place once finalized. */
+export function mergeMessages(prev: ChatMessageData[], incoming: ChatMessageData[]): ChatMessageData[] {
+  if (incoming.length === 0) return prev;
+  const positions = new Map(prev.map((message, index) => [message.id, index]));
+  const next = [...prev];
+  for (const message of incoming) {
+    const index = positions.get(message.id);
+    if (index === undefined) {
+      positions.set(message.id, next.length);
+      next.push(message);
+    } else {
+      next[index] = message;
+    }
+  }
+  return next;
+}
+
+/** Read the `{ success, data }` RPC envelope (accepting a bare page too). */
+function asMessagesPage(value: unknown, fallbackFrom: number, fallbackFile: string | undefined): SubagentMessagesPage | null {
+  if (!isRecord(value) || !Array.isArray(value.messages)) return null;
+  const fromByte = typeof value.fromByte === 'number' ? value.fromByte : fallbackFrom;
+  return {
+    sessionFile: typeof value.sessionFile === 'string' && value.sessionFile ? value.sessionFile : (fallbackFile ?? ''),
+    fromByte,
+    nextByte: typeof value.nextByte === 'number' ? value.nextByte : fromByte,
+    reset: value.reset === true,
+    messages: value.messages,
+    totalBytes: typeof value.totalBytes === 'number' ? value.totalBytes : undefined,
+  };
+}
+
+export async function requestSubagentPage(
+  sessionId: string,
+  subagentId: string,
+  sessionFile: string | undefined,
+  fromByte: number,
+): Promise<SubagentMessagesPage | null> {
+  try {
+    const res = await fetch(`/api/agent/${encodeURIComponent(sessionId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'get_subagent_messages',
+        subagentId,
+        ...(sessionFile ? { sessionFile } : {}),
+        fromByte,
+      }),
+    });
+    if (!res.ok) return null;
+    const body: unknown = await res.json().catch(() => null);
+    const payload = isRecord(body) && 'data' in body ? body.data : body;
+    return asMessagesPage(payload, fromByte, sessionFile);
+  } catch {
+    return null;
+  }
+}
+
+/** On-disk history page (`{ page }`, or a bare page); null = end/unavailable. */
+export async function requestHistoryPage(
+  sessionId: string,
+  subagentId: string,
+  fromByte: number,
+): Promise<SubagentMessagesPage | null> {
+  try {
+    const url = `/api/sessions/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(subagentId)}?fromByte=${fromByte}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const body: unknown = await res.json().catch(() => null);
+    const payload = isRecord(body) && 'page' in body ? body.page : body;
+    if (payload === null || payload === undefined) return null;
+    return asMessagesPage(payload, fromByte, undefined);
+  } catch {
+    return null;
+  }
+}
