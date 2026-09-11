@@ -3,7 +3,7 @@ import { Check, Copy, Code } from 'lucide-react';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
 import { sanitizeHtml } from '@/lib/markdown/sanitize';
 import { copyToClipboard } from '@/hooks/ui/clipboard';
-import { detectOutputFormat } from '@/components/workspace/chat-timeline/tool-renderers/shared/detect-format';
+import { detectOutputFormat } from '@/lib/chat/detect-format';
 import { tryParseJson, highlightCode } from '@/lib/code/syntax-highlight';
 import { JsonCodeBlock } from '@/components/workspace/chat-timeline/tool-renderers/shared/JsonCodeBlock';
 
