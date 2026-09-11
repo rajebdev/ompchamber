@@ -28,11 +28,11 @@ import {
   hasToolDetailsPanel,
   resolveToolKey,
 } from '@/components/workspace/chat-timeline/tool-renderers';
-import { toTitleCase } from '@/components/workspace/chat-timeline/tool-renderers/shared/title-case';
+import { toTitleCase } from '@/lib/chat/title-case';
 import { FallbackOutput } from '@/components/workspace/chat-timeline/tool-renderers/shared/FallbackOutput';
 import { tryParseJson } from '@/lib/code/syntax-highlight';
 import { JsonCodeBlock } from '@/components/workspace/chat-timeline/tool-renderers/shared/JsonCodeBlock';
-import { getTodoSummary } from '@/components/workspace/chat-timeline/tool-renderers/shared/todo-parser';
+import { getTodoSummary } from '@/lib/chat/todo-parser';
 
 interface ToolCallCardProps {
   tool: ToolCallData;

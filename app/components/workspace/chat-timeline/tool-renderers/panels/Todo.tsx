@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Square, Loader2, CheckCircle2, ListTodo } from 'lucide-react';
 import type { ToolCallData } from '@/types';
-import { parseTodoData } from '@/components/workspace/chat-timeline/tool-renderers/shared/todo-parser';
+import { parseTodoData } from '@/lib/chat/todo-parser';
 import { FallbackOutput } from '@/components/workspace/chat-timeline/tool-renderers/shared/FallbackOutput';
 
 /** Panel khusus untuk tool `todo` — task list dengan progress bar, phase groups, dan status yang readable. */
