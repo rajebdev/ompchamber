@@ -162,14 +162,14 @@ export function TaskResultContent({ task }: TaskResultContentProps) {
 
       {/* Outro & Follow-up URI Links */}
       {task.outro && (
-        <div className="rounded-lg border border-ink/10 bg-canvas/60 p-2.5 text-[11px] text-ink/70">
-          <div className="mb-1 flex items-center gap-1.5 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ink/50">
+        <div className="rounded-lg border border-ink/10 bg-canvas/60 p-2.5 text-[11px] text-ink/75">
+          <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ink/50">
             <Terminal size={11} />
             <span>Follow-up & Transcript</span>
           </div>
-          <p className="whitespace-pre-line leading-relaxed font-mono text-[10.5px] text-ink/80 break-all">
-            {task.outro}
-          </p>
+          <div className="text-[11.5px] leading-relaxed text-ink/85">
+            <MarkdownRenderer content={task.outro} />
+          </div>
         </div>
       )}
     </div>
