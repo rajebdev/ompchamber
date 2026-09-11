@@ -5,8 +5,8 @@
   "description": "AI Studio developer web view console and diagnostic chamber.",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone"],
-  "background_color": "#faf8f3",
-  "theme_color": "#faf8f3",
+  "background_color": "#141310",
+  "theme_color": "#141310",
   "start_url": "/",
   "scope": "/",
   "icons": [
