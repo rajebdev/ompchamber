@@ -108,6 +108,8 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
   const handleSelectSession = (id: number | string) => {
     setSearchParams(prev => {
       prev.set('sessionId', id.toString());
+      // Navigating away from a session must also exit its transcript view.
+      if (prev.has('subagent')) prev.delete('subagent');
       return prev;
     }, { replace: true });
   };

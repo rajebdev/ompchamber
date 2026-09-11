@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from '@remix-run/react';
 import { SubagentStatusIcon } from '@/components/common/SubagentStatusIcon';
 import { isRecord } from '@/lib/omp/session/parse-message-blocks';
 import { fetchSubagentHistory, historyEntryToSubagentInfo } from '@/lib/omp/subagent/history-client';
@@ -41,6 +42,8 @@ function applyProgress(roster: SubagentInfo[], progress: SubagentProgress): Suba
  * items matching the minimalist sidebar layout while preserving interactive inspection.
  */
 export function SubagentList({ sessionId, isActiveSession }: SubagentListProps) {
+  const [searchParams] = useSearchParams();
+  const viewedSubagentId = searchParams.get('subagent');
   const [subagents, setSubagents] = useState<SubagentInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -115,13 +118,14 @@ export function SubagentList({ sessionId, isActiveSession }: SubagentListProps) 
       ) : (
         subagents.map((subagent) => {
           const taskText = subagent.task ?? subagent.description ?? subagent.assignment ?? subagent.agent ?? '';
+          const isViewed = subagent.id === viewedSubagentId;
           return (
             <button
               key={subagent.id}
               type="button"
               title={taskText}
               onClick={() => window.dispatchEvent(new CustomEvent('omp:view-subagent', { detail: { sessionId: String(sessionId), subagent } }))}
-              className="w-full flex items-center text-left text-xs text-ink/70 hover:text-ink hover:bg-ink/5 rounded-md px-2 py-1 cursor-pointer transition-colors select-none group/subagent"
+              className={`w-full flex items-center text-left text-xs rounded-md px-2 py-1 cursor-pointer transition-colors select-none group/subagent ${isViewed ? 'bg-ink/10 font-medium text-ink' : 'text-ink/70 hover:text-ink hover:bg-ink/5'}`}
             >
               {/* Subagent status icon slot - aligned straight with session item text */}
               <span className="w-4 h-4 flex items-center justify-center shrink-0">

@@ -13,7 +13,7 @@ import {
   ChevronDown, 
   ChevronRight,
 } from 'lucide-react';
-import { useFetcher, useRevalidator } from '@remix-run/react';
+import { useFetcher, useRevalidator, useSearchParams } from '@remix-run/react';
 import { useOnClickOutside } from '@/hooks/ui/on-click-outside';
 import { SubagentList } from '@/components/layout/session-sidebar/SubagentList';
 import { loadExpandedSessionIds, saveExpandedSessionIds } from '@/lib/workspace/sidebar-expanded';
@@ -121,6 +121,9 @@ export function Category({
   const [showMenu, setShowMenu] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [visibleCount, setVisibleCount] = useState(5);
+  const [searchParams] = useSearchParams();
+  const urlSubagentId = searchParams.get('subagent');
+  const urlSessionId = searchParams.get('sessionId');
   
   // Sidebar-level expanded session set
   const [expandedSessionIds, setExpandedSessionIds] = useState<Set<string>>(() => new Set(['1']));
@@ -132,6 +135,18 @@ export function Category({
       setExpandedSessionIds(new Set(['1']));
     }
   }, []);
+
+  // A deep-linked transcript (?sessionId=…&subagent=…) auto-expands its
+  // session row so the viewed roster entry is visible after a reload.
+  useEffect(() => {
+    if (!urlSubagentId || !urlSessionId) return;
+    setExpandedSessionIds(prev => {
+      if (prev.has(urlSessionId)) return prev;
+      const next = new Set(prev);
+      next.add(urlSessionId);
+      return next;
+    });
+  }, [urlSubagentId, urlSessionId]);
   
   const menuRef = useRef<HTMLDivElement>(null);
   const toggleFetcher = useFetcher();
@@ -278,18 +293,21 @@ export function Category({
         <div className="space-y-0.5">
           {renderedSessions.map((session: any) => {
             const sessionKey = String(session.id);
-            const isActive = activeSessionId !== null 
+            const isActive = activeSessionId !== null
               ? String(activeSessionId) === sessionKey
               : session.is_active === 1;
+            // While one of its subagents is being viewed, the parent session
+            // row dims so the highlighted roster entry reads as the active one.
+            const isViewingSubagent = isActive && urlSessionId === sessionKey && Boolean(urlSubagentId);
             const canExpandActive = activeSessionId !== null && sessionKey === String(activeSessionId);
             const hasSubagents = Boolean(session.hasSubagents);
             const isExpanded = hasSubagents && expandedSessionIds.has(sessionKey);
 
             return (
               <div key={session.id} className="space-y-0.5">
-                <SessionItem 
-                  title={session.title} 
-                  isActive={isActive} 
+                <SessionItem
+                  title={session.title}
+                  isActive={isActive && !isViewingSubagent}
                   isArchived={session.is_archived === 1}
                   status={sessionStatus[sessionKey]}
                   onClick={() => onSelectSession(session.id)}

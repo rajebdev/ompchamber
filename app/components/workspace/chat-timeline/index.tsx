@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from '@remix-run/react';
 import { ArrowDown } from 'lucide-react';
 import { ChatInput } from '@/components/workspace/chat-timeline/chat-input/index';
 import { ChatMessageItem } from '@/components/workspace/chat-timeline/MessageItem';
@@ -12,9 +13,11 @@ import { SubagentView } from '@/components/workspace/chat-timeline/SubagentView'
 import { useChatTimeline } from '@/hooks/chat/timeline';
 import { responseRunDurationMs } from '@/lib/chat/duration';
 import { normalizeNoticePositions } from '@/lib/chat/order';
+import { isRecord } from '@/lib/omp/session/parse-message-blocks';
+import { historyEntryToSubagentInfo } from '@/lib/omp/subagent/history-client';
 
 import type { ExtensionUiDialogRequest } from '@/hooks/chat/omp';
-import type { SubagentInfo } from '@/types';
+import type { SubagentHistoryEntry, SubagentInfo } from '@/types';
 
 interface ChatTimelineProps {
   className?: string;
@@ -63,25 +66,69 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
   const [newChatInitialContent, setNewChatInitialContent] = useState<string | null>(null);
   const [previewDialog, setPreviewDialog] = useState<ExtensionUiDialogRequest | null>(null);
   const [activeSubagent, setActiveSubagent] = useState<SubagentInfo | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // The transcript view is URL-addressable (?subagent=<id>) so a reload
+  // restores it — but the SubagentInfo body only lives in state, so a
+  // deep-link/hydrated entry is reconstructed from the history route.
+  const urlSubagentId = searchParams.get('subagent');
 
-  // Subagent transcripts are opened from outside (the sidebar roster item
-  // dispatches omp:view-subagent). Only accept the frame for the active
-  // session so a stale click cannot hijack another session's timeline.
-  useEffect(() => {
-    const handleViewSubagent = (e: Event) => {
-      const detail = (e as CustomEvent<{ sessionId?: string; subagent?: SubagentInfo }>).detail;
-      if (!detail?.subagent) return;
-      if (!sessionId || detail.sessionId !== sessionId) return;
-      setActiveSubagent(detail.subagent);
-    };
-    window.addEventListener('omp:view-subagent', handleViewSubagent);
-    return () => window.removeEventListener('omp:view-subagent', handleViewSubagent);
-  }, [sessionId]);
+  // Roster clicks open the transcript; when the row belongs to another
+  // session, the same update navigates there — a click must never be a no-op.
+  const handleViewSubagentEvent = useCallback((e: Event) => {
+    const detail = (e as CustomEvent<{ sessionId?: string; subagent?: SubagentInfo }>).detail;
+    const subagent = detail?.subagent;
+    const detailSessionId = detail?.sessionId;
+    if (!subagent || !detailSessionId) return;
+    setActiveSubagent(subagent);
+    setSearchParams(prev => {
+      if (prev.get('sessionId') === detailSessionId && prev.get('subagent') === subagent.id) return prev;
+      prev.set('sessionId', detailSessionId);
+      prev.set('subagent', subagent.id);
+      return prev;
+    }, { replace: false });
+  }, [setSearchParams]);
 
-  // Switching sessions drops back to the main timeline.
   useEffect(() => {
+    window.addEventListener('omp:view-subagent', handleViewSubagentEvent);
+    return () => window.removeEventListener('omp:view-subagent', handleViewSubagentEvent);
+  }, [handleViewSubagentEvent]);
+
+  // Back paths (banner button / Escape) clear both state and URL.
+  const handleSubagentBack = useCallback(() => {
     setActiveSubagent(null);
-  }, [sessionId]);
+    setSearchParams(prev => {
+      if (!prev.has('subagent')) return prev;
+      prev.delete('subagent');
+      return prev;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  // The ?subagent param drives the view: absent → main timeline (covers
+  // session switches and back navigation); present → the transcript. Deep
+  // links hydrate the roster entry from the history route, where a finished
+  // subagent is always recoverable.
+  useEffect(() => {
+    if (!urlSubagentId) {
+      setActiveSubagent(null);
+      return;
+    }
+    if (activeSubagent?.id === urlSubagentId) return;
+    if (!sessionId) return;
+    let cancelled = false;
+    fetch(`/api/sessions/${encodeURIComponent(sessionId)}/subagents`)
+      .then(res => (res.ok ? res.json() : null))
+      .then((body: { subagents?: unknown[] } | null) => {
+        if (cancelled || !body?.subagents) return;
+        const entry = body.subagents.find(s => isRecord(s) && s.id === urlSubagentId);
+        if (!entry) return;
+        setActiveSubagent(historyEntryToSubagentInfo(entry as SubagentHistoryEntry));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // activeSubagent is intentionally not a dep: the guard above only needs
+    // the current render's value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, urlSubagentId]);
 
   useEffect(() => {
     const handleOpenAsk = (e: Event) => {
@@ -148,7 +195,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
           <SubagentView
             sessionId={sessionId}
             subagent={activeSubagent}
-            onBack={() => setActiveSubagent(null)}
+            onBack={handleSubagentBack}
           />
         ) : (
           <>
