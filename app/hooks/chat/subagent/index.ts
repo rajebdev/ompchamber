@@ -180,7 +180,10 @@ export function useSubagentTranscript(
     const loadInitial = async () => {
       let fromByte = 0;
       let file = sessionFileRef.current;
-      let viaHistory = historySource;
+      // A live roster click starts on the RPC path; everything else (history
+      // entries, deep-link restores) goes straight to disk — no speculative
+      // RPC probe that 400s for finished subagents.
+      let viaHistory = historySource || !initial?.sessionFile;
       let collected: ChatMessageData[] = [];
       for (let page = 0; page < MAX_INITIAL_PAGES; page++) {
         let result = viaHistory
@@ -188,7 +191,8 @@ export function useSubagentTranscript(
           : await requestSubagentPage(sessionId, subagentId, file, fromByte);
         if (!isCurrent()) return;
         if (!result && !viaHistory && fromByte === 0) {
-          // The parent RPC is unavailable (dead session) — fall back to disk.
+          // The parent RPC dropped this subagent (already finished) — the
+          // on-disk transcript is authoritative from here on.
           viaHistory = true;
           result = await requestHistoryPage(sessionId, subagentId, 0);
           if (!isCurrent()) return;
@@ -199,6 +203,9 @@ export function useSubagentTranscript(
         collected = result.reset ? converted : mergeMessages(collected, converted);
         if (result.nextByte <= fromByte) break;
         fromByte = result.nextByte;
+        // totalBytes came with the page — stop as soon as the cursor reaches
+        // it instead of probing one empty page past the end of the file.
+        if (result.totalBytes !== undefined && fromByte >= result.totalBytes) break;
       }
       if (!isCurrent()) return;
       sessionFileRef.current = file;

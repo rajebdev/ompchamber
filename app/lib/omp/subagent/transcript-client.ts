@@ -97,21 +97,39 @@ export async function requestSubagentPage(
   }
 }
 
+/** In-flight GET dedupe: identical page requests share one promise. Strict
+ *  mode/hydration double-runs and re-renders must not double-hit the disk. */
+const inflightHistory = new Map<string, Promise<SubagentMessagesPage | null>>();
+
 /** On-disk history page (`{ page }`, or a bare page); null = end/unavailable. */
 export async function requestHistoryPage(
   sessionId: string,
   subagentId: string,
   fromByte: number,
 ): Promise<SubagentMessagesPage | null> {
-  try {
-    const url = `/api/sessions/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(subagentId)}?fromByte=${fromByte}`;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const body: unknown = await res.json().catch(() => null);
-    const payload = isRecord(body) && 'page' in body ? body.page : body;
-    if (payload === null || payload === undefined) return null;
-    return asMessagesPage(payload, fromByte, undefined);
-  } catch {
-    return null;
-  }
+  const url = `/api/sessions/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(subagentId)}?fromByte=${fromByte}`;
+  const inflight = inflightHistory.get(url);
+  if (inflight) return inflight;
+  let cleanup = () => {};
+  const promise = new Promise<SubagentMessagesPage | null>((resolve) => {
+    cleanup = () => {
+      // Only the owner removes itself; a shared waiter must not.
+      if (inflightHistory.get(url) === promise) inflightHistory.delete(url);
+    };
+    void (async () => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) return resolve(null);
+        const body: unknown = await res.json().catch(() => null);
+        const payload = isRecord(body) && 'page' in body ? body.page : body;
+        if (payload === null || payload === undefined) return resolve(null);
+        resolve(asMessagesPage(payload, fromByte, undefined));
+      } catch {
+        resolve(null);
+      }
+    })();
+  });
+  promise.then(cleanup, cleanup);
+  inflightHistory.set(url, promise);
+  return promise;
 }
