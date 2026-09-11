@@ -85,7 +85,7 @@ export function toChatMessage(raw: Record<string, unknown>, streaming = true): C
   }
 
   if (role === 'user') {
-    const text = stripInlinedTextAttachments(extractText(parsed.textParts));
+    const text = stripInlinedTextAttachments(parsed.textParts.join('\n'));
     const attachments = extractUserImageAttachments(raw.content);
     return {
       id,
