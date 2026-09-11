@@ -43,6 +43,7 @@ export function toolResultText(value: unknown): string {
  *  never as assistant content. */
 export function toChatMessage(raw: Record<string, unknown>, streaming = true): ChatMessageData | null {
   if (raw.role === 'custom') {
+    if (raw.customType === 'session_exit') return null; // runtime plumbing, not user-visible
     const content = raw.content;
     const text = typeof content === 'string'
       ? content

@@ -34,16 +34,7 @@ export function convertMessages(raw: unknown[], streaming: boolean): ChatMessage
       if (entryType === 'custom' || entryType === 'custom_message') {
         const customType = typeof item.customType === 'string' ? item.customType : '';
         if (customType === 'session_exit') {
-          const data = isRecord(item.data) ? item.data : {};
-          const reason = typeof data.reason === 'string' ? data.reason : 'dispose';
-          const kind = typeof data.kind === 'string' ? data.kind : 'normal';
-          out.push({
-            id: typeof item.id === 'string' ? item.id : `exit-${Date.now()}`,
-            role: 'ai',
-            content: '',
-            notice: `Session exit: ${reason} (${kind})`,
-            date: typeof item.timestamp === 'string' ? new Date(item.timestamp).toISOString() : undefined,
-          });
+          // Runtime plumbing — exit notices are never rendered.
           continue;
         }
         if (customType === 'launch-completion' || typeof item.content === 'string') {

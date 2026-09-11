@@ -144,25 +144,15 @@ export function collectToolOutputs(records: Record<string, unknown>[]): Map<stri
   return outputs;
 }
 
-/** Map an omp `custom_message` or `custom` entry (session_exit, launch-completion,
- *  ultrathink-notice, xdev-mount-notice, ...) to a notice row. */
+/** Map an omp `custom_message` or `custom` entry (launch-completion,
+ *  ultrathink-notice, xdev-mount-notice, ...) to a notice row. `session_exit`
+ *  entries are runtime plumbing and are intentionally dropped. */
 export function noticeFromCustomMessage(record: Record<string, unknown>): ChatMessageData | null {
   const customType = typeof record.customType === 'string' ? record.customType : '';
   const date = typeof record.timestamp === 'string' ? new Date(record.timestamp).toISOString() : undefined;
   const id = typeof record.id === 'string' ? record.id : `notice-${Date.now()}`;
 
-  if (customType === 'session_exit') {
-    const data = isRecord(record.data) ? record.data : {};
-    const reason = typeof data.reason === 'string' ? data.reason : 'dispose';
-    const kind = typeof data.kind === 'string' ? data.kind : 'normal';
-    return {
-      id,
-      role: 'ai',
-      content: '',
-      notice: `Session exit: ${reason} (${kind})`,
-      date,
-    };
-  }
+  if (customType === 'session_exit') return null;
 
   const content = record.content;
   const text = typeof content === 'string'
