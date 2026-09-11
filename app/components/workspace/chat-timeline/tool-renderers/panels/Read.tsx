@@ -128,7 +128,14 @@ export function Read({ tool, targetFilePath, output }: ReadPanelProps) {
     }
   }, [cleanFetchPath, output, lazyContent, loadingFile]);
 
-  const rawContent = output || lazyContent || '';
+  const details = (tool?.details ?? {}) as Record<string, any>;
+  const rawContent =
+    output ||
+    (typeof details?.displayContent === 'object' && typeof details.displayContent?.text === 'string'
+      ? details.displayContent.text
+      : '') ||
+    lazyContent ||
+    '';
   const dirInfo = useMemo(() => parseDirListing(rawContent), [rawContent]);
 
   const lineMeta = useMemo(() => {
@@ -154,6 +161,18 @@ export function Read({ tool, targetFilePath, output }: ReadPanelProps) {
       }
     }
 
+    // If no text notice was found but details.summary reports elidedLines, provide it
+    if (
+      notices.length === 0 &&
+      details.summary &&
+      typeof details.summary.elidedLines === 'number' &&
+      details.summary.elidedLines > 0
+    ) {
+      notices.push(
+        `…${details.summary.elidedLines}ln elided (${details.summary.lines ?? codeLines.length} lines shown)`
+      );
+    }
+
     // Trim trailing empty line if it was spacing before the elision notice and lineNumbers is shorter
     if (
       lineMeta.lineNumbers &&
@@ -164,7 +183,7 @@ export function Read({ tool, targetFilePath, output }: ReadPanelProps) {
     }
 
     return { displayContent: codeLines.join('\n'), elisionNotices: notices };
-  }, [rawContent, dirInfo.isDirectory, lineMeta.lineNumbers]);
+  }, [rawContent, dirInfo.isDirectory, lineMeta.lineNumbers, details.summary]);
 
   const parsedCode = useMemo(() => {
     if (dirInfo.isDirectory || !displayContent) {
