@@ -9,7 +9,7 @@ import {
   Info,
   Bot
 } from 'lucide-react';
-import type { ChatMessageData } from '@/types';
+import type { ChatMessageData, ToolCallData } from '@/types';
 import { ThinkingSection } from '@/components/workspace/chat-timeline/ThinkingSection';
 import { ToolCallingSection } from '@/components/workspace/chat-timeline/ToolCallingSection';
 import { SystemNotice } from '@/components/workspace/chat-timeline/SystemNotice';
@@ -193,7 +193,11 @@ export function ChatMessageItem({
   const secondaryToolCalls = msg.actions2;
   const cleanIntent = msg.intent ? capitalizeFirstLetter(msg.intent.replace(/^[.\s]+/, '')) : null;
   const hasToolCalls = Boolean(allToolCalls && allToolCalls.length > 0);
-  const toolTitle = cleanIntent || (allToolCalls?.length === 1 ? 'Tool Execution (1 step)' : `Tool Executions (${allToolCalls?.length} steps)`);
+  const yieldOutput = allToolCalls
+    ?.filter((t: ToolCallData) => t.name === 'yield' || t.type === 'yield')
+    .find((t: ToolCallData) => t.status !== 'error')?.output;
+  const toolTitle = cleanIntent
+    || (yieldOutput ?? (allToolCalls?.length === 1 ? 'Tool Execution (1 step)' : `Tool Executions (${allToolCalls?.length} steps)`));
 
   return (
     <div 

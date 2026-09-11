@@ -192,6 +192,8 @@ export function ToolCallCard({ tool, isOpen, onToggle, defaultExpanded = false }
     displayTitle = 'Resolve Proposal';
   } else if (toolKey === 'reject') {
     displayTitle = 'Reject Proposal';
+  } else if (toolKey === 'yield') {
+    displayTitle = tool.status === 'error' ? 'Yield' : outputText ? `Yield - ${outputText}` : 'Yield';
   } else if (toolKey === 'todo' || tool.name === 'todo' || tool.type === 'todo' || (tool.title && tool.title.toLowerCase().startsWith('todo'))) {
     displayTitle = 'Todo';
     const todoSummary = getTodoSummary(tool);
@@ -247,6 +249,7 @@ export function ToolCallCard({ tool, isOpen, onToggle, defaultExpanded = false }
       isOpen={isOpen}
       onToggle={onToggle}
       defaultExpanded={defaultExpanded}
+      alwaysExpanded={toolKey === 'yield' && hasPanel}
     >
       <ToolDetailsPanel tool={tool} />
 

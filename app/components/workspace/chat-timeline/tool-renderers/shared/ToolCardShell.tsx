@@ -12,6 +12,8 @@ interface ToolCardShellProps {
   isOpen?: boolean;
   onToggle?: () => void;
   defaultExpanded?: boolean;
+  /** Render the body permanently — no collapse state, no chevron. */
+  alwaysExpanded?: boolean;
   children?: ReactNode;
 }
 
@@ -65,16 +67,18 @@ export function ToolCardShell({
   isOpen: controlledIsOpen,
   onToggle,
   defaultExpanded = false,
+  alwaysExpanded = false,
   children,
 }: ToolCardShellProps) {
   const [internalIsOpen, setInternalIsOpen] = useState(defaultExpanded);
-  const isExpanded = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
+  const collapsible = !alwaysExpanded;
+  const isExpanded = alwaysExpanded || (controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen);
   const status = tool.status || (tool.error ? 'error' : 'success');
   const isRunning = status === 'running';
   const hasBody = Boolean(children);
 
   const handleToggle = () => {
-    if (!hasBody) return;
+    if (!hasBody || !collapsible) return;
     if (onToggle) onToggle();
     else setInternalIsOpen((prev) => !prev);
   };
@@ -96,10 +100,10 @@ export function ToolCardShell({
       <button
         type="button"
         onClick={handleToggle}
-        disabled={!hasBody}
+        disabled={!hasBody || !collapsible}
         aria-expanded={isExpanded}
         className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors ${
-          hasBody ? 'cursor-pointer hover:bg-ink/[0.03]' : 'cursor-default'
+          hasBody && collapsible ? 'cursor-pointer hover:bg-ink/[0.03]' : 'cursor-default'
         } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/20`}
       >
         <span
@@ -127,7 +131,7 @@ export function ToolCardShell({
         <span className="flex shrink-0 items-center gap-2">
           {meta}
           {statusBadge(tool)}
-          {hasBody && (
+          {hasBody && collapsible && (
             <ChevronDown
               size={14}
               className={`text-ink/35 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
