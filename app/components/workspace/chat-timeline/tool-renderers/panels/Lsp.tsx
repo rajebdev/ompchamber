@@ -28,17 +28,20 @@ function severityOf(d: Diagnostic): 'error' | 'warning' | 'info' {
 
 const SEVERITY_STYLES = {
   error: {
-    icon: <AlertCircle size={12} className="mt-[3px] shrink-0 text-error" />,
+    Icon: AlertCircle,
+    color: 'text-error',
     text: 'text-error',
     badge: 'bg-error/10 text-error',
   },
   warning: {
-    icon: <AlertTriangle size={12} className="mt-[3px] shrink-0 text-warning" />,
+    Icon: AlertTriangle,
+    color: 'text-warning',
     text: 'text-warning',
     badge: 'bg-warning/10 text-warning',
   },
   info: {
-    icon: <Info size={12} className="mt-[3px] shrink-0 text-ink/40" />,
+    Icon: Info,
+    color: 'text-ink/40',
     text: 'text-ink/70',
     badge: 'bg-ink/5 text-ink/50',
   },
@@ -250,12 +253,16 @@ export function Lsp({ tool }: { tool: ToolCallData }) {
           const code = typeof d.code === 'string' ? d.code : undefined;
           const source = typeof d.source === 'string' ? d.source : undefined;
 
+          const { Icon, color, text: textColor } = style;
+
           return (
             <div key={index} className="flex items-start gap-2 px-2.5 py-1.5 text-[11.5px]">
-              {style.icon}
-              <span className="min-w-0 flex-1 break-words leading-relaxed">
+              <span className="flex h-5 w-3.5 shrink-0 items-center justify-center">
+                <Icon size={12} className={color} />
+              </span>
+              <span className="min-w-0 flex-1 break-words leading-5">
                 {loc && <span className="font-mono text-[10px] text-ink/45 mr-1">{loc}:</span>}
-                <span className={style.text}>{msg}</span>
+                <span className={textColor}>{msg}</span>
                 {source && <span className="ml-1.5 font-mono text-[9px] text-ink/35">[{source}]</span>}
                 {code && <span className="ml-1 font-mono text-[9px] text-ink/35">({code})</span>}
               </span>
