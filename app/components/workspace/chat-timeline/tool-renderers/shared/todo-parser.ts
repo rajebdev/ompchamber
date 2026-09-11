@@ -231,7 +231,11 @@ export function parseTodoData(tool: ToolCallData): TodoDataSummary {
     }
   }
 
-  const summaryText = `${totalDone} complete · ${totalInProgress} in progress · ${totalPending} pending`;
+  const summaryParts: string[] = [];
+  if (totalDone > 0) summaryParts.push(`${totalDone} complete`);
+  if (totalInProgress > 0) summaryParts.push(`${totalInProgress} in progress`);
+  if (totalPending > 0) summaryParts.push(`${totalPending} pending`);
+  const summaryText = summaryParts.length > 0 ? summaryParts.join(' · ') : (totalTasks > 0 ? `${totalTasks} items` : '');
 
   return {
     groups,

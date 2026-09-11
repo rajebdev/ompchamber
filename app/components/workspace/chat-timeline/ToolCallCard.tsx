@@ -199,7 +199,12 @@ export function ToolCallCard({ tool, isOpen, onToggle, defaultExpanded = false }
       displaySubtitle = todoSummary;
     } else if (tool.title && (tool.title.includes('—') || tool.title.includes(' - ') || tool.title.includes(': '))) {
       const parts = tool.title.split(/\s+[—\-:]\s+/);
-      displaySubtitle = parts.slice(1).join(' — ').trim();
+      const sub = parts.slice(1).join(' — ').trim();
+      const cleaned = sub
+        .split(/\s*·\s*/)
+        .filter((p) => !/^0\s+(complete|in progress|pending)/i.test(p))
+        .join(' · ');
+      displaySubtitle = cleaned || sub;
     }
   } else if (tool.title && (tool.title.includes('—') || tool.title.includes(' - ') || tool.title.includes(': '))) {
     const parts = tool.title.split(/\s+[—\-:]\s+/);

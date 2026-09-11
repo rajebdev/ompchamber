@@ -47,21 +47,27 @@ export function Todo({ tool }: { tool: ToolCallData }) {
           )}
         </div>
 
-        {/* Counter Pills: complete, in progress, belum di kerjakan */}
-        {totalTasks > 0 && (
+        {/* Counter Pills: complete, in progress, pending (only show > 0) */}
+        {totalTasks > 0 && (totalDone > 0 || totalInProgress > 0 || totalPending > 0) && (
           <div className="mt-2.5 flex flex-wrap items-center gap-1.5 font-mono text-[10px]">
-            <span className="inline-flex items-center gap-1 rounded bg-success/10 px-2 py-0.5 text-success">
-              <CheckCircle2 size={11} />
-              <span>{totalDone} complete</span>
-            </span>
-            <span className="inline-flex items-center gap-1 rounded bg-ink/8 px-2 py-0.5 text-ink/70">
-              <Loader2 size={11} className={totalInProgress > 0 ? 'animate-spin' : ''} />
-              <span>{totalInProgress} in progress</span>
-            </span>
-            <span className="inline-flex items-center gap-1 rounded bg-ink/5 px-2 py-0.5 text-ink/50">
-              <Square size={11} />
-              <span>{totalPending} pending</span>
-            </span>
+            {totalDone > 0 && (
+              <span className="inline-flex items-center gap-1 rounded bg-success/10 px-2 py-0.5 text-success">
+                <CheckCircle2 size={11} />
+                <span>{totalDone} complete</span>
+              </span>
+            )}
+            {totalInProgress > 0 && (
+              <span className="inline-flex items-center gap-1 rounded bg-ink/8 px-2 py-0.5 text-ink/70">
+                <Loader2 size={11} className="animate-spin" />
+                <span>{totalInProgress} in progress</span>
+              </span>
+            )}
+            {totalPending > 0 && (
+              <span className="inline-flex items-center gap-1 rounded bg-ink/5 px-2 py-0.5 text-ink/50">
+                <Square size={11} />
+                <span>{totalPending} pending</span>
+              </span>
+            )}
           </div>
         )}
 
