@@ -86,6 +86,7 @@ function schedulePersist(sessionId: string): void {
 }
 
 async function persistSession(sessionId: string): Promise<void> {
+  if (typeof window === 'undefined' || !sessionId) return;
   if (!dirtySessions.get(sessionId)) return;
   dirtySessions.set(sessionId, false);
   const state = cache.get(sessionId) ?? {};
@@ -96,14 +97,14 @@ async function persistSession(sessionId: string): Promise<void> {
       body: JSON.stringify({ state }),
     });
   } catch (err) {
-    console.error('session-state persist failed:', err);
+    console.warn('session-state persist failed:', err);
     dirtySessions.set(sessionId, true);
   }
 }
 
 /** Immediately persist any pending writes for a session (used on switch). */
 export function flushSession(sessionId: string | null): Promise<void> {
-  if (!sessionId) return Promise.resolve();
+  if (!sessionId || typeof window === 'undefined') return Promise.resolve();
   const timer = persistTimers.get(sessionId);
   if (timer) {
     clearTimeout(timer);
@@ -114,6 +115,11 @@ export function flushSession(sessionId: string | null): Promise<void> {
 
 /** Fetch a session's stored blob and merge it under any local writes. */
 export async function loadSession(sessionId: string): Promise<void> {
+  if (!sessionId) return;
+  if (typeof window === 'undefined') {
+    readySessions.add(sessionId);
+    return;
+  }
   try {
     const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`);
     if (res.ok) {
@@ -124,7 +130,7 @@ export async function loadSession(sessionId: string): Promise<void> {
       cache.set(sessionId, { ...incoming, ...existing });
     }
   } catch (err) {
-    console.error('session-state load failed:', err);
+    console.warn('session-state load failed:', err);
   }
   readySessions.add(sessionId);
 }

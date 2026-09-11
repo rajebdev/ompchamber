@@ -21,12 +21,18 @@ export function toChatMessage(entry: OmpMessageEntry): ChatMessageData | null {
   if (!msg) return null;
   const role = msg.role ?? '';
   const content = msg.content;
+  const attribution = typeof msg.attribution === 'string'
+    ? msg.attribution
+    : typeof (entry as any).attribution === 'string'
+      ? (entry as any).attribution
+      : undefined;
 
   const base: ChatMessageData = {
     id: entry.id ?? `msg-${entry.timestamp ?? Date.now()}`,
     role: roleFor(role),
     content: '',
     date: entry.timestamp ? new Date(entry.timestamp).toISOString() : undefined,
+    attribution,
   };
 
   if (role === 'user') {
@@ -51,9 +57,24 @@ export function toChatMessage(entry: OmpMessageEntry): ChatMessageData | null {
     msg.stopReason === 'error' ||
     typeof msg.errorStatus === 'number' ||
     typeof msg.errorMessage === 'string';
+  const durationMs = typeof msg.duration === 'number'
+    ? msg.duration
+    : typeof (entry as any).durationMs === 'number'
+      ? (entry as any).durationMs
+      : undefined;
+  const model = typeof msg.model === 'string'
+    ? msg.model
+    : typeof (entry as any).model === 'string'
+      ? (entry as any).model
+      : undefined;
+  const usage = isRecord(msg.usage) ? (msg.usage as ChatMessageData['usage']) : undefined;
+
   const message: ChatMessageData = {
     ...base,
     content: parsed.textParts.join('\n').trim(),
+    model,
+    durationMs,
+    usage,
   };
   if (stoppedWithError) {
     message.error = {
@@ -123,9 +144,26 @@ export function collectToolOutputs(records: Record<string, unknown>[]): Map<stri
   return outputs;
 }
 
-/** Map an omp `custom_message` entry (ultrathink-notice, xdev-mount-notice,
- *  ...) to a notice row. Returns null for non-notice custom messages. */
+/** Map an omp `custom_message` or `custom` entry (session_exit, launch-completion,
+ *  ultrathink-notice, xdev-mount-notice, ...) to a notice row. */
 export function noticeFromCustomMessage(record: Record<string, unknown>): ChatMessageData | null {
+  const customType = typeof record.customType === 'string' ? record.customType : '';
+  const date = typeof record.timestamp === 'string' ? new Date(record.timestamp).toISOString() : undefined;
+  const id = typeof record.id === 'string' ? record.id : `notice-${Date.now()}`;
+
+  if (customType === 'session_exit') {
+    const data = isRecord(record.data) ? record.data : {};
+    const reason = typeof data.reason === 'string' ? data.reason : 'dispose';
+    const kind = typeof data.kind === 'string' ? data.kind : 'normal';
+    return {
+      id,
+      role: 'ai',
+      content: '',
+      notice: `Session exit: ${reason} (${kind})`,
+      date,
+    };
+  }
+
   const content = record.content;
   const text = typeof content === 'string'
     ? content
@@ -137,10 +175,10 @@ export function noticeFromCustomMessage(record: Record<string, unknown>): ChatMe
   const notice = text.replace(/<\/?system-notice[^>]*>/g, '').trim();
   if (!notice) return null;
   return {
-    id: typeof record.id === 'string' ? record.id : `notice-${Date.now()}`,
+    id,
     role: 'ai',
     content: '',
     notice,
-    date: typeof record.timestamp === 'string' ? new Date(record.timestamp).toISOString() : undefined,
+    date,
   };
 }

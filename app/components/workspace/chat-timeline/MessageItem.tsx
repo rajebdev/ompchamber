@@ -6,7 +6,8 @@ import {
   Undo2,
   AlertCircle,
   MessageSquarePlus,
-  Info
+  Info,
+  Bot
 } from 'lucide-react';
 import type { ChatMessageData } from '@/types';
 import { ThinkingSection } from '@/components/workspace/chat-timeline/ThinkingSection';
@@ -111,10 +112,19 @@ export function ChatMessageItem({
   };
 
   if (isUser) {
+    const isAgentAttributed = msg.attribution === 'agent';
+
     return (
       <div id={msg.id} className={`flex flex-col items-end space-y-1.5 w-full max-w-full ${className}`}>
         {/* User bubble - standardized to text-[13px] with markdown support */}
         <div className="bg-paper p-3.5 sm:p-4 rounded-xl border border-ink/15 text-[13px] text-ink shadow-xs max-w-[92%] sm:max-w-[85%] break-words overflow-hidden flex flex-col space-y-2 font-sans select-text mx-3" style={{ lineHeight: 'var(--markdown-body-line-height)' }}>
+          {isAgentAttributed && (
+            <div className="flex items-center space-x-1.5 pb-1.5 mb-1 border-b border-ink/10 text-[11px] font-mono text-ink/70">
+              <Bot size={12} className="text-ink shrink-0" />
+              <span className="font-semibold text-ink">Subagent Assignment</span>
+              <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-ink/5 text-ink/60">Delegated</span>
+            </div>
+          )}
           <MarkdownRenderer content={msg.content.trim()} />
           
           <AttachmentChips
@@ -130,7 +140,14 @@ export function ChatMessageItem({
         {/* User Metadata & Toolbar (Undo on the left of Copy) */}
         <div className="flex items-center space-x-2.5 text-[11px] text-ink/60 px-1 font-mono">
           <div className="flex items-center space-x-1.5 border-r border-ink/15 pr-2.5">
-            <User size={11} className="text-ink/70" />
+            {isAgentAttributed ? (
+              <>
+                <Bot size={11} className="text-ink/70 shrink-0" />
+                <span className="text-[10px] uppercase font-semibold tracking-wider text-ink/60">Agent</span>
+              </>
+            ) : (
+              <User size={11} className="text-ink/70 shrink-0" />
+            )}
             {formatFooterDate() && <span>{formatFooterDate()}</span>}
           </div>
           
@@ -296,9 +313,10 @@ export function ChatMessageItem({
       {/* Bottom AI Metadata & Actions Toolbar (Only shown once completed) */}
       {!isStreaming && footerVisible && (
         <AiMessageFooter
-          currentModel={modelName || ''}
+          currentModel={msg.model || modelName || ''}
           dateStr={formatFooterDate()}
-          durationMs={durationMs}
+          durationMs={msg.durationMs ?? durationMs}
+          usage={msg.usage}
           content={msg.content}
           msgId={msg.id}
           onRetry={onRetry}

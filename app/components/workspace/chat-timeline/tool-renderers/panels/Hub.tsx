@@ -44,34 +44,66 @@ export function Hub({ tool }: { tool: ToolCallData }) {
   // Detect op: "wait"
   if (inputObj?.op === 'wait') {
     const ids: string[] = Array.isArray(inputObj.ids) ? inputObj.ids : [];
-    const timeout = typeof inputObj.timeoutMs === 'number' ? `${Math.round(inputObj.timeoutMs / 1000)}s` : undefined;
+    const daemonName = typeof inputObj.name === 'string' ? inputObj.name : undefined;
+    const waitFor = typeof inputObj.for === 'string' ? inputObj.for : undefined;
+    const timeout = typeof inputObj.timeout === 'number'
+      ? `${inputObj.timeout}s`
+      : typeof inputObj.timeoutMs === 'number'
+        ? `${Math.round(inputObj.timeoutMs / 1000)}s`
+        : undefined;
+
     return (
       <div className="space-y-2 rounded-lg border border-ink/8 bg-paper p-3 text-[11.5px]">
         <div className="flex items-center justify-between border-b border-ink/6 pb-2">
           <div className="flex items-center gap-2">
             <Radio size={13} className="text-ink/60" />
-            <span className="font-mono font-semibold text-ink">Hub Wait</span>
+            <span className="font-mono font-semibold text-ink">
+              {daemonName ? `Hub Wait: ${daemonName}` : 'Hub Wait'}
+            </span>
             <span className="rounded bg-ink/5 px-1.5 py-0.2 font-mono text-[9px] uppercase tracking-wider text-ink/50">
-              job wait
+              {waitFor ? `wait (${waitFor})` : 'job wait'}
             </span>
           </div>
           {timeout && (
             <span className="font-mono text-[9.5px] text-ink/40">timeout: {timeout}</span>
           )}
         </div>
-        <div className="pt-1">
-          <span className="text-[9.5px] font-semibold uppercase tracking-wider text-ink/40">
-            Waiting for Job IDs
-          </span>
-          <div className="mt-1 flex flex-wrap gap-1.5 font-mono text-[10.5px]">
-            {ids.map((id, i) => (
-              <span key={i} className="rounded bg-ink/5 px-2 py-0.5 text-ink/80">
-                {id}
-              </span>
-            ))}
+        {ids.length > 0 && (
+          <div className="pt-1">
+            <span className="text-[9.5px] font-semibold uppercase tracking-wider text-ink/40">
+              Waiting for Job IDs
+            </span>
+            <div className="mt-1 flex flex-wrap gap-1.5 font-mono text-[10.5px]">
+              {ids.map((id, i) => (
+                <span key={i} className="rounded bg-ink/5 px-2 py-0.5 text-ink/80">
+                  {id}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {output && <FallbackOutput text={output} />}
+      </div>
+    );
+  }
+
+  // Detect op: "logs"
+  if (inputObj?.op === 'logs') {
+    const daemonName = typeof inputObj.name === 'string' ? inputObj.name : 'Process';
+    return (
+      <div className="space-y-2 rounded-lg border border-ink/8 bg-paper p-3 text-[11.5px]">
+        <div className="flex items-center justify-between border-b border-ink/6 pb-2">
+          <div className="flex items-center gap-2">
+            <Server size={13} className="text-ink/60" />
+            <span className="font-mono font-semibold text-ink">{daemonName}</span>
+            <span className="rounded bg-ink/5 px-1.5 py-0.2 font-mono text-[9px] uppercase tracking-wider text-ink/50">
+              logs
+            </span>
           </div>
         </div>
-        {output && <FallbackOutput text={output} />}
+        <div className="rounded border border-ink/6 bg-canvas/40 p-2 font-mono text-[10.5px] text-ink/85 whitespace-pre-wrap">
+          {output || '// No log output'}
+        </div>
       </div>
     );
   }
@@ -92,7 +124,7 @@ export function Hub({ tool }: { tool: ToolCallData }) {
     const pidMatch = output.match(/pid=(\d+)/i);
     const uptimeMatch = output.match(/uptime=([^\s]+)/i);
     const restartsMatch = output.match(/restarts=(\d+)/i);
-    const isReady = output.toLowerCase().includes('ready') || output.toLowerCase().includes('started');
+    const isReady = output.toLowerCase().includes('ready') || output.toLowerCase().includes('started') || output.toLowerCase().includes('running');
 
     return {
       op: op || 'process',

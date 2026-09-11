@@ -188,21 +188,16 @@ export function SystemNotice({ notice }: SystemNoticeProps) {
             <div className="rounded-lg border border-ink/8 bg-paper p-3 text-[11.5px] leading-relaxed text-ink/85">
               <MarkdownRenderer content={reminderInfo.content} />
             </div>
-          ) : genericInfo.rest ? (
+          ) : genericInfo.isCode ? (
             <pre
               className="max-h-56 overflow-auto font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-words text-ink/75 scrollbar-overlay-container scrollbar-overlay-static"
               dangerouslySetInnerHTML={{
-                __html: genericInfo.isCode
-                  ? highlightCode(genericInfo.rest, 'javascript')
-                  : genericInfo.rest
-                      .replace(/&/g, '&amp;')
-                      .replace(/</g, '&lt;')
-                      .replace(/>/g, '&gt;'),
+                __html: highlightCode(genericInfo.rest || genericInfo.clean, 'javascript'),
               }}
             />
           ) : (
-            <div className="text-[11.5px] leading-relaxed text-ink/85">
-              <MarkdownRenderer content={genericInfo.clean} />
+            <div className="rounded-lg border border-ink/8 bg-paper p-3 text-[11.5px] leading-relaxed text-ink/85">
+              <MarkdownRenderer content={genericInfo.clean || genericInfo.rest} />
             </div>
           )}
         </div>

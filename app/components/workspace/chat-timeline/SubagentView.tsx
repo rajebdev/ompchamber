@@ -102,16 +102,30 @@ export function SubagentView({ sessionId, subagent, onBack, className = '' }: Su
               No transcript messages yet.
             </div>
           ) : (
-            messages.map((msg, idx) => (
-              <ChatMessageItem
-                key={msg.id}
-                msg={msg}
-                modelName={modelName}
-                isStreaming={isRunning && idx === messages.length - 1 && msg.role !== 'user' && !msg.notice}
-                footerVisible={false}
-                className="mt-3"
-              />
-            ))
+            messages.map((msg, idx) => {
+              let lastAiIdx = messages.length - 1;
+              while (lastAiIdx >= 0 && messages[lastAiIdx].notice) lastAiIdx--;
+              const isLoading = isRunning && idx === lastAiIdx && msg.role !== 'user' && !msg.notice;
+              const nextReal = messages.slice(idx + 1).find((m) => !m.notice);
+              const isLastAi = msg.role !== 'user' && !msg.notice && (!nextReal || nextReal.role === 'user');
+              let prevRealIdx = idx - 1;
+              while (prevRealIdx >= 0 && messages[prevRealIdx].notice) prevRealIdx--;
+              const prevReal = prevRealIdx >= 0 ? messages[prevRealIdx] : null;
+              const isPrevAssistant = Boolean(msg.role !== 'user' && prevReal && prevReal.role !== 'user');
+
+              return (
+                <ChatMessageItem
+                  key={msg.id}
+                  msg={msg}
+                  modelName={msg.model || modelName}
+                  isStreaming={isLoading}
+                  footerVisible={isLastAi}
+                  durationMs={msg.durationMs ?? null}
+                  isPrevAssistant={isPrevAssistant}
+                  className={msg.notice ? 'mt-3 mb-1' : isPrevAssistant ? 'mt-1' : 'mt-3'}
+                />
+              );
+            })
           )}
         </div>
       </div>

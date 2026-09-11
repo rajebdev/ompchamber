@@ -27,7 +27,9 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   }
 
   if (isMockMode()) {
-    return json({ page: null });
+    const { getMockSubagentTranscriptPage } = await import('@/data/mock/subagents');
+    const page = getMockSubagentTranscriptPage(subagentId, sessionId);
+    return json({ page });
   }
 
   try {

@@ -12,7 +12,7 @@
 
 import type { ChatMessageData, SubagentMessagesPage } from '@/types';
 import { toChatMessage } from '@/lib/omp/session/mapper';
-import { isRecord } from '@/lib/omp/session/parse-message-blocks';
+import { extractText, isRecord } from '@/lib/omp/session/parse-message-blocks';
 
 /** Normalize one wire message: the RPC may hand back bare omp AgentMessages
  *  or JSONL entries wrapping them as `{ message: {...} }`. */
@@ -29,10 +29,61 @@ function normalizeRawMessage(value: unknown): Record<string, unknown> | null {
 export function convertMessages(raw: unknown[], streaming: boolean): ChatMessageData[] {
   const out: ChatMessageData[] = [];
   for (const item of raw) {
+    if (isRecord(item)) {
+      const entryType = typeof item.type === 'string' ? item.type : '';
+      if (entryType === 'custom' || entryType === 'custom_message') {
+        const customType = typeof item.customType === 'string' ? item.customType : '';
+        if (customType === 'session_exit') {
+          const data = isRecord(item.data) ? item.data : {};
+          const reason = typeof data.reason === 'string' ? data.reason : 'dispose';
+          const kind = typeof data.kind === 'string' ? data.kind : 'normal';
+          out.push({
+            id: typeof item.id === 'string' ? item.id : `exit-${Date.now()}`,
+            role: 'ai',
+            content: '',
+            notice: `Session exit: ${reason} (${kind})`,
+            date: typeof item.timestamp === 'string' ? new Date(item.timestamp).toISOString() : undefined,
+          });
+          continue;
+        }
+        if (customType === 'launch-completion' || typeof item.content === 'string') {
+          const contentStr = typeof item.content === 'string' ? item.content : '';
+          const notice = contentStr.replace(/<\/?system-notice[^>]*>/g, '').trim();
+          if (notice) {
+            out.push({
+              id: typeof item.id === 'string' ? item.id : `notice-${Date.now()}`,
+              role: 'ai',
+              content: '',
+              notice,
+              date: typeof item.timestamp === 'string' ? new Date(item.timestamp).toISOString() : undefined,
+            });
+          }
+          continue;
+        }
+      }
+      if (entryType && entryType !== 'message') continue;
+    }
     const record = normalizeRawMessage(item);
     if (!record) continue;
-    // toolResult rows are plumbing; their output is paired with the tool call.
-    if (record.role === 'toolResult') continue;
+
+    // toolResult rows are plumbing; pair their output & details with matching tool call.
+    if (record.role === 'toolResult') {
+      const toolCallId = typeof record.toolCallId === 'string' ? record.toolCallId : undefined;
+      const outputText = extractText(record.content);
+      const details = isRecord(record.details) ? record.details : undefined;
+      const isError = record.isError === true;
+      for (let i = out.length - 1; i >= 0; i--) {
+        const tc = out[i].toolCalls?.find((t) => (toolCallId ? t.id === toolCallId : t.name === record.toolName));
+        if (tc) {
+          if (outputText) tc.output = outputText;
+          if (details) tc.details = details;
+          tc.status = isError ? 'error' : 'success';
+          break;
+        }
+      }
+      continue;
+    }
+
     const converted = toChatMessage(record, streaming);
     if (converted) out.push(converted);
   }

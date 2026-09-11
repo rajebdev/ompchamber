@@ -20,8 +20,9 @@ function queryOf(tool: ToolCallData): string {
   const input = tool.input;
   if (input && typeof input === 'object') {
     if (typeof input.pattern === 'string') return input.pattern;
-    if (typeof input.query === 'string') return input.query;
+    if (typeof input.path === 'string') return input.path;
     if (typeof input.glob === 'string') return input.glob;
+    if (typeof input.query === 'string') return input.query;
     if (typeof input.regex === 'string') return input.regex;
     if (typeof input.search === 'string') return input.search;
     if (typeof input.text === 'string') return input.text;

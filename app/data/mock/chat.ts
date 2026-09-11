@@ -2,11 +2,16 @@ import type { ChatMessageData } from '@/types';
 import { getSampleToolsSession, SAMPLE_TOOLS_SESSION_ID } from '@/data/samples/tools-session';
 import { getSampleDialogueSession, SAMPLE_DIALOGUE_SESSION_ID } from '@/data/samples/dialogue-session';
 import { getSampleDevicesSession, SAMPLE_DEVICES_SESSION_ID } from '@/data/samples/virtual-devices-session';
+import { getSampleSubagentSession, SAMPLE_SUBAGENT_SESSION_ID } from '@/data/samples/subagent-session';
 
-export { SAMPLE_DEVICES_SESSION_ID };
+export { SAMPLE_DEVICES_SESSION_ID, SAMPLE_SUBAGENT_SESSION_ID };
 
 export function getSessionData(sessionId: string | null) {
   if (!sessionId) return null;
+
+  if (sessionId === SAMPLE_SUBAGENT_SESSION_ID || sessionId === 'subagent') {
+    return getSampleSubagentSession();
+  }
 
   if (sessionId === SAMPLE_TOOLS_SESSION_ID || sessionId === '1' || sessionId === 'sample' || sessionId === 'showcase') {
     return getSampleToolsSession();

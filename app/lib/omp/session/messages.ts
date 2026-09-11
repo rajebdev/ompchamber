@@ -58,7 +58,7 @@ export function loadSessionMessages(filePath: string): ChatMessageData[] {
   const state: SequenceState = { messages: [], outputsByCall: collectToolOutputs(records) };
 
   for (const record of records) {
-    if (record?.type === 'custom_message') {
+    if (record?.type === 'custom_message' || record?.type === 'custom') {
       const notice = noticeFromCustomMessage(record);
       if (notice) state.messages.push(notice);
       continue;
@@ -92,14 +92,35 @@ export function loadSessionTitle(filePath: string): string | undefined {
     return undefined;
   }
   try {
-    const head = readFileSync(filePath, 'utf8').slice(0, 16 * 1024);
+    const head = readFileSync(filePath, 'utf8').slice(0, 32 * 1024);
     const records = parseJsonlLenient<Record<string, unknown>>(head);
     const first = records[0];
     if (first?.type === 'title' && typeof first.title === 'string' && first.title.trim()) {
-      return first.title;
+      return first.title.trim();
     }
     const header = records.find((r) => r?.type === 'session');
-    return typeof header?.title === 'string' && header.title.trim() ? header.title : undefined;
+    if (typeof header?.title === 'string' && header.title.trim()) {
+      return header.title.trim();
+    }
+    // Fallback: extract from session_init task
+    const init = records.find((r) => r?.type === 'session_init');
+    if (init && typeof init.task === 'string' && init.task.trim()) {
+      const taskLines = init.task.trim().split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#') && !l.startsWith('Complete assignment'));
+      if (taskLines.length > 0) {
+        return taskLines[0].slice(0, 60);
+      }
+    }
+    // Fallback: extract from first user message
+    const userMsg = records.find((r) => r?.type === 'message' && (r as any).message?.role === 'user');
+    if (userMsg) {
+      const text = (userMsg as any).message?.content;
+      const str = typeof text === 'string' ? text : Array.isArray(text) ? text.map((c: any) => c.text || '').join('') : '';
+      const lines = str.trim().split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#') && !l.startsWith('Complete assignment'));
+      if (lines.length > 0) {
+        return lines[0].slice(0, 60);
+      }
+    }
+    return undefined;
   } catch {
     return undefined;
   }

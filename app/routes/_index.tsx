@@ -109,8 +109,8 @@ async function buildRealFolders(folderRows: any[], archivedIds: Set<string>): Pr
 
   const data = await loadOmpSidebarData();
   const sessionsByRoot = groupSessionsByRoot(data.sessions);
-  const { existsSync } = await import('fs');
-  const { siblingDirForSession } = await import('@/lib/omp/subagent/history');
+  const { existsSync, readdirSync } = await import('fs');
+  const { siblingDirForSession, extractSubagentHistory } = await import('@/lib/omp/subagent/history');
 
   return folderRows.map((folder: any) => {
     const root = (folder.project_path as string | null) ?? '';
@@ -120,7 +120,14 @@ async function buildRealFolders(folderRows: any[], archivedIds: Set<string>): Pr
       if (session.path) {
         try {
           const siblingDir = siblingDirForSession(session.path);
-          hasSub = existsSync(siblingDir);
+          if (existsSync(siblingDir)) {
+            const files = readdirSync(siblingDir);
+            hasSub = files.some((f) => f.endsWith('.jsonl'));
+          }
+          if (!hasSub) {
+            const subs = extractSubagentHistory(session.path);
+            hasSub = subs.length > 0;
+          }
         } catch {
           hasSub = false;
         }

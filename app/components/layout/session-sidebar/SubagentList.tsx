@@ -6,7 +6,11 @@ import { fetchSubagentHistory, historyEntryToSubagentInfo } from '@/lib/omp/suba
 import { mergeSubagentRoster, parseSubagentLifecycle, parseSubagentProgress, parseSubagentRosterResponse } from '@/lib/omp/subagent/parse';
 import type { SubagentInfo, SubagentProgress } from '@/types';
 
-type SubagentListProps = { sessionId: string | number; isActiveSession: boolean };
+type SubagentListProps = {
+  sessionId: string | number;
+  isActiveSession: boolean;
+  onCountChange?: (count: number) => void;
+};
 
 type SubagentFrameDetail = { sessionId?: string; payload?: unknown };
 
@@ -41,11 +45,16 @@ function applyProgress(roster: SubagentInfo[], progress: SubagentProgress): Suba
  * Subagent roster nested under a session row: renders clean, readable subagent
  * items matching the minimalist sidebar layout while preserving interactive inspection.
  */
-export function SubagentList({ sessionId, isActiveSession }: SubagentListProps) {
+export function SubagentList({ sessionId, isActiveSession, onCountChange }: SubagentListProps) {
   const [searchParams] = useSearchParams();
   const viewedSubagentId = searchParams.get('subagent');
   const [subagents, setSubagents] = useState<SubagentInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Sync subagent count back to parent via effect to avoid set-state-in-render
+  useEffect(() => {
+    onCountChange?.(subagents.length);
+  }, [subagents.length, onCountChange]);
 
   // History pass: the roster floor for every session.
   useEffect(() => {
@@ -56,7 +65,8 @@ export function SubagentList({ sessionId, isActiveSession }: SubagentListProps) 
     void fetchSubagentHistory(sid)
       .then((entries) => {
         if (cancelled || !entries) return;
-        setSubagents((prev) => mergeSubagentRoster(prev, entries.map(historyEntryToSubagentInfo)));
+        const roster = entries.map(historyEntryToSubagentInfo);
+        setSubagents((prev) => mergeSubagentRoster(prev, roster));
       })
       .finally(() => { if (!cancelled) setIsLoading(false); });
     return () => { cancelled = true; };
@@ -75,7 +85,9 @@ export function SubagentList({ sessionId, isActiveSession }: SubagentListProps) 
 
     const onLifecycle = (event: Event) => {
       const entry = parseSubagentLifecycle(detailOf(event)?.payload);
-      if (entry) setSubagents((prev) => mergeSubagentRoster(prev, [entry]));
+      if (entry) {
+        setSubagents((prev) => mergeSubagentRoster(prev, [entry]));
+      }
     };
     const onProgress = (event: Event) => {
       const progress = readProgress(detailOf(event)?.payload);

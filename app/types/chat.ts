@@ -130,6 +130,18 @@ export interface ChatMessageData {
   actions?: (AgentActionData | ToolCallData)[];
   systemNote?: string;
   actions2?: (AgentActionData | ToolCallData)[];
+  attribution?: 'user' | 'agent' | string;
+  model?: string;
+  durationMs?: number;
+  usage?: {
+    input?: number;
+    output?: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+    totalTokens?: number;
+    reasoningTokens?: number;
+    cost?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; total?: number };
+  };
   summary?: string;
   monologue?: string;
   /** Provider/API error attached to an assistant turn (e.g. 401 auth failure). */

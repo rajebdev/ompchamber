@@ -29,23 +29,27 @@ export function ContextPanel({
     emptyTelemetry(sessionId || 'default', 'Session not started')
   );
 
-  const fetchContextTelemetry = () => {
+  useEffect(() => {
+    if (!enabled || typeof window === 'undefined') return;
+    let cancelled = false;
     const param = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : '';
+
     fetch(`/api/telemetry/context${param}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.telemetry) {
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data && data.telemetry) {
           setTelemetry(data.telemetry);
         }
       })
-      .catch(err => {
-        console.error('Failed to fetch context telemetry:', err);
+      .catch((err) => {
+        if (!cancelled) {
+          console.warn('Failed to fetch context telemetry:', err);
+        }
       });
-  };
 
-  useEffect(() => {
-    if (!enabled) return;
-    fetchContextTelemetry();
+    return () => {
+      cancelled = true;
+    };
   }, [sessionId, refreshKey, enabled]);
 
   if (!enabled) {

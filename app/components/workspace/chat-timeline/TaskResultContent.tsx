@@ -10,11 +10,12 @@ interface TaskResultContentProps {
 
 export function TaskResultContent({ task }: TaskResultContentProps) {
   const [copied, setCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState<'formatted' | 'raw'>(
-    task.structuredOutput ? 'formatted' : 'raw'
-  );
-
   const structured = task.structuredOutput;
+  const isRawCode = !task.formattedJson && isCodeLike(task.rawOutput);
+
+  const [activeTab, setActiveTab] = useState<'formatted' | 'raw'>(
+    structured || !isRawCode ? 'formatted' : 'raw'
+  );
 
   const handleCopy = () => {
     const textToCopy = task.formattedJson || task.rawOutput;
@@ -29,7 +30,7 @@ export function TaskResultContent({ task }: TaskResultContentProps) {
       {/* Top action toolbar / tab toggles */}
       <div className="flex items-center justify-between border-b border-ink/8 pb-2">
         <div className="flex items-center gap-1.5">
-          {structured && (
+          {(structured || !isRawCode) && (
             <button
               type="button"
               onClick={() => setActiveTab('formatted')}
@@ -40,7 +41,7 @@ export function TaskResultContent({ task }: TaskResultContentProps) {
               }`}
             >
               <Eye size={12} />
-              <span>Overview</span>
+              <span>{structured ? 'Overview' : 'Markdown'}</span>
             </button>
           )}
           <button
@@ -53,7 +54,7 @@ export function TaskResultContent({ task }: TaskResultContentProps) {
             }`}
           >
             <Code size={12} />
-            <span>{task.formattedJson ? 'Raw JSON' : 'Raw Output'}</span>
+            <span>{task.formattedJson ? 'Raw JSON' : isRawCode ? 'Code' : 'Raw Text'}</span>
           </button>
         </div>
 
@@ -77,74 +78,80 @@ export function TaskResultContent({ task }: TaskResultContentProps) {
         </button>
       </div>
 
-      {/* Tab: Formatted Structured View */}
-      {activeTab === 'formatted' && structured && (
-        <div className="space-y-3 text-[11.5px]">
-          {/* Summary Callout */}
-          {structured.summary && (
-            <div className="rounded-lg border border-ink/10 bg-canvas/60 p-2.5 leading-relaxed text-ink/90">
-              <span className="font-semibold text-ink">Summary: </span>
-              {structured.summary}
-            </div>
-          )}
-
-          {/* Architecture info */}
-          {structured.architecture && (
-            <div className="rounded-lg border border-ink/8 bg-paper p-2.5">
-              <div className="mb-1 flex items-center gap-1.5 font-mono text-[10px] font-semibold text-ink/70 uppercase tracking-wider">
-                <Layers size={11} className="text-ink/60" />
-                <span>Architecture</span>
+      {/* Tab: Formatted Structured View or Rich Markdown */}
+      {activeTab === 'formatted' && (
+        structured ? (
+          <div className="space-y-3 text-[11.5px]">
+            {/* Summary Callout */}
+            {structured.summary && (
+              <div className="rounded-lg border border-ink/10 bg-canvas/60 p-2.5 leading-relaxed text-ink/90">
+                <span className="font-semibold text-ink">Summary: </span>
+                {structured.summary}
               </div>
-              <p className="leading-relaxed text-ink/80">{structured.architecture}</p>
-            </div>
-          )}
+            )}
 
-          {/* Inspected Files List */}
-          {Array.isArray(structured.files) && structured.files.length > 0 && (
-            <div className="rounded-lg border border-ink/8 bg-paper p-2.5">
-              <div className="mb-2 flex items-center justify-between">
-                <div className="flex items-center gap-1.5 font-mono text-[10px] font-semibold text-ink/70 uppercase tracking-wider">
-                  <FileCode size={11} className="text-ink/60" />
-                  <span>Files Inspected</span>
+            {/* Architecture info */}
+            {structured.architecture && (
+              <div className="rounded-lg border border-ink/8 bg-paper p-2.5">
+                <div className="mb-1 flex items-center gap-1.5 font-mono text-[10px] font-semibold text-ink/70 uppercase tracking-wider">
+                  <Layers size={11} className="text-ink/60" />
+                  <span>Architecture</span>
                 </div>
-                <span className="rounded bg-ink/5 px-1.5 py-0.2 font-mono text-[9px] text-ink/50">
-                  {structured.files.length} items
-                </span>
+                <p className="leading-relaxed text-ink/80">{structured.architecture}</p>
               </div>
+            )}
 
-              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                {structured.files.map((file, idx) => (
-                  <div
-                    key={idx}
-                    className="flex flex-col justify-between rounded border border-ink/6 bg-canvas/40 p-1.5 transition-colors hover:border-ink/15"
-                  >
-                    <span className="font-mono text-[10.5px] font-medium text-ink truncate">
-                      {file.path}
-                    </span>
-                    {file.description && (
-                      <span className="text-[10px] text-ink/60 leading-tight line-clamp-2 mt-0.5">
-                        {file.description}
-                      </span>
-                    )}
+            {/* Inspected Files List */}
+            {Array.isArray(structured.files) && structured.files.length > 0 && (
+              <div className="rounded-lg border border-ink/8 bg-paper p-2.5">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-mono text-[10px] font-semibold text-ink/70 uppercase tracking-wider">
+                    <FileCode size={11} className="text-ink/60" />
+                    <span>Files Inspected</span>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+                  <span className="rounded bg-ink/5 px-1.5 py-0.2 font-mono text-[9px] text-ink/50">
+                    {structured.files.length} items
+                  </span>
+                </div>
 
-          {/* Markdown Report */}
-          {structured.report && (
-            <div className="rounded-lg border border-ink/8 bg-paper p-2.5">
-              <div className="mb-2 flex items-center gap-1.5 font-mono text-[10px] font-semibold text-ink/70 uppercase tracking-wider">
-                <FileText size={11} className="text-ink/60" />
-                <span>Report</span>
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                  {structured.files.map((file, idx) => (
+                    <div
+                      key={idx}
+                      className="flex flex-col justify-between rounded border border-ink/6 bg-canvas/40 p-1.5 transition-colors hover:border-ink/15"
+                    >
+                      <span className="font-mono text-[10.5px] font-medium text-ink truncate">
+                        {file.path}
+                      </span>
+                      {file.description && (
+                        <span className="text-[10px] text-ink/60 leading-tight line-clamp-2 mt-0.5">
+                          {file.description}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="max-h-72 overflow-auto rounded border border-ink/6 bg-canvas/30 p-2 text-ink/85 scrollbar-overlay-container">
-                <MarkdownRenderer content={structured.report} className="text-[11.5px] leading-relaxed" />
+            )}
+
+            {/* Markdown Report */}
+            {structured.report && (
+              <div className="rounded-lg border border-ink/8 bg-paper p-2.5">
+                <div className="mb-2 flex items-center gap-1.5 font-mono text-[10px] font-semibold text-ink/70 uppercase tracking-wider">
+                  <FileText size={11} className="text-ink/60" />
+                  <span>Report</span>
+                </div>
+                <div className="max-h-72 overflow-auto rounded border border-ink/6 bg-canvas/30 p-2 text-ink/85 scrollbar-overlay-container">
+                  <MarkdownRenderer content={structured.report} className="text-[11.5px] leading-relaxed" />
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-ink/8 bg-paper p-3 text-[11.5px] leading-relaxed text-ink/85 max-h-72 overflow-auto scrollbar-overlay-container">
+            <MarkdownRenderer content={task.rawOutput} />
+          </div>
+        )
       )}
 
       {/* Tab: Raw Code/JSON View */}
@@ -154,7 +161,7 @@ export function TaskResultContent({ task }: TaskResultContentProps) {
           dangerouslySetInnerHTML={{
             __html: highlightCode(
               task.formattedJson || task.rawOutput,
-              task.formattedJson ? 'json' : isCodeLike(task.rawOutput) ? 'javascript' : 'markdown'
+              task.formattedJson ? 'json' : isRawCode ? 'javascript' : 'markdown'
             ),
           }}
         />

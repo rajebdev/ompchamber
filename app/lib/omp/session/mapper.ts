@@ -67,6 +67,21 @@ export function toChatMessage(raw: Record<string, unknown>, streaming = true): C
   const timestamp = typeof raw.timestamp === 'number'
     ? new Date(raw.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
     : undefined;
+  const attribution = typeof raw.attribution === 'string' ? raw.attribution : undefined;
+
+  if (raw.role === 'developer' || raw.role === 'system' || parsed.textParts.some((t) => /<\/?system-reminder[^>]*>/i.test(t))) {
+    const rawText = parsed.textParts.join('\n').trim();
+    const notice = rawText.replace(/<\/?system-reminder[^>]*>/g, '').trim();
+    if (!notice) return null;
+    return {
+      id,
+      role: 'ai',
+      date: timestamp ? `Today, ${timestamp}` : undefined,
+      timestamp,
+      content: '',
+      notice,
+    };
+  }
 
   if (role === 'user') {
     const text = stripInlinedTextAttachments(extractText(parsed.textParts));
@@ -77,6 +92,7 @@ export function toChatMessage(raw: Record<string, unknown>, streaming = true): C
       date: timestamp ? `Today, ${timestamp}` : undefined,
       timestamp,
       content: text,
+      attribution,
       attachments: attachments.map((a) => ({ id: a.id, name: a.name, preview: a.preview, type: a.type })),
     };
   }
@@ -89,6 +105,10 @@ export function toChatMessage(raw: Record<string, unknown>, streaming = true): C
     role,
     date: timestamp ? `Today, ${timestamp}` : undefined,
     timestamp,
+    attribution,
+    model: typeof raw.model === 'string' ? raw.model : undefined,
+    durationMs: typeof raw.duration === 'number' ? raw.duration : typeof raw.durationMs === 'number' ? raw.durationMs : undefined,
+    usage: (raw.usage && typeof raw.usage === 'object') ? (raw.usage as ChatMessageData['usage']) : undefined,
     content: parsed.textParts.join('\n'),
     intent: parsed.intent,
     thinking: parsed.thinking
@@ -98,5 +118,18 @@ export function toChatMessage(raw: Record<string, unknown>, streaming = true): C
     summary: typeof raw.summary === 'string' ? raw.summary : undefined,
     error: raw.error as ChatMessageData['error'],
   };
+
+  if (
+    !message.content &&
+    !message.thinking &&
+    (!message.toolCalls || message.toolCalls.length === 0) &&
+    !message.intent &&
+    !message.error &&
+    !message.summary &&
+    !message.notice
+  ) {
+    return null;
+  }
+
   return message;
 }

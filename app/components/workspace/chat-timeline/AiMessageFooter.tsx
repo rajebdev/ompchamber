@@ -7,16 +7,29 @@ interface AiMessageFooterProps {
   currentModel: string;
   dateStr?: string;
   durationMs?: number | null;
+  usage?: {
+    input?: number;
+    output?: number;
+    totalTokens?: number;
+    reasoningTokens?: number;
+    cost?: { total?: number; input?: number; output?: number };
+  };
   content: string;
   msgId: string;
   onRetry?: (msgId: string) => void;
   onNewChat?: (content: string) => void;
 }
 
+function formatTokens(n: number | undefined): string {
+  if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return '';
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${Math.round(n)}`;
+}
+
 export function AiMessageFooter({
   currentModel,
   dateStr,
   durationMs,
+  usage,
   content,
   msgId,
   onRetry,
@@ -41,21 +54,28 @@ export function AiMessageFooter({
   };
 
   const formattedDuration = formatDuration(durationMs ?? 0);
+  const totalTok = usage?.totalTokens ?? ((usage?.input ?? 0) + (usage?.output ?? 0));
+  const tokensLabel = totalTok > 0 ? `${formatTokens(totalTok)} tok` : '';
+  const costLabel = usage?.cost?.total && usage.cost.total > 0
+    ? `$${usage.cost.total < 0.01 ? usage.cost.total.toFixed(4) : usage.cost.total.toFixed(3)}`
+    : '';
 
   return (
     <div className="w-full flex items-center flex-nowrap space-x-2.5 text-[11px] text-ink/60 px-1 pt-0.5 font-mono min-w-0 animate-in fade-in duration-200">
       {/* Model and Date / Time */}
       <div
         className="flex items-center space-x-1.5 border-r border-ink/15 pr-2.5 min-w-0 shrink overflow-hidden"
-        title={`${currentModel} • ${dateStr || 'Just now'}`}
+        title={`${currentModel || 'Assistant'} • ${dateStr || 'Just now'}${tokensLabel ? ` • ${tokensLabel}` : ''}${costLabel ? ` • ${costLabel}` : ''}`}
       >
         <div className="w-4 h-4 rounded flex items-center justify-center bg-ink text-canvas shadow-2xs shrink-0">
           <Bot size={10} />
         </div>
-        <span className="font-semibold text-ink truncate shrink">
-          {currentModel}
-        </span>
-        <span className="text-ink/40 shrink-0">•</span>
+        {currentModel && (
+          <span className="font-semibold text-ink truncate shrink">
+            {currentModel}
+          </span>
+        )}
+        {currentModel && dateStr && <span className="text-ink/40 shrink-0">•</span>}
         {dateStr && (
           <span className="text-ink/60 shrink-0 whitespace-nowrap">{dateStr}</span>
         )}
@@ -68,6 +88,14 @@ export function AiMessageFooter({
             >
               <Hourglass size={11} className="text-ink/50 flex-shrink-0" />
               <span>{formattedDuration}</span>
+            </span>
+          </>
+        )}
+        {tokensLabel && (
+          <>
+            <span className="text-ink/40 shrink-0 hidden sm:inline">•</span>
+            <span className="text-ink/60 shrink-0 whitespace-nowrap hidden sm:inline" title={usage?.cost?.total ? `${tokensLabel} (${costLabel})` : tokensLabel}>
+              {tokensLabel}
             </span>
           </>
         )}

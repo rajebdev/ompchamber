@@ -1,7 +1,18 @@
-import type { SubagentHistoryEntry } from '@/types/omp/subagent';
+import type { SubagentHistoryEntry, SubagentMessagesPage } from '@/types/omp/subagent';
+import {
+  SAMPLE_SCOUT_SUBAGENT_ID,
+  rawScoutSubagentEvents,
+  scoutSubagentHistoryEntry,
+  SAMPLE_SLEEPER_SUBAGENT_ID,
+  rawSleeperSubagentEvents,
+  sleeperSubagentHistoryEntry,
+  SAMPLE_SUBAGENT_SESSION_ID,
+} from '@/data/samples/subagent-session';
 
 export const MOCK_SUBAGENTS_MAP: Record<string, SubagentHistoryEntry[]> = {
   '1': [
+    scoutSubagentHistoryEntry,
+    sleeperSubagentHistoryEntry,
     {
       id: 'subagent-1',
       agent: 'Sisyphus',
@@ -10,7 +21,7 @@ export const MOCK_SUBAGENTS_MAP: Record<string, SubagentHistoryEntry[]> = {
       task: 'Client history merge + expand all (@Sisyphus)',
       assignment: 'Client history merge + expand all (@Sisyphus)',
       description: 'Client history merge + expand all (@Sisyphus)',
-      index: 0,
+      index: 1,
       durationMs: 120,
       cost: 0.0008,
       transcriptAvailable: true,
@@ -23,7 +34,7 @@ export const MOCK_SUBAGENTS_MAP: Record<string, SubagentHistoryEntry[]> = {
       task: 'Subagent history extractor + API (@Sisyphus)',
       assignment: 'Subagent history extractor + API (@Sisyphus)',
       description: 'Subagent history extractor + API (@Sisyphus)',
-      index: 1,
+      index: 2,
       durationMs: 95,
       cost: 0.0006,
       transcriptAvailable: true,
@@ -36,7 +47,7 @@ export const MOCK_SUBAGENTS_MAP: Record<string, SubagentHistoryEntry[]> = {
       task: 'look_at: Describe the subagent transcript view layout',
       assignment: 'look_at: Describe the subagent transcript view layout',
       description: 'look_at: Describe the subagent transcript view layout',
-      index: 2,
+      index: 3,
       durationMs: 80,
       cost: 0.0005,
       transcriptAvailable: true,
@@ -49,7 +60,7 @@ export const MOCK_SUBAGENTS_MAP: Record<string, SubagentHistoryEntry[]> = {
       task: 'look_at: Describe the left sidebar: is there a subagent tree',
       assignment: 'look_at: Describe the left sidebar: is there a subagent tree',
       description: 'look_at: Describe the left sidebar: is there a subagent tree',
-      index: 3,
+      index: 4,
       durationMs: 85,
       cost: 0.0005,
       transcriptAvailable: true,
@@ -62,7 +73,7 @@ export const MOCK_SUBAGENTS_MAP: Record<string, SubagentHistoryEntry[]> = {
       task: 'Sidebar expandable subagent list (@Sisyphus)',
       assignment: 'Sidebar expandable subagent list (@Sisyphus)',
       description: 'Sidebar expandable subagent list (@Sisyphus)',
-      index: 4,
+      index: 5,
       durationMs: 110,
       cost: 0.0007,
       transcriptAvailable: true,
@@ -75,7 +86,7 @@ export const MOCK_SUBAGENTS_MAP: Record<string, SubagentHistoryEntry[]> = {
       task: 'Subagent transcript view + hook (@Sisyphus)',
       assignment: 'Subagent transcript view + hook (@Sisyphus)',
       description: 'Subagent transcript view + hook (@Sisyphus)',
-      index: 5,
+      index: 6,
       durationMs: 140,
       cost: 0.0009,
       transcriptAvailable: true,
@@ -88,7 +99,7 @@ export const MOCK_SUBAGENTS_MAP: Record<string, SubagentHistoryEntry[]> = {
       task: 'Explore omp RPC bridge layer (@explore)',
       assignment: 'Explore omp RPC bridge layer (@explore)',
       description: 'Explore omp RPC bridge layer (@explore)',
-      index: 6,
+      index: 7,
       durationMs: 160,
       cost: 0.0011,
       transcriptAvailable: true,
@@ -101,7 +112,7 @@ export const MOCK_SUBAGENTS_MAP: Record<string, SubagentHistoryEntry[]> = {
       task: 'Explore chat timeline streaming (@explore)',
       assignment: 'Explore chat timeline streaming (@explore)',
       description: 'Explore chat timeline streaming (@explore)',
-      index: 7,
+      index: 8,
       durationMs: 130,
       cost: 0.0009,
       transcriptAvailable: true,
@@ -114,11 +125,14 @@ export const MOCK_SUBAGENTS_MAP: Record<string, SubagentHistoryEntry[]> = {
       task: 'Explore session sidebar structure (@explore)',
       assignment: 'Explore session sidebar structure (@explore)',
       description: 'Explore session sidebar structure (@explore)',
-      index: 8,
+      index: 9,
       durationMs: 90,
       cost: 0.0006,
       transcriptAvailable: true,
     },
+  ],
+  [SAMPLE_SUBAGENT_SESSION_ID]: [
+    scoutSubagentHistoryEntry,
   ],
   '3': [
     {
@@ -175,4 +189,32 @@ export function getMockSubagents(sessionId: string | number): SubagentHistoryEnt
 export function hasMockSubagents(sessionId: string | number): boolean {
   const list = getMockSubagents(sessionId);
   return list.length > 0;
+}
+
+export function getMockSubagentTranscriptPage(
+  subagentId: string,
+  _sessionId?: string | number,
+): SubagentMessagesPage | null {
+  if (subagentId === SAMPLE_SLEEPER_SUBAGENT_ID) {
+    return {
+      sessionFile: `/sample/${SAMPLE_SLEEPER_SUBAGENT_ID}.jsonl`,
+      fromByte: 0,
+      nextByte: 2048,
+      reset: false,
+      messages: rawSleeperSubagentEvents,
+      totalBytes: 2048,
+    };
+  }
+  // Return the scout subagent transcript events
+  if (subagentId === SAMPLE_SCOUT_SUBAGENT_ID || subagentId.startsWith('subagent-')) {
+    return {
+      sessionFile: `/sample/${SAMPLE_SCOUT_SUBAGENT_ID}.jsonl`,
+      fromByte: 0,
+      nextByte: 1024,
+      reset: false,
+      messages: rawScoutSubagentEvents,
+      totalBytes: 1024,
+    };
+  }
+  return null;
 }
