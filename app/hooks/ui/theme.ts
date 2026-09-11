@@ -16,6 +16,10 @@ export function useTheme() {
     const updateTheme = () => {
       const current = document.documentElement.dataset.theme || document.documentElement.getAttribute('data-theme') || 'paper';
       setThemeState(current);
+      const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+      if (metaThemeColor) {
+        metaThemeColor.setAttribute('content', current === 'one-dark-pro-soft' ? '#282c34' : '#faf8f3');
+      }
     };
 
     updateTheme();

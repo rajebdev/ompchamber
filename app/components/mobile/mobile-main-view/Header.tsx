@@ -38,10 +38,17 @@ export function MobileHeader({
   useOnClickOutside(telemetryRef, () => setShowTelemetry(false));
 
   return (
-    <header className="h-14 flex-shrink-0 bg-canvas border-b border-ink/10 flex items-center justify-between px-3 z-20">
+    <header 
+      className="h-14 flex-shrink-0 bg-canvas border-b border-ink/10 flex items-center justify-between px-3 z-20 titlebar-drag-region select-none"
+      style={{
+        paddingLeft: 'max(0.75rem, env(safe-area-inset-left, 0px), env(titlebar-area-x, 0px))',
+        paddingRight: 'max(0.75rem, env(safe-area-inset-right, 0px), calc(100vw - env(titlebar-area-width, 100vw)))',
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+      }}
+    >
       
       {/* Left: Hamburger button, App Title & Session Dropdown */}
-      <div className="flex items-center space-x-2 min-w-0">
+      <div className="flex items-center space-x-2 min-w-0 titlebar-no-drag">
         <button
           type="button"
           onClick={onOpenSessionSidebar}

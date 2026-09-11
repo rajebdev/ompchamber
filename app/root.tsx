@@ -61,12 +61,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <html lang="en" data-theme={data.theme}>
       <head>
         <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="theme-color" content="#faf8f3" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <meta name="theme-color" content={data.theme === 'one-dark-pro-soft' ? '#282c34' : '#faf8f3'} />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="OMPChamber" />
+        <title>OMPChamber</title>
         <Meta />
         <Links />
       </head>

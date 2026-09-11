@@ -237,3 +237,15 @@
 .prose-content .code-block code { font-family: 'Fira Code', monospace; font-size: 0.75rem; line-height: var(--markdown-code-block-line-height); }
 .prose-content .code-block pre code { background: transparent; text-shadow: none; }
 .prose-content .katex-display { overflow-x: auto; overflow-y: hidden; }
+
+/* PWA Window Controls Overlay and Native Titlebar Styling */
+.titlebar-drag-region {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.titlebar-no-drag {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+

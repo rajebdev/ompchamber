@@ -2,8 +2,15 @@ import { X } from 'lucide-react';
 
 export function MobileSessionHeader({ onClose }: { onClose: () => void }) {
   return (
-    <div className="h-14 border-b border-ink/10 flex items-center justify-between px-3.5 flex-shrink-0 bg-canvas">
-      <div className="flex items-center space-x-2.5">
+    <div 
+      className="h-14 border-b border-ink/10 flex items-center justify-between px-3.5 flex-shrink-0 bg-canvas titlebar-drag-region select-none"
+      style={{
+        paddingLeft: 'max(0.875rem, env(safe-area-inset-left, 0px), env(titlebar-area-x, 0px))',
+        paddingRight: 'max(0.875rem, env(safe-area-inset-right, 0px))',
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+      }}
+    >
+      <div className="flex items-center space-x-2.5 titlebar-no-drag">
         <span className="font-bold text-sm tracking-tight flex items-center">
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-500 font-extrabold text-[16px] tracking-tighter">OMP</span>
           <span className="ml-[1px] text-ink font-bold text-sm">Chamber</span>
@@ -15,7 +22,7 @@ export function MobileSessionHeader({ onClose }: { onClose: () => void }) {
       <button
         type="button"
         onClick={onClose}
-        className="w-9 h-9 rounded-xl hover:bg-ink/5 active:bg-ink/10 text-ink flex items-center justify-center transition-colors cursor-pointer"
+        className="w-9 h-9 rounded-xl hover:bg-ink/5 active:bg-ink/10 text-ink flex items-center justify-center transition-colors cursor-pointer titlebar-no-drag"
         title="Close sidebar"
         aria-label="Close sidebar"
       >

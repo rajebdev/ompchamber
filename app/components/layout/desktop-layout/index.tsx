@@ -190,7 +190,8 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
       <div className="flex flex-1 overflow-hidden">
         {!showLeftPanel && (
           <div 
-            className="w-12 h-full bg-paper border-r border-ink/10 flex flex-col items-center py-3 flex-shrink-0 cursor-pointer hover:bg-ink/5 transition-colors" 
+            className="w-12 h-full bg-paper border-r border-ink/10 flex flex-col items-center py-3 flex-shrink-0 cursor-pointer hover:bg-ink/5 transition-colors titlebar-no-drag" 
+            style={{ paddingTop: 'max(0.75rem, env(titlebar-area-height, 0px))' }}
             onClick={() => handleToggleLeftPanel(true)} 
             title="Expand Sidebar"
           >
