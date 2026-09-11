@@ -14,7 +14,7 @@ import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
 import { useScrollbarFade } from '@/hooks/ui/scrollbar-fade';
 import { EditorTabs } from '@/components/workspace/editor/Tabs';
 import { EditorToolbar } from '@/components/workspace/editor/Toolbar';
-import { getDefaultContent, getLanguage } from '@/components/workspace/editor/utils';
+import { getDefaultContent, getLanguage } from '@/lib/code/editor-utils';
 import { DiffPanel } from '@/components/workspace/diff-panel';
 import { useSessionState } from '@/hooks/workspace/session-state';
 import { useSessionStateContext } from '@/hooks/workspace/session-state/context';
