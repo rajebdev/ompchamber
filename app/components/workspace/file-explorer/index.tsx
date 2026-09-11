@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { Search, RefreshCw } from 'lucide-react';
-import { setChildrenAt, rehydrateTree } from '@/components/workspace/file-explorer/tree-utils';
+import { setChildrenAt, rehydrateTree } from '@/lib/fs/file-tree';
 import { GitRepoDropdown } from '@/components/workspace/file-explorer/GitRepoDropdown';
 import { FileTreeItem } from '@/components/workspace/file-explorer/TreeItem';
 import { useScrollbarFade } from '@/hooks/ui/scrollbar-fade';
