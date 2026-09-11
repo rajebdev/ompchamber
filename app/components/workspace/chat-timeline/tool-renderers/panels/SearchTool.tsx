@@ -42,6 +42,15 @@ function parseGrepOutput(output: string): { files: ParsedFileMatches[]; totalMat
     const trimmed = rawLine.trimEnd();
     if (!trimmed) continue;
 
+    // Filter out pagination/limit notices (e.g. "[20 results limit reached...]", "Showing files 1-20 of 41...")
+    if (
+      (trimmed.startsWith('[') && trimmed.endsWith(']')) ||
+      /^Showing files \d+/i.test(trimmed) ||
+      /^Found \d+ matches/i.test(trimmed)
+    ) {
+      continue;
+    }
+
     // 1. Detect standard ripgrep format: "path/to/file.tsx:18:code" or "path/to/file.tsx:18:5:code"
     const standardRgMatch = trimmed.match(/^([^:\n]+(?:\.[a-zA-Z0-9_-]+|\/[^:\n]+)):(\d+)(?::\d+)?:(.*)$/);
     if (standardRgMatch) {
@@ -108,8 +117,8 @@ function parseGrepOutput(output: string): { files: ParsedFileMatches[]; totalMat
       continue;
     }
 
-    // 3. Match code line format: " 18|..." or "*19|..." or "18:..."
-    const codeMatch = trimmed.match(/^(\*?)(\s*\d+)[|:](.*)$/);
+    // 3. Match code line format: " 18|..." or "*19|..." or "18:..." or "18│..." (unicode \u2502)
+    const codeMatch = trimmed.match(/^(\*?)(\s*\d+)[|:\u2502](.*)$/);
     if (codeMatch) {
       isGlobList = false;
       const isMatch = codeMatch[1] === '*';
@@ -128,7 +137,7 @@ function parseGrepOutput(output: string): { files: ParsedFileMatches[]; totalMat
 
     // 4. Handle plain file list output (glob format)
     if (!trimmed.startsWith('#') && !codeMatch) {
-      if (trimmed.includes('|') || trimmed.includes(':')) {
+      if (trimmed.includes('|') || trimmed.includes(':') || trimmed.includes('\u2502')) {
         isGlobList = false;
       }
       const fullDir = dirStack.filter(Boolean).join('');
@@ -153,7 +162,8 @@ function parseGrepOutput(output: string): { files: ParsedFileMatches[]; totalMat
 export function SearchTool({ tool }: { tool: ToolCallData }) {
   const [copied, setCopied] = useState(false);
   const [filterText, setFilterText] = useState('');
-  const output = tool.output || '';
+  const details = (tool.details ?? {}) as Record<string, any>;
+  const output = tool.output || (typeof details.displayContent === 'string' ? details.displayContent : '');
   const query = queryOf(tool);
   const isGlob = tool.type === 'glob' || tool.name === 'glob';
 

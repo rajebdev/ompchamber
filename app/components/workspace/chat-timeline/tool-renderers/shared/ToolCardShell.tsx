@@ -14,28 +14,38 @@ interface ToolCardShellProps {
   children?: ReactNode;
 }
 
-function statusDot(status: ToolCallData['status'], synthetic: boolean) {
+function isSkippedTool(tool: ToolCallData): boolean {
+  if (tool.synthetic === true || tool.status === 'skipped' || tool.status === 'aborted') return true;
+  const details = tool.details as Record<string, any> | undefined;
+  if (details?.__synthetic === true || details?.source === 'assistant_stop_skipped' || details?.executed === false) {
+    return true;
+  }
+  return false;
+}
+
+function statusDot(status: ToolCallData['status'], isSkipped: boolean) {
   const base = 'h-1.5 w-1.5 rounded-full';
   if (status === 'running') return <span className={`${base} bg-ink/60 animate-pulse`} />;
+  if (isSkipped) return <span className={`${base} bg-ink/30`} />;
   if (status === 'error') return <span className={`${base} bg-error`} />;
-  if (synthetic || status === 'aborted' || status === 'skipped') return <span className={`${base} bg-ink/30`} />;
   return <span className={`${base} bg-success`} />;
 }
 
 function statusBadge(tool: ToolCallData) {
+  const isSkipped = isSkippedTool(tool);
+  if (isSkipped) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-ink/8 px-2 py-0.5 text-[10px] font-semibold text-ink/50">
+        <CircleSlash size={10} /> Skipped
+      </span>
+    );
+  }
+
   const status = tool.status || (tool.error ? 'error' : 'success');
-  const synthetic = tool.synthetic === true;
   if (status === 'error') {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-error/10 px-2 py-0.5 text-[10px] font-semibold text-error">
         <AlertCircle size={10} /> Failed
-      </span>
-    );
-  }
-  if (synthetic || status === 'aborted' || status === 'skipped') {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-ink/8 px-2 py-0.5 text-[10px] font-semibold text-ink/50">
-        <CircleSlash size={10} /> {status === 'skipped' ? 'Skipped' : 'Aborted'}
       </span>
     );
   }
@@ -77,14 +87,18 @@ export function ToolCardShell({
     else setInternalIsOpen((prev) => !prev);
   };
 
+  const isSkipped = isSkippedTool(tool);
+
   return (
     <div
       className={`group overflow-hidden rounded-xl border transition-all duration-200 ${
-        status === 'error'
+        status === 'error' && !isSkipped
           ? 'border-error/25 bg-error/[0.03]'
           : isRunning
             ? 'border-ink/15 bg-paper'
-            : 'border-ink/10 bg-paper hover:border-ink/20'
+            : isSkipped
+              ? 'border-dashed border-ink/15 bg-paper/60 opacity-80'
+              : 'border-ink/10 bg-paper hover:border-ink/20'
       } ${isExpanded ? 'shadow-sm' : ''}`}
     >
       <button
@@ -98,7 +112,7 @@ export function ToolCardShell({
       >
         <span
           className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors ${
-            status === 'error'
+            status === 'error' && !isSkipped
               ? 'bg-error/10 text-error'
               : isRunning
                 ? 'bg-ink/8 text-ink'
@@ -111,7 +125,7 @@ export function ToolCardShell({
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex items-center gap-1.5">
             <span className="truncate text-[12px] font-semibold tracking-tight text-ink">{title}</span>
-            {statusDot(status, tool.synthetic === true)}
+            {statusDot(status, isSkipped)}
           </span>
           {subtitle && (
             <span className="truncate font-mono text-[10.5px] text-ink/45">{subtitle}</span>

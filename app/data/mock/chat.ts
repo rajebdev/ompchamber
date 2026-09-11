@@ -1,6 +1,9 @@
 import type { ChatMessageData } from '@/types';
 import { getSampleToolsSession, SAMPLE_TOOLS_SESSION_ID } from '@/data/samples/tools-session';
 import { getSampleDialogueSession, SAMPLE_DIALOGUE_SESSION_ID } from '@/data/samples/dialogue-session';
+import { getSampleDevicesSession, SAMPLE_DEVICES_SESSION_ID } from '@/data/samples/virtual-devices-session';
+
+export { SAMPLE_DEVICES_SESSION_ID };
 
 export function getSessionData(sessionId: string | null) {
   if (!sessionId) return null;
@@ -11,6 +14,10 @@ export function getSessionData(sessionId: string | null) {
 
   if (sessionId === SAMPLE_DIALOGUE_SESSION_ID || sessionId === '2' || sessionId === 'dialogue') {
     return getSampleDialogueSession();
+  }
+
+  if (sessionId === SAMPLE_DEVICES_SESSION_ID || sessionId === '3' || sessionId === 'devices' || sessionId === 'virtual-devices') {
+    return getSampleDevicesSession();
   }
 
   const id = parseInt(sessionId, 10) || 1;

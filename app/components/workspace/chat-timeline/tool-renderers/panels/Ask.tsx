@@ -59,7 +59,10 @@ export function Ask({ tool }: { tool: ToolCallData }) {
     return '';
   }, [tool.output, inputObj?.answer]);
 
-  const isCancelled = typeof rawOutput === 'string' && /cancelled|aborted|interrupted/i.test(rawOutput);
+  const isCancelled =
+    (typeof rawOutput === 'string' && /cancelled|aborted|interrupted|disconnected/i.test(rawOutput)) ||
+    tool.status === 'aborted' ||
+    (tool.status === 'error' && typeof rawOutput === 'string' && /disconnect|error/i.test(rawOutput));
 
   // Extract selected answer if e.g. "User selected: Blue"
   const selectedMatch = typeof rawOutput === 'string' ? rawOutput.match(/selected:\s*(.+)$/i) : null;

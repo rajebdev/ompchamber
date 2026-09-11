@@ -5,15 +5,20 @@ import type { ToolCallData } from '@/types';
 interface HubItem {
   id?: unknown;
   name?: unknown;
+  label?: unknown;
+  type?: unknown;
   status?: unknown;
   state?: unknown;
   task?: unknown;
   message?: unknown;
+  durationMs?: unknown;
+  resolvedModel?: unknown;
+  resultText?: unknown;
 }
 
 function itemStatus(item: HubItem): 'running' | 'done' | 'failed' | 'idle' {
   const s = typeof item.status === 'string' ? item.status.toLowerCase() : typeof item.state === 'string' ? item.state.toLowerCase() : '';
-  if (s === 'running' || s === 'started') return 'running';
+  if (s === 'running' || s === 'started' || s === 'pending') return 'running';
   if (s === 'done' || s === 'completed' || s === 'success') return 'done';
   if (s === 'failed' || s === 'error') return 'failed';
   return 'idle';
@@ -28,11 +33,47 @@ const STATUS_STYLES = {
 
 /** Panel untuk tool `hub` — proses background, dev servers, atau job list. */
 export function Hub({ tool }: { tool: ToolCallData }) {
-  const details = tool.details ?? {};
-  const items: HubItem[] = Array.isArray(details.items) ? details.items : [];
+  const details = (tool.details ?? {}) as Record<string, any>;
+  const rawJobs = Array.isArray(details.jobs) ? details.jobs : Array.isArray(details.items) ? details.items : [];
+  const items: HubItem[] = rawJobs;
   const input = tool.input;
   const inputObj = typeof input === 'object' && input !== null ? (input as Record<string, any>) : undefined;
   const output = tool.output || '';
+
+  // Detect op: "wait"
+  if (inputObj?.op === 'wait') {
+    const ids: string[] = Array.isArray(inputObj.ids) ? inputObj.ids : [];
+    const timeout = typeof inputObj.timeoutMs === 'number' ? `${Math.round(inputObj.timeoutMs / 1000)}s` : undefined;
+    return (
+      <div className="rounded-lg border border-ink/8 bg-paper p-3 text-[11.5px]">
+        <div className="flex items-center justify-between border-b border-ink/6 pb-2">
+          <div className="flex items-center gap-2">
+            <Radio size={13} className="text-ink/60" />
+            <span className="font-mono font-semibold text-ink">Hub Wait</span>
+            <span className="rounded bg-ink/5 px-1.5 py-0.2 font-mono text-[9px] uppercase tracking-wider text-ink/50">
+              job wait
+            </span>
+          </div>
+          {timeout && (
+            <span className="font-mono text-[9.5px] text-ink/40">timeout: {timeout}</span>
+          )}
+        </div>
+        <div className="pt-2">
+          <span className="text-[9.5px] font-semibold uppercase tracking-wider text-ink/40">
+            Waiting for Job IDs
+          </span>
+          <div className="mt-1 flex flex-wrap gap-1.5 font-mono text-[10.5px]">
+            {ids.map((id, i) => (
+              <span key={i} className="rounded bg-ink/5 px-2 py-0.5 text-ink/80">
+                {id}
+              </span>
+            ))}
+          </div>
+        </div>
+        {output && <div className="mt-2 text-ink/65">{output}</div>}
+      </div>
+    );
+  }
 
   // Detect process management mode (e.g. op: "start", name: "ompchamber", application: "bun")
   const processInfo = useMemo(() => {
@@ -157,8 +198,12 @@ export function Hub({ tool }: { tool: ToolCallData }) {
       <div className="divide-y divide-ink/6 bg-canvas/40 py-1">
         {items.map((item, index) => {
           const status = itemStatus(item);
-          const name = typeof item.name === 'string' ? item.name : typeof item.id === 'string' ? item.id : `job-${index}`;
-          const task = typeof item.task === 'string' ? item.task : typeof item.message === 'string' ? item.message : '';
+          const name = typeof item.id === 'string' ? item.id : typeof item.name === 'string' ? item.name : `job-${index}`;
+          const label = typeof item.label === 'string' ? item.label : typeof item.task === 'string' ? item.task : typeof item.message === 'string' ? item.message : '';
+          const type = typeof item.type === 'string' ? item.type : undefined;
+          const duration = typeof item.durationMs === 'number' ? `${(item.durationMs / 1000).toFixed(1)}s` : undefined;
+          const model = typeof item.resolvedModel === 'string' ? item.resolvedModel : undefined;
+
           return (
             <div key={index} className="flex items-center gap-2 px-3 py-1.5 text-[11.5px]">
               {status === 'running' ? (
@@ -168,8 +213,21 @@ export function Hub({ tool }: { tool: ToolCallData }) {
               ) : (
                 <Play size={11} className="shrink-0 text-ink/40" />
               )}
-              <span className="shrink-0 font-mono text-[10px] font-semibold text-ink/70">{name}</span>
-              <span className="min-w-0 flex-1 truncate text-ink/80">{task}</span>
+              <span className="shrink-0 font-mono text-[10px] font-semibold text-ink/80">{name}</span>
+              {type && (
+                <span className="rounded bg-ink/5 px-1 py-0.2 font-mono text-[8.5px] uppercase tracking-wider text-ink/45">
+                  {type}
+                </span>
+              )}
+              <span className="min-w-0 flex-1 truncate text-ink/85">{label}</span>
+              {model && (
+                <span className="hidden sm:inline-block font-mono text-[9px] text-ink/40 truncate max-w-[120px]">
+                  {model}
+                </span>
+              )}
+              {duration && (
+                <span className="font-mono text-[9px] text-ink/40">{duration}</span>
+              )}
               <span className={`shrink-0 rounded-full px-1.5 py-px font-mono text-[9px] ${STATUS_STYLES[status]}`}>
                 {status}
               </span>

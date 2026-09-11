@@ -17,6 +17,7 @@ import {
   Camera,
   GitPullRequest,
   Brain,
+  Cpu,
 } from 'lucide-react';
 import type { ToolCallData } from '@/types';
 import { copyToClipboard } from '@/hooks/ui/clipboard';
@@ -66,6 +67,11 @@ function getToolIcon(key: string) {
       return <ListTodo size={14} />;
     case 'eval':
       return <Code2 size={14} />;
+    case 'lsp':
+      return <Cpu size={14} />;
+    case 'resolve':
+    case 'reject':
+      return <Check size={14} />;
     case 'hub':
       return <Server size={14} />;
     case 'ask':
@@ -169,7 +175,23 @@ export function ToolCallCard({ tool, isOpen, onToggle, defaultExpanded = false }
   let displayTitle = '';
   let displaySubtitle: string | undefined;
 
-  if (tool.title && (tool.title.includes('—') || tool.title.includes(' - ') || tool.title.includes(': '))) {
+  if (toolKey === 'lsp') {
+    displayTitle = 'LSP';
+    const xdev = (tool.details as any)?.xdev;
+    if (xdev?.args?.action) {
+      displaySubtitle = `${xdev.args.action}${xdev.args.file ? ` · ${xdev.args.file}` : ''}`;
+    }
+  } else if (toolKey === 'ast_edit') {
+    displayTitle = 'AST Edit';
+    const xdev = (tool.details as any)?.xdev;
+    if (xdev?.args?.paths?.[0]) {
+      displaySubtitle = xdev.args.paths[0];
+    }
+  } else if (toolKey === 'resolve') {
+    displayTitle = 'Resolve Proposal';
+  } else if (toolKey === 'reject') {
+    displayTitle = 'Reject Proposal';
+  } else if (tool.title && (tool.title.includes('—') || tool.title.includes(' - ') || tool.title.includes(': '))) {
     const parts = tool.title.split(/\s+[—\-:]\s+/);
     displayTitle = toTitleCase(parts[0].trim());
     displaySubtitle = parts.slice(1).join(' — ').trim();
@@ -189,7 +211,12 @@ export function ToolCallCard({ tool, isOpen, onToggle, defaultExpanded = false }
   }
 
   const targetFilePath = resolveTargetFile(tool);
-  const subtitle = displaySubtitle || targetFilePath || (tool.detail && !targetFilePath ? tool.detail : undefined);
+  const subtitle =
+    displaySubtitle && !displaySubtitle.startsWith('xd://')
+      ? displaySubtitle
+      : targetFilePath && !targetFilePath.startsWith('xd://')
+        ? targetFilePath
+        : displaySubtitle || (tool.detail && !targetFilePath ? tool.detail : undefined);
 
   const meta = tool.duration || tool.time ? (
     <span className="font-mono text-[10px] text-ink/40">{tool.duration || tool.time}</span>

@@ -16,6 +16,7 @@ import { Memory } from '@/components/workspace/chat-timeline/tool-renderers/pane
 import { Debug } from '@/components/workspace/chat-timeline/tool-renderers/panels/Debug';
 import { Goal } from '@/components/workspace/chat-timeline/tool-renderers/panels/Goal';
 import { AstEdit } from '@/components/workspace/chat-timeline/tool-renderers/panels/AstEdit';
+import { Resolve } from '@/components/workspace/chat-timeline/tool-renderers/panels/Resolve';
 import { ManageSkill } from '@/components/workspace/chat-timeline/tool-renderers/panels/ManageSkill';
 import { SearchFs } from '@/components/workspace/chat-timeline/tool-renderers/panels/SearchFs';
 import { Ask } from '@/components/workspace/chat-timeline/tool-renderers/panels/Ask';
@@ -47,6 +48,23 @@ function resolveTargetFile(tool: ToolCallData): string | undefined {
 }
 
 export function resolveToolKey(tool: ToolCallData): string {
+  // 1. Detect oh-my-pi virtual device calls (e.g. xd://lsp, xd://ast_edit, xd://resolve)
+  const details = tool.details as Record<string, any> | undefined;
+  if (details?.xdev?.tool && typeof details.xdev.tool === 'string') {
+    return details.xdev.tool.toLowerCase();
+  }
+
+  const rawTarget = (tool.target || '').toLowerCase();
+  const inputPath = typeof tool.input === 'object' && tool.input !== null && typeof (tool.input as any).path === 'string'
+    ? ((tool.input as any).path as string).toLowerCase()
+    : '';
+
+  const xdTarget = rawTarget.startsWith('xd://') ? rawTarget.slice(5) : inputPath.startsWith('xd://') ? inputPath.slice(5) : '';
+  if (xdTarget) {
+    const dev = xdTarget.split(/[/?#]/)[0].trim();
+    if (dev) return dev;
+  }
+
   const rawName = (tool.name || '').toLowerCase();
   const rawType = (tool.type || '').toLowerCase();
   const rawTitle = (tool.title || '').toLowerCase();
@@ -58,7 +76,7 @@ export function resolveToolKey(tool: ToolCallData): string {
 
   // Check title prefix if e.g. "grep — .", "read — app/...", "write — app/..."
   const titlePrefix = rawTitle.split(/[\s—\-:]+/)[0]?.trim();
-  if (['grep', 'glob', 'read', 'write', 'edit', 'bash', 'terminal', 'run_command', 'todo', 'eval', 'hub', 'lsp', 'github', 'task'].includes(titlePrefix)) {
+  if (['grep', 'glob', 'read', 'write', 'edit', 'bash', 'terminal', 'run_command', 'todo', 'eval', 'hub', 'lsp', 'github', 'task', 'resolve', 'reject'].includes(titlePrefix)) {
     return titlePrefix;
   }
 
@@ -102,6 +120,7 @@ export function ToolDetailsPanel({ tool }: { tool: ToolCallData }): ReactNode {
   if (key === 'eval') return <Eval tool={tool} />;
   if (key === 'lsp') return <Lsp tool={tool} />;
   if (key === 'ast_edit') return <AstEdit tool={tool} />;
+  if (key === 'resolve' || key === 'reject') return <Resolve tool={tool} />;
 
   // System, Process & Management
   if (key === 'hub') return <Hub tool={tool} />;

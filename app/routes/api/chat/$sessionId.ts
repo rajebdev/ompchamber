@@ -89,7 +89,20 @@ export async function loader({ params }: LoaderFunctionArgs) {
     }
 
     const db = await getDb();
-    const existing = await db.get('SELECT * FROM chat_sessions WHERE session_id = ?', [sessionId]);
+    let existing = await db.get('SELECT * FROM chat_sessions WHERE session_id = ?', [sessionId]);
+
+    if (!existing && mock) {
+      const metaSession = await db.get('SELECT title FROM sessions WHERE id = ?', [sessionId]);
+      if (metaSession?.title) {
+        if (metaSession.title.includes('38 Tools Showcase')) {
+          existing = await db.get('SELECT * FROM chat_sessions WHERE session_id = ?', ['1']);
+        } else if (metaSession.title.includes('Dialogue Sample')) {
+          existing = await db.get('SELECT * FROM chat_sessions WHERE session_id = ?', ['2']);
+        } else if (metaSession.title.includes('Virtual Devices') || metaSession.title.includes('Oh-My-Pi Sample')) {
+          existing = await db.get('SELECT * FROM chat_sessions WHERE session_id = ?', ['3']);
+        }
+      }
+    }
 
     if (existing) {
       let parsedMessages = [];

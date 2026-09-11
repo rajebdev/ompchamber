@@ -156,39 +156,42 @@ export async function getDb(): Promise<Database> {
 
       // Seed specific sessions matching screenshot 2 if not present
       const existingChats = await db.all("SELECT * FROM sessions WHERE folder_id = 1");
+      const title1 = 'call tool all of this (38 Tools Showcase)';
+      const title2 = 'Deployment & Repo Summarizer (Dialogue Sample)';
+      const title3 = 'Virtual Devices & Diagnostic Chamber (Oh-My-Pi Sample)';
       if (existingChats.length === 0) {
-        await db.run("INSERT INTO sessions (folder_id, title, is_active) VALUES (1, 'call tool all of this (38 Tools Showcase)', 1)");
-        await db.run("INSERT INTO sessions (folder_id, title, is_active) VALUES (1, 'Deployment & Repo Summarizer (Dialogue Sample)', 0)");
+        await db.run("INSERT INTO sessions (folder_id, title, is_active) VALUES (1, ?, 1)", [title1]);
+        await db.run("INSERT INTO sessions (folder_id, title, is_active) VALUES (1, ?, 0)", [title2]);
+        await db.run("INSERT INTO sessions (folder_id, title, is_active) VALUES (1, ?, 0)", [title3]);
       } else {
-        await db.run("UPDATE sessions SET title = 'call tool all of this (38 Tools Showcase)' WHERE id = 1");
-        await db.run("UPDATE sessions SET title = 'Deployment & Repo Summarizer (Dialogue Sample)' WHERE id = 2");
+        await db.run("UPDATE sessions SET title = ? WHERE id = 1", [title1]);
+        await db.run("UPDATE sessions SET title = ? WHERE id = 2", [title2]);
+        const s3 = await db.get("SELECT id FROM sessions WHERE folder_id = 1 AND (id = 3 OR title = ?)", [title3]);
+        if (!s3) {
+          await db.run("INSERT INTO sessions (folder_id, title, is_active) VALUES (1, ?, 0)", [title3]);
+        }
       }
 
       // Pre-seed sample sessions data
       try {
         const { getSampleToolsSession, SAMPLE_TOOLS_SESSION_ID } = await import('@/data/samples/tools-session');
-        const sample = getSampleToolsSession();
-        const jsonStr = JSON.stringify(sample.messages);
-        await db.run(
-          'INSERT OR REPLACE INTO chat_sessions (session_id, title, messages, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)',
-          ['1', sample.title, jsonStr]
-        );
-        await db.run(
-          'INSERT OR REPLACE INTO chat_sessions (session_id, title, messages, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)',
-          [SAMPLE_TOOLS_SESSION_ID, sample.title, jsonStr]
-        );
+        const s1 = getSampleToolsSession();
+        await db.run('INSERT OR REPLACE INTO chat_sessions (session_id, title, messages, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)', ['1', s1.title, JSON.stringify(s1.messages)]);
+        await db.run('INSERT OR REPLACE INTO chat_sessions (session_id, title, messages, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)', [SAMPLE_TOOLS_SESSION_ID, s1.title, JSON.stringify(s1.messages)]);
 
         const { getSampleDialogueSession, SAMPLE_DIALOGUE_SESSION_ID } = await import('@/data/samples/dialogue-session');
-        const sample2 = getSampleDialogueSession();
-        const jsonStr2 = JSON.stringify(sample2.messages);
-        await db.run(
-          'INSERT OR REPLACE INTO chat_sessions (session_id, title, messages, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)',
-          ['2', sample2.title, jsonStr2]
-        );
-        await db.run(
-          'INSERT OR REPLACE INTO chat_sessions (session_id, title, messages, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)',
-          [SAMPLE_DIALOGUE_SESSION_ID, sample2.title, jsonStr2]
-        );
+        const s2 = getSampleDialogueSession();
+        await db.run('INSERT OR REPLACE INTO chat_sessions (session_id, title, messages, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)', ['2', s2.title, JSON.stringify(s2.messages)]);
+        await db.run('INSERT OR REPLACE INTO chat_sessions (session_id, title, messages, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)', [SAMPLE_DIALOGUE_SESSION_ID, s2.title, JSON.stringify(s2.messages)]);
+
+        const { getSampleDevicesSession, SAMPLE_DEVICES_SESSION_ID } = await import('@/data/samples/virtual-devices-session');
+        const s3 = getSampleDevicesSession();
+        await db.run('INSERT OR REPLACE INTO chat_sessions (session_id, title, messages, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)', ['3', s3.title, JSON.stringify(s3.messages)]);
+        await db.run('INSERT OR REPLACE INTO chat_sessions (session_id, title, messages, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)', [SAMPLE_DEVICES_SESSION_ID, s3.title, JSON.stringify(s3.messages)]);
+        const s3Row = await db.get("SELECT id FROM sessions WHERE folder_id = 1 AND title = ?", [title3]);
+        if (s3Row) {
+          await db.run('INSERT OR REPLACE INTO chat_sessions (session_id, title, messages, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)', [String(s3Row.id), s3.title, JSON.stringify(s3.messages)]);
+        }
       } catch (e) {
         console.error('Failed to pre-seed sample sessions:', e);
       }
