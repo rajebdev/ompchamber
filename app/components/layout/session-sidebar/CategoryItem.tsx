@@ -1,13 +1,37 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, type MouseEvent } from 'react';
 import { Plus, MoreHorizontal, Pin, PinOff, Trash2, Archive, ArchiveRestore, Loader2, Check, Folder, ChevronDown, ChevronRight } from 'lucide-react';
 import { useFetcher, useRevalidator } from '@remix-run/react';
 import { useOnClickOutside } from '@/hooks/ui/on-click-outside';
+import { SubagentList } from '@/components/layout/session-sidebar/SubagentList';
+import { loadExpandedSessionIds, saveExpandedSessionIds } from '@/lib/workspace/sidebar-expanded';
 
-export function SessionItem({ title, isActive = false, isArchived = false, status, onClick, onArchive }: { title: string, isActive?: boolean, isArchived?: boolean, status?: 'processing' | 'done', onClick?: () => void, onArchive?: () => void }) {
+export function SessionItem({ title, isActive = false, isArchived = false, status, onClick, onArchive, expandable = false, isExpanded = false, hasSubagents = false, onToggleExpand }: {
+  title: string;
+  isActive?: boolean;
+  isArchived?: boolean;
+  status?: 'processing' | 'done';
+  onClick?: () => void;
+  onArchive?: () => void;
+  expandable?: boolean;
+  isExpanded?: boolean;
+  hasSubagents?: boolean;
+  onToggleExpand?: (e: MouseEvent) => void;
+}) {
   return (
     <div
-      className={`group/item flex items-center rounded cursor-pointer ${isActive ? 'bg-ink/10 font-medium text-ink' : 'text-ink/60'}`}
+      className={`group/item flex items-center rounded cursor-pointer pl-1.5 ${isActive ? 'bg-ink/10 font-medium text-ink' : 'text-ink/60'}`}
     >
+      {expandable && hasSubagents && onToggleExpand && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onToggleExpand(e); }}
+          title={isExpanded ? 'Collapse subagents' : 'Expand subagents'}
+          aria-expanded={isExpanded}
+          className="flex-shrink-0 p-0.5 mr-1 text-ink/35 hover:text-ink rounded cursor-pointer"
+        >
+          {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        </button>
+      )}
       <div className="w-[14px] flex-shrink-0 flex items-center justify-center">
         {status === 'processing' && (
           <Loader2 size={12} className="text-ink/50 animate-spin" />
@@ -16,7 +40,7 @@ export function SessionItem({ title, isActive = false, isArchived = false, statu
           <Check size={12} className="text-ink/50" />
         )}
       </div>
-      <div 
+      <div
         onClick={onClick}
         className={`flex-1 text-xs truncate px-1.5 py-1.5 ${isActive ? '' : 'hover:text-ink/80'}`}
       >
@@ -57,6 +81,13 @@ export function Category({
   const [showMenu, setShowMenu] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [visibleCount, setVisibleCount] = useState(5);
+  // Sidebar-level (cross-session) UI state, persisted by the helper. Starts
+  // empty so SSR/client render identically; localStorage is read post-mount
+  // (a lazy initializer would read it during hydration and mismatch).
+  const [expandedSessionIds, setExpandedSessionIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    setExpandedSessionIds(loadExpandedSessionIds());
+  }, []);
   const menuRef = useRef<HTMLDivElement>(null);
   const toggleFetcher = useFetcher();
   const pinFetcher = useFetcher();
@@ -83,6 +114,16 @@ export function Category({
       { isExpanded: String(nextState) },
       { method: 'POST', action: `/api/folders/${folder.id}/toggle` }
     );
+  };
+
+  const handleToggleSessionExpand = (sessionId: string) => {
+    setExpandedSessionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(sessionId)) next.delete(sessionId);
+      else next.add(sessionId);
+      saveExpandedSessionIds(next);
+      return next;
+    });
   };
 
   const handlePin = () => {
@@ -128,7 +169,7 @@ export function Category({
   return (
     <div className="space-y-1">
       <div 
-        className="group flex items-center justify-between text-[13px] font-semibold text-ink/90 px-1 py-0.5 hover:bg-ink/5 rounded transition-colors"
+        className="group flex items-center justify-between text-[13px] font-semibold text-ink/90 px-1 py-0.5 pl-1.5 hover:bg-ink/5 rounded transition-colors"
       >
         <div className="flex-1 flex items-center space-x-1.5 cursor-pointer" onClick={handleToggle}>
           <Folder size={14} className={`flex-shrink-0 group-hover:hidden ${isActuallyOpen ? 'text-ink' : 'text-ink/50'}`} />
@@ -184,22 +225,33 @@ export function Category({
       </div>
       
       {isActuallyOpen && visibleSessions.length > 0 && (
-        <div className="space-y-0.5 ml-1">
+        <div className="space-y-0.5 ml-1 pl-1">
           {renderedSessions.map((session: any) => {
+            const sessionKey = String(session.id);
             const isActive = activeSessionId !== null 
-              ? String(activeSessionId) === String(session.id)
+              ? String(activeSessionId) === sessionKey
               : session.is_active === 1;
+            const canExpandActive = activeSessionId !== null && sessionKey === String(activeSessionId);
+            const isExpanded = expandedSessionIds.has(sessionKey);
 
             return (
-              <SessionItem 
-                key={session.id} 
-                title={session.title} 
-                isActive={isActive} 
-                isArchived={session.is_archived === 1}
-                status={sessionStatus[String(session.id)]}
-                onClick={() => onSelectSession(session.id)}
-                onArchive={() => handleArchive(session)}
-              />
+              <div key={session.id}>
+                <SessionItem 
+                  title={session.title} 
+                  isActive={isActive} 
+                  isArchived={session.is_archived === 1}
+                  status={sessionStatus[sessionKey]}
+                  onClick={() => onSelectSession(session.id)}
+                  onArchive={() => handleArchive(session)}
+                  expandable
+                  hasSubagents
+                  isExpanded={isExpanded}
+                  onToggleExpand={() => handleToggleSessionExpand(sessionKey)}
+                />
+                {isExpanded && (
+                  <SubagentList sessionId={session.id} isActiveSession={canExpandActive} />
+                )}
+              </div>
             );
           })}
           {hasMore && !forceExpanded && (
