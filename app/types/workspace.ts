@@ -13,6 +13,8 @@ export interface SessionItemData {
   queue_list?: any[];
   timeAgo?: string;
   hasArrow?: boolean;
+  hasSubagents?: boolean;
+  subagentCount?: number;
 }
 
 /**

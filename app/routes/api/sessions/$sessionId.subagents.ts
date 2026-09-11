@@ -16,9 +16,10 @@ export async function loader({ params }: LoaderFunctionArgs) {
     return json({ error: 'Missing session id' }, { status: 400 });
   }
 
-  // Mock sessions have no omp JSONL backing them — empty roster.
+  // In mock mode, return predefined sample subagents
   if (isMockMode()) {
-    return json({ subagents: [] });
+    const { getMockSubagents } = await import('@/data/mock/subagents');
+    return json({ subagents: getMockSubagents(sessionId) });
   }
 
   try {

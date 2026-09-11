@@ -24,11 +24,6 @@ function formatTokens(n: number | undefined): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k tok` : `${Math.round(n)} tok`;
 }
 
-function formatCost(n: number | undefined): string {
-  if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return '';
-  return `$${n.toFixed(3)}`;
-}
-
 /** Read-only subagent transcript: compact banner, live-growing message list,
  *  and a notice row where the main timeline's composer would be. */
 export function SubagentView({ sessionId, subagent, onBack, className = '' }: SubagentViewProps) {
@@ -52,9 +47,10 @@ export function SubagentView({ sessionId, subagent, onBack, className = '' }: Su
 
   const progress = status?.progress ?? subagent.progress;
   const modelName = progress?.resolvedModel ?? subagent.agent;
-  const meta = [formatTokens(progress?.tokens), formatCost(progress?.cost)].filter(Boolean).join(' · ');
-  const task = status?.task ?? status?.assignment ?? status?.description
+  const meta = formatTokens(progress?.tokens);
+  const rawTask = status?.task ?? status?.assignment ?? status?.description
     ?? subagent.task ?? subagent.assignment ?? subagent.description;
+  const task = rawTask ? rawTask.replace(/\$0(\.00*)?/g, '').trim() : undefined;
 
   return (
     <div className={`flex flex-col h-full min-h-0 overflow-hidden bg-canvas ${className}`}>

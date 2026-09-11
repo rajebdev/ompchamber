@@ -149,27 +149,34 @@ export async function getDb(): Promise<Database> {
         `);
       }
 
-      // Ensure Chats, Workspace, drrealhandler folders exist
-      await db.run("INSERT OR IGNORE INTO workspace_folders (id, name, is_expanded) VALUES (1, 'Chats', 1)");
+      // Ensure ompchamber, Workspace, drrealhandler folders exist
+      await db.run("INSERT OR IGNORE INTO workspace_folders (id, name, is_expanded) VALUES (1, 'ompchamber', 1)");
       await db.run("INSERT OR IGNORE INTO workspace_folders (id, name, is_expanded) VALUES (2, 'Workspace', 1)");
       await db.run("INSERT OR IGNORE INTO workspace_folders (id, name, is_expanded) VALUES (3, 'drrealhandler', 1)");
+      await db.run("UPDATE workspace_folders SET name = 'ompchamber' WHERE id = 1");
 
-      // Seed specific sessions matching screenshot 2 if not present
+      // Seed specific sessions matching screenshot
       const existingChats = await db.all("SELECT * FROM sessions WHERE folder_id = 1");
-      const title1 = 'call tool all of this (38 Tools Showcase)';
-      const title2 = 'Deployment & Repo Summarizer (Dialogue Sample)';
-      const title3 = 'Virtual Devices & Diagnostic Chamber (Oh-My-Pi Sample)';
+      const title1 = 'Cek stream subagent di ompweb';
+      const title2 = 'Fitur Diff Panel dan Git Status Files';
+      const title3 = 'Implementasi Saved State UI per Session ID';
+      const title4 = 'Review loading indicator, model & intent title';
+      const title5 = 'Status fitur streer dan queue';
+
       if (existingChats.length === 0) {
-        await db.run("INSERT INTO sessions (folder_id, title, is_active) VALUES (1, ?, 1)", [title1]);
+        await db.run("INSERT INTO sessions (folder_id, title, is_active) VALUES (1, ?, 0)", [title1]);
         await db.run("INSERT INTO sessions (folder_id, title, is_active) VALUES (1, ?, 0)", [title2]);
-        await db.run("INSERT INTO sessions (folder_id, title, is_active) VALUES (1, ?, 0)", [title3]);
+        await db.run("INSERT INTO sessions (folder_id, title, is_active) VALUES (1, ?, 1)", [title3]);
+        await db.run("INSERT INTO sessions (folder_id, title, is_active) VALUES (1, ?, 0)", [title4]);
+        await db.run("INSERT INTO sessions (folder_id, title, is_active) VALUES (1, ?, 0)", [title5]);
       } else {
         await db.run("UPDATE sessions SET title = ? WHERE id = 1", [title1]);
         await db.run("UPDATE sessions SET title = ? WHERE id = 2", [title2]);
-        const s3 = await db.get("SELECT id FROM sessions WHERE folder_id = 1 AND (id = 3 OR title = ?)", [title3]);
-        if (!s3) {
-          await db.run("INSERT INTO sessions (folder_id, title, is_active) VALUES (1, ?, 0)", [title3]);
-        }
+        await db.run("UPDATE sessions SET title = ? WHERE id = 3", [title3]);
+        await db.run("UPDATE sessions SET title = ? WHERE id = 4", [title4]);
+        await db.run("UPDATE sessions SET title = ? WHERE id = 5", [title5]);
+        await db.run("UPDATE sessions SET is_active = 0 WHERE folder_id = 1");
+        await db.run("UPDATE sessions SET is_active = 1 WHERE id = 3");
       }
 
       // Pre-seed sample sessions data

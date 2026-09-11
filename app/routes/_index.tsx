@@ -54,6 +54,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const archivedIds = new Set(archivedRows.map((r: any) => String(r.session_id)));
   if (mock) {
     // Demo mode: sessions come from the SQLite `sessions` table.
+    const { hasMockSubagents, getMockSubagents } = await import('@/data/mock/subagents');
     const sessions = await db.all('SELECT * FROM sessions ORDER BY id ASC');
     for (const folder of folderRows) {
       const folderSessions = sessions
@@ -61,7 +62,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
         .map((s: any) => {
           let queue_list;
           try { queue_list = JSON.parse(s.queue_list); } catch (e) { queue_list = []; }
-          return { ...s, queue_list, is_archived: archivedIds.has(String(s.id)) ? 1 : 0 };
+          const hasSub = hasMockSubagents(s.id);
+          const subCount = getMockSubagents(s.id).length;
+          return {
+            ...s,
+            queue_list,
+            is_archived: archivedIds.has(String(s.id)) ? 1 : 0,
+            hasSubagents: hasSub,
+            subagentCount: subCount,
+          };
         });
       groupedFolders.push({
         id: folder.id,
@@ -100,19 +109,33 @@ async function buildRealFolders(folderRows: any[], archivedIds: Set<string>): Pr
 
   const data = await loadOmpSidebarData();
   const sessionsByRoot = groupSessionsByRoot(data.sessions);
+  const { existsSync } = await import('fs');
+  const { siblingDirForSession } = await import('@/lib/omp/subagent/history');
 
   return folderRows.map((folder: any) => {
     const root = (folder.project_path as string | null) ?? '';
     const rootSessions: OmpSession[] = root ? sessionsByRoot.get(root) ?? [] : [];
-    const folderSessions = rootSessions.map((session: OmpSession) => ({
-      id: session.id,
-      folder_id: folder.id,
-      title: sessionTitleFor(session),
-      created_at: session.created,
-      updated_at: session.modified,
-      is_active: 0,
-      is_archived: archivedIds.has(String(session.id)) ? 1 : 0,
-    }));
+    const folderSessions = rootSessions.map((session: OmpSession) => {
+      let hasSub = false;
+      if (session.path) {
+        try {
+          const siblingDir = siblingDirForSession(session.path);
+          hasSub = existsSync(siblingDir);
+        } catch {
+          hasSub = false;
+        }
+      }
+      return {
+        id: session.id,
+        folder_id: folder.id,
+        title: sessionTitleFor(session),
+        created_at: session.created,
+        updated_at: session.modified,
+        is_active: 0,
+        is_archived: archivedIds.has(String(session.id)) ? 1 : 0,
+        hasSubagents: hasSub,
+      };
+    });
     return {
       id: folder.id,
       name: folder.name,

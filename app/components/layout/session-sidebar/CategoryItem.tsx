@@ -1,11 +1,35 @@
 import { useState, useRef, useEffect, type MouseEvent } from 'react';
-import { Plus, MoreHorizontal, Pin, PinOff, Trash2, Archive, ArchiveRestore, Loader2, Check, Folder, ChevronDown, ChevronRight } from 'lucide-react';
+import { 
+  Plus, 
+  MoreHorizontal, 
+  Pin, 
+  PinOff, 
+  Trash2, 
+  Archive, 
+  ArchiveRestore, 
+  Loader2, 
+  Check, 
+  Folder, 
+  ChevronDown, 
+  ChevronRight,
+} from 'lucide-react';
 import { useFetcher, useRevalidator } from '@remix-run/react';
 import { useOnClickOutside } from '@/hooks/ui/on-click-outside';
 import { SubagentList } from '@/components/layout/session-sidebar/SubagentList';
 import { loadExpandedSessionIds, saveExpandedSessionIds } from '@/lib/workspace/sidebar-expanded';
 
-export function SessionItem({ title, isActive = false, isArchived = false, status, onClick, onArchive, expandable = false, isExpanded = false, hasSubagents = false, onToggleExpand }: {
+export function SessionItem({
+  title,
+  isActive = false,
+  isArchived = false,
+  status,
+  onClick,
+  onArchive,
+  expandable = false,
+  isExpanded = false,
+  hasSubagents = false,
+  onToggleExpand,
+}: {
   title: string;
   isActive?: boolean;
   isArchived?: boolean;
@@ -17,41 +41,57 @@ export function SessionItem({ title, isActive = false, isArchived = false, statu
   hasSubagents?: boolean;
   onToggleExpand?: (e: MouseEvent) => void;
 }) {
+  const showChevron = Boolean(expandable && hasSubagents && onToggleExpand);
+
   return (
     <div
-      className={`group/item flex items-center rounded cursor-pointer pl-1.5 ${isActive ? 'bg-ink/10 font-medium text-ink' : 'text-ink/60'}`}
+      onClick={onClick}
+      className={`group/item relative flex items-center w-full rounded-lg px-2 py-1.5 cursor-pointer text-xs transition-colors select-none ${
+        isActive
+          ? 'bg-ink/10 font-medium text-ink'
+          : 'text-ink/75 hover:text-ink hover:bg-ink/5'
+      }`}
     >
-      {expandable && hasSubagents && onToggleExpand && (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onToggleExpand(e); }}
-          title={isExpanded ? 'Collapse subagents' : 'Expand subagents'}
-          aria-expanded={isExpanded}
-          className="flex-shrink-0 p-0.5 mr-1 text-ink/35 hover:text-ink rounded cursor-pointer"
-        >
-          {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        </button>
-      )}
-      <div className="w-[14px] flex-shrink-0 flex items-center justify-center">
-        {status === 'processing' && (
-          <Loader2 size={12} className="text-ink/50 animate-spin" />
-        )}
-        {status === 'done' && (
-          <Check size={12} className="text-ink/50" />
-        )}
-      </div>
-      <div
-        onClick={onClick}
-        className={`flex-1 text-xs truncate px-1.5 py-1.5 ${isActive ? '' : 'hover:text-ink/80'}`}
-      >
+      {/* Chevron or status indicator in a fixed w-4 slot aligned with Folder Icon */}
+      <span className="w-4 h-4 flex items-center justify-center shrink-0">
+        {showChevron && onToggleExpand ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleExpand(e);
+            }}
+            title={isExpanded ? 'Collapse subagents' : 'Expand subagents'}
+            aria-expanded={isExpanded}
+            className="w-full h-full flex items-center justify-center text-ink/40 hover:text-ink rounded cursor-pointer transition-colors"
+          >
+            {isExpanded ? <ChevronDown size={13} className="text-ink/70" /> : <ChevronRight size={13} />}
+          </button>
+        ) : status === 'processing' ? (
+          <Loader2 size={12} className="animate-spin text-ink/60" />
+        ) : status === 'done' ? (
+          <Check size={12} className="text-ink/60" />
+        ) : null}
+      </span>
+
+      {/* Gap between icon and text */}
+      <span className="w-2 shrink-0" />
+
+      {/* Session Title - aligned straight with Folder Name */}
+      <span className="flex-1 min-w-0 truncate leading-snug">
         {title.charAt(0).toUpperCase() + title.slice(1)}
-      </div>
+      </span>
+
+      {/* Quick Action: Archive / Unarchive Button on Hover */}
       {onArchive && (
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); onArchive(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onArchive();
+          }}
           title={isArchived ? 'Unarchive session' : 'Archive session'}
-          className="flex-shrink-0 p-1 mr-1 text-ink/30 hover:text-ink rounded opacity-0 group-hover/item:opacity-100 transition-opacity cursor-pointer"
+          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-ink/40 hover:text-ink bg-paper/90 hover:bg-ink/10 rounded opacity-0 group-hover/item:opacity-100 transition-opacity cursor-pointer shadow-xs"
         >
           {isArchived ? <ArchiveRestore size={12} /> : <Archive size={12} />}
         </button>
@@ -67,7 +107,7 @@ export function Category({
   onNewSessionForFolder,
   forceExpanded = false,
   showArchived = false,
-  sessionStatus = {}
+  sessionStatus = {},
 }: { 
   folder: any;
   activeSessionId: number | string | null;
@@ -81,13 +121,18 @@ export function Category({
   const [showMenu, setShowMenu] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [visibleCount, setVisibleCount] = useState(5);
-  // Sidebar-level (cross-session) UI state, persisted by the helper. Starts
-  // empty so SSR/client render identically; localStorage is read post-mount
-  // (a lazy initializer would read it during hydration and mismatch).
-  const [expandedSessionIds, setExpandedSessionIds] = useState<Set<string>>(new Set());
+  
+  // Sidebar-level expanded session set
+  const [expandedSessionIds, setExpandedSessionIds] = useState<Set<string>>(() => new Set(['1']));
   useEffect(() => {
-    setExpandedSessionIds(loadExpandedSessionIds());
+    const saved = loadExpandedSessionIds();
+    if (saved && saved.size > 0) {
+      setExpandedSessionIds(saved);
+    } else {
+      setExpandedSessionIds(new Set(['1']));
+    }
   }, []);
+  
   const menuRef = useRef<HTMLDivElement>(null);
   const toggleFetcher = useFetcher();
   const pinFetcher = useFetcher();
@@ -104,10 +149,8 @@ export function Category({
 
   const handleToggle = () => {
     const nextState = !isOpen;
-    setIsOpen(nextState); // optimistic UI update
+    setIsOpen(nextState);
     if (typeof folder.id !== 'number') {
-      // Real folders are omp-bound: expansion state is kept client-side only
-      // (no workspace_folders row to persist to for string ids).
       return;
     }
     toggleFetcher.submit(
@@ -162,58 +205,64 @@ export function Category({
     showArchived ? s.is_archived === 1 : s.is_archived !== 1
   );
 
-  // Show 5 sessions initially; each "View more" click reveals 7 more.
   const renderedSessions = visibleSessions.slice(0, visibleCount);
   const hasMore = visibleSessions.length > visibleCount;
 
   return (
     <div className="space-y-1">
+      {/* Folder Header */}
       <div 
-        className="group flex items-center justify-between text-[13px] font-semibold text-ink/90 px-1 py-0.5 pl-1.5 hover:bg-ink/5 rounded transition-colors"
+        className="group flex items-center justify-between h-7 text-xs font-semibold text-ink px-2 hover:bg-ink/5 rounded-md transition-colors select-none"
       >
-        <div className="flex-1 flex items-center space-x-1.5 cursor-pointer" onClick={handleToggle}>
-          <Folder size={14} className={`flex-shrink-0 group-hover:hidden ${isActuallyOpen ? 'text-ink' : 'text-ink/50'}`} />
-          {isActuallyOpen ? (
-            <ChevronDown size={14} className="hidden group-hover:block flex-shrink-0 text-ink" />
-          ) : (
-            <ChevronRight size={14} className="hidden group-hover:block flex-shrink-0 text-ink/50" />
-          )}
-          {folder.isPinned && <Pin size={11} className="text-ink/50" />}
-          <span>{folder.name}</span>
+        <div className="flex-1 h-full flex items-center cursor-pointer min-w-0" onClick={handleToggle}>
+          <span className="w-4 h-4 flex items-center justify-center shrink-0">
+            <Folder size={15} className="text-ink/75" />
+          </span>
+          <span className="w-2 shrink-0" />
+          {folder.isPinned && <Pin size={11} className="text-ink/60 shrink-0 mr-1.5" />}
+          <span className="truncate text-[13px] font-semibold tracking-tight">{folder.name}</span>
         </div>
         
-        {/* Hover Actions */}
-        <div className={`items-center space-x-1 pr-1 ${showMenu ? 'flex' : 'hidden group-hover:flex'}`}>
-          <Plus 
-            size={12} 
-            className="text-ink/40 hover:text-ink cursor-pointer"  
+        {/* Workspace Actions (Hover) */}
+        <div className={`items-center space-x-0.5 pl-1 ${showMenu ? 'flex' : 'hidden group-hover:flex'}`}>
+          <button
+            type="button"
+            title="New Session"
+            className="w-5 h-5 flex items-center justify-center text-ink/40 hover:text-ink hover:bg-ink/10 rounded cursor-pointer transition-colors"
             onClick={(e) => { e.stopPropagation(); onNewSessionForFolder(folder.id); }}
-          />
-          <div className="relative" ref={menuRef}>
-            <MoreHorizontal 
-              size={12} 
-              className="text-ink/40 hover:text-ink cursor-pointer" 
+          >
+            <Plus size={12} />
+          </button>
+          
+          <div className="relative flex items-center" ref={menuRef}>
+            <button
+              type="button"
+              title="Workspace Options"
+              className="w-5 h-5 flex items-center justify-center text-ink/40 hover:text-ink hover:bg-ink/10 rounded cursor-pointer transition-colors"
               onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
-            />
+            >
+              <MoreHorizontal size={12} />
+            </button>
+            
             {showMenu && (
-              <div className="absolute right-0 top-full mt-1 w-40 bg-paper border border-ink/10 rounded shadow-lg z-50 py-1">
+              <div className="absolute right-0 top-full mt-1 w-44 bg-paper border border-ink/15 rounded-md shadow-lg z-50 py-1 text-xs">
                 {confirmDelete ? (
                   <>
-                    <div className="px-3 py-1.5 text-xs text-ink/80">Delete workspace?</div>
-                    <div className="px-3 py-1.5 text-xs hover:bg-ink/5 cursor-pointer flex items-center space-x-2 text-red-600" onClick={handleDelete}>
+                    <div className="px-3 py-1.5 text-xs text-ink/80 font-medium">Delete workspace?</div>
+                    <div className="px-3 py-1.5 hover:bg-ink/5 cursor-pointer flex items-center space-x-2 text-error" onClick={handleDelete}>
                       <Trash2 size={12} /><span>Yes, delete</span>
                     </div>
-                    <div className="px-3 py-1.5 text-xs hover:bg-ink/5 cursor-pointer flex items-center space-x-2" onClick={() => setConfirmDelete(false)}>
+                    <div className="px-3 py-1.5 hover:bg-ink/5 cursor-pointer flex items-center space-x-2 text-ink/70" onClick={() => setConfirmDelete(false)}>
                       <span>Cancel</span>
                     </div>
                   </>
                 ) : (
                   <>
-                    <div className="px-3 py-1.5 text-xs hover:bg-ink/5 cursor-pointer flex items-center space-x-2" onClick={handlePin}>
+                    <div className="px-3 py-1.5 hover:bg-ink/5 cursor-pointer flex items-center space-x-2 text-ink/80" onClick={handlePin}>
                       {folder.isPinned ? <PinOff size={12} /> : <Pin size={12} />}
                       <span>{folder.isPinned ? 'Unpin Workspace' : 'Pin Workspace'}</span>
                     </div>
-                    <div className="px-3 py-1.5 text-xs hover:bg-ink/5 cursor-pointer flex items-center space-x-2 text-red-600" onClick={() => setConfirmDelete(true)}>
+                    <div className="px-3 py-1.5 hover:bg-ink/5 cursor-pointer flex items-center space-x-2 text-error" onClick={() => setConfirmDelete(true)}>
                       <Trash2 size={12} /><span>Delete Workspace</span>
                     </div>
                   </>
@@ -224,18 +273,20 @@ export function Category({
         </div>
       </div>
       
-      {isActuallyOpen && visibleSessions.length > 0 && (
-        <div className="space-y-0.5 ml-1 pl-1">
+      {/* Sessions List */}
+      {isActuallyOpen && (
+        <div className="space-y-0.5">
           {renderedSessions.map((session: any) => {
             const sessionKey = String(session.id);
             const isActive = activeSessionId !== null 
               ? String(activeSessionId) === sessionKey
               : session.is_active === 1;
             const canExpandActive = activeSessionId !== null && sessionKey === String(activeSessionId);
-            const isExpanded = expandedSessionIds.has(sessionKey);
+            const hasSubagents = Boolean(session.hasSubagents);
+            const isExpanded = hasSubagents && expandedSessionIds.has(sessionKey);
 
             return (
-              <div key={session.id}>
+              <div key={session.id} className="space-y-0.5">
                 <SessionItem 
                   title={session.title} 
                   isActive={isActive} 
@@ -243,28 +294,33 @@ export function Category({
                   status={sessionStatus[sessionKey]}
                   onClick={() => onSelectSession(session.id)}
                   onArchive={() => handleArchive(session)}
-                  expandable
-                  hasSubagents
+                  expandable={hasSubagents}
+                  hasSubagents={hasSubagents}
                   isExpanded={isExpanded}
                   onToggleExpand={() => handleToggleSessionExpand(sessionKey)}
                 />
-                {isExpanded && (
+                {hasSubagents && isExpanded && (
                   <SubagentList sessionId={session.id} isActiveSession={canExpandActive} />
                 )}
               </div>
             );
           })}
+
+          {/* Show more sessions Button */}
           {hasMore && !forceExpanded && (
             <button 
-              onClick={() => setVisibleCount(c => c + 7)}
-              className="text-[10px] font-medium text-ink/60 hover:text-ink w-full text-left flex items-center space-x-1"
+              type="button"
+              onClick={() => setVisibleCount((c) => c + 7)}
+              className="flex items-center text-xs text-ink/45 hover:text-ink/80 w-full text-left py-1.5 px-2 rounded-lg hover:bg-ink/5 transition-colors cursor-pointer select-none"
             >
-              <span className="w-[14px] flex-shrink-0"></span>
-              <span className="px-1.5 py-1.5">View more sessions...</span>
+              <span className="w-4 h-4 shrink-0" />
+              <span className="w-2 shrink-0" />
+              <span className="truncate leading-snug">Show more sessions</span>
             </button>
           )}
+
           {visibleSessions.length === 0 && (
-            <div className="px-4 py-1.5 text-[10px] text-ink/40 italic">
+            <div className="px-3 py-2 text-[11px] text-ink/40 italic">
               {showArchived ? 'No archived sessions.' : 'No sessions.'}
             </div>
           )}

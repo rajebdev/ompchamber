@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
-import { ChevronRight } from 'lucide-react';
 import { SubagentStatusIcon } from '@/components/common/SubagentStatusIcon';
 import { isRecord } from '@/lib/omp/session/parse-message-blocks';
-import { fetchSubagentHistory, formatSubagentMeta, historyEntryToSubagentInfo } from '@/lib/omp/subagent/history-client';
-import { mergeSubagentRoster, parseSubagentActivityEvent, parseSubagentLifecycle, parseSubagentProgress, parseSubagentRosterResponse } from '@/lib/omp/subagent/parse';
-import type { SubagentActivityEvent, SubagentInfo, SubagentProgress } from '@/types';
+import { fetchSubagentHistory, historyEntryToSubagentInfo } from '@/lib/omp/subagent/history-client';
+import { mergeSubagentRoster, parseSubagentLifecycle, parseSubagentProgress, parseSubagentRosterResponse } from '@/lib/omp/subagent/parse';
+import type { SubagentInfo, SubagentProgress } from '@/types';
 
 type SubagentListProps = { sessionId: string | number; isActiveSession: boolean };
 
@@ -38,23 +37,18 @@ function applyProgress(roster: SubagentInfo[], progress: SubagentProgress): Suba
 }
 
 /**
- * Subagent roster nested under a session row: seeded from the on-disk history
- * route for every session (finished runs survive reloads and dead parents),
- * then — for the active session only — hydrated from `get_subagents` and folded
- * from the live window frames the parent SSE stream dispatches.
+ * Subagent roster nested under a session row: renders clean, readable subagent
+ * items matching the minimalist sidebar layout while preserving interactive inspection.
  */
 export function SubagentList({ sessionId, isActiveSession }: SubagentListProps) {
   const [subagents, setSubagents] = useState<SubagentInfo[]>([]);
-  const [activities, setActivities] = useState<Record<string, SubagentActivityEvent>>({});
   const [isLoading, setIsLoading] = useState(false);
 
-  // History pass: the roster floor for every session. Live entries merged in
-  // by the effect below always win for the same id (`mergeSubagentRoster`).
+  // History pass: the roster floor for every session.
   useEffect(() => {
     let cancelled = false;
     const sid = String(sessionId);
     setSubagents([]);
-    setActivities({});
     setIsLoading(true);
     void fetchSubagentHistory(sid)
       .then((entries) => {
@@ -65,8 +59,7 @@ export function SubagentList({ sessionId, isActiveSession }: SubagentListProps) 
     return () => { cancelled = true; };
   }, [sessionId]);
 
-  // Live pass: active session only. `requestedAt` fences the get_subagents
-  // snapshot so entries touched by a newer frame cannot regress to it.
+  // Live pass: active session only.
   useEffect(() => {
     if (!isActiveSession) return;
     let cancelled = false;
@@ -85,18 +78,9 @@ export function SubagentList({ sessionId, isActiveSession }: SubagentListProps) 
       const progress = readProgress(detailOf(event)?.payload);
       if (progress) setSubagents((prev) => applyProgress(prev, progress));
     };
-    const onActivity = (event: Event) => {
-      const payload = detailOf(event)?.payload;
-      if (!isRecord(payload)) return;
-      const id = payload.id;
-      if (typeof id !== 'string' || id.length === 0) return;
-      const activity = parseSubagentActivityEvent(payload);
-      if (activity) setActivities((prev) => ({ ...prev, [id]: activity }));
-    };
 
     window.addEventListener('subagent_lifecycle', onLifecycle);
     window.addEventListener('subagent_progress', onProgress);
-    window.addEventListener('subagent_event', onActivity);
 
     fetch(`/api/agent/${encodeURIComponent(sid)}`, {
       method: 'POST',
@@ -115,45 +99,40 @@ export function SubagentList({ sessionId, isActiveSession }: SubagentListProps) 
       cancelled = true;
       window.removeEventListener('subagent_lifecycle', onLifecycle);
       window.removeEventListener('subagent_progress', onProgress);
-      window.removeEventListener('subagent_event', onActivity);
     };
   }, [isActiveSession, sessionId]);
 
   const hint = isLoading ? 'Loading subagents…' : subagents.length === 0 ? 'No subagent activity' : null;
 
   return (
-    <div className="ml-3 space-y-0.5 border-l border-ink/10 py-0.5 pl-2">
+    <div className="pl-6 pr-0 space-y-0.5 py-0.5">
       {hint ? (
-        <div className="px-1.5 py-1 text-[10px] italic text-ink/40">{hint}</div>
+        <div className="px-2 py-1 text-xs italic text-ink/40 flex items-center">
+          <span className="w-4 h-4 shrink-0" />
+          <span className="w-2 shrink-0" />
+          <span className="flex-1 min-w-0 truncate">{hint}</span>
+        </div>
       ) : (
         subagents.map((subagent) => {
-          const isHistory = subagent.source === 'history';
-          const isRunning = subagent.status === 'started';
-          const activity = isRunning && !isHistory ? activities[subagent.id] : undefined;
-          const taskText = subagent.task ?? subagent.description ?? subagent.assignment ?? '';
-          const meta = formatSubagentMeta(subagent);
+          const taskText = subagent.task ?? subagent.description ?? subagent.assignment ?? subagent.agent ?? '';
           return (
             <button
               key={subagent.id}
               type="button"
-              title={taskText || subagent.agent}
+              title={taskText}
               onClick={() => window.dispatchEvent(new CustomEvent('omp:view-subagent', { detail: { sessionId: String(sessionId), subagent } }))}
-              className="flex w-full cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-left hover:bg-ink/5"
+              className="w-full flex items-center text-left text-xs text-ink/70 hover:text-ink hover:bg-ink/5 rounded-md px-2 py-1 cursor-pointer transition-colors select-none group/subagent"
             >
-              <SubagentStatusIcon status={subagent.status} live={isRunning && !isHistory} size={12} />
-              <span className="min-w-0 flex-1">
-                <span className="flex items-baseline gap-1.5">
-                  <span className="shrink-0 font-mono text-[10px] text-ink/80">{subagent.agent}</span>
-                  {taskText && <span className="truncate text-[10px] text-ink/45">{taskText}</span>}
-                </span>
-                {activity && (
-                  <span className="mt-0.5 block truncate text-[10px] text-ink/40" title={activity.label}>
-                    {activity.label}
-                  </span>
-                )}
+              {/* Subagent status icon slot - aligned straight with session item text */}
+              <span className="w-4 h-4 flex items-center justify-center shrink-0">
+                <SubagentStatusIcon status={subagent.status} live={isActiveSession && subagent.status === 'started'} size={11} />
               </span>
-              {meta && <span className="shrink-0 font-mono text-[9px] text-ink/40">{meta}</span>}
-              <ChevronRight size={10} className="shrink-0 text-ink/30" />
+
+              {/* Gap between subagent icon and task text */}
+              <span className="w-2 shrink-0" />
+
+              {/* Subagent task description text */}
+              <span className="flex-1 min-w-0 truncate leading-snug">{taskText}</span>
             </button>
           );
         })
