@@ -1,4 +1,4 @@
-import type { SplitDiffRow } from '@/components/workspace/diff-panel/diff-parser';
+import type { SplitDiffRow } from '@/lib/fs/diff-parser';
 
 interface SplitViewProps {
   rows: SplitDiffRow[];

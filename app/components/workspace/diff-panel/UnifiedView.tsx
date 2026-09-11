@@ -1,4 +1,4 @@
-import type { DiffLine } from '@/components/workspace/diff-panel/diff-parser';
+import type { DiffLine } from '@/lib/fs/diff-parser';
 
 interface UnifiedViewProps {
   lines: DiffLine[];

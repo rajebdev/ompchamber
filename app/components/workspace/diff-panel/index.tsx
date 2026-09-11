@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useFetcher } from '@remix-run/react';
 import { useSessionUiState } from '@/hooks/workspace/session-state';
-import { parseUnifiedDiff } from '@/components/workspace/diff-panel/diff-parser';
+import { parseUnifiedDiff } from '@/lib/fs/diff-parser';
 import { DiffToolbar } from '@/components/workspace/diff-panel/Toolbar';
 import { UnifiedView } from '@/components/workspace/diff-panel/UnifiedView';
 import { SplitView } from '@/components/workspace/diff-panel/SplitView';
