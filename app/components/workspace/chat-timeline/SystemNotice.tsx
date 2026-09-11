@@ -66,20 +66,12 @@ export function SystemNotice({ notice }: SystemNoticeProps) {
         aria-expanded={isOpen}
         className="flex w-full cursor-pointer items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-ink/[0.03]"
       >
-        <span
-          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-            reminderInfo ? 'bg-warning/10 text-warning' : 'bg-ink/10 text-ink/70'
-          }`}
-        >
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-ink/10 text-ink/70">
           {reminderInfo ? <Bell size={13} /> : <Info size={13} />}
         </span>
         <span className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`block text-[9.5px] font-semibold uppercase tracking-[0.12em] ${
-                reminderInfo ? 'text-warning font-mono' : 'text-ink/50'
-              }`}
-            >
+            <span className="block text-[9.5px] font-semibold uppercase tracking-[0.12em] text-ink/50">
               {taskNotice ? 'Task Result' : reminderInfo ? 'System Reminder' : 'System Notice'}
             </span>
             {taskNotice?.agent && (
@@ -104,11 +96,6 @@ export function SystemNotice({ notice }: SystemNoticeProps) {
               <span className="flex items-center gap-1 font-mono text-[9px] text-ink/40">
                 <Layers size={9} />
                 {taskNotice.meta.size}
-              </span>
-            )}
-            {reminderInfo && (
-              <span className="flex items-center rounded bg-warning/10 px-1.5 py-0.2 font-mono text-[9px] font-semibold text-warning uppercase">
-                Action Required
               </span>
             )}
           </div>
