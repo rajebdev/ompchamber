@@ -1,4 +1,4 @@
-import { CheckCircle2, XCircle, Sparkles, FileText } from 'lucide-react';
+import { CheckCircle2, XCircle, FileText } from 'lucide-react';
 import type { ToolCallData } from '@/types';
 
 /** Panel untuk tool `resolve` dan `reject` (AST proposal resolution via xd://resolve / xd://reject). */

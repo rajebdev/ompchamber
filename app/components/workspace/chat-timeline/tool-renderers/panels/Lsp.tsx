@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { AlertCircle, AlertTriangle, Info, Server, Cpu, CheckCircle2, ChevronDown } from 'lucide-react';
+import { useMemo } from 'react';
+import { AlertCircle, AlertTriangle, Info, Server, Cpu, CheckCircle2 } from 'lucide-react';
 import type { ToolCallData } from '@/types';
 
 interface Diagnostic {

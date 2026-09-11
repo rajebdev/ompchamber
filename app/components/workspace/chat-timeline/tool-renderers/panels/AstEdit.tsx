@@ -1,4 +1,4 @@
-import { Wand2, Clock, CheckCircle2, FileText, ArrowRight } from 'lucide-react';
+import { Wand2, Clock, CheckCircle2, ArrowRight } from 'lucide-react';
 import type { ToolCallData } from '@/types';
 
 interface AstEditItem {

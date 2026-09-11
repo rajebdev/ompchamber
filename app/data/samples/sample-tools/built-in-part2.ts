@@ -90,12 +90,12 @@ Ready log matched: http://localhost:3000`,
         },
       ],
     },
-    output: `Active phase 1/1 "Redesign Phase" (4/4 done).
+    output: `Active phase 1/1 "Redesign Phase" (1/4 done).
   [X] Refactor ToolCallCard
-  [X] Implement Bash & Todo
-  [X] Implement Ask & Think
-  [X] Provide complete 38 tools sample session
-All 4 tasks completed.`,
+  [ ] Implement Bash & Todo [in_progress]
+  [ ] Implement Ask & Think
+  [ ] Provide complete 38 tools sample session
+Overall: 1/4 done`,
     status: 'success',
     duration: '30ms',
   },

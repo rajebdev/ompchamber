@@ -32,6 +32,7 @@ import { toTitleCase } from '@/components/workspace/chat-timeline/tool-renderers
 import { FallbackOutput } from '@/components/workspace/chat-timeline/tool-renderers/shared/FallbackOutput';
 import { tryParseJson } from '@/lib/code/syntax-highlight';
 import { JsonCodeBlock } from '@/components/workspace/chat-timeline/tool-renderers/shared/JsonCodeBlock';
+import { getTodoSummary } from '@/components/workspace/chat-timeline/tool-renderers/shared/todo-parser';
 
 interface ToolCallCardProps {
   tool: ToolCallData;
@@ -191,6 +192,15 @@ export function ToolCallCard({ tool, isOpen, onToggle, defaultExpanded = false }
     displayTitle = 'Resolve Proposal';
   } else if (toolKey === 'reject') {
     displayTitle = 'Reject Proposal';
+  } else if (toolKey === 'todo' || tool.name === 'todo' || tool.type === 'todo' || (tool.title && tool.title.toLowerCase().startsWith('todo'))) {
+    displayTitle = 'Todo';
+    const todoSummary = getTodoSummary(tool);
+    if (todoSummary) {
+      displaySubtitle = todoSummary;
+    } else if (tool.title && (tool.title.includes('—') || tool.title.includes(' - ') || tool.title.includes(': '))) {
+      const parts = tool.title.split(/\s+[—\-:]\s+/);
+      displaySubtitle = parts.slice(1).join(' — ').trim();
+    }
   } else if (tool.title && (tool.title.includes('—') || tool.title.includes(' - ') || tool.title.includes(': '))) {
     const parts = tool.title.split(/\s+[—\-:]\s+/);
     displayTitle = toTitleCase(parts[0].trim());
