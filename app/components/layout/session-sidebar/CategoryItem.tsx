@@ -42,7 +42,6 @@ export function Category({
   
   // Sidebar-level expanded session set
   const [expandedSessionIds, setExpandedSessionIds] = useState<Set<string>>(() => new Set());
-  const [subagentCounts, setSubagentCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
     const saved = loadExpandedSessionIds();
@@ -215,10 +214,9 @@ export function Category({
             // row dims so the highlighted roster entry reads as the active one.
             const isViewingSubagent = isActive && urlSessionId === sessionKey && Boolean(urlSubagentId);
             const canExpandActive = activeSessionId !== null && sessionKey === String(activeSessionId);
-            const knownCount = subagentCounts[sessionKey];
-            const hasSubagents = knownCount !== undefined
-              ? knownCount > 0
-              : Boolean(session.hasSubagents && (session.subagentCount === undefined || session.subagentCount > 0));
+            // Chevron gate comes straight from the omp-side loader flag
+            // (disk scan + transcript recovery); the client never overrides it.
+            const hasSubagents = Boolean(session.hasSubagents);
             const isExpanded = hasSubagents && expandedSessionIds.has(sessionKey);
 
             return (
@@ -236,11 +234,7 @@ export function Category({
                   onToggleExpand={() => handleToggleSessionExpand(sessionKey)}
                 />
                 {hasSubagents && isExpanded && (
-                  <SubagentList
-                    sessionId={session.id}
-                    isActiveSession={canExpandActive}
-                    onCountChange={(count) => setSubagentCounts((prev) => ({ ...prev, [sessionKey]: count }))}
-                  />
+                  <SubagentList sessionId={session.id} isActiveSession={canExpandActive} />
                 )}
               </div>
             );

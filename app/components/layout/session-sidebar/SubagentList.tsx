@@ -9,7 +9,6 @@ import type { SubagentInfo, SubagentProgress } from '@/types';
 type SubagentListProps = {
   sessionId: string | number;
   isActiveSession: boolean;
-  onCountChange?: (count: number) => void;
 };
 
 type SubagentFrameDetail = { sessionId?: string; payload?: unknown };
@@ -45,16 +44,11 @@ function applyProgress(roster: SubagentInfo[], progress: SubagentProgress): Suba
  * Subagent roster nested under a session row: renders clean, readable subagent
  * items matching the minimalist sidebar layout while preserving interactive inspection.
  */
-export function SubagentList({ sessionId, isActiveSession, onCountChange }: SubagentListProps) {
+export function SubagentList({ sessionId, isActiveSession }: SubagentListProps) {
   const [searchParams] = useSearchParams();
   const viewedSubagentId = searchParams.get('subagent');
   const [subagents, setSubagents] = useState<SubagentInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-
-  // Sync subagent count back to parent via effect to avoid set-state-in-render
-  useEffect(() => {
-    onCountChange?.(subagents.length);
-  }, [subagents.length, onCountChange]);
 
   // History pass: the roster floor for every session.
   useEffect(() => {
