@@ -28,17 +28,17 @@ function severityOf(d: Diagnostic): 'error' | 'warning' | 'info' {
 
 const SEVERITY_STYLES = {
   error: {
-    icon: <AlertCircle size={11} className="shrink-0 text-error" />,
+    icon: <AlertCircle size={12} className="mt-[3px] shrink-0 text-error" />,
     text: 'text-error',
     badge: 'bg-error/10 text-error',
   },
   warning: {
-    icon: <AlertTriangle size={11} className="shrink-0 text-warning" />,
+    icon: <AlertTriangle size={12} className="mt-[3px] shrink-0 text-warning" />,
     text: 'text-warning',
     badge: 'bg-warning/10 text-warning',
   },
   info: {
-    icon: <Info size={11} className="shrink-0 text-ink/40" />,
+    icon: <Info size={12} className="mt-[3px] shrink-0 text-ink/40" />,
     text: 'text-ink/70',
     badge: 'bg-ink/5 text-ink/50',
   },

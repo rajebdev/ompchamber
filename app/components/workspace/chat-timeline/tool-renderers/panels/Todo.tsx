@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Square, Loader2, CheckCircle2, ListTodo } from 'lucide-react';
 import type { ToolCallData } from '@/types';
 import { parseTodoData } from '@/components/workspace/chat-timeline/tool-renderers/shared/todo-parser';
+import { FallbackOutput } from '@/components/workspace/chat-timeline/tool-renderers/shared/FallbackOutput';
 
 /** Panel khusus untuk tool `todo` — task list dengan progress bar, phase groups, dan status yang readable. */
 export function Todo({ tool }: { tool: ToolCallData }) {
@@ -12,11 +13,8 @@ export function Todo({ tool }: { tool: ToolCallData }) {
 
   if (groups.length === 0 && !opBadge) {
     const rawOutput = tool.output || '';
-    return (
-      <div className="rounded-lg border border-ink/8 bg-paper p-3 font-mono text-[11px] leading-relaxed text-ink/80 whitespace-pre-wrap select-text">
-        {rawOutput}
-      </div>
-    );
+    if (!rawOutput.trim()) return null;
+    return <FallbackOutput text={rawOutput} />;
   }
 
   const pct = totalTasks > 0 ? Math.round((totalDone / totalTasks) * 100) : 0;
