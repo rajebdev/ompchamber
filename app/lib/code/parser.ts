@@ -63,7 +63,7 @@ export function parseDirListing(text: string): DirListingResult {
 }
 
 export interface ParsedCodeLine {
-  lineNum: number;
+  lineNum: number | string;
   code: string;
 }
 
@@ -73,11 +73,16 @@ export interface ParsedCodeResult {
   hasLineNumbers: boolean;
 }
 
+export interface NumberedCodeOptions {
+  startLine?: number;
+  lineNumbers?: (number | string | null | undefined)[];
+}
+
 /**
  * Parses raw code output to detect and clean embedded line numbers (e.g. "1: export...", "10:  |...").
  * Ensures code indentation and line numbers align straight with mathematical precision.
  */
-export function parseNumberedCode(rawText: string): ParsedCodeResult {
+export function parseNumberedCode(rawText: string, options?: NumberedCodeOptions): ParsedCodeResult {
   const trimmedEnd = rawText.replace(/\r?\n$/, '');
   const rawLines = trimmedEnd.split(/\r?\n/);
   if (rawLines.length === 0) {
@@ -137,14 +142,30 @@ export function parseNumberedCode(rawText: string): ParsedCodeResult {
 
   if (!isPipeNumbered && !isColonNumbered) {
     // Un-numbered code
-    const lines = rawLines.map((code, idx) => ({
-      lineNum: idx + 1,
-      code,
-    }));
+    const explicitNumbers = options?.lineNumbers;
+    const startLine =
+      typeof options?.startLine === 'number' && !isNaN(options.startLine) && options.startLine > 0
+        ? options.startLine
+        : 1;
+
+    const lines: ParsedCodeLine[] = rawLines.map((code, idx) => {
+      let lineNum: number | string;
+      if (explicitNumbers && idx < explicitNumbers.length) {
+        const item = explicitNumbers[idx];
+        lineNum = item === null || item === undefined || item === '' ? '…' : item;
+      } else {
+        lineNum = startLine + idx;
+      }
+      return {
+        lineNum,
+        code,
+      };
+    });
+
     return {
       lines,
       cleanCode: rawLines.join('\n'),
-      hasLineNumbers: false,
+      hasLineNumbers: Boolean((explicitNumbers && explicitNumbers.length > 0) || startLine > 1),
     };
   }
 

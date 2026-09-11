@@ -90,7 +90,7 @@ export function ToolDetailsPanel({ tool }: { tool: ToolCallData }): ReactNode {
   // File Read Family
   if (key === 'read' || key === 'read_file' || key === 'view_file' || key === 'read_file_content') {
     const targetFile = resolveTargetFile(tool);
-    return <Read targetFilePath={targetFile} output={tool.output || ''} />;
+    return <Read tool={tool} targetFilePath={targetFile} output={tool.output || ''} />;
   }
 
   // File Edit / Write Family

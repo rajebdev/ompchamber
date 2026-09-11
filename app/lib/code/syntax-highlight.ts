@@ -14,7 +14,7 @@ import 'prismjs/themes/prism.css';
 /** Map file extension to Prism language key */
 export function getLanguageFromPath(filePath?: string): string {
   if (!filePath) return 'javascript';
-  const clean = filePath.split('?')[0].split('#')[0];
+  const clean = filePath.split('?')[0].split('#')[0].replace(/:\d+(?:-\d+)?$/, '');
   const ext = clean.split('.').pop()?.toLowerCase();
   switch (ext) {
     case 'ts': return 'typescript';
