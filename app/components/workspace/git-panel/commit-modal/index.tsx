@@ -3,9 +3,9 @@ import { Loader2 } from 'lucide-react';
 import { Header } from '@/components/workspace/git-panel/commit-modal/Header';
 import { GraphCanvas } from '@/components/workspace/git-panel/commit-modal/GraphCanvas';
 import { CommitRow } from '@/components/workspace/git-panel/commit-modal/CommitRow';
-import { computeCommitLanes } from '@/components/workspace/git-panel/commit-modal/graph-utils';
-import { useCommitPagination } from '@/components/workspace/git-panel/commit-modal/use-commit-pagination';
-import { useCommitInteractions } from '@/components/workspace/git-panel/commit-modal/use-commit-interactions';
+import { computeCommitLanes } from '@/lib/fs/git-graph';
+import { useCommitPagination } from '@/hooks/workspace/commit-pagination';
+import { useCommitInteractions } from '@/hooks/workspace/commit-interactions';
 
 interface GitCommitModalProps {
   output: { title: string; data: any[]; hasMore?: boolean; total?: number } | null;

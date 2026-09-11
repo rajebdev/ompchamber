@@ -5,7 +5,7 @@ import {
   computeCommitLanes,
   computeGraphLinks,
   buildBezierPath,
-} from '@/components/workspace/git-panel/commit-modal/graph-utils';
+} from '@/lib/fs/git-graph';
 
 interface GraphCanvasProps {
   commits: GitCommit[];
