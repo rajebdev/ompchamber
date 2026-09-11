@@ -208,6 +208,20 @@ export function useOmpAgentStream({
           callbacksRef.current?.onExtensionUiRequest?.(data as unknown as IncomingExtensionUiRequest);
           break;
         }
+        case 'subagent_lifecycle':
+        case 'subagent_progress':
+        case 'subagent_event': {
+          // Forward live subagent frames to feature listeners as scoped window
+          // events (same pattern as omp:session-processing). The frames already
+          // flow through the SSE bridge; here they were simply dropped.
+          const payload = data.payload;
+          if (payload !== undefined && payload !== null && typeof payload === 'object') {
+            window.dispatchEvent(new CustomEvent(data.type, {
+              detail: { sessionId: sid, payload },
+            }));
+          }
+          break;
+        }
         case 'thinking_level_changed':
         case 'model_changed':
         case 'config_update':
