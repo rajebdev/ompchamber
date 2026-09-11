@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { AlertCircle, AlertTriangle, Info, Server, Cpu, CheckCircle2 } from 'lucide-react';
 import type { ToolCallData } from '@/types';
+import { FallbackOutput } from '@/components/workspace/chat-timeline/tool-renderers/shared/FallbackOutput';
 
 interface Diagnostic {
   file?: unknown;
@@ -218,17 +219,8 @@ export function Lsp({ tool }: { tool: ToolCallData }) {
 
   // View: Empty / Fallback
   if (items.length === 0) {
-    const lines = output.split(/\r?\n/).filter(Boolean);
-    if (lines.length === 0) return null;
-    return (
-      <ul className="divide-y divide-ink/6 overflow-hidden rounded-lg border border-ink/8 bg-canvas/40 select-text">
-        {lines.map((line, i) => (
-          <li key={i} className="px-2.5 py-1.5 font-mono text-[11px] break-words text-ink/75">
-            {line}
-          </li>
-        ))}
-      </ul>
-    );
+    if (!output) return null;
+    return <FallbackOutput text={output} />;
   }
 
   // View: Diagnostics List

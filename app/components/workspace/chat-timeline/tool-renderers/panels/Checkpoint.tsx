@@ -1,5 +1,6 @@
 import { Camera, RotateCcw } from 'lucide-react';
 import type { ToolCallData } from '@/types';
+import { FallbackOutput } from '@/components/workspace/chat-timeline/tool-renderers/shared/FallbackOutput';
 
 interface SnapshotInfo {
   id?: unknown;
@@ -32,17 +33,8 @@ export function Checkpoint({ tool }: { tool: ToolCallData }) {
   const hasStructured = Boolean(id || ts || fileCount || branch || message);
 
   if (!hasStructured) {
-    const lines = (tool.output ?? '').split(/\r?\n/).filter(Boolean);
-    if (lines.length === 0) return null;
-    return (
-      <ul className="divide-y divide-ink/6 overflow-hidden rounded-lg border border-ink/8 bg-canvas/40">
-        {lines.map((line, i) => (
-          <li key={i} className="px-2.5 py-1.5 text-[11.5px] break-words text-ink/75">
-            {line}
-          </li>
-        ))}
-      </ul>
-    );
+    if (!tool.output?.trim()) return null;
+    return <FallbackOutput text={tool.output} />;
   }
 
   return (

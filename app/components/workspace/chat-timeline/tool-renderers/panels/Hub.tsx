@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Radio, Server, CheckCircle2, Play, Activity } from 'lucide-react';
 import type { ToolCallData } from '@/types';
+import { FallbackOutput } from '@/components/workspace/chat-timeline/tool-renderers/shared/FallbackOutput';
 
 interface HubItem {
   id?: unknown;
@@ -45,7 +46,7 @@ export function Hub({ tool }: { tool: ToolCallData }) {
     const ids: string[] = Array.isArray(inputObj.ids) ? inputObj.ids : [];
     const timeout = typeof inputObj.timeoutMs === 'number' ? `${Math.round(inputObj.timeoutMs / 1000)}s` : undefined;
     return (
-      <div className="rounded-lg border border-ink/8 bg-paper p-3 text-[11.5px]">
+      <div className="space-y-2 rounded-lg border border-ink/8 bg-paper p-3 text-[11.5px]">
         <div className="flex items-center justify-between border-b border-ink/6 pb-2">
           <div className="flex items-center gap-2">
             <Radio size={13} className="text-ink/60" />
@@ -58,7 +59,7 @@ export function Hub({ tool }: { tool: ToolCallData }) {
             <span className="font-mono text-[9.5px] text-ink/40">timeout: {timeout}</span>
           )}
         </div>
-        <div className="pt-2">
+        <div className="pt-1">
           <span className="text-[9.5px] font-semibold uppercase tracking-wider text-ink/40">
             Waiting for Job IDs
           </span>
@@ -70,16 +71,18 @@ export function Hub({ tool }: { tool: ToolCallData }) {
             ))}
           </div>
         </div>
-        {output && <div className="mt-2 text-ink/65">{output}</div>}
+        {output && <FallbackOutput text={output} />}
       </div>
     );
   }
 
-  // Detect process management mode (e.g. op: "start", name: "ompchamber", application: "bun")
+  // Detect process management mode (e.g. op: "start", "stop", "restart", "status" with pid=)
   const processInfo = useMemo(() => {
-    if (!inputObj?.op && !output.includes('pid=')) return null;
+    const op = typeof inputObj?.op === 'string' ? inputObj.op.toLowerCase() : '';
+    const isServiceOp = ['start', 'stop', 'restart', 'status'].includes(op);
+    const hasPid = output.includes('pid=');
+    if (!isServiceOp && !hasPid) return null;
 
-    const op = inputObj?.op || 'process';
     const name = inputObj?.name || 'Service';
     const app = inputObj?.application;
     const args = Array.isArray(inputObj?.args) ? inputObj.args.join(' ') : '';
@@ -92,7 +95,7 @@ export function Hub({ tool }: { tool: ToolCallData }) {
     const isReady = output.toLowerCase().includes('ready') || output.toLowerCase().includes('started');
 
     return {
-      op,
+      op: op || 'process',
       name,
       cmd,
       port,
@@ -169,8 +172,7 @@ export function Hub({ tool }: { tool: ToolCallData }) {
 
   // Job List mode
   if (items.length === 0) {
-    const lines = output.split(/\r?\n/).filter(Boolean);
-    if (lines.length === 0) {
+    if (!output) {
       return (
         <div className="flex items-center gap-2 rounded-lg border border-dashed border-ink/15 px-3 py-2.5 text-[11.5px] text-ink/45">
           <Activity size={13} className="shrink-0" />
@@ -178,63 +180,62 @@ export function Hub({ tool }: { tool: ToolCallData }) {
         </div>
       );
     }
-    return (
-      <div className="rounded-lg border border-ink/8 bg-paper p-3 font-mono text-[11px] leading-relaxed text-ink/80">
-        {lines.map((line, i) => (
-          <div key={i}>{line}</div>
-        ))}
-      </div>
-    );
+    return <FallbackOutput text={output} />;
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-ink/8">
-      <div className="flex items-center gap-2 border-b border-ink/8 bg-paper px-3 py-1.5">
-        <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-ink/40">Hub Jobs</span>
-        <span className="rounded-full bg-ink/5 px-1.5 py-px font-mono text-[9.5px] text-ink/45">
-          {items.length}
-        </span>
-      </div>
-      <div className="divide-y divide-ink/6 bg-canvas/40 py-1">
-        {items.map((item, index) => {
-          const status = itemStatus(item);
-          const name = typeof item.id === 'string' ? item.id : typeof item.name === 'string' ? item.name : `job-${index}`;
-          const label = typeof item.label === 'string' ? item.label : typeof item.task === 'string' ? item.task : typeof item.message === 'string' ? item.message : '';
-          const type = typeof item.type === 'string' ? item.type : undefined;
-          const duration = typeof item.durationMs === 'number' ? `${(item.durationMs / 1000).toFixed(1)}s` : undefined;
-          const model = typeof item.resolvedModel === 'string' ? item.resolvedModel : undefined;
+    <div className="space-y-2">
+      <div className="overflow-hidden rounded-lg border border-ink/8">
+        <div className="flex items-center gap-2 border-b border-ink/8 bg-paper px-3 py-1.5">
+          <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-ink/40">Hub Jobs</span>
+          <span className="rounded-full bg-ink/5 px-1.5 py-px font-mono text-[9.5px] text-ink/45">
+            {items.length}
+          </span>
+        </div>
+        <div className="divide-y divide-ink/6 bg-canvas/40 py-1">
+          {items.map((item, index) => {
+            const status = itemStatus(item);
+            const name = typeof item.id === 'string' ? item.id : typeof item.name === 'string' ? item.name : `job-${index}`;
+            const label = typeof item.label === 'string' ? item.label : typeof item.task === 'string' ? item.task : typeof item.message === 'string' ? item.message : '';
+            const type = typeof item.type === 'string' ? item.type : undefined;
+            const duration = typeof item.durationMs === 'number' ? `${(item.durationMs / 1000).toFixed(1)}s` : undefined;
+            const model = typeof item.resolvedModel === 'string' ? item.resolvedModel : undefined;
 
-          return (
-            <div key={index} className="flex items-center gap-2 px-3 py-1.5 text-[11.5px]">
-              {status === 'running' ? (
-                <Radio size={11} className="shrink-0 animate-pulse text-ink/50" />
-              ) : status === 'done' ? (
-                <CheckCircle2 size={11} className="shrink-0 text-success" />
-              ) : (
-                <Play size={11} className="shrink-0 text-ink/40" />
-              )}
-              <span className="shrink-0 font-mono text-[10px] font-semibold text-ink/80">{name}</span>
-              {type && (
-                <span className="rounded bg-ink/5 px-1 py-0.2 font-mono text-[8.5px] uppercase tracking-wider text-ink/45">
-                  {type}
+            return (
+              <div key={index} className="flex items-center gap-2 px-3 py-1.5 text-[11.5px]">
+                {status === 'running' ? (
+                  <Radio size={11} className="shrink-0 animate-pulse text-ink/50" />
+                ) : status === 'done' ? (
+                  <CheckCircle2 size={11} className="shrink-0 text-success" />
+                ) : (
+                  <Play size={11} className="shrink-0 text-ink/40" />
+                )}
+                <span className="shrink-0 font-mono text-[10px] font-semibold text-ink/80">{name}</span>
+                {type && (
+                  <span className="rounded bg-ink/5 px-1 py-0.2 font-mono text-[8.5px] uppercase tracking-wider text-ink/45">
+                    {type}
+                  </span>
+                )}
+                <span className="min-w-0 flex-1 truncate text-ink/85">{label}</span>
+                {model && (
+                  <span className="hidden sm:inline-block font-mono text-[9px] text-ink/40 truncate max-w-[120px]">
+                    {model}
+                  </span>
+                )}
+                {duration && (
+                  <span className="font-mono text-[9px] text-ink/40">{duration}</span>
+                )}
+                <span className={`shrink-0 rounded-full px-1.5 py-px font-mono text-[9px] ${STATUS_STYLES[status]}`}>
+                  {status}
                 </span>
-              )}
-              <span className="min-w-0 flex-1 truncate text-ink/85">{label}</span>
-              {model && (
-                <span className="hidden sm:inline-block font-mono text-[9px] text-ink/40 truncate max-w-[120px]">
-                  {model}
-                </span>
-              )}
-              {duration && (
-                <span className="font-mono text-[9px] text-ink/40">{duration}</span>
-              )}
-              <span className={`shrink-0 rounded-full px-1.5 py-px font-mono text-[9px] ${STATUS_STYLES[status]}`}>
-                {status}
-              </span>
-            </div>
-          );
-        })}
+              </div>
+            );
+          })}
+        </div>
       </div>
+
+      {output && <FallbackOutput text={output} />}
     </div>
   );
 }
+

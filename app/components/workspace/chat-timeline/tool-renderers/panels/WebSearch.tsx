@@ -1,5 +1,6 @@
 import { ExternalLink } from 'lucide-react';
 import type { ToolCallData } from '@/types';
+import { FallbackOutput } from '@/components/workspace/chat-timeline/tool-renderers/shared/FallbackOutput';
 
 interface SearchResult {
   title?: unknown;
@@ -60,17 +61,8 @@ export function WebSearch({ tool }: { tool: ToolCallData }) {
   const items = rawItems;
 
   if (items.length === 0) {
-    const lines = (tool.output ?? '').split(/\r?\n/).filter(Boolean);
-    if (lines.length === 0) return null;
-    return (
-      <ul className="divide-y divide-ink/6 overflow-hidden rounded-lg border border-ink/8 bg-canvas/40">
-        {lines.map((line, i) => (
-          <li key={i} className="px-2.5 py-1.5 text-[11.5px] break-words text-ink/75">
-            {line}
-          </li>
-        ))}
-      </ul>
-    );
+    if (!tool.output) return null;
+    return <FallbackOutput text={tool.output} />;
   }
 
   return (
