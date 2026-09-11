@@ -19,21 +19,20 @@ export function useCommitInteractions({
   const handleToggleFile = useCallback(
     async (commitHash: string, file: GitCommitFile) => {
       const diffKey = `${commitHash}:${file.file}`;
-      let isExpanding = false;
+      const wasExpanded = expandedFiles.has(diffKey);
+      const willExpand = !wasExpanded;
 
       setExpandedFiles((prev) => {
         const next = new Set(prev);
         if (next.has(diffKey)) {
           next.delete(diffKey);
-          isExpanding = false;
         } else {
           next.add(diffKey);
-          isExpanding = true;
         }
         return next;
       });
 
-      if (isExpanding && fileDiffs[diffKey] === undefined && !file.diff) {
+      if (willExpand && fileDiffs[diffKey] === undefined && !file.diff) {
         setLoadingFiles((prev) => new Set(prev).add(diffKey));
         try {
           const formData = new FormData();
@@ -62,7 +61,7 @@ export function useCommitInteractions({
         }
       }
     },
-    [fileDiffs, rootPath, activeRepo]
+    [expandedFiles, fileDiffs, rootPath, activeRepo]
   );
 
   const handleCommitAction = useCallback(
