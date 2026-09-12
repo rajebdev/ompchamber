@@ -1,6 +1,5 @@
 export type SettingsCategoryId =
   // OMPCHAMBER
-  | 'general'
   | 'appearance'
   | 'chats'
   | 'notifications'
