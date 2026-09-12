@@ -1,0 +1,113 @@
+import { useEffect, useRef } from 'react';
+import type { ReactElement } from 'react';
+import type { ComposerMatchItem, ComposerPickItem, ComposerPickKind } from '@/types';
+
+export interface ComposerPickerProps {
+  open: boolean;
+  kind: ComposerPickKind;
+  items: ComposerMatchItem[];
+  activeIndex: number;
+  loading: boolean;
+  error: string | null;
+  listboxId: string;
+  optionId: (index: number) => string;
+  onSelect: (item: ComposerPickItem) => void;
+  onHover: (index: number) => void;
+}
+
+/** Hard cap on rendered rows so a huge catalog cannot blow up the DOM. */
+const MAX_OPTIONS = 100;
+
+function OptionName({ item }: { item: ComposerMatchItem }) {
+  const match = item.match;
+  if (!match || match.start < 0 || match.start >= match.end || match.end > item.name.length) {
+    return <>{item.name}</>;
+  }
+  return (
+    <>
+      {item.name.slice(0, match.start)}
+      <mark className="bg-transparent font-semibold text-ink">
+        {item.name.slice(match.start, match.end)}
+      </mark>
+      {item.name.slice(match.end)}
+    </>
+  );
+}
+
+export function ComposerPicker({
+  open,
+  kind,
+  items,
+  activeIndex,
+  loading,
+  error,
+  listboxId,
+  optionId,
+  onSelect,
+  onHover,
+}: ComposerPickerProps): ReactElement | null {
+  const activeOptionRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    activeOptionRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [activeIndex, open, items.length]);
+
+  if (!open) return null;
+
+  const isAgent = kind === 'agent';
+  const headerText = isAgent ? 'Type to search more agents' : 'Type to search commands and skills';
+  const ariaLabel = isAgent ? 'Agents' : 'Commands and skills';
+  const emptyText = isAgent ? 'No matching agents' : 'No matching commands or skills';
+
+  return (
+    <div
+      role="listbox"
+      id={listboxId}
+      aria-label={ariaLabel}
+      className="absolute left-0 right-0 bottom-full mb-1 z-50 min-w-[260px] flex max-h-60 flex-col rounded-md border border-ink/20 bg-paper shadow-lg text-sm"
+    >
+      <div className="shrink-0 text-[10px] uppercase tracking-wider text-ink/40 px-3 py-1.5 border-b border-ink/10">
+        {headerText}
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {error ? (
+          <div className="px-3 py-2 text-error">{error}</div>
+        ) : loading && items.length === 0 ? (
+          <div className="px-3 py-2 text-ink/50">Loading…</div>
+        ) : items.length === 0 ? (
+          <div className="px-3 py-2 text-ink/50">{emptyText}</div>
+        ) : (
+          items.slice(0, MAX_OPTIONS).map((item, index) => (
+            <div
+              key={item.id}
+              id={optionId(index)}
+              role="option"
+              aria-selected={index === activeIndex}
+              ref={index === activeIndex ? activeOptionRef : undefined}
+              onMouseDown={(e) => e.preventDefault()}
+              onMouseEnter={() => onHover(index)}
+              onClick={() => onSelect(item)}
+              className={`px-3 py-2 cursor-pointer ${index === activeIndex ? 'bg-ink/10' : ''}`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate">
+                  <OptionName item={item} />
+                </span>
+                {item.source === 'skill' && (
+                  <span className="text-ink/40 text-[10px] uppercase shrink-0">skill</span>
+                )}
+              </div>
+              <div className="truncate text-ink/50 text-xs">{item.description}</div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="shrink-0 px-3 py-1.5 border-t border-ink/10 text-[10px] text-ink/40">
+        ↑↓ navigate · Enter select · Esc close
+      </div>
+    </div>
+  );
+}

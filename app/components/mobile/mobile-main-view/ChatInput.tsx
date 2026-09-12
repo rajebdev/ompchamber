@@ -12,6 +12,7 @@ import {
 import type { Attachment, AIModelOption, ModelEntry } from '@/types';
 import { useOnClickOutside } from '@/hooks/ui/on-click-outside';
 import { ModelDropdown } from '@/components/workspace/model-dropdown/index';
+import { ComposerTextarea } from '@/components/common/ComposerTextarea';
 import { INITIAL_MODELS_CATALOG } from '@/data/models/catalog';
 import { selectableThinkingLevels } from '@/lib/models/thinking-levels';
 import { fetchModelsData, subscribeModelsUpdated } from '@/lib/models/client';
@@ -197,47 +198,16 @@ export function MobileChatInput({
         onChange={handleFileSelect} 
       />
 
-      {/* Textarea */}
-      <textarea 
+      {/* Textarea + @agent / /command+skill picker */}
+      <ComposerTextarea
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key !== 'Enter') return;
-
-          const sendBinding = appSettings.keybindingSend || 'Enter';
-          const newLineBinding = appSettings.keybindingNewLine || 'Shift + Enter';
-          const steeringBinding = appSettings.keybindingSteering || 'Ctrl / Cmd + Enter';
-          
-          const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-          const isCtrlOrCmd = isMac ? e.metaKey : e.ctrlKey;
-          const isShift = e.shiftKey;
-
-          const checkBinding = (binding: string) => {
-            if (binding === 'Enter' && !isShift && !isCtrlOrCmd && !e.altKey) return true;
-            if (binding === 'Shift + Enter' && isShift && !isCtrlOrCmd && !e.altKey) return true;
-            if (binding === 'Ctrl / Cmd + Enter' && !isShift && isCtrlOrCmd && !e.altKey) return true;
-            return false;
-          };
-
-          if (checkBinding(steeringBinding)) {
-            e.preventDefault();
-            if (!disabled) {
-              handleSendClick({ steering: true });
-            }
-          } else if (checkBinding(sendBinding)) {
-            e.preventDefault();
-            if (!disabled) handleSendClick();
-          } else if (checkBinding(newLineBinding)) {
-            // Allow default behavior (new line)
-          } else {
-            // Prevent default for other Enter combinations to avoid unwanted new lines
-            e.preventDefault();
-          }
-        }}
-        onPaste={handlePaste}
+        onChange={onChange}
+        onSend={handleSendClick}
         disabled={disabled}
-        placeholder={disabled ? "Please select a workspace above to start prompting..." : "@ for files/agents; / for commands and skills; ! for shell; # for snippets (Paste images/files here)"} 
+        appSettings={appSettings}
+        placeholder={disabled ? "Please select a workspace above to start prompting..." : "@ for files/agents; / for commands and skills; ! for shell; # for snippets (Paste images/files here)"}
         className="w-full bg-transparent border-none px-3 py-2.5 text-xs focus:outline-none resize-none text-ink placeholder-ink/40 min-h-[64px] max-h-36 disabled:opacity-50 disabled:cursor-not-allowed"
+        onPaste={handlePaste}
       />
 
       {/* Bottom Config Toolbar */}

@@ -218,3 +218,37 @@ export interface ModelsData {
   modelError?: string;
 }
 
+// ── Composer autocomplete (@agent / /command+skill) ────────────────────────
+
+/** Trigger char that opened the composer autocomplete. */
+export type ComposerPickKind = 'agent' | 'command';
+/** Origin of a pickable item (skill rides the `command` kind). */
+export type ComposerPickSource = 'agent' | 'command' | 'skill';
+
+/** A detected trigger: the `@`/`/` char plus the query typed after it. */
+export interface ComposerTrigger {
+  kind: ComposerPickKind;
+  query: string;
+  /** Index of the trigger char (`@` or `/`). */
+  start: number;
+  /** Caret index when detected. */
+  end: number;
+}
+
+/** One autocomplete item surfaced in the composer popover. */
+export interface ComposerPickItem {
+  id: string;
+  name: string;
+  description: string;
+  kind: ComposerPickKind;
+  source: ComposerPickSource;
+  /** Exact insertion text WITHOUT trailing space: `@architect` | `/review` | `/skill:capacity`. */
+  token: string;
+}
+
+/** A pick item after filtering, with the matched range within `name` (or null). */
+export interface ComposerMatchItem extends ComposerPickItem {
+  /** Matched range within `name`; null = matched via description or empty query. */
+  match: { start: number; end: number } | null;
+}
+

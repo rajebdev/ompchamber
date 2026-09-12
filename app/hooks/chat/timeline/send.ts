@@ -15,11 +15,33 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { Attachment, ChatMessageData } from '@/types';
 import { streamChatResponse } from '@/hooks/chat/stream';
 import { isTextAttachmentFile, composeMessageWithTextAttachments } from '@/lib/chat/attachments';
+import { loadAgentNames } from '@/lib/chat/composer/client';
+import { translateAgentMentions } from '@/lib/chat/composer/translate';
 import { normalizeNoticePositions } from '@/lib/chat/order';
 import { createMockStreamCallbacks } from '@/lib/chat/timeline/stream-callbacks';
 import type { useOmpAgent } from '@/hooks/chat/omp';
 
 type OmpAgent = ReturnType<typeof useOmpAgent>;
+
+type TextFileAttachment = Parameters<typeof composeMessageWithTextAttachments>[1][number];
+
+/**
+ * Build the outgoing prompt. `@agent` mentions are rewritten into an explicit
+ * task-tool delegation directive at send time (oh-my-pi has no `@agent`
+ * syntax); translation failures fall back to the raw prompt.
+ */
+async function buildPromptText(text: string, textFiles: TextFileAttachment[]): Promise<string> {
+  try {
+    const names = await loadAgentNames();
+    if (names.length > 0) {
+      const { text: translated } = translateAgentMentions(text, names);
+      return composeMessageWithTextAttachments(translated, textFiles);
+    }
+  } catch {
+    // fall through to the raw prompt
+  }
+  return composeMessageWithTextAttachments(text, textFiles);
+}
 
 export interface ChatTimelineSendDeps {
   folders: any[];
@@ -92,7 +114,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
         content: textFileContents.get(a.id) as string,
         size: a.file.size,
       }));
-    const promptText = composeMessageWithTextAttachments(text, textFiles);
+    const promptText = await buildPromptText(text, textFiles);
     const images = attachments
       .filter(a => a.file.type.startsWith('image/') && a.dataBase64)
       .map(a => ({ data: a.dataBase64 as string, mimeType: a.file.type }));
@@ -174,7 +196,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
           content: textFileContents.get(a.id) as string,
           size: a.file.size,
         }));
-      const promptText = composeMessageWithTextAttachments(text, textFiles);
+      const promptText = await buildPromptText(text, textFiles);
       const ok = await ompAgent.sendPrompt(promptText, images.length ? images : undefined);
       if (!ok) {
         // Roll back the optimistic bubbles on a failed send.
@@ -203,7 +225,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
             content: textFileContents.get(a.id) as string,
             size: a.file.size,
           }));
-        const promptText = composeMessageWithTextAttachments(text, textFiles);
+        const promptText = await buildPromptText(text, textFiles);
         const newSessionId = await ompAgent.sendNewPrompt(promptText, cwd, images.length ? images : undefined);
         if (newSessionId) {
           adoptedSessionIdRef.current = newSessionId;
