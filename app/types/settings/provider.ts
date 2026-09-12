@@ -6,6 +6,9 @@ export interface ProviderModel {
   hasVision: boolean;
   hasReasoning?: boolean;
   isVisible: boolean;
+  /** USD per 1M tokens (unit of measure not obvious from the name alone). */
+  priceInput?: number;
+  priceOutput?: number;
   temperature?: number;
   maxTokens?: number;
   topP?: number;
