@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   Search,
-  Settings as SettingsIcon,
   Palette,
   MessageSquare,
   Bell,
@@ -32,7 +31,6 @@ export interface CategoryDef {
 
 export const SETTINGS_CATEGORIES: CategoryDef[] = [
   // OMPCHAMBER
-  { id: 'general', label: 'General', icon: SettingsIcon, section: 'OMPCHAMBER', description: 'App startup, security, connection, and privacy.' },
   { id: 'appearance', label: 'Appearance', icon: Palette, section: 'OMPCHAMBER', description: 'Custom themes, typography scale, and layout density.' },
   { id: 'chats', label: 'Chats', icon: MessageSquare, section: 'OMPCHAMBER', description: 'Message streaming, thinking blocks, and tool view modes.' },
   { id: 'notifications', label: 'Notifications', icon: Bell, section: 'OMPCHAMBER', description: 'Build failure alerts, sounds, and system popups.' },

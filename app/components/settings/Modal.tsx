@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { X, ChevronLeft, Check } from 'lucide-react';
 import type { SettingsCategoryId, SettingsState } from '@/types';
 import { SettingsSidebar, SETTINGS_CATEGORIES } from '@/components/settings/Sidebar';
-import { GeneralSettings } from '@/components/settings/categories/GeneralSettings';
 import { AppearanceSettings } from '@/components/settings/categories/AppearanceSettings';
 import { ChatSettings } from '@/components/settings/categories/ChatSettings';
 import { WorkspaceSettings } from '@/components/settings/categories/WorkspaceSettings';
@@ -61,7 +60,7 @@ const DEFAULT_SETTINGS: SettingsState = {
 export function SettingsModal({ 
   isOpen, 
   onClose, 
-  initialCategory = 'general', 
+  initialCategory = 'appearance',
   appSettings = {},
   autoOpenAddProvider = false,
 }: SettingsModalProps) {
@@ -159,8 +158,6 @@ export function SettingsModal({
 
   const renderCategoryContent = () => {
     switch (activeCategory) {
-      case 'general':
-        return <GeneralSettings />;
       case 'appearance':
         return <AppearanceSettings settings={settings} onUpdate={handleUpdateSettings} />;
       case 'chats':
