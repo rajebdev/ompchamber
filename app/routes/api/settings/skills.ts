@@ -5,6 +5,7 @@ import { DEFAULT_SKILLS, DEFAULT_CATALOG_SOURCES, DEFAULT_CATALOG_SKILLS } from 
 import { isMockMode } from '@/mock.server';
 import type { SkillItem } from '@/types';
 import { discoverNativeSkills, setSkillModelInvocation } from '@/lib/omp/config/skills';
+import { searchSkillCatalog, toCatalogSkills, installCatalogSkill } from '@/lib/omp/config/skills-catalog';
 
 const SKILLS_KEY = 'omp_skills';
 const SOURCES_KEY = 'omp_catalog_sources';
@@ -65,10 +66,21 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
     const mergedSkills = includeNative && !mock ? mergeSkills(skills) : skills;
 
+    let catalogSkills = DEFAULT_CATALOG_SKILLS;
+    if (!mock) {
+      const [popular, curated] = await Promise.all([
+        searchSkillCatalog('popular', 18),
+        searchSkillCatalog('code review', 8),
+      ]);
+      const seen = new Set<string>();
+      catalogSkills = toCatalogSkills([...popular, ...curated], catalogSources[0]?.id ?? 'skills-sh')
+        .filter((item) => (seen.has(item.repoTag) ? false : (seen.add(item.repoTag), true)));
+    }
+
     return json({
       skills: mergedSkills,
       catalogSources,
-      catalogSkills: DEFAULT_CATALOG_SKILLS,
+      catalogSkills,
       isMock: mock,
     });
   } catch (error: any) {
@@ -146,15 +158,21 @@ export async function action({ request }: ActionFunctionArgs) {
         }
 
         if (install) {
+          // Catalog skill with a package tag installs via the real skills.sh CLI.
+          if (typeof skill.repoTag === 'string' && /^[\w.\-]+\/[\w.\-@:]+$/.test(skill.repoTag)) {
+            await installCatalogSkill(skill.repoTag);
+          }
           if (!skills.some(s => s.name === skill.name)) {
             skills.push({
               id: `skill-${Date.now()}`,
               name: skill.name,
               description: skill.description,
               location: 'user',
-              locationLabel: 'User / OpenCode',
-              instructions: `Autonomous guidelines for ${skill.name}. Adhere strictly to skill instructions.`,
-              project: 'ompchamber',
+              locationLabel: 'User / OMP agent',
+              instructions: skill.instructions || `Autonomous guidelines for ${skill.name}. Adhere strictly to skill instructions.`,
+              project: 'omp',
+              isInstalledFromCatalog: true,
+              catalogSource: skill.catalogSource ?? skill.sourceId,
             });
           }
         } else {
@@ -174,6 +192,12 @@ export async function action({ request }: ActionFunctionArgs) {
       } else if (Array.isArray(body.skills)) {
         updatedSkills = body.skills;
       } else if (body.skill) {
+        // Catalog skill POST installs via the skills.sh CLI: the component
+        // echoes the package back in instructions (and may include repoTag).
+        const pkg = typeof body.skill.repoTag === 'string' && /^[\w.\-]+\/[\w.\-@:]+$/.test(body.skill.repoTag)
+          ? body.skill.repoTag
+          : (typeof body.skill.instructions === 'string' && /^[\w.\-]+\/[\w.\-@:]+$/.test(body.skill.instructions) ? body.skill.instructions : null);
+        if (!isMockMode() && pkg) await installCatalogSkill(pkg);
         const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SKILLS_KEY]);
         let list: SkillItem[] = DEFAULT_SKILLS;
         if (row?.value) {
