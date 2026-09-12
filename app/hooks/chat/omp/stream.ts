@@ -114,6 +114,14 @@ export function useOmpAgentStream({
           if (msg.role !== 'user') {
             const converted = toChatMessage(msg);
             if (converted) callbacksRef.current?.onMessageUpdate?.(converted);
+          } else {
+            // Steering (abort_and_prompt) and follow-up deliveries create no
+            // optimistic bubble — the user turn only exists on the stream.
+            // Convert it here so the bubble renders live instead of after a
+            // JSONL reload. The callbacks append user rows (never overwrite
+            // the streaming AI placeholder) and dedup by omp message id.
+            const converted = toChatMessage(msg);
+            if (converted) callbacksRef.current?.onMessageUpdate?.(converted);
           }
           break;
         }

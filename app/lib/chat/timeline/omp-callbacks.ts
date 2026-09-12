@@ -96,6 +96,18 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
           }
           return normalizeNoticePositions([...prev, msg]);
         }
+        // User turns from the stream (steering abort_and_prompt, queue
+        // follow-up deliveries) carry no optimistic bubble — append them
+        // wholesale. Never merge into the AI placeholder slot: that would
+        // overwrite the streaming AI segment (the omp user id also differs).
+        if (msg.role === 'user') {
+          if (prev.some(m => m.id === msg.id)) return prev;
+          if (placeholderId && prev.some(m => m.id === placeholderId)) {
+            const pIdx = prev.findIndex(m => m.id === placeholderId);
+            return [...prev.slice(0, pIdx), msg, ...prev.slice(pIdx)];
+          }
+          return [...prev, msg];
+        }
         if (placeholderId && prev.some(m => m.id === placeholderId)) {
           return prev.map(m => (m.id === placeholderId ? msg : m));
         }
@@ -114,6 +126,21 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
     onMessageEnd: (msg) => {
       setLocalMessages(prev => {
         const placeholderId = aiPlaceholderIdRef.current;
+        // User turn finalization (steering/follow-up): same contract as the
+        // update path — append-only, deduped by omp id, placeholder untouched.
+        if (msg.role === 'user') {
+          let next: ChatMessageData[];
+          if (prev.some(m => m.id === msg.id)) {
+            next = prev.map(m => (m.id === msg.id ? msg : m));
+          } else if (placeholderId && prev.some(m => m.id === placeholderId)) {
+            const pIdx = prev.findIndex(m => m.id === placeholderId);
+            next = [...prev.slice(0, pIdx), msg, ...prev.slice(pIdx)];
+          } else {
+            next = [...prev, msg];
+          }
+          persistMessages(next);
+          return next;
+        }
         let updated: ChatMessageData[];
         if (placeholderId && prev.some(m => m.id === placeholderId)) {
           updated = prev.map(m => (m.id === placeholderId ? msg : m));
