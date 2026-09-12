@@ -10,7 +10,7 @@
  * read-only: chamber never mutates native agent files.
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { getAgentDir } from '@/lib/omp/core/paths';
 
@@ -110,4 +110,70 @@ export function discoverNativeAgents(projectDir?: string): DiscoveredAgent[] {
     }
   }
   return [...byBase.values()];
+}
+
+/** Escape a frontmatter scalar value into a safe quoted string. */
+function fmValue(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function optionalFmLine(lines: string[], key: string, value: string | number | null | undefined): void {
+  if (value === null || value === undefined || value === '') return;
+  lines.push(`${key}: ${typeof value === 'number' ? value : fmValue(String(value))}`);
+}
+
+export interface AgentFileInput {
+  /** File base name without .md (also the agent name unless name is given). */
+  fileName: string;
+  name?: string;
+  description?: string;
+  mode?: string;
+  model?: string;
+  thinking?: string;
+  temperature?: number | null;
+  topP?: number | null;
+  tools?: string[];
+  systemPrompt: string;
+}
+
+/**
+ * Write (create or replace) a user-level agent definition markdown file.
+ * Project agents are intentionally not writable from the chamber — the agent
+ * dir belongs to omp.
+ */
+export function writeAgentDefinition(input: AgentFileInput): { path: string } {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(input.fileName)) {
+    throw new Error('Agent file name may contain letters, numbers, dots, dashes, and underscores');
+  }
+  if (!input.systemPrompt.trim()) {
+    throw new Error('Agent system prompt cannot be empty');
+  }
+  const dir = join(getAgentDir(), 'agents');
+  const path = join(dir, `${input.fileName}.md`);
+  const lines: string[] = ['---'];
+  optionalFmLine(lines, 'name', input.name ?? input.fileName);
+  optionalFmLine(lines, 'description', input.description);
+  optionalFmLine(lines, 'mode', input.mode);
+  optionalFmLine(lines, 'model', input.model);
+  optionalFmLine(lines, 'thinking-level', input.thinking);
+  optionalFmLine(lines, 'temperature', input.temperature ?? null);
+  optionalFmLine(lines, 'top_p', input.topP ?? null);
+  if (input.tools && input.tools.length > 0) {
+    lines.push(`tools: ${input.tools.map(fmValue).join(', ')}`);
+  }
+  lines.push('---');
+  const content = `${lines.join('\n')}\n\n${input.systemPrompt.trim()}\n`;
+  mkdirSync(dir, { recursive: true });
+  const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
+  writeFileSync(temp, content, 'utf8');
+  renameSync(temp, path);
+  return { path };
+}
+
+export function deleteAgentDefinition(fileName: string): boolean {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(fileName)) throw new Error('Invalid agent file name');
+  const path = join(getAgentDir(), 'agents', `${fileName}.md`);
+  if (!existsSync(path)) return false;
+  unlinkSync(path);
+  return true;
 }

@@ -4,7 +4,7 @@ import { getDb } from '@/db.server';
 import { DEFAULT_AGENTS_LIST } from '@/data/agent-data';
 import { isMockMode } from '@/mock.server';
 import type { AgentItem } from '@/types';
-import { discoverNativeAgents } from '@/lib/omp/config/agents';
+import { discoverNativeAgents, deleteAgentDefinition, writeAgentDefinition } from '@/lib/omp/config/agents';
 
 const SETTINGS_KEY = 'omp_agents';
 
@@ -101,6 +101,33 @@ export async function action({ request }: ActionFunctionArgs) {
 
     if (request.method === 'POST' || request.method === 'PUT') {
       const body = await request.json();
+
+      // Native agent file write: { type: "write_native", fileName, ...definition }
+      if (body.type === 'write_native') {
+        if (isMockMode()) return json({ error: 'Native agent writes are unavailable in mock mode' }, { status: 400 });
+        const written = writeAgentDefinition({
+          fileName: String(body.fileName ?? ''),
+          name: typeof body.name === 'string' ? body.name : undefined,
+          description: typeof body.description === 'string' ? body.description : undefined,
+          mode: typeof body.mode === 'string' ? body.mode : undefined,
+          model: typeof body.model === 'string' ? body.model : undefined,
+          thinking: typeof body.thinking === 'string' ? body.thinking : undefined,
+          temperature: typeof body.temperature === 'number' ? body.temperature : null,
+          topP: typeof body.topP === 'number' ? body.topP : null,
+          tools: Array.isArray(body.tools) ? body.tools.map(String) : undefined,
+          systemPrompt: String(body.systemPrompt ?? ''),
+        });
+        return json({ success: true, path: written.path, agents: mergeAgents([]) });
+      }
+
+      // Native agent file delete: { type: "delete_native", fileName }
+      if (body.type === 'delete_native') {
+        if (isMockMode()) return json({ error: 'Native agent deletes are unavailable in mock mode' }, { status: 400 });
+        const removed = deleteAgentDefinition(String(body.fileName ?? ''));
+        if (!removed) return json({ error: 'Native agent file not found' }, { status: 404 });
+        return json({ success: true, agents: mergeAgents([]) });
+      }
+
       let updatedAgents: AgentItem[] = [];
 
       if (Array.isArray(body)) {
