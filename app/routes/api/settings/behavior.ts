@@ -3,6 +3,7 @@ import type { LoaderFunctionArgs, ActionFunctionArgs } from '@remix-run/node';
 import { getDb } from '@/db.server';
 import { DEFAULT_BEHAVIOR_RULES } from '@/data/settings/behavior';
 import { isMockMode } from '@/mock.server';
+import { parseApprovalRules, writeToolsApproval } from '@/lib/omp/config/behavior';
 
 const SETTINGS_KEY = 'omp_behavior_rules';
 
@@ -49,7 +50,21 @@ export async function action({ request }: ActionFunctionArgs) {
         content,
       ]);
 
-      return json({ success: true, rules: content });
+      let nativeSynced = false;
+      let nativeError: string | undefined;
+      if (!isMockMode()) {
+        const approval = parseApprovalRules(content);
+        if (approval) {
+          try {
+            writeToolsApproval(approval);
+            nativeSynced = true;
+          } catch (error) {
+            nativeError = error instanceof Error ? error.message : String(error);
+          }
+        }
+      }
+
+      return json({ success: true, rules: content, nativeSynced, ...(nativeError ? { nativeError } : {}) });
     }
 
     return json({ error: 'Method not allowed' }, { status: 405 });
