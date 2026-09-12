@@ -4,12 +4,45 @@ import { getDb } from '@/db.server';
 import { DEFAULT_AGENTS_LIST } from '@/data/agent-data';
 import { isMockMode } from '@/mock.server';
 import type { AgentItem } from '@/types';
+import { discoverNativeAgents } from '@/lib/omp/config/agents';
 
 const SETTINGS_KEY = 'omp_agents';
 
-export async function loader({ request: _request }: LoaderFunctionArgs) {
+/**
+ * Convert a natively discovered omp agent into the chamber AgentItem shape.
+ * Native agents are surfaced as read-only built-ins (isBuiltIn) so the UI
+ * lists them alongside app-local custom agents without offering edits that
+ * would silently not persist.
+ */
+function nativeToAgentItem(agent: ReturnType<typeof discoverNativeAgents>[number]): AgentItem & { sourceRoot: string } {
+  return {
+    id: agent.id,
+    name: agent.name,
+    description: agent.description || `Native omp agent (${agent.sourceRoot})`,
+    scope: agent.sourceRoot === 'user' ? 'user' : 'project',
+    mode: agent.mode,
+    overrideModel: agent.overrideModel,
+    thinkingVariant: agent.thinkingVariant,
+    temperature: agent.temperature,
+    topP: agent.topP,
+    systemPrompt: agent.systemPrompt,
+    isBuiltIn: true,
+    sourceRoot: agent.sourceRoot,
+  };
+}
+
+/** Merge native omp agents (disk discovery) with app-local custom agents. */
+function mergeAgents(custom: AgentItem[]): Array<AgentItem & { sourceRoot?: string }> {
+  const native = discoverNativeAgents().map(nativeToAgentItem);
+  const nativeNames = new Set(native.map((a) => a.name.toLowerCase()));
+  return [...native, ...custom.filter((a) => !nativeNames.has(a.name.toLowerCase()))];
+}
+
+export async function loader({ request }: LoaderFunctionArgs) {
   try {
     const db = await getDb();
+    const url = new URL(request.url);
+    const includeNative = url.searchParams.get('native') === '1' || !isMockMode();
     const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
     const mock = isMockMode();
     let agents: AgentItem[] = mock ? DEFAULT_AGENTS_LIST : [];
@@ -29,6 +62,10 @@ export async function loader({ request: _request }: LoaderFunctionArgs) {
       ]);
     }
 
+    if (includeNative && !mock) {
+      return json({ agents: mergeAgents(agents), isMock: mock });
+    }
+
     return json({ agents, isMock: mock });
   } catch (error: any) {
     return json({ error: error.message, agents: isMockMode() ? DEFAULT_AGENTS_LIST : [], isMock: isMockMode() }, { status: 500 });
@@ -44,6 +81,9 @@ export async function action({ request }: ActionFunctionArgs) {
       const id = url.searchParams.get('id');
       if (!id) {
         return json({ error: 'id is required' }, { status: 400 });
+      }
+      if (id.startsWith('omp-')) {
+        return json({ error: 'Native omp agents are read-only in chamber' }, { status: 403 });
       }
 
       const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
@@ -68,6 +108,9 @@ export async function action({ request }: ActionFunctionArgs) {
       } else if (Array.isArray(body.agents)) {
         updatedAgents = body.agents;
       } else if (body.agent) {
+        if (typeof body.agent.id === 'string' && body.agent.id.startsWith('omp-')) {
+          return json({ error: 'Native omp agents are read-only in chamber' }, { status: 403 });
+        }
         const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
         let list: AgentItem[] = DEFAULT_AGENTS_LIST;
         if (row?.value) {
