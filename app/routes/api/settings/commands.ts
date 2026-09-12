@@ -4,8 +4,42 @@ import { getDb } from '@/db.server';
 import { DEFAULT_COMMANDS_LIST } from '@/data/settings/command';
 import { isMockMode } from '@/mock.server';
 import type { CommandItem } from '@/types';
+import { runUtilityCommand } from '@/lib/omp/rpc/utility';
 
 const SETTINGS_KEY = 'omp_commands_settings';
+
+/** Read live agent commands (skill/custom/extension/file sources) via RPC. */
+async function loadAgentCommands(): Promise<CommandItem[]> {
+  try {
+    const data = await runUtilityCommand<{ commands?: unknown }>({ type: 'get_available_commands' }, 30_000);
+    const available = Array.isArray(data.commands) ? data.commands : [];
+    const agentSources = new Set(['skill', 'custom', 'extension', 'file']);
+    return available
+      .filter((c) => agentSources.has((c as { source?: string })?.source ?? ''))
+      .map((c) => {
+        const command = c as { name?: string; description?: string; source?: string };
+        const name = typeof command.name === 'string' ? command.name : '';
+        return {
+          id: `omp-live-${name}`,
+          name,
+          description: typeof command.description === 'string' ? command.description : '',
+          scope: 'user' as const,
+          template: `/${name}`,
+          isBuiltIn: true,
+        };
+      })
+      .filter((c) => c.name.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+/** Merge live agent commands ahead of app-local custom commands. */
+async function mergeCommands(custom: CommandItem[]): Promise<CommandItem[]> {
+  const live = await loadAgentCommands();
+  const liveNames = new Set(live.map((c) => c.name.toLowerCase()));
+  return [...live, ...custom.filter((c) => !liveNames.has(c.name.toLowerCase()))];
+}
 
 export async function loader({ request: _request }: LoaderFunctionArgs) {
   try {
@@ -28,7 +62,8 @@ export async function loader({ request: _request }: LoaderFunctionArgs) {
       ]);
     }
 
-    return json({ commands, isMock: mock });
+    const merged = mock ? commands : await mergeCommands(commands);
+    return json({ commands: merged, isMock: mock });
   } catch (error: any) {
     const mock = isMockMode();
     return json({ error: error.message, commands: mock ? DEFAULT_COMMANDS_LIST : [], isMock: mock }, { status: 500 });
