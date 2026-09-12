@@ -2,7 +2,7 @@ import { json } from '@remix-run/node';
 import type { LoaderFunctionArgs, ActionFunctionArgs } from '@remix-run/node';
 import { TIME_RANGES, MOCK_RANGE_DATA, BREAKDOWN_DATA } from '@/data/mock/token-usage';
 import { isMockMode } from '@/mock.server';
-import { getDb } from '@/db.server';
+import { aggregateUsage, toBreakdownRows, toMetricSet } from '@/lib/omp/session/usage';
 import type { TimeRangeType, BreakdownTab, TokenUsageMetricSet, BreakdownRow } from '@/types';
 
 const REAL_ZERO_METRIC: TokenUsageMetricSet = {
@@ -35,49 +35,53 @@ export async function loader({ request }: LoaderFunctionArgs) {
       breakdownData: BREAKDOWN_DATA,
       activeMetrics,
       activeBreakdownRows,
+      metrics: activeMetrics,
+      breakdownRows: activeBreakdownRows,
       timeRange,
       breakdownTab,
       isMock: true,
     });
   }
 
-  // Real Mode: Query actual chat transcripts from SQLite database
+  // Real Mode: aggregate actual token/cost usage from omp session files.
   try {
-    const db = await getDb();
-    const sessionRows = await db.all('SELECT * FROM sessions');
-    const sessionCount = sessionRows.length;
+    const ranges: TimeRangeType[] = ['today', '7d', '30d', '90d', 'all'];
+    const realRangeData = {} as Record<TimeRangeType, TokenUsageMetricSet>;
+    for (const range of ranges) {
+      realRangeData[range] = toMetricSet(aggregateUsage(range));
+    }
 
-    const realRangeData: Record<TimeRangeType, TokenUsageMetricSet> = {
-      today: { ...REAL_ZERO_METRIC, scannedTranscripts: Math.min(sessionCount, 2), usageRecords: sessionCount },
-      '7d': { ...REAL_ZERO_METRIC, scannedTranscripts: Math.min(sessionCount, 5), usageRecords: sessionCount },
-      '30d': { ...REAL_ZERO_METRIC, scannedTranscripts: sessionCount, usageRecords: sessionCount },
-      '90d': { ...REAL_ZERO_METRIC, scannedTranscripts: sessionCount, usageRecords: sessionCount },
-      all: { ...REAL_ZERO_METRIC, scannedTranscripts: sessionCount, usageRecords: sessionCount },
-    };
-
+    const activeAggregate = aggregateUsage(timeRange);
     const realBreakdown: Record<BreakdownTab, BreakdownRow[]> = {
-      model: [],
-      day: [],
-      project: [],
+      model: toBreakdownRows(activeAggregate, 'model'),
+      day: toBreakdownRows(activeAggregate, 'day'),
+      project: toBreakdownRows(activeAggregate, 'project'),
     };
+    const activeMetrics = realRangeData[timeRange] || realRangeData['30d'];
+    const activeBreakdownRows = realBreakdown[breakdownTab] || [];
 
     return json({
       timeRanges: TIME_RANGES,
       rangeData: realRangeData,
       breakdownData: realBreakdown,
-      activeMetrics: realRangeData[timeRange] || REAL_ZERO_METRIC,
-      activeBreakdownRows: realBreakdown[breakdownTab] || [],
+      activeMetrics,
+      activeBreakdownRows,
+      metrics: activeMetrics,
+      breakdownRows: activeBreakdownRows,
       timeRange,
       breakdownTab,
       isMock: false,
     });
   } catch (error: any) {
+    const zeroBreakdown: Record<BreakdownTab, BreakdownRow[]> = { model: [], day: [], project: [] };
     return json({
       timeRanges: TIME_RANGES,
       rangeData: { today: REAL_ZERO_METRIC, '7d': REAL_ZERO_METRIC, '30d': REAL_ZERO_METRIC, '90d': REAL_ZERO_METRIC, all: REAL_ZERO_METRIC },
-      breakdownData: { model: [], day: [], project: [] },
+      breakdownData: zeroBreakdown,
       activeMetrics: REAL_ZERO_METRIC,
       activeBreakdownRows: [],
+      metrics: REAL_ZERO_METRIC,
+      breakdownRows: [],
       timeRange,
       breakdownTab,
       isMock: false,
