@@ -9,6 +9,7 @@ import {
   Coins,
   FolderGit,
   Cloud,
+  Cpu,
   Bot,
   Sliders,
   Terminal,
@@ -40,6 +41,7 @@ export const SETTINGS_CATEGORIES: CategoryDef[] = [
   // WORKSPACE
   { id: 'projects', label: 'Projects', icon: FolderGit, section: 'WORKSPACE', description: 'Workspace directories, roots, and ignored paths.' },
   // OMP
+  { id: 'omp', label: 'OMP Engine', icon: Cpu, section: 'OMP', description: 'Live agent state and native omp config keys.' },
   { id: 'providers', label: 'Providers', icon: Cloud, section: 'OMP', description: 'AI model engines, endpoints, and credentials.' },
   { id: 'agents', label: 'Agents', icon: Bot, section: 'OMP', description: 'Autonomous agent persona, self-healing, and reasoning.' },
   { id: 'behavior', label: 'Behavior', icon: Sliders, section: 'OMP', description: 'Permission gates, command approvals, and safety filters.' },

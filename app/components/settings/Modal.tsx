@@ -15,6 +15,7 @@ import { McpSettings } from '@/components/settings/categories/McpSettings';
 import { SkillSettings } from '@/components/settings/categories/SkillSettings';
 import { SkillCatalogSettings } from '@/components/settings/categories/SkillCatalogSettings';
 import { OtherSettings } from '@/components/settings/categories/OtherSettings';
+import { OmpSettings } from '@/components/settings/categories/OmpSettings';
 import { TokenUsageSettings } from '@/components/settings/categories/TokenUsageSettings';
 import { NotificationSettings } from '@/components/settings/categories/NotificationSettings';
 
@@ -197,6 +198,8 @@ export function SettingsModal({
         );
       case 'skills-catalog':
         return <SkillCatalogSettings />;
+      case 'omp':
+        return <OmpSettings settings={settings} onUpdate={handleUpdateSettings} />;
       case 'usage':
       default:
         return <OtherSettings category={activeCategory} />;

@@ -10,6 +10,7 @@ export type SettingsCategoryId =
   | 'projects'
   | 'git'
   // OMP
+  | 'omp'
   | 'providers'
   | 'agents'
   | 'behavior'
