@@ -94,7 +94,7 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
   );
 
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsCategory, setSettingsCategory] = useState<SettingsCategoryId>('general');
+  const [settingsCategory, setSettingsCategory] = useState<SettingsCategoryId>('appearance');
   const [autoOpenAddProvider, setAutoOpenAddProvider] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const handleRefreshWorkspace = () => setRefreshKey(k => k + 1);
@@ -105,7 +105,7 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === ',') {
         e.preventDefault();
-        setSettingsCategory('general');
+        setSettingsCategory('appearance');
         setAutoOpenAddProvider(false);
         setSettingsOpen(prev => !prev);
       }
@@ -121,7 +121,7 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
       if (customEvent.detail?.category) {
         setSettingsCategory(customEvent.detail.category);
       } else {
-        setSettingsCategory('general');
+        setSettingsCategory('appearance');
       }
       setAutoOpenAddProvider(!!customEvent.detail?.autoOpenAdd);
       setSettingsOpen(true);
