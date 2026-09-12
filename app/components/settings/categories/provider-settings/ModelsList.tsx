@@ -3,6 +3,11 @@ import { Search, SlidersHorizontal, Settings2, Image as ImageIcon, Eye, EyeOff }
 import type { ProviderModel } from '@/types';
 import { formatContextWindow } from '@/lib/code/format';
 
+function formatPrice(value: number | undefined): string {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return '';
+  return `$${value < 1 ? value.toFixed(2) : value.toFixed(2)}`;
+}
+
 interface ProviderModelsListProps {
   models: ProviderModel[];
   onToggleModelVisibility: (modelId: string) => void;
@@ -96,12 +101,24 @@ export function ProviderModelsList({
                 </span>
               </div>
 
-              {/* Right: Context Badge & Action Icons */}
+              {/* Right: Price & Context Badge & Action Icons */}
               <div className="flex items-center gap-2 flex-shrink-0">
+                {/* Pricing Badge (per 1M tokens) */}
+                {(model.priceInput !== undefined || model.priceOutput !== undefined) && (
+                  <span
+                    title={`$${model.priceInput ?? '?'} in / $${model.priceOutput ?? '?'} out per 1M tokens`}
+                    className="text-[11px] font-mono px-2 py-0.5 rounded bg-ink/5 text-ink/70 border border-ink/10"
+                  >
+                    {formatPrice(model.priceInput)} / {formatPrice(model.priceOutput)}
+                  </span>
+                )}
+
                 {/* Context Window Badge */}
-                <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-ink/5 text-ink/70 border border-ink/10">
-                  {formatContextWindow(model.contextWindow)}
-                </span>
+                {model.contextWindow && (
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-ink/5 text-ink/70 border border-ink/10">
+                    {formatContextWindow(model.contextWindow)}
+                  </span>
+                )}
 
                 {/* Tool Calling / Steering Button */}
                 {model.hasTools && (

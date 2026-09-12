@@ -1,5 +1,12 @@
 import { useState, useEffect } from 'react';
 import type { ProviderItem, ProviderModel } from '@/types';
+import {
+  fetchProviderModelsRemote,
+  mergeProviderModels,
+  syncProviderModelsToCatalog,
+} from '@/lib/models/provider-models';
+import { useToasts } from '@/hooks/ui/toasts';
+import { Toast } from '@/components/common/Toast';
 import { ProviderSidebarList } from '@/components/settings/categories/provider-settings/SidebarList';
 import { ProviderHeader } from '@/components/settings/categories/provider-settings/Header';
 import { ProviderAuthSection } from '@/components/settings/categories/provider-settings/AuthSection';
@@ -23,6 +30,8 @@ export function ProviderSettings({
   const [presetProviders, setPresetProviders] = useState<PresetProviderOption[]>([]);
   const [selectedProviderId, setSelectedProviderId] = useState<string>('provider-deepseek');
   const [currentProject, setCurrentProject] = useState('ompchamber');
+  const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const { toasts, pushToast, dismissToast } = useToasts();
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(autoOpenAdd);
@@ -71,40 +80,24 @@ export function ProviderSettings({
     providers.find((p) => p.id === selectedProviderId) || providers[0];
 
   // Button action: Add new provider
-  const handleAddProvider = (newProvider: ProviderItem) => {
+  const handleAddProvider = (newProvider: ProviderItem, options: { fetchedCount: number }) => {
     const updated = [...providers, newProvider];
     persistProviders(updated);
     setSelectedProviderId(newProvider.id);
     setIsAddModalOpen(false);
     onAddModalClose?.();
 
-    // Also sync the new provider default models to the catalog endpoint
-    if (newProvider.models && newProvider.models.length > 0) {
-      Promise.all(
-        newProvider.models.map(pm =>
-          fetch('/api/models', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              actionType: 'addModel',
-              model: {
-                id: pm.id,
-                name: pm.name,
-                provider: newProvider.name,
-                contextWindow: pm.contextWindow?.split(' ')[0] || '128K',
-                thinkingLevel: 'Default',
-                isFavorite: true,
-                capabilities: ['Tool calling', 'Reasoning'],
-                inputFormats: ['text'],
-                outputFormats: ['text'],
-              }
-            })
-          })
-        )
-      ).then(() => {
-        window.dispatchEvent(new CustomEvent('omp:models-updated'));
-      }).catch(console.error);
+    if (options.fetchedCount > 0) {
+      pushToast(
+        `Fetched ${options.fetchedCount} new model${options.fetchedCount === 1 ? '' : 's'} from the provider.`,
+        'success',
+      );
+    } else if (options.fetchedCount === -1) {
+      pushToast('Auto-fetch models failed — provider added with default models.', 'error');
     }
+
+    // Also sync the new provider default models to the catalog endpoint
+    void syncProviderModelsToCatalog(newProvider.name, newProvider.models);
   };
 
   // Button action: Reconnect / update credentials
@@ -117,6 +110,45 @@ export function ProviderSettings({
       return p;
     });
     persistProviders(updated);
+  };
+
+  const handleFetchModels = async (credentials: { apiKey?: string; baseUrl?: string }) => {
+    if (!selectedProvider || isFetchingModels) return;
+    const baseUrl = credentials.baseUrl || selectedProvider.baseUrl;
+    if (!baseUrl) {
+      pushToast('Base URL is required to fetch models.', 'error');
+      return;
+    }
+    setIsFetchingModels(true);
+    try {
+      const result = await fetchProviderModelsRemote(
+        baseUrl,
+        credentials.apiKey || selectedProvider.apiKey,
+        selectedProvider.slug,
+        true,
+      );
+      if (!result.ok || !result.models) {
+        pushToast(result.error || 'Failed to fetch models from the provider.', 'error');
+        return;
+      }
+      const { merged, addedCount } = mergeProviderModels(selectedProvider.models, result.models);
+      if (addedCount === 0) {
+        pushToast('No new models found — all fetched models already exist.', 'success');
+        return;
+      }
+      handleReconnect({ models: merged });
+      pushToast(`Fetched ${addedCount} new model${addedCount === 1 ? '' : 's'} from the provider.`, 'success');
+      if (result.omp?.written) {
+        const parts: string[] = [];
+        if (result.omp.addedCount > 0) parts.push(`${result.omp.addedCount} new model${result.omp.addedCount === 1 ? '' : 's'} registered`);
+        if (result.omp.backfilledCount > 0) parts.push(`${result.omp.backfilledCount} model${result.omp.backfilledCount === 1 ? '' : 's'} enriched`);
+        pushToast(`omp models.yml updated: ${parts.join(', ')}.`, 'success');
+      } else if (result.omp && !result.omp.written && result.omp.reason) {
+        pushToast(`omp models.yml not updated: ${result.omp.reason}`, 'error');
+      }
+    } finally {
+      setIsFetchingModels(false);
+    }
   };
 
   // OAuth/API-key login via the omp login flow finished successfully.
@@ -249,6 +281,10 @@ export function ProviderSettings({
         )}
       </div>
 
+      {toasts.map(t => (
+        <Toast key={t.id} toast={t} onDismiss={dismissToast} />
+      ))}
+
       {/* Modals */}
       <AddProviderModal
         isOpen={isAddModalOpen}
@@ -264,8 +300,10 @@ export function ProviderSettings({
         <ReconnectModal
           isOpen={isReconnectModalOpen}
           provider={selectedProvider}
+          isFetchingModels={isFetchingModels}
           onClose={() => setIsReconnectModalOpen(false)}
           onReconnect={handleReconnect}
+          onFetchModels={handleFetchModels}
         />
       )}
 

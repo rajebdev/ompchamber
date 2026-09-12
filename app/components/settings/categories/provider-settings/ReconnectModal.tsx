@@ -1,20 +1,25 @@
 import React, { useState } from 'react';
-import { X, Key, Globe, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, Key, Globe, RefreshCw, CheckCircle2, AlertCircle, DownloadCloud } from 'lucide-react';
 import type { ProviderItem } from '@/types';
+import { fetchProviderModelsRemote } from '@/lib/models/provider-models';
 import { ProviderIcon } from '@/components/settings/categories/provider-settings/Icons';
 
 interface ReconnectModalProps {
   isOpen: boolean;
   provider: ProviderItem;
+  isFetchingModels: boolean;
   onClose: () => void;
   onReconnect: (updatedProvider: Partial<ProviderItem>) => void;
+  onFetchModels: (credentials: { apiKey?: string; baseUrl?: string }) => Promise<void>;
 }
 
 export function ReconnectModal({
   isOpen,
   provider,
+  isFetchingModels,
   onClose,
   onReconnect,
+  onFetchModels,
 }: ReconnectModalProps) {
   const [apiKey, setApiKey] = useState(provider.apiKey || 'sk-••••••••••••••••••••••••');
   const [baseUrl, setBaseUrl] = useState(provider.baseUrl || 'https://api.openai.com/v1');
@@ -23,22 +28,28 @@ export function ReconnectModal({
 
   if (!isOpen) return null;
 
-  const handleTestConnection = () => {
-    setIsTesting(true);
-    setTestResult(null);
-    setTimeout(() => {
-      setIsTesting(false);
-      setTestResult('success');
-    }, 900);
+  const isDraftKey = apiKey.includes('••••');
+  const draftCredentials = {
+    apiKey: isDraftKey ? undefined : apiKey,
+    baseUrl,
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleTestConnection = async () => {
+    setIsTesting(true);
+    setTestResult(null);
+    const result = await fetchProviderModelsRemote(baseUrl, draftCredentials.apiKey);
+    setIsTesting(false);
+    setTestResult(result.ok ? 'success' : 'failed');
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     onReconnect({
       apiKey,
       baseUrl,
       status: 'connected',
     });
+    await onFetchModels(draftCredentials);
     onClose();
   };
 
@@ -110,7 +121,7 @@ export function ReconnectModal({
           <div className="flex items-center justify-between pt-1">
             <button
               type="button"
-              disabled={isTesting}
+              disabled={isTesting || isFetchingModels}
               onClick={handleTestConnection}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-ink/20 hover:border-ink/40 text-xs font-medium text-ink transition-colors cursor-pointer bg-ink/5 disabled:opacity-50"
             >
@@ -121,7 +132,7 @@ export function ReconnectModal({
             {testResult === 'success' && (
               <span className="inline-flex items-center gap-1 text-xs text-emerald-500 font-medium">
                 <CheckCircle2 size={13} />
-                <span>200 OK (38ms)</span>
+                <span>Models endpoint reachable</span>
               </span>
             )}
             {testResult === 'failed' && (
@@ -130,6 +141,15 @@ export function ReconnectModal({
                 <span>Connection failed</span>
               </span>
             )}
+          </div>
+
+          {/* Auto-fetch models notice */}
+          <div className="flex items-start gap-2 px-3 py-2 rounded-md bg-ink/5 border border-ink/10 text-[11px] text-ink/60">
+            <DownloadCloud size={13} className="mt-0.5 flex-shrink-0 text-ink/50" />
+            <span>
+              On save, models are fetched from the endpoint and merged into the
+              list below — existing models are kept, only new ones are added.
+            </span>
           </div>
 
           {/* Action buttons */}
@@ -143,9 +163,11 @@ export function ReconnectModal({
             </button>
             <button
               type="submit"
-              className="px-3.5 py-1.5 rounded-md bg-ink text-canvas text-xs font-medium hover:opacity-90 transition-opacity cursor-pointer"
+              disabled={isFetchingModels}
+              className="px-3.5 py-1.5 rounded-md bg-ink text-canvas text-xs font-medium hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
             >
-              Save & Reconnect
+              <RefreshCw size={13} className={isFetchingModels ? 'animate-spin' : ''} />
+              <span>{isFetchingModels ? 'Fetching models...' : 'Save & Reconnect'}</span>
             </button>
           </div>
         </form>

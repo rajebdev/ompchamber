@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { X, Check, Globe, Key, Layers } from 'lucide-react';
-import type { ProviderItem } from '@/types';
+import { X, Check, Globe, Key, Layers, DownloadCloud } from 'lucide-react';
+import type { ProviderItem, ProviderModel } from '@/types';
+import { fetchProviderModelsRemote, mergeProviderModels } from '@/lib/models/provider-models';
 import { ProviderIcon } from '@/components/settings/categories/provider-settings/Icons';
 
 export interface PresetProviderOption {
@@ -24,7 +25,7 @@ const FALLBACK_PRESETS: PresetProviderOption[] = [
 interface AddProviderModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddProvider: (newProvider: ProviderItem) => void;
+  onAddProvider: (newProvider: ProviderItem, options: { fetchedCount: number }) => void;
   presets?: PresetProviderOption[];
 }
 
@@ -39,6 +40,7 @@ export function AddProviderModal({
   const [name, setName] = useState('OpenAI');
   const [baseUrl, setBaseUrl] = useState('https://api.openai.com/v1');
   const [apiKey, setApiKey] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
@@ -48,23 +50,17 @@ export function AddProviderModal({
     setBaseUrl(preset.defaultUrl);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || isSubmitting) return;
+    setIsSubmitting(true);
 
-    const preset = presetList.find((p) => p.id === selectedPresetId);
-    const newProvider: ProviderItem = {
-      id: `provider-${Date.now()}`,
-      name: name.trim(),
-      slug: preset?.slug || name.toLowerCase().replace(/[^a-z0-9]/g, '-'),
-      icon: preset?.icon || 'custom',
-      status: 'connected',
-      configuredIn: 'auth credentials',
-      baseUrl: baseUrl.trim(),
-      apiKey: apiKey.trim() || 'sk-custom-••••••••••••••••••••••••',
-      models: [
+    try {
+      const preset = presetList.find((p) => p.id === selectedPresetId);
+      const timestamp = Date.now();
+      const fallbackModels: ProviderModel[] = [
         {
-          id: `model-${Date.now()}-1`,
+          id: `model-${timestamp}-1`,
           name: `${name} Default Model`,
           contextWindow: '128K ctx · 16K out',
           hasTools: true,
@@ -73,7 +69,7 @@ export function AddProviderModal({
           temperature: 0.7,
         },
         {
-          id: `model-${Date.now()}-2`,
+          id: `model-${timestamp}-2`,
           name: `${name} Fast / Flash`,
           contextWindow: '1M ctx · 32K out',
           hasTools: true,
@@ -81,11 +77,33 @@ export function AddProviderModal({
           isVisible: true,
           temperature: 0.6,
         },
-      ],
-    };
+      ];
 
-    onAddProvider(newProvider);
-    onClose();
+      const newProvider: ProviderItem = {
+        id: `provider-${timestamp}`,
+        name: name.trim(),
+        slug: name.toLowerCase().replace(/[^a-z0-9]/g, '-') || `provider-${timestamp}`,
+        icon: preset?.icon || 'custom',
+        status: 'connected',
+        configuredIn: 'auth credentials',
+        baseUrl: baseUrl.trim(),
+        apiKey: apiKey.trim() || 'sk-custom-••••••••••••••••••••••••',
+        models: fallbackModels,
+      };
+
+      const fetchResult = await fetchProviderModelsRemote(baseUrl.trim(), apiKey.trim() || undefined, newProvider.slug, true);
+      if (fetchResult.ok && fetchResult.models) {
+        const { merged, addedCount } = mergeProviderModels(fallbackModels, fetchResult.models);
+        newProvider.models = merged;
+        onAddProvider(newProvider, { fetchedCount: addedCount });
+      } else {
+        onAddProvider(newProvider, { fetchedCount: -1 });
+      }
+
+      onClose();
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -201,10 +219,20 @@ export function AddProviderModal({
             </button>
             <button
               type="submit"
-              className="px-3.5 py-1.5 rounded-md bg-ink text-canvas text-xs font-medium hover:opacity-90 transition-opacity cursor-pointer flex items-center gap-1.5"
+              disabled={isSubmitting}
+              className="px-3.5 py-1.5 rounded-md bg-ink text-canvas text-xs font-medium hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
             >
-              <Check size={14} />
-              <span>Connect Provider</span>
+              {isSubmitting ? (
+                <>
+                  <DownloadCloud size={14} className="animate-pulse" />
+                  <span>Fetching models...</span>
+                </>
+              ) : (
+                <>
+                  <Check size={14} />
+                  <span>Connect Provider</span>
+                </>
+              )}
             </button>
           </div>
         </form>
