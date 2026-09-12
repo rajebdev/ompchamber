@@ -19,6 +19,35 @@ const REAL_ZERO_METRIC: TokenUsageMetricSet = {
   usageRecords: 0,
 };
 
+/** Optional per-model rates from the models.dev catalog (input/output per
+ * 1M tokens). Failures degrade to an empty map — pricing is supplementary. */
+async function loadModelRates(modelNames: string[]): Promise<Record<string, { input?: number; output?: number }>> {
+  try {
+    const response = await fetch('https://models.dev/api.json', { signal: AbortSignal.timeout(8_000) });
+    if (!response.ok) return {};
+    const catalog = await response.json() as Record<string, { models?: Record<string, { name?: string; cost?: { input?: number; output?: number } }> }>;
+    const rates: Record<string, { input?: number; output?: number }> = {};
+    for (const name of modelNames) {
+      const bare = name.split('/').pop()?.toLowerCase() ?? name.toLowerCase();
+      for (const provider of Object.values(catalog)) {
+        const models = provider?.models;
+        if (!models || typeof models !== 'object') continue;
+        const match = Object.entries(models).find(([key, model]) => {
+          const candidates = [key.toLowerCase(), (model?.name ?? '').toLowerCase()];
+          return candidates.some((candidate) => candidate === bare || candidate === name.toLowerCase());
+        });
+        if (match) {
+          rates[name] = { input: match[1]?.cost?.input, output: match[1]?.cost?.output };
+          break;
+        }
+      }
+    }
+    return rates;
+  } catch {
+    return {};
+  }
+}
+
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const timeRange = (url.searchParams.get('timeRange') as TimeRangeType) || '30d';
@@ -59,6 +88,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
     };
     const activeMetrics = realRangeData[timeRange] || realRangeData['30d'];
     const activeBreakdownRows = realBreakdown[breakdownTab] || [];
+    const perModelRates = await loadModelRates(
+      realBreakdown.model.map((row) => row.name),
+    );
 
     return json({
       timeRanges: TIME_RANGES,
@@ -68,6 +100,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       activeBreakdownRows,
       metrics: activeMetrics,
       breakdownRows: activeBreakdownRows,
+      pricing: perModelRates,
       timeRange,
       breakdownTab,
       isMock: false,
