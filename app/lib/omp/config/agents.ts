@@ -35,6 +35,10 @@ function parseFrontmatter(text: string): { data: Record<string, string>; body: s
   if (!match) return { data: {}, body: text };
   const data: Record<string, string> = {};
   for (const line of match[1].split(/\r?\n/)) {
+    // Only top-level keys belong to the frontmatter map; indented lines are
+    // nested block content (e.g. an `output:` JSON schema) and must not
+    // override top-level keys like `description`.
+    if (/^\s/.test(line)) continue;
     const idx = line.indexOf(':');
     if (idx <= 0) continue;
     const key = line.slice(0, idx).trim();
