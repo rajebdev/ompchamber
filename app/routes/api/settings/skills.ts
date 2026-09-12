@@ -3,20 +3,46 @@ import type { LoaderFunctionArgs, ActionFunctionArgs } from '@remix-run/node';
 import { getDb } from '@/db.server';
 import { DEFAULT_SKILLS, DEFAULT_CATALOG_SOURCES, DEFAULT_CATALOG_SKILLS } from '@/data/settings/skill';
 import { isMockMode } from '@/mock.server';
-import type { SkillItem, SkillCatalogSource } from '@/types';
+import type { SkillItem } from '@/types';
+import { discoverNativeSkills, setSkillModelInvocation } from '@/lib/omp/config/skills';
 
 const SKILLS_KEY = 'omp_skills';
 const SOURCES_KEY = 'omp_catalog_sources';
 
-export async function loader({ request: _request }: LoaderFunctionArgs) {
+/**
+ * Convert a natively discovered SKILL.md into the chamber SkillItem shape.
+ * location/locationLabel reflect the real disk root the skill came from.
+ */
+function nativeToSkillItem(skill: ReturnType<typeof discoverNativeSkills>[number]): SkillItem {
+  return {
+    id: skill.id,
+    name: skill.name,
+    description: skill.description,
+    location: skill.sourceRoot,
+    locationLabel: skill.sourceRoot === 'user' ? 'User / OMP agent' : 'Project / .omp/skills',
+    instructions: skill.filePath,
+    project: 'omp',
+  };
+}
+
+/** Merge native omp skills (disk scan) with app-local custom skills. */
+function mergeSkills(custom: SkillItem[]): SkillItem[] {
+  const native = discoverNativeSkills().map(nativeToSkillItem);
+  const nativeNames = new Set(native.map((s) => s.name.toLowerCase()));
+  return [...native, ...custom.filter((s) => !nativeNames.has(s.name.toLowerCase()))];
+}
+
+export async function loader({ request }: LoaderFunctionArgs) {
   try {
     const db = await getDb();
+    const url = new URL(request.url);
+    const includeNative = url.searchParams.get('native') === '1' || !isMockMode();
     const skillsRow = await db.get('SELECT value FROM app_settings WHERE key = ?', [SKILLS_KEY]);
     const sourcesRow = await db.get('SELECT value FROM app_settings WHERE key = ?', [SOURCES_KEY]);
     const mock = isMockMode();
 
     let skills: SkillItem[] = mock ? DEFAULT_SKILLS : [];
-    let catalogSources: SkillCatalogSource[] = DEFAULT_CATALOG_SOURCES;
+    let catalogSources: typeof DEFAULT_CATALOG_SOURCES = DEFAULT_CATALOG_SOURCES;
 
     if (skillsRow?.value) {
       try {
@@ -37,8 +63,10 @@ export async function loader({ request: _request }: LoaderFunctionArgs) {
       } catch {}
     }
 
+    const mergedSkills = includeNative && !mock ? mergeSkills(skills) : skills;
+
     return json({
-      skills,
+      skills: mergedSkills,
       catalogSources,
       catalogSkills: DEFAULT_CATALOG_SKILLS,
       isMock: mock,
@@ -63,6 +91,9 @@ export async function action({ request }: ActionFunctionArgs) {
       const url = new URL(request.url);
       const id = url.searchParams.get('id');
       if (!id) return json({ error: 'id is required' }, { status: 400 });
+      if (id.startsWith('omp-')) {
+        return json({ error: 'Native omp skills are managed on disk' }, { status: 403 });
+      }
 
       const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SKILLS_KEY]);
       let list: SkillItem[] = DEFAULT_SKILLS;
@@ -80,9 +111,21 @@ export async function action({ request }: ActionFunctionArgs) {
     if (request.method === 'POST' || request.method === 'PUT') {
       const body = await request.json();
 
+      // Toggle model invocation on a native skill file (frontmatter edit).
+      if (body.type === 'toggle_model_invocation' && typeof body.skillId === 'string' && body.skillId.startsWith('omp-')) {
+        const [root, sourceRoot, ...nameParts] = body.skillId.split('-');
+        void root;
+        const skill = discoverNativeSkills().find(
+          (s) => s.name === nameParts.join('-') && s.sourceRoot === sourceRoot,
+        );
+        if (!skill) return json({ error: 'Skill not found' }, { status: 404 });
+        const changed = setSkillModelInvocation(skill.filePath, body.disable === true);
+        return json({ success: changed, disable: body.disable === true });
+      }
+
       if (body.type === 'add_source') {
         const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SOURCES_KEY]);
-        let sources: SkillCatalogSource[] = DEFAULT_CATALOG_SOURCES;
+        let sources: typeof DEFAULT_CATALOG_SOURCES = DEFAULT_CATALOG_SOURCES;
         if (row?.value) {
           try { sources = JSON.parse(row.value); } catch {}
         }
@@ -122,7 +165,7 @@ export async function action({ request }: ActionFunctionArgs) {
           SKILLS_KEY,
           JSON.stringify(skills),
         ]);
-        return json({ success: true, skills });
+        return json({ success: true, skills: isMockMode() ? skills : mergeSkills(skills) });
       }
 
       let updatedSkills: SkillItem[] = [];
@@ -150,7 +193,7 @@ export async function action({ request }: ActionFunctionArgs) {
         JSON.stringify(updatedSkills),
       ]);
 
-      return json({ success: true, skills: updatedSkills });
+      return json({ success: true, skills: isMockMode() ? updatedSkills : mergeSkills(updatedSkills) });
     }
 
     return json({ error: 'Method not allowed' }, { status: 405 });
