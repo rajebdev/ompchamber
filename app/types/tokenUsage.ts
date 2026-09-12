@@ -1,7 +1,18 @@
 export type CadenceType = 'daily' | 'weekly' | 'monthly';
-export type TimeRangeType = 'today' | '7d' | '30d' | '90d' | 'all';
+export type TimeRangeType = 'today' | '7d' | '30d' | '90d' | 'all' | 'custom';
 export type BreakdownTab = 'model' | 'day' | 'project';
 export type ChartMetric = 'cost' | 'tokens';
+
+export interface ChartSeriesPoint {
+  label: string;
+  cost: number;
+  tokens: number;
+}
+
+export interface CustomRange {
+  from: string;
+  to: string;
+}
 
 export interface BreakdownRow {
   name: string;

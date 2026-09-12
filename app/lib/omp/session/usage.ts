@@ -15,7 +15,7 @@ import { readdirSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { getSessionsDir } from '@/lib/omp/core/paths';
 import { parseJsonlLenient } from '@/lib/omp/session/jsonl';
-import type { TokenUsageMetricSet, BreakdownRow } from '@/types';
+import type { TokenUsageMetricSet, BreakdownRow, ChartSeriesPoint, CadenceType, TimeRangeType } from '@/types';
 
 interface OmpUsage {
   input?: number;
@@ -33,9 +33,12 @@ interface UsageEntry {
   message?: { usage?: OmpUsage; model?: string; provider?: string };
 }
 
-export type UsageRange = 'today' | '7d' | '30d' | '90d' | 'all';
+export type UsageWindow =
+  | { kind: 'preset'; range: Exclude<TimeRangeType, 'custom'> }
+  | { kind: 'custom'; from: string; to: string }
+  | { kind: 'all' };
 
-const RANGE_DAYS: Record<Exclude<UsageRange, 'all'>, number> = { today: 1, '7d': 7, '30d': 30, '90d': 90 };
+const PRESET_DAYS: Record<Exclude<TimeRangeType, 'custom' | 'all'>, number> = { today: 1, '7d': 7, '30d': 30, '90d': 90 };
 
 const TTL_MS = 60_000;
 const cache = new Map<string, { at: number; data: UsageAggregate }>();
@@ -87,22 +90,36 @@ function bump(map: Map<string, { tokens: number; cost: number }>, key: string, t
   map.set(key, current);
 }
 
-function inRange(timestampIso: string | undefined, range: UsageRange, now: number): boolean {
-  if (range === 'all') return true;
+function inRange(timestampIso: string | undefined, window: UsageWindow, now: number): boolean {
+  if (window.kind === 'all') return true;
   if (!timestampIso) return true; // keep entries without timestamps (conservative)
   const ts = Date.parse(timestampIso);
   if (Number.isNaN(ts)) return true;
-  if (range === 'today') {
+  if (window.kind === 'custom') {
+    const from = Date.parse(`${window.from}T00:00:00`);
+    const to = Date.parse(`${window.to}T23:59:59.999`);
+    if (Number.isNaN(from) || Number.isNaN(to) || from > to) return true;
+    return ts >= from && ts <= to;
+  }
+  if (window.range === 'today') {
     const d = new Date(ts);
     const n = new Date(now);
     return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
   }
-  return now - ts <= RANGE_DAYS[range] * 24 * 60 * 60 * 1000;
+  if (window.range === 'all') return true;
+  return now - ts <= PRESET_DAYS[window.range] * 24 * 60 * 60 * 1000;
 }
 
-/** Aggregate all omp session files within a time range. Cached for 60s. */
-export function aggregateUsage(range: UsageRange): UsageAggregate {
-  const cached = cache.get(range);
+function cacheKey(window: UsageWindow): string {
+  if (window.kind === 'all') return 'all';
+  if (window.kind === 'custom') return `custom:${window.from}:${window.to}`;
+  return window.range;
+}
+
+/** Aggregate all omp session files within a time window. Cached for 60s. */
+export function aggregateUsage(window: UsageWindow): UsageAggregate {
+  const key = cacheKey(window);
+  const cached = cache.get(key);
   if (cached && Date.now() - cached.at < TTL_MS) return cached.data;
 
   const sessionsRoot = getSessionsDir();
@@ -114,7 +131,7 @@ export function aggregateUsage(range: UsageRange): UsageAggregate {
       .filter((d) => d.isDirectory() || d.isFile())
       .map((d) => d.name);
   } catch {
-    cache.set(range, { at: Date.now(), data: aggregate });
+    cache.set(key, { at: Date.now(), data: aggregate });
     return aggregate;
   }
 
@@ -141,7 +158,7 @@ export function aggregateUsage(range: UsageRange): UsageAggregate {
         for (const entry of entries) {
           if (entry.type !== 'message' || !entry.message?.usage) continue;
           const ts = entry.timestamp;
-          if (!inRange(ts, range, now)) continue;
+          if (!inRange(ts, window, now)) continue;
           const usage = entry.message.usage;
           const cost = usage.cost?.total ?? 0;
           const total = usage.totalTokens ?? (usage.input ?? 0) + (usage.output ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
@@ -173,21 +190,69 @@ export function aggregateUsage(range: UsageRange): UsageAggregate {
 
   const data = aggregate;
   if (cache.size > 20) cache.clear();
-  cache.set(range, { at: Date.now(), data });
+  cache.set(key, { at: Date.now(), data });
   return data;
 }
 
 const fmtInt = (value: number): string => value.toLocaleString('en-US');
 const fmtUsd = (value: number): string => `$${value.toFixed(2)}`;
 
-/** Shape a UsageAggregate into the TokenUsageMetricSet contract of the UI. */
-export function toMetricSet(a: UsageAggregate): TokenUsageMetricSet {
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+
+function dayLabel(dayKey: string): string {
+  const date = new Date(`${dayKey}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? dayKey : `${MONTH_LABELS[date.getMonth()]} ${date.getDate()}`;
+}
+
+function bucketKey(dayKey: string, cadence: CadenceType): string {
+  if (cadence === 'monthly') return dayKey.slice(0, 7);
+  if (cadence === 'weekly') {
+    const date = new Date(`${dayKey}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return dayKey;
+    const monday = new Date(date);
+    const shift = (date.getDay() + 6) % 7;
+    monday.setDate(date.getDate() - shift);
+    return monday.toISOString().slice(0, 10);
+  }
+  return dayKey;
+}
+
+function labelForBucket(key: string, cadence: CadenceType): string {
+  if (cadence === 'monthly') {
+    const [year, month] = key.split('-');
+    const monthIndex = Number(month) - 1;
+    const label = MONTH_LABELS[monthIndex] ?? key;
+    return year && Number(year) !== new Date().getFullYear() ? `${label} ${year}` : label;
+  }
+  return dayLabel(key);
+}
+
+/** Shape the per-day aggregate into an ordered chart series for the cadence:
+ * weekly buckets align to Monday, monthly to YYYY-MM, and the series is
+ * truncated to the last 60 buckets so the SVG path stays readable. */
+export function buildChartSeries(a: UsageAggregate, cadence: CadenceType): ChartSeriesPoint[] {
+  const buckets = new Map<string, { cost: number; tokens: number }>();
+  for (const [dayKey, v] of a.byDay) {
+    const key = bucketKey(dayKey, cadence);
+    const current = buckets.get(key) ?? { cost: 0, tokens: 0 };
+    current.cost += v.cost;
+    current.tokens += v.tokens;
+    buckets.set(key, current);
+  }
+  return [...buckets.entries()]
+    .sort(([aKey], [bKey]) => (aKey < bKey ? -1 : aKey > bKey ? 1 : 0))
+    .slice(-60)
+    .map(([key, v]) => ({ label: labelForBucket(key, cadence), cost: v.cost, tokens: v.tokens }));
+}
+
+export function toMetricSet(a: UsageAggregate, cadence: CadenceType = 'daily'): TokenUsageMetricSet {
   const observedInput = a.inputTokens + a.cacheReadTokens;
   const cachedPercent = observedInput > 0 ? ((a.cacheReadTokens / observedInput) * 100).toFixed(1) : '0.0';
+  const unit = cadence === 'weekly' ? 'week' : cadence === 'monthly' ? 'month' : 'day';
   return {
     rawCost: fmtUsd(a.costTotal),
     processedTokens: fmtInt(a.inputTokens + a.outputTokens + a.cacheReadTokens + a.cacheWriteTokens),
-    activeRate: `${a.activeDays.size} active day${a.activeDays.size === 1 ? '' : 's'}`,
+    activeRate: `${a.activeDays.size} active ${unit}${a.activeDays.size === 1 ? '' : 's'}`,
     cachedInput: fmtInt(a.cacheReadTokens),
     cachedPercent: `${cachedPercent}% of observed input`,
     uncachedInput: fmtInt(a.inputTokens),
@@ -207,15 +272,29 @@ const BREAKDOWN_DOT_COLORS = [
   'bg-[var(--theme-ink)]/20',
 ] as const;
 
-/** Build breakdown rows (model/day/project) from the aggregate. */
+/** Build breakdown rows (model/day/project) from the aggregate; the `day` tab
+ * is bucketed by the cadence (day/week/month) so it stays consistent with the chart. */
 export function toBreakdownRows(
   a: UsageAggregate,
   tab: 'model' | 'day' | 'project',
+  cadence: CadenceType = 'daily',
 ): BreakdownRow[] {
+  if (tab === 'day' && cadence !== 'daily') {
+    const buckets = new Map<string, { tokens: number; cost: number }>();
+    for (const [dayKey, v] of a.byDay) {
+      const key = bucketKey(dayKey, cadence);
+      const current = buckets.get(key) ?? { tokens: 0, cost: 0 };
+      current.tokens += v.tokens;
+      current.cost += v.cost;
+      buckets.set(key, current);
+    }
+    const merged: UsageAggregate = { ...a, byDay: buckets };
+    return toBreakdownRows(merged, 'day', 'daily');
+  }
   const source = tab === 'model' ? a.byModel : tab === 'day' ? a.byDay : a.byProject;
   return [...source.entries()]
     .map(([name, v]) => ({
-      name,
+      name: tab === 'day' ? labelForBucket(name, cadence) : name,
       tokens: v.tokens,
       cost: v.cost,
       sharePercent: a.costTotal > 0 ? Math.round((v.cost / a.costTotal) * 100) : 0,

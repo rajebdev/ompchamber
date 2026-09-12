@@ -1,17 +1,25 @@
-import type { BreakdownTab, BreakdownRow, TokenUsageMetricSet } from '@/types';
+import type { BreakdownTab, BreakdownRow, TokenUsageMetricSet, CadenceType } from '@/types';
 
 interface TokenUsageBreakdownProps {
   breakdownTab: BreakdownTab;
   setBreakdownTab: (tab: BreakdownTab) => void;
   activeBreakdownRows: BreakdownRow[];
   activeMetrics: TokenUsageMetricSet;
+  cadence: CadenceType;
 }
+
+const CADENCE_TAB_LABEL: Record<CadenceType, string> = {
+  daily: 'DAY',
+  weekly: 'WEEK',
+  monthly: 'MONTH',
+};
 
 export function TokenUsageBreakdown({
   breakdownTab,
   setBreakdownTab,
   activeBreakdownRows,
   activeMetrics,
+  cadence,
 }: TokenUsageBreakdownProps) {
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
@@ -34,7 +42,7 @@ export function TokenUsageBreakdown({
                 breakdownTab === 'day' ? 'bg-paper shadow-xs text-ink' : 'text-ink/50 hover:text-ink'
               }`}
             >
-              DAY
+              {CADENCE_TAB_LABEL[cadence]}
             </button>
             <button
               onClick={() => setBreakdownTab('project')}
@@ -51,7 +59,9 @@ export function TokenUsageBreakdown({
           <table className="w-full text-[11px]">
             <thead>
               <tr className="text-ink/40 border-b border-ink/10">
-                <th className="font-medium text-left pb-2 capitalize">{breakdownTab}</th>
+                <th className="font-medium text-left pb-2 capitalize">
+                  {breakdownTab === 'day' ? CADENCE_TAB_LABEL[cadence].toLowerCase() : breakdownTab}
+                </th>
                 <th className="font-medium text-right pb-2">Cost</th>
                 <th className="font-medium text-right pb-2">Share</th>
                 <th className="font-medium text-right pb-2">Tokens</th>

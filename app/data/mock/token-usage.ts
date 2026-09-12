@@ -4,6 +4,8 @@ import type {
   BreakdownTab,
   BreakdownRow,
   TokenUsageMetricSet,
+  CadenceType,
+  ChartSeriesPoint,
 } from '@/types';
 
 export const TIME_RANGES: TimeRangeOption[] = [
@@ -12,9 +14,10 @@ export const TIME_RANGES: TimeRangeOption[] = [
   { id: '30d', label: 'Last 30 days', dateRange: 'Aug 8 to Sep 7' },
   { id: '90d', label: 'Last 90 days', dateRange: 'Jun 9 to Sep 7' },
   { id: 'all', label: 'All time', dateRange: 'Jan 1 to Sep 7' },
+  { id: 'custom', label: 'Custom…', dateRange: 'Custom period' },
 ];
 
-export const MOCK_RANGE_DATA: Record<TimeRangeType, TokenUsageMetricSet> = {
+export const MOCK_RANGE_DATA: Record<Exclude<TimeRangeType, 'custom'>, TokenUsageMetricSet> = {
   today: {
     rawCost: '$0.01',
     processedTokens: '320K',
@@ -97,5 +100,38 @@ export const BREAKDOWN_DATA: Record<BreakdownTab, BreakdownRow[]> = {
     { name: 'ompchamber-core', cost: '$0.068', share: '68.0%', tokens: '2.1M', sharePercent: 68.0, dotColorClass: 'bg-ink/80' },
     { name: 'agent-runner', cost: '$0.022', share: '22.0%', tokens: '680K', sharePercent: 22.0, dotColorClass: 'bg-ink/50' },
     { name: 'remis-edge-runtime', cost: '$0.010', share: '10.0%', tokens: '300K', sharePercent: 10.0, dotColorClass: 'bg-transparent border border-ink/40' },
+  ],
+};
+
+const point = (label: string, cost: number, tokens: number): ChartSeriesPoint => ({ label, cost, tokens });
+
+export const MOCK_CUSTOM_RANGE_DATA: TokenUsageMetricSet = {
+  rawCost: '$0.07',
+  processedTokens: '2.16M',
+  activeRate: '9 active days',
+  cachedInput: '1.86M',
+  cachedPercent: '86.1% of observed input',
+  uncachedInput: '271.4K',
+  outputTokens: '24.3K',
+  reasoning: 'includes 10.2K reasoning',
+  cacheSavings: '$0.00',
+  scannedTranscripts: 9,
+  usageRecords: 57,
+};
+
+export const MOCK_CHART_SERIES: Record<CadenceType, ChartSeriesPoint[]> = {
+  daily: [
+    point('Aug 8', 0.004, 210_000), point('Aug 11', 0.002, 95_000), point('Aug 14', 0.008, 310_000),
+    point('Aug 17', 0.003, 150_000), point('Aug 20', 0.011, 420_000), point('Aug 23', 0.005, 240_000),
+    point('Aug 26', 0.007, 330_000), point('Aug 29', 0.014, 560_000), point('Sep 1', 0.006, 280_000),
+    point('Sep 4', 0.016, 640_000), point('Sep 7', 0.024, 880_000),
+  ],
+  weekly: [
+    point('Aug 10', 0.014, 520_000), point('Aug 17', 0.019, 760_000), point('Aug 24', 0.026, 1_120_000),
+    point('Aug 31', 0.031, 1_380_000), point('Sep 7', 0.052, 2_290_000),
+  ],
+  monthly: [
+    point('Jun', 0.081, 3_120_000), point('Jul', 0.148, 5_640_000), point('Aug', 0.512, 16_860_000),
+    point('Sep', 0.499, 12_980_000),
   ],
 };
