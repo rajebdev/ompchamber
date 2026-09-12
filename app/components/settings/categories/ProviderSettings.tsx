@@ -6,6 +6,7 @@ import { ProviderAuthSection } from '@/components/settings/categories/provider-s
 import { ProviderModelsList } from '@/components/settings/categories/provider-settings/ModelsList';
 import { AddProviderModal, type PresetProviderOption } from '@/components/settings/categories/provider-settings/AddProviderModal';
 import { ReconnectModal } from '@/components/settings/categories/provider-settings/ReconnectModal';
+import { LoginModal } from '@/components/settings/categories/provider-settings/LoginModal';
 import { ModelConfigModal } from '@/components/settings/categories/provider-settings/ModelConfigModal';
 import { ModelCapabilitiesModal } from '@/components/settings/categories/provider-settings/ModelCapabilitiesModal';
 
@@ -26,6 +27,7 @@ export function ProviderSettings({
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(autoOpenAdd);
   const [isReconnectModalOpen, setIsReconnectModalOpen] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [configModel, setConfigModel] = useState<ProviderModel | null>(null);
   const [capabilitiesModel, setCapabilitiesModel] = useState<ProviderModel | null>(null);
 
@@ -115,6 +117,15 @@ export function ProviderSettings({
       return p;
     });
     persistProviders(updated);
+  };
+
+  // OAuth/API-key login via the omp login flow finished successfully.
+  const handleOmpAuthSuccess = () => {
+    if (!selectedProvider) return;
+    const updated = providers.map((p) => (
+      p.id === selectedProvider.id ? { ...p, status: 'connected' as const } : p
+    ));
+    setProviders(updated);
   };
 
   // Button action: Disconnect / toggle status
@@ -215,7 +226,10 @@ export function ProviderSettings({
 
             <ProviderAuthSection
               provider={selectedProvider}
-              onOpenReconnectModal={() => setIsReconnectModalOpen(true)}
+              onOpenReconnectModal={() => {
+                if (selectedProvider.id.startsWith('omp-auth-')) setIsLoginModalOpen(true);
+                else setIsReconnectModalOpen(true);
+              }}
               onToggleDisconnect={handleToggleDisconnect}
             />
 
@@ -252,6 +266,15 @@ export function ProviderSettings({
           provider={selectedProvider}
           onClose={() => setIsReconnectModalOpen(false)}
           onReconnect={handleReconnect}
+        />
+      )}
+
+      {selectedProvider && (
+        <LoginModal
+          isOpen={isLoginModalOpen}
+          provider={selectedProvider}
+          onClose={() => setIsLoginModalOpen(false)}
+          onAuthenticated={handleOmpAuthSuccess}
         />
       )}
 
