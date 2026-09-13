@@ -45,10 +45,11 @@ export function formatPercent(used: number, total: number): string {
   return `${new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 }).format((used / total) * 100)}%`;
 }
 
-/** Compact token counts: 747642928 → "747,64M"; 61950 → "61,95K"; 950 → "950". */
+/** Compact token counts: 1124214260 → "1,12B"; 747642928 → "747,64M"; 61950 → "61,95K"; 950 → "950". */
 export function formatCompactTokens(value: number): string {
   if (!Number.isFinite(value)) return '0';
   const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) return `${compactDecimalFormatter.format(value / 1_000_000_000)}B`;
   if (abs >= 1_000_000) return `${compactDecimalFormatter.format(value / 1_000_000)}M`;
   if (abs >= 1_000) return `${compactDecimalFormatter.format(value / 1_000)}K`;
   return formatNumber(value);
