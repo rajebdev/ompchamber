@@ -80,7 +80,7 @@ export async function action({ request }: ActionFunctionArgs) {
       if (!id) return json({ error: 'id is required' }, { status: 400 });
 
       const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-      let list: CommandItem[] = DEFAULT_COMMANDS_LIST;
+      let list: CommandItem[] = isMockMode() ? DEFAULT_COMMANDS_LIST : [];
       if (row?.value) {
         try { list = JSON.parse(row.value); } catch {}
       }
@@ -102,7 +102,7 @@ export async function action({ request }: ActionFunctionArgs) {
         updatedCommands = body.commands;
       } else if (body.command) {
         const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-        let list: CommandItem[] = DEFAULT_COMMANDS_LIST;
+        let list: CommandItem[] = isMockMode() ? DEFAULT_COMMANDS_LIST : [];
         if (row?.value) {
           try { list = JSON.parse(row.value); } catch {}
         }

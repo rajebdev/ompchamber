@@ -108,7 +108,7 @@ export async function action({ request }: ActionFunctionArgs) {
       }
 
       const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SKILLS_KEY]);
-      let list: SkillItem[] = DEFAULT_SKILLS;
+      let list: SkillItem[] = isMockMode() ? DEFAULT_SKILLS : [];
       if (row?.value) {
         try { list = JSON.parse(row.value); } catch {}
       }
@@ -152,7 +152,7 @@ export async function action({ request }: ActionFunctionArgs) {
       if (body.type === 'install_toggle') {
         const { skill, install } = body;
         const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SKILLS_KEY]);
-        let skills: SkillItem[] = DEFAULT_SKILLS;
+        let skills: SkillItem[] = isMockMode() ? DEFAULT_SKILLS : [];
         if (row?.value) {
           try { skills = JSON.parse(row.value); } catch {}
         }
@@ -199,7 +199,7 @@ export async function action({ request }: ActionFunctionArgs) {
           : (typeof body.skill.instructions === 'string' && /^[\w.\-]+\/[\w.\-@:]+$/.test(body.skill.instructions) ? body.skill.instructions : null);
         if (!isMockMode() && pkg) await installCatalogSkill(pkg);
         const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SKILLS_KEY]);
-        let list: SkillItem[] = DEFAULT_SKILLS;
+        let list: SkillItem[] = isMockMode() ? DEFAULT_SKILLS : [];
         if (row?.value) {
           try { list = JSON.parse(row.value); } catch {}
         }

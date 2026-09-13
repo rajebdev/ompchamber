@@ -84,7 +84,7 @@ export async function action({ request }: ActionFunctionArgs) {
       }
 
       const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-      let list: McpServerItem[] = DEFAULT_MCP_SERVERS;
+      let list: McpServerItem[] = isMockMode() ? DEFAULT_MCP_SERVERS : [];
       if (row?.value) {
         try { list = JSON.parse(row.value); } catch {}
       }
@@ -132,7 +132,7 @@ export async function action({ request }: ActionFunctionArgs) {
         updatedServers = body.servers;
       } else if (body.server) {
         const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-        let list: McpServerItem[] = DEFAULT_MCP_SERVERS;
+        let list: McpServerItem[] = isMockMode() ? DEFAULT_MCP_SERVERS : [];
         if (row?.value) {
           try { list = JSON.parse(row.value); } catch {}
         }

@@ -87,7 +87,7 @@ export async function action({ request }: ActionFunctionArgs) {
       }
 
       const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-      let list: AgentItem[] = DEFAULT_AGENTS_LIST;
+      let list: AgentItem[] = isMockMode() ? DEFAULT_AGENTS_LIST : [];
       if (row?.value) {
         try { list = JSON.parse(row.value); } catch {}
       }
@@ -139,7 +139,7 @@ export async function action({ request }: ActionFunctionArgs) {
           return json({ error: 'Native omp agents are read-only in chamber' }, { status: 403 });
         }
         const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-        let list: AgentItem[] = DEFAULT_AGENTS_LIST;
+        let list: AgentItem[] = isMockMode() ? DEFAULT_AGENTS_LIST : [];
         if (row?.value) {
           try { list = JSON.parse(row.value); } catch {}
         }
