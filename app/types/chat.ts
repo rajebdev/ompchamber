@@ -218,12 +218,12 @@ export interface ModelsData {
   modelError?: string;
 }
 
-// ── Composer autocomplete (@agent / /command+skill) ────────────────────────
+// ── Composer autocomplete (@file/agent / /command+skill) ───────────────────
 
-/** Trigger char that opened the composer autocomplete. */
-export type ComposerPickKind = 'agent' | 'command';
-/** Origin of a pickable item (skill rides the `command` kind). */
-export type ComposerPickSource = 'agent' | 'command' | 'skill';
+/** Trigger group that opened the composer autocomplete: `@` → mention, `/` → command. */
+export type ComposerPickKind = 'mention' | 'command';
+/** Origin of a pickable item: an `@` mention is an agent or a workspace file. */
+export type ComposerPickSource = 'agent' | 'file' | 'command' | 'skill';
 
 /** A detected trigger: the `@`/`/` char plus the query typed after it. */
 export interface ComposerTrigger {
@@ -240,10 +240,13 @@ export interface ComposerPickItem {
   id: string;
   name: string;
   description: string;
-  kind: ComposerPickKind;
+  /** The item's own category (agent / file / command / skill). */
+  kind: ComposerPickSource;
   source: ComposerPickSource;
-  /** Exact insertion text WITHOUT trailing space: `@architect` | `/review` | `/skill:capacity`. */
+  /** Exact insertion text WITHOUT trailing space: `@architect` | `@path/to/file` | `/review` | `/skill:capacity`. */
   token: string;
+  /** Workspace-relative path (file items only). */
+  path?: string;
 }
 
 /** A pick item after filtering, with the matched range within `name` (or null). */

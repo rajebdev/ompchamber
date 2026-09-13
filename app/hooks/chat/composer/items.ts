@@ -9,7 +9,10 @@ interface ComposerItemsState {
 }
 
 /** Fetch composer pick items for a kind; null kind skips the fetch. */
-export function useComposerItems(kind: ComposerPickKind | null): ComposerItemsState {
+export function useComposerItems(
+  kind: ComposerPickKind | null,
+  root?: string | null,
+): ComposerItemsState {
   const [state, setState] = useState<ComposerItemsState>({ items: [], loading: false, error: null });
 
   useEffect(() => {
@@ -21,7 +24,7 @@ export function useComposerItems(kind: ComposerPickKind | null): ComposerItemsSt
     let cancelled = false;
     setState({ items: [], loading: true, error: null });
 
-    loadComposerItems(kind)
+    loadComposerItems(kind, root ?? null)
       .then((items) => {
         if (cancelled) return;
         setState({ items, loading: false, error: null });
@@ -38,7 +41,7 @@ export function useComposerItems(kind: ComposerPickKind | null): ComposerItemsSt
     return () => {
       cancelled = true;
     };
-  }, [kind]);
+  }, [kind, root]);
 
   return state;
 }

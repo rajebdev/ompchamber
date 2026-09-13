@@ -124,6 +124,7 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
           folders={folders}
           selectedFolderId={selectedFolderId}
           onSelectFolder={handleSelectFolder}
+          rootPath={activeProjectPath ?? undefined}
           activeSessionId={sessionId}
           onSelectSession={handleSelectSession}
           onNewSession={handleNewSession}

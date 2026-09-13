@@ -27,3 +27,10 @@ export interface SearchResultItem {
   content: string;
   preview?: string;
 }
+
+/** A flat file entry from the recursive file-listing endpoint (composer `@` mentions). */
+export interface FsFileEntry {
+  name: string;
+  /** Workspace-relative path with forward slashes. */
+  path: string;
+}

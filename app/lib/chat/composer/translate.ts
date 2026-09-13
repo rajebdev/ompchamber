@@ -4,8 +4,16 @@ export interface AgentMentionMatch {
   end: number;
 }
 
-/** `@` at string start or preceded by whitespace/`(`/`[`/`{`, followed by a token. */
-const MENTION_RE = /(^|[\s([{])@([A-Za-z0-9_-]+)/g;
+/**
+ * `@` at string start or preceded by whitespace/`(`/`[`/`{`, followed by a
+ * quoted (`@"a b"` / `@'a b'`) or bare (`\S+`) token. A mention is only
+ * treated as an agent when the WHOLE token equals a known agent name, so a
+ * bare file path like `@build/x.ts` is never swallowed as agent `build`.
+ */
+const MENTION_RE = /(^|[\s([{])@("([^"]+)"|'([^']+)'|(\S+))/g;
+
+/** Trailing prose punctuation stripped from a bare token before name matching. */
+const TRAILING_PUNCT_RE = /[.,;:!?)\]}]+$/;
 
 /**
  * Find every `@token` whose name matches a known agent. Returns each
@@ -17,9 +25,20 @@ export function extractAgentMentions(text: string, agentNames: readonly string[]
   const matches: AgentMentionMatch[] = [];
 
   for (const m of text.matchAll(MENTION_RE)) {
-    const name = m[2];
-    if (!known.has(name.toLowerCase())) continue;
-    matches.push({ name, start: m.index + m[1].length, end: m.index + m[0].length });
+    const start = m.index + m[1].length;
+    const quoted = m[3] ?? m[4];
+
+    // Quoted tokens: name is the inner text verbatim; span covers `@` + quotes.
+    if (quoted !== undefined) {
+      if (!known.has(quoted.toLowerCase())) continue;
+      matches.push({ name: quoted, start, end: start + 1 + (m[2] ?? '').length });
+      continue;
+    }
+
+    // Bare tokens: strip trailing punctuation before comparing (e.g. `@architect.`).
+    const cleaned = (m[5] ?? '').replace(TRAILING_PUNCT_RE, '');
+    if (!known.has(cleaned.toLowerCase())) continue;
+    matches.push({ name: cleaned, start, end: start + 1 + cleaned.length });
   }
 
   return matches;

@@ -27,6 +27,7 @@ export function ChatInput({
   onModelChange,
   sessionModel,
   sessionThinkingLevel,
+  rootPath,
 }: { 
   value: string; 
   onChange: (v: string) => void; 
@@ -46,6 +47,7 @@ export function ChatInput({
   sessionModel?: { provider: string; modelId: string } | null;
   /** Thinking level last used by the active session (omp `thinking_level_change` entry). */
   sessionThinkingLevel?: string | null;
+  rootPath?: string | null;
 }) {
   const [internalAttachments, setInternalAttachments] = useState<Attachment[]>([]);
 
@@ -279,6 +281,7 @@ export function ChatInput({
         onSend={handleSendClick}
         disabled={disabled}
         appSettings={appSettings}
+        rootPath={rootPath}
         placeholder={disabled ? "Please select a workspace above to start prompting..." : "@ for files/agents; / for commands and skills; ! for shell; # for snippets (Paste images/files here)"}
         className="w-full bg-transparent border-none px-3 py-3 text-sm focus:outline-none resize-none text-ink placeholder-ink/40 min-h-[80px] disabled:opacity-50 disabled:cursor-not-allowed"
         onPaste={handlePaste}

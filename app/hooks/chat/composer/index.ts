@@ -9,6 +9,8 @@ export interface UseComposerTriggerOptions {
   setValue: (value: string) => void;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   disabled?: boolean;
+  /** Workspace root to scope `@` file mentions to (null → app root). */
+  rootPath?: string | null;
 }
 
 export interface ComposerTriggerController {
@@ -40,14 +42,14 @@ function isComposingInput(native: Event): boolean {
 
 /** Orchestrates the composer `@`-agent / `/`-command autocomplete flow. */
 export function useComposerTrigger(options: UseComposerTriggerOptions): ComposerTriggerController {
-  const { value, setValue, textareaRef, disabled = false } = options;
+  const { value, setValue, textareaRef, disabled = false, rootPath } = options;
 
   const [trigger, setTrigger] = useState<ComposerTrigger | null>(null);
   const [activeIndex, setActiveIndexState] = useState(0);
   const composingRef = useRef(false);
   const pendingCaretRef = useRef<number | null>(null);
 
-  const { items, loading, error } = useComposerItems(trigger?.kind ?? null);
+  const { items, loading, error } = useComposerItems(trigger?.kind ?? null, rootPath ?? null);
 
   const matches = useMemo(
     () => filterComposerItems(items, trigger?.query ?? ''),

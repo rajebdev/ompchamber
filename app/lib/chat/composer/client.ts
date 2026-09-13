@@ -1,14 +1,26 @@
-import type { AgentItem, CommandItem, ComposerPickItem, ComposerPickKind, SkillItem } from '@/types';
+import type {
+  AgentItem,
+  CommandItem,
+  ComposerPickItem,
+  ComposerPickKind,
+  FsFileEntry,
+  SkillItem,
+} from '@/types';
 
 const CACHE_TTL_MS = 300_000;
+
+/** Cache keys: `'agent'`, `'command'`, and `'file::<root>'` per workspace root. */
+const AGENTS_KEY = 'agent';
+const COMMANDS_KEY = 'command';
+const fileKey = (root: string): string => `file::${root}`;
 
 interface CacheEntry {
   data: ComposerPickItem[];
   expiresAt: number;
 }
 
-const cache = new Map<ComposerPickKind, CacheEntry>();
-const inFlight = new Map<ComposerPickKind, Promise<ComposerPickItem[]>>();
+const cache = new Map<string, CacheEntry>();
+const inFlight = new Map<string, Promise<ComposerPickItem[]>>();
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -29,6 +41,19 @@ export function toAgentPickItems(agents: AgentItem[]): ComposerPickItem[] {
     kind: 'agent',
     source: 'agent',
     token: `@${agent.name}`,
+  }));
+}
+
+/** Map workspace files into pick items with oh-my-pi `@path` mention tokens. */
+export function toFilePickItems(files: FsFileEntry[]): ComposerPickItem[] {
+  return files.map((file) => ({
+    id: `file-${file.path}`,
+    name: file.path,
+    description: '',
+    kind: 'file',
+    source: 'file',
+    token: /\s/.test(file.path) ? `@"${file.path}"` : `@${file.path}`,
+    path: file.path,
   }));
 }
 
@@ -72,52 +97,114 @@ export function mergeCommandAndSkillItems(commands: CommandItem[], skills: Skill
   return result;
 }
 
-/** Load pick items for a kind, deduping concurrent callers and caching 5 minutes. */
-export function loadComposerItems(kind: ComposerPickKind): Promise<ComposerPickItem[]> {
-  const cached = cache.get(kind);
-  if (cached && cached.expiresAt > Date.now()) return Promise.resolve(cached.data);
+/** Load agent items, deduping concurrent callers and caching 5 minutes. */
+async function loadAgentItems(): Promise<ComposerPickItem[]> {
+  const cached = cache.get(AGENTS_KEY);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
 
-  const existing = inFlight.get(kind);
+  const existing = inFlight.get(AGENTS_KEY);
   if (existing) return existing;
 
   const pending = (async () => {
     try {
-      const items =
-        kind === 'agent'
-          ? toAgentPickItems((await fetchJson<{ agents: AgentItem[] }>('/api/settings/agents')).agents)
-          : await (async () => {
-              const [commands, skills] = await Promise.all([
-                fetchJson<{ commands: CommandItem[] }>('/api/settings/commands'),
-                fetchJson<{ skills: SkillItem[] }>('/api/settings/skills'),
-              ]);
-              return mergeCommandAndSkillItems(commands.commands, skills.skills);
-            })();
-      cache.set(kind, { data: items, expiresAt: Date.now() + CACHE_TTL_MS });
+      const items = toAgentPickItems(
+        (await fetchJson<{ agents: AgentItem[] }>('/api/settings/agents')).agents,
+      );
+      cache.set(AGENTS_KEY, { data: items, expiresAt: Date.now() + CACHE_TTL_MS });
       return items;
     } finally {
-      inFlight.delete(kind);
+      inFlight.delete(AGENTS_KEY);
     }
   })();
 
-  inFlight.set(kind, pending);
+  inFlight.set(AGENTS_KEY, pending);
   return pending;
+}
+
+/** Load workspace file items for a root, deduping concurrent callers. Never throws. */
+async function loadFileItems(root: string | null): Promise<ComposerPickItem[]> {
+  const key = fileKey(root ?? '');
+  const cached = cache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+
+  const existing = inFlight.get(key);
+  if (existing) return existing;
+
+  const pending = (async () => {
+    try {
+      const query = root ? `?root=${encodeURIComponent(root)}` : '';
+      const data = await fetchJson<{ files: FsFileEntry[] }>(`/api/fs/list${query}`);
+      const items = toFilePickItems(Array.isArray(data.files) ? data.files : []);
+      cache.set(key, { data: items, expiresAt: Date.now() + CACHE_TTL_MS });
+      return items;
+    } catch {
+      return [];
+    } finally {
+      inFlight.delete(key);
+    }
+  })();
+
+  inFlight.set(key, pending);
+  return pending;
+}
+
+/** Load command + skill items, deduping concurrent callers and caching 5 minutes. */
+async function loadCommandItems(): Promise<ComposerPickItem[]> {
+  const cached = cache.get(COMMANDS_KEY);
+  if (cached && cached.expiresAt > Date.now()) return cached.data;
+
+  const existing = inFlight.get(COMMANDS_KEY);
+  if (existing) return existing;
+
+  const pending = (async () => {
+    try {
+      const [commands, skills] = await Promise.all([
+        fetchJson<{ commands: CommandItem[] }>('/api/settings/commands'),
+        fetchJson<{ skills: SkillItem[] }>('/api/settings/skills'),
+      ]);
+      const items = mergeCommandAndSkillItems(commands.commands, skills.skills);
+      cache.set(COMMANDS_KEY, { data: items, expiresAt: Date.now() + CACHE_TTL_MS });
+      return items;
+    } finally {
+      inFlight.delete(COMMANDS_KEY);
+    }
+  })();
+
+  inFlight.set(COMMANDS_KEY, pending);
+  return pending;
+}
+
+/**
+ * Load pick items for a trigger kind. `mention` merges agents (first) and
+ * workspace files; `command` merges commands and skills.
+ */
+export function loadComposerItems(
+  kind: ComposerPickKind,
+  root?: string | null,
+): Promise<ComposerPickItem[]> {
+  if (kind === 'mention') {
+    return Promise.all([loadAgentItems(), loadFileItems(root ?? null)]).then(
+      ([agents, files]) => [...agents, ...files],
+    );
+  }
+  return loadCommandItems();
 }
 
 /** Load agent names via the shared agent cache. Never throws. */
 export async function loadAgentNames(): Promise<string[]> {
   try {
-    const items = await loadComposerItems('agent');
+    const items = await loadAgentItems();
     return items.map((item) => item.name);
   } catch {
     return [];
   }
 }
 
-/** Clear the cache (and in-flight dedupe) for one kind or all kinds. */
-export function invalidateComposerCache(kind?: ComposerPickKind): void {
-  if (kind) {
-    cache.delete(kind);
-    inFlight.delete(kind);
+/** Clear the cache (and in-flight dedupe) for one key or all keys. */
+export function invalidateComposerCache(key?: string): void {
+  if (key) {
+    cache.delete(key);
+    inFlight.delete(key);
     return;
   }
   cache.clear();

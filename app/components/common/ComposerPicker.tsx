@@ -55,10 +55,10 @@ export function ComposerPicker({
 
   if (!open) return null;
 
-  const isAgent = kind === 'agent';
-  const headerText = isAgent ? 'Type to search more agents' : 'Type to search commands and skills';
-  const ariaLabel = isAgent ? 'Agents' : 'Commands and skills';
-  const emptyText = isAgent ? 'No matching agents' : 'No matching commands or skills';
+  const isMention = kind === 'mention';
+  const headerText = isMention ? 'Type to search files and agents' : 'Type to search commands and skills';
+  const ariaLabel = isMention ? 'Files and agents' : 'Commands and skills';
+  const emptyText = isMention ? 'No matching files or agents' : 'No matching commands or skills';
 
   return (
     <div
@@ -95,6 +95,9 @@ export function ComposerPicker({
                 <span className="truncate">
                   <OptionName item={item} />
                 </span>
+                {item.source === 'file' && (
+                  <span className="text-ink/40 text-[10px] uppercase shrink-0">file</span>
+                )}
                 {item.source === 'skill' && (
                   <span className="text-ink/40 text-[10px] uppercase shrink-0">skill</span>
                 )}

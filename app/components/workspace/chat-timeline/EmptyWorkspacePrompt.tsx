@@ -23,6 +23,7 @@ interface EmptyWorkspacePromptProps {
   localMessages?: ChatMessageData[];
   modelName?: string;
   modelNames?: Record<string, string>;
+  rootPath?: string | null;
 }
 
 export function EmptyWorkspacePrompt({
@@ -39,7 +40,8 @@ export function EmptyWorkspacePrompt({
   appSettings = {},
   localMessages = [],
   modelName,
-  modelNames
+  modelNames,
+  rootPath
 }: EmptyWorkspacePromptProps) {
   const [showWorkspace, setShowWorkspace] = useState(false);
   const workspaceRef = useRef<HTMLDivElement>(null);
@@ -154,6 +156,7 @@ export function EmptyWorkspacePrompt({
         <ChatInput 
           value={inputValue}
           onChange={setInputValue}
+          rootPath={rootPath}
           attachments={inputAttachments}
           onAttachmentsChange={setInputAttachments}
           onSend={(attachments) => {

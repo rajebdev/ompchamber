@@ -27,6 +27,7 @@ interface MobileChatInputProps {
   appSettings?: Record<string, any>;
   attachments?: Attachment[];
   onAttachmentsChange?: (attachments: React.SetStateAction<Attachment[]>) => void;
+  rootPath?: string | null;
 }
 
 export function MobileChatInput({
@@ -38,7 +39,8 @@ export function MobileChatInput({
   disabled = false,
   appSettings = {},
   attachments: externalAttachments,
-  onAttachmentsChange
+  onAttachmentsChange,
+  rootPath
 }: MobileChatInputProps) {
   const [internalAttachments, setInternalAttachments] = useState<Attachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -213,6 +215,7 @@ export function MobileChatInput({
         onSend={handleSendClick}
         disabled={disabled}
         appSettings={appSettings}
+        rootPath={rootPath}
         placeholder={disabled ? "Please select a workspace above to start prompting..." : "@ for files/agents; / for commands and skills; ! for shell; # for snippets (Paste images/files here)"}
         className="w-full bg-transparent border-none px-3 py-2.5 text-xs focus:outline-none resize-none text-ink placeholder-ink/40 min-h-[64px] max-h-36 disabled:opacity-50 disabled:cursor-not-allowed"
         onPaste={handlePaste}

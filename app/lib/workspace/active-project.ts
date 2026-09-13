@@ -22,3 +22,21 @@ export function activeProjectForSession(
   }
   return { folder: null, projectPath: null };
 }
+
+/**
+ * Resolve the workspace root the composer should scope `@` file mentions to:
+ * the active session's bound project first, then the explicitly selected
+ * folder, else null (client falls back to the app root).
+ */
+export function composerRootFor(
+  folders: WorkspaceFolderData[],
+  sessionId: string | number | null | undefined,
+  selectedFolderId: number | null
+): string | null {
+  const bySession = activeProjectForSession(folders, sessionId).folder;
+  const byFolder =
+    selectedFolderId != null
+      ? folders.find((f) => String(f.id) === String(selectedFolderId)) ?? null
+      : null;
+  return (bySession ?? byFolder)?.project_path ?? null;
+}

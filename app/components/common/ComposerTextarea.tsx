@@ -18,6 +18,7 @@ export interface ComposerTextareaProps {
   placeholder?: string;
   className?: string;
   onPaste?: (e: ClipboardEvent<HTMLTextAreaElement>) => void;
+  rootPath?: string | null;
 }
 
 export function ComposerTextarea({
@@ -29,10 +30,11 @@ export function ComposerTextarea({
   placeholder,
   className,
   onPaste,
+  rootPath,
 }: ComposerTextareaProps): ReactElement {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const composer = useComposerTrigger({ value, setValue: onChange, textareaRef, disabled });
+  const composer = useComposerTrigger({ value, setValue: onChange, textareaRef, disabled, rootPath });
 
   useOnClickOutside(wrapperRef, composer.close);
 
@@ -98,7 +100,7 @@ export function ComposerTextarea({
 
       <ComposerPicker
         open={composer.isOpen}
-        kind={composer.trigger?.kind ?? 'agent'}
+        kind={composer.trigger?.kind ?? 'mention'}
         items={composer.matches}
         activeIndex={composer.activeIndex}
         loading={composer.loading}

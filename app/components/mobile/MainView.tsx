@@ -34,6 +34,7 @@ interface MobileMainViewProps {
   appSettings?: Record<string, any>;
   messageQueue?: import('@/components/workspace/chat-timeline/QueueList').QueuedMessage[];
   setMessageQueue?: React.Dispatch<React.SetStateAction<import('@/components/workspace/chat-timeline/QueueList').QueuedMessage[]>>;
+  rootPath?: string | null;
 }
 
 export function MobileMainView({
@@ -52,7 +53,8 @@ export function MobileMainView({
   onStop,
   appSettings = {},
   messageQueue = [],
-  setMessageQueue = () => {}
+  setMessageQueue = () => {},
+  rootPath
 }: MobileMainViewProps) {
   const [inputValue, setInputValue] = useState('');
   const [inputAttachments, setInputAttachments] = useState<Attachment[]>([]);
@@ -281,6 +283,7 @@ export function MobileMainView({
           <MobileChatInput
             value={inputValue}
             onChange={setInputValue}
+            rootPath={rootPath}
             attachments={inputAttachments}
             onAttachmentsChange={setInputAttachments}
             onSend={handleSend}

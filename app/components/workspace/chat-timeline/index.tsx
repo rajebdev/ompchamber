@@ -16,6 +16,7 @@ import { responseRunDurationMs } from '@/lib/chat/duration';
 import { normalizeNoticePositions } from '@/lib/chat/order';
 import { isRecord } from '@/lib/omp/session/parse-message-blocks';
 import { historyEntryToSubagentInfo } from '@/lib/omp/subagent/history-client';
+import { composerRootFor } from '@/lib/workspace/active-project';
 
 import type { ExtensionUiDialogRequest } from '@/hooks/chat/omp';
 import type { SubagentHistoryEntry, SubagentInfo } from '@/types';
@@ -168,6 +169,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
   // must stay available until the first chat is sent (which spawns the real
   // omp session). Never lock the user into a folder before sending.
   const isPendingSession = Boolean(sessionId?.startsWith('new-'));
+  const composerRoot = composerRootFor(folders, sessionId, selectedFolderId);
 
   if (!sessionId || isPendingSession) {
     return (
@@ -176,6 +178,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
         folders={folders}
         selectedFolderId={selectedFolderId}
         setSelectedFolderId={setSelectedFolderId}
+        rootPath={composerRoot}
         inputValue={inputValue}
         setInputValue={setInputValue}
         inputAttachments={inputAttachments}
@@ -296,6 +299,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
             <ChatInput
               value={inputValue}
               onChange={setInputValue}
+              rootPath={composerRoot}
               attachments={inputAttachments}
               onAttachmentsChange={setInputAttachments}
               onSend={handleSend}

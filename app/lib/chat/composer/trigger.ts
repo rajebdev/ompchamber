@@ -4,7 +4,8 @@ import type { ComposerPickItem, ComposerTrigger } from '@/types';
 const AT_PRECEDING_RE = /[\s([{]/;
 
 /**
- * Detect an `@`-agent or `/`-command trigger at the given caret position.
+ * Detect an `@`-mention (files + agents) or `/`-command trigger at the given
+ * caret position.
  *
  * Scans backwards from `caret - 1`: a whitespace/newline before any trigger
  * char aborts the scan. `/` is only a trigger at index 0; `@` is a trigger at
@@ -27,7 +28,7 @@ export function detectComposerTrigger(text: string, caret: number): ComposerTrig
       }
 
       if (i === 0 || AT_PRECEDING_RE.test(text[i - 1])) {
-        return { kind: 'agent', query: text.slice(i + 1, end), start: i, end };
+        return { kind: 'mention', query: text.slice(i + 1, end), start: i, end };
       }
       return null;
     }
