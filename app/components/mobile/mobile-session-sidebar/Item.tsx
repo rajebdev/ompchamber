@@ -5,12 +5,9 @@ import {
   MessageSquare, 
   Folder, 
   GitBranch,
-  Archive,
-  ArchiveRestore,
-  Loader2,
-  Check
 } from 'lucide-react';
 import { useFetcher, useRevalidator } from '@remix-run/react';
+import { MobileSessionRow } from '@/components/mobile/mobile-session-sidebar/SessionRow';
 import type { WorkspaceFolderData, SessionItemData } from '@/types';
 
 interface MobileSessionCategoryProps {
@@ -42,6 +39,19 @@ export function MobileSessionCategory({
       { archived: String(nextArchived) },
       { method: 'POST', action: `/api/sessions/${session.id}/archive` }
     );
+    revalidator.revalidate();
+  };
+
+  const handleRename = async (session: SessionItemData, name: string) => {
+    try {
+      const body = new FormData();
+      body.set('name', name);
+      const res = await fetch(`/api/sessions/${encodeURIComponent(String(session.id))}/rename`, { method: 'POST', body });
+      if (!res.ok) return;
+    } catch {
+      return;
+    }
+    window.dispatchEvent(new CustomEvent('omp:session-renamed', { detail: { sessionId: String(session.id), title: name } }));
     revalidator.revalidate();
   };
 
@@ -130,52 +140,17 @@ export function MobileSessionCategory({
             const timeAgo = formatTimeAgo(session, idx, folder.name);
 
             return (
-              <div
+              <MobileSessionRow
                 key={session.id}
-                className={`w-full rounded-lg flex items-center transition-colors ${
-                  isActive 
-                    ? 'bg-ink/10 font-medium text-ink' 
-                    : 'hover:bg-ink/5 text-ink/85'
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => onSelectSession(session.id)}
-                  className="flex-1 text-left px-3 py-2 flex items-center justify-between min-w-0"
-                >
-                  {/* Title */}
-                  <div className="flex items-center space-x-1.5 min-w-0 pr-2">
-                    <span className="w-4 flex-shrink-0 flex items-center justify-center">
-                      {sessionStatus[String(session.id)] === 'processing' && (
-                        <Loader2 size={13} className="text-ink/50 animate-spin" />
-                      )}
-                      {sessionStatus[String(session.id)] === 'done' && (
-                        <Check size={13} className="text-ink/50" />
-                      )}
-                    </span>
-                    {isDrReal && (
-                      <span className="text-ink/40 text-xs flex-shrink-0 font-mono">&gt;</span>
-                    )}
-                    <span className="text-xs truncate leading-snug">
-                      {session.title.charAt(0).toUpperCase() + session.title.slice(1)}
-                    </span>
-                  </div>
-
-                  {/* Timestamp */}
-                  <span className="text-[11px] text-ink/45 font-mono flex-shrink-0 ml-2">
-                    {timeAgo}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleArchive(session)}
-                  title={session.is_archived === 1 ? 'Unarchive session' : 'Archive session'}
-                  className="flex-shrink-0 p-2 mr-1 text-ink/35 hover:text-ink rounded-lg cursor-pointer"
-                >
-                  {session.is_archived === 1 ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-                </button>
-              </div>
+                session={session}
+                isActive={isActive}
+                status={sessionStatus[String(session.id)]}
+                timeAgo={timeAgo}
+                showTreeGlyph={isDrReal}
+                onSelect={() => onSelectSession(session.id)}
+                onArchive={() => handleArchive(session)}
+                onRename={String(session.id).startsWith('new-') ? undefined : (name) => void handleRename(session, name)}
+              />
             );
           })}
 

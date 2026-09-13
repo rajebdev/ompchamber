@@ -11,11 +11,12 @@ import { QueueList } from '@/components/workspace/chat-timeline/QueueList';
 import { NewChatModal } from '@/components/workspace/chat-timeline/NewChatModal';
 import { SubagentView } from '@/components/workspace/chat-timeline/SubagentView';
 import { useChatTimeline } from '@/hooks/chat/timeline';
+import { useSessionTitle } from '@/hooks/chat/timeline/session-title';
 import { useModelNames } from '@/hooks/models/use-model-names';
 import { responseRunDurationMs } from '@/lib/chat/duration';
 import { normalizeNoticePositions } from '@/lib/chat/order';
 import { isRecord } from '@/lib/omp/session/parse-message-blocks';
-import { historyEntryToSubagentInfo } from '@/lib/omp/subagent/history-client';
+import { historyEntryToSubagentInfo } from '@/lib/omp/subagent/history/client';
 import { composerRootFor } from '@/lib/workspace/active-project';
 
 import type { ExtensionUiDialogRequest } from '@/hooks/chat/omp';
@@ -143,12 +144,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
     return () => window.removeEventListener('omp:open_ask_dialog', handleOpenAsk);
   }, []);
 
-  useEffect(() => {
-    // Pending client-side sessions ("new-…") show a default title until the
-    // real omp session metadata arrives.
-    const pending = sessionId?.startsWith('new-') ? 'Untitled session' : null;
-    onSessionTitle?.(pending ?? sessionData?.title ?? null);
-  }, [sessionId, sessionData?.title, onSessionTitle]);
+  useSessionTitle(sessionId, sessionData?.title, onSessionTitle);
 
   const handleScrollTo = (id: string) => {
     const el = document.getElementById(id);

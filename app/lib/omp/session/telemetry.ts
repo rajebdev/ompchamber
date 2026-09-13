@@ -4,7 +4,9 @@
  */
 
 import { readFileSync } from 'fs';
-import { parseJsonlLenient } from '@/lib/omp/session/jsonl';
+import { isRecord, parseJsonlLenient } from '@/lib/omp/session/jsonl';
+import { formatNewSessionTitle } from '@/lib/omp/session/default-title';
+import { contentProfile } from '@/lib/omp/session/telemetry-blocks';
 import type {
   RawMessageInfo,
   RawMessageItem,
@@ -44,10 +46,6 @@ interface SessionEntry {
   message?: OmpMessage;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 /** Flatten an omp content value (string or block array) to plain text. */
 function textOf(content: unknown): string {
   if (typeof content === 'string') return content;
@@ -59,51 +57,6 @@ function textOf(content: unknown): string {
     else if (typeof block.thinking === 'string') parts.push(block.thinking);
   }
   return parts.join(' ').trim();
-}
-
-const TYPE_ORDER = ['reasoning', 'text', 'bash', 'read', 'edit', 'search', 'web', 'tool'] as const;
-/** Coarse badge category for a tool name (mirrors the mock taxonomy). */
-function toolCategory(name: string | undefined): string {
-  const lower = (name || '').toLowerCase();
-  if (/bash|terminal|shell/.test(lower)) return 'bash';
-  if (/cmd|command|run|exec/.test(lower)) return 'bash';
-  if (/write|edit|patch|apply|create/.test(lower)) return 'edit';
-  if (/read|view|list|cat/.test(lower)) return 'read';
-  if (/search|grep|find|glob/.test(lower)) return 'search';
-  if (/web|fetch|http|browser/.test(lower)) return 'web';
-  return 'tool';
-}
-
-function contentProfile(content: unknown): { parts: string[]; toolCalls: number; toolChars: number } {
-  if (!Array.isArray(content)) return { parts: typeof content === 'string' && content.trim() ? ['text'] : [], toolCalls: 0, toolChars: 0 };
-  const seen = new Set<string>();  let toolCalls = 0;
-  let toolChars = 0;
-  for (const block of content) {
-    if (!isRecord(block)) continue;
-    if (block.type === 'thinking') seen.add('reasoning');
-    else if (block.type === 'text') seen.add('text');
-    else if (block.type === 'toolCall') {
-      toolCalls++;
-      seen.add(toolCategory(typeof block.name === 'string' ? block.name : undefined));
-      try {
-        toolChars += JSON.stringify(block.arguments ?? {}).length;
-      } catch {
-        /* ignore serialization failure */
-      }
-    } else if (block.type === 'toolResult') {
-      try {
-        toolChars += JSON.stringify(block).length;
-      } catch {
-        /* ignore serialization failure */
-      }
-    }
-    if (typeof block.command === 'string') {
-      seen.add('bash');
-      toolChars += block.command.length;
-    }
-    if (typeof block.code === 'string') toolChars += block.code.length;
-  }
-  return { parts: TYPE_ORDER.filter((p) => seen.has(p)), toolCalls, toolChars };
 }
 
 function formatTs(ts: string | number | undefined): string {
@@ -188,7 +141,7 @@ export function computeRealSessionTelemetry(
   sessionId: string,
   fallbackTitle?: string,
 ): SessionContextTelemetry {
-  const defaultTitle = fallbackTitle || 'Untitled session';
+  const defaultTitle = fallbackTitle || 'New Session';
 
   let body: string;
   try {
@@ -226,9 +179,16 @@ export function computeRealSessionTelemetry(
   for (let index = 0; index < records.length; index++) {
     const entry = records[index];
     if (!entry) continue;
-    if (index === 0 && entry.type === 'session') {
+    // Modern session files start with a fixed-width title slot line, so the
+    // header is never at index 0 when one exists. A filled slot (auto/user
+    // rename) outranks the header's own title field.
+    if (entry.type === 'title') {
+      if (typeof entry.title === 'string' && entry.title.trim()) effectiveTitle = entry.title.trim();
+      continue;
+    }
+    if (entry.type === 'session' && !header) {
       header = entry;
-      effectiveTitle = header.title ?? effectiveTitle;
+      if (!effectiveTitle && typeof entry.title === 'string') effectiveTitle = entry.title;
       continue;
     }
     if (entry.type === 'compaction' && typeof entry.shortSummary === 'string' && !shortSummary) shortSummary = entry.shortSummary;
@@ -310,7 +270,8 @@ export function computeRealSessionTelemetry(
 
   return {
     sessionId,
-    sessionTitle: effectiveTitle || shortSummary || firstUserText || defaultTitle,
+    sessionTitle: effectiveTitle || shortSummary || firstUserText
+      || (header?.timestamp ? formatNewSessionTitle(new Date(header.timestamp)) : defaultTitle),
     modelId: providerModel,
     modelName: providerModel,
     timestamp: formatTs(header?.timestamp),

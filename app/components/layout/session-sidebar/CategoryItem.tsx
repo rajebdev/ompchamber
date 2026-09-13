@@ -128,6 +128,19 @@ export function Category({
     revalidator.revalidate();
   };
 
+  const handleRename = async (session: any, name: string) => {
+    try {
+      const body = new FormData();
+      body.set('name', name);
+      const res = await fetch(`/api/sessions/${encodeURIComponent(String(session.id))}/rename`, { method: 'POST', body });
+      if (!res.ok) return;
+    } catch {
+      return;
+    }
+    window.dispatchEvent(new CustomEvent('omp:session-renamed', { detail: { sessionId: String(session.id), title: name } }));
+    revalidator.revalidate();
+  };
+
   const isActuallyOpen = forceExpanded || isOpen;
 
   const visibleSessions = (allSessions || []).filter((s: any) =>
@@ -228,6 +241,7 @@ export function Category({
                   status={sessionStatus[sessionKey]}
                   onClick={() => onSelectSession(session.id)}
                   onArchive={() => handleArchive(session)}
+                  onRename={String(session.id).startsWith('new-') ? undefined : (name) => void handleRename(session, name)}
                   expandable={hasSubagents}
                   hasSubagents={hasSubagents}
                   isExpanded={isExpanded}

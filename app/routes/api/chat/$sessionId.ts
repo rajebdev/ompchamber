@@ -135,6 +135,8 @@ export async function loader({ params }: LoaderFunctionArgs) {
     if (!mock) {
       const { findSessionFileById } = await import('@/lib/omp/session/locator');
       const { loadSessionMessages, loadSessionTitle, loadSessionModel, loadSessionThinkingLevel } = await import('@/lib/omp/session/messages');
+      const { readRawHeaderLine } = await import('@/lib/omp/session/files');
+      const { formatNewSessionTitle } = await import('@/lib/omp/session/default-title');
       const filePath = findSessionFileById(sessionId);
       if (filePath) {
         const messages = loadSessionMessages(filePath);
@@ -152,8 +154,12 @@ export async function loader({ params }: LoaderFunctionArgs) {
           loadedTitle && rawFirstUser && jsonlFirstUser && rawFirstUser !== jsonlFirstUser
           && (jsonlFirstUser.startsWith(loadedTitle) || loadedTitle.startsWith(jsonlFirstUser.slice(0, 60))),
         );
+        // Match the sidebar's timestamped default instead of leaking a raw UUID.
+        const header = readRawHeaderLine(filePath);
+        const headerTimestamp = typeof header?.timestamp === 'string' ? header.timestamp : undefined;
         const title = (titleIsPromptEcho ? rawFirstUser?.slice(0, 60) : loadedTitle)
           || rawFirstUser?.slice(0, 120)
+          || (headerTimestamp ? formatNewSessionTitle(new Date(headerTimestamp)) : undefined)
           || `Session ${sessionId}`;
         return json({
           session: {

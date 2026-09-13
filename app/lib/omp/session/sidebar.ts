@@ -16,8 +16,11 @@
  */
 
 import type { OmpSession, OmpSidebarData, OmpProject } from '@/types/omp/session';
+import { formatNewSessionTitle } from '@/lib/omp/session/default-title';
 
-/** Display title of a session: name, else first message, else fallback. */
+/** Display title of a session: name, else first message, else a timestamped
+ *  `New Session - yyyy-mm-ddThh:mm:ss` default (unique per session — an
+ *  identical placeholder row made fresh sessions indistinguishable). */
 export function sessionTitleFor(session: OmpSession): string {
   if (session.name?.trim()) {
     const n = session.name.trim();
@@ -28,7 +31,7 @@ export function sessionTitleFor(session: OmpSession): string {
     const text = first.slice(0, 120);
     return text.charAt(0).toUpperCase() + text.slice(1);
   }
-  return 'Untitled session';
+  return formatNewSessionTitle(new Date(session.created));
 }
 
 /** Project display name: alias, else lowercase basename of the path. */

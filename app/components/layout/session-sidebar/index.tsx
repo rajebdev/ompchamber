@@ -5,6 +5,7 @@ import { SessionSidebarHeader } from '@/components/layout/session-sidebar/Header
 import { SessionSidebarToolbar, type SortOption } from '@/components/layout/session-sidebar/Toolbar';
 import { SessionSidebarFooter } from '@/components/layout/session-sidebar/Footer';
 import { SessionSidebarSessionList } from '@/components/layout/session-sidebar/SessionList';
+import { pendingSessionTitle } from '@/lib/omp/session/default-title';
 import { useScrollbarFade } from '@/hooks/ui/scrollbar-fade';
 
 export function SessionSidebar({ className = '', folders = [], onClose, appSettings = {} }: { className?: string, folders?: any[], onClose?: () => void, appSettings?: Record<string, any> }) {
@@ -149,8 +150,8 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
     // The active session may not be in the sidebar list yet: a pending
     // "new-…" session, or a freshly spawned omp session whose JSONL has not
     // been scanned (the chat timeline signals omp:session-updated once it is).
-    // Render it as an "Untitled session" item so there is never a gap between
-    // sending a chat and the session appearing with its real title.
+    // Render it with the timestamped default title so there is never a gap
+    // between sending a chat and the session appearing with its real title.
     const sessionExists = result.some(f => f.sessions?.some((s: any) => String(s.id) === String(sessionParam)));
     const pendingId = sessionParam && !sessionExists ? sessionParam : null;
     if (pendingId) {
@@ -161,7 +162,7 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
       if (target) {
         result = result.map(f => {
           if (f.id !== target.id) return f;
-          const pending = { id: pendingId, title: 'Untitled session', is_active: 1 };
+          const pending = { id: pendingId, title: pendingSessionTitle(pendingId), is_active: 1 };
           return { ...f, isExpanded: true, sessions: [pending, ...(f.sessions || [])] };
         });
       }
@@ -207,7 +208,7 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
     });
 
     return result;
-  }, [folders, searchQuery, sortOption]);
+  }, [folders, searchQuery, sortOption, sessionParam, searchParams]);
 
   return (
     <>
