@@ -30,6 +30,7 @@ export interface OmpAgentCallbacksDeps {
   setLocalMessages: Dispatch<SetStateAction<ChatMessageData[]>>;
   aiPlaceholderIdRef: { current: string | null };
   optimisticUserIdRef: { current: string | null };
+  pendingUserDisplaysRef: { current: { sent: string; display: string }[] };
   persistMessages: (messages: any[]) => void;
   abortControllerRef: { current: AbortController | null };
   appSettings: Record<string, any>;
@@ -49,6 +50,7 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
     setLocalMessages,
     aiPlaceholderIdRef,
     optimisticUserIdRef,
+    pendingUserDisplaysRef,
     persistMessages,
     abortControllerRef,
     appSettings,
@@ -85,6 +87,9 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
     // committed list), and only flushed to history on message_end. omp's
     // message frames are timestamp-identified, not id-identified.
     onMessageUpdate: (msg) => {
+      // React may invoke state updaters more than once (eager-state bailout),
+      // so this ref mutation must stay OUTSIDE the updater to keep it pure.
+      if (msg.role !== 'user' && !msg.notice) optimisticUserIdRef.current = null;
       setLocalMessages(prev => {
         const placeholderId = aiPlaceholderIdRef.current;
         // Notice rows (e.g. background job done, system alerts) belong chronologically
@@ -111,25 +116,28 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
           if (pendingId) {
             const pIdx = prev.findIndex(m => m.id === pendingId);
             if (pIdx !== -1) {
-              optimisticUserIdRef.current = null;
               const reconciled: ChatMessageData = {
                 ...msg,
                 id: msg.id,
+                content: prev[pIdx].content,
                 date: prev[pIdx].date,
                 attachments: msg.attachments?.length ? msg.attachments : prev[pIdx].attachments,
               };
               return [...prev.slice(0, pIdx), reconciled, ...prev.slice(pIdx + 1)];
             }
           }
-          // Steering/follow-up user turns have no optimistic bubble → append.
+          // Steering/follow-up user turns have no optimistic bubble → append
+          // the raw composer text recorded at send time, not omp's echo.
+          const override = pendingUserDisplaysRef.current.find(
+            (e) => msg.content === e.sent || msg.content.startsWith(e.sent) || e.sent.startsWith(msg.content),
+          );
+          const userMsg = override ? { ...msg, content: override.display } : msg;
           if (placeholderId && prev.some(m => m.id === placeholderId)) {
             const pIdx = prev.findIndex(m => m.id === placeholderId);
-            return [...prev.slice(0, pIdx), msg, ...prev.slice(pIdx)];
+            return [...prev.slice(0, pIdx), userMsg, ...prev.slice(pIdx)];
           }
-          return [...prev, msg];
+          return [...prev, userMsg];
         }
-        // Assistant content started → the optimistic user echo window is closed.
-        optimisticUserIdRef.current = null;
         if (placeholderId && prev.some(m => m.id === placeholderId)) {
           return prev.map(m => (m.id === placeholderId ? msg : m));
         }
@@ -146,6 +154,7 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
       scrollToBottom('smooth');
     },
     onMessageEnd: (msg) => {
+      if (msg.role !== 'user') optimisticUserIdRef.current = null;
       setLocalMessages(prev => {
         const placeholderId = aiPlaceholderIdRef.current;
         // User turn finalization (steering/follow-up): same contract as the
@@ -156,9 +165,8 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
           if (prev.some(m => m.id === msg.id)) {
             next = prev.map(m => (m.id === msg.id ? msg : m));
           } else if (pendingId && prev.some(m => m.id === pendingId)) {
-            optimisticUserIdRef.current = null;
             next = prev.map(m => (m.id === pendingId
-              ? { ...msg, id: msg.id, date: m.date, attachments: msg.attachments?.length ? msg.attachments : m.attachments }
+              ? { ...msg, id: msg.id, content: m.content, date: m.date, attachments: msg.attachments?.length ? msg.attachments : m.attachments }
               : m));
           } else if (placeholderId && prev.some(m => m.id === placeholderId)) {
             const pIdx = prev.findIndex(m => m.id === placeholderId);
@@ -193,6 +201,7 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
       setGenerating(false);
       abortControllerRef.current = null;
       optimisticUserIdRef.current = null;
+      pendingUserDisplaysRef.current = [];
       triggerChatCompletionSound(appSettings);
       setTimeout(() => scrollToBottom('smooth'), 50);
       // The omp JSONL has the final title/messages now — refresh session

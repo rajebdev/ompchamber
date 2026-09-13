@@ -34,6 +34,29 @@ import type { OmpMessageEntry } from '@/lib/omp/session/messages-parse';
 
 const MAX_SESSION_LOAD_BYTES = 512 * 1024 * 1024;
 
+/** omp expands `/skill:<name>` into a `custom_message` record and stores no
+ *  user message for it, so the chamber reconstructs the bubble from it. */
+function skillUserMessageFromRecord(record: Record<string, unknown>): ChatMessageData | null {
+  const details = record.details as { name?: unknown } | undefined;
+  const fromDetails = typeof details?.name === 'string' ? details.name : undefined;
+  const fromContent = typeof record.content === 'string'
+    ? /User invoked the "([^"]+)" skill/.exec(record.content)?.[1]
+    : undefined;
+  const skillName = fromDetails ?? fromContent;
+  if (!skillName) return null;
+  const parsed = typeof record.timestamp === 'string' ? new Date(record.timestamp) : undefined;
+  const time = parsed && !Number.isNaN(parsed.getTime())
+    ? parsed.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    : undefined;
+  return {
+    id: typeof record.id === 'string' ? record.id : `skill-${Date.now()}`,
+    role: 'user',
+    content: `/skill:${skillName}`,
+    date: time ? `Today, ${time}` : undefined,
+    timestamp: time,
+  };
+}
+
 /**
  * Load a session file and return the chat timeline in chronological order.
  * Assistant messages carry thinking accordion + tool calls (with outputs
@@ -58,6 +81,13 @@ export function loadSessionMessages(filePath: string): ChatMessageData[] {
   const state: SequenceState = { messages: [], outputsByCall: collectToolOutputs(records) };
 
   for (const record of records) {
+    if (record?.type === 'custom_message' && record.customType === 'skill-prompt') {
+      const skillMsg = skillUserMessageFromRecord(record);
+      if (skillMsg) {
+        state.messages.push(skillMsg);
+        continue;
+      }
+    }
     if (record?.type === 'custom_message' || record?.type === 'custom') {
       const notice = noticeFromCustomMessage(record);
       if (notice) state.messages.push(notice);

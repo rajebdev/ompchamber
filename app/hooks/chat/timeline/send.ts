@@ -58,6 +58,7 @@ export interface ChatTimelineSendDeps {
   aiPlaceholderIdRef: { current: string | null };
   adoptedSessionIdRef: { current: string | null };
   optimisticUserIdRef: { current: string | null };
+  pendingUserDisplaysRef: { current: { sent: string; display: string }[] };
   setSessionModel: (model: { provider: string; modelId: string } | null) => void;
   abortControllerRef: { current: AbortController | null };
   setInputValue: (v: string) => void;
@@ -86,6 +87,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
     aiPlaceholderIdRef,
     adoptedSessionIdRef,
     optimisticUserIdRef,
+    pendingUserDisplaysRef,
     setSessionModel,
     abortControllerRef,
     setInputValue,
@@ -119,6 +121,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
         size: a.file.size,
       }));
     const promptText = await buildPromptText(text, textFiles);
+    pendingUserDisplaysRef.current = [...pendingUserDisplaysRef.current.slice(-7), { sent: promptText, display: text }];
     const images = attachments
       .filter(a => a.file.type.startsWith('image/') && a.dataBase64)
       .map(a => ({ data: a.dataBase64 as string, mimeType: a.file.type }));
@@ -232,12 +235,17 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
             size: a.file.size,
           }));
         const promptText = await buildPromptText(text, textFiles);
+        optimisticUserIdRef.current = userMsgId;
         const spawned = await ompAgent.sendNewPrompt(promptText, cwd, images.length ? images : undefined);
         if (spawned) {
           adoptedSessionIdRef.current = spawned.sessionId;
           aiPlaceholderIdRef.current = aiPlaceholderId;
-          optimisticUserIdRef.current = userMsgId;
           if (spawned.model) setSessionModel(spawned.model);
+          fetch(`/api/chat/${encodeURIComponent(spawned.sessionId)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: [newUserMsg] }),
+          }).catch(err => console.error('Error persisting spawned user turn:', err));
           setSearchParams(prev => {
             const next = new URLSearchParams(prev);
             next.set('sessionId', spawned.sessionId);
@@ -252,6 +260,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
 
     // Mock / chamber-created session: existing Gemini/simulated SSE path.
     // Cancel any previous stream
+    optimisticUserIdRef.current = null;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }

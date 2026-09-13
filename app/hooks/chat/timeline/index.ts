@@ -70,6 +70,8 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   const metaRefreshedRef = useRef<string | null>(null);
   // Optimistic user bubble awaiting omp's echo (reconciled by the callbacks).
   const optimisticUserIdRef = useRef<string | null>(null);
+  // Raw composer text for steer/follow-up echoes (those paths have no bubble).
+  const pendingUserDisplaysRef = useRef<{ sent: string; display: string }[]>([]);
 
   // omp sessions are string UUIDs; chamber-created (mock/numeric) sessions are
   // integers. Only omp UUIDs route through the live agent bridge. Pending
@@ -235,6 +237,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     setLocalMessages,
     aiPlaceholderIdRef,
     optimisticUserIdRef,
+    pendingUserDisplaysRef,
     persistMessages,
     abortControllerRef,
     appSettings,
@@ -255,6 +258,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     aiPlaceholderIdRef,
     adoptedSessionIdRef,
     optimisticUserIdRef,
+    pendingUserDisplaysRef,
     setSessionModel,
     abortControllerRef,
     setInputValue,

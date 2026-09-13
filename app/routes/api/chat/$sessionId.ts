@@ -12,30 +12,104 @@ interface StoredAttachment {
   content?: string;
 }
 
-/** Merge attachment metadata from the chamber DB copy onto the JSONL-loaded
- *  messages. omp's JSONL only records image blocks, so text/pdf attachments
- *  are matched back by user content (the DB copy is written by the chat
- *  timeline and carries the full attachment list). */
+interface StoredMessage {
+  id?: string;
+  role: string;
+  content: string;
+  date?: string;
+  timestamp?: string;
+  attachments?: StoredAttachment[];
+}
+
+function isRawComposerInput(content: string): boolean {
+  return /^\s*\//.test(content) || /(^|\s)@[A-Za-z0-9_-]+/.test(content);
+}
+
+/** Whether a JSONL-derived user turn (a) and a stored one (b) are the same
+ *  request despite omp rewriting the delivered prompt. */
+function userTurnsRelate(a: string, b: string): boolean {
+  if (a === b || a.startsWith(b) || b.startsWith(a)) return true;
+  // `@agent` is delivered to omp as a task-tool delegation prompt.
+  if (a.startsWith('Use the task tool to delegate this request') && /(^|\s)@[A-Za-z0-9_-]+/.test(b)) {
+    return true;
+  }
+  // `/skill:<name> <args>`: the JSONL only records a synthesized `/skill:<name>`.
+  const token = a.split(' ')[0];
+  return a.startsWith('/skill:') && Boolean(token) && b.startsWith(token);
+}
+
+/** Merge user turns and attachments from the chamber DB copy onto the
+ *  JSONL-loaded messages. omp's JSONL rewrites raw composer input (`@agent` →
+ *  task-tool prompt, `/skill:a b` → `/skill:a`) and writes no user entry at all
+ *  for `/command` turns, so the raw DB copy restores both the displayed text
+ *  and the missing bubbles. */
 function mergeOmpAttachments(
-  messages: { role: string; content: string; attachments?: StoredAttachment[] }[],
+  messages: StoredMessage[],
   storedMessagesJson: string | undefined,
-): typeof messages {
+): StoredMessage[] {
   if (!storedMessagesJson) return messages;
-  let stored: { role: string; content: string; attachments?: StoredAttachment[] }[] = [];
+  let stored: StoredMessage[] = [];
   try {
     stored = JSON.parse(storedMessagesJson);
   } catch {
     return messages;
   }
+  if (!Array.isArray(stored)) return messages;
+  const storedUsers = stored.filter((m) => m?.role === 'user' && typeof m.content === 'string');
+
+  const jsonlIndex = new Map<string, number>();
+  messages.forEach((m, index) => {
+    if (m.id) jsonlIndex.set(m.id, index);
+  });
+
+  const used = new Set<number>();
+  const merged = messages.map((m) => {
+    if (m.role !== 'user') return m;
+    const storedIndex = storedUsers.findIndex((s, i) => !used.has(i) && userTurnsRelate(m.content, s.content));
+    if (storedIndex === -1) return m;
+    used.add(storedIndex);
+    const storedMsg = storedUsers[storedIndex];
+    const content = storedMsg.content !== m.content && isRawComposerInput(storedMsg.content)
+      ? storedMsg.content
+      : m.content;
+    const attachments = m.attachments?.length ? m.attachments : storedMsg.attachments;
+    const next = { ...m, content };
+    return attachments?.length ? { ...next, attachments } : next;
+  });
+
+  // Unmatched raw turns are anchored before the next stored message the JSONL
+  // still carries; splice highest-anchor-first so earlier indices stay valid.
+  const insertions = new Map<number, StoredMessage[]>();
+  storedUsers.forEach((storedMsg, userIndex) => {
+    if (used.has(userIndex) || !isRawComposerInput(storedMsg.content)) return;
+    if (storedMsg.id && jsonlIndex.has(storedMsg.id)) return;
+    let anchor = merged.length;
+    for (let i = stored.indexOf(storedMsg) + 1; i < stored.length; i += 1) {
+      const id = stored[i]?.id;
+      const found = typeof id === 'string' ? jsonlIndex.get(id) : undefined;
+      if (found !== undefined) {
+        anchor = found;
+        break;
+      }
+    }
+    const group = insertions.get(anchor);
+    if (group) group.push(storedMsg);
+    else insertions.set(anchor, [storedMsg]);
+  });
+  for (const anchor of [...insertions.keys()].sort((a, b) => b - a)) {
+    const group = insertions.get(anchor);
+    if (group) merged.splice(anchor, 0, ...group);
+  }
+
   const byContent = new Map<string, StoredAttachment[]>();
   for (const m of stored) {
-    if (m.role === 'user' && Array.isArray(m.attachments) && m.attachments.length > 0) {
+    if (m?.role === 'user' && Array.isArray(m.attachments) && m.attachments.length > 0) {
       byContent.set(m.content, m.attachments);
     }
   }
-  return messages.map((m) => {
+  return merged.map((m) => {
     if (m.role !== 'user' || m.attachments?.length) return m;
-    // The JSONL content may carry the inlined text-file blocks appended to the
+    // The JSONL content may carry inlined text-file blocks appended to the
     // original prompt, so match by prefix instead of exact equality.
     const atts = byContent.get(m.content)
       ?? [...byContent.entries()].find(([storedContent]) =>
@@ -64,9 +138,6 @@ export async function loader({ params }: LoaderFunctionArgs) {
       const filePath = findSessionFileById(sessionId);
       if (filePath) {
         const messages = loadSessionMessages(filePath);
-        const title = loadSessionTitle(filePath)
-          || messages.find((m) => m.role === 'user')?.content?.slice(0, 120)
-          || `Session ${sessionId}`;
         // Real omp JSONL only records image blocks — text/pdf attachments
         // never reach the file. The chamber's DB copy (written by the chat
         // timeline) carries the full attachment metadata, so merge it back
@@ -74,6 +145,16 @@ export async function loader({ params }: LoaderFunctionArgs) {
         const db = await getDb();
         const overlay = await db.get('SELECT messages FROM chat_sessions WHERE session_id = ?', [sessionId]);
         const overlaid = mergeOmpAttachments(messages, overlay?.messages);
+        const loadedTitle = loadSessionTitle(filePath);
+        const rawFirstUser = overlaid.find((m) => m.role === 'user')?.content?.trim();
+        const jsonlFirstUser = messages.find((m) => m.role === 'user')?.content?.trim();
+        const titleIsPromptEcho = Boolean(
+          loadedTitle && rawFirstUser && jsonlFirstUser && rawFirstUser !== jsonlFirstUser
+          && (jsonlFirstUser.startsWith(loadedTitle) || loadedTitle.startsWith(jsonlFirstUser.slice(0, 60))),
+        );
+        const title = (titleIsPromptEcho ? rawFirstUser?.slice(0, 60) : loadedTitle)
+          || rawFirstUser?.slice(0, 120)
+          || `Session ${sessionId}`;
         return json({
           session: {
             id: sessionId,
@@ -111,10 +192,14 @@ export async function loader({ params }: LoaderFunctionArgs) {
       } catch {
         parsedMessages = [];
       }
+      const hasDefaultTitle = !existing.title || String(existing.title).startsWith('Session ');
+      const firstUserContent = Array.isArray(parsedMessages)
+        ? parsedMessages.find((m: { role?: string; content?: string }) => m?.role === 'user')?.content
+        : undefined;
       return json({
         session: {
           id: existing.session_id,
-          title: existing.title || `Session ${sessionId}`,
+          title: (hasDefaultTitle && firstUserContent ? firstUserContent.slice(0, 120) : existing.title) || `Session ${sessionId}`,
           messages: parsedMessages,
         },
         isMock: mock,
