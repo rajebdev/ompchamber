@@ -22,6 +22,7 @@ interface EmptyWorkspacePromptProps {
    *  completes and the real session timeline takes over). */
   localMessages?: ChatMessageData[];
   modelName?: string;
+  modelNames?: Record<string, string>;
 }
 
 export function EmptyWorkspacePrompt({
@@ -37,7 +38,8 @@ export function EmptyWorkspacePrompt({
   isGenerating,
   appSettings = {},
   localMessages = [],
-  modelName
+  modelName,
+  modelNames
 }: EmptyWorkspacePromptProps) {
   const [showWorkspace, setShowWorkspace] = useState(false);
   const workspaceRef = useRef<HTMLDivElement>(null);
@@ -138,6 +140,7 @@ export function EmptyWorkspacePrompt({
                     key={msg.id}
                     msg={msg}
                     modelName={modelName}
+                    modelNames={modelNames}
                     isStreaming={isLoading}
                     footerVisible={isLastAi}
                     className={isAiFragment ? 'mt-1' : 'mt-8'}

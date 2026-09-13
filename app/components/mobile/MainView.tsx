@@ -12,6 +12,7 @@ import { MobileChatInput } from '@/components/mobile/mobile-main-view/ChatInput'
 import { ChatMessageItem } from '@/components/workspace/chat-timeline/MessageItem';
 import { GeneratingIndicator } from '@/components/workspace/chat-timeline/GeneratingIndicator';
 import { QueueList } from '@/components/workspace/chat-timeline/QueueList';
+import { useModelNames } from '@/hooks/models/use-model-names';
 import { useOnClickOutside } from '@/hooks/ui/on-click-outside';
 import { useScrollbarFade } from '@/hooks/ui/scrollbar-fade';
 import { responseRunDurationMs } from '@/lib/chat/duration';
@@ -58,6 +59,7 @@ export function MobileMainView({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const { isScrolling, handleScroll: handleScrollbarFade } = useScrollbarFade();
+  const modelNames = useModelNames();
   
   // Workspace Picker dropdown state
   const [showWorkspacePicker, setShowWorkspacePicker] = useState(false);
@@ -179,7 +181,8 @@ export function MobileMainView({
                   <ChatMessageItem
                     key={msg.id}
                     msg={msg}
-                    modelName={sessionModel?.modelId}
+                    modelName={sessionModel ? (modelNames[sessionModel.modelId] ?? sessionModel.modelId) : undefined}
+                    modelNames={modelNames}
                     isStreaming={isLoading}
                     footerVisible={isLastAi}
                     durationMs={isLastAi ? responseRunDurationMs(messages, idx) : null}

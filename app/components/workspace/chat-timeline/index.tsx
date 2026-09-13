@@ -11,6 +11,7 @@ import { QueueList } from '@/components/workspace/chat-timeline/QueueList';
 import { NewChatModal } from '@/components/workspace/chat-timeline/NewChatModal';
 import { SubagentView } from '@/components/workspace/chat-timeline/SubagentView';
 import { useChatTimeline } from '@/hooks/chat/timeline';
+import { useModelNames } from '@/hooks/models/use-model-names';
 import { responseRunDurationMs } from '@/lib/chat/duration';
 import { normalizeNoticePositions } from '@/lib/chat/order';
 import { isRecord } from '@/lib/omp/session/parse-message-blocks';
@@ -155,9 +156,10 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
     }
   };
 
+  const modelNames = useModelNames();
   const userMessages = localMessages.filter(m => m.role === 'user');
   const sessionModelName = typeof sessionData?.model === 'object'
-    ? sessionData.model.modelId
+    ? (modelNames[sessionData.model.modelId] ?? sessionData.model.modelId)
     : sessionData?.model;
 
   const orderedMessages = useMemo(() => normalizeNoticePositions(localMessages), [localMessages]);
@@ -183,6 +185,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
         appSettings={appSettings}
         localMessages={localMessages}
         modelName={sessionModelName}
+        modelNames={modelNames}
       />
     );
   }
@@ -238,6 +241,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
                       key={msg.id}
                       msg={msg}
                       modelName={sessionModelName}
+                      modelNames={modelNames}
                       isStreaming={isLoading}
                       onUndo={handleUndo}
                       onRetry={handleRetry}

@@ -4,6 +4,7 @@ import type { SubagentInfo } from '@/types';
 import { SubagentStatusIcon } from '@/components/common/SubagentStatusIcon';
 import { ChatMessageItem } from '@/components/workspace/chat-timeline/MessageItem';
 import { useSubagentTranscript } from '@/hooks/chat/subagent';
+import { useModelNames } from '@/hooks/models/use-model-names';
 
 interface SubagentViewProps {
   sessionId: string | null;
@@ -28,6 +29,7 @@ function formatTokens(n: number | undefined): string {
  *  and a notice row where the main timeline's composer would be. */
 export function SubagentView({ sessionId, subagent, onBack, className = '' }: SubagentViewProps) {
   const { messages, isLoading, status, isActive } = useSubagentTranscript(sessionId, subagent, onBack);
+  const modelNames = useModelNames();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const effectiveStatus = status?.status ?? subagent?.status ?? 'started';
@@ -118,6 +120,7 @@ export function SubagentView({ sessionId, subagent, onBack, className = '' }: Su
                   key={msg.id}
                   msg={msg}
                   modelName={msg.model || modelName}
+                  modelNames={modelNames}
                   isStreaming={isLoading}
                   footerVisible={isLastAi}
                   durationMs={msg.durationMs ?? null}
