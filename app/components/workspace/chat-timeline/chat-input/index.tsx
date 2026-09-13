@@ -71,6 +71,10 @@ export function ChatInput({
   // which may resolve after the session-level effect and must not erase it.
   const sessionThinkingLevelRef = useRef<string | null>(null);
   sessionThinkingLevelRef.current = sessionThinkingLevel ?? null;
+  // Mirrors sessionModel for the async model-sync effect below, which resolves
+  // after the session-adoption effect and must not clobber it.
+  const sessionModelRef = useRef<{ provider: string; modelId: string } | null>(sessionModel ?? null);
+  sessionModelRef.current = sessionModel ?? null;
 
   // Preserve the session's last-used thinking level when applying a model
   // picked from the catalog: the session level is authoritative and an async
@@ -134,6 +138,38 @@ export function ChatInput({
         const data = await fetchModelsData();
         if (!active) return;
         if (Array.isArray(data.modelList) && data.modelList.length > 0) {
+          // 1. The active session's last-used model is authoritative; even when
+          // it is missing from the catalog, never replace it with the default.
+          const sm = sessionModelRef.current;
+          if (sm?.provider && sm.modelId) {
+            const match = data.modelList.find((m: ModelEntry) => m.id === sm.modelId && m.provider === sm.provider);
+            if (match) {
+              setSelectedModel(prev => ({
+                id: match.id,
+                name: match.name,
+                provider: match.provider,
+                thinkingLevels: match.thinkingLevels,
+                thinkingLevel: resolveSessionLevel(match.thinkingLevels, prev.thinkingLevel ?? match.thinkingLevels?.[0] ?? 'off'),
+              }));
+            }
+            return;
+          }
+          // 2. The user's persisted pick (survives new sessions).
+          const persisted = data.selectedModel;
+          if (persisted?.provider && persisted.id) {
+            const match = data.modelList.find((m: ModelEntry) => m.id === persisted.id && m.provider === persisted.provider);
+            if (match) {
+              setSelectedModel(prev => ({
+                id: match.id,
+                name: match.name,
+                provider: match.provider,
+                thinkingLevels: match.thinkingLevels,
+                thinkingLevel: resolveSessionLevel(match.thinkingLevels, prev.thinkingLevel ?? match.thinkingLevels?.[0] ?? 'off'),
+              }));
+              return;
+            }
+          }
+          // 3. Registry default.
           const defaultModel = data.defaultModel;
           if (defaultModel) {
             const match = data.modelList.find((m: ModelEntry) => m.id === defaultModel.modelId && m.provider === defaultModel.provider);

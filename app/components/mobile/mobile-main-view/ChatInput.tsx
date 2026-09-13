@@ -70,6 +70,14 @@ export function MobileChatInput({
         const data = await fetchModelsData();
         if (!active) return;
         if (Array.isArray(data.modelList) && data.modelList.length > 0) {
+          const persisted = data.selectedModel;
+          if (persisted?.provider && persisted.id) {
+            const match = data.modelList.find((m: ModelEntry) => m.id === persisted.id && m.provider === persisted.provider);
+            if (match) {
+              setSelectedModel({ id: match.id, name: match.name, provider: match.provider, thinkingLevels: match.thinkingLevels, thinkingLevel: match.thinkingLevels?.[0] ?? 'off' });
+              return;
+            }
+          }
           const defaultModel = data.defaultModel;
           if (defaultModel) {
             const match = data.modelList.find((m: ModelEntry) => m.id === defaultModel.modelId && m.provider === defaultModel.provider);

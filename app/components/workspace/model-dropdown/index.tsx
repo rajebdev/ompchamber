@@ -3,7 +3,7 @@ import { ChevronDown, Sparkles } from 'lucide-react';
 import type { AIModelOption } from '@/types';
 import { useOnClickOutside } from '@/hooks/ui/on-click-outside';
 import { INITIAL_MODELS_CATALOG } from '@/data/models/catalog';
-import { fetchModelsData, subscribeModelsUpdated } from '@/lib/models/client';
+import { fetchModelsData, invalidateModelsCache, subscribeModelsUpdated } from '@/lib/models/client';
 import { ModelDropdownPanel } from '@/components/workspace/model-dropdown/Panel';
 
 interface ModelDropdownProps {
@@ -214,6 +214,7 @@ export function ModelDropdown({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ actionType: 'selectModel', model }),
       });
+      invalidateModelsCache();
     } catch {}
   };
 

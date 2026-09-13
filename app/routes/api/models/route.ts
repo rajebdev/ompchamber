@@ -128,6 +128,39 @@ function invalidateModelsCache(): void {
   globalThis.__ompChamberModelsCache = undefined;
 }
 
+/** Parse a persisted { provider, modelId|id } reference without trusting the JSON shape. */
+function readSelectedModelRef(value: unknown): { provider: string; modelId: string } | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const candidate = value as { provider?: unknown; modelId?: unknown; id?: unknown };
+  if (typeof candidate.provider !== 'string' || candidate.provider.length === 0) return null;
+  const modelId = candidate.modelId ?? candidate.id;
+  if (typeof modelId !== 'string' || modelId.length === 0) return null;
+  return { provider: candidate.provider, modelId };
+}
+
+/** The user's persisted pick resolved against the live registry; null when stale or unparseable. */
+async function loadPersistedModelOption(modelList: ModelEntry[]): Promise<AIModelOption | null> {
+  try {
+    const db = await getDb();
+    const row = await db.get<{ value?: string }>('SELECT value FROM app_settings WHERE key = ?', [SELECTED_MODEL_KEY]);
+    if (!row?.value) return null;
+    const selected = readSelectedModelRef(JSON.parse(row.value));
+    if (!selected) return null;
+    const match = modelList.find(m => m.id === selected.modelId && m.provider === selected.provider);
+    if (!match) return null;
+    return {
+      id: match.id,
+      name: match.name,
+      provider: match.provider,
+      contextWindow: match.contextWindow,
+      thinkingLevels: match.thinkingLevels,
+      thinkingLevel: match.thinkingLevels?.[0],
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function loader({ request }: LoaderFunctionArgs) {
   const mock = isMockMode();
 
@@ -170,7 +203,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
   // the omp model registry (auth + models.yml) is global, not per-cwd.
   void request;
   try {
-    return json(await loadModelsWithCache());
+    const data = await loadModelsWithCache();
+    // The selection changes independently of the 60s registry cache.
+    return json({ ...data, selectedModel: await loadPersistedModelOption(data.modelList) });
   } catch {
     return json({ ...EMPTY_MODELS, modelError: SAFE_MODEL_LOAD_FAILURE_MESSAGE });
   }
@@ -224,9 +259,7 @@ export async function action({ request }: ActionFunctionArgs) {
         SELECTED_MODEL_KEY,
         JSON.stringify(model),
       ]);
-      const parsedModel = typeof model === 'object' && model !== null && typeof (model as any).provider === 'string' && typeof (model as any).modelId === 'string'
-        ? { provider: (model as any).provider, modelId: (model as any).modelId }
-        : null;
+      const parsedModel = readSelectedModelRef(model);
       if (parsedModel) {
         invalidateModelsCache();
         // Live set_model against the current session is handled by the agent
