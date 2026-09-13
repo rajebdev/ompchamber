@@ -80,6 +80,12 @@ export class AgentSessionWrapper {
     return this._alive && this.proc.isAlive;
   }
 
+  /** OS pid of this session's omp process; the key into the shared browser's
+   * per-process target registry. */
+  get pid(): number | undefined {
+    return this.proc.pid;
+  }
+
   isRunning(): boolean {
     return this.isAlive() && (this.promptRunning || this.streaming || this.compacting || this.bashRunning);
   }

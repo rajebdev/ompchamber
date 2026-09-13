@@ -18,6 +18,7 @@ import { type ChildProcessWithoutNullStreams, spawn } from 'child_process';
 import { createInterface } from 'readline';
 import { resolveOmpBin } from '@/lib/omp/core/cli';
 import { encodeRpcFrames, RpcFrameDecoder, type RpcFrameRecord, type RpcProtocolVersion } from '@/lib/omp/rpc/frame';
+import { killProcessTree } from '@/lib/omp/rpc/kill-tree';
 import {
   RpcCommandError,
   RpcCommandTimeoutError,
@@ -167,6 +168,12 @@ export class RpcProcess {
     return !this.exited;
   }
 
+  /** OS pid of the spawned omp process (undefined before spawn settles). Used
+   * by the browser viewer to map this process to its owned browser targets. */
+  get pid(): number | undefined {
+    return this.child.pid;
+  }
+
   get exitDetails(): { code: number | null; signal: NodeJS.Signals | null; stderrTail: string } | null {
     return this.exitInfo ? { ...this.exitInfo, stderrTail: this.stderrTail } : null;
   }
@@ -314,31 +321,11 @@ export class RpcProcess {
     try {
       this.child.stdin.end();
     } catch {}
-    // POSIX can signal the detached process group directly. Windows has no
-    // portable negative-pid equivalent, so use taskkill's tree operation to
-    // avoid orphaning extension and LSP grandchildren.
-    const killTree = (force: boolean, signal: NodeJS.Signals) => {
-      const pid = this.child.pid;
-      if (!pid) return;
-      if (process.platform === 'win32') {
-        const args = ['/pid', String(pid), '/t', ...(force ? ['/f'] : [])];
-        const reaper = this.spawnProcess('taskkill', args, { windowsHide: true, stdio: 'ignore' });
-        reaper.once('error', () => {
-          try { this.child.kill(signal); } catch {}
-        });
-        return;
-      }
-      try {
-        process.kill(-pid, signal);
-      } catch {
-        try { this.child.kill(signal); } catch {}
-      }
-    };
     const timer = setTimeout(() => {
-      if (!this.exited) killTree(false, 'SIGTERM');
+      if (!this.exited) killProcessTree(this.child, this.spawnProcess, false, 'SIGTERM');
     }, gracePeriodMs);
     const killTimer = setTimeout(() => {
-      if (!this.exited) killTree(true, 'SIGKILL');
+      if (!this.exited) killProcessTree(this.child, this.spawnProcess, true, 'SIGKILL');
     }, gracePeriodMs * 2);
     timer.unref?.();
     killTimer.unref?.();
