@@ -1,0 +1,184 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSessionStateContext } from '@/hooks/workspace/session-state/context';
+import type {
+  BrowserPanelAction,
+  BrowserTabInfo,
+  BrowserViewFrame,
+  BrowserViewState,
+  BrowserViewStatus,
+} from '@/types';
+
+export interface UseScreencastResult {
+  status: BrowserViewStatus;
+  url?: string;
+  title?: string;
+  tabs: BrowserTabInfo[];
+  targetId?: string;
+  frameSrc?: string;
+  lastFrameAt?: number;
+  actions: BrowserPanelAction[];
+  /** Pin the viewer to one tab id; pass an empty string to follow the newest owned tab. */
+  selectTarget: (targetId: string) => void;
+  /** Drop the current SSE connection and open a fresh one. */
+  reconnect: () => void;
+}
+
+const INITIAL_STATE: BrowserViewState = { status: 'agent-offline', tabs: [] };
+const MAX_RETRY_DELAY_MS = 5_000;
+const TOAST_VISIBLE_MS = 4_000;
+const TOAST_DRAIN_MS = 500;
+const MAX_VISIBLE_ACTIONS = 3;
+const MAX_QUEUED_ACTIONS = 16;
+
+type VisibleAction = BrowserPanelAction & { expiresAt: number };
+
+/**
+ * Live screencast of the browser tab this session's agent is driving, plus the
+ * activity toasts parsed from agent intents and live page interactions.
+ *
+ * Opens an EventSource against `/api/browser/:sessionId/stream`, keeps only the
+ * newest frame in memory, and reconnects with capped backoff when the stream is
+ * closed. The server never 404s: status changes arrive as `state` events.
+ */
+export function useScreencast(): UseScreencastResult {
+  const { sessionId, ready } = useSessionStateContext();
+  const [state, setState] = useState<BrowserViewState>(INITIAL_STATE);
+  const [frameSrc, setFrameSrc] = useState<string | undefined>(undefined);
+  const [lastFrameAt, setLastFrameAt] = useState<number | undefined>(undefined);
+  const [actions, setActions] = useState<VisibleAction[]>([]);
+  const [selectedTarget, setSelectedTarget] = useState<string>('');
+  const [nonce, setNonce] = useState(0);
+
+  const sourceRef = useRef<EventSource | null>(null);
+  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const currentTargetRef = useRef<string | undefined>(undefined);
+  const attemptRef = useRef(0);
+  const queueRef = useRef<BrowserPanelAction[]>([]);
+
+  const selectTarget = useCallback((targetId: string) => {
+    setSelectedTarget(targetId.trim());
+  }, []);
+
+  const reconnect = useCallback(() => {
+    setNonce((value) => value + 1);
+  }, []);
+
+  // Pace queued actions into visible toasts (one per tick) and expire old ones.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setActions((prev) => {
+        const now = Date.now();
+        const alive = prev.filter((action) => action.expiresAt > now);
+        const next = queueRef.current.shift();
+        if (!next) return alive.length === prev.length ? prev : alive;
+        return [...alive.slice(-(MAX_VISIBLE_ACTIONS - 1)), { ...next, expiresAt: now + TOAST_VISIBLE_MS }];
+      });
+    }, TOAST_DRAIN_MS);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    setState(INITIAL_STATE);
+    setFrameSrc(undefined);
+    setLastFrameAt(undefined);
+    setSelectedTarget('');
+    queueRef.current = [];
+    setActions([]);
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!ready || !sessionId) return;
+    let disposed = false;
+
+    const connect = () => {
+      if (disposed) return;
+      const query = selectedTarget ? `?target=${encodeURIComponent(selectedTarget)}` : '';
+      const source = new EventSource(`/api/browser/${encodeURIComponent(sessionId)}/stream${query}`);
+      sourceRef.current = source;
+
+      source.addEventListener('open', () => {
+        attemptRef.current = 0;
+      });
+
+      source.addEventListener('state', (event) => {
+        try {
+          const next = JSON.parse((event as MessageEvent).data) as BrowserViewState;
+          if (next.targetId !== currentTargetRef.current) setFrameSrc(undefined);
+          currentTargetRef.current = next.targetId;
+          setState(next);
+          if (next.status !== 'live') setFrameSrc(undefined);
+        } catch {
+          // Ignore malformed state frames.
+        }
+      });
+
+      source.addEventListener('frame', (event) => {
+        try {
+          const frame = JSON.parse((event as MessageEvent).data) as BrowserViewFrame;
+          const current = currentTargetRef.current;
+          if (current && frame.targetId && frame.targetId !== current) return;
+          setFrameSrc(`data:${frame.mimeType};base64,${frame.data}`);
+          setLastFrameAt(Date.now());
+        } catch {
+          // Ignore malformed frame payloads.
+        }
+      });
+
+      source.addEventListener('action', (event) => {
+        try {
+          const action = JSON.parse((event as MessageEvent).data) as BrowserPanelAction;
+          if (typeof action?.label !== 'string' || !action.label) return;
+          queueRef.current.push(action);
+          if (queueRef.current.length > MAX_QUEUED_ACTIONS) {
+            queueRef.current.splice(0, queueRef.current.length - MAX_QUEUED_ACTIONS);
+          }
+        } catch {
+          // Ignore malformed action payloads.
+        }
+      });
+
+      source.addEventListener('error', () => {
+        // EventSource reconnects on transient drops by itself; only a fatal
+        // close (server closed the stream) needs a fresh instance.
+        if (source.readyState === EventSource.CLOSED) scheduleReconnect();
+      });
+    };
+
+    const scheduleReconnect = () => {
+      if (disposed || retryRef.current) return;
+      const attempt = Math.min(attemptRef.current + 1, MAX_RETRY_DELAY_MS / 1_000);
+      attemptRef.current = attempt;
+      retryRef.current = setTimeout(() => {
+        retryRef.current = null;
+        sourceRef.current?.close();
+        sourceRef.current = null;
+        connect();
+      }, Math.min(attempt * 1_000, MAX_RETRY_DELAY_MS));
+    };
+
+    connect();
+
+    return () => {
+      disposed = true;
+      if (retryRef.current) {
+        clearTimeout(retryRef.current);
+        retryRef.current = null;
+      }
+      sourceRef.current?.close();
+      sourceRef.current = null;
+    };
+  }, [ready, sessionId, selectedTarget, nonce]);
+
+  return {
+    status: state.status,
+    url: state.url,
+    title: state.title,
+    tabs: state.tabs,
+    targetId: state.targetId,
+    frameSrc,
+    lastFrameAt,
+    actions,
+    selectTarget,
+    reconnect,
+  };
+}
