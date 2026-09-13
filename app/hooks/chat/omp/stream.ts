@@ -230,8 +230,10 @@ export function useOmpAgentStream({
           }
           break;
         }
-        case 'thinking_level_changed':
         case 'model_changed':
+          callbacksRef.current?.onModelChanged?.();
+          break;
+        case 'thinking_level_changed':
         case 'config_update':
         case 'available_commands_update':
         case 'connected':

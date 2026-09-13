@@ -57,6 +57,8 @@ export interface ChatTimelineSendDeps {
   scrollToBottom: (behavior?: ScrollBehavior) => void;
   aiPlaceholderIdRef: { current: string | null };
   adoptedSessionIdRef: { current: string | null };
+  optimisticUserIdRef: { current: string | null };
+  setSessionModel: (model: { provider: string; modelId: string } | null) => void;
   abortControllerRef: { current: AbortController | null };
   setInputValue: (v: string) => void;
   setSearchParams: (fn: (prev: URLSearchParams) => URLSearchParams, opts?: { replace?: boolean }) => void;
@@ -83,6 +85,8 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
     scrollToBottom,
     aiPlaceholderIdRef,
     adoptedSessionIdRef,
+    optimisticUserIdRef,
+    setSessionModel,
     abortControllerRef,
     setInputValue,
     setSearchParams,
@@ -183,6 +187,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
     // Real mode: route through the omp agent RPC bridge + SSE stream.
     if (isOmpSession) {
       aiPlaceholderIdRef.current = aiPlaceholderId;
+      optimisticUserIdRef.current = userMsgId;
       const images = attachments
         .filter(a => a.file.type.startsWith('image/') && a.dataBase64)
         .map(a => ({ data: a.dataBase64 as string, mimeType: a.file.type }));
@@ -202,6 +207,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
         // Roll back the optimistic bubbles on a failed send.
         setLocalMessages(prev => prev.filter(m => m.id !== userMsgId && m.id !== aiPlaceholderId));
         aiPlaceholderIdRef.current = null;
+        optimisticUserIdRef.current = null;
         setGenerating(false);
       }
       return;
@@ -226,13 +232,15 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
             size: a.file.size,
           }));
         const promptText = await buildPromptText(text, textFiles);
-        const newSessionId = await ompAgent.sendNewPrompt(promptText, cwd, images.length ? images : undefined);
-        if (newSessionId) {
-          adoptedSessionIdRef.current = newSessionId;
+        const spawned = await ompAgent.sendNewPrompt(promptText, cwd, images.length ? images : undefined);
+        if (spawned) {
+          adoptedSessionIdRef.current = spawned.sessionId;
           aiPlaceholderIdRef.current = aiPlaceholderId;
+          optimisticUserIdRef.current = userMsgId;
+          if (spawned.model) setSessionModel(spawned.model);
           setSearchParams(prev => {
             const next = new URLSearchParams(prev);
-            next.set('sessionId', newSessionId);
+            next.set('sessionId', spawned.sessionId);
             return next;
           }, { replace: true });
           // The agent_start event refreshes the session metadata/sidebar once
@@ -271,7 +279,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
         scrollToBottom,
       })
     );
-  }, [appSettings, folders, isOmpSession, ompAgent, selectedFolderId, sessionId, scrollToBottom, persistMessages]);
+  }, [appSettings, folders, isOmpSession, ompAgent, selectedFolderId, sessionId, scrollToBottom, persistMessages, setSessionModel]);
 
   return { prepareDeliverable, steerOmpAgent, executeSend };
 }

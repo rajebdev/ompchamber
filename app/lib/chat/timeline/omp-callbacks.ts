@@ -29,6 +29,7 @@ export interface OmpAgentCallbacksDeps {
   refreshSessionMeta: (sid: string) => void;
   setLocalMessages: Dispatch<SetStateAction<ChatMessageData[]>>;
   aiPlaceholderIdRef: { current: string | null };
+  optimisticUserIdRef: { current: string | null };
   persistMessages: (messages: any[]) => void;
   abortControllerRef: { current: AbortController | null };
   appSettings: Record<string, any>;
@@ -47,6 +48,7 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
     refreshSessionMeta,
     setLocalMessages,
     aiPlaceholderIdRef,
+    optimisticUserIdRef,
     persistMessages,
     abortControllerRef,
     appSettings,
@@ -102,12 +104,32 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
         // overwrite the streaming AI segment (the omp user id also differs).
         if (msg.role === 'user') {
           if (prev.some(m => m.id === msg.id)) return prev;
+          // omp echoes the prompt with a different id than the optimistic
+          // bubble (`msg-…-user` vs omp's timestamp id), so reconcile in place
+          // instead of appending a duplicate when the echo arrives.
+          const pendingId = optimisticUserIdRef.current;
+          if (pendingId) {
+            const pIdx = prev.findIndex(m => m.id === pendingId);
+            if (pIdx !== -1) {
+              optimisticUserIdRef.current = null;
+              const reconciled: ChatMessageData = {
+                ...msg,
+                id: msg.id,
+                date: prev[pIdx].date,
+                attachments: msg.attachments?.length ? msg.attachments : prev[pIdx].attachments,
+              };
+              return [...prev.slice(0, pIdx), reconciled, ...prev.slice(pIdx + 1)];
+            }
+          }
+          // Steering/follow-up user turns have no optimistic bubble → append.
           if (placeholderId && prev.some(m => m.id === placeholderId)) {
             const pIdx = prev.findIndex(m => m.id === placeholderId);
             return [...prev.slice(0, pIdx), msg, ...prev.slice(pIdx)];
           }
           return [...prev, msg];
         }
+        // Assistant content started → the optimistic user echo window is closed.
+        optimisticUserIdRef.current = null;
         if (placeholderId && prev.some(m => m.id === placeholderId)) {
           return prev.map(m => (m.id === placeholderId ? msg : m));
         }
@@ -129,9 +151,15 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
         // User turn finalization (steering/follow-up): same contract as the
         // update path — append-only, deduped by omp id, placeholder untouched.
         if (msg.role === 'user') {
+          const pendingId = optimisticUserIdRef.current;
           let next: ChatMessageData[];
           if (prev.some(m => m.id === msg.id)) {
             next = prev.map(m => (m.id === msg.id ? msg : m));
+          } else if (pendingId && prev.some(m => m.id === pendingId)) {
+            optimisticUserIdRef.current = null;
+            next = prev.map(m => (m.id === pendingId
+              ? { ...msg, id: msg.id, date: m.date, attachments: msg.attachments?.length ? msg.attachments : m.attachments }
+              : m));
           } else if (placeholderId && prev.some(m => m.id === placeholderId)) {
             const pIdx = prev.findIndex(m => m.id === placeholderId);
             next = [...prev.slice(0, pIdx), msg, ...prev.slice(pIdx)];
@@ -164,12 +192,19 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
     onAgentEnd: () => {
       setGenerating(false);
       abortControllerRef.current = null;
+      optimisticUserIdRef.current = null;
       triggerChatCompletionSound(appSettings);
       setTimeout(() => scrollToBottom('smooth'), 50);
       // The omp JSONL has the final title/messages now — refresh session
       // metadata so navbar/context panel show the real title.
       const sid = sessionIdRef.current;
       if (sid) refreshSessionMeta(sid);
+    },
+    onModelChanged: () => {
+      // omp's model_changed frame carries no payload — re-read the session
+      // metadata so the indicator/composer reflect the live model.
+      const sid = adoptedSessionIdRef.current ?? sessionIdRef.current;
+      if (sid) setTimeout(() => refreshSessionMeta(sid), 150);
     },
     onPromptError: (errorMessage) => {
       setGenerating(false);

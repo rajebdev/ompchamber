@@ -60,6 +60,16 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   const [generatingVerb, setGeneratingVerb] = useState('');
   const abortControllerRef = useRef<AbortController | null>(null);
   const prevSessionIdRef = useRef<string | null>(null);
+  // Real session id adopted by a fresh spawn ("new-…" → UUID). onAgentStart
+  // may fire before React re-renders with the new URL, so it reads the id
+  // from here instead of the (still-stale) sessionId prop.
+  const adoptedSessionIdRef = useRef<string | null>(null);
+  // Fire the sidebar/metadata refresh once per session when the AI starts
+  // responding (agent_start = first chunk) — the omp JSONL now carries the
+  // user turn, so the sidebar item + real title appear immediately.
+  const metaRefreshedRef = useRef<string | null>(null);
+  // Optimistic user bubble awaiting omp's echo (reconciled by the callbacks).
+  const optimisticUserIdRef = useRef<string | null>(null);
 
   // omp sessions are string UUIDs; chamber-created (mock/numeric) sessions are
   // integers. Only omp UUIDs route through the live agent bridge. Pending
@@ -68,6 +78,14 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   const isOmpSession = Boolean(sessionId) && !String(sessionId).startsWith('new-') && Number.isNaN(Number(sessionId));
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
+  // Model seeded from the spawn response; kept until the JSONL writes model_change.
+  const seededModelRef = useRef<{ provider: string; modelId: string } | null>(null);
+
+  const applySessionData = useCallback((incoming: NonNullable<typeof sessionData>) => {
+    if (incoming.model && typeof incoming.model === 'object') seededModelRef.current = incoming.model;
+    const model = incoming.model ?? (isGeneratingRef.current ? seededModelRef.current ?? undefined : undefined);
+    setSessionData({ ...incoming, model });
+  }, []);
 
   /** Re-fetch the session's title/metadata after the omp JSONL has been
    *  written (spawn or agent end) so the navbar and context panel show the
@@ -75,15 +93,18 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
    *  actually carries messages (omp writes the user turn on agent start), so
    *  the sidebar refresh lands as soon as the first chunk arrives. */
   const refreshSessionMeta = useCallback((sid: string) => {
-    if (new URLSearchParams(window.location.search).get('sessionId') !== sid) return;
+    // The URL lags the adopted id right after a fresh spawn, so accept either.
+    const isActive = () => sessionIdRef.current === sid || adoptedSessionIdRef.current === sid;
+    if (!isActive()) return;
     let attempts = 0;
     const tryFetch = () => {
+      if (!isActive()) return;
       attempts += 1;
       fetch(`/api/chat/${encodeURIComponent(sid)}`)
         .then(res => res.json())
         .then(data => {
-          if (!data?.session) return;
-          setSessionData(data.session);
+          if (!data?.session || !isActive()) return;
+          applySessionData(data.session);
           // Only signal the sidebar once the JSONL carries the user turn, so
           // the item appears with its real title (not the default).
           if ((data.session.messages?.length ?? 0) > 0) {
@@ -98,6 +119,11 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
         .catch(() => {});
     };
     tryFetch();
+  }, [applySessionData]);
+
+  const setSessionModel = useCallback((model: { provider: string; modelId: string } | null) => {
+    seededModelRef.current = model;
+    setSessionData(prev => ({ ...(prev ?? {}), model: model ?? undefined }));
   }, []);
 
   // Fetch session messages and details from API
@@ -108,11 +134,15 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     // transition (new-… → real UUID) keeps its bubbles.
     if (sessionId !== prevSessionIdRef.current) {
       const isSpawnAdopt = sessionId && !sessionId.startsWith('new-') && prevSessionIdRef.current?.startsWith('new-');
-      if (!isSpawnAdopt) {
+      // Keep the optimistic bubbles while a send is in flight and this session
+      // is the one it spawned (a fresh spawn may not have passed through "new-…").
+      const isAdoptingInFlight = isGeneratingRef.current && adoptedSessionIdRef.current === sessionId;
+      if (!isSpawnAdopt && !isAdoptingInFlight) {
         setLocalMessages([]);
         setGenerating(false);
         adoptedSessionIdRef.current = null;
         metaRefreshedRef.current = null;
+        seededModelRef.current = null;
       }
       prevSessionIdRef.current = sessionId;
     }
@@ -122,12 +152,13 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
         .then(data => {
           if (!active) return;
           if (data?.session) {
-            setSessionData(data.session);
+            applySessionData(data.session);
             // Only replace the timeline when the fetch actually has messages.
             // A pending "new-…" session or a just-spawned omp session whose
             // JSONL is not written yet must not wipe the optimistic bubbles.
             const fetched = data.session.messages || [];
-            if (fetched.length > 0) {
+            // Never clobber the optimistic/streaming timeline mid-run.
+            if (fetched.length > 0 && !isGeneratingRef.current) {
               setLocalMessages(normalizeNoticePositions(fetched));
             } else if (!sessionId.startsWith('new-') && !isGeneratingRef.current) {
               setLocalMessages([]);
@@ -151,7 +182,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     return () => {
       active = false;
     };
-  }, [sessionId]);
+  }, [sessionId, applySessionData]);
 
   const persistMessages = useCallback((messagesToSave: any[]) => {
     if (!sessionId) return;
@@ -192,14 +223,6 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
 
   // ── Live omp agent bridge (real mode) ──────────────────────────────────────
   const aiPlaceholderIdRef = useRef<string | null>(null);
-  // Real session id adopted by a fresh spawn ("new-…" → UUID). onAgentStart
-  // may fire before React re-renders with the new URL, so it reads the id
-  // from here instead of the (still-stale) sessionId prop.
-  const adoptedSessionIdRef = useRef<string | null>(null);
-  // Fire the sidebar/metadata refresh once per session when the AI starts
-  // responding (agent_start = first chunk) — the omp JSONL now carries the
-  // user turn, so the sidebar item + real title appear immediately.
-  const metaRefreshedRef = useRef<string | null>(null);
   const ompAgent = useOmpAgent(isOmpSession ? sessionId : null, createOmpAgentCallbacks({
     removeDeliveredFromQueue,
     setGenerating,
@@ -211,6 +234,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     refreshSessionMeta,
     setLocalMessages,
     aiPlaceholderIdRef,
+    optimisticUserIdRef,
     persistMessages,
     abortControllerRef,
     appSettings,
@@ -230,6 +254,8 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     scrollToBottom,
     aiPlaceholderIdRef,
     adoptedSessionIdRef,
+    optimisticUserIdRef,
+    setSessionModel,
     abortControllerRef,
     setInputValue,
     setSearchParams,

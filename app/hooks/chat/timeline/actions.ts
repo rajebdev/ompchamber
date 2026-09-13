@@ -191,7 +191,9 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
         setTimeout(() => {
           executeSend(userMsg.content, (userMsg.attachments as any) || []);
         }, 0);
-        const next = prev.slice(0, aiIdx);
+        // Drop the user turn too — executeSend re-adds it optimistically; keeping
+        // it here would render the same user message twice on every retry.
+        const next = prev.slice(0, aiIdx - 1);
         persistMessages(next);
         return next;
       }

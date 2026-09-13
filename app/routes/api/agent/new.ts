@@ -73,7 +73,8 @@ export async function action({ request }: ActionFunctionArgs) {
     }
 
     if (type === 'ensure_session') {
-      return json({ success: true, sessionId: realSessionId, data: null });
+      // Seeded client-side before the JSONL has a model_change entry.
+      return json({ success: true, sessionId: realSessionId, model: effectiveModel, data: null });
     }
 
     if (type === 'prompt') {

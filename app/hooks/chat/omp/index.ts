@@ -38,6 +38,9 @@ export interface OmpAgentCallbacks {
   onExtensionUiRequest?: (request: IncomingExtensionUiRequest) => void;
   /** User-message turn delivered by omp (queued steer/follow-up picked up). */
   onQueuedMessageDelivered?: (text: string) => void;
+  /** omp applied a model change (set_model). The frame carries no payload, so
+   *  consumers should re-read session metadata to refresh the displayed model. */
+  onModelChanged?: () => void;
 }
 
 export interface OmpAgentState {
@@ -144,7 +147,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     message: string,
     cwd: string,
     images?: { data: string; mimeType: string }[],
-  ): Promise<string | null> => {
+  ): Promise<{ sessionId: string; model: { provider: string; modelId: string } | null } | null> => {
     setState((prev) => ({ ...prev, isGenerating: true, error: null }));
     try {
       const created = await fetch('/api/agent/new', {
@@ -152,7 +155,12 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'ensure_session', cwd }),
       });
-      const createdBody = (await created.json().catch(() => ({}))) as { success?: boolean; sessionId?: string; error?: string };
+      const createdBody = (await created.json().catch(() => ({}))) as {
+        success?: boolean;
+        sessionId?: string;
+        model?: { provider: string; modelId: string } | null;
+        error?: string;
+      };
       if (!created.ok || !createdBody.sessionId) {
         setState((prev) => ({ ...prev, isGenerating: false, error: createdBody.error ?? `HTTP ${created.status}` }));
         return null;
@@ -173,7 +181,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
         setState((prev) => ({ ...prev, isGenerating: false, error: body.error ?? `HTTP ${res.status}` }));
         return null;
       }
-      return sid;
+      return { sessionId: sid, model: createdBody.model ?? null };
     } catch (e) {
       setState((prev) => ({ ...prev, isGenerating: false, error: e instanceof Error ? e.message : String(e) }));
       return null;
