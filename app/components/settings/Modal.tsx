@@ -4,7 +4,6 @@ import type { SettingsCategoryId, SettingsState } from '@/types';
 import { SettingsSidebar, SETTINGS_CATEGORIES } from '@/components/settings/Sidebar';
 import { AppearanceSettings } from '@/components/settings/categories/AppearanceSettings';
 import { ChatSettings } from '@/components/settings/categories/ChatSettings';
-import { WorkspaceSettings } from '@/components/settings/categories/WorkspaceSettings';
 import { ProjectSettings } from '@/components/settings/categories/ProjectSettings';
 import { ProviderSettings } from '@/components/settings/categories/ProviderSettings';
 import { AgentSettings } from '@/components/settings/categories/AgentSettings';
@@ -43,9 +42,6 @@ const DEFAULT_SETTINGS: SettingsState = {
   soundAlerts: true,
   chatCompletionSound: true,
   defaultWorkspacePath: '~/Projects/ompchamber',
-  gitAutoFetch: true,
-  gitAuthorName: 'AI Oh-My-Pi',
-  gitAuthorEmail: 'agent@oh-my-pi.local',
   tunnelEnabled: true,
   tunnelSubdomain: 'omp-dev-preview',
   activeProvider: 'claude',
@@ -171,8 +167,6 @@ export function SettingsModal({
             onAddModalClose={() => setAutoOpenAdd(false)}
           />
         );
-      case 'git':
-        return <WorkspaceSettings />;
       case 'agents':
         return <AgentSettings settings={settings} onUpdate={handleUpdateSettings} />;
       case 'behavior':

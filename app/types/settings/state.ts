@@ -7,7 +7,6 @@ export type SettingsCategoryId =
   | 'token-usage'
   // WORKSPACE
   | 'projects'
-  | 'git'
   // OMP
   | 'omp'
   | 'providers'
@@ -45,9 +44,6 @@ export interface SettingsState {
   soundAlerts: boolean;
   chatCompletionSound: boolean;
   defaultWorkspacePath: string;
-  gitAutoFetch: boolean;
-  gitAuthorName: string;
-  gitAuthorEmail: string;
   tunnelEnabled: boolean;
   tunnelSubdomain: string;
   activeProvider: string;
