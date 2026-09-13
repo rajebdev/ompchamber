@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { CommandItem, SettingsState } from '@/types';
 import { CommandSidebarList } from '@/components/settings/categories/command-settings/SidebarList';
 import { CommandDetailPane } from '@/components/settings/categories/command-settings/DetailPane';
+import { invalidateComposerCache } from '@/lib/chat/composer/client';
 
 interface CommandSettingsProps {
   settings: SettingsState;
@@ -66,23 +67,26 @@ export const CommandSettings: React.FC<CommandSettingsProps> = () => {
         }
         setSelectedCommandId(targetCmd.id);
         setIsCreatingNew(false);
+        invalidateComposerCache('command');
       })
       .catch(err => console.error('Failed to save command via API:', err));
   };
 
   const handleDeleteCommand = (commandId: string) => {
-    fetch('/api/settings/commands', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deleteId: commandId }),
-    })
+    fetch(`/api/settings/commands?id=${encodeURIComponent(commandId)}`, { method: 'DELETE' })
       .then(res => res.json())
       .then(data => {
-        const nextList = data?.commands || commands.filter(c => c.id !== commandId);
-        setCommands(nextList);
-        if (selectedCommandId === commandId) {
-          setSelectedCommandId(nextList[0]?.id || null);
-        }
+        if (data?.error) return;
+        invalidateComposerCache('command');
+        fetch('/api/settings/commands')
+          .then(r => r.json())
+          .then(d => {
+            const nextList = d?.commands || [];
+            setCommands(nextList);
+            if (selectedCommandId === commandId) {
+              setSelectedCommandId(nextList[0]?.id || null);
+            }
+          });
       })
       .catch(err => console.error('Failed to delete command via API:', err));
   };

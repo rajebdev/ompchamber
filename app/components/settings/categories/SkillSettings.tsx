@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { SkillItem, SettingsState } from '@/types';
 import { SkillSidebarList } from '@/components/settings/categories/skill-settings/SidebarList';
 import { SkillDetailPane } from '@/components/settings/categories/skill-settings/DetailPane';
+import { invalidateComposerCache } from '@/lib/chat/composer/client';
 
 interface SkillSettingsProps {
   settings?: SettingsState;
@@ -80,23 +81,26 @@ export function SkillSettings({ onNavigateToCatalog }: SkillSettingsProps) {
         }
         setSelectedSkillId(targetSkill.id);
         setIsCreatingNew(false);
+        invalidateComposerCache('command');
       })
       .catch(err => console.error('Failed to save skill via API:', err));
   };
 
   const handleDeleteSkill = (id: string) => {
-    fetch('/api/settings/skills', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deleteId: id }),
-    })
+    fetch(`/api/settings/skills?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
       .then(res => res.json())
       .then(data => {
-        const nextList = data?.skills || skills.filter(s => s.id !== id);
-        setSkills(nextList);
-        if (selectedSkillId === id) {
-          setSelectedSkillId(nextList[0]?.id || null);
-        }
+        if (data?.error) return;
+        invalidateComposerCache('command');
+        fetch('/api/settings/skills')
+          .then(r => r.json())
+          .then(d => {
+            const nextList = d?.skills || [];
+            setSkills(nextList);
+            if (selectedSkillId === id) {
+              setSelectedSkillId(nextList[0]?.id || null);
+            }
+          });
       })
       .catch(err => console.error('Failed to delete skill via API:', err));
   };

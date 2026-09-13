@@ -73,18 +73,22 @@ export const McpSettings: React.FC<McpSettingsProps> = () => {
   };
 
   const handleDeleteServer = (serverId: string) => {
-    fetch('/api/settings/mcp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deleteId: serverId }),
-    })
+    fetch(`/api/settings/mcp?id=${encodeURIComponent(serverId)}`, { method: 'DELETE' })
       .then(res => res.json())
       .then(data => {
-        const nextList = data?.servers || servers.filter(s => s.id !== serverId);
-        setServers(nextList);
-        if (selectedServerId === serverId) {
-          setSelectedServerId(nextList[0]?.id || null);
+        if (data?.error) {
+          console.error('Failed to delete MCP server via API:', data.error);
+          return;
         }
+        return fetch('/api/settings/mcp')
+          .then(res => res.json())
+          .then(list => {
+            const nextList = list?.servers || servers.filter(s => s.id !== serverId);
+            setServers(nextList);
+            if (selectedServerId === serverId) {
+              setSelectedServerId(nextList[0]?.id || null);
+            }
+          });
       })
       .catch(err => console.error('Failed to delete MCP server via API:', err));
   };

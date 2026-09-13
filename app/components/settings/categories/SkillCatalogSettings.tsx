@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import type { SkillCatalogSource, CatalogSkillItem, SkillItem } from '@/types';
 import { AddSourceModal } from '@/components/settings/categories/skill-catalog/AddSourceModal';
+import { invalidateComposerCache } from '@/lib/chat/composer/client';
 
 export function SkillCatalogSettings() {
   const [sources, setSources] = useState<SkillCatalogSource[]>([]);
@@ -63,15 +64,16 @@ export function SkillCatalogSettings() {
 
     if (existing) {
       // Uninstall via API
-      fetch('/api/settings/skills', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deleteId: existing.id }),
-      })
+      fetch(`/api/settings/skills?id=${encodeURIComponent(existing.id)}`, { method: 'DELETE' })
         .then(res => res.json())
         .then(data => {
-          if (data?.skills) setUserSkills(data.skills);
-          else setUserSkills(prev => prev.filter(s => s.id !== existing.id));
+          if (data?.error) return;
+          invalidateComposerCache('command');
+          fetch('/api/settings/skills')
+            .then(r => r.json())
+            .then(d => {
+              if (d?.skills) setUserSkills(d.skills);
+            });
           showToast(`Uninstalled skill "${skill.name}"`);
         })
         .catch(console.error);
@@ -99,6 +101,7 @@ export function SkillCatalogSettings() {
           if (data?.skills) setUserSkills(data.skills);
           else setUserSkills(prev => [...prev, newSkill]);
           showToast(`Installed skill "${skill.name}"`);
+          invalidateComposerCache('command');
         })
         .catch(console.error);
     }

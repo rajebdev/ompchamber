@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { AgentItem, SettingsState } from '@/types';
 import { AgentSidebarList } from '@/components/settings/categories/agent-settings/SidebarList';
 import { AgentDetailPane } from '@/components/settings/categories/agent-settings/DetailPane';
+import { invalidateComposerCache } from '@/lib/chat/composer/client';
 
 interface AgentSettingsProps {
   settings: SettingsState;
@@ -67,23 +68,26 @@ export const AgentSettings: React.FC<AgentSettingsProps> = () => {
         }
         setSelectedAgentId(targetAgent.id);
         setIsCreatingNew(false);
+        invalidateComposerCache('agent');
       })
       .catch(err => console.error('Failed to save agent via API:', err));
   };
 
   const handleDeleteAgent = (agentId: string) => {
-    fetch('/api/settings/agents', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deleteId: agentId }),
-    })
+    fetch(`/api/settings/agents?id=${encodeURIComponent(agentId)}`, { method: 'DELETE' })
       .then(res => res.json())
       .then(data => {
-        const nextList = data?.agents || agents.filter(a => a.id !== agentId);
-        setAgents(nextList);
-        if (selectedAgentId === agentId) {
-          setSelectedAgentId(nextList[0]?.id || null);
-        }
+        if (data?.error) return;
+        invalidateComposerCache('agent');
+        fetch('/api/settings/agents')
+          .then(r => r.json())
+          .then(d => {
+            const nextList = d?.agents || [];
+            setAgents(nextList);
+            if (selectedAgentId === agentId) {
+              setSelectedAgentId(nextList[0]?.id || null);
+            }
+          });
       })
       .catch(err => console.error('Failed to delete agent via API:', err));
   };
