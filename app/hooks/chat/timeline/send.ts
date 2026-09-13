@@ -16,7 +16,7 @@ import type { Attachment, ChatMessageData } from '@/types';
 import { streamChatResponse } from '@/hooks/chat/stream';
 import { isTextAttachmentFile, composeMessageWithTextAttachments } from '@/lib/chat/attachments';
 import { loadAgentNames } from '@/lib/chat/composer/client';
-import { translateAgentMentions } from '@/lib/chat/composer/translate';
+import { translateAgentMentions, translateFileMentions } from '@/lib/chat/composer/translate';
 import { normalizeNoticePositions } from '@/lib/chat/order';
 import { createMockStreamCallbacks } from '@/lib/chat/timeline/stream-callbacks';
 import type { useOmpAgent } from '@/hooks/chat/omp';
@@ -31,16 +31,16 @@ type TextFileAttachment = Parameters<typeof composeMessageWithTextAttachments>[1
  * syntax); translation failures fall back to the raw prompt.
  */
 async function buildPromptText(text: string, textFiles: TextFileAttachment[]): Promise<string> {
+  let translated = text;
   try {
     const names = await loadAgentNames();
-    if (names.length > 0) {
-      const { text: translated } = translateAgentMentions(text, names);
-      return composeMessageWithTextAttachments(translated, textFiles);
-    }
+    if (names.length > 0) translated = translateAgentMentions(text, names).text;
   } catch {
-    // fall through to the raw prompt
+    // keep the raw prompt
   }
-  return composeMessageWithTextAttachments(text, textFiles);
+  // File mentions are namespaced (`@file:`) by the picker; strip the namespace
+  // only after the agent pass so `@file:<name>` is never mistaken for `@agent`.
+  return composeMessageWithTextAttachments(translateFileMentions(translated), textFiles);
 }
 
 export interface ChatTimelineSendDeps {

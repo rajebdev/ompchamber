@@ -4,6 +4,26 @@ export interface AgentMentionMatch {
   end: number;
 }
 
+/** Picker-inserted `@file:` mentions (quoted form when the path has spaces). */
+const FILE_MENTION_QUOTED_RE = /(^|[\s([{])@"file:([^"]+)"/g;
+const FILE_MENTION_BARE_RE = /(^|[\s([{])@file:(\S+)/g;
+
+/**
+ * Rewrite picker-inserted `@file:<path>` / `@"file:<path with spaces>"`
+ * into oh-my-pi's native file-mention syntax `@<path>` / `@"<path>"`,
+ * which the omp runtime expands into attached file contents. The `file:`
+ * namespace means a file token can never collide with a bare `@agent`.
+ *
+ * NOTE: no trailing-punctuation stripping here — a path can legitimately end
+ * in `.`/`)` etc. (e.g. `foo.test.ts`), and the picker always inserts a
+ * trailing space anyway.
+ */
+export function translateFileMentions(text: string): string {
+  return text
+    .replace(FILE_MENTION_QUOTED_RE, '$1@"$2"')
+    .replace(FILE_MENTION_BARE_RE, '$1@$2');
+}
+
 /**
  * `@` at string start or preceded by whitespace/`(`/`[`/`{`, followed by a
  * quoted (`@"a b"` / `@'a b'`) or bare (`\S+`) token. A mention is only

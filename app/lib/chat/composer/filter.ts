@@ -1,5 +1,8 @@
 import type { ComposerMatchItem, ComposerPickItem } from '@/types';
 
+/** Detects the `file:` query prefix (case-insensitive) that scopes to files. */
+const FILE_QUERY_PREFIX_RE = /^file:/i;
+
 interface RankedMatch {
   tier: number;
   index: number;
@@ -34,17 +37,26 @@ export function rankComposerItem(
 
 /** Filter items by query, ranked by tier then original order. */
 export function filterComposerItems(items: ComposerPickItem[], query: string): ComposerMatchItem[] {
-  if (query.trim() === '') {
-    return items.map((item) => ({ ...item, match: null }));
+  const trimmed = query.trim();
+
+  // `file:` scopes the pool to files and ranks on the path remainder, so
+  // `@file:composer` finds `app/lib/chat/composer/client.ts`. Bare `@` keeps
+  // the full agents + files pool.
+  const fileQuery = FILE_QUERY_PREFIX_RE.test(trimmed);
+  const pool = fileQuery ? items.filter((item) => item.source === 'file') : items;
+  const rankingQuery = fileQuery ? trimmed.replace(FILE_QUERY_PREFIX_RE, '').trim() : trimmed;
+
+  if (rankingQuery === '') {
+    return pool.map((item) => ({ ...item, match: null }));
   }
 
   const ranked: RankedMatch[] = [];
-  items.forEach((item, index) => {
-    const score = rankComposerItem(item.name, item.description, query);
+  pool.forEach((item, index) => {
+    const score = rankComposerItem(item.name, item.description, rankingQuery);
     if (score) ranked.push({ ...score, index });
   });
 
   ranked.sort((a, b) => a.tier - b.tier || a.index - b.index);
 
-  return ranked.map((entry) => ({ ...items[entry.index], match: entry.match }));
+  return ranked.map((entry) => ({ ...pool[entry.index], match: entry.match }));
 }

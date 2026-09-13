@@ -44,7 +44,12 @@ export function toAgentPickItems(agents: AgentItem[]): ComposerPickItem[] {
   }));
 }
 
-/** Map workspace files into pick items with oh-my-pi `@path` mention tokens. */
+/**
+ * Map workspace files into `@file:<path>` mention tokens. The `file:` namespace
+ * means a file token can never collide with a bare `@agent` (e.g. a root-level
+ * file `sonic` inserts `@file:sonic`, never `@sonic`). Quoted form when the
+ * path contains whitespace.
+ */
 export function toFilePickItems(files: FsFileEntry[]): ComposerPickItem[] {
   return files.map((file) => ({
     id: `file-${file.path}`,
@@ -52,7 +57,7 @@ export function toFilePickItems(files: FsFileEntry[]): ComposerPickItem[] {
     description: '',
     kind: 'file',
     source: 'file',
-    token: /\s/.test(file.path) ? `@"${file.path}"` : `@${file.path}`,
+    token: /\s/.test(file.path) ? `@"file:${file.path}"` : `@file:${file.path}`,
     path: file.path,
   }));
 }

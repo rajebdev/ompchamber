@@ -243,7 +243,7 @@ export interface ComposerPickItem {
   /** The item's own category (agent / file / command / skill). */
   kind: ComposerPickSource;
   source: ComposerPickSource;
-  /** Exact insertion text WITHOUT trailing space: `@architect` | `@path/to/file` | `/review` | `/skill:capacity`. */
+  /** Exact insertion text WITHOUT trailing space: `@architect` | `@file:path/to/file` | `/review` | `/skill:capacity`. */
   token: string;
   /** Workspace-relative path (file items only). */
   path?: string;
