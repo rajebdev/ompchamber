@@ -1,6 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useRouteLoaderData } from '@remix-run/react';
 import type { McpServerItem, SettingsState } from '@/types';
+import type { loader as indexLoader } from '@/routes/_index';
 import { McpSidebarList } from '@/components/settings/categories/mcp-settings/SidebarList';
+import type { McpProjectOption } from '@/components/settings/categories/mcp-settings/SidebarList';
 import { McpDetailPane } from '@/components/settings/categories/mcp-settings/DetailPane';
 import { McpImportModal } from '@/components/settings/categories/mcp-settings/ImportModal';
 
@@ -9,32 +12,42 @@ interface McpSettingsProps {
   onUpdate: (settings: SettingsState) => void;
 }
 
+const GLOBAL_PROJECT: McpProjectOption = { id: 'global', name: 'Global (all projects)', path: '' };
+
 export const McpSettings: React.FC<McpSettingsProps> = () => {
+  const rootData = useRouteLoaderData<typeof indexLoader>('routes/_index');
+  const projects = useMemo<McpProjectOption[]>(() => {
+    const folders = rootData?.folders ?? [];
+    const bound = folders.flatMap<McpProjectOption>((folder) =>
+      folder.project_path ? [{ id: String(folder.id), name: folder.name, path: folder.project_path }] : [],
+    );
+    return [GLOBAL_PROJECT, ...bound];
+  }, [rootData]);
+
   const [servers, setServers] = useState<McpServerItem[]>([]);
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [selectedProject, setSelectedProject] = useState('ompchamber');
+  const [selectedProject, setSelectedProject] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
-    fetch('/api/settings/mcp')
+    const query = selectedProject ? `?project=${encodeURIComponent(selectedProject)}` : '';
+    fetch(`/api/settings/mcp${query}`)
       .then(res => res.json())
       .then(data => {
         if (!active) return;
-        const list = data?.servers || [];
+        const list: McpServerItem[] = Array.isArray(data?.servers) ? data.servers : [];
         setServers(list);
-        if (list.length > 0) {
-          setSelectedServerId(list[0].id);
-        }
+        setSelectedServerId(prev => (prev && list.some(s => s.id === prev) ? prev : list[0]?.id ?? null));
       })
       .catch(err => console.error('Failed to load MCP servers from API:', err))
       .finally(() => {
         if (active) setIsLoading(false);
       });
     return () => { active = false; };
-  }, []);
+  }, [selectedProject]);
 
   const handleAddNewServer = () => {
     setIsCreatingNew(true);
@@ -54,41 +67,40 @@ export const McpSettings: React.FC<McpSettingsProps> = () => {
     fetch('/api/settings/mcp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ server: targetServer }),
+      body: JSON.stringify(selectedProject ? { server: targetServer, projectPath: selectedProject } : { server: targetServer }),
     })
       .then(res => res.json())
       .then(data => {
-        if (data?.servers) {
-          setServers(data.servers);
-        } else {
-          setServers(prev => {
-            const exists = prev.some(s => s.id === targetServer.id);
-            return exists ? prev.map(s => s.id === targetServer.id ? targetServer : s) : [...prev, targetServer];
-          });
+        if (data?.error) {
+          console.error('Failed to save MCP server via API:', data.error);
+          return;
         }
-        setSelectedServerId(targetServer.id);
+        const list: McpServerItem[] | null = Array.isArray(data?.servers) ? data.servers : null;
+        if (list) {
+          setServers(list);
+          const saved = list.find(s => s.name.toLowerCase() === targetServer.name.toLowerCase());
+          setSelectedServerId(saved?.id ?? targetServer.id);
+        }
         setIsCreatingNew(false);
       })
       .catch(err => console.error('Failed to save MCP server via API:', err));
   };
 
   const handleDeleteServer = (serverId: string) => {
-    fetch(`/api/settings/mcp?id=${encodeURIComponent(serverId)}`, { method: 'DELETE' })
+    const params = new URLSearchParams({ id: serverId });
+    if (selectedProject) params.set('projectPath', selectedProject);
+    fetch(`/api/settings/mcp?${params.toString()}`, { method: 'DELETE' })
       .then(res => res.json())
       .then(data => {
         if (data?.error) {
           console.error('Failed to delete MCP server via API:', data.error);
           return;
         }
-        return fetch('/api/settings/mcp')
-          .then(res => res.json())
-          .then(list => {
-            const nextList = list?.servers || servers.filter(s => s.id !== serverId);
-            setServers(nextList);
-            if (selectedServerId === serverId) {
-              setSelectedServerId(nextList[0]?.id || null);
-            }
-          });
+        const list: McpServerItem[] = Array.isArray(data?.servers) ? data.servers : servers.filter(s => s.id !== serverId);
+        setServers(list);
+        if (selectedServerId === serverId) {
+          setSelectedServerId(list[0]?.id ?? null);
+        }
       })
       .catch(err => console.error('Failed to delete MCP server via API:', err));
   };
@@ -122,6 +134,7 @@ export const McpSettings: React.FC<McpSettingsProps> = () => {
     <div className="flex h-full w-full overflow-hidden bg-paper">
       <McpSidebarList
         servers={servers}
+        projects={projects}
         selectedServerId={isCreatingNew ? null : selectedServerId}
         onSelectServer={handleSelectServer}
         onAddNewServer={handleAddNewServer}

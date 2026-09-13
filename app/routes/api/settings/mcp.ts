@@ -1,30 +1,125 @@
 import { json } from '@remix-run/node';
 import type { LoaderFunctionArgs, ActionFunctionArgs } from '@remix-run/node';
+import type { Database } from 'sqlite';
 import { getDb } from '@/db.server';
 import { DEFAULT_MCP_SERVERS } from '@/data/settings/mcp';
 import { isMockMode } from '@/mock.server';
+import { resolveRoot } from '@/lib/fs/root';
 import type { McpServerItem } from '@/types';
 import {
+  deleteProjectMcpServer,
   deleteUserMcpServer,
   nativeToServerItem,
+  readProjectMcpConfig,
   readUserMcpConfig,
   redactEnvVars,
+  writeProjectMcpServer,
   writeUserMcpServer,
 } from '@/lib/omp/config/mcp';
 
 const SETTINGS_KEY = 'omp_mcp_servers';
+const NATIVE_USER_PREFIX = 'omp-user-';
+const NATIVE_PROJECT_PREFIX = 'omp-project-';
 
-/** Merge native user servers (omp mcp.json) with app-local custom servers. */
-function mergeServers(custom: McpServerItem[]): McpServerItem[] {
+async function readCustomServers(db: Database): Promise<McpServerItem[]> {
+  const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
+  if (row?.value) {
+    try {
+      const parsed = JSON.parse(row.value);
+      if (Array.isArray(parsed)) return parsed as McpServerItem[];
+    } catch {}
+  }
+  return isMockMode() ? DEFAULT_MCP_SERVERS : [];
+}
+
+async function writeCustomServers(db: Database, servers: McpServerItem[]): Promise<void> {
+  await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
+    SETTINGS_KEY,
+    JSON.stringify(servers),
+  ]);
+}
+
+/** Resolve a client-supplied path to a registered workspace project root. */
+async function validateProjectPath(raw: unknown): Promise<string | null> {
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  const resolved = await resolveRoot(raw, '');
+  if (!resolved) return null;
+  const db = await getDb();
+  const row = await db.get(
+    'SELECT project_path FROM workspace_folders WHERE project_path IS NOT NULL AND project_path = ? LIMIT 1',
+    [resolved],
+  );
+  return row ? resolved : null;
+}
+
+/** App-local rows scoped to a project are only visible inside that project. */
+function customForProject(custom: McpServerItem[], projectPath?: string): McpServerItem[] {
+  return custom.filter((server) =>
+    server.scope !== 'this-project'
+      ? true
+      : Boolean(server.projectPath && projectPath && server.projectPath === projectPath),
+  );
+}
+
+/** Merge native user + project servers with app-local custom servers; native wins on name. */
+function mergeServers(custom: McpServerItem[], projectPath?: string): McpServerItem[] {
   const user = readUserMcpConfig();
-  const native = user.servers.map((entry, index) =>
+  const userItems: McpServerItem[] = user.servers.map((entry, index) =>
     nativeToServerItem(entry.name, entry.config, index, !user.disabledServers.includes(entry.name)),
   );
-  const nativeItems: McpServerItem[] = native.map((item) => ({
-    ...item,
-    envVars: redactEnvVars(item.envVars),
-  }));
-  return [...nativeItems, ...custom.filter((s) => !nativeItems.some((n) => n.name.toLowerCase() === s.name.toLowerCase()))];
+  const project = projectPath ? readProjectMcpConfig(projectPath) : undefined;
+  const projectItems: McpServerItem[] = projectPath && project
+    ? project.servers.map((entry, index) =>
+        nativeToServerItem(entry.name, entry.config, index, !project.disabledServers.includes(entry.name), {
+          path: projectPath,
+        }),
+      )
+    : [];
+  const natives = [...userItems, ...projectItems].map((item) => ({ ...item, envVars: redactEnvVars(item.envVars) }));
+  const nativeNames = new Set(natives.map((item) => item.name.toLowerCase()));
+  return [
+    ...natives,
+    ...customForProject(custom, projectPath).filter((server) => !nativeNames.has(server.name.toLowerCase())),
+  ];
+}
+
+interface McpNativePayloadSource {
+  reachType?: unknown;
+  linkUrl?: unknown;
+  commandArgs?: unknown;
+  envVars?: unknown;
+}
+
+/** Convert a browser McpServerItem payload into native omp mcp.json shape. */
+function toNativeServer(ui: McpNativePayloadSource): Record<string, unknown> {
+  const commandArgs = Array.isArray(ui.commandArgs) ? ui.commandArgs.map(String) : [];
+  const isLink = ui.reachType === 'link' || typeof ui.linkUrl === 'string';
+  const nativeServer: Record<string, unknown> = isLink
+    ? { url: String(ui.linkUrl ?? commandArgs[0] ?? '') }
+    : { command: commandArgs[0] ?? '', ...(commandArgs.length > 1 ? { args: commandArgs.slice(1) } : {}) };
+  if (Array.isArray(ui.envVars) && ui.envVars.length > 0) {
+    const env: Record<string, string> = {};
+    for (const item of ui.envVars) {
+      if (item && typeof item.key === 'string' && typeof item.value === 'string' && item.value !== '••••••••') {
+        env[item.key] = item.value;
+      }
+    }
+    if (Object.keys(env).length > 0) nativeServer.env = env;
+  }
+  return nativeServer;
+}
+
+/** Previous native name encoded in a native id, when the form renamed the server. */
+function previousNativeName(id: unknown, name: string): string | undefined {
+  if (typeof id !== 'string') return undefined;
+  const prefix = id.startsWith(NATIVE_USER_PREFIX)
+    ? NATIVE_USER_PREFIX
+    : id.startsWith(NATIVE_PROJECT_PREFIX)
+      ? NATIVE_PROJECT_PREFIX
+      : null;
+  if (!prefix) return undefined;
+  const previous = id.slice(prefix.length);
+  return previous && previous !== name ? previous : undefined;
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -33,29 +128,36 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const url = new URL(request.url);
     const scope = url.searchParams.get('scope'); // "user" = include native omp config
     const includeNative = scope === 'user' || !isMockMode();
-    const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
     const mock = isMockMode();
+
+    const rawProject = url.searchParams.get('project');
+    const projectPath = rawProject ? await validateProjectPath(rawProject) : null;
+    if (rawProject && !projectPath) {
+      return json({ error: 'Project is not a registered workspace folder' }, { status: 400 });
+    }
+
     let servers: McpServerItem[] = mock ? DEFAULT_MCP_SERVERS : [];
+    const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
 
     if (row && row.value) {
       try {
         const parsed = JSON.parse(row.value);
-        if (Array.isArray(parsed)) {
-          servers = parsed;
-        }
+        if (Array.isArray(parsed)) servers = parsed;
       } catch {}
     } else if (mock) {
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        SETTINGS_KEY,
-        JSON.stringify(DEFAULT_MCP_SERVERS),
-      ]);
+      await writeCustomServers(db, DEFAULT_MCP_SERVERS);
     }
 
     if (includeNative && !mock) {
-      servers = mergeServers(servers);
+      servers = mergeServers(servers, projectPath ?? undefined);
     }
 
-    return json({ servers, isMock: mock, nativePath: includeNative ? readUserMcpConfig().path : undefined });
+    return json({
+      servers,
+      isMock: mock,
+      nativePath: includeNative ? readUserMcpConfig().path : undefined,
+      projectPath: projectPath ?? undefined,
+    });
   } catch (error: any) {
     const mock = isMockMode();
     return json({ error: error.message, servers: mock ? DEFAULT_MCP_SERVERS : [], isMock: mock }, { status: 500 });
@@ -71,86 +173,108 @@ export async function action({ request }: ActionFunctionArgs) {
       const id = url.searchParams.get('id');
       if (!id) return json({ error: 'id is required' }, { status: 400 });
 
-      // Native omp server deletion (id prefix omp-user-) hits mcp.json directly.
-      if (id.startsWith('omp-user-')) {
-        const name = id.slice('omp-user-'.length);
-        deleteUserMcpServer(name);
-        const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-        let custom: McpServerItem[] = [];
-        if (row?.value) {
-          try { custom = JSON.parse(row.value); } catch {}
-        }
-        return json({ success: true, servers: mergeServers(custom) });
+      const rawProjectPath = url.searchParams.get('projectPath');
+      const projectPath = rawProjectPath ? await validateProjectPath(rawProjectPath) : null;
+      if (rawProjectPath && !projectPath) {
+        return json({ error: 'Project is not a registered workspace folder' }, { status: 400 });
       }
 
-      const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-      let list: McpServerItem[] = isMockMode() ? DEFAULT_MCP_SERVERS : [];
-      if (row?.value) {
-        try { list = JSON.parse(row.value); } catch {}
+      let custom = await readCustomServers(db);
+      const target = custom.find((server) => server.id === id);
+
+      // Native omp server deletion (id prefix omp-user-/omp-project-) hits mcp.json directly.
+      if (id.startsWith(NATIVE_USER_PREFIX)) {
+        const name = id.slice(NATIVE_USER_PREFIX.length);
+        try { deleteUserMcpServer(name); } catch {}
+        custom = custom.filter((server) => server.name.toLowerCase() !== name.toLowerCase());
+        await writeCustomServers(db, custom);
+        return json({ success: true, servers: mergeServers(custom, projectPath ?? undefined) });
       }
-      list = list.filter(s => s.id !== id);
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        SETTINGS_KEY,
-        JSON.stringify(list),
-      ]);
-      return json({ success: true, servers: isMockMode() ? list : mergeServers(list) });
+
+      if (id.startsWith(NATIVE_PROJECT_PREFIX)) {
+        const name = id.slice(NATIVE_PROJECT_PREFIX.length);
+        if (!projectPath) {
+          return json({ error: 'projectPath is required for project-scoped servers' }, { status: 400 });
+        }
+        try { deleteProjectMcpServer(projectPath, name); } catch {}
+        custom = custom.filter((server) => server.name.toLowerCase() !== name.toLowerCase());
+        await writeCustomServers(db, custom);
+        return json({ success: true, servers: mergeServers(custom, projectPath) });
+      }
+
+      // App-local row: remove it and any native entry it mirrors, so a deleted
+      // native server cannot resurrect as a DB ghost.
+      if (target) {
+        try {
+          if (target.scope === 'this-project') {
+            const mirrorPath = target.projectPath ?? projectPath;
+            const targetProject = mirrorPath ? await validateProjectPath(mirrorPath) : null;
+            if (targetProject) deleteProjectMcpServer(targetProject, target.name);
+          } else {
+            deleteUserMcpServer(target.name);
+          }
+        } catch {}
+      }
+      custom = custom.filter((server) => server.id !== id);
+      await writeCustomServers(db, custom);
+      return json({ success: true, servers: isMockMode() ? custom : mergeServers(custom, projectPath ?? undefined) });
     }
 
     if (request.method === 'POST' || request.method === 'PUT') {
       const body = await request.json();
 
-      // Explicit native write: { scope: "user", name, server }
+      // Backward-compatible explicit user-scope write: { scope: "user", name, server }
       if (body.scope === 'user' && typeof body.name === 'string' && body.server) {
-        const commandArgs: string[] = Array.isArray(body.server.commandArgs) ? body.server.commandArgs.map(String) : [];
-        const isLink = body.server.reachType === 'link' || typeof body.server.linkUrl === 'string';
-        const nativeServer: Record<string, unknown> = isLink
-          ? { url: String(body.server.linkUrl ?? commandArgs[0] ?? '') }
-          : { command: commandArgs[0] ?? '', ...(commandArgs.length > 1 ? { args: commandArgs.slice(1) } : {}) };
-        if (Array.isArray(body.server.envVars) && body.server.envVars.length > 0) {
-          const env: Record<string, string> = {};
-          for (const item of body.server.envVars) {
-            if (item && typeof item.key === 'string' && typeof item.value === 'string' && item.value !== '••••••••') {
-              env[item.key] = item.value;
-            }
-          }
-          if (Object.keys(env).length > 0) nativeServer.env = env;
-        }
-        writeUserMcpServer(body.name, nativeServer);
-        const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-        let custom: McpServerItem[] = [];
-        if (row?.value) {
-          try { custom = JSON.parse(row.value); } catch {}
-        }
+        writeUserMcpServer(body.name, toNativeServer(body.server));
+        const custom = await readCustomServers(db);
         return json({ success: true, servers: mergeServers(custom) });
       }
 
-      let updatedServers: McpServerItem[] = [];
-
-      if (Array.isArray(body)) {
-        updatedServers = body;
-      } else if (Array.isArray(body.servers)) {
-        updatedServers = body.servers;
-      } else if (body.server) {
-        const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-        let list: McpServerItem[] = isMockMode() ? DEFAULT_MCP_SERVERS : [];
-        if (row?.value) {
-          try { list = JSON.parse(row.value); } catch {}
-        }
-        const idx = list.findIndex(s => s.id === body.server.id);
-        if (idx >= 0) {
-          list[idx] = body.server;
-        } else {
-          list.push(body.server);
-        }
-        updatedServers = list;
+      if (Array.isArray(body) || Array.isArray(body.servers)) {
+        const updatedServers: McpServerItem[] = Array.isArray(body) ? body : body.servers;
+        await writeCustomServers(db, updatedServers);
+        return json({ success: true, servers: isMockMode() ? updatedServers : mergeServers(updatedServers) });
       }
 
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        SETTINGS_KEY,
-        JSON.stringify(updatedServers),
-      ]);
+      if (!body.server) return json({ error: 'server is required' }, { status: 400 });
 
-      return json({ success: true, servers: isMockMode() ? updatedServers : mergeServers(updatedServers) });
+      const server: McpServerItem = body.server;
+      if (typeof server.name !== 'string' || !server.name.trim()) {
+        return json({ error: 'Server name is required' }, { status: 400 });
+      }
+
+      const rawProject = typeof body.projectPath === 'string' && body.projectPath.trim()
+        ? body.projectPath
+        : server.projectPath;
+      let projectPath: string | null = null;
+      if (rawProject) {
+        projectPath = await validateProjectPath(rawProject);
+        if (!projectPath) {
+          return json({ error: 'Project is not a registered workspace folder' }, { status: 400 });
+        }
+      }
+
+      const mock = isMockMode();
+      if (!mock) {
+        if (server.scope === 'this-project') {
+          if (!projectPath) {
+            return json({ error: 'A registered projectPath is required for project-scoped servers' }, { status: 400 });
+          }
+          writeProjectMcpServer(projectPath, server.name, toNativeServer(server), previousNativeName(server.id, server.name));
+        } else {
+          writeUserMcpServer(server.name, toNativeServer(server), undefined, previousNativeName(server.id, server.name));
+        }
+      }
+
+      // Upsert the DB row so ids/enabled stay stable across scope changes.
+      const storedServer: McpServerItem = projectPath ? { ...server, projectPath } : server;
+      const custom = await readCustomServers(db);
+      const index = custom.findIndex((entry) => entry.id === storedServer.id);
+      if (index >= 0) custom[index] = storedServer;
+      else custom.push(storedServer);
+      await writeCustomServers(db, custom);
+
+      return json({ success: true, servers: mock ? custom : mergeServers(custom, projectPath ?? undefined) });
     }
 
     return json({ error: 'Method not allowed' }, { status: 405 });

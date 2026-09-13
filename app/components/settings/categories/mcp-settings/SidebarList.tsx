@@ -2,17 +2,25 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Terminal, Globe, Plus, ChevronDown, Folder } from 'lucide-react';
 import type { McpServerItem } from '@/types';
 
+export interface McpProjectOption {
+  id: string;
+  name: string;
+  path: string;
+}
+
 interface McpSidebarListProps {
   servers: McpServerItem[];
+  projects: McpProjectOption[];
   selectedServerId: string | null;
   onSelectServer: (serverId: string) => void;
   onAddNewServer: () => void;
   selectedProject: string;
-  onChangeProject: (project: string) => void;
+  onChangeProject: (projectPath: string) => void;
 }
 
 export const McpSidebarList: React.FC<McpSidebarListProps> = ({
   servers,
+  projects,
   selectedServerId,
   onSelectServer,
   onAddNewServer,
@@ -36,11 +44,7 @@ export const McpSidebarList: React.FC<McpSidebarListProps> = ({
     };
   }, [isDropdownOpen]);
 
-  const projects = [
-    { id: 'ompchamber', name: 'ompchamber' },
-    { id: 'workspace-edge', name: 'workspace-edge' },
-    { id: 'global', name: 'global config' },
-  ];
+  const activeProjectName = projects.find((proj) => proj.path === selectedProject)?.name ?? 'Global (all projects)';
 
   return (
     <div className="w-56 sm:w-64 border-r border-ink/10 h-full flex flex-col bg-paper/50 flex-shrink-0 select-none">
@@ -53,7 +57,7 @@ export const McpSidebarList: React.FC<McpSidebarListProps> = ({
         >
           <div className="flex items-center gap-2 truncate">
             <Folder size={14} className="text-ink/60 flex-shrink-0" />
-            <span className="truncate">{selectedProject}</span>
+            <span className="truncate">{activeProjectName}</span>
           </div>
           <ChevronDown size={14} className="text-ink/50 flex-shrink-0" />
         </button>
@@ -65,11 +69,11 @@ export const McpSidebarList: React.FC<McpSidebarListProps> = ({
                 key={proj.id}
                 type="button"
                 onClick={() => {
-                  onChangeProject(proj.id);
+                  onChangeProject(proj.path);
                   setIsDropdownOpen(false);
                 }}
                 className={`w-full px-3 py-1.5 text-left text-xs flex items-center justify-between hover:bg-ink/5 transition-colors cursor-pointer ${
-                  selectedProject === proj.id ? 'font-semibold text-ink bg-ink/5' : 'text-ink/80'
+                  selectedProject === proj.path ? 'font-semibold text-ink bg-ink/5' : 'text-ink/80'
                 }`}
               >
                 <div className="flex items-center gap-2 truncate">

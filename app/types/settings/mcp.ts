@@ -11,6 +11,8 @@ export interface McpServerItem {
   id: string;
   name: string;
   scope: McpScope;
+  /** Absolute omp project root — meaningful only when scope is 'this-project'. */
+  projectPath?: string;
   enabled: boolean;
   reachType: McpReachType;
   commandArgs: string[];
