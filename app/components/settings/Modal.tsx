@@ -15,6 +15,7 @@ import { SkillCatalogSettings } from '@/components/settings/categories/SkillCata
 import { OtherSettings } from '@/components/settings/categories/OtherSettings';
 import { OmpSettings } from '@/components/settings/categories/OmpSettings';
 import { TokenUsageSettings } from '@/components/settings/categories/TokenUsageSettings';
+import { UsageSettings } from '@/components/settings/categories/UsageSettings';
 import { NotificationSettings } from '@/components/settings/categories/NotificationSettings';
 
 interface SettingsModalProps {
@@ -192,6 +193,7 @@ export function SettingsModal({
       case 'omp':
         return <OmpSettings settings={settings} onUpdate={handleUpdateSettings} />;
       case 'usage':
+        return <UsageSettings />;
       default:
         return <OtherSettings category={activeCategory} />;
     }
