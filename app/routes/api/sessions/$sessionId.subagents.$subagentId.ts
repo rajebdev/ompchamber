@@ -2,12 +2,9 @@ import { json } from '@remix-run/node';
 import type { LoaderFunctionArgs } from '@remix-run/node';
 import { isMockMode } from '@/mock.server';
 import { findSessionFileById } from '@/lib/omp/session/locator';
-import {
-  SUBAGENT_ID_MAX_LENGTH,
-  SUBAGENT_ID_RE,
-  extractSubagentHistory,
-} from '@/lib/omp/subagent/history';
-import { readSubagentTranscriptPage } from '@/lib/omp/subagent/history-transcript';
+import { extractSubagentHistory } from '@/lib/omp/subagent/history';
+import { SUBAGENT_ID_MAX_LENGTH, SUBAGENT_ID_RE } from '@/lib/omp/subagent/history/paths';
+import { readSubagentTranscriptPage } from '@/lib/omp/subagent/history/transcript';
 
 /**
  * GET /api/sessions/:sessionId/subagents/:subagentId?fromByte=N — paged

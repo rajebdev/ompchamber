@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from '@remix-run/react';
 import { SubagentStatusIcon } from '@/components/common/SubagentStatusIcon';
 import { isRecord } from '@/lib/omp/session/parse-message-blocks';
-import { fetchSubagentHistory, historyEntryToSubagentInfo } from '@/lib/omp/subagent/history-client';
+import { fetchSubagentHistory, historyEntryToSubagentInfo } from '@/lib/omp/subagent/history/client';
 import { mergeSubagentRoster, parseSubagentLifecycle, parseSubagentProgress, parseSubagentRosterResponse } from '@/lib/omp/subagent/parse';
 import type { SubagentInfo, SubagentProgress } from '@/types';
 

@@ -23,7 +23,7 @@ import {
   SUBAGENT_ID_MAX_LENGTH,
   SUBAGENT_ID_RE,
   siblingDirForSession,
-} from '@/lib/omp/subagent/history';
+} from '@/lib/omp/subagent/history/paths';
 import type { SubagentMessagesPage } from '@/types/omp/subagent';
 
 /** Bytes read per page call — bounds each response window. */

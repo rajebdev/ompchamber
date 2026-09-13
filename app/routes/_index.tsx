@@ -110,7 +110,8 @@ async function buildRealFolders(folderRows: any[], archivedIds: Set<string>): Pr
   const data = await loadOmpSidebarData();
   const sessionsByRoot = groupSessionsByRoot(data.sessions);
   const { existsSync, readdirSync } = await import('fs');
-  const { siblingDirForSession, extractSubagentHistory } = await import('@/lib/omp/subagent/history');
+  const { siblingDirForSession } = await import('@/lib/omp/subagent/history/paths');
+  const { extractSubagentHistory } = await import('@/lib/omp/subagent/history');
 
   return folderRows.map((folder: any) => {
     const root = (folder.project_path as string | null) ?? '';
