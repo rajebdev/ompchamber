@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Terminal, Globe, Code, Plus, Trash2, Check, Activity, AlertCircle } from 'lucide-react';
+import { Terminal, Globe, Code, Plus, Trash2, Check } from 'lucide-react';
 import type { McpServerItem, McpScope, McpEnvVar } from '@/types';
+import { ConnectionTest } from '@/components/settings/categories/mcp-settings/ConnectionTest';
+
+function parseCommandArgs(text: string): string[] {
+  return text.split('\n').map((s) => s.trim()).filter(Boolean);
+}
 
 interface McpDetailPaneProps {
   server: McpServerItem;
@@ -19,23 +24,17 @@ export const McpDetailPane: React.FC<McpDetailPaneProps> = ({
 }) => {
   const [formData, setFormData] = useState<McpServerItem>(server);
   const [commandText, setCommandText] = useState('');
-  const [testingConnection, setTestingConnection] = useState(false);
-  const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   useEffect(() => {
     setFormData(server);
     setCommandText(server.commandArgs.join('\n'));
-    setTestResult(null);
     setSavedSuccess(false);
   }, [server]);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    const parsedArgs = commandText
-      .split('\n')
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const parsedArgs = parseCommandArgs(commandText);
 
     const updated: McpServerItem = {
       ...formData,
@@ -73,19 +72,9 @@ export const McpDetailPane: React.FC<McpDetailPaneProps> = ({
     }));
   };
 
-  const handleTestConnection = () => {
-    setTestingConnection(true);
-    setTestResult(null);
-    setTimeout(() => {
-      setTestingConnection(false);
-      if (formData.reachType === 'command' && commandText.trim().length > 0) {
-        setTestResult('success');
-      } else if (formData.reachType === 'link' && formData.linkUrl?.startsWith('http')) {
-        setTestResult('success');
-      } else {
-        setTestResult('error');
-      }
-    }, 700);
+  const serverForTest: McpServerItem = {
+    ...formData,
+    commandArgs: parseCommandArgs(commandText),
   };
 
   return (
@@ -298,28 +287,7 @@ export const McpDetailPane: React.FC<McpDetailPaneProps> = ({
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={handleTestConnection}
-            disabled={testingConnection}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-ink/20 hover:border-ink/40 text-xs font-medium text-ink hover:bg-ink/5 transition-colors disabled:opacity-50 cursor-pointer"
-          >
-            <Activity className={`w-3.5 h-3.5 ${testingConnection ? 'animate-spin' : ''}`} />
-            {testingConnection ? 'Testing...' : 'Test Connection'}
-          </button>
-
-          {testResult === 'success' && (
-            <span className="flex items-center gap-1 text-xs text-ink font-medium">
-              <Check className="w-3.5 h-3.5" />
-              Handshake OK
-            </span>
-          )}
-          {testResult === 'error' && (
-            <span className="flex items-center gap-1 text-xs text-error font-medium">
-              <AlertCircle className="w-3.5 h-3.5" />
-              Connection Failed
-            </span>
-          )}
+          <ConnectionTest server={serverForTest} />
         </div>
 
         <div className="flex items-center gap-3">

@@ -1,0 +1,70 @@
+import { json } from '@remix-run/node';
+import type { ActionFunctionArgs } from '@remix-run/node';
+import { testMcpServer } from '@/lib/omp/config/mcp-test';
+import type { McpServerItem } from '@/types';
+
+/**
+ * POST /api/settings/mcp-test — runs a real MCP JSON-RPC 2.0 handshake
+ * against the supplied server configuration. Body: { server: McpServerItem,
+ * cwd?: string }. Returns 200 with a `McpTestResult` (ok:false on a failed
+ * handshake, not a 500) and 400 on malformed input.
+ */
+
+function isMcpEnvVar(value: unknown): value is { id: string; key: string; value: string } {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.id === 'string' && typeof v.key === 'string' && typeof v.value === 'string';
+}
+
+function isMcpServerItem(value: unknown): value is McpServerItem {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.id === 'string' &&
+    typeof v.name === 'string' &&
+    (v.scope === 'every-project' || v.scope === 'this-project') &&
+    typeof v.enabled === 'boolean' &&
+    (v.reachType === 'command' || v.reachType === 'link') &&
+    Array.isArray(v.commandArgs) &&
+    v.commandArgs.every((arg) => typeof arg === 'string') &&
+    (v.linkUrl === undefined || typeof v.linkUrl === 'string') &&
+    Array.isArray(v.envVars) &&
+    v.envVars.every(isMcpEnvVar)
+  );
+}
+
+export async function action({ request }: ActionFunctionArgs) {
+  if (request.method !== 'POST') {
+    return json({ error: 'Method not allowed' }, { status: 405 });
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return json({ error: 'Invalid request body' }, { status: 400 });
+  }
+
+  const { server, cwd } = body as { server?: unknown; cwd?: unknown };
+  if (!isMcpServerItem(server)) {
+    return json({ error: 'Malformed server input' }, { status: 400 });
+  }
+  if (cwd !== undefined && typeof cwd !== 'string') {
+    return json({ error: 'cwd must be a string' }, { status: 400 });
+  }
+
+  try {
+    const result = await testMcpServer({ server, cwd });
+    return json(result);
+  } catch {
+    // Truly unexpected internal error — never leak env, secrets, or stack.
+    return json(
+      { ok: false, transport: server.reachType, durationMs: 0, error: 'Internal error during MCP test' },
+      { status: 500 },
+    );
+  }
+}
