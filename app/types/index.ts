@@ -10,6 +10,7 @@ export * from '@/types/settings/provider';
 export * from '@/types/settings/agent';
 export * from '@/types/settings/command';
 export * from '@/types/settings/mcp';
+export * from '@/types/settings/usage';
 export * from '@/types/settings/skill';
 export * from '@/types/context';
 export * from '@/types/omp/session';
