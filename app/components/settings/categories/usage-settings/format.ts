@@ -8,6 +8,12 @@ const rupiahFormatter = new Intl.NumberFormat('id-ID', {
 
 const numberFormatter = new Intl.NumberFormat('id-ID');
 
+const compactDecimalFormatter = new Intl.NumberFormat('id-ID', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+  useGrouping: false,
+});
+
 const dateTimeFormatter = new Intl.DateTimeFormat('id-ID', {
   dateStyle: 'medium',
   timeStyle: 'short',
@@ -37,6 +43,15 @@ export function usedPercent(used: number, total: number): number {
 export function formatPercent(used: number, total: number): string {
   if (total <= 0) return '0%';
   return `${new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 }).format((used / total) * 100)}%`;
+}
+
+/** Compact token counts: 747642928 → "747,64M"; 61950 → "61,95K"; 950 → "950". */
+export function formatCompactTokens(value: number): string {
+  if (!Number.isFinite(value)) return '0';
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) return `${compactDecimalFormatter.format(value / 1_000_000)}M`;
+  if (abs >= 1_000) return `${compactDecimalFormatter.format(value / 1_000)}K`;
+  return formatNumber(value);
 }
 
 /** Formats a numeric string returned by the DeepSeek balance API. */

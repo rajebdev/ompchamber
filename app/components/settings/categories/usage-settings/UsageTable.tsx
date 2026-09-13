@@ -1,5 +1,9 @@
 import type { KenariUsage } from '@/types';
-import { formatNumber, formatRp } from '@/components/settings/categories/usage-settings/format';
+import {
+  formatCompactTokens,
+  formatNumber,
+  formatRp,
+} from '@/components/settings/categories/usage-settings/format';
 
 interface UsageTableProps {
   usage?: KenariUsage;
@@ -43,8 +47,8 @@ export function UsageTable({ usage }: UsageTableProps) {
                 <tr key={row.model}>
                   <td className="px-3 py-1.5 font-mono text-ink whitespace-nowrap">{row.model}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums text-ink/80">{formatNumber(row.requests)}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums text-ink/80">{formatNumber(row.inputTokens)}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums text-ink/80">{formatNumber(row.outputTokens)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-ink/80">{formatCompactTokens(row.inputTokens)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-ink/80">{formatCompactTokens(row.outputTokens)}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums text-ink/80">{formatRp(row.costRp)}</td>
                 </tr>
               ))
@@ -54,8 +58,8 @@ export function UsageTable({ usage }: UsageTableProps) {
             <tr>
               <td className="px-3 py-2">Total</td>
               <td className="px-3 py-2 text-right tabular-nums">{formatNumber(usage.totalRequests)}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{formatNumber(totalInput)}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{formatNumber(totalOutput)}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{formatCompactTokens(totalInput)}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{formatCompactTokens(totalOutput)}</td>
               <td className="px-3 py-2 text-right tabular-nums">{formatRp(usage.totalCostRp)}</td>
             </tr>
           </tfoot>

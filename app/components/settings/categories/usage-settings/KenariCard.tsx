@@ -2,7 +2,11 @@ import type { KenariUsageReport } from '@/types';
 import { StatCard } from '@/components/settings/categories/usage-settings/StatCard';
 import { QuotaSection } from '@/components/settings/categories/usage-settings/QuotaSection';
 import { UsageTable } from '@/components/settings/categories/usage-settings/UsageTable';
-import { formatNumber, formatRp } from '@/components/settings/categories/usage-settings/format';
+import {
+  formatCompactTokens,
+  formatNumber,
+  formatRp,
+} from '@/components/settings/categories/usage-settings/format';
 
 interface KenariCardProps {
   report: KenariUsageReport;
@@ -51,7 +55,7 @@ export function KenariCard({ report }: KenariCardProps) {
           hint={usage ? 'Billed in Rupiah' : 'Usage report unavailable'}
         />
         <StatCard
-          value={usage ? formatNumber(processedTokens) : '—'}
+          value={usage ? formatCompactTokens(processedTokens) : '—'}
           label="Tokens processed (30 days)"
           hint={usage ? 'Input + output' : 'Usage report unavailable'}
           tone="muted"
