@@ -46,6 +46,7 @@
  * - search.activeRepo         string
  * - context.rawExpandedIds    Record<string, boolean>
  * - context.rawFilterRole     'all' | 'assistant' | 'user'
+ * - usage.selectedProviderId  'kenari' | 'deepseek'
  * - chat.draft                string
  * - chat.draftAttachments     attachment metadata array
  */
