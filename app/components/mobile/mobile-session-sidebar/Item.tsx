@@ -3,12 +3,12 @@ import {
   ChevronDown, 
   ChevronRight, 
   MessageSquare, 
-  Folder, 
   GitBranch,
 } from 'lucide-react';
 import { useFetcher, useRevalidator } from '@remix-run/react';
 import { MobileSessionRow } from '@/components/mobile/mobile-session-sidebar/SessionRow';
 import type { WorkspaceFolderData, SessionItemData } from '@/types';
+import { getProjectIcon } from '@/lib/workspace/project-icon';
 
 interface MobileSessionCategoryProps {
   folder: WorkspaceFolderData;
@@ -83,6 +83,7 @@ export function MobileSessionCategory({
   );
   const visibleSessions = filteredSessions.slice(0, visibleCount);
   const totalCount = folder.totalSessions || folder.sessions?.length || 0;
+  const ProjectIcon = getProjectIcon(folder.icon);
 
   return (
     <div className="mb-4">
@@ -92,11 +93,21 @@ export function MobileSessionCategory({
         className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-ink/5 rounded-lg select-none transition-colors"
       >
         <div className="flex items-center space-x-2 min-w-0">
-          {/* Icon */}
-          {isChats ? (
+          {folder.customIconUrl ? (
+            <img
+              src={folder.customIconUrl}
+              alt=""
+              className="w-[15px] h-[15px] rounded-xs object-contain flex-shrink-0"
+              referrerPolicy="no-referrer"
+            />
+          ) : isChats ? (
             <MessageSquare size={15} className="text-ink/80 flex-shrink-0" />
           ) : (
-            <Folder size={15} className="text-ink/80 flex-shrink-0" />
+            <ProjectIcon
+              size={15}
+              className="text-ink/80 flex-shrink-0"
+              style={{ color: folder.accentColor || undefined }}
+            />
           )}
 
           {/* Folder Name */}

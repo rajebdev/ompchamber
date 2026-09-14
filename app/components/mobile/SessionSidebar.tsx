@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { useRevalidator } from '@remix-run/react';
 import type { WorkspaceFolderData } from '@/types';
 import { MobileSessionHeader } from '@/components/mobile/mobile-session-sidebar/Header';
 import { MobileSessionToolbar, type MobileSortOption } from '@/components/mobile/mobile-session-sidebar/Toolbar';
@@ -45,6 +46,13 @@ export function MobileSessionSidebar({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const revalidator = useRevalidator();
+
+  useEffect(() => {
+    const handleWorkspaceUpdated = () => revalidator.revalidate();
+    window.addEventListener('omp:workspace-updated', handleWorkspaceUpdated);
+    return () => window.removeEventListener('omp:workspace-updated', handleWorkspaceUpdated);
+  }, [revalidator]);
 
   // Live session status: the chat timeline dispatches omp:session-processing
   // (processing true/false) through its single setGenerating throat, so the
@@ -110,7 +118,26 @@ export function MobileSessionSidebar({
       ...prev,
       [folderId]: !prev[folderId]
     }));
+    const folder = folders.find(item => item.id === folderId);
+    const nextExpanded = !(expandedFolders[folderId] ?? folder?.isExpanded ?? true);
+    fetch(`/api/folders/${folderId}/toggle`, {
+      method: 'POST',
+      body: new URLSearchParams({ isExpanded: String(nextExpanded) }),
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        window.dispatchEvent(new CustomEvent('omp:workspace-updated', {
+          detail: { folderId },
+        }));
+      })
+      .catch((error: unknown) => {
+        console.error('Failed to save mobile workspace state:', error);
+      });
   };
+
+  useEffect(() => {
+    setExpandedFolders(Object.fromEntries(folders.map(folder => [folder.id, folder.isExpanded])));
+  }, [folders]);
 
   const handleSelectSession = (id: number | string) => {
     onSelectSession(id);
