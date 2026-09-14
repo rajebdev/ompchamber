@@ -148,7 +148,7 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
     // Adjust width dynamically (browser = 804px [3x268], terminal/context = 536px [2x268], others = 268px)
     if (nextShow && rightPanelRef.current) {
       setTimeout(() => {
-        const targetPx = nextActive === 'browser' ? (268 * 3) : (nextActive === 'terminal' || nextActive === 'context') ? 536 : 268;
+        const targetPx = nextActive === 'browser' ? (268 * 3) : (nextActive === 'terminal' || nextActive === 'context' || nextActive === 'usage') ? 536 : 268;
         rightPanelRef.current?.resize(targetPx);
       }, 50);
     }

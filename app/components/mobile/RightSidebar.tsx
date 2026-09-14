@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { GitBranch, Files, Search, Terminal, Layers, Globe, X } from 'lucide-react';
+import { GitBranch, Files, Search, Terminal, Layers, Globe, BarChart3, X } from 'lucide-react';
 import { FileExplorer } from '@/components/workspace/file-explorer/index';
 import { SearchPanel } from '@/components/workspace/SearchPanel';
 import { GitPanel } from '@/components/workspace/git-panel/index';
 import { TerminalPanel } from '@/components/workspace/terminal-panel/index';
 import { ContextPanel } from '@/components/workspace/context-panel/index';
 import { BrowserPanel } from '@/components/workspace/browser-panel/index';
+import { UsagePanel } from '@/components/workspace/usage-panel/index';
 
 interface MobileRightSidebarProps {
   enabled?: boolean;
@@ -14,7 +15,7 @@ interface MobileRightSidebarProps {
   onClose: () => void;
 }
 
-type MobileTab = 'git' | 'files' | 'search' | 'context' | 'terminal' | 'browser';
+type MobileTab = 'git' | 'files' | 'search' | 'context' | 'terminal' | 'browser' | 'usage';
 
 export function MobileRightSidebar({
   enabled = true,
@@ -114,6 +115,20 @@ export function MobileRightSidebar({
             <Globe size={14} className="flex-shrink-0" />
             {activeTab === 'browser' && <span>Browser</span>}
           </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('usage')}
+            className={`flex items-center transition-all cursor-pointer ${
+              activeTab === 'usage'
+                ? 'space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-ink text-canvas shadow-sm'
+                : 'p-2 rounded-lg text-ink/70 hover:bg-ink/5'
+            }`}
+            title="Usage"
+          >
+            <BarChart3 size={14} className="flex-shrink-0" />
+            {activeTab === 'usage' && <span>Usage</span>}
+          </button>
         </div>
 
         <button
@@ -153,6 +168,7 @@ export function MobileRightSidebar({
             <div className={`h-full w-full ${activeTab === 'browser' ? 'block' : 'hidden'}`}>
               <BrowserPanel className="h-full w-full" />
             </div>
+            {activeTab === 'usage' && <UsagePanel className="h-full w-full" />}
           </>
         )}
       </div>
