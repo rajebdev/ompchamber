@@ -141,19 +141,28 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
   /** Spawn a brand-new omp session and send the first prompt: ensure_session
    *  first (returns omp's real session id), attach the SSE stream, then send
    *  the prompt through the existing session route so no agent events are
-   *  missed. Returns the new session id on success, or null on failure — the
-   *  caller adopts the id as the active session. */
+   *  missed. Model/thinking picks ride the ensure_session body so omp applies
+   *  them BEFORE the first prompt (and their JSONL change entries are written
+   *  up front, not after the run starts). Returns the new session id on
+   *  success, or null on failure — the caller adopts the id as the active
+   *  session. */
   const sendNewPrompt = useCallback(async (
     message: string,
     cwd: string,
     images?: { data: string; mimeType: string }[],
+    composerOptions?: { model?: { provider: string; modelId: string } | null; thinkingLevel?: string | null },
   ): Promise<{ sessionId: string; model: { provider: string; modelId: string } | null } | null> => {
     setState((prev) => ({ ...prev, isGenerating: true, error: null }));
     try {
       const created = await fetch('/api/agent/new', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'ensure_session', cwd }),
+        body: JSON.stringify({
+          type: 'ensure_session',
+          cwd,
+          ...(composerOptions?.model ? composerOptions.model : {}),
+          ...(composerOptions?.thinkingLevel ? { thinkingLevel: composerOptions.thinkingLevel } : {}),
+        }),
       });
       const createdBody = (await created.json().catch(() => ({}))) as {
         success?: boolean;
