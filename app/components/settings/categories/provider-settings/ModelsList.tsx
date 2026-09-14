@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, SlidersHorizontal, Settings2, Image as ImageIcon, Eye, EyeOff } from 'lucide-react';
+import { Search, SlidersHorizontal, Settings2, Image as ImageIcon, Eye, EyeOff, RefreshCw } from 'lucide-react';
 import type { ProviderModel } from '@/types';
 import { formatContextWindow } from '@/lib/code/format';
 
@@ -13,6 +13,9 @@ interface ProviderModelsListProps {
   onToggleModelVisibility: (modelId: string) => void;
   onHideAll: () => void;
   onShowAll: () => void;
+  onFetchModels: () => Promise<void>;
+  canFetchModels: boolean;
+  isFetchingModels: boolean;
   onOpenModelConfig: (model: ProviderModel) => void;
   onOpenModelCapabilities: (model: ProviderModel) => void;
 }
@@ -22,6 +25,9 @@ export function ProviderModelsList({
   onToggleModelVisibility,
   onHideAll,
   onShowAll,
+  onFetchModels,
+  canFetchModels,
+  isFetchingModels,
   onOpenModelConfig,
   onOpenModelCapabilities,
 }: ProviderModelsListProps) {
@@ -40,6 +46,16 @@ export function ProviderModelsList({
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onFetchModels}
+            disabled={!canFetchModels || isFetchingModels}
+            title={canFetchModels ? 'Fetch models from provider endpoint' : 'This provider has no fetchable endpoint'}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-ink text-canvas text-[11px] font-medium hover:opacity-90 transition-opacity cursor-pointer border border-ink disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <RefreshCw size={12} className={isFetchingModels ? 'animate-spin' : ''} />
+            <span>{isFetchingModels ? 'fetching...' : 'fetch models'}</span>
+          </button>
           <button
             type="button"
             onClick={onHideAll}

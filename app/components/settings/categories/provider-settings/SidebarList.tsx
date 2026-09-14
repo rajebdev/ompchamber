@@ -106,7 +106,11 @@ export function ProviderSidebarList({
 
       {/* 4. Provider List */}
       <div className="flex-1 scrollbar-overlay-container scrollbar-overlay-static p-1.5 space-y-0.5">
-        {providers.map((item) => {
+        {providers.length === 0 ? (
+          <div className="px-2.5 py-4 text-[11px] leading-relaxed text-ink/50">
+            No connected providers yet. Use the plus button above to add one.
+          </div>
+        ) : providers.map((item) => {
           const isSelected = item.id === selectedProviderId;
 
           return (

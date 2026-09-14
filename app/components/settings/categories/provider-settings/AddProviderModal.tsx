@@ -1,48 +1,30 @@
-import React, { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X, Check, Globe, Key, Layers, DownloadCloud } from 'lucide-react';
 import type { ProviderItem, ProviderModel } from '@/types';
+import type { PresetProviderOption } from '@/types/settings/provider';
 import { fetchProviderModelsRemote, mergeProviderModels } from '@/lib/models/provider-models';
 import { ProviderIcon } from '@/components/settings/categories/provider-settings/Icons';
-
-export interface PresetProviderOption {
-  id: string;
-  name: string;
-  slug: string;
-  icon: string;
-  defaultUrl: string;
-}
-
-const FALLBACK_PRESETS: PresetProviderOption[] = [
-  { id: 'openai', name: 'OpenAI', slug: 'openai', icon: 'openai', defaultUrl: 'https://api.openai.com/v1' },
-  { id: 'anthropic', name: 'Anthropic', slug: 'anthropic', icon: 'claude', defaultUrl: 'https://api.anthropic.com/v1' },
-  { id: 'google', name: 'Google Gemini', slug: 'google', icon: 'gemini', defaultUrl: 'https://generativelanguage.googleapis.com/v1beta' },
-  { id: 'groq', name: 'Groq Cloud', slug: 'groq', icon: 'groq', defaultUrl: 'https://api.groq.com/openai/v1' },
-  { id: 'mistral', name: 'Mistral AI', slug: 'mistral', icon: 'mistral', defaultUrl: 'https://api.mistral.ai/v1' },
-  { id: 'ollama', name: 'Ollama (Local)', slug: 'ollama', icon: 'ollama', defaultUrl: 'http://localhost:11434/v1' },
-  { id: 'custom', name: 'Custom OpenAI-Compatible', slug: 'custom', icon: 'custom', defaultUrl: 'https://' },
-];
 
 interface AddProviderModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddProvider: (newProvider: ProviderItem, options: { fetchedCount: number }) => void;
-  presets?: PresetProviderOption[];
+  presets: PresetProviderOption[];
 }
 
 export function AddProviderModal({
   isOpen,
   onClose,
   onAddProvider,
-  presets = FALLBACK_PRESETS,
+  presets,
 }: AddProviderModalProps) {
-  const presetList = presets && presets.length > 0 ? presets : FALLBACK_PRESETS;
-  const [selectedPresetId, setSelectedPresetId] = useState('openai');
-  const [name, setName] = useState('OpenAI');
-  const [baseUrl, setBaseUrl] = useState('https://api.openai.com/v1');
+  const presetList = presets;
+  const initialPreset = presetList[0];
+  const [selectedPresetId, setSelectedPresetId] = useState(initialPreset?.id || 'openai');
+  const [name, setName] = useState(initialPreset?.name || 'OpenAI');
+  const [baseUrl, setBaseUrl] = useState(initialPreset?.defaultUrl || 'https://api.openai.com/v1');
   const [apiKey, setApiKey] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  if (!isOpen) return null;
 
   const handleSelectPreset = (preset: PresetProviderOption) => {
     setSelectedPresetId(preset.id);
@@ -50,9 +32,18 @@ export function AddProviderModal({
     setBaseUrl(preset.defaultUrl);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  useEffect(() => {
+    const selectedPreset = presetList.find((preset) => preset.id === selectedPresetId);
+    if (!selectedPreset && presetList[0]) {
+      handleSelectPreset(presetList[0]);
+    }
+  }, [presetList, selectedPresetId]);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e: { preventDefault: () => void }) => {
     e.preventDefault();
-    if (!name.trim() || isSubmitting) return;
+    if (!name.trim() || presetList.length === 0 || isSubmitting) return;
     setIsSubmitting(true);
 
     try {
@@ -137,6 +128,11 @@ export function AddProviderModal({
               Provider Preset
             </label>
             <div className="grid grid-cols-2 gap-2 max-h-36 scrollbar-overlay-container scrollbar-overlay-static pr-1">
+              {presetList.length === 0 && (
+                <p className="col-span-2 px-2 py-3 text-xs text-ink/50">
+                  All known provider types are already connected.
+                </p>
+              )}
               {presetList.map((preset) => {
                 const isSelected = preset.id === selectedPresetId;
                 return (
@@ -219,7 +215,7 @@ export function AddProviderModal({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || presetList.length === 0}
               className="px-3.5 py-1.5 rounded-md bg-ink text-canvas text-xs font-medium hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
             >
               {isSubmitting ? (

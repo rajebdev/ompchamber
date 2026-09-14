@@ -1,17 +1,19 @@
-import { useState, useEffect } from 'react';
-import type { ProviderItem, ProviderModel } from '@/types';
+import { useState, useEffect, useMemo } from 'react';
+import type { PresetProviderOption, ProviderItem, ProviderModel } from '@/types';
+import { PRESET_NEW_PROVIDERS } from '@/data/settings/provider';
 import {
   fetchProviderModelsRemote,
   mergeProviderModels,
   syncProviderModelsToCatalog,
 } from '@/lib/models/provider-models';
+import { buildAvailableProviderPresets } from '@/lib/models/provider-presets';
 import { useToasts } from '@/hooks/ui/toasts';
 import { Toast } from '@/components/common/Toast';
 import { ProviderSidebarList } from '@/components/settings/categories/provider-settings/SidebarList';
 import { ProviderHeader } from '@/components/settings/categories/provider-settings/Header';
 import { ProviderAuthSection } from '@/components/settings/categories/provider-settings/AuthSection';
 import { ProviderModelsList } from '@/components/settings/categories/provider-settings/ModelsList';
-import { AddProviderModal, type PresetProviderOption } from '@/components/settings/categories/provider-settings/AddProviderModal';
+import { AddProviderModal } from '@/components/settings/categories/provider-settings/AddProviderModal';
 import { ReconnectModal } from '@/components/settings/categories/provider-settings/ReconnectModal';
 import { LoginModal } from '@/components/settings/categories/provider-settings/LoginModal';
 import { ModelConfigModal } from '@/components/settings/categories/provider-settings/ModelConfigModal';
@@ -27,13 +29,12 @@ export function ProviderSettings({
   onAddModalClose,
 }: ProviderSettingsProps) {
   const [providers, setProviders] = useState<ProviderItem[]>([]);
-  const [presetProviders, setPresetProviders] = useState<PresetProviderOption[]>([]);
+  const [presetProviders, setPresetProviders] = useState<PresetProviderOption[]>(PRESET_NEW_PROVIDERS);
   const [selectedProviderId, setSelectedProviderId] = useState<string>('provider-deepseek');
   const [currentProject, setCurrentProject] = useState('ompchamber');
   const [isFetchingModels, setIsFetchingModels] = useState(false);
   const { toasts, pushToast, dismissToast } = useToasts();
 
-  // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(autoOpenAdd);
   const [isReconnectModalOpen, setIsReconnectModalOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -54,19 +55,25 @@ export function ProviderSettings({
         if (!active) return;
         if (data?.providers && Array.isArray(data.providers)) {
           setProviders(data.providers);
-          if (data.providers.length > 0) {
-            setSelectedProviderId(data.providers[0].id);
+          const connectedProviders = data.providers.filter(
+            (provider: ProviderItem) => provider.status === 'connected',
+          );
+          if (connectedProviders.length > 0) {
+            setSelectedProviderId(connectedProviders[0].id);
+          } else {
+            setSelectedProviderId('');
           }
         }
         if (data?.presetProviders) {
           setPresetProviders(data.presetProviders);
         }
       })
-      .catch(err => console.error('Failed to load providers from API:', err));
+      .catch(err => {
+        console.error('Failed to load providers from API:', err);
+      });
     return () => { active = false; };
   }, []);
 
-  // Persistence helper
   const persistProviders = (updated: ProviderItem[]) => {
     setProviders(updated);
     fetch('/api/settings/providers', {
@@ -76,10 +83,16 @@ export function ProviderSettings({
     }).catch(err => console.error('Failed to save providers via API:', err));
   };
 
-  const selectedProvider =
-    providers.find((p) => p.id === selectedProviderId) || providers[0];
+  const connectedProviders = useMemo(
+    () => providers.filter((provider) => provider.status === 'connected'),
+    [providers],
+  );
+  const availablePresetProviders = useMemo(
+    () => buildAvailableProviderPresets(providers, presetProviders),
+    [providers, presetProviders],
+  );
+  const selectedProvider = connectedProviders.find((p) => p.id === selectedProviderId) || connectedProviders[0];
 
-  // Button action: Add new provider
   const handleAddProvider = (newProvider: ProviderItem, options: { fetchedCount: number }) => {
     const updated = [...providers, newProvider];
     persistProviders(updated);
@@ -100,7 +113,6 @@ export function ProviderSettings({
     void syncProviderModelsToCatalog(newProvider.name, newProvider.models);
   };
 
-  // Button action: Reconnect / update credentials
   const handleReconnect = (updates: Partial<ProviderItem>) => {
     if (!selectedProvider) return;
     const updated = providers.map((p) => {
@@ -151,7 +163,14 @@ export function ProviderSettings({
     }
   };
 
-  // OAuth/API-key login via the omp login flow finished successfully.
+  const handleFetchModelsFromList = async () => {
+    if (!selectedProvider) return;
+    await handleFetchModels({
+      apiKey: selectedProvider.apiKey,
+      baseUrl: selectedProvider.baseUrl,
+    });
+  };
+
   const handleOmpAuthSuccess = () => {
     if (!selectedProvider) return;
     const updated = providers.map((p) => (
@@ -160,7 +179,6 @@ export function ProviderSettings({
     setProviders(updated);
   };
 
-  // Button action: Disconnect / toggle status
   const handleToggleDisconnect = () => {
     if (!selectedProvider) return;
     const newStatus =
@@ -172,9 +190,9 @@ export function ProviderSettings({
       return p;
     });
     persistProviders(updated);
+    setSelectedProviderId(connectedProviders.find((provider) => provider.id !== selectedProvider.id)?.id || '');
   };
 
-  // Button action: Hide all models
   const handleHideAll = () => {
     if (!selectedProvider) return;
     const updated = providers.map((p) => {
@@ -189,7 +207,6 @@ export function ProviderSettings({
     persistProviders(updated);
   };
 
-  // Button action: Show all models
   const handleShowAll = () => {
     if (!selectedProvider) return;
     const updated = providers.map((p) => {
@@ -204,7 +221,6 @@ export function ProviderSettings({
     persistProviders(updated);
   };
 
-  // Button action: Toggle visibility of single model
   const handleToggleModelVisibility = (modelId: string) => {
     if (!selectedProvider) return;
     const updated = providers.map((p) => {
@@ -221,7 +237,6 @@ export function ProviderSettings({
     persistProviders(updated);
   };
 
-  // Button action: Save model configuration (temperature, maxTokens, etc.)
   const handleSaveModelConfig = (modelId: string, updates: Partial<ProviderModel>) => {
     if (!selectedProvider) return;
     const updated = providers.map((p) => {
@@ -240,9 +255,8 @@ export function ProviderSettings({
 
   return (
     <div className="w-full h-full flex flex-col md:flex-row overflow-hidden bg-paper text-ink">
-      {/* Left Column: Project Picker, Total Count & Provider List */}
       <ProviderSidebarList
-        providers={providers}
+        providers={connectedProviders}
         selectedProviderId={selectedProvider?.id || ''}
         onSelectProvider={setSelectedProviderId}
         onOpenAddModal={() => setIsAddModalOpen(true)}
@@ -250,7 +264,6 @@ export function ProviderSettings({
         onSelectProject={setCurrentProject}
       />
 
-      {/* Right Column: Provider Details, Authentication, & Models */}
       <div className="flex-1 scrollbar-overlay-container scrollbar-overlay-static p-6 md:p-8 space-y-6">
         {selectedProvider ? (
           <>
@@ -270,6 +283,9 @@ export function ProviderSettings({
               onToggleModelVisibility={handleToggleModelVisibility}
               onHideAll={handleHideAll}
               onShowAll={handleShowAll}
+              onFetchModels={handleFetchModelsFromList}
+              canFetchModels={Boolean(selectedProvider.baseUrl)}
+              isFetchingModels={isFetchingModels}
               onOpenModelConfig={(model) => setConfigModel(model)}
               onOpenModelCapabilities={(model) => setCapabilitiesModel(model)}
             />
@@ -285,7 +301,6 @@ export function ProviderSettings({
         <Toast key={t.id} toast={t} onDismiss={dismissToast} />
       ))}
 
-      {/* Modals */}
       <AddProviderModal
         isOpen={isAddModalOpen}
         onClose={() => {
@@ -293,7 +308,7 @@ export function ProviderSettings({
           onAddModalClose?.();
         }}
         onAddProvider={handleAddProvider}
-        presets={presetProviders}
+        presets={availablePresetProviders}
       />
 
       {selectedProvider && (
