@@ -36,6 +36,11 @@ export interface ChatTimelineActionsDeps {
   setGenerating: (v: boolean) => void;
   persistMessages: (messages: any[]) => void;
   setLocalMessages: Dispatch<SetStateAction<ChatMessageData[]>>;
+  /** Composer model picked before the omp session exists (pending "new-…"
+   *  view); held here until the spawn command carries it. */
+  pendingComposerModelRef: { current: { provider: string; modelId: string } | null };
+  /** Same as pendingComposerModelRef, for the thinking level. */
+  pendingThinkingLevelRef: { current: string | null };
   setSearchParams: (fn: (prev: URLSearchParams) => URLSearchParams, opts?: { replace?: boolean }) => void;
   setExtensionDialog: Dispatch<SetStateAction<ExtensionUiDialogRequest | null>>;
 }
@@ -70,6 +75,8 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     setGenerating,
     persistMessages,
     setLocalMessages,
+    pendingComposerModelRef,
+    pendingThinkingLevelRef,
     setSearchParams,
     setExtensionDialog,
   } = deps;
@@ -229,12 +236,20 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
 
   const handleThinkingLevelChange = useCallback((level: string) => {
     if (level === 'auto') return;
+    if (!isOmpSession) {
+      pendingThinkingLevelRef.current = level;
+      return;
+    }
     void ompAgent.setThinkingLevel(level);
-  }, [ompAgent]);
+  }, [isOmpSession, ompAgent, pendingThinkingLevelRef]);
 
   const handleModelChange = useCallback((provider: string, modelId: string) => {
+    if (!isOmpSession) {
+      pendingComposerModelRef.current = { provider, modelId };
+      return;
+    }
     void ompAgent.setModel(provider, modelId);
-  }, [ompAgent]);
+  }, [isOmpSession, ompAgent, pendingComposerModelRef]);
 
   const closeExtensionDialog = useCallback(() => {
     setExtensionDialog(null);

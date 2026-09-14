@@ -60,6 +60,10 @@ export interface ChatTimelineSendDeps {
   optimisticUserIdRef: { current: string | null };
   pendingUserDisplaysRef: { current: { sent: string; display: string }[] };
   setSessionModel: (model: { provider: string; modelId: string } | null) => void;
+  /** Model/thinking picked in the composer before the session existed —
+   *  applied to the spawn command so the first prompt runs with them. */
+  pendingComposerModelRef: { current: { provider: string; modelId: string } | null };
+  pendingThinkingLevelRef: { current: string | null };
   abortControllerRef: { current: AbortController | null };
   setInputValue: (v: string) => void;
   setSearchParams: (fn: (prev: URLSearchParams) => URLSearchParams, opts?: { replace?: boolean }) => void;
@@ -89,6 +93,8 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
     optimisticUserIdRef,
     pendingUserDisplaysRef,
     setSessionModel,
+    pendingComposerModelRef,
+    pendingThinkingLevelRef,
     abortControllerRef,
     setInputValue,
     setSearchParams,
@@ -236,11 +242,20 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
           }));
         const promptText = await buildPromptText(text, textFiles);
         optimisticUserIdRef.current = userMsgId;
-        const spawned = await ompAgent.sendNewPrompt(promptText, cwd, images.length ? images : undefined);
+        const composerModel = pendingComposerModelRef.current;
+        const composerThinking = pendingThinkingLevelRef.current;
+        const spawned = await ompAgent.sendNewPrompt(
+          promptText,
+          cwd,
+          images.length ? images : undefined,
+          { model: composerModel, thinkingLevel: composerThinking },
+        );
         if (spawned) {
           adoptedSessionIdRef.current = spawned.sessionId;
           aiPlaceholderIdRef.current = aiPlaceholderId;
           if (spawned.model) setSessionModel(spawned.model);
+          pendingComposerModelRef.current = null;
+          pendingThinkingLevelRef.current = null;
           fetch(`/api/chat/${encodeURIComponent(spawned.sessionId)}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -288,7 +303,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
         scrollToBottom,
       })
     );
-  }, [appSettings, folders, isOmpSession, ompAgent, selectedFolderId, sessionId, scrollToBottom, persistMessages, setSessionModel]);
+  }, [appSettings, folders, isOmpSession, ompAgent, selectedFolderId, sessionId, scrollToBottom, persistMessages, setSessionModel, pendingComposerModelRef, pendingThinkingLevelRef]);
 
   return { prepareDeliverable, steerOmpAgent, executeSend };
 }
