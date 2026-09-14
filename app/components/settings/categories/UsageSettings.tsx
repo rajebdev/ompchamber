@@ -1,40 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { AlertCircle, RefreshCw } from 'lucide-react';
-import type { UsageReport } from '@/types';
-import { ProviderCard } from '@/components/settings/categories/usage-settings/ProviderCard';
-import { KenariCard } from '@/components/settings/categories/usage-settings/KenariCard';
-import { DeepSeekCard } from '@/components/settings/categories/usage-settings/DeepSeekCard';
-import {
-  UsageSidebarList,
-  type UsageProviderId,
-} from '@/components/settings/categories/usage-settings/SidebarList';
+import { UsageSidebarList } from '@/components/settings/categories/usage-settings/SidebarList';
+import type { UsageProviderId } from '@/components/settings/categories/usage-settings/providers';
+import { ProviderDetail } from '@/components/settings/categories/usage-settings/ProviderDetail';
 import { formatDateTime } from '@/components/settings/categories/usage-settings/format';
+import { useUsageReport } from '@/hooks/settings/useUsageReport';
 
 /** Settings → Usage: provider balances, quota, and 30-day spend. */
 export function UsageSettings() {
-  const [report, setReport] = useState<UsageReport | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { report, isLoading, error, reload } = useUsageReport();
   const [selectedProviderId, setSelectedProviderId] = useState<UsageProviderId>('kenari');
-
-  const loadUsage = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await fetch('/api/settings/usage');
-      if (!response.ok) throw new Error(`Usage request failed (${response.status})`);
-      const data = (await response.json()) as UsageReport;
-      setReport(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load provider usage');
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadUsage();
-  }, [loadUsage]);
 
   if (error && !report) {
     return (
@@ -43,7 +18,7 @@ export function UsageSettings() {
         <p className="text-error text-xs">{error}</p>
         <button
           type="button"
-          onClick={() => void loadUsage()}
+          onClick={reload}
           className="text-[11px] font-semibold text-ink/70 hover:text-ink underline underline-offset-2"
         >
           Try again
@@ -82,7 +57,7 @@ export function UsageSettings() {
           </div>
           <button
             type="button"
-            onClick={() => void loadUsage()}
+            onClick={reload}
             disabled={isLoading}
             className="p-1.5 bg-paper border border-ink/15 rounded-md hover:bg-ink/5 text-ink/80 transition-colors disabled:opacity-50 flex-shrink-0"
             title="Refresh usage"
@@ -94,24 +69,7 @@ export function UsageSettings() {
         <div className="flex-1 overflow-y-auto scrollbar-overlay-container scrollbar-overlay-static p-3.5 space-y-4">
           {error && <p className="text-error text-xs">{error}</p>}
 
-          {selectedProviderId === 'kenari' ? (
-            <ProviderCard
-              providerName="Kenari.id"
-              configured={report.kenari.configured}
-              error={report.kenari.error}
-            >
-              <KenariCard report={report.kenari} />
-            </ProviderCard>
-          ) : (
-            <ProviderCard
-              providerName="DeepSeek"
-              configured={report.deepseek.configured}
-              error={report.deepseek.error}
-              note="DeepSeek exposes no usage or quota API — only the prepaid balance (and the web console at platform.deepseek.com) is available."
-            >
-              <DeepSeekCard report={report.deepseek} />
-            </ProviderCard>
-          )}
+          <ProviderDetail providerId={selectedProviderId} report={report} />
         </div>
       </div>
     </div>

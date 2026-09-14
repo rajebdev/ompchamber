@@ -1,51 +1,15 @@
 import { Bot, Coins } from 'lucide-react';
 import type { UsageReport } from '@/types';
-import { formatAmount } from '@/components/settings/categories/usage-settings/format';
-
-export type UsageProviderId = 'kenari' | 'deepseek';
-
-interface ProviderEntry {
-  id: UsageProviderId;
-  name: string;
-  configured: boolean;
-  error?: string;
-  hint: string;
-}
+import {
+  buildProviders,
+  statusLabel,
+  type UsageProviderId,
+} from '@/components/settings/categories/usage-settings/providers';
 
 interface UsageSidebarListProps {
   report: UsageReport;
   selectedProviderId: UsageProviderId;
   onSelectProvider: (providerId: UsageProviderId) => void;
-}
-
-function buildProviders(report: UsageReport): ProviderEntry[] {
-  const kenariBalance = report.kenari.quota?.planName;
-  const deepseekEntry = report.deepseek.balance?.entries[0];
-
-  return [
-    {
-      id: 'kenari',
-      name: 'Kenari.id',
-      configured: report.kenari.configured,
-      error: report.kenari.error,
-      hint: kenariBalance ?? 'Wallet & quota',
-    },
-    {
-      id: 'deepseek',
-      name: 'DeepSeek',
-      configured: report.deepseek.configured,
-      error: report.deepseek.error,
-      hint: deepseekEntry
-        ? `${deepseekEntry.currency} ${formatAmount(deepseekEntry.totalBalance)}`
-        : 'Prepaid balance',
-    },
-  ];
-}
-
-function statusLabel(provider: ProviderEntry): string {
-  if (!provider.configured) return 'Not configured';
-  if (provider.error) return 'Error';
-  return 'Connected';
 }
 
 export function UsageSidebarList({
