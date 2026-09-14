@@ -29,9 +29,60 @@ export interface ParsedTaskNotice {
   outro?: string;
 }
 
+/** Scan a JSON document prefix for bracket balance and string state. */
+function jsonScanState(text: string): { stack: string[]; inString: boolean; escaped: boolean } {
+  const stack: string[] = [];
+  let inString = false;
+  let escaped = false;
+  for (const ch of text) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{' || ch === '[') stack.push(ch === '{' ? '}' : ']');
+    else if (ch === '}' || ch === ']') stack.pop();
+  }
+  return { stack, inString, escaped };
+}
+
+/** Best-effort repair for a JSON payload truncated by the preview size limit:
+ *  seal the open string, drop dangling separators/keys, and append the missing
+ *  closing brackets. Returns null when the document cannot be repaired. */
+function healTruncatedJson(text: string): string | null {
+  let healed = text;
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    const { stack, inString, escaped } = jsonScanState(healed);
+    let candidate = healed;
+    if (inString) {
+      if (escaped) candidate = candidate.slice(0, -1);
+      candidate += '"';
+    }
+    candidate = candidate
+      .replace(/,\s*"[^"]*"\s*:\s*$/, '')
+      .replace(/"[^"]*"\s*:\s*$/, '')
+      .replace(/,\s*$/, '');
+    candidate += [...stack].reverse().join('');
+    candidate = candidate.replace(/,\s*(?=[}\]])/g, '');
+    try {
+      JSON.parse(candidate);
+      return candidate;
+    } catch {
+      const cut = healed.lastIndexOf(',');
+      if (cut <= 0) return null;
+      healed = healed.slice(0, cut);
+    }
+  }
+  return null;
+}
+
 /**
  * Parses XML-style <task-result> embedded inside system notices.
- * Handles <meta lines="..." size="..." />, <output>{...}</output>, and trailing agent://, history:// URIs.
+ * Handles metadata, <output>...</output>, and <preview full-output="agent://...">...</preview> payloads.
+ * The full-output URI remains inert metadata; preview content is rendered locally.
+ * Truncated preview JSON is healed so the structured view still renders.
  */
 export function parseTaskNotice(text: string): ParsedTaskNotice | null {
   if (!text) return null;
@@ -60,13 +111,20 @@ export function parseTaskNotice(text: string): ParsedTaskNotice | null {
     }
   }
 
-  // Extract <output>...</output> or fall back to innerBody with <meta> stripped
   let rawOutput = '';
   const outputMatch = innerBody.match(/<output\b[^>]*>([\s\S]*?)<\/output>/i);
   if (outputMatch) {
     rawOutput = outputMatch[1].trim();
   } else {
-    rawOutput = innerBody.replace(/<meta\b[^>]*\/?>/gi, '').trim();
+    const previewMatch = innerBody.match(/<preview\b[^>]*>([\s\S]*?)<\/preview>/i);
+    const previewPayload = previewMatch?.[1].trim();
+    if (previewPayload) {
+      rawOutput = previewPayload;
+    } else {
+      rawOutput = innerBody
+        .replace(/<meta\b[^>]*\/?>(?:\s*<\/meta>)?|<\/?preview\b[^>]*>/gi, '')
+        .trim();
+    }
   }
 
   // Attempt JSON parsing
@@ -81,7 +139,15 @@ export function parseTaskNotice(text: string): ParsedTaskNotice | null {
         formattedJson = JSON.stringify(parsed, null, 2);
       }
     } catch {
-      // Not valid JSON, keep as raw string
+      const healed = healTruncatedJson(rawOutput);
+      if (healed) {
+        const parsed: unknown = JSON.parse(healed);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          structuredOutput = parsed as TaskResultStructuredOutput;
+          formattedJson = JSON.stringify(parsed, null, 2);
+          rawOutput = healed;
+        }
+      }
     }
   }
 
