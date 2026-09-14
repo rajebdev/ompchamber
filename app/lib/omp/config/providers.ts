@@ -27,6 +27,16 @@ export interface NativeProviderInfo {
   baseUrl?: string;
   /** Model ids registered under this provider in models.yml. */
   modelIds: string[];
+  models: NativeModelInfo[];
+}
+
+export interface NativeModelInfo {
+  id: string;
+  name?: string;
+  contextWindow?: number;
+  maxTokens?: number;
+  reasoning?: boolean;
+  imageInput?: boolean;
 }
 
 /**
@@ -44,15 +54,40 @@ export function readNativeProviders(): NativeProviderInfo[] {
     const providers = (data as Record<string, unknown>).providers;
     if (typeof providers !== 'object' || providers === null || Array.isArray(providers)) return [];
     return Object.entries(providers as Record<string, unknown>).map(([slug, value]) => {
-      const info: NativeProviderInfo = { slug, modelIds: [] };
+      const info: NativeProviderInfo = { slug, modelIds: [], models: [] };
       if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
         const record = value as Record<string, unknown>;
         if (typeof record.baseUrl === 'string') info.baseUrl = record.baseUrl;
         if (typeof record.models === 'object' && record.models !== null && !Array.isArray(record.models)) {
-          info.modelIds = Object.keys(record.models as Record<string, unknown>);
+          info.models = Object.entries(record.models as Record<string, unknown>).flatMap(([id, model]) => {
+            if (typeof model !== 'object' || model === null || Array.isArray(model)) return [{ id }];
+            const value = model as Record<string, unknown>;
+            return [{
+              id,
+              ...(typeof value.name === 'string' ? { name: value.name } : {}),
+              ...(typeof value.contextWindow === 'number' ? { contextWindow: value.contextWindow } : {}),
+              ...(typeof value.maxTokens === 'number' ? { maxTokens: value.maxTokens } : {}),
+              ...(value.reasoning === true ? { reasoning: true } : {}),
+              ...(Array.isArray(value.input) && value.input.includes('image') ? { imageInput: true } : {}),
+            }];
+          });
         } else if (Array.isArray(record.models)) {
-          info.modelIds = record.models.filter((m): m is string => typeof m === 'string');
+          info.models = record.models.flatMap((model) => {
+            if (typeof model === 'string') return [{ id: model }];
+            if (typeof model !== 'object' || model === null || Array.isArray(model)) return [];
+            const value = model as Record<string, unknown>;
+            if (typeof value.id !== 'string') return [];
+            return [{
+              id: value.id,
+              ...(typeof value.name === 'string' ? { name: value.name } : {}),
+              ...(typeof value.contextWindow === 'number' ? { contextWindow: value.contextWindow } : {}),
+              ...(typeof value.maxTokens === 'number' ? { maxTokens: value.maxTokens } : {}),
+              ...(value.reasoning === true ? { reasoning: true } : {}),
+              ...(Array.isArray(value.input) && value.input.includes('image') ? { imageInput: true } : {}),
+            }];
+          });
         }
+        info.modelIds = info.models.map((model) => model.id);
       }
       return info;
     });
