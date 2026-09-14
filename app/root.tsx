@@ -19,7 +19,8 @@ import '@fontsource/fira-code/700.css';
 
 export const links: LinksFunction = () => [
   { rel: "manifest", href: "/manifest.webmanifest" },
-  { rel: "icon", type: "image/svg+xml", href: "/icon.svg" },
+  { rel: "icon", type: "image/svg+xml", href: "/icon.svg", sizes: "any" },
+  { rel: "icon", type: "image/png", href: "/icon-192x192.png", sizes: "192x192" },
   { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
   {
