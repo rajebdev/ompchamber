@@ -102,13 +102,18 @@ function disabledProviderItem(slug: string): ProviderItem {
  * Native provider entry discovered from models.yml. Credentials never leave
  * omp's own stores — chamber only surfaces registration info.
  */
-function nativeProviderItem(slug: string, baseUrl: string | undefined, modelIds: string[]): ProviderItem {
+function nativeProviderItem(
+  slug: string,
+  baseUrl: string | undefined,
+  modelIds: string[],
+  status: ProviderItem['status'] = 'connected',
+): ProviderItem {
   return {
     id: `omp-native-${slug}`,
     name: slug,
     slug,
     icon: 'plug',
-    status: 'connected',
+    status,
     configuredIn: baseUrl ? `models.yml · ${baseUrl}` : 'models.yml',
     models: modelIds.map((modelId) => ({
       id: modelId,
@@ -121,6 +126,51 @@ function nativeProviderItem(slug: string, baseUrl: string | undefined, modelIds:
   };
 }
 
+function providerIdentityKey(provider: ProviderItem): string {
+  const slug = provider.slug.trim().toLowerCase();
+  const name = provider.name.trim().toLowerCase();
+  const baseUrl = provider.baseUrl?.trim().toLowerCase() || '';
+  if (slug === 'kenari' || name.includes('kenari') || baseUrl.includes('kenari.id')) return 'kenari';
+  return slug;
+}
+
+function mergeProviderItems(existing: ProviderItem, incoming: ProviderItem): ProviderItem {
+  const primary = existing.id.startsWith('omp-auth-') || !incoming.id.startsWith('omp-auth-')
+    ? existing
+    : incoming;
+  const secondary = primary === existing ? incoming : existing;
+  const knownModelIds = new Set<string>();
+  const models = [...primary.models, ...secondary.models].filter((model) => {
+    if (knownModelIds.has(model.id)) return false;
+    knownModelIds.add(model.id);
+    return true;
+  });
+
+  return {
+    ...primary,
+    name: primary.name === primary.slug && secondary.name !== secondary.slug
+      ? secondary.name
+      : primary.name,
+    status: primary.status === 'connected' || secondary.status === 'connected'
+      ? 'connected'
+      : primary.status,
+    baseUrl: primary.baseUrl || secondary.baseUrl,
+    apiKey: primary.apiKey || secondary.apiKey,
+    configuredIn: primary.apiKey || primary.baseUrl ? primary.configuredIn : secondary.configuredIn,
+    models,
+  };
+}
+
+function deduplicateProviderItems(items: ProviderItem[]): ProviderItem[] {
+  const bySlug = new Map<string, ProviderItem>();
+  for (const item of items) {
+    const key = providerIdentityKey(item);
+    const existing = bySlug.get(key);
+    bySlug.set(key, existing ? mergeProviderItems(existing, item) : item);
+  }
+  return [...bySlug.values()];
+}
+
 /** Merge all three omp provider sources with app-local custom SQLite entries. */
 async function mergeProviders(custom: ProviderItem[]): Promise<{ providers: ProviderItem[]; modelsConfigPath: string }> {
   const disabled = (() => {
@@ -128,13 +178,22 @@ async function mergeProviders(custom: ProviderItem[]): Promise<{ providers: Prov
   })();
   const authItems = await loadRpcProviderItems();
   const native = readNativeProviders();
-  const nativeItems = native.map((info) => nativeProviderItem(info.slug, info.baseUrl, info.modelIds));
+  const nativeItems = native.map((info) => nativeProviderItem(
+    info.slug,
+    info.baseUrl,
+    info.modelIds,
+    disabled.has(info.slug) ? 'disconnected' : 'connected',
+  ));
   const disabledItems = [...disabled]
     .filter((slug) => !nativeItems.some((n) => n.slug === slug) && !authItems.some((a) => a.slug === slug))
     .map(disabledProviderItem);
-  const nativeSlugs = new Set([...authItems.map((n) => n.slug), ...nativeItems.map((n) => n.slug), ...disabled]);
+  const registryItems = deduplicateProviderItems([...authItems, ...nativeItems, ...disabledItems]);
+  const nativeSlugs = new Set(registryItems.map((provider) => provider.slug.toLowerCase()));
   return {
-    providers: [...authItems, ...nativeItems, ...disabledItems, ...custom.filter((p) => !nativeSlugs.has(p.slug))],
+    providers: deduplicateProviderItems([
+      ...registryItems,
+      ...custom.filter((p) => !nativeSlugs.has(p.slug.toLowerCase())),
+    ]),
     modelsConfigPath: getModelsConfigPath(),
   };
 }
@@ -159,6 +218,8 @@ export async function loader({ request: _request }: LoaderFunctionArgs) {
         JSON.stringify(DEFAULT_PROVIDERS_LIST),
       ]);
     }
+
+    providers = deduplicateProviderItems(providers);
 
     if (!mock) {
       const merged = await mergeProviders(providers);
