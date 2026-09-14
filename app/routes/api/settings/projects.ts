@@ -1,106 +1,86 @@
 import { json } from '@remix-run/node';
-import type { LoaderFunctionArgs, ActionFunctionArgs } from '@remix-run/node';
+import type { ActionFunctionArgs, LoaderFunctionArgs } from '@remix-run/node';
 import { getDb } from '@/db.server';
-import { DEFAULT_PROJECTS_LIST, AVAILABLE_PROJECT_MODELS, ACCENT_COLOR_OPTIONS } from '@/data/settings/project';
-import { isMockMode } from '@/mock.server';
-import type { ProjectConfigItem } from '@/types';
+import { AVAILABLE_PROJECT_MODELS, ACCENT_COLOR_OPTIONS } from '@/data/settings/project';
+import { deleteWorkspaceFolder, parseFolderSettingsPatch, projectConfigFromFolder, updateWorkspaceFolder } from '@/lib/workspace/project-settings';
 
-const SETTINGS_KEY = 'omp_projects_config';
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function projectPatch(project: Record<string, unknown>) {
+  return parseFolderSettingsPatch({
+    name: project.name,
+    projectPath: project.projectPath ?? project.path,
+    model: project.model,
+    accentColor: project.accentColor,
+    icon: project.icon,
+    customIconUrl: project.customIconUrl,
+    isPinned: project.isPinned,
+    isExpanded: project.isExpanded,
+  });
+}
 
 export async function loader({ request: _request }: LoaderFunctionArgs) {
   try {
     const db = await getDb();
-    const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-    const mock = isMockMode();
-    let projects: ProjectConfigItem[] = mock ? DEFAULT_PROJECTS_LIST : [];
-
-    if (row && row.value) {
-      try {
-        const parsed = JSON.parse(row.value);
-        if (Array.isArray(parsed)) {
-          projects = parsed;
-        }
-      } catch {}
-    } else if (mock) {
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        SETTINGS_KEY,
-        JSON.stringify(DEFAULT_PROJECTS_LIST),
-      ]);
-    }
+    const folders = await db.all('SELECT * FROM workspace_folders ORDER BY id ASC');
+    const projects = folders.map(projectConfigFromFolder);
 
     return json({
       projects,
       availableModels: AVAILABLE_PROJECT_MODELS,
       accentColorOptions: ACCENT_COLOR_OPTIONS,
-      isMock: mock,
     });
-  } catch (error: any) {
-    const mock = isMockMode();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load projects';
     return json({
-      error: error.message,
-      projects: mock ? DEFAULT_PROJECTS_LIST : [],
+      error: message,
+      projects: [],
       availableModels: AVAILABLE_PROJECT_MODELS,
       accentColorOptions: ACCENT_COLOR_OPTIONS,
-      isMock: mock,
     }, { status: 500 });
   }
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  try {
-    const db = await getDb();
+  const db = await getDb();
 
-    if (request.method === 'DELETE') {
-      const url = new URL(request.url);
-      const id = url.searchParams.get('id');
-      if (!id) return json({ error: 'id is required' }, { status: 400 });
+  if (request.method === 'DELETE') {
+    const id = new URL(request.url).searchParams.get('id');
+    const folderId = id?.startsWith('folder-') ? id.slice('folder-'.length) : id;
+    if (!folderId) return json({ error: 'id is required' }, { status: 400 });
 
-      const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-      let list: ProjectConfigItem[] = DEFAULT_PROJECTS_LIST;
-      if (row?.value) {
-        try { list = JSON.parse(row.value); } catch {}
-      }
-      list = list.filter(p => p.id !== id);
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        SETTINGS_KEY,
-        JSON.stringify(list),
-      ]);
-      return json({ success: true, projects: list });
-    }
-
-    if (request.method === 'POST' || request.method === 'PUT') {
-      const body = await request.json();
-      let updatedProjects: ProjectConfigItem[] = [];
-
-      if (Array.isArray(body)) {
-        updatedProjects = body;
-      } else if (Array.isArray(body.projects)) {
-        updatedProjects = body.projects;
-      } else if (body.project) {
-        const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-        let list: ProjectConfigItem[] = DEFAULT_PROJECTS_LIST;
-        if (row?.value) {
-          try { list = JSON.parse(row.value); } catch {}
-        }
-        const idx = list.findIndex(p => p.id === body.project.id);
-        if (idx >= 0) {
-          list[idx] = body.project;
-        } else {
-          list.push(body.project);
-        }
-        updatedProjects = list;
-      }
-
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        SETTINGS_KEY,
-        JSON.stringify(updatedProjects),
-      ]);
-
-      return json({ success: true, projects: updatedProjects });
-    }
-
-    return json({ error: 'Method not allowed' }, { status: 405 });
-  } catch (error: any) {
-    return json({ error: error.message }, { status: 500 });
+    const deleted = await deleteWorkspaceFolder(db, folderId);
+    if (!deleted) return json({ error: 'Workspace not found' }, { status: 404 });
+    return json({ success: true });
   }
+
+  if (request.method !== 'POST' && request.method !== 'PUT' && request.method !== 'PATCH') {
+    return json({ error: 'Method not allowed' }, { status: 405 });
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch (error) {
+    return json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  if (!isRecord(body) || !isRecord(body.project)) {
+    return json({ error: 'project is required' }, { status: 400 });
+  }
+
+  const project = body.project;
+  const folderId = typeof project.folderId === 'number' ? String(project.folderId) : undefined;
+  if (!folderId) return json({ error: 'project.folderId is required' }, { status: 400 });
+
+  const updated = await updateWorkspaceFolder(db, folderId, projectPatch(project));
+  if (!updated) {
+    const folder = await db.get('SELECT id FROM workspace_folders WHERE id = ?', [folderId]);
+    if (!folder) return json({ error: 'Workspace not found' }, { status: 404 });
+  }
+
+  const folder = await db.get('SELECT * FROM workspace_folders WHERE id = ?', [folderId]);
+  return json({ success: true, project: folder ? projectConfigFromFolder(folder) : null });
 }
