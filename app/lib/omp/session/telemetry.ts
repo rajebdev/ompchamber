@@ -170,6 +170,10 @@ export function computeRealSessionTelemetry(
   let sumOutput = 0;
   let sumCacheRead = 0;
   let sumCacheWrite = 0;
+  // Cache-hit average only counts warmed calls — any assistant call that read
+  // zero cache tokens (cold request) is excluded, not just the very first one.
+  let cacheAvgInput = 0;
+  let cacheAvgCacheRead = 0;
   let costInput = 0;
   let costOutput = 0;
   let costCacheRead = 0;
@@ -221,6 +225,10 @@ export function computeRealSessionTelemetry(
       sumOutput += tokens.output;
       sumCacheRead += tokens.cacheRead;
       sumCacheWrite += tokens.cacheWrite;
+      if (msg.role === 'assistant' && tokens.cacheRead > 0) {
+        cacheAvgInput += tokens.input;
+        cacheAvgCacheRead += tokens.cacheRead;
+      }
       costInput += msg.usage.cost?.input ?? 0;
       costOutput += msg.usage.cost?.output ?? 0;
       costCacheRead += msg.usage.cost?.cacheRead ?? 0;
@@ -266,7 +274,7 @@ export function computeRealSessionTelemetry(
 
   const lastTokens = tokensOf(lastAsstUsage);
   const cacheHitPercent = lastAsstUsage && lastTokens.input + lastTokens.output + lastTokens.cacheRead > 0 ? Number(((lastTokens.cacheRead / (lastTokens.input + lastTokens.output + lastTokens.cacheRead)) * 100).toFixed(1)) : 0;
-  const cacheHitAverage = sumInput + sumCacheRead > 0 ? Number(((sumCacheRead / (sumInput + sumCacheRead)) * 100).toFixed(1)) : 0;
+  const cacheHitAverage = cacheAvgInput + cacheAvgCacheRead > 0 ? Number(((cacheAvgCacheRead / (cacheAvgInput + cacheAvgCacheRead)) * 100).toFixed(1)) : 0;
 
   return {
     sessionId,
