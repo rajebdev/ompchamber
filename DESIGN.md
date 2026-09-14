@@ -52,6 +52,7 @@ Never use green, blue, or yellow. Semantic states are expressed purely in ink:
 - **Deployments Table**: Dense table with ~44px rows, branch chips, commit messages, and redeploy action.
 - **Bottom Split**: Last failed build log excerpt with signal red error lines + Deploys last 14 days stepped ink bar chart.
 - **Right Sidebar**: Double panel containing the **AI Oh-My-Pi Chamber** (interactive prompt/diagnostic assistant) and **Deployment Inspector** (runtime properties & stage breakdown).
+- **Provider Settings Controls**: Connected-provider sidebar, filtered New Provider preset picker, and Available Models actions (fetch, hide all, show all) with disabled/loading feedback.
 
 ---
 
@@ -67,4 +68,3 @@ Never use green, blue, or yellow. Semantic states are expressed purely in ink:
 - **Environment-Controlled Toggle (`MOCK=true` / `MOCK=false`)**:
   - **`MOCK=true`**: Provides sample simulation states (token graphs, chat monologue traces, preset agent configs, demo workspace sessions) for standalone previews and diagnostic demonstrations.
   - **`MOCK=false`**: Connects directly to real SQLite tables and workspace files with zero synthetic demo sessions or fake commit data.
-
