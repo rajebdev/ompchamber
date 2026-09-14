@@ -5,13 +5,13 @@ import {
   Pin, 
   PinOff, 
   Trash2, 
-  Folder, 
 } from 'lucide-react';
 import { useFetcher, useRevalidator, useSearchParams } from '@remix-run/react';
 import { useOnClickOutside } from '@/hooks/ui/on-click-outside';
 import { SessionItem } from '@/components/layout/session-sidebar/SessionItem';
 import { SubagentList } from '@/components/layout/session-sidebar/SubagentList';
 import { loadExpandedSessionIds, saveExpandedSessionIds } from '@/lib/workspace/sidebar-expanded';
+import { getProjectIcon } from '@/lib/workspace/project-icon';
 
 export { SessionItem };
 
@@ -50,6 +50,10 @@ export function Category({
     }
   }, []);
 
+  useEffect(() => {
+    if (typeof folder.isExpanded === 'boolean') setIsOpen(folder.isExpanded);
+  }, [folder.isExpanded]);
+
   // A deep-linked transcript (?sessionId=…&subagent=…) auto-expands its
   // session row so the viewed roster entry is visible after a reload.
   useEffect(() => {
@@ -63,11 +67,17 @@ export function Category({
   }, [urlSubagentId, urlSessionId]);
   
   const menuRef = useRef<HTMLDivElement>(null);
-  const toggleFetcher = useFetcher();
-  const pinFetcher = useFetcher();
-  const deleteFetcher = useFetcher();
+  const toggleFetcher = useFetcher<{ success?: boolean }>();
+  const pinFetcher = useFetcher<{ success?: boolean }>();
+  const deleteFetcher = useFetcher<{ success?: boolean }>();
   const archiveFetcher = useFetcher();
   const revalidator = useRevalidator();
+
+  useEffect(() => {
+    if (toggleFetcher.data?.success || pinFetcher.data?.success || deleteFetcher.data?.success) {
+      window.dispatchEvent(new CustomEvent('omp:workspace-updated'));
+    }
+  }, [deleteFetcher.data, pinFetcher.data, toggleFetcher.data]);
 
   useOnClickOutside(menuRef, () => {
     setShowMenu(false);
@@ -75,6 +85,7 @@ export function Category({
   });
 
   const allSessions = folder.sessions;
+  const ProjectIcon = getProjectIcon(folder.icon);
 
   const handleToggle = () => {
     const nextState = !isOpen;
@@ -158,7 +169,20 @@ export function Category({
       >
         <div className="flex-1 h-full flex items-center cursor-pointer min-w-0" onClick={handleToggle}>
           <span className="w-4 h-4 flex items-center justify-center shrink-0">
-            <Folder size={15} className="text-ink/75" />
+            {folder.customIconUrl ? (
+              <img
+                src={folder.customIconUrl}
+                alt=""
+                className="w-[15px] h-[15px] rounded-xs object-contain shrink-0"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <ProjectIcon
+                size={15}
+                className="text-ink/75"
+                style={{ color: folder.accentColor || undefined }}
+              />
+            )}
           </span>
           <span className="w-2 shrink-0" />
           {folder.isPinned && <Pin size={11} className="text-ink/60 shrink-0 mr-1.5" />}

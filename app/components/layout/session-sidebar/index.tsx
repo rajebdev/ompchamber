@@ -38,6 +38,12 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
     };
   }, []);
 
+  useEffect(() => {
+    const handleWorkspaceUpdated = () => revalidatorRef.current.revalidate();
+    window.addEventListener('omp:workspace-updated', handleWorkspaceUpdated);
+    return () => window.removeEventListener('omp:workspace-updated', handleWorkspaceUpdated);
+  }, []);
+
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   
