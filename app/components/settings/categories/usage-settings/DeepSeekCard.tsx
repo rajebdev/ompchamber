@@ -16,25 +16,27 @@ export function DeepSeekCard({ report }: DeepSeekCardProps) {
 
   return (
     <>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 items-stretch">
-        <StatCard
-          value={balance.isAvailable ? 'Available' : 'Unavailable'}
-          label="Prepaid balance"
-          hint={balance.isAvailable ? 'Account can spend' : 'Top up required'}
-          tone={balance.isAvailable ? 'default' : 'muted'}
-        />
-        <StatCard
-          value={formatNumber(balance.entries.length)}
-          label="Currency buckets"
-          hint={balance.entries.length > 0 ? 'From the balance endpoint' : 'No entries returned'}
-          tone="muted"
-        />
+      <div className="@container">
+        <div className="grid grid-cols-3 @[540px]:grid-cols-5 gap-2.5 items-stretch">
+          <StatCard
+            value={balance.isAvailable ? 'Available' : 'Unavailable'}
+            label="Prepaid balance"
+            hint={balance.isAvailable ? 'Account can spend' : 'Top up required'}
+            tone={balance.isAvailable ? 'default' : 'muted'}
+          />
+          <StatCard
+            value={formatNumber(balance.entries.length)}
+            label="Currency buckets"
+            hint={balance.entries.length > 0 ? 'From the balance endpoint' : 'No entries returned'}
+            tone="muted"
+          />
+        </div>
       </div>
 
       {balance.entries.length === 0 ? (
         <p className="text-[11px] text-ink/50">The balance endpoint returned no currency entries.</p>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+        <div className="grid grid-cols-1 gap-2.5">
           {balance.entries.map((entry) => (
             <div key={entry.currency} className="bg-paper border border-ink/15 rounded-lg p-3 shadow-xs">
               <div className="flex items-center justify-between gap-2 mb-2">

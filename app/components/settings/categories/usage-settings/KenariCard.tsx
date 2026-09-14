@@ -37,29 +37,32 @@ export function KenariCard({ report }: KenariCardProps) {
 
   return (
     <>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 items-stretch">
-        <StatCard value={balanceValue} label="Wallet balance" hint={balanceHint} />
-        <StatCard
-          value={quota?.planName ?? '—'}
-          label="Active plan"
-          hint={quota ? 'kenari quota plan' : 'Quota unavailable'}
-        />
-        <StatCard
-          value={usage ? formatNumber(usage.totalRequests) : '—'}
-          label="Requests (30 days)"
-          hint={usage ? 'Across all models' : 'Usage report unavailable'}
-        />
-        <StatCard
-          value={usage ? formatRp(usage.totalCostRp) : '—'}
-          label="Cost (30 days)"
-          hint={usage ? 'Billed in Rupiah' : 'Usage report unavailable'}
-        />
+      <div className="@container">
+        <div className="grid grid-cols-3 @[540px]:grid-cols-5 gap-2.5 items-stretch">
+          <StatCard value={balanceValue} label="Wallet balance" hint={balanceHint} />
+          <StatCard
+            value={quota?.planName ?? '—'}
+            label="Active plan"
+            hint={quota ? 'kenari quota plan' : 'Quota unavailable'}
+          />
+          <StatCard
+            value={usage ? formatNumber(usage.totalRequests) : '—'}
+            label="Requests (30 days)"
+            hint={usage ? 'Across all models' : 'Usage report unavailable'}
+          />
+          <StatCard
+            value={usage ? formatRp(usage.totalCostRp) : '—'}
+            label="Cost (30 days)"
+            hint={usage ? 'Billed in Rupiah' : 'Usage report unavailable'}
+          />
         <StatCard
           value={usage ? formatCompactTokens(processedTokens) : '—'}
           label="Tokens processed (30 days)"
           hint={usage ? 'Input + output' : 'Usage report unavailable'}
           tone="muted"
+          className="col-span-2 @[540px]:col-span-1"
         />
+        </div>
       </div>
 
       <QuotaSection quota={quota} />
