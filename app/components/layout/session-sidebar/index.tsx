@@ -5,8 +5,11 @@ import { SessionSidebarHeader } from '@/components/layout/session-sidebar/Header
 import { SessionSidebarToolbar, type SortOption } from '@/components/layout/session-sidebar/Toolbar';
 import { SessionSidebarFooter } from '@/components/layout/session-sidebar/Footer';
 import { SessionSidebarSessionList } from '@/components/layout/session-sidebar/SessionList';
+import { Toast } from '@/components/common/Toast';
 import { pendingSessionTitle } from '@/lib/omp/session/default-title';
 import { useScrollbarFade } from '@/hooks/ui/scrollbar-fade';
+import { useToasts } from '@/hooks/ui/toasts';
+import { useUpdates } from '@/hooks/ui/updates';
 
 export function SessionSidebar({ className = '', folders = [], onClose, appSettings = {} }: { className?: string, folders?: any[], onClose?: () => void, appSettings?: Record<string, any> }) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -50,6 +53,8 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
   // Modals for new workspace and scheduler
   const [newWorkspaceOpen, setNewWorkspaceOpen] = useState(false);
   const [schedulerOpen, setSchedulerOpen] = useState(false);
+  const updates = useUpdates();
+  const { toasts, pushToast, dismissToast } = useToasts();
   
   // Sidebar inline states
   const [isSearchVisible, setIsSearchVisible] = useState(false);
@@ -251,14 +256,27 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
           onNewSessionForFolder={handleNewSessionForFolder}
         />
 
-        <SessionSidebarFooter onSettings={() => setSettingsOpen(true)} onInfo={() => setInfoOpen(true)} />
+        <SessionSidebarFooter
+          onSettings={() => setSettingsOpen(true)}
+          onInfo={() => setInfoOpen(true)}
+          updateAvailable={updates.hasUpdate}
+          onUpdateClick={() => {
+            setInfoOpen(true);
+            void updates.check();
+          }}
+        />
       </aside>
 
       {/* Settings Modal */}
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} appSettings={appSettings} />
 
       {/* Info Modal */}
-      <AboutModal isOpen={infoOpen} onClose={() => setInfoOpen(false)} />
+      <AboutModal
+        isOpen={infoOpen}
+        onClose={() => setInfoOpen(false)}
+        updates={updates}
+        onToast={pushToast}
+      />
 
       {/* New Workspace Modal */}
       <NewWorkspaceModal
@@ -280,6 +298,10 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
 
       {/* Scheduler Modal */}
       <SchedulerModal isOpen={schedulerOpen} onClose={() => setSchedulerOpen(false)} />
+
+      {toasts.map(t => (
+        <Toast key={t.id} toast={t} onDismiss={dismissToast} />
+      ))}
     </>
   );
 }

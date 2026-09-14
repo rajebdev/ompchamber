@@ -5,6 +5,7 @@ import { MobileSessionHeader } from '@/components/mobile/mobile-session-sidebar/
 import { MobileSessionToolbar, type MobileSortOption } from '@/components/mobile/mobile-session-sidebar/Toolbar';
 import { MobileSessionList } from '@/components/mobile/mobile-session-sidebar/List';
 import { MobileSessionFooter } from '@/components/mobile/mobile-session-sidebar/Footer';
+import { Toast } from '@/components/common/Toast';
 import { 
   SettingsModal, 
   AboutModal, 
@@ -13,6 +14,8 @@ import {
 } from '@/components/layout/session-sidebar/Modals';
 import { useOnClickOutside } from '@/hooks/ui/on-click-outside';
 import { useScrollbarFade } from '@/hooks/ui/scrollbar-fade';
+import { useToasts } from '@/hooks/ui/toasts';
+import { useUpdates } from '@/hooks/ui/updates';
 
 interface MobileSessionSidebarProps {
   folders: WorkspaceFolderData[];
@@ -47,6 +50,8 @@ export function MobileSessionSidebar({
   const [aboutOpen, setAboutOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const revalidator = useRevalidator();
+  const updates = useUpdates();
+  const { toasts, pushToast, dismissToast } = useToasts();
 
   useEffect(() => {
     const handleWorkspaceUpdated = () => revalidator.revalidate();
@@ -212,6 +217,11 @@ export function MobileSessionSidebar({
       <MobileSessionFooter
         onSettings={() => setSettingsOpen(true)}
         onAbout={() => setAboutOpen(true)}
+        updateAvailable={updates.hasUpdate}
+        onUpdateClick={() => {
+          setAboutOpen(true);
+          void updates.check();
+        }}
       />
 
       {/* Reusable Modals */}
@@ -232,7 +242,13 @@ export function MobileSessionSidebar({
       <AboutModal
         isOpen={aboutOpen}
         onClose={() => setAboutOpen(false)}
+        updates={updates}
+        onToast={pushToast}
       />
+
+      {toasts.map(t => (
+        <Toast key={t.id} toast={t} onDismiss={dismissToast} />
+      ))}
 
     </div>
   );
