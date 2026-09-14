@@ -12,64 +12,107 @@ export function ProjectSettings() {
 
   useEffect(() => {
     let active = true;
-    fetch('/api/settings/projects')
-      .then(res => res.json())
-      .then(data => {
+    const loadProjects = async () => {
+      try {
+        const response = await fetch('/api/settings/projects');
+        const data = await response.json();
         if (!active) return;
-        if (data?.projects && Array.isArray(data.projects)) {
+        if (Array.isArray(data?.projects)) {
           setProjects(data.projects);
-          if (data.projects.length > 0) {
-            setSelectedProjectId(data.projects[0].id);
-          }
+          setSelectedProjectId((current) =>
+            data.projects.some((project: ProjectConfigItem) => project.id === current)
+              ? current
+              : data.projects[0]?.id || '',
+          );
         }
-        if (data?.availableModels) setAvailableModels(data.availableModels);
-        if (data?.accentColorOptions) setAccentColorOptions(data.accentColorOptions);
-      })
-      .catch(err => console.error('Failed to load projects from API:', err))
-      .finally(() => {
+        if (Array.isArray(data?.availableModels)) setAvailableModels(data.availableModels);
+        if (Array.isArray(data?.accentColorOptions)) setAccentColorOptions(data.accentColorOptions);
+      } catch (error) {
+        console.error('Failed to load projects from API:', error);
+      } finally {
         if (active) setIsLoading(false);
-      });
+      }
+    };
+
+    void loadProjects();
     return () => { active = false; };
   }, []);
 
-  const persistProjects = (updated: ProjectConfigItem[]) => {
-    setProjects(updated);
-    fetch('/api/settings/projects', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projects: updated }),
-    }).catch(err => console.error('Failed to save projects via API:', err));
+  const persistProjectField = async <K extends keyof ProjectConfigItem>(
+    project: ProjectConfigItem,
+    field: K,
+    value: ProjectConfigItem[K],
+  ) => {
+    if (project.folderId === undefined) return;
+    try {
+      const response = await fetch('/api/settings/projects', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project: {
+            folderId: project.folderId,
+            [field]: value === undefined ? null : value,
+          },
+        }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      window.dispatchEvent(new CustomEvent('omp:workspace-updated', {
+        detail: { folderId: project.folderId },
+      }));
+    } catch (error) {
+      console.error('Failed to save project settings:', error);
+    }
   };
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId) || projects[0];
 
-  const handleAddProject = () => {
-    const newIndex = projects.length + 1;
-    const newName = `Project ${newIndex}`;
-    const newProject: ProjectConfigItem = {
-      id: `proj-${Date.now()}`,
-      name: newName,
-      path: `/Users/rajebdev/JatisMobile/${newName}`,
-      model: 'Not selected',
-      accentColor: '#38bdf8',
-      icon: 'default',
-    };
+  const handleAddProject = async () => {
+    const newName = `Project ${projects.length + 1}`;
+    try {
+      const response = await fetch('/api/folders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data?.success) throw new Error(data?.error || `HTTP ${response.status}`);
+      const folderId = data.folder?.id;
+      if (typeof folderId !== 'number') throw new Error('Created workspace has no folder id');
 
-    const updated = [...projects, newProject];
-    persistProjects(updated);
-    setSelectedProjectId(newProject.id);
+      const newProject: ProjectConfigItem = {
+        id: `folder-${folderId}`,
+        folderId,
+        name: data.folder.name,
+        path: data.folder.project_path || '',
+        model: 'Not selected',
+        accentColor: '',
+        icon: 'default',
+        isPinned: false,
+        isExpanded: true,
+      };
+      setProjects((current) => [...current, newProject]);
+      setSelectedProjectId(newProject.id);
+      window.dispatchEvent(new CustomEvent('omp:workspace-updated', { detail: { folderId } }));
+    } catch (error) {
+      console.error('Failed to add project:', error);
+    }
   };
 
-  const handleDeleteProject = () => {
+  const handleDeleteProject = async () => {
     if (projects.length <= 1) return;
     const targetId = selectedProjectId;
-    const updated = projects.filter((p) => p.id !== targetId);
-    setProjects(updated);
-    setSelectedProjectId(updated[0]?.id || '');
-
-    fetch(`/api/settings/projects?id=${encodeURIComponent(targetId)}`, {
-      method: 'DELETE',
-    }).catch(err => console.error('Failed to delete project via API:', err));
+    try {
+      const response = await fetch(`/api/settings/projects?id=${encodeURIComponent(targetId)}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const updated = projects.filter((project) => project.id !== targetId);
+      setProjects(updated);
+      setSelectedProjectId(updated[0]?.id || '');
+      window.dispatchEvent(new CustomEvent('omp:workspace-updated'));
+    } catch (error) {
+      console.error('Failed to delete project:', error);
+    }
   };
 
   const handleUpdateField = <K extends keyof ProjectConfigItem>(
@@ -77,14 +120,34 @@ export function ProjectSettings() {
     value: ProjectConfigItem[K]
   ) => {
     if (!selectedProject) return;
-    const updated = projects.map((p) => {
-      if (p.id === selectedProject.id) {
-        return { ...p, [field]: value };
-      }
-      return p;
-    });
-    persistProjects(updated);
+    setProjects((current) => current.map((project) => (
+      project.id === selectedProject.id ? { ...project, [field]: value } : project
+    )));
+    void persistProjectField(selectedProject, field, value);
   };
+
+  useEffect(() => {
+    const handleWorkspaceUpdated = () => {
+      void fetch('/api/settings/projects')
+        .then((response) => response.json())
+        .then((data) => {
+          if (Array.isArray(data?.projects)) {
+            setProjects(data.projects);
+            setSelectedProjectId((current) =>
+              data.projects.some((project: ProjectConfigItem) => project.id === current)
+                ? current
+                : data.projects[0]?.id || '',
+            );
+          }
+        })
+        .catch((error: unknown) => {
+          console.error('Failed to refresh projects:', error);
+        });
+    };
+
+    window.addEventListener('omp:workspace-updated', handleWorkspaceUpdated);
+    return () => window.removeEventListener('omp:workspace-updated', handleWorkspaceUpdated);
+  }, []);
 
   if (isLoading) {
     return (
