@@ -7,6 +7,7 @@ import {
   syncProviderModelsToCatalog,
 } from '@/lib/models/provider-models';
 import { buildAvailableProviderPresets } from '@/lib/models/provider-presets';
+import { removeLegacyKenariModels } from '@/lib/models/provider-cleanup';
 import { useToasts } from '@/hooks/ui/toasts';
 import { Toast } from '@/components/common/Toast';
 import { ProviderSidebarList } from '@/components/settings/categories/provider-settings/SidebarList';
@@ -46,7 +47,6 @@ export function ProviderSettings({
       setIsAddModalOpen(true);
     }
   }, [autoOpenAdd]);
-
   useEffect(() => {
     let active = true;
     fetch('/api/settings/providers')
@@ -73,7 +73,6 @@ export function ProviderSettings({
       });
     return () => { active = false; };
   }, []);
-
   const persistProviders = (updated: ProviderItem[]) => {
     setProviders(updated);
     fetch('/api/settings/providers', {
@@ -82,7 +81,6 @@ export function ProviderSettings({
       body: JSON.stringify({ providers: updated }),
     }).catch(err => console.error('Failed to save providers via API:', err));
   };
-
   const connectedProviders = useMemo(
     () => providers.filter((provider) => provider.status === 'connected'),
     [providers],
@@ -92,7 +90,6 @@ export function ProviderSettings({
     [providers, presetProviders],
   );
   const selectedProvider = connectedProviders.find((p) => p.id === selectedProviderId) || connectedProviders[0];
-
   const handleAddProvider = (newProvider: ProviderItem, options: { fetchedCount: number }) => {
     const updated = [...providers, newProvider];
     persistProviders(updated);
@@ -112,7 +109,6 @@ export function ProviderSettings({
     // Also sync the new provider default models to the catalog endpoint
     void syncProviderModelsToCatalog(newProvider.name, newProvider.models);
   };
-
   const handleReconnect = (updates: Partial<ProviderItem>) => {
     if (!selectedProvider) return;
     const updated = providers.map((p) => {
@@ -123,7 +119,6 @@ export function ProviderSettings({
     });
     persistProviders(updated);
   };
-
   const handleFetchModels = async (credentials: { apiKey?: string; baseUrl?: string }) => {
     if (!selectedProvider || isFetchingModels) return;
     const baseUrl = credentials.baseUrl || selectedProvider.baseUrl;
@@ -143,18 +138,24 @@ export function ProviderSettings({
         pushToast(result.error || 'Failed to fetch models from the provider.', 'error');
         return;
       }
-      const { merged, addedCount } = mergeProviderModels(selectedProvider.models, result.models);
-      if (addedCount === 0) {
-        pushToast('No new models found — all fetched models already exist.', 'success');
-        return;
+      const cleanedExistingModels = removeLegacyKenariModels(selectedProvider, selectedProvider.models);
+      const removedCount = selectedProvider.models.length - cleanedExistingModels.length;
+      const { merged, addedCount } = mergeProviderModels(cleanedExistingModels, result.models);
+      if (addedCount > 0 || removedCount > 0) {
+        handleReconnect({ models: merged });
       }
-      handleReconnect({ models: merged });
-      pushToast(`Fetched ${addedCount} new model${addedCount === 1 ? '' : 's'} from the provider.`, 'success');
+      if (addedCount > 0) {
+        pushToast(`Fetched ${addedCount} new model${addedCount === 1 ? '' : 's'} from the provider.`, 'success');
+      } else if (removedCount > 0) {
+        pushToast('Removed legacy fallback models from the provider.', 'success');
+      } else {
+        pushToast('No new models found — all fetched models already exist.', 'success');
+      }
       if (result.omp?.written) {
         const parts: string[] = [];
         if (result.omp.addedCount > 0) parts.push(`${result.omp.addedCount} new model${result.omp.addedCount === 1 ? '' : 's'} registered`);
         if (result.omp.backfilledCount > 0) parts.push(`${result.omp.backfilledCount} model${result.omp.backfilledCount === 1 ? '' : 's'} enriched`);
-        pushToast(`omp models.yml updated: ${parts.join(', ')}.`, 'success');
+        pushToast(`omp models.yml updated${parts.length > 0 ? `: ${parts.join(', ')}` : ''}.`, 'success');
       } else if (result.omp && !result.omp.written && result.omp.reason) {
         pushToast(`omp models.yml not updated: ${result.omp.reason}`, 'error');
       }
@@ -162,7 +163,6 @@ export function ProviderSettings({
       setIsFetchingModels(false);
     }
   };
-
   const handleFetchModelsFromList = async () => {
     if (!selectedProvider) return;
     await handleFetchModels({
@@ -170,7 +170,6 @@ export function ProviderSettings({
       baseUrl: selectedProvider.baseUrl,
     });
   };
-
   const handleOmpAuthSuccess = () => {
     if (!selectedProvider) return;
     const updated = providers.map((p) => (
@@ -178,7 +177,6 @@ export function ProviderSettings({
     ));
     setProviders(updated);
   };
-
   const handleToggleDisconnect = () => {
     if (!selectedProvider) return;
     const newStatus =
@@ -192,7 +190,6 @@ export function ProviderSettings({
     persistProviders(updated);
     setSelectedProviderId(connectedProviders.find((provider) => provider.id !== selectedProvider.id)?.id || '');
   };
-
   const handleHideAll = () => {
     if (!selectedProvider) return;
     const updated = providers.map((p) => {
@@ -206,7 +203,6 @@ export function ProviderSettings({
     });
     persistProviders(updated);
   };
-
   const handleShowAll = () => {
     if (!selectedProvider) return;
     const updated = providers.map((p) => {
@@ -220,7 +216,6 @@ export function ProviderSettings({
     });
     persistProviders(updated);
   };
-
   const handleToggleModelVisibility = (modelId: string) => {
     if (!selectedProvider) return;
     const updated = providers.map((p) => {
@@ -236,7 +231,6 @@ export function ProviderSettings({
     });
     persistProviders(updated);
   };
-
   const handleSaveModelConfig = (modelId: string, updates: Partial<ProviderModel>) => {
     if (!selectedProvider) return;
     const updated = providers.map((p) => {

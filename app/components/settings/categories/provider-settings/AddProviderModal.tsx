@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { X, Check, Globe, Key, Layers, DownloadCloud } from 'lucide-react';
-import type { ProviderItem, ProviderModel } from '@/types';
+import type { ProviderItem } from '@/types';
 import type { PresetProviderOption } from '@/types/settings/provider';
-import { fetchProviderModelsRemote, mergeProviderModels } from '@/lib/models/provider-models';
+import { fetchProviderModelsRemote } from '@/lib/models/provider-models';
 import { ProviderIcon } from '@/components/settings/categories/provider-settings/Icons';
 
 interface AddProviderModalProps {
@@ -49,27 +49,6 @@ export function AddProviderModal({
     try {
       const preset = presetList.find((p) => p.id === selectedPresetId);
       const timestamp = Date.now();
-      const fallbackModels: ProviderModel[] = [
-        {
-          id: `model-${timestamp}-1`,
-          name: `${name} Default Model`,
-          contextWindow: '128K ctx · 16K out',
-          hasTools: true,
-          hasVision: true,
-          isVisible: true,
-          temperature: 0.7,
-        },
-        {
-          id: `model-${timestamp}-2`,
-          name: `${name} Fast / Flash`,
-          contextWindow: '1M ctx · 32K out',
-          hasTools: true,
-          hasVision: false,
-          isVisible: true,
-          temperature: 0.6,
-        },
-      ];
-
       const newProvider: ProviderItem = {
         id: `provider-${timestamp}`,
         name: name.trim(),
@@ -79,14 +58,13 @@ export function AddProviderModal({
         configuredIn: 'auth credentials',
         baseUrl: baseUrl.trim(),
         apiKey: apiKey.trim() || 'sk-custom-••••••••••••••••••••••••',
-        models: fallbackModels,
+        models: [],
       };
 
       const fetchResult = await fetchProviderModelsRemote(baseUrl.trim(), apiKey.trim() || undefined, newProvider.slug, true);
       if (fetchResult.ok && fetchResult.models) {
-        const { merged, addedCount } = mergeProviderModels(fallbackModels, fetchResult.models);
-        newProvider.models = merged;
-        onAddProvider(newProvider, { fetchedCount: addedCount });
+        newProvider.models = fetchResult.models;
+        onAddProvider(newProvider, { fetchedCount: fetchResult.models.length });
       } else {
         onAddProvider(newProvider, { fetchedCount: -1 });
       }
