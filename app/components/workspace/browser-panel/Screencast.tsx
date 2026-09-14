@@ -1,11 +1,11 @@
 import { Globe, Loader2, Radio } from 'lucide-react';
 import { ActivityToasts } from '@/components/workspace/browser-panel/ActivityToasts';
+import { VIEWPORT_CLASSES } from '@/components/common/viewport';
 import type { BrowserPanelAction, BrowserTabInfo, BrowserViewStatus, ViewportMode } from '@/types';
 
 interface BrowserScreencastProps {
   status: BrowserViewStatus;
   url?: string;
-  title?: string;
   tabs: BrowserTabInfo[];
   targetId?: string;
   frameSrc?: string;
@@ -14,15 +14,6 @@ interface BrowserScreencastProps {
   viewportMode: ViewportMode;
   zoomLevel: number;
 }
-
-const VIEWPORT_CLASSES: Record<ViewportMode, string> = {
-  'desktop-16-9': 'w-full max-w-[1280px] aspect-video max-h-full border border-ink/20 rounded-lg shadow-md overflow-hidden my-auto',
-  laptop: 'w-[1024px] max-w-full h-[768px] max-h-full border border-ink/20 rounded-lg shadow-md overflow-hidden my-auto',
-  tablet: 'w-[768px] max-w-full h-[1024px] max-h-full border border-ink/20 rounded-lg shadow-md overflow-hidden my-auto',
-  mobile: 'w-[375px] max-w-full h-[667px] max-h-full border border-ink/20 rounded-xl shadow-md overflow-hidden my-auto',
-  'mobile-lg': 'w-[414px] max-w-full h-[896px] max-h-full border border-ink/20 rounded-xl shadow-md overflow-hidden my-auto',
-  responsive: 'w-full h-full border-0',
-};
 
 const OFFLINE_COPY: Record<Exclude<BrowserViewStatus, 'live'>, { title: string; body: string }> = {
   'agent-offline': {

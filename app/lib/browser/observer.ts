@@ -32,7 +32,7 @@ const OBSERVER_KINDS = new Set<BrowserActionKind>(['click', 'type', 'press', 'su
  * and `Runtime.evaluate`. Special keys are reported immediately; typing is
  * debounced to one toast per burst.
  */
-export const OBSERVER_SOURCE = [
+const OBSERVER_SOURCE = [
   '(function () {',
   '  if (window.top !== window) return;',
   '  if (window.__ompChamberObserver) return;',

@@ -12,9 +12,10 @@
  *   no-tab | live, plus url/title/targetId/tabs when known)
  * - `frame` → BrowserViewFrame JSON (base64 JPEG + dimensions + targetId)
  *
- * While the agent, the shared browser, or an owned tab is missing, the route
- * emits a coarse state and keeps polling every 2s instead of erroring — any of
- * those can appear later in the session's life. Frames are dropped under
+ * While the agent, the shared browser, an owned tab, or a chamber-user tab is
+ * missing, the route emits a coarse state and keeps polling every 2s instead
+ * of erroring — any of those can appear later in the session's life. A live
+ * user tab alone (agent has no tab) still streams. Frames are dropped under
  * consumer backpressure (desiredSize < 0); the screencast itself is already
  * acked upstream, so dropping is lossless latest-wins.
  */
@@ -113,9 +114,9 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
         send('state', state);
       };
 
-      const emitAction = (action: { kind: BrowserPanelAction['kind']; label: string }, source: BrowserPanelAction['source']): void => {
+      const emitAction = (action: { kind: BrowserPanelAction['kind']; label: string }): void => {
         actionSeq += 1;
-        const payload: BrowserPanelAction = { id: `act-${actionSeq}`, kind: action.kind, label: action.label, source, at: Date.now() };
+        const payload: BrowserPanelAction = { id: `act-${actionSeq}`, kind: action.kind, label: action.label };
         send('action', payload);
       };
 
@@ -152,13 +153,13 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
               if (event.type === 'tool_execution_start') {
                 const args = isRecord(event.args) ? event.args : {};
                 for (const action of extractEvalActions({ code: args.code, title: args.title })) {
-                  emitAction(action, 'agent');
+                  emitAction(action);
                 }
                 void tick();
               } else if (event.type === 'tool_execution_update') {
                 void tick();
               } else if (event.type === 'tool_execution_end' && event.isError === true) {
-                emitAction({ kind: 'error', label: 'Aksi browser gagal' }, 'agent');
+                emitAction({ kind: 'error', label: 'Aksi browser gagal' });
               }
             });
           }
@@ -199,7 +200,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
               preferTargetId,
               getOwnedTargetIds: () => readOwnedTargetIds(runtime.runtimeDir, runtime.daemonName, pid),
               onFrame: emitFrame,
-              onAction: (action) => emitAction(action, 'page'),
+              onAction: (action) => emitAction(action),
               onState: (state) => {
                 emitState(state);
                 if (state.status === 'browser-offline') detachViewer();

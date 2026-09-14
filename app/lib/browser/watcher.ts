@@ -21,7 +21,7 @@ export interface TargetWatcherHandle {
   close: () => void;
 }
 
-export interface TargetWatcherOptions {
+interface TargetWatcherOptions {
   getOwnedTargetIds: () => Promise<string[]>;
   onOwnedTarget: (targetId: string) => void;
 }

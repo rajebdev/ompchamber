@@ -1,21 +1,28 @@
+import { useCallback } from 'react';
 import { BrowserAddressBar } from '@/components/workspace/browser-panel/AddressBar';
 import { BrowserScreencast } from '@/components/workspace/browser-panel/Screencast';
 import { useScreencast } from '@/hooks/browser/use-screencast';
 import { useSessionState } from '@/hooks/workspace/session-state';
+import { emitBrowserPageContext } from '@/lib/browser/page-context';
 import type { ViewportMode } from '@/types';
 
 interface BrowserPanelProps {
   className?: string;
+  /** False while the panel is hidden (desktop right panel / mobile tab): pauses the SSE viewer. */
+  active?: boolean;
 }
 
 /**
- * Live viewer for the browser tab this session's omp agent drives in the
+ * Read-only live view of the browser tab this session's omp agent drives in the
  * project-shared Chromium (see app/lib/browser/ + /api/browser/:id/stream).
+ *
+ * This panel only mirrors what the agent does. Interactive browsing belongs to
+ * the separate user-browser panel, which runs its own private Chromium.
  */
-export function BrowserPanel({ className = '' }: BrowserPanelProps) {
+export function BrowserPanel({ className = '', active = true }: BrowserPanelProps) {
   const [viewportMode, setViewportMode] = useSessionState<ViewportMode>('browser.viewportMode', 'responsive');
   const [zoomLevel, setZoomLevel] = useSessionState<number>('browser.zoomLevel', 100);
-  const { status, url, tabs, targetId, frameSrc, actions, selectTarget, reconnect } = useScreencast();
+  const { status, url, title, tabs, targetId, frameSrc, actions, selectTarget, reconnect } = useScreencast(active);
 
   const handleOpenExternal = () => {
     if (!url) return;
@@ -24,6 +31,11 @@ export function BrowserPanel({ className = '' }: BrowserPanelProps) {
     window.open(target, '_blank', 'noopener,noreferrer');
   };
 
+  const handleIncludeInChat = useCallback(() => {
+    if (!url) return;
+    emitBrowserPageContext({ url, title });
+  }, [url, title]);
+
   return (
     <div className={`flex flex-col h-full w-full bg-paper text-ink overflow-hidden select-none ${className}`}>
       <BrowserAddressBar
@@ -31,6 +43,7 @@ export function BrowserPanel({ className = '' }: BrowserPanelProps) {
         status={status}
         viewportMode={viewportMode}
         zoomLevel={zoomLevel}
+        onIncludeInChat={handleIncludeInChat}
         onReconnect={reconnect}
         onOpenExternal={handleOpenExternal}
         onChangeViewport={setViewportMode}

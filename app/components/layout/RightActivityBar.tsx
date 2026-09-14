@@ -1,6 +1,6 @@
-import { Files, Search, GitBranch, Terminal, Layers, Globe, BarChart3 } from 'lucide-react';
+import { Files, Search, GitBranch, Terminal, Layers, Globe, Bot, BarChart3 } from 'lucide-react';
 
-export type RightPanelType = 'files' | 'search' | 'git' | 'terminal' | 'context' | 'browser' | 'usage';
+export type RightPanelType = 'files' | 'search' | 'git' | 'terminal' | 'context' | 'user-browser' | 'browser' | 'usage';
 
 interface RightActivityBarProps {
   activePanel: RightPanelType;
@@ -55,11 +55,18 @@ export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen }: Ri
           <Terminal size={16} />
         </button>
         <button
-          className={getBtnClass('browser')}
-          onClick={() => onChangePanel('browser')}
-          title="Browser"
+          className={getBtnClass('user-browser')}
+          onClick={() => onChangePanel('user-browser')}
+          title="Browser (Anda)"
         >
           <Globe size={16} />
+        </button>
+        <button
+          className={getBtnClass('browser')}
+          onClick={() => onChangePanel('browser')}
+          title="Browser Agent"
+        >
+          <Bot size={16} />
         </button>
         <button
           className={getBtnClass('usage')}

@@ -20,11 +20,13 @@
  * - files.expandedPaths       string[]
  * - files.searchQuery         string
  * - files.activeRepo          string
- * - browser.history           string[]
- * - browser.historyIndex      number
- * - browser.inputUrl          string
  * - browser.viewportMode      string
  * - browser.zoomLevel         number
+ * - userBrowser.history       string[]
+ * - userBrowser.historyIndex  number
+ * - userBrowser.inputUrl      string
+ * - userBrowser.viewportMode  string
+ * - userBrowser.zoomLevel     number
  * - terminal.activeRepo       string
  * - terminal.cwd              string
  * - terminal.commandHistory   string[]

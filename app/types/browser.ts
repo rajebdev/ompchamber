@@ -12,8 +12,6 @@ export interface BrowserTabInfo {
   targetId: string;
   url: string;
   title: string;
-  /** True when the tab was opened by the session's own omp process. */
-  owned: boolean;
 }
 
 /** Coarse viewer state pushed on every meaningful change. */
@@ -29,8 +27,6 @@ export interface BrowserViewState {
 export interface BrowserViewFrame {
   data: string;
   mimeType: string;
-  width: number;
-  height: number;
   targetId: string;
 }
 
@@ -53,7 +49,10 @@ export interface BrowserPanelAction {
   id: string;
   kind: BrowserActionKind;
   label: string;
-  /** `agent` = intent parsed from the eval script; `page` = observed live via CDP. */
-  source: 'agent' | 'page';
-  at: number;
+}
+
+/** Page context handed from a browser panel to the chat composer draft. */
+export interface BrowserPageContext {
+  url: string;
+  title?: string;
 }

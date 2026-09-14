@@ -6,6 +6,7 @@ import { useChatTimelineQueue } from '@/hooks/chat/timeline/queue';
 import { useChatTimelineScroll } from '@/hooks/chat/timeline/scroll';
 import { useChatTimelineActions } from '@/hooks/chat/timeline/actions';
 import { useChatTimelineSend } from '@/hooks/chat/timeline/send';
+import { useBrowserPageContextInsert } from '@/hooks/chat/timeline/browser-context';
 import { normalizeNoticePositions } from '@/lib/chat/order';
 import { createOmpAgentCallbacks } from '@/lib/chat/timeline/omp-callbacks';
 import { useSessionState } from '@/hooks/workspace/session-state';
@@ -40,6 +41,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   const { scrollRef, showScrollBottom, setShowScrollBottom, isScrolling, handleScroll, scrollToBottom } = useChatTimelineScroll();
 
   const [inputValue, setInputValue] = useSessionState<string>('chat.draft', '');
+  useBrowserPageContextInsert(setInputValue);
   const [inputAttachments, setInputAttachments] = useSessionState<Attachment[]>('chat.draftAttachments', []);
   const [localMessages, setLocalMessages] = useState<ChatMessageData[]>([]);
   const [sessionData, setSessionData] = useState<{ id?: string; title?: string; model?: string | { provider: string; modelId: string }; thinkingLevel?: string; messages?: any[] } | null>(null);

@@ -8,6 +8,7 @@ import { GitPanel } from '@/components/workspace/git-panel/index';
 import { TerminalPanel } from '@/components/workspace/terminal-panel/index';
 import { ContextPanel } from '@/components/workspace/context-panel/index';
 import { BrowserPanel } from '@/components/workspace/browser-panel/index';
+import { UserBrowserPanel } from '@/components/workspace/user-browser-panel/index';
 import { UsagePanel } from '@/components/workspace/usage-panel/index';
 import { RightActivityBar, type RightPanelType } from '@/components/layout/RightActivityBar';
 import type { WorkspaceFolderData } from '@/types';
@@ -123,7 +124,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
         {showRightPanel && (
           <>
             <CustomResizeHandle />
-            <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={savedSizesRef.current.right ?? rightDefault} minSize={activeRightPanel === 'browser' ? 320 : (activeRightPanel === 'context' || activeRightPanel === 'usage') ? 420 : activeRightPanel === 'git' ? 260 : 200} maxSize={1200} collapsible>
+            <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={savedSizesRef.current.right ?? rightDefault} minSize={activeRightPanel === 'browser' || activeRightPanel === 'user-browser' ? 320 : (activeRightPanel === 'context' || activeRightPanel === 'usage') ? 420 : activeRightPanel === 'git' ? 260 : 200} maxSize={1200} collapsible>
               {activeRightPanel === 'files' && <FileExplorer className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} onOpenFile={onOpenFile} refreshKey={refreshKey} onRefresh={onRefreshWorkspace} />}
               {activeRightPanel === 'search' && <SearchPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} />}
               {activeRightPanel === 'git' && <GitPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} refreshKey={refreshKey} />}
@@ -131,8 +132,11 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
               <div className={`w-full h-full ${activeRightPanel === 'terminal' ? 'block' : 'hidden'}`}>
                 <TerminalPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} />
               </div>
+              <div className={`w-full h-full ${activeRightPanel === 'user-browser' ? 'block' : 'hidden'}`}>
+                <UserBrowserPanel className="w-full h-full" />
+              </div>
               <div className={`w-full h-full ${activeRightPanel === 'browser' ? 'block' : 'hidden'}`}>
-                <BrowserPanel className="w-full h-full" />
+                <BrowserPanel className="w-full h-full" active={activeRightPanel === 'browser'} />
               </div>
               {activeRightPanel === 'usage' && <UsagePanel className="w-full h-full" />}
             </Panel>

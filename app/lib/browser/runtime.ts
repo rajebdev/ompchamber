@@ -25,7 +25,7 @@ const DAEMON_NAMES = ['omp.browser.headless', 'omp.browser.headed'] as const;
 /** File Chromium writes next to its profile with the live CDP endpoint. */
 const DEVTOOLS_ACTIVE_PORT = 'DevToolsActivePort';
 
-export interface ProjectRuntime {
+interface ProjectRuntime {
   runtimeDir: string;
   daemonName: string;
   /** CDP TCP port (DevToolsActivePort line 1). */

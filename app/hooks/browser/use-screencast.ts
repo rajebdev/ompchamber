@@ -8,14 +8,13 @@ import type {
   BrowserViewStatus,
 } from '@/types';
 
-export interface UseScreencastResult {
+interface UseScreencastResult {
   status: BrowserViewStatus;
   url?: string;
   title?: string;
   tabs: BrowserTabInfo[];
   targetId?: string;
   frameSrc?: string;
-  lastFrameAt?: number;
   actions: BrowserPanelAction[];
   /** Pin the viewer to one tab id; pass an empty string to follow the newest owned tab. */
   selectTarget: (targetId: string) => void;
@@ -39,12 +38,16 @@ type VisibleAction = BrowserPanelAction & { expiresAt: number };
  * Opens an EventSource against `/api/browser/:sessionId/stream`, keeps only the
  * newest frame in memory, and reconnects with capped backoff when the stream is
  * closed. The server never 404s: status changes arrive as `state` events.
+ *
+ * `active=false` (panel hidden on desktop/mobile) fully closes the EventSource
+ * instead of letting it idle — the server-side viewer/watcher release through
+ * the request-abort close path — and reconnects once when the panel activates.
+ * No reconnect timers run while paused.
  */
-export function useScreencast(): UseScreencastResult {
+export function useScreencast(active = true): UseScreencastResult {
   const { sessionId, ready } = useSessionStateContext();
   const [state, setState] = useState<BrowserViewState>(INITIAL_STATE);
   const [frameSrc, setFrameSrc] = useState<string | undefined>(undefined);
-  const [lastFrameAt, setLastFrameAt] = useState<number | undefined>(undefined);
   const [actions, setActions] = useState<VisibleAction[]>([]);
   const [selectedTarget, setSelectedTarget] = useState<string>('');
   const [nonce, setNonce] = useState(0);
@@ -80,14 +83,13 @@ export function useScreencast(): UseScreencastResult {
   useEffect(() => {
     setState(INITIAL_STATE);
     setFrameSrc(undefined);
-    setLastFrameAt(undefined);
     setSelectedTarget('');
     queueRef.current = [];
     setActions([]);
   }, [sessionId]);
 
   useEffect(() => {
-    if (!ready || !sessionId) return;
+    if (!ready || !sessionId || !active) return;
     let disposed = false;
 
     const connect = () => {
@@ -118,7 +120,6 @@ export function useScreencast(): UseScreencastResult {
           const current = currentTargetRef.current;
           if (current && frame.targetId && frame.targetId !== current) return;
           setFrameSrc(`data:${frame.mimeType};base64,${frame.data}`);
-          setLastFrameAt(Date.now());
         } catch {
           // Ignore malformed frame payloads.
         }
@@ -167,7 +168,7 @@ export function useScreencast(): UseScreencastResult {
       sourceRef.current?.close();
       sourceRef.current = null;
     };
-  }, [ready, sessionId, selectedTarget, nonce]);
+  }, [ready, sessionId, selectedTarget, nonce, active]);
 
   return {
     status: state.status,
@@ -176,7 +177,6 @@ export function useScreencast(): UseScreencastResult {
     tabs: state.tabs,
     targetId: state.targetId,
     frameSrc,
-    lastFrameAt,
     actions,
     selectTarget,
     reconnect,

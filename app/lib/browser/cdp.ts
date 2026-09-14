@@ -15,7 +15,7 @@ import { isRecord, readString } from '@/lib/browser/util';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 
-export type CdpEventHandler = (method: string, params: unknown, sessionId?: string) => void;
+type CdpEventHandler = (method: string, params: unknown, sessionId?: string) => void;
 
 interface PendingCommand {
   method: string;

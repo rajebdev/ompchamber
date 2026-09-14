@@ -7,10 +7,11 @@
  * Screen-cast manager for the project-shared omp Chromium.
  *
  * One viewer handle per SSE client: it picks a live page target (the caller's
- * preference, else the newest owned tab, else the newest tab), attaches a
- * flattened CDP session, and streams `Page.screencastFrame` JPEGs. A 2s poll
- * re-reads the owned-target registry so the view follows the session's tab
- * when the agent opens, navigates, or replaces it.
+ * preference, else the newest selectable tab from the agent-owned and
+ * chamber-user registries, else the newest tab), attaches a flattened CDP
+ * session, and streams `Page.screencastFrame` JPEGs. A 2s poll re-reads the
+ * registries so the view follows either side's tab when a page is opened,
+ * navigated, or replaced.
  *
  * The viewer NEVER closes the browser or kills Chromium — `close()` stops our
  * screencast and detaches our session; the shared WebSocket is only closed
@@ -34,14 +35,13 @@ const SCREENCAST_PARAMS = {
   everyNthFrame: 1,
 };
 
-export interface ScreencastOptions {
+interface ScreencastOptions {
   /** Caller's preferred tab id; honored while it is still a live page. */
   preferTargetId?: string;
-  /** Re-read the session's owned target ids from the runtime registry. */
+  /** Re-read the session's agent-owned target ids from the runtime registry. */
   getOwnedTargetIds: () => Promise<string[]>;
   onFrame: (frame: BrowserViewFrame) => void;
   onState: (state: BrowserViewState) => void;
-  onError?: (error: Error) => void;
   onAction?: (action: BrowserActionDraft) => void;
 }
 
@@ -72,15 +72,10 @@ export async function openScreencast(wsUrl: string, opts: ScreencastOptions): Pr
   };
 }
 
-function toError(value: unknown): Error {
-  return value instanceof Error ? value : new Error(String(value));
-}
-
 class ScreencastSession {
   private readonly conn: CdpConnection;
   private readonly opts: ScreencastOptions;
   private targets: PageTarget[] = [];
-  private ownedIds: string[] = [];
   private currentTargetId: string | null = null;
   private currentSessionId: string | null = null;
   private lastStateKey = '';
@@ -132,13 +127,12 @@ class ScreencastSession {
         this.fetchTargets(),
       ]);
       if (this._closed) return;
-      this.ownedIds = ownedIds;
       this.targets = targets;
       const nextTargetId = pickTargetId(targets, ownedIds, this.opts.preferTargetId);
       if (nextTargetId !== this.currentTargetId) await this.switchTarget(nextTargetId);
       this.emitCurrent();
-    } catch (error) {
-      this.fail(error);
+    } catch {
+      this.fail();
     } finally {
       this.ticking = false;
     }
@@ -236,12 +230,9 @@ class ScreencastSession {
       // Always ack — dropping happens downstream, not here.
       void this.conn.send('Page.screencastFrameAck', { sessionId: frameSessionId }, sessionId).catch(() => {});
     }
-    const metadata = isRecord(params.metadata) ? params.metadata : {};
     const frame: BrowserViewFrame = {
       data,
       mimeType: 'image/jpeg',
-      width: readNumber(metadata, 'deviceWidth') ?? 0,
-      height: readNumber(metadata, 'deviceHeight') ?? 0,
       targetId: this.currentTargetId ?? '',
     };
     try {
@@ -258,7 +249,6 @@ class ScreencastSession {
       targetId: target.targetId,
       url: target.url,
       title: target.title,
-      owned: this.ownedIds.includes(target.targetId),
     }));
     if (current) {
       this.emit({ status: 'live', url: current.url, title: current.title, targetId: current.targetId, tabs });
@@ -278,13 +268,7 @@ class ScreencastSession {
     }
   }
 
-  private fail(error: unknown): void {
-    const normalized = toError(error);
-    try {
-      this.opts.onError?.(normalized);
-    } catch {
-      // Ignore subscriber callback failures.
-    }
+  private fail(): void {
     if (this.conn.closed) {
       this.handleDisconnect();
       return;

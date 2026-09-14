@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { GitBranch, Files, Search, Terminal, Layers, Globe, BarChart3, X } from 'lucide-react';
+import { GitBranch, Files, Search, Terminal, Layers, Globe, Bot, BarChart3, X } from 'lucide-react';
 import { FileExplorer } from '@/components/workspace/file-explorer/index';
 import { SearchPanel } from '@/components/workspace/SearchPanel';
 import { GitPanel } from '@/components/workspace/git-panel/index';
 import { TerminalPanel } from '@/components/workspace/terminal-panel/index';
 import { ContextPanel } from '@/components/workspace/context-panel/index';
 import { BrowserPanel } from '@/components/workspace/browser-panel/index';
+import { UserBrowserPanel } from '@/components/workspace/user-browser-panel/index';
 import { UsagePanel } from '@/components/workspace/usage-panel/index';
 
 interface MobileRightSidebarProps {
@@ -15,7 +16,7 @@ interface MobileRightSidebarProps {
   onClose: () => void;
 }
 
-type MobileTab = 'git' | 'files' | 'search' | 'context' | 'terminal' | 'browser' | 'usage';
+type MobileTab = 'git' | 'files' | 'search' | 'context' | 'terminal' | 'user-browser' | 'browser' | 'usage';
 
 export function MobileRightSidebar({
   enabled = true,
@@ -104,16 +105,30 @@ export function MobileRightSidebar({
 
           <button
             type="button"
+            onClick={() => setActiveTab('user-browser')}
+            className={`flex items-center transition-all cursor-pointer ${
+              activeTab === 'user-browser'
+                ? 'space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-ink text-canvas shadow-sm'
+                : 'p-2 rounded-lg text-ink/70 hover:bg-ink/5'
+            }`}
+            title="Browser (Anda)"
+          >
+            <Globe size={14} className="flex-shrink-0" />
+            {activeTab === 'user-browser' && <span>Browser</span>}
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab('browser')}
             className={`flex items-center transition-all cursor-pointer ${
               activeTab === 'browser'
                 ? 'space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-ink text-canvas shadow-sm'
                 : 'p-2 rounded-lg text-ink/70 hover:bg-ink/5'
             }`}
-            title="Browser"
+            title="Browser Agent"
           >
-            <Globe size={14} className="flex-shrink-0" />
-            {activeTab === 'browser' && <span>Browser</span>}
+            <Bot size={14} className="flex-shrink-0" />
+            {activeTab === 'browser' && <span>Agent</span>}
           </button>
 
           <button
@@ -165,8 +180,11 @@ export function MobileRightSidebar({
             <div className={`h-full w-full ${activeTab === 'terminal' ? 'block' : 'hidden'}`}>
               <TerminalPanel className="h-full w-full" enabled={enabled} rootPath={rootPath} showHeader={false} />
             </div>
+            <div className={`h-full w-full ${activeTab === 'user-browser' ? 'block' : 'hidden'}`}>
+              <UserBrowserPanel className="h-full w-full" />
+            </div>
             <div className={`h-full w-full ${activeTab === 'browser' ? 'block' : 'hidden'}`}>
-              <BrowserPanel className="h-full w-full" />
+              <BrowserPanel className="h-full w-full" active={activeTab === 'browser'} />
             </div>
             {activeTab === 'usage' && <UsagePanel className="h-full w-full" />}
           </>
