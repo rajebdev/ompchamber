@@ -20,5 +20,6 @@
     },
     "skipLibCheck": true,
     "noEmit": true
-  }
+  },
+  "exclude": ["node_modules", "build", "bin"]
 }

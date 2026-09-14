@@ -1,8 +1,11 @@
 {
-  "name": "react-example",
+  "name": "ompchamber",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
+  "bin": {
+    "ompchamber": "./bin/ompchamber.js"
+  },
   "scripts": {
     "dev": "remix vite:dev --port=3000 --host=0.0.0.0",
     "build": "remix vite:build",
