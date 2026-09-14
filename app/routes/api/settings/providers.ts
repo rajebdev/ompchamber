@@ -7,6 +7,8 @@ import type { ProviderItem } from '@/types';
 import { readDisabledProviders } from '@/lib/omp/config/roles';
 import { enableNativeProvider, getModelsConfigPath, readNativeProviders } from '@/lib/omp/config/providers';
 import { runUtilityCommand, type OmpModel } from '@/lib/omp/rpc/utility';
+import { isKenariProvider, removeLegacyKenariModels } from '@/lib/models/provider-cleanup';
+import { formatContextWindow } from '@/lib/code/format';
 
 const SETTINGS_KEY = 'omp_providers_config';
 
@@ -105,9 +107,28 @@ function disabledProviderItem(slug: string): ProviderItem {
 function nativeProviderItem(
   slug: string,
   baseUrl: string | undefined,
-  modelIds: string[],
+  nativeModels: Array<{
+    id: string;
+    name?: string;
+    contextWindow?: number;
+    maxTokens?: number;
+    reasoning?: boolean;
+    imageInput?: boolean;
+  }>,
   status: ProviderItem['status'] = 'connected',
 ): ProviderItem {
+  const models = nativeModels.map((model) => ({
+    id: model.id,
+    name: model.name || model.id,
+    contextWindow: model.contextWindow
+      ? `${formatContextWindow(model.contextWindow) || Math.round(model.contextWindow / 1000)} ctx`
+      : '',
+    hasTools: true,
+    hasVision: model.imageInput === true,
+    hasReasoning: model.reasoning,
+    isVisible: true,
+    maxTokens: model.maxTokens,
+  }));
   return {
     id: `omp-native-${slug}`,
     name: slug,
@@ -115,14 +136,7 @@ function nativeProviderItem(
     icon: 'plug',
     status,
     configuredIn: baseUrl ? `models.yml · ${baseUrl}` : 'models.yml',
-    models: modelIds.map((modelId) => ({
-      id: modelId,
-      name: modelId,
-      contextWindow: '',
-      hasTools: true,
-      hasVision: false,
-      isVisible: true,
-    })),
+    models: removeLegacyKenariModels({ name: slug, slug, baseUrl }, models),
   };
 }
 
@@ -130,7 +144,7 @@ function providerIdentityKey(provider: ProviderItem): string {
   const slug = provider.slug.trim().toLowerCase();
   const name = provider.name.trim().toLowerCase();
   const baseUrl = provider.baseUrl?.trim().toLowerCase() || '';
-  if (slug === 'kenari' || name.includes('kenari') || baseUrl.includes('kenari.id')) return 'kenari';
+  if (isKenariProvider({ name, slug, baseUrl })) return 'kenari';
   return slug;
 }
 
@@ -164,9 +178,13 @@ function mergeProviderItems(existing: ProviderItem, incoming: ProviderItem): Pro
 function deduplicateProviderItems(items: ProviderItem[]): ProviderItem[] {
   const bySlug = new Map<string, ProviderItem>();
   for (const item of items) {
-    const key = providerIdentityKey(item);
+    const normalizedItem = {
+      ...item,
+      models: removeLegacyKenariModels(item, item.models),
+    };
+    const key = providerIdentityKey(normalizedItem);
     const existing = bySlug.get(key);
-    bySlug.set(key, existing ? mergeProviderItems(existing, item) : item);
+    bySlug.set(key, existing ? mergeProviderItems(existing, normalizedItem) : normalizedItem);
   }
   return [...bySlug.values()];
 }
@@ -181,7 +199,7 @@ async function mergeProviders(custom: ProviderItem[]): Promise<{ providers: Prov
   const nativeItems = native.map((info) => nativeProviderItem(
     info.slug,
     info.baseUrl,
-    info.modelIds,
+    info.models,
     disabled.has(info.slug) ? 'disconnected' : 'connected',
   ));
   const disabledItems = [...disabled]
