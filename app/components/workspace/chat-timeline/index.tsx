@@ -32,7 +32,6 @@ interface ChatTimelineProps {
 export function ChatTimeline({ className = '', folders = [], appSettings = {}, onSessionTitle }: ChatTimelineProps) {
   const {
     sessionId,
-    isOmpSession,
     selectedFolderId,
     setSelectedFolderId,
     sessionData,
@@ -185,6 +184,11 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
         localMessages={localMessages}
         modelName={sessionModelName}
         modelNames={modelNames}
+        onThinkingLevelChange={handleThinkingLevelChange}
+        onModelChange={handleModelChange}
+        sessionModel={typeof sessionData?.model === 'object' ? sessionData.model : null}
+        sessionThinkingLevel={sessionData?.thinkingLevel}
+        generatingVerb={generatingVerb}
       />
     );
   }
@@ -302,8 +306,6 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
               isGenerating={isGenerating}
               onStop={stopGenerating}
               appSettings={appSettings}
-              sessionId={sessionId}
-              isOmpSession={isOmpSession}
               onThinkingLevelChange={handleThinkingLevelChange}
               onModelChange={handleModelChange}
               sessionModel={typeof sessionData?.model === 'object' ? sessionData.model : null}

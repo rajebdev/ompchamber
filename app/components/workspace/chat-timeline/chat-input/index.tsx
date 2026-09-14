@@ -21,17 +21,15 @@ export function ChatInput({
   appSettings = {},
   attachments: externalAttachments,
   onAttachmentsChange,
-  sessionId,
-  isOmpSession = false,
   onThinkingLevelChange,
   onModelChange,
   sessionModel,
   sessionThinkingLevel,
   rootPath,
-}: { 
-  value: string; 
-  onChange: (v: string) => void; 
-  onSend: (attachments: Attachment[], options?: { steering?: boolean }) => void; 
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSend: (attachments: Attachment[], options?: { steering?: boolean }) => void;
   isGenerating: boolean;
   onStop?: () => void;
   className?: string;
@@ -39,8 +37,6 @@ export function ChatInput({
   appSettings?: Record<string, any>;
   attachments?: Attachment[];
   onAttachmentsChange?: (attachments: React.SetStateAction<Attachment[]>) => void;
-  sessionId?: string | null;
-  isOmpSession?: boolean;
   onThinkingLevelChange?: (level: string) => void;
   onModelChange?: (provider: string, modelId: string) => void;
   /** Model last used by the active session (omp `model_change` entry). */
@@ -88,7 +84,11 @@ export function ChatInput({
     return selectable.length === 0 || selectable.includes(sessionLevel) ? sessionLevel : fallback;
   };
 
-  // Adopt the active session's last-used model as the selected model.
+  // Adopt the active session's last-used model as the selected model. The
+  // thinking level must fall back to the CURRENT one, never the ladder
+  // default: this effect re-runs right after a spawn (sessionModel changes
+  // while the session's own thinking_level_change entry is not written yet),
+  // and an `off` fallback here is the "thinking resets to off on send" bug.
   useEffect(() => {
     if (!sessionModel?.provider || !sessionModel.modelId) return;
     let active = true;
@@ -99,14 +99,14 @@ export function ChatInput({
           (m) => m.id === sessionModel.modelId && m.provider === sessionModel.provider
         );
         if (match) {
-          setSelectedModel({
+          setSelectedModel(prev => ({
             id: match.id,
             name: match.name,
             provider: match.provider,
             contextWindow: match.contextWindow,
             thinkingLevels: match.thinkingLevels,
-            thinkingLevel: resolveSessionLevel(match.thinkingLevels, match.thinkingLevels?.[0] ?? 'off'),
-          });
+            thinkingLevel: resolveSessionLevel(match.thinkingLevels, prev.thinkingLevel ?? match.thinkingLevels?.[0] ?? 'off'),
+          }));
         }
       })
       .catch(() => {});
@@ -292,18 +292,14 @@ export function ChatInput({
         <div className="flex items-center space-x-2">
           
           {/* Redesigned Model Dropdown */}
-          <ModelDropdown 
+          <ModelDropdown
             selectedModel={selectedModel}
             onSelectModel={(model) => {
               setSelectedModel(model);
-              if (isOmpSession && sessionId) {
-                onModelChange?.(model.provider, model.id);
-              }
+              onModelChange?.(model.provider, model.id);
             }}
             onThinkingLevelChange={(level) => {
-              if (isOmpSession && sessionId) {
-                onThinkingLevelChange?.(level);
-              }
+              onThinkingLevelChange?.(level);
             }}
           />
 
