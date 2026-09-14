@@ -34,20 +34,7 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
 
         {/* OMP Chamber Brand Logo */}
         <div className="flex justify-center pt-2 pb-1">
-          <div className="w-24 h-24 rounded-2xl bg-ink border border-ink/20 shadow-md flex flex-col items-center justify-center p-3 relative overflow-hidden select-none">
-            {/* Subtle highlight overlay */}
-            <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent pointer-events-none rounded-2xl" />
-            
-            {/* OMP Besar with App Title Gradient */}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-500 font-extrabold text-[30px] tracking-tighter leading-none select-none">
-              OMP
-            </span>
-
-            {/* chamber kecil di bawahnya */}
-            <span className="text-paper/90 text-[11px] font-semibold tracking-[0.2em] lowercase mt-1.5 select-none font-sans">
-              chamber
-            </span>
-          </div>
+          <img src="/icon.svg" alt="OMPChamber" width={96} height={96} draggable={false} />
         </div>
 
         {/* Title */}
