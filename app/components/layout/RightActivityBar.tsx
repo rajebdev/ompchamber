@@ -1,6 +1,6 @@
-import { Files, Search, GitBranch, Terminal, Layers, Globe } from 'lucide-react';
+import { Files, Search, GitBranch, Terminal, Layers, Globe, BarChart3 } from 'lucide-react';
 
-export type RightPanelType = 'files' | 'search' | 'git' | 'terminal' | 'context' | 'browser';
+export type RightPanelType = 'files' | 'search' | 'git' | 'terminal' | 'context' | 'browser' | 'usage';
 
 interface RightActivityBarProps {
   activePanel: RightPanelType;
@@ -19,21 +19,21 @@ export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen }: Ri
     <nav className="w-12 flex-shrink-0 border-l border-ink/10 bg-paper flex flex-col items-center py-3 space-y-2 z-10">
       {/* Top Icons */}
       <div className="flex flex-col items-center space-y-1 w-full">
-        <button 
+        <button
           className={getBtnClass('context')}
           onClick={() => onChangePanel('context')}
           title="Context & Telemetry"
         >
           <Layers size={16} />
         </button>
-        <button 
+        <button
           className={getBtnClass('files')}
           onClick={() => onChangePanel('files')}
           title="Files"
         >
           <Files size={16} />
         </button>
-        <button 
+        <button
           className={getBtnClass('search')}
           onClick={() => onChangePanel('search')}
           title="Search"
@@ -47,19 +47,26 @@ export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen }: Ri
         >
           <GitBranch size={16} />
         </button>
-        <button 
+        <button
           className={getBtnClass('terminal')}
           onClick={() => onChangePanel('terminal')}
           title="Terminal (Bun)"
         >
           <Terminal size={16} />
         </button>
-        <button 
+        <button
           className={getBtnClass('browser')}
           onClick={() => onChangePanel('browser')}
           title="Browser"
         >
           <Globe size={16} />
+        </button>
+        <button
+          className={getBtnClass('usage')}
+          onClick={() => onChangePanel('usage')}
+          title="Usage"
+        >
+          <BarChart3 size={16} />
         </button>
       </div>
       
