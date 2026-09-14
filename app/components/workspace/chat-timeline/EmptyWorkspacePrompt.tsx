@@ -4,6 +4,7 @@ import type { Attachment, ChatMessageData } from '@/types';
 import { useOnClickOutside } from '@/hooks/ui/on-click-outside';
 import { ChatInput } from '@/components/workspace/chat-timeline/chat-input/index';
 import { ChatMessageItem } from '@/components/workspace/chat-timeline/MessageItem';
+import { GeneratingIndicator } from '@/components/workspace/chat-timeline/GeneratingIndicator';
 
 interface EmptyWorkspacePromptProps {
   className?: string;
@@ -24,6 +25,11 @@ interface EmptyWorkspacePromptProps {
   modelName?: string;
   modelNames?: Record<string, string>;
   rootPath?: string | null;
+  onThinkingLevelChange?: (level: string) => void;
+  onModelChange?: (provider: string, modelId: string) => void;
+  sessionModel?: { provider: string; modelId: string } | null;
+  sessionThinkingLevel?: string | null;
+  generatingVerb?: string;
 }
 
 export function EmptyWorkspacePrompt({
@@ -41,7 +47,12 @@ export function EmptyWorkspacePrompt({
   localMessages = [],
   modelName,
   modelNames,
-  rootPath
+  rootPath,
+  onThinkingLevelChange,
+  onModelChange,
+  sessionModel,
+  sessionThinkingLevel,
+  generatingVerb,
 }: EmptyWorkspacePromptProps) {
   const [showWorkspace, setShowWorkspace] = useState(false);
   const workspaceRef = useRef<HTMLDivElement>(null);
@@ -153,7 +164,7 @@ export function EmptyWorkspacePrompt({
           </div>
         )}
 
-        <ChatInput 
+        <ChatInput
           value={inputValue}
           onChange={setInputValue}
           rootPath={rootPath}
@@ -170,7 +181,17 @@ export function EmptyWorkspacePrompt({
           disabled={!selectedFolderId}
           className="w-full shrink-0"
           appSettings={appSettings}
+          onThinkingLevelChange={onThinkingLevelChange}
+          onModelChange={onModelChange}
+          sessionModel={sessionModel}
+          sessionThinkingLevel={sessionThinkingLevel}
         />
+        {isGenerating && (
+          <GeneratingIndicator
+            modelName={modelName}
+            generatingVerb={generatingVerb}
+          />
+        )}
       </div>
     </div>
   );
