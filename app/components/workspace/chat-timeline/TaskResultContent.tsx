@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Copy, Check, FileCode, Layers, FileText, Code, Eye, Terminal } from 'lucide-react';
+import { Copy, Check, FileCode, Layers, FileText, Code, Eye, Terminal, AlignLeft } from 'lucide-react';
 import type { ParsedTaskNotice } from '@/lib/chat/task-result-parser';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
 import { highlightCode, isCodeLike } from '@/lib/code/syntax-highlight';
@@ -84,9 +84,14 @@ export function TaskResultContent({ task }: TaskResultContentProps) {
           <div className="space-y-3 text-[11.5px]">
             {/* Summary Callout */}
             {structured.summary && (
-              <div className="rounded-lg border border-ink/10 bg-canvas/60 p-2.5 leading-relaxed text-ink/90">
-                <span className="font-semibold text-ink">Summary: </span>
-                {structured.summary}
+              <div className="rounded-lg border border-ink/10 bg-canvas/60 p-2.5">
+                <div className="mb-1 flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-ink/70">
+                  <AlignLeft size={11} className="text-ink/60" />
+                  <span>Summary</span>
+                </div>
+                <div className="leading-relaxed text-ink/85">
+                  <MarkdownRenderer content={structured.summary} className="text-[11.5px]" />
+                </div>
               </div>
             )}
 
