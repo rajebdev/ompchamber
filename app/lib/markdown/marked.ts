@@ -88,17 +88,31 @@ interface CodeToken {
 // Wrap fenced code blocks with a floating copy button (top-right, inside the
 // block). The delegated click listener in MarkdownRenderer handles the copy
 // via the data-copy attribute — no React handler needed.
-function codeBlockRenderer(token: CodeToken): string {
-  const lang = token.lang?.trim() || 'text';
-  const code = token.text ?? '';
+function codeBlockShell(code: string, bodyHtml: string): string {
   const copyAttr = code.replace(/"/g, '&quot;');
-  const highlighted = lang === 'text' ? escapeHtml(code) : highlight(code, lang);
   return `<div class="code-block">
   <button type="button" class="code-copy-float" data-copy="${copyAttr}" aria-label="Copy code">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
   </button>
-  <pre><code class="language-${lang}">${highlighted}</code></pre>
+  ${bodyHtml}
 </div>\n`;
+}
+
+// ```mermaid fences become a placeholder hydrated to SVG by mermaid.ts.
+function mermaidBlockRenderer(code: string): string {
+  const body = `<pre><code class="language-mermaid">${escapeHtml(code)}</code></pre>`;
+  const shell = codeBlockShell(code, body);
+  return `<div class="mermaid-block" data-mermaid="${encodeURIComponent(code)}" data-mermaid-state="pending">${shell}</div>`;
+}
+
+function codeBlockRenderer(token: CodeToken): string {
+  const lang = token.lang?.trim() || 'text';
+  const code = token.text ?? '';
+  if (lang === 'mermaid') {
+    return mermaidBlockRenderer(code);
+  }
+  const highlighted = lang === 'text' ? escapeHtml(code) : highlight(code, lang);
+  return codeBlockShell(code, `<pre><code class="language-${lang}">${highlighted}</code></pre>`);
 }
 
 marked.use({

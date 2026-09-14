@@ -13,7 +13,7 @@
  * and let the browser dev server apply it on the client.
  */
 
-import DOMPurify from 'dompurify';
+import DOMPurify, { type Config } from 'dompurify';
 
 const KATEX_MATHML_TAGS = [
   'math',
@@ -63,6 +63,36 @@ const COPY_ICON_ATTRS = [
   'xmlns', 'aria-hidden', 'aria-label',
 ];
 
+/** Mermaid diagram SVG shapes, text, edges, and metadata attributes. */
+const MERMAID_TAGS = [
+  'svg', 'g', 'line', 'path', 'rect', 'circle', 'ellipse', 'polygon', 'polyline',
+  'text', 'tspan', 'title', 'desc', 'marker', 'defs', 'style', 'use', 'symbol',
+  'foreignObject', 'html', 'head', 'body', 'div', 'span', 'p', 'br', 'img',
+];
+const MERMAID_ATTRS = [
+  'id', 'class', 'style', 'transform', 'viewBox', 'width', 'height', 'xmlns',
+  'x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'rx', 'ry', 'd', 'points',
+  'fill', 'stroke', 'stroke-width', 'stroke-dasharray', 'stroke-dashoffset',
+  'stroke-linecap', 'stroke-linejoin', 'stroke-opacity', 'fill-opacity', 'opacity',
+  'font-family', 'font-size', 'font-weight', 'font-style', 'text-anchor',
+  'dominant-baseline', 'alignment-baseline', 'text-decoration', 'direction',
+  'marker-end', 'marker-start', 'marker-mid', 'markerWidth', 'markerHeight',
+  'refX', 'refY', 'orient', 'markerUnits', 'preserveAspectRatio', 'version',
+  'dx', 'dy', 'dy1', 'dy2', 'rowspan', 'colspan', 'start', 'aria-roledescription',
+  'aria-describedby', 'role', 'aria-hidden', 'aria-label', 'data-mermaid-theme',
+  'overflow', 'visibility', 'rel', 'src', 'alt',
+];
+const MERMAID_URI_ATTRS = ['href', 'xlink:href'];
+
+function buildMermaidConfig(hasUri: boolean): Config {
+  return {
+    USE_PROFILES: { html: true, svg: true, svgFilters: true },
+    ADD_TAGS: MERMAID_TAGS,
+    ADD_ATTR: [...MERMAID_ATTRS, ...(hasUri ? MERMAID_URI_ATTRS : [])],
+    HTML_INTEGRATION_POINTS: { 'annotation-xml': true, foreignobject: true },
+  };
+}
+
 /**
  * Sanitize a rendered markdown HTML string. Strips scripts/event handlers and
  * unknown tags (default profile) so assistant HTML is escaped, not executed.
@@ -85,5 +115,24 @@ export function sanitizeHtml(html: string): string {
     return DOMPurify.sanitize(html, config);
   } catch {
     return html;
+  }
+}
+
+/**
+ * Sanitize a mermaid-rendered SVG string. Mermaid with `securityLevel:
+ * 'strict'` already strips scripts and event handlers, but defense in depth:
+ * DOMPurify with an SVG allowlist tuned for mermaid output keeps diagram
+ * shapes/text/edges while dropping anything outside it. Returns the input
+ * unchanged in non-DOM (SSR) environments.
+ */
+export function sanitizeMermaidSvg(svg: string): string {
+  if (!svg) return svg;
+  if (typeof window === 'undefined' || !window.document) return svg;
+
+  const hasUri = /href/.test(svg);
+  try {
+    return DOMPurify.sanitize(svg, buildMermaidConfig(hasUri));
+  } catch {
+    return svg;
   }
 }

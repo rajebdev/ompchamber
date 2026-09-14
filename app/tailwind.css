@@ -238,6 +238,35 @@
 .prose-content .code-block pre code { background: transparent; text-shadow: none; }
 .prose-content .katex-display { overflow-x: auto; overflow-y: hidden; }
 
+/* Mermaid diagram blocks (```mermaid fences hydrated to SVG client-side). */
+.prose-content .mermaid-block { margin: 0.5rem 0; }
+.prose-content .mermaid-block[data-mermaid-state='pending'],
+.prose-content .mermaid-block[data-mermaid-state='rendering'] {
+  min-height: 4.5rem;
+}
+.prose-content .mermaid-block[data-mermaid-state='pending'] pre,
+.prose-content .mermaid-block[data-mermaid-state='rendering'] pre {
+  visibility: hidden;
+}
+.prose-content .mermaid-block[data-mermaid-state='done'] {
+  border: 1px solid color-mix(in srgb, var(--theme-ink) 15%, transparent);
+  border-radius: 0.5rem;
+  background: var(--theme-paper);
+  padding: 0.75rem;
+}
+.prose-content .mermaid-block > svg {
+  display: block;
+  margin: 0 auto;
+  max-width: min(100%, var(--mermaid-diagram-max, 100%));
+  height: auto;
+}
+.prose-content .mermaid-block .code-copy-float {
+  z-index: 1;
+}
+.prose-content .mermaid-block[data-mermaid-state='error'] pre {
+  color: var(--theme-error);
+}
+
 /* PWA Window Controls Overlay and Native Titlebar Styling */
 .titlebar-drag-region {
   -webkit-app-region: drag;

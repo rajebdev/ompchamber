@@ -9,13 +9,17 @@
  * Pipeline: remend (heal streaming) → marked (GFM, autolink, KaTeX) →
  * DOMPurify (sanitize). Renders as sanitized HTML. Raw HTML in the source is
  * escaped by DOMPurify (default profile) rather than executed. A single
- * delegated click handler manages the per-block "Copy" buttons.
+ * delegated click handler manages the per-block "Copy" buttons. Mermaid
+ * fences hydrate async into sanitized SVGs after mount.
  */
 
-import React, { useCallback, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { renderMarkdown } from '@/lib/markdown/marked';
 import { sanitizeHtml } from '@/lib/markdown/sanitize';
+import { hydrateMermaidBlocks } from '@/lib/markdown/mermaid';
 import { copyToClipboard } from '@/hooks/ui/clipboard';
+
+const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
 interface MarkdownRendererProps {
   content: string;
@@ -30,6 +34,43 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
     const rendered = renderMarkdown(content);
     return sanitizeHtml(rendered);
   }, [content]);
+
+  const hasMermaid = html.includes('mermaid-block');
+
+  useIsomorphicLayoutEffect(() => {
+    if (!hasMermaid || typeof window === 'undefined') return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    let timer: number | undefined;
+    const hydrate = () => {
+      const current = containerRef.current;
+      if (!current || !current.isConnected) return;
+      void hydrateMermaidBlocks(current);
+    };
+
+    hydrate();
+    // React can rewrite the container's innerHTML with an identical html
+    // string (timeline re-renders) without this effect re-running, which
+    // would strand freshly-inserted pending blocks. Re-hydrate on any
+    // direct-child replacement; hydrate writes only to grandchildren, so it
+    // never re-triggers this observer.
+    const observer = new MutationObserver(() => {
+      const current = containerRef.current;
+      if (current?.isConnected) void hydrateMermaidBlocks(current, { cachedOnly: true });
+      window.clearTimeout(timer);
+      timer = window.setTimeout(hydrate, 120);
+    });
+    observer.observe(container, { childList: true });
+
+    const onThemeChange = () => hydrate();
+    window.addEventListener('omp:theme-changed', onThemeChange);
+    return () => {
+      window.clearTimeout(timer);
+      observer.disconnect();
+      window.removeEventListener('omp:theme-changed', onThemeChange);
+    };
+  }, [hasMermaid, html]);
 
   const handleContainerClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const target = (e.target as HTMLElement).closest<HTMLButtonElement>('button.code-copy-float');
