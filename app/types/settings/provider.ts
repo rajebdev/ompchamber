@@ -26,3 +26,11 @@ export interface ProviderItem {
   baseUrl?: string;
   models: ProviderModel[];
 }
+
+export interface PresetProviderOption {
+  id: string;
+  name: string;
+  slug: string;
+  icon: string;
+  defaultUrl: string;
+}
