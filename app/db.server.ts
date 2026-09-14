@@ -55,6 +55,10 @@ export async function getDb(): Promise<Database> {
         name TEXT NOT NULL,
         is_expanded BOOLEAN DEFAULT 0,
         project_path TEXT,
+        model TEXT DEFAULT 'Not selected',
+        accent_color TEXT DEFAULT '',
+        icon TEXT DEFAULT 'default',
+        custom_icon_url TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
       
@@ -97,30 +101,9 @@ export async function getDb(): Promise<Database> {
       );
     `);
 
-    // Attempt to add column to existing tables if it doesn't exist
-    try {
-      await db.exec('ALTER TABLE workspace_folders ADD COLUMN is_expanded BOOLEAN DEFAULT 0;');
-    } catch (err) {
-      // Column already exists, ignore
-    }
-
-    try {
-      await db.exec('ALTER TABLE workspace_folders ADD COLUMN project_path TEXT;');
-    } catch (err) {
-      // Column already exists, ignore
-    }
-
-    try {
-      await db.exec('ALTER TABLE workspace_folders ADD COLUMN is_pinned BOOLEAN DEFAULT 0;');
-    } catch (err) {
-      // Column already exists, ignore
-    }
-    
-    try {
-      await db.exec("ALTER TABLE sessions ADD COLUMN queue_list TEXT DEFAULT '[]';");
-    } catch (err) {
-      // Column already exists, ignore
-    }
+    const { migrateSessionColumns, migrateWorkspaceFolderColumns } = await import('@/lib/workspace/schema-migrations');
+    await migrateWorkspaceFolderColumns(db);
+    await migrateSessionColumns(db);
 
     await db.exec(`
       CREATE TABLE IF NOT EXISTS files (
@@ -289,6 +272,9 @@ export async function getDb(): Promise<Database> {
         }
       }
     }
+
+    const { migrateLegacyProjectSettings } = await import('@/lib/workspace/project-settings-migration');
+    await migrateLegacyProjectSettings(db);
 
     return db;
   })();

@@ -31,6 +31,10 @@ export interface WorkspaceFolderData {
   /** When true, the workspace is pinned and sorts to the top of the sidebar. */
   isPinned?: boolean;
   isExpanded: boolean;
+  model?: string;
+  accentColor?: string;
+  icon?: string;
+  customIconUrl?: string;
   sessions: SessionItemData[];
   hasMore: boolean;
   totalSessions: number;
