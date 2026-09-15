@@ -5,7 +5,11 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { compareFolders, sortFolders } from '@/lib/workspace/sidebar-sort';
+import {
+  compareFolders,
+  isValidSessionSortOption,
+  sortFolders,
+} from '@/lib/workspace/sidebar-sort';
 import type { SessionItemData, SessionSortOption, WorkspaceFolderData } from '@/types';
 
 /** Minimal session factory — only the fields the comparator reads. */
@@ -159,5 +163,42 @@ describe('sidebar-sort', () => {
     const kept = sorted.find((f) => f.name === 'keep');
     expect(kept?.sessions).toBe(sessions);
     expect(kept?.sessions.map((s) => s.id)).toEqual(['ses_one', 'ses_two']);
+  });
+});
+
+describe('isValidSessionSortOption', () => {
+  test('returns true for all four supported options', () => {
+    for (const option of ALL_OPTIONS) {
+      expect(isValidSessionSortOption(option)).toBe(true);
+    }
+  });
+
+  test('returns false for non-options and mistyped values', () => {
+    const invalid: unknown[] = [
+      undefined,
+      null,
+      '',
+      'latest_session',
+      'LATEST',
+      42,
+      {},
+      [],
+      true,
+      'A-Z ',
+    ];
+    for (const value of invalid) {
+      expect(isValidSessionSortOption(value)).toBe(false);
+    }
+  });
+
+  test('narrows the value so sortFolders accepts it without a cast', () => {
+    const folders = [makeFolder(1, 'zeta'), makeFolder(2, 'alpha')];
+    const candidate: unknown = 'A-Z';
+    if (isValidSessionSortOption(candidate)) {
+      const sorted = sortFolders(folders, candidate);
+      expect(sorted.map((f) => f.name)).toEqual(['alpha', 'zeta']);
+    } else {
+      throw new Error('expected the guard to narrow "A-Z"');
+    }
   });
 });

@@ -116,3 +116,16 @@ export function sortFolders(
 ): WorkspaceFolderData[] {
   return [...folders].sort((a, b) => compareFolders(a, b, sortOption));
 }
+
+/** All supported workspace sort options, in menu order. */
+const SESSION_SORT_OPTIONS: readonly SessionSortOption[] = ['A-Z', 'Z-A', 'LATEST_SESSION', 'LATEST_ADDED'];
+
+/**
+ * Narrow an untrusted value (a DB-stored preference, a localStorage string, a
+ * URL param) to a sort option. The loader and both sidebars must agree on what
+ * counts as a valid preference, so the guard lives next to the comparator
+ * instead of being re-implemented per call site.
+ */
+export function isValidSessionSortOption(value: unknown): value is SessionSortOption {
+  return typeof value === 'string' && (SESSION_SORT_OPTIONS as readonly string[]).includes(value);
+}
