@@ -132,6 +132,13 @@ export interface ChatMessageData {
   actions2?: (AgentActionData | ToolCallData)[];
   attribution?: 'user' | 'agent' | string;
   model?: string;
+  /** Provider that served this turn (omp `message.provider`). */
+  provider?: string;
+  /** Wall-clock start of the turn in epoch ms (omp `message.timestamp`). */
+  startedAt?: number;
+  /** Wall-clock end of the turn in epoch ms (omp `message.completedAt`), or
+   *  derived from `startedAt + durationMs` when the runtime omits it. */
+  completedAt?: number;
   durationMs?: number;
   usage?: {
     input?: number;

@@ -37,6 +37,17 @@ export function toolResultText(value: unknown): string {
   return '';
 }
 
+/** omp turn timestamps arrive as epoch-ms numbers on the live stream but as
+ *  ISO strings in some JSONL entries — normalize both to epoch ms. */
+function toEpochMs(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const t = new Date(value).getTime();
+    return Number.isNaN(t) ? undefined : t;
+  }
+  return undefined;
+}
+
 /** Convert an omp AgentMessage (content blocks) into the chamber ChatMessageData shape.
  *  Custom-role frames (ultrathink-notice, xdev-mount-notice, ...) become a
  *  `notice` row — omp marks them display:false, so they render as an alert,
@@ -69,6 +80,11 @@ export function toChatMessage(raw: Record<string, unknown>, streaming = true): C
     ? new Date(raw.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
     : undefined;
   const attribution = typeof raw.attribution === 'string' ? raw.attribution : undefined;
+  const startedAt = toEpochMs(raw.timestamp) ?? toEpochMs(raw.startedAt);
+  const durationMs = typeof raw.duration === 'number' ? raw.duration : typeof raw.durationMs === 'number' ? raw.durationMs : undefined;
+  const completedAt = toEpochMs(raw.completedAt)
+    ?? (startedAt !== undefined && durationMs !== undefined ? startedAt + durationMs : undefined);
+  const provider = typeof raw.provider === 'string' ? raw.provider : undefined;
 
   if (raw.role === 'developer' || raw.role === 'system' || parsed.textParts.some((t) => /<\/?system-reminder[^>]*>/i.test(t))) {
     const rawText = parsed.textParts.join('\n').trim();
@@ -92,6 +108,7 @@ export function toChatMessage(raw: Record<string, unknown>, streaming = true): C
       role,
       date: timestamp ? `Today, ${timestamp}` : undefined,
       timestamp,
+      startedAt,
       content: text,
       attribution,
       attachments: attachments.map((a) => ({ id: a.id, name: a.name, preview: a.preview, type: a.type })),
@@ -108,7 +125,10 @@ export function toChatMessage(raw: Record<string, unknown>, streaming = true): C
     timestamp,
     attribution,
     model: typeof raw.model === 'string' ? raw.model : undefined,
-    durationMs: typeof raw.duration === 'number' ? raw.duration : typeof raw.durationMs === 'number' ? raw.durationMs : undefined,
+    provider,
+    startedAt,
+    completedAt,
+    durationMs,
     usage: (raw.usage && typeof raw.usage === 'object') ? (raw.usage as ChatMessageData['usage']) : undefined,
     content: parsed.textParts.join('\n'),
     intent: parsed.intent,

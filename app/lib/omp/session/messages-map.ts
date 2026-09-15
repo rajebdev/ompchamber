@@ -15,6 +15,17 @@ import {
   type OmpMessageEntry,
 } from '@/lib/omp/session/messages-parse';
 
+/** omp turn timestamps arrive as epoch-ms numbers inside the message but as
+ *  ISO strings at the JSONL entry level — normalize both to epoch ms. */
+function toEpochMs(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const t = new Date(value).getTime();
+    return Number.isNaN(t) ? undefined : t;
+  }
+  return undefined;
+}
+
 /** Map a raw omp JSONL entry of type "message" to the chamber shape. */
 export function toChatMessage(entry: OmpMessageEntry): ChatMessageData | null {
   const msg = entry.message;
@@ -32,6 +43,7 @@ export function toChatMessage(entry: OmpMessageEntry): ChatMessageData | null {
     role: roleFor(role),
     content: '',
     date: entry.timestamp ? new Date(entry.timestamp).toISOString() : undefined,
+    startedAt: toEpochMs(msg.timestamp) ?? toEpochMs(entry.timestamp),
     attribution,
   };
 
@@ -67,12 +79,18 @@ export function toChatMessage(entry: OmpMessageEntry): ChatMessageData | null {
     : typeof (entry as any).model === 'string'
       ? (entry as any).model
       : undefined;
+  const provider = typeof msg.provider === 'string' ? msg.provider : undefined;
+  const startedAt = typeof base.startedAt === 'number' ? base.startedAt : undefined;
+  const completedAt = toEpochMs(msg.completedAt)
+    ?? (startedAt !== undefined && durationMs !== undefined ? startedAt + durationMs : undefined);
   const usage = isRecord(msg.usage) ? (msg.usage as ChatMessageData['usage']) : undefined;
 
   const message: ChatMessageData = {
     ...base,
     content: parsed.textParts.join('\n').trim(),
     model,
+    provider,
+    completedAt,
     durationMs,
     usage,
   };
