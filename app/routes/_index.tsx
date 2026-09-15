@@ -93,8 +93,16 @@ export async function loader({ request }: LoaderFunctionArgs) {
     groupedFolders.push(...(await buildRealFolders(folderRows, archivedIds)));
   }
 
+  // Sidebar ordering is a server concern: the loader applies the persisted
+  // preference so the SSR HTML already matches the client's render. Shipping
+  // one order and re-sorting in the browser is what read as a flicker on load.
+  const { sortFolders, isValidSessionSortOption } = await import('@/lib/workspace/sidebar-sort');
+  const sidebarSort = isValidSessionSortOption(appSettings.omp_sidebar_sort)
+    ? appSettings.omp_sidebar_sort
+    : 'A-Z';
+
   return json({
-    folders: groupedFolders,
+    folders: sortFolders(groupedFolders, sidebarSort),
     initialIsMobile: isMobileUA,
     appSettings,
     isMock: mock,
