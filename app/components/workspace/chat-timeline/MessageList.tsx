@@ -5,6 +5,8 @@ import type { ChatMessageData } from '@/types';
 export interface MessageListProps {
   messages: ChatMessageData[];
   isGenerating: boolean;
+  provider?: string;
+  providerNames?: Record<string, string>;
   modelName?: string;
   modelNames?: Record<string, string>;
   onUndo?: (id: string, content?: string) => void;
@@ -24,6 +26,8 @@ export interface MessageListProps {
 export function MessageList({
   messages,
   isGenerating,
+  provider,
+  providerNames,
   modelName,
   modelNames,
   onUndo,
@@ -53,6 +57,8 @@ export function MessageList({
           <ChatMessageItem
             key={msg.id}
             msg={msg}
+            provider={provider}
+            providerNames={providerNames}
             modelName={modelName}
             modelNames={modelNames}
             isStreaming={isLoading}
