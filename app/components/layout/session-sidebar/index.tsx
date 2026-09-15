@@ -2,11 +2,13 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams, useRevalidator } from '@remix-run/react';
 import { SettingsModal, AboutModal, NewWorkspaceModal, SchedulerModal } from '@/components/layout/session-sidebar/Modals';
 import { SessionSidebarHeader } from '@/components/layout/session-sidebar/Header';
-import { SessionSidebarToolbar, type SortOption } from '@/components/layout/session-sidebar/Toolbar';
+import { SessionSidebarToolbar } from '@/components/layout/session-sidebar/Toolbar';
 import { SessionSidebarFooter } from '@/components/layout/session-sidebar/Footer';
 import { SessionSidebarSessionList } from '@/components/layout/session-sidebar/SessionList';
 import { Toast } from '@/components/common/Toast';
 import { pendingSessionTitle } from '@/lib/omp/session/default-title';
+import { sortFolders } from '@/lib/workspace/sidebar-sort';
+import type { SessionSortOption } from '@/types';
 import { useScrollbarFade } from '@/hooks/ui/scrollbar-fade';
 import { useToasts } from '@/hooks/ui/toasts';
 import { useUpdates } from '@/hooks/ui/updates';
@@ -63,13 +65,13 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
   
   // Options dropdown state
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const [sortOption, setSortOption] = useState<SortOption>(() => {
+  const [sortOption, setSortOption] = useState<SessionSortOption>(() => {
     if (typeof window === 'undefined') return 'A-Z';
     const saved = localStorage.getItem('omp_sidebar_sort');
     return saved === 'A-Z' || saved === 'Z-A' || saved === 'LATEST_SESSION' || saved === 'LATEST_ADDED' ? saved : 'A-Z';
   });
 
-  const handleSortChange = (opt: SortOption) => {
+  const handleSortChange = (opt: SessionSortOption) => {
     setSortOption(opt);
     localStorage.setItem('omp_sidebar_sort', opt);
     setOptionsOpen(false);
@@ -173,7 +175,14 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
       if (target) {
         result = result.map(f => {
           if (f.id !== target.id) return f;
-          const pending = { id: pendingId, title: pendingSessionTitle(pendingId), is_active: 1 };
+          const pending = {
+            id: pendingId,
+            title: pendingSessionTitle(pendingId),
+            is_active: 1,
+            // Read by @/lib/workspace/sidebar-sort to rank this folder newest.
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
           return { ...f, isExpanded: true, sessions: [pending, ...(f.sessions || [])] };
         });
       }
@@ -195,28 +204,8 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
       });
     }
 
-    // Sort folders
-    result.sort((a, b) => {
-      if (a.isPinned !== b.isPinned) {
-        return a.isPinned ? -1 : 1;
-      }
-      switch (sortOption) {
-        case 'A-Z':
-          return a.name.localeCompare(b.name);
-        case 'Z-A':
-          return b.name.localeCompare(a.name);
-        case 'LATEST_SESSION':
-          // Assuming higher session id means latest for this demo
-          const maxIdA = a.sessions?.length ? Math.max(...a.sessions.map((s: any) => s.id)) : 0;
-          const maxIdB = b.sessions?.length ? Math.max(...b.sessions.map((s: any) => s.id)) : 0;
-          return maxIdB - maxIdA;
-        case 'LATEST_ADDED':
-          // Assuming higher folder id means latest added
-          return b.id - a.id;
-        default:
-          return 0;
-      }
-    });
+    // Ordering is shared with the mobile sidebar so the two cannot drift.
+    result = sortFolders(result, sortOption);
 
     return result;
   }, [folders, searchQuery, sortOption, sessionParam, searchParams]);

@@ -1,20 +1,19 @@
 import { Search, FolderPlus, Calendar, Archive, MoreHorizontal, PanelLeftClose, X } from 'lucide-react';
-
-export type SortOption = 'A-Z' | 'Z-A' | 'LATEST_SESSION' | 'LATEST_ADDED';
+import type { SessionSortOption } from '@/types';
 
 interface SessionSidebarToolbarProps {
   isSearchVisible: boolean;
   searchQuery: string;
   showArchived: boolean;
   optionsOpen: boolean;
-  sortOption: SortOption;
+  sortOption: SessionSortOption;
   onToggleSearch: () => void;
   onSearchChange: (value: string) => void;
   onToggleArchived: () => void;
   onHideArchived: () => void;
   onToggleOptions: () => void;
   onCloseOptions: () => void;
-  onSortChange: (opt: SortOption) => void;
+  onSortChange: (opt: SessionSortOption) => void;
   onNewWorkspace: () => void;
   onScheduler: () => void;
   onClose?: () => void;
