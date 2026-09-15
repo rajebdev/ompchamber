@@ -32,6 +32,10 @@ export function LoginModal({ isOpen, provider, onClose, onAuthenticated }: Login
   const [inputValue, setInputValue] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const respondRef = useRef<((payload: Record<string, unknown>) => void) | null>(null);
+  // Read through a ref: the parent recreates this handler on every render, and
+  // a changing dependency would abort + restart the login stream mid-flow.
+  const onAuthenticatedRef = useRef(onAuthenticated);
+  onAuthenticatedRef.current = onAuthenticated;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -91,7 +95,7 @@ export function LoginModal({ isOpen, provider, onClose, onAuthenticated }: Login
               } else if (frame.type === 'login_result') {
                 setStatus(frame.success ? 'success' : 'failed');
                 if (!frame.success) setErrorMessage(frame.error ?? 'Login failed');
-                if (frame.success) onAuthenticated();
+                if (frame.success) onAuthenticatedRef.current();
                 controller.abort();
                 return;
               }
@@ -109,7 +113,7 @@ export function LoginModal({ isOpen, provider, onClose, onAuthenticated }: Login
       controller.abort();
       respondRef.current = null;
     };
-  }, [isOpen, provider.slug, onAuthenticated]);
+  }, [isOpen, provider.slug]);
 
   const submitInput = (cancelled: boolean) => {
     if (!inputPrompt) return;

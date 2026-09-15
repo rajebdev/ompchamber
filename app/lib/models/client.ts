@@ -40,6 +40,11 @@ export function invalidateModelsCache(): void {
   cached = null;
 }
 
+export function notifyModelsUpdated(): void {
+  cached = null;
+  window.dispatchEvent(new CustomEvent('omp:models-updated'));
+}
+
 export function subscribeModelsUpdated(handler: () => void): () => void {
   window.addEventListener('omp:models-updated', handler);
   return () => window.removeEventListener('omp:models-updated', handler);

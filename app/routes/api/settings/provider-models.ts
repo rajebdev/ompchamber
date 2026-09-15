@@ -4,6 +4,7 @@ import { isMockMode } from '@/mock.server';
 import { loadModelsDevCatalog, findCatalogModel } from '@/lib/models/catalog';
 import { extractModels } from '@/lib/models/remote-list';
 import { upsertOmpProviderModels } from '@/lib/omp/config/providers';
+import { invalidateModelsCaches } from '@/lib/models/server-cache';
 import type { ProviderModel } from '@/types';
 
 /**
@@ -250,6 +251,7 @@ export async function action({ request }: ActionFunctionArgs) {
               : 'openai-completions',
           models: enriched.map(toOmpSeed),
         });
+        if (upsert.written) invalidateModelsCaches();
         omp = {
           written: upsert.written,
           addedCount: upsert.addedModels.length,

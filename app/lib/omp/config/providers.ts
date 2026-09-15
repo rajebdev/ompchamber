@@ -11,7 +11,7 @@
 
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { isMap, parseDocument, type Document, YAMLMap, YAMLSeq } from 'yaml';
+import { parseDocument, type Document, YAMLMap, YAMLSeq } from 'yaml';
 import { getAgentDir } from '@/lib/omp/core/paths';
 
 /** Path of the native OMP models config (~/.omp/agent/models.yml). */
@@ -94,29 +94,6 @@ export function readNativeProviders(): NativeProviderInfo[] {
   } catch {
     return [];
   }
-}
-
-/**
- * Re-enable a disabled provider: remove it from config.yml disabledProviders
- * with an atomic read-modify-write that preserves all other keys (same
- * technique as roles.ts writeModelRoles). Returns false when the provider was
- * not disabled in the first place.
- */
-export function enableNativeProvider(slug: string): boolean {
-  const path = join(getAgentDir(), 'config.yml');
-  if (!existsSync(path)) return false;
-  const doc = parseDocument(readFileSync(path, 'utf8'));
-  if (doc.errors.length > 0) throw new Error(`${path} is not valid YAML: ${doc.errors[0].message}`);
-  if (!isMap(doc.contents)) return false;
-  const current = doc.get('disabledProviders');
-  if (!Array.isArray(current)) return false;
-  const next = current.filter((item): item is string => typeof item === 'string' && item !== slug);
-  if (next.length === current.length) return false;
-  doc.set('disabledProviders', next);
-  const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
-  writeFileSync(temp, doc.toString(), 'utf8');
-  renameSync(temp, path);
-  return true;
 }
 
 /** One model entry destined for models.yml (cost numbers are USD per 1M tokens). */

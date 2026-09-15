@@ -6,14 +6,12 @@ import { isMockMode } from '@/mock.server';
 import type { AIModelOption, ModelsData, ModelEntry } from '@/types';
 import { runUtilityCommand, type OmpModel } from '@/lib/omp/rpc/utility';
 import { readDisabledProviders } from '@/lib/omp/config/roles';
+import { invalidateModelsCaches } from '@/lib/models/server-cache';
 
 const MODELS_CATALOG_KEY = 'omp_models_catalog';
 const SELECTED_MODEL_KEY = 'omp_selected_model';
+const PROVIDERS_CONFIG_KEY = 'omp_providers_config';
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __ompChamberModelsCache: { data: ModelsData; expiresAt: number } | undefined;
-}
 const MODELS_CACHE_TTL_MS = 60_000;
 const SAFE_MODEL_LOAD_FAILURE_MESSAGE = 'Model list is temporarily unavailable. Check your configuration and try again.';
 
@@ -36,6 +34,43 @@ function supportsFastMode(model: OmpModel): boolean {
   return model.provider === 'anthropic' || model.provider === 'openai' || model.provider === 'google';
 }
 
+function hiddenModelKey(provider: string, modelId: string): string {
+  return `${provider.trim().toLowerCase()}:${modelId}`;
+}
+
+async function readHiddenModelKeys(): Promise<Set<string>> {
+  try {
+    const db = await getDb();
+    const row = await db.get<{ value?: string }>('SELECT value FROM app_settings WHERE key = ?', [PROVIDERS_CONFIG_KEY]);
+    if (!row?.value) return new Set();
+    const parsed = JSON.parse(row.value);
+    if (!Array.isArray(parsed)) return new Set();
+    const hidden = new Set<string>();
+    for (const provider of parsed) {
+      if (typeof provider?.slug !== 'string' || !Array.isArray(provider.models)) continue;
+      for (const model of provider.models) {
+        if (typeof model?.id === 'string' && model.isVisible === false) {
+          hidden.add(hiddenModelKey(provider.slug, model.id));
+        }
+      }
+    }
+    return hidden;
+  } catch {
+    return new Set();
+  }
+}
+
+function filterSelectableModels(
+  available: OmpModel[],
+  disabledProviders: Set<string>,
+  hiddenModelKeys: Set<string>,
+): OmpModel[] {
+  return available.filter((model) => (
+    !disabledProviders.has(model.provider)
+    && !hiddenModelKeys.has(hiddenModelKey(model.provider, model.id))
+  ));
+}
+
 async function loadModels(): Promise<ModelsData> {
   const availableResponse = await runUtilityCommand<{ models?: unknown }>(
     { type: 'get_available_models' },
@@ -54,9 +89,11 @@ async function loadModels(): Promise<ModelsData> {
         }))
     : [];
 
+  const disabledProviders = readDisabledProviders();
+  const hiddenModelKeys = await readHiddenModelKeys();
   const nameMap: Record<string, string> = {};
   const thinkingLevels: Record<string, string[]> = {};
-  const modelList: ModelEntry[] = available
+  const modelList: ModelEntry[] = filterSelectableModels(available, disabledProviders, hiddenModelKeys)
     .map((m) => ({
       id: m.id,
       name: m.name,
@@ -81,7 +118,6 @@ async function loadModels(): Promise<ModelsData> {
       && typeof (provider as { authenticated?: unknown }).authenticated === 'boolean'
     ))
     : [];
-  const disabledProviders = readDisabledProviders();
   const connectedProviders = loginProviders
     .filter((provider) => provider.authenticated)
     .map((provider) => ({ id: provider.id, name: provider.name, disabled: disabledProviders.has(provider.id) }));
@@ -125,7 +161,7 @@ async function loadModelsWithCache(): Promise<ModelsData> {
 }
 
 function invalidateModelsCache(): void {
-  globalThis.__ompChamberModelsCache = undefined;
+  invalidateModelsCaches();
 }
 
 /** Parse a persisted { provider, modelId|id } reference without trusting the JSON shape. */

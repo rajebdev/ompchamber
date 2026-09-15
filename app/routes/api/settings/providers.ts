@@ -4,216 +4,70 @@ import { getDb } from '@/db.server';
 import { DEFAULT_PROVIDERS_LIST, PRESET_NEW_PROVIDERS } from '@/data/settings/provider';
 import { isMockMode } from '@/mock.server';
 import type { ProviderItem } from '@/types';
-import { readDisabledProviders } from '@/lib/omp/config/roles';
-import { enableNativeProvider, getModelsConfigPath, readNativeProviders } from '@/lib/omp/config/providers';
-import { runUtilityCommand, type OmpModel } from '@/lib/omp/rpc/utility';
-import { isKenariProvider, removeLegacyKenariModels } from '@/lib/models/provider-cleanup';
-import { formatContextWindow } from '@/lib/code/format';
+import { disableNativeProvider, enableNativeProvider } from '@/lib/omp/config/disabled-providers';
+import {
+  PROVIDERS_SETTINGS_KEY as SETTINGS_KEY,
+  deduplicateProviderItems,
+  mergeProviders,
+} from '@/lib/models/provider-registry.server';
+import { invalidateModelsCaches } from '@/lib/models/server-cache';
 
-const SETTINGS_KEY = 'omp_providers_config';
-
-declare global {
-  // eslint-disable-next-line no-var
-  var __ompChamberProvidersRpcCache: { data: ProviderItem[]; expiresAt: number } | undefined;
-}
-const RPC_CACHE_TTL_MS = 60_000;
-
-interface LoginProvider {
-  id: string;
-  name: string;
-  authenticated: boolean;
-}
-
-/**
- * Provider registry straight from the omp agent: authenticated login providers
- * (omp auth) plus their registered models (get_available_models). This is the
- * source the composer's model dropdown already uses via /api/models.
- */
-async function loadRpcProviderItems(): Promise<ProviderItem[]> {
-  const cached = globalThis.__ompChamberProvidersRpcCache;
-  if (cached && cached.expiresAt > Date.now()) return cached.data;
+async function readStoredProviders(): Promise<ProviderItem[]> {
+  const db = await getDb();
+  const row = await db.get<{ value?: string }>('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
+  if (!row?.value) return [];
   try {
-    const [loginResponse, modelsResponse] = await Promise.all([
-      runUtilityCommand<{ providers?: unknown }>({ type: 'get_login_providers' }, 30_000),
-      runUtilityCommand<{ models?: unknown }>({ type: 'get_available_models' }, 60_000),
-    ]);
-    const loginProviders = Array.isArray(loginResponse.providers)
-      ? loginResponse.providers.filter((provider): provider is LoginProvider => (
-          typeof provider === 'object' && provider !== null
-          && typeof (provider as { id?: unknown }).id === 'string'
-          && typeof (provider as { name?: unknown }).name === 'string'
-          && typeof (provider as { authenticated?: unknown }).authenticated === 'boolean'
-        ))
-      : [];
-    const available = Array.isArray(modelsResponse.models)
-      ? modelsResponse.models.filter((model): model is OmpModel => (
-          typeof model === 'object' && model !== null
-          && typeof (model as OmpModel).id === 'string'
-          && typeof (model as OmpModel).provider === 'string'
-        ))
-      : [];
-    const disabled = (() => {
-      try { return readDisabledProviders(); } catch { return new Set<string>(); }
-    })();
-
-    const items = loginProviders.map((provider) => {
-      const providerModels = available.filter((model) => model.provider === provider.id);
-      return {
-        id: `omp-auth-${provider.id}`,
-        name: provider.name,
-        slug: provider.id,
-        icon: 'plug',
-        status: (provider.authenticated && !disabled.has(provider.id) ? 'connected' : 'disconnected') as ProviderItem['status'],
-        configuredIn: 'omp auth credentials',
-        models: providerModels.map((model) => ({
-          id: model.id,
-          name: typeof model.name === 'string' && model.name.length > 0 ? model.name : model.id,
-          contextWindow: model.contextWindow ? `${Math.round(model.contextWindow / 1000)}K ctx` : '',
-          hasTools: true,
-          hasVision: false,
-          isVisible: true,
-        })),
-      };
-    });
-    globalThis.__ompChamberProvidersRpcCache = { data: items, expiresAt: Date.now() + RPC_CACHE_TTL_MS };
-    return items;
+    const parsed = JSON.parse(row.value);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
-    // RPC unavailable (cold start / omp busy) — degrade to the remaining sources.
     return [];
   }
 }
 
-/**
- * Build a disabled-native ProviderItem for a provider the omp agent reports as
- * disabled (config.yml disabledProviders). The UI treats these as
- * "disconnected" — re-enabling via POST { enableProvider } flips config.yml.
- */
-function disabledProviderItem(slug: string): ProviderItem {
-  return {
-    id: `omp-disabled-${slug}`,
-    name: slug,
-    slug,
-    icon: 'plug',
-    status: 'disconnected',
-    configuredIn: 'omp disabledProviders',
-    models: [],
-  };
+async function writeStoredProviders(providers: ProviderItem[]): Promise<void> {
+  const db = await getDb();
+  await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
+    SETTINGS_KEY,
+    JSON.stringify(providers),
+  ]);
 }
 
 /**
- * Native provider entry discovered from models.yml. Credentials never leave
- * omp's own stores — chamber only surfaces registration info.
+ * Every provider mutation reshapes what the chat picker may offer, so both the
+ * registry and the model-list caches are dropped on the way out.
  */
-function nativeProviderItem(
-  slug: string,
-  baseUrl: string | undefined,
-  nativeModels: Array<{
-    id: string;
-    name?: string;
-    contextWindow?: number;
-    maxTokens?: number;
-    reasoning?: boolean;
-    imageInput?: boolean;
-  }>,
-  status: ProviderItem['status'] = 'connected',
-): ProviderItem {
-  const models = nativeModels.map((model) => ({
-    id: model.id,
-    name: model.name || model.id,
-    contextWindow: model.contextWindow
-      ? `${formatContextWindow(model.contextWindow) || Math.round(model.contextWindow / 1000)} ctx`
-      : '',
-    hasTools: true,
-    hasVision: model.imageInput === true,
-    hasReasoning: model.reasoning,
-    isVisible: true,
-    maxTokens: model.maxTokens,
-  }));
-  return {
-    id: `omp-native-${slug}`,
-    name: slug,
-    slug,
-    icon: 'plug',
-    status,
-    configuredIn: baseUrl ? `models.yml · ${baseUrl}` : 'models.yml',
-    models: removeLegacyKenariModels({ name: slug, slug, baseUrl }, models),
-  };
+function respondWithProviders(providers: ProviderItem[], extra: Record<string, unknown> = {}) {
+  invalidateModelsCaches();
+  return json({ success: true, providers, ...extra });
 }
 
-function providerIdentityKey(provider: ProviderItem): string {
-  const slug = provider.slug.trim().toLowerCase();
-  const name = provider.name.trim().toLowerCase();
-  const baseUrl = provider.baseUrl?.trim().toLowerCase() || '';
-  if (isKenariProvider({ name, slug, baseUrl })) return 'kenari';
-  return slug;
-}
-
-function mergeProviderItems(existing: ProviderItem, incoming: ProviderItem): ProviderItem {
-  const primary = existing.id.startsWith('omp-auth-') || !incoming.id.startsWith('omp-auth-')
-    ? existing
-    : incoming;
-  const secondary = primary === existing ? incoming : existing;
-  const knownModelIds = new Set<string>();
-  const models = [...primary.models, ...secondary.models].filter((model) => {
-    if (knownModelIds.has(model.id)) return false;
-    knownModelIds.add(model.id);
-    return true;
-  });
-
-  return {
-    ...primary,
-    name: primary.name === primary.slug && secondary.name !== secondary.slug
-      ? secondary.name
-      : primary.name,
-    status: primary.status === 'connected' || secondary.status === 'connected'
-      ? 'connected'
-      : primary.status,
-    baseUrl: primary.baseUrl || secondary.baseUrl,
-    apiKey: primary.apiKey || secondary.apiKey,
-    configuredIn: primary.apiKey || primary.baseUrl ? primary.configuredIn : secondary.configuredIn,
-    models,
-  };
-}
-
-function deduplicateProviderItems(items: ProviderItem[]): ProviderItem[] {
-  const bySlug = new Map<string, ProviderItem>();
-  for (const item of items) {
-    const normalizedItem = {
-      ...item,
-      models: removeLegacyKenariModels(item, item.models),
-    };
-    const key = providerIdentityKey(normalizedItem);
-    const existing = bySlug.get(key);
-    bySlug.set(key, existing ? mergeProviderItems(existing, normalizedItem) : normalizedItem);
+/**
+ * Connect / disconnect. The flag is written to omp's OWN registry
+ * (config.yml disabledProviders) rather than the local overlay, because the
+ * overlay is re-merged away on the next load — which is why a disconnect used
+ * to come back as "connected".
+ */
+async function setProviderEnabled(slug: string, enabled: boolean): Promise<Response> {
+  const mock = isMockMode();
+  if (!mock) {
+    if (enabled) enableNativeProvider(slug);
+    else disableNativeProvider(slug);
   }
-  return [...bySlug.values()];
-}
-
-/** Merge all three omp provider sources with app-local custom SQLite entries. */
-async function mergeProviders(custom: ProviderItem[]): Promise<{ providers: ProviderItem[]; modelsConfigPath: string }> {
-  const disabled = (() => {
-    try { return readDisabledProviders(); } catch { return new Set<string>(); }
-  })();
-  const authItems = await loadRpcProviderItems();
-  const native = readNativeProviders();
-  const nativeItems = native.map((info) => nativeProviderItem(
-    info.slug,
-    info.baseUrl,
-    info.models,
-    disabled.has(info.slug) ? 'disconnected' : 'connected',
-  ));
-  const disabledItems = [...disabled]
-    .filter((slug) => !nativeItems.some((n) => n.slug === slug) && !authItems.some((a) => a.slug === slug))
-    .map(disabledProviderItem);
-  const registryItems = deduplicateProviderItems([...authItems, ...nativeItems, ...disabledItems]);
-  const nativeSlugs = new Set(registryItems.map((provider) => provider.slug.toLowerCase()));
-  return {
-    providers: deduplicateProviderItems([
-      ...registryItems,
-      ...custom.filter((p) => !nativeSlugs.has(p.slug.toLowerCase())),
-    ]),
-    modelsConfigPath: getModelsConfigPath(),
-  };
+  // Must precede the merge: loadRpcProviderItems serves its 60s snapshot, so a
+  // warm cache would rebuild the list against the OLD disabledProviders set.
+  invalidateModelsCaches();
+  const stored = await readStoredProviders();
+  if (mock) {
+    const target = slug.trim().toLowerCase();
+    const updated = stored.map((provider) => (
+      provider.slug.trim().toLowerCase() === target
+        ? { ...provider, status: enabled ? ('connected' as const) : ('disconnected' as const) }
+        : provider
+    ));
+    await writeStoredProviders(updated);
+    return respondWithProviders(updated);
+  }
+  return respondWithProviders((await mergeProviders(stored)).providers);
 }
 
 export async function loader({ request: _request }: LoaderFunctionArgs) {
@@ -267,38 +121,25 @@ export async function loader({ request: _request }: LoaderFunctionArgs) {
 
 export async function action({ request }: ActionFunctionArgs) {
   try {
-    const db = await getDb();
-
     if (request.method === 'DELETE') {
       const url = new URL(request.url);
       const id = url.searchParams.get('id');
       if (!id) return json({ error: 'id is required' }, { status: 400 });
 
-      const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-      let list: ProviderItem[] = DEFAULT_PROVIDERS_LIST;
-      if (row?.value) {
-        try { list = JSON.parse(row.value); } catch {}
-      }
-      list = list.filter(p => p.id !== id);
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        SETTINGS_KEY,
-        JSON.stringify(list),
-      ]);
-      return json({ success: true, providers: list });
+      const stored = await readStoredProviders();
+      const list = (stored.length > 0 ? stored : DEFAULT_PROVIDERS_LIST).filter(p => p.id !== id);
+      await writeStoredProviders(list);
+      return respondWithProviders(list);
     }
 
     if (request.method === 'POST' || request.method === 'PUT') {
       const body = await request.json();
 
-      // Re-enable a provider the omp agent disabled (config.yml disabledProviders).
+      if (typeof body.disableProvider === 'string') {
+        return await setProviderEnabled(body.disableProvider, false);
+      }
       if (typeof body.enableProvider === 'string') {
-        const changed = enableNativeProvider(body.enableProvider);
-        const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-        let custom: ProviderItem[] = [];
-        if (row?.value) {
-          try { custom = JSON.parse(row.value); } catch {}
-        }
-        return json({ success: changed, providers: (await mergeProviders(custom)).providers });
+        return await setProviderEnabled(body.enableProvider, true);
       }
 
       let updatedProviders: ProviderItem[] = [];
@@ -308,11 +149,8 @@ export async function action({ request }: ActionFunctionArgs) {
       } else if (Array.isArray(body.providers)) {
         updatedProviders = body.providers;
       } else if (body.provider) {
-        const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-        let list: ProviderItem[] = DEFAULT_PROVIDERS_LIST;
-        if (row?.value) {
-          try { list = JSON.parse(row.value); } catch {}
-        }
+        const stored = await readStoredProviders();
+        const list = stored.length > 0 ? stored : DEFAULT_PROVIDERS_LIST;
         const idx = list.findIndex(p => p.id === body.provider.id);
         if (idx >= 0) {
           list[idx] = body.provider;
@@ -322,12 +160,8 @@ export async function action({ request }: ActionFunctionArgs) {
         updatedProviders = list;
       }
 
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        SETTINGS_KEY,
-        JSON.stringify(updatedProviders),
-      ]);
-
-      return json({ success: true, providers: updatedProviders });
+      await writeStoredProviders(updatedProviders);
+      return respondWithProviders(updatedProviders);
     }
 
     return json({ error: 'Method not allowed' }, { status: 405 });

@@ -5,6 +5,7 @@
  */
 
 import type { ProviderModel } from '@/types';
+import { notifyModelsUpdated } from '@/lib/models/client';
 
 export interface ProviderModelsFetchResult {
   ok: boolean;
@@ -89,7 +90,7 @@ export async function syncProviderModelsToCatalog(
         }),
       ),
     );
-    window.dispatchEvent(new CustomEvent('omp:models-updated'));
+    notifyModelsUpdated();
   } catch (error) {
     console.error('Failed to sync provider models to catalog:', error);
   }
