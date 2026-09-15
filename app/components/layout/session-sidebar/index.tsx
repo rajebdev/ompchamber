@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams, useRevalidator } from '@remix-run/react';
 import { SettingsModal, AboutModal, NewWorkspaceModal, SchedulerModal } from '@/components/layout/session-sidebar/Modals';
 import { SessionSidebarHeader } from '@/components/layout/session-sidebar/Header';
@@ -6,8 +6,8 @@ import { SessionSidebarToolbar } from '@/components/layout/session-sidebar/Toolb
 import { SessionSidebarFooter } from '@/components/layout/session-sidebar/Footer';
 import { SessionSidebarSessionList } from '@/components/layout/session-sidebar/SessionList';
 import { Toast } from '@/components/common/Toast';
-import { pendingSessionTitle } from '@/lib/omp/session/default-title';
-import { sortFolders } from '@/lib/workspace/sidebar-sort';
+import { pendingSessionCreatedAt, pendingSessionTitle } from '@/lib/omp/session/default-title';
+import { isValidSessionSortOption, sortFolders } from '@/lib/workspace/sidebar-sort';
 import type { SessionSortOption } from '@/types';
 import { useScrollbarFade } from '@/hooks/ui/scrollbar-fade';
 import { useToasts } from '@/hooks/ui/toasts';
@@ -65,16 +65,47 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
   
   // Options dropdown state
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const [sortOption, setSortOption] = useState<SessionSortOption>(() => {
-    if (typeof window === 'undefined') return 'A-Z';
+  // Seeded from the server (app_settings.omp_sidebar_sort) so the SSR HTML and
+  // the first client render agree — reading localStorage during render is what
+  // made the list re-sort right after hydration.
+  const [sortOption, setSortOption] = useState<SessionSortOption>(() =>
+    isValidSessionSortOption(appSettings.omp_sidebar_sort) ? appSettings.omp_sidebar_sort : 'A-Z',
+  );
+
+  const sortPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const persistSort = useCallback((opt: SessionSortOption) => {
+    if (sortPersistTimerRef.current) clearTimeout(sortPersistTimerRef.current);
+    sortPersistTimerRef.current = setTimeout(() => {
+      fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ omp_sidebar_sort: opt }),
+      }).catch(() => {});
+    }, 200);
+  }, []);
+
+  useEffect(() => () => {
+    if (sortPersistTimerRef.current) clearTimeout(sortPersistTimerRef.current);
+  }, []);
+
+  // One-time migration off localStorage, and only while the server holds no
+  // preference yet. Gating on that is what makes it one-time: an ungated adopt
+  // would let a stale localStorage entry on any client overwrite the value the
+  // server already owns, forever.
+  const hasServerSort = isValidSessionSortOption(appSettings.omp_sidebar_sort);
+  useEffect(() => {
+    if (hasServerSort) return;
     const saved = localStorage.getItem('omp_sidebar_sort');
-    return saved === 'A-Z' || saved === 'Z-A' || saved === 'LATEST_SESSION' || saved === 'LATEST_ADDED' ? saved : 'A-Z';
-  });
+    if (!isValidSessionSortOption(saved)) return;
+    setSortOption(saved);
+    persistSort(saved);
+  }, [hasServerSort, persistSort]);
 
   const handleSortChange = (opt: SessionSortOption) => {
     setSortOption(opt);
     localStorage.setItem('omp_sidebar_sort', opt);
     setOptionsOpen(false);
+    persistSort(opt);
   };
 
   const { isScrolling, handleScroll } = useScrollbarFade();
@@ -172,7 +203,20 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
       const target = folderIdParam
         ? result.find(f => String(f.id) === String(folderIdParam))
         : result[0];
-      if (target) {
+      // The placeholder only bridges the gap before the JSONL scan surfaces the
+      // real row; rendering it alongside a row the folder already lists is what
+      // made the item blink.
+      const alreadyListed = Boolean(
+        target?.sessions?.some((s: any) => String(s.id) === String(pendingId)),
+      );
+      if (target && !alreadyListed) {
+        // A pending id carries its creation epoch, so the stamp is stable across
+        // recomputes instead of reshuffling LATEST_SESSION on every revalidate.
+        // An adopted real id has no epoch; the row is newest by definition then.
+        const epochMs = pendingSessionCreatedAt(pendingId);
+        const stamp = Number.isFinite(epochMs)
+          ? new Date(epochMs).toISOString()
+          : new Date().toISOString();
         result = result.map(f => {
           if (f.id !== target.id) return f;
           const pending = {
@@ -180,8 +224,8 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
             title: pendingSessionTitle(pendingId),
             is_active: 1,
             // Read by @/lib/workspace/sidebar-sort to rank this folder newest.
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
+            created_at: stamp,
+            updated_at: stamp,
           };
           return { ...f, isExpanded: true, sessions: [pending, ...(f.sessions || [])] };
         });
