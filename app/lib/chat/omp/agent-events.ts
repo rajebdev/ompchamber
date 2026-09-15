@@ -74,6 +74,36 @@ function refreshToolMessage(callId: string | undefined, deps: OmpAgentFoldDeps):
   deps.callbacksRef.current?.onMessageUpdate?.(pairToolOutputs(last, deps.toolResultsRef));
 }
 
+/** Flush assistant turns that stopped abnormally and were never streamed as
+ *  `message_end`. A user abort is the one terminal path where omp emits no
+ *  `message_end` at all — the synthetic aborted turn rides only in
+ *  `agent_end.messages`. omp slices out whatever it already streamed, so any
+ *  message found here is not a duplicate. Without this the failure stays
+ *  invisible until the session JSONL is reloaded. */
+function materializeTerminalMessages(
+  data: OmpAgentEvent,
+  deps: OmpAgentFoldDeps,
+  callbacks: OmpAgentCallbacks | undefined,
+): { errorMessage?: string } {
+  if (data.isTerminal === false) return {};
+  const messages = data.messages;
+  if (!Array.isArray(messages)) return {};
+  let errorMessage: string | undefined;
+  for (const entry of messages) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const raw = entry as Record<string, unknown>;
+    if (raw.role !== 'assistant') continue;
+    if (raw.stopReason !== 'aborted' && raw.stopReason !== 'error') continue;
+    const converted = toChatMessage(raw, false);
+    if (!converted) continue;
+    const paired = pairToolOutputs(converted, deps.toolResultsRef);
+    if (paired.toolCalls?.length) deps.lastToolMessageRef.current = paired;
+    callbacks?.onMessageEnd?.(paired);
+    if (typeof raw.errorMessage === 'string') errorMessage = raw.errorMessage;
+  }
+  return { errorMessage };
+}
+
 export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): void {
   const callbacks = deps.callbacksRef.current;
   switch (data.type) {
@@ -162,12 +192,14 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
 
     case 'agent_end': {
       deps.setState((prev) => ({ ...prev, isGenerating: false }));
+      const terminal = materializeTerminalMessages(data, deps, callbacks);
       if (deps.interruptPendingRef.current) {
         deps.interruptPendingRef.current = false;
         break;
       }
       callbacks?.onAgentEnd?.({
-        errorMessage: typeof data.errorMessage === 'string' ? data.errorMessage : undefined,
+        errorMessage: terminal.errorMessage
+          ?? (typeof data.errorMessage === 'string' ? data.errorMessage : undefined),
         message: typeof data.message === 'string' ? data.message : undefined,
       });
       break;
