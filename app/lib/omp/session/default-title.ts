@@ -35,11 +35,17 @@ export function isPendingSessionId(sessionId: string | null | undefined): boolea
   return Boolean(sessionId?.startsWith(PENDING_SESSION_PREFIX));
 }
 
+/** Creation epoch (ms) encoded in a pending session id (`new-<epochMs>`);
+ *  NaN for any other id, including real omp UUIDs. */
+export function pendingSessionCreatedAt(sessionId: string | null | undefined): number {
+  return sessionId?.startsWith(PENDING_SESSION_PREFIX)
+    ? Number(sessionId.slice(PENDING_SESSION_PREFIX.length))
+    : Number.NaN;
+}
+
 /** Default title of a client-side pending session; the id carries its
  *  creation epoch (`new-<epochMs>`). */
 export function pendingSessionTitle(sessionId: string | null | undefined): string {
-  const epochMs = sessionId?.startsWith(PENDING_SESSION_PREFIX)
-    ? Number(sessionId.slice(PENDING_SESSION_PREFIX.length))
-    : Number.NaN;
+  const epochMs = pendingSessionCreatedAt(sessionId);
   return formatNewSessionTitle(Number.isFinite(epochMs) ? new Date(epochMs) : new Date());
 }
