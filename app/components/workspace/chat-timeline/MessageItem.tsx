@@ -20,6 +20,8 @@ import { copyToClipboard } from '@/hooks/ui/clipboard';
 
 interface ChatMessageItemProps {
   msg: ChatMessageData | any;
+  provider?: string;
+  providerNames?: Record<string, string>;
   modelName?: string;
   /** id → display-name map from the model catalog; resolves per-message ids. */
   modelNames?: Record<string, string>;
@@ -50,6 +52,8 @@ function capitalizeFirstLetter(text: string): string {
 
 export function ChatMessageItem({ 
   msg, 
+  provider,
+  providerNames,
   modelName, 
   modelNames,
   isStreaming = false,
@@ -320,9 +324,11 @@ export function ChatMessageItem({
       {/* Bottom AI Metadata & Actions Toolbar (Only shown once completed) */}
       {!isStreaming && footerVisible && (
         <AiMessageFooter
+          provider={msg.provider || provider}
+          providerNames={providerNames}
           currentModel={(msg.model ? (modelNames?.[msg.model] ?? msg.model) : '') || modelName || ''}
           dateStr={formatFooterDate()}
-          durationMs={msg.durationMs ?? durationMs}
+          durationMs={durationMs ?? msg.durationMs}
           usage={msg.usage}
           content={msg.content}
           msgId={msg.id}
