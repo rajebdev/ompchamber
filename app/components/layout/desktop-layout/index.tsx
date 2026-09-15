@@ -11,6 +11,7 @@ import { useFileTabs } from '@/hooks/workspace/file-tabs';
 import { useSessionState } from '@/hooks/workspace/session-state';
 import { TopNavbar } from '@/components/layout/desktop-layout/TopNavbar';
 import { WorkspacePanels } from '@/components/layout/desktop-layout/WorkspacePanels';
+import { useAgentStreamStatus } from '@/hooks/chat/omp/status';
 
 interface DesktopLayoutProps {
   folders: WorkspaceFolderData[];
@@ -99,6 +100,7 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
   const [refreshKey, setRefreshKey] = useState(0);
   const handleRefreshWorkspace = () => setRefreshKey(k => k + 1);
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
+  const streamStatus = useAgentStreamStatus();
 
   // Global keyboard shortcut for settings (Cmd/Ctrl + ,)
   useEffect(() => {
@@ -227,6 +229,7 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
                 showLeftPanel={showLeftPanel}
                 showEditor={showEditor}
                 showRightPanel={showRightPanel}
+                streamStatus={streamStatus}
                 onSwitchToMobile={onSwitchToMobile}
                 onToggleEditor={handleToggleEditor}
                 onToggleRightPanel={handleToggleRightPanel}

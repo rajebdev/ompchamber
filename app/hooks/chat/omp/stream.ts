@@ -12,13 +12,14 @@
  * agent state.
  */
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import type { ChatMessageData, OmpAgentCallbacks, OmpAgentEvent, OmpAgentState, StreamTransport } from '@/types';
 import { foldAgentEvent, type ToolResultRecord } from '@/lib/chat/omp/agent-events';
 import { connectAgentSocket } from '@/lib/chat/omp/socket';
 import { connectAgentEvents } from '@/lib/chat/omp/sse';
 import type { AgentStreamConnection, AgentStreamHandlers } from '@/lib/chat/omp/transport';
+import { publishAgentStreamStatus } from '@/lib/chat/omp/status';
 
 export interface OmpStreamRefs {
   toolResultsRef: RefObject<Map<string, ToolResultRecord>>;
@@ -47,18 +48,28 @@ export function useOmpAgentStream({
 }: UseOmpAgentStreamOptions) {
   const connectionRef = useRef<AgentStreamConnection | null>(null);
 
+  // The navbar indicator needs the transport in force even before the first
+  // dial, and a transport switch invalidates any live socket — so announce it
+  // on mount/change and retract on unmount.
+  useEffect(() => {
+    publishAgentStreamStatus({ transport, connected: false });
+    return () => publishAgentStreamStatus({ transport, connected: false });
+  }, [transport]);
+
   const disconnect = useCallback(() => {
     const connection = connectionRef.current;
     connectionRef.current = null;
     connection?.close();
     setState((prev) => ({ ...prev, connected: false }));
-  }, [setState]);
+    publishAgentStreamStatus({ transport, connected: false });
+  }, [setState, transport]);
 
   const connect = useCallback((sid: string) => {
     disconnect();
     const handlers: AgentStreamHandlers = {
       onOpen: () => {
         setState((prev) => ({ ...prev, connected: true }));
+        publishAgentStreamStatus({ transport, connected: true });
         callbacksRef.current?.onConnected?.();
       },
       onFrame: (data: OmpAgentEvent) => {
@@ -73,6 +84,7 @@ export function useOmpAgentStream({
       },
       onClose: () => {
         setState((prev) => ({ ...prev, connected: false }));
+        publishAgentStreamStatus({ transport, connected: false });
       },
     };
     connectionRef.current = CONNECTORS[transport](sid, handlers);
