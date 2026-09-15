@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useRevalidator } from '@remix-run/react';
 import type { SessionSortOption, WorkspaceFolderData } from '@/types';
 import { MobileSessionHeader } from '@/components/mobile/mobile-session-sidebar/Header';
@@ -6,7 +6,7 @@ import { MobileSessionToolbar } from '@/components/mobile/mobile-session-sidebar
 import { MobileSessionList } from '@/components/mobile/mobile-session-sidebar/List';
 import { MobileSessionFooter } from '@/components/mobile/mobile-session-sidebar/Footer';
 import { Toast } from '@/components/common/Toast';
-import { sortFolders } from '@/lib/workspace/sidebar-sort';
+import { isValidSessionSortOption, sortFolders } from '@/lib/workspace/sidebar-sort';
 import { 
   SettingsModal, 
   AboutModal, 
@@ -104,16 +104,47 @@ export function MobileSessionSidebar({
 
   // Sorting state (matching desktop)
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const [sortOption, setSortOption] = useState<SessionSortOption>(() => {
-    if (typeof window === 'undefined') return 'A-Z';
+  // Seeded from the server (app_settings.omp_sidebar_sort) so the SSR HTML and
+  // the first client render agree — reading localStorage during render is what
+  // made the list re-sort right after hydration.
+  const [sortOption, setSortOption] = useState<SessionSortOption>(() =>
+    isValidSessionSortOption(appSettings.omp_sidebar_sort) ? appSettings.omp_sidebar_sort : 'A-Z',
+  );
+
+  const sortPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const persistSort = useCallback((opt: SessionSortOption) => {
+    if (sortPersistTimerRef.current) clearTimeout(sortPersistTimerRef.current);
+    sortPersistTimerRef.current = setTimeout(() => {
+      fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ omp_sidebar_sort: opt }),
+      }).catch(() => {});
+    }, 200);
+  }, []);
+
+  useEffect(() => () => {
+    if (sortPersistTimerRef.current) clearTimeout(sortPersistTimerRef.current);
+  }, []);
+
+  // One-time migration off localStorage, and only while the server holds no
+  // preference yet. Gating on that is what makes it one-time: an ungated adopt
+  // would let a stale localStorage entry on any client overwrite the value the
+  // server already owns, forever.
+  const hasServerSort = isValidSessionSortOption(appSettings.omp_sidebar_sort);
+  useEffect(() => {
+    if (hasServerSort) return;
     const saved = localStorage.getItem('omp_sidebar_sort');
-    return saved === 'A-Z' || saved === 'Z-A' || saved === 'LATEST_SESSION' || saved === 'LATEST_ADDED' ? saved : 'A-Z';
-  });
+    if (!isValidSessionSortOption(saved)) return;
+    setSortOption(saved);
+    persistSort(saved);
+  }, [hasServerSort, persistSort]);
 
   const handleSortChange = (opt: SessionSortOption) => {
     setSortOption(opt);
     localStorage.setItem('omp_sidebar_sort', opt);
     setOptionsOpen(false);
+    persistSort(opt);
   };
 
   const optionsRef = useRef<HTMLDivElement>(null);
