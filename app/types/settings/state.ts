@@ -38,7 +38,6 @@ export interface SettingsState {
   theme: 'paper' | 'contrast' | 'noir';
   fontSize: 'compact' | 'standard' | 'comfort';
   editorFont: string;
-  autoScrollChat: boolean;
   streamResponses: boolean;
   streamTransport: StreamTransport;
   expandedThinking: boolean;

@@ -34,7 +34,6 @@ const DEFAULT_SETTINGS: SettingsState = {
   theme: 'paper',
   fontSize: 'standard',
   editorFont: 'JetBrains Mono',
-  autoScrollChat: true,
   streamResponses: true,
   streamTransport: 'websocket',
   expandedThinking: true,
