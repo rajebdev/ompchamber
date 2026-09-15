@@ -19,6 +19,11 @@
 - **Editor Panel**: opened-file tabs and code editing (`app/components/workspace/editor/`).
 - **Right Panel + Activity Bar**: switchable developer panels — `context` (Context & Telemetry), `files`, `search`, `git` (Source Control), `terminal` (Bun), and `browser` (`app/components/workspace/`, `app/components/layout/RightActivityBar.tsx`).
 
+### Agent Event Stream Transport
+- The live omp agent bridge (`POST /api/agent/:sessionId` for commands) streams events over **WebSocket by default** — `GET /api/agent/:sessionId/ws` — with **SSE** (`/api/agent/:sessionId/events`) as the fallback, selected in **Settings → Chats → Streaming Transport** (`streamTransport` in `omp_chamber_settings`; default `websocket`).
+- Server side is shared by dev and prod: `server/agent-stream-websocket.js` attaches to whatever `http.Server` owns the port — the Vite dev server (plugin in `vite.config.ts`) and the production entry `server/index.js` (started by `npm start` and `ompchamber serve --prod`).
+- Client side: `app/lib/chat/omp/{transport,socket,sse}.ts` own the connections; both hand every frame to `app/lib/chat/omp/agent-events.ts`, which folds it into chamber state. Keep frame handling in that folder — never fork behavior per transport.
+
 ---
 
 ## Agent Operational Workflows
