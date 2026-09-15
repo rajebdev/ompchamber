@@ -22,6 +22,8 @@ interface EmptyWorkspacePromptProps {
    *  optimistic user bubble shows immediately on send (before the omp spawn
    *  completes and the real session timeline takes over). */
   localMessages?: ChatMessageData[];
+  provider?: string;
+  providerNames?: Record<string, string>;
   modelName?: string;
   modelNames?: Record<string, string>;
   rootPath?: string | null;
@@ -46,6 +48,8 @@ export function EmptyWorkspacePrompt({
   isGenerating,
   appSettings = {},
   localMessages = [],
+  provider,
+  providerNames,
   modelName,
   modelNames,
   rootPath,
@@ -156,6 +160,8 @@ export function EmptyWorkspacePrompt({
                   <ChatMessageItem
                     key={msg.id}
                     msg={msg}
+                    provider={provider}
+                    providerNames={providerNames}
                     modelName={modelName}
                     modelNames={modelNames}
                     isStreaming={isLoading}

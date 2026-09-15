@@ -13,6 +13,7 @@ import { SubagentView } from '@/components/workspace/chat-timeline/SubagentView'
 import { useChatTimeline } from '@/hooks/chat/timeline';
 import { useSessionTitle } from '@/hooks/chat/timeline/session-title';
 import { useModelNames } from '@/hooks/models/use-model-names';
+import { useProviderNames } from '@/hooks/models/use-provider-names';
 import { normalizeNoticePositions } from '@/lib/chat/order';
 import { isRecord } from '@/lib/omp/session/parse-message-blocks';
 import { historyEntryToSubagentInfo } from '@/lib/omp/subagent/history/client';
@@ -159,7 +160,9 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
   };
 
   const modelNames = useModelNames();
+  const providerNames = useProviderNames();
   const userMessages = localMessages.filter(m => m.role === 'user');
+  const sessionProvider = typeof sessionData?.model === 'object' ? sessionData.model.provider : undefined;
   const sessionModelName = typeof sessionData?.model === 'object'
     ? (modelNames[sessionData.model.modelId] ?? sessionData.model.modelId)
     : sessionData?.model;
@@ -188,6 +191,8 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
         isGenerating={isGenerating}
         appSettings={appSettings}
         localMessages={localMessages}
+        provider={sessionProvider}
+        providerNames={providerNames}
         modelName={sessionModelName}
         modelNames={modelNames}
         onThinkingLevelChange={handleThinkingLevelChange}
@@ -209,6 +214,8 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
             sessionId={sessionId}
             subagent={activeSubagent}
             onBack={handleSubagentBack}
+            provider={sessionProvider}
+            providerNames={providerNames}
           />
         ) : (
           <>
@@ -235,6 +242,8 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
                 <MessageList
                   messages={orderedMessages}
                   isGenerating={isGenerating}
+                  provider={sessionProvider}
+                  providerNames={providerNames}
                   modelName={sessionModelName}
                   modelNames={modelNames}
                   onUndo={handleUndo}

@@ -10,6 +10,8 @@ interface SubagentViewProps {
   sessionId: string | null;
   subagent: SubagentInfo | null;
   onBack: () => void;
+  provider?: string;
+  providerNames?: Record<string, string>;
   className?: string;
 }
 
@@ -27,7 +29,7 @@ function formatTokens(n: number | undefined): string {
 
 /** Read-only subagent transcript: compact banner, live-growing message list,
  *  and a notice row where the main timeline's composer would be. */
-export function SubagentView({ sessionId, subagent, onBack, className = '' }: SubagentViewProps) {
+export function SubagentView({ sessionId, subagent, onBack, provider, providerNames, className = '' }: SubagentViewProps) {
   const { messages, isLoading, status, isActive } = useSubagentTranscript(sessionId, subagent, onBack);
   const modelNames = useModelNames();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -119,6 +121,8 @@ export function SubagentView({ sessionId, subagent, onBack, className = '' }: Su
                 <ChatMessageItem
                   key={msg.id}
                   msg={msg}
+                  provider={msg.provider || provider}
+                  providerNames={providerNames}
                   modelName={msg.model || modelName}
                   modelNames={modelNames}
                   isStreaming={isLoading}
