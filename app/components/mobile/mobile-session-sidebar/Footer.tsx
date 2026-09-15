@@ -6,9 +6,8 @@ interface MobileSessionFooterProps {
   onAbout: () => void;
   updateAvailable?: boolean;
   onUpdateClick?: () => void;
-  /** Switch the app to the desktop layout; the choice is persisted server-side
-   *  and in localStorage, so it survives reloads and is reversible from the
-   *  desktop navbar's phone button. */
+  /** Switch the app to the desktop layout for this page session only. The
+   *  choice is not persisted, so the next load re-detects the device. */
   onDesktopToggle?: () => void;
 }
 

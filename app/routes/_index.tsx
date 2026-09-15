@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { json } from '@remix-run/node';
 import type { MetaFunction, LoaderFunctionArgs } from '@remix-run/node';
 import { useLoaderData, useSearchParams } from '@remix-run/react';
@@ -170,18 +170,17 @@ export default function App() {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('sessionId') || '1';
 
-  // Initialize with server-detected User-Agent to eliminate SSR flash
-  const [isMobileMode, setIsMobileMode] = useState<boolean>(
-    appSettings.omp_view_mode === 'mobile' ? true :
-    appSettings.omp_view_mode === 'desktop' ? false :
-    initialIsMobile
-  );
+  // Initialize with server-detected User-Agent to eliminate SSR flash. The
+  // device decides the layout on every load — the manual switch below is
+  // session-only, so opening the chamber on a phone never locks a desktop (or
+  // vice versa) into the other layout on its next visit.
+  const [isMobileMode, setIsMobileMode] = useState<boolean>(initialIsMobile);
+  // Set the moment the user picks a layout by hand; while set, the viewport no
+  // longer re-detects so their choice survives a resize.
+  const manualOverrideRef = useRef(false);
 
   useEffect(() => {
-    // 1. Check if user has an explicit manual preference in SQLite settings
-    const savedPreference = appSettings.omp_view_mode || localStorage.getItem('omp_view_mode');
-    
-    // 2. Comprehensive multi-factor device & screen check
+    // Comprehensive multi-factor device & screen check
     const checkIsMobileDevice = () => {
       const isNarrow = window.innerWidth < 768;
       const isTouch = window.matchMedia('(pointer: coarse)').matches;
@@ -193,17 +192,10 @@ export default function App() {
       return isNarrow || isMobileUA || isMobileLandscape;
     };
 
-    if (savedPreference === 'desktop') {
-      setIsMobileMode(false);
-    } else if (savedPreference === 'mobile') {
-      setIsMobileMode(true);
-    } else {
-      setIsMobileMode(checkIsMobileDevice());
-    }
+    if (!manualOverrideRef.current) setIsMobileMode(checkIsMobileDevice());
 
     const handleResize = () => {
-      const currentPref = localStorage.getItem('omp_view_mode');
-      if (!currentPref) {
+      if (!manualOverrideRef.current) {
         setIsMobileMode(checkIsMobileDevice());
       }
     };
@@ -216,23 +208,13 @@ export default function App() {
     };
   }, []);
 
-  const saveSetting = (key: string, value: any) => {
-    fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [key]: value })
-    }).catch(console.error);
-  };
-
   const handleSwitchToDesktop = () => {
-    localStorage.setItem('omp_view_mode', 'desktop');
-    saveSetting('omp_view_mode', 'desktop');
+    manualOverrideRef.current = true;
     setIsMobileMode(false);
   };
 
   const handleSwitchToMobile = () => {
-    localStorage.setItem('omp_view_mode', 'mobile');
-    saveSetting('omp_view_mode', 'mobile');
+    manualOverrideRef.current = true;
     setIsMobileMode(true);
   };
 
