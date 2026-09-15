@@ -13,7 +13,7 @@
  * generating flag alone. On a page reload during a run there is no optimistic
  * bubble yet (fresh mount, refs are null), so the committed JSONL history —
  * including the already-finalized turns of the in-flight run — must load
- * normally; the SSE resume continues from there. Clobbering is only possible
+ * normally; the stream resume continues from there. Clobbering is only possible
  * while an optimistic AI placeholder actually owns the tail of the timeline.
  */
 

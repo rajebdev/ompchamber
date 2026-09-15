@@ -1,3 +1,6 @@
+/** Wire protocol for the live agent event stream (chat timeline). */
+export type StreamTransport = 'websocket' | 'sse';
+
 export type SettingsCategoryId =
   // OMPCHAMBER
   | 'appearance'
@@ -37,6 +40,7 @@ export interface SettingsState {
   editorFont: string;
   autoScrollChat: boolean;
   streamResponses: boolean;
+  streamTransport: StreamTransport;
   expandedThinking: boolean;
   detailedToolCalls: boolean;
   notificationsEnabled: boolean;

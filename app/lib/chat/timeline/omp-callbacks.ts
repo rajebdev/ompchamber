@@ -13,8 +13,7 @@
  */
 
 import type { Dispatch, SetStateAction } from 'react';
-import type { ChatMessageData } from '@/types';
-import type { ExtensionUiDialogRequest, IncomingExtensionUiRequest, OmpAgentCallbacks } from '@/hooks/chat/omp';
+import type { ChatMessageData, ExtensionUiDialogRequest, IncomingExtensionUiRequest, OmpAgentCallbacks } from '@/types';
 import { normalizeNoticePositions } from '@/lib/chat/order';
 import { triggerChatCompletionSound } from '@/hooks/ui/notification-sound';
 
@@ -74,7 +73,7 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
         setTimeout(() => refreshSessionMeta(sid), 100);
       }
     },
-    // Reload recovery: the omp process kept running server-side, so the SSE
+    // Reload recovery: the omp process kept running server-side, so the event
     // stream is reattached and the generating UI must resume (the timeline
     // fetch already loaded the committed messages; live updates continue).
     onResumeStream: () => {

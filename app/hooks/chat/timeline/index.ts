@@ -9,6 +9,7 @@ import { useChatTimelineSend } from '@/hooks/chat/timeline/send';
 import { useSessionLoad } from '@/hooks/chat/timeline/session-load';
 import { useBrowserPageContextInsert } from '@/hooks/chat/timeline/browser-context';
 import { createOmpAgentCallbacks } from '@/lib/chat/timeline/omp-callbacks';
+import { readStreamTransport } from '@/lib/chat/omp/transport';
 import { useSessionState } from '@/hooks/workspace/session-state';
 
 interface UseChatTimelineOptions {
@@ -147,7 +148,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     abortControllerRef,
     appSettings,
     setExtensionDialog,
-  }));
+  }), readStreamTransport(appSettings));
   const { prepareDeliverable, steerOmpAgent, executeSend } = useChatTimelineSend({
     folders,
     selectedFolderId,

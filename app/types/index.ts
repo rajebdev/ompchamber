@@ -14,6 +14,7 @@ export * from '@/types/settings/usage';
 export * from '@/types/settings/skill';
 export * from '@/types/context';
 export * from '@/types/omp/session';
+export * from '@/types/omp/agent';
 export * from '@/types/omp/subagent';
 export * from '@/types/browser';
 export * from '@/types/updates';

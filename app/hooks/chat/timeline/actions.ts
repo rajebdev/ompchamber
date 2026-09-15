@@ -13,12 +13,9 @@
 
 import { useCallback } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import type { Attachment, ChatMessageData } from '@/types';
+import type { Attachment, ChatMessageData, OmpAgentHandle } from '@/types';
 import type { QueuedMessage } from '@/components/workspace/chat-timeline/QueueList';
 import type { ExtensionUiDialogRequest } from '@/types/omp/agent';
-import type { useOmpAgent } from '@/hooks/chat/omp';
-
-type OmpAgent = ReturnType<typeof useOmpAgent>;
 
 export interface ChatTimelineActionsDeps {
   inputValue: string;
@@ -31,7 +28,7 @@ export interface ChatTimelineActionsDeps {
   executeSend: (text: string, attachments: Attachment[]) => Promise<void>;
   steerOmpAgent: (text: string, attachments: Attachment[]) => Promise<void>;
   prepareDeliverable: (text: string, attachments: Attachment[]) => Promise<{ promptText: string; images?: { data: string; mimeType: string }[] }>;
-  ompAgent: OmpAgent;
+  ompAgent: OmpAgentHandle;
   abortControllerRef: { current: AbortController | null };
   setGenerating: (v: boolean) => void;
   persistMessages: (messages: any[]) => void;

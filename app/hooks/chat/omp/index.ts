@@ -1,55 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ChatMessageData } from '@/types';
-import type { ExtensionUiDialogRequest, IncomingExtensionUiRequest } from '@/types/omp/agent';
-import { useOmpAgentStream } from '@/hooks/chat/omp/stream';
+import type { ChatMessageData, OmpAgentCallbacks, OmpAgentHandle, OmpAgentState, StreamTransport } from '@/types';
+import type { ExtensionUiDialogRequest } from '@/types/omp/agent';
+import { useOmpAgentStream, type ToolResultRecord } from '@/hooks/chat/omp/stream';
 
 /**
  * Live omp agent bridge for the chamber chat (real mode, MOCK=false).
  *
  * Mirrors the omp-web useAgentSession streaming surface, scoped to what the
  * chamber timeline needs: send a prompt over the RPC bridge
- * (POST /api/agent/:sessionId), then consume agent events over SSE
- * (GET /api/agent/:sessionId/events) and fold them into ChatMessageData.
+ * (POST /api/agent/:sessionId), then consume agent events over the configured
+ * transport (WebSocket by default, SSE on request) from
+ * `/api/agent/:sessionId/*` and fold them into ChatMessageData.
  *
  * The omp event stream carries full accumulated messages (message_update),
  * so the client keeps a single "current assistant message" that is replaced
  * on every update and finalized on message_end / agent_end.
  */
 
-export interface OmpAgentEvent {
-  type: string;
-  [key: string]: unknown;
-}
-
 export type { ExtensionUiDialogMethod, ExtensionUiDialogRequest, IncomingExtensionUiRequest } from '@/types/omp/agent';
+export type { OmpAgentCallbacks, OmpAgentEvent, OmpAgentState } from '@/types/omp/agent';
 
-export interface OmpAgentCallbacks {
-  onAgentStart?: () => void;
-  onMessageUpdate?: (msg: ChatMessageData) => void;
-  onMessageEnd?: (msg: ChatMessageData) => void;
-  onAgentEnd?: (info: { errorMessage?: string; message?: string }) => void;
-  onPromptError?: (errorMessage: string) => void;
-  onNotice?: (level: string, message: string) => void;
-  onConnected?: () => void;
-  /** Mount-time probe found the session mid-run → the stream was reattached
-   *  and the UI should resume its generating state. */
-  onResumeStream?: () => void;
-  /** Ask/approval dialog diminta omp — blocking sampai di-respond. */
-  onExtensionUiRequest?: (request: IncomingExtensionUiRequest) => void;
-  /** User-message turn delivered by omp (queued steer/follow-up picked up). */
-  onQueuedMessageDelivered?: (text: string) => void;
-  /** omp applied a model change (set_model). The frame carries no payload, so
-   *  consumers should re-read session metadata to refresh the displayed model. */
-  onModelChanged?: () => void;
-}
-
-export interface OmpAgentState {
-  isGenerating: boolean;
-  connected: boolean;
-  error: string | null;
-}
-
-export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbacks) {
+export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbacks, transport: StreamTransport): OmpAgentHandle {
   const [state, setState] = useState<OmpAgentState>({ isGenerating: false, connected: false, error: null });
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
@@ -58,7 +29,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
   // Tool results arrive as separate events (tool_execution_end) or as
   // toolResult messages AFTER the assistant message with the toolCall block.
   // Accumulate them here and merge into the matching tool call on message_end.
-  const toolResultsRef = useRef<Map<string, { output: string; isError?: boolean; details?: Record<string, any> }>>(new Map());
+  const toolResultsRef = useRef<Map<string, ToolResultRecord>>(new Map());
   // Last assistant message that carried tool calls, so tool_execution_end
   // events arriving after message_end can re-emit it with the result paired.
   const lastToolMessageRef = useRef<ChatMessageData | null>(null);
@@ -70,18 +41,19 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     toolResultsRef,
     lastToolMessageRef,
     interruptPendingRef,
+    transport,
   });
 
   useEffect(() => {
     if (!sessionId) return;
-    // Do NOT auto-connect here: the SSE route 409s until the session's omp
-    // process is spawned (POST /api/agent/:id), and an EventSource to a 409
-    // loops network errors in the console. connect() is called lazily by
-    // sendPrompt after the spawn succeeds.
+    // Do NOT auto-connect here: the stream endpoint refuses (409) until the
+    // session's omp process is spawned (POST /api/agent/:id), and a client
+    // dialing a refused endpoint loops network errors in the console.
+    // connect() is called lazily by sendPrompt after the spawn succeeds.
     let cancelled = false;
     // Reload/remount recovery: the omp process keeps running server-side
-    // after a page refresh, so a mid-run session must reattach its SSE stream
-    // or the in-flight response appears frozen. Probe get_state; when the
+    // after a page refresh, so a mid-run session must reattach its event
+    // stream or the in-flight response appears frozen. Probe get_state; when the
     // wrapper reports streaming/prompt-running, reconnect and let the caller
     // resume the generating UI.
     fetch(`/api/agent/${encodeURIComponent(sessionId)}`)
@@ -108,7 +80,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     setState((prev) => ({ ...prev, isGenerating: true, error: null }));
     try {
       // Mirror omp-web handleSend: warm the session process up with get_state
-      // (spawns it on first use), then attach the SSE stream before sending
+      // (spawns it on first use), then attach the event stream before sending
       // the prompt so no agent events are missed.
       const warmup = await fetch(`/api/agent/${encodeURIComponent(sid)}`, {
         method: 'POST',
@@ -139,7 +111,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
   }, [connect]);
 
   /** Spawn a brand-new omp session and send the first prompt: ensure_session
-   *  first (returns omp's real session id), attach the SSE stream, then send
+   *  first (returns omp's real session id), attach the event stream, then send
    *  the prompt through the existing session route so no agent events are
    *  missed. Model/thinking picks ride the ensure_session body so omp applies
    *  them BEFORE the first prompt (and their JSONL change entries are written
@@ -211,7 +183,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
         body: JSON.stringify({ type: 'abort' }),
       });
     } catch {
-      // Abort is best-effort; the SSE stream will surface the terminal state.
+      // Abort is best-effort; the event stream surfaces the terminal state.
     }
     setState((prev) => ({ ...prev, isGenerating: false }));
   }, []);

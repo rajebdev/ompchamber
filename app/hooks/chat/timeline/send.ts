@@ -12,16 +12,13 @@
 
 import { useCallback } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import type { Attachment, ChatMessageData } from '@/types';
+import type { Attachment, ChatMessageData, OmpAgentHandle } from '@/types';
 import { streamChatResponse } from '@/hooks/chat/stream';
 import { isTextAttachmentFile, composeMessageWithTextAttachments } from '@/lib/chat/attachments';
 import { loadAgentNames } from '@/lib/chat/composer/client';
 import { translateAgentMentions, translateFileMentions } from '@/lib/chat/composer/translate';
 import { normalizeNoticePositions } from '@/lib/chat/order';
 import { createMockStreamCallbacks } from '@/lib/chat/timeline/stream-callbacks';
-import type { useOmpAgent } from '@/hooks/chat/omp';
-
-type OmpAgent = ReturnType<typeof useOmpAgent>;
 
 type TextFileAttachment = Parameters<typeof composeMessageWithTextAttachments>[1][number];
 
@@ -49,7 +46,7 @@ export interface ChatTimelineSendDeps {
   sessionId: string | null;
   isOmpSession: boolean;
   appSettings: Record<string, any>;
-  ompAgent: OmpAgent;
+  ompAgent: OmpAgentHandle;
   setLocalMessages: Dispatch<SetStateAction<ChatMessageData[]>>;
   persistMessages: (messages: any[]) => void;
   setGenerating: (v: boolean) => void;
@@ -193,7 +190,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
     setGeneratingVerb(verbs[Math.floor(Math.random() * verbs.length)]);
     setTimeout(() => scrollToBottom('smooth'), 50);
 
-    // Real mode: route through the omp agent RPC bridge + SSE stream.
+    // Real mode: route through the omp agent RPC bridge + event stream.
     if (isOmpSession) {
       aiPlaceholderIdRef.current = aiPlaceholderId;
       optimisticUserIdRef.current = userMsgId;
