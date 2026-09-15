@@ -24,6 +24,7 @@ interface MobileSessionSidebarProps {
   onNewSession: () => void;
   onCreateFolder: (input: { name: string; path?: string }) => Promise<void> | void;
   onClose: () => void;
+  onDesktopToggle?: () => void;
   appSettings?: Record<string, any>;
 }
 
@@ -34,6 +35,7 @@ export function MobileSessionSidebar({
   onNewSession,
   onCreateFolder,
   onClose,
+  onDesktopToggle,
   appSettings = {}
 }: MobileSessionSidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -217,6 +219,7 @@ export function MobileSessionSidebar({
       <MobileSessionFooter
         onSettings={() => setSettingsOpen(true)}
         onAbout={() => setAboutOpen(true)}
+        onDesktopToggle={onDesktopToggle}
         updateAvailable={updates.hasUpdate}
         onUpdateClick={() => {
           setAboutOpen(true);

@@ -5,9 +5,7 @@ import { MobileMainView } from '@/components/mobile/MainView';
 import { MobileSessionSidebar } from '@/components/mobile/SessionSidebar';
 import { MobileRightSidebar } from '@/components/mobile/RightSidebar';
 import { MobileFullEditor } from '@/components/mobile/mobile-right-sidebar/FullEditor';
-import { MobileScreenSwitcher } from '@/components/mobile/ScreenSwitcher';
 import { activeProjectForSession } from '@/lib/workspace/active-project';
-import { useMobileChatSession } from '@/hooks/chat/mobile-session';
 
 interface MobileLayoutWrapperProps {
   folders: WorkspaceFolderData[];
@@ -25,9 +23,6 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
   const folderId = folderParam ? (Number.isNaN(Number(folderParam)) ? folderParam : Number(folderParam)) : null;
 
   const [currentScreen, setCurrentScreen] = useState<MobileScreen>('main');
-  const [selectedFolderId, setSelectedFolderId] = useState<number | null>(
-    typeof folderId === 'number' ? folderId : null
-  );
   const [mobileEditorFile, setMobileEditorFile] = useState<{ name: string; path?: string; content?: string; root?: string } | null>(null);
 
   const { folder: sessionFolder } = activeProjectForSession(folders, sessionId);
@@ -35,25 +30,19 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
   const activeProjectPath = contextFolder?.project_path ?? null;
   const hasContext = !!contextFolder;
 
-  const {
-    messages,
-    setMessages,
-    sessionModel,
-    isGenerating,
-    messageQueue,
-    setMessageQueue,
-    handleSendMessage,
-    handleStopGenerating,
-  } = useMobileChatSession({ folders, sessionId, selectedFolderId, appSettings });
-
   // Listen to open-file event on mobile
   useEffect(() => {
     const handleCustomOpenFile = (e: Event) => {
-      const customEvent = e as CustomEvent<{ path: string; name?: string; content?: string }>;
+      const customEvent = e as CustomEvent<{ path: string; name?: string; content?: string; root?: string }>;
       if (!customEvent.detail || !customEvent.detail.path) return;
       const rawPath = customEvent.detail.path.replace(/^\/+/, '');
       const name = customEvent.detail.name || rawPath.split('/').pop() || 'file';
-      setMobileEditorFile({ name, path: rawPath, content: customEvent.detail.content });
+      setMobileEditorFile({
+        name,
+        path: rawPath,
+        content: customEvent.detail.content,
+        root: customEvent.detail.root,
+      });
     };
 
     window.addEventListener('omp:open-file', handleCustomOpenFile);
@@ -63,28 +52,30 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
   const handleSelectSession = (id: number | string) => {
     setSearchParams(prev => {
       prev.set('sessionId', id.toString());
+      // Navigating away from a session must also exit its transcript view.
+      if (prev.has('subagent')) prev.delete('subagent');
       return prev;
     }, { replace: true });
     setCurrentScreen('main');
   };
 
+  // Mirrors the desktop sidebar: a client-side pending session (`new-…`) that
+  // the chat timeline replaces with the real omp session id on first send.
+  // The current folder stays selected so the composer keeps its context.
   const handleNewSession = () => {
     setSearchParams(prev => {
-      prev.delete('sessionId');
-      return prev;
+      const currentSessionId = prev.get('sessionId');
+      const next = new URLSearchParams(prev);
+      next.set('sessionId', `new-${Date.now()}`);
+      if (currentSessionId) {
+        const currentFolder = folders.find(f =>
+          f.sessions?.some((s) => String(s.id) === String(currentSessionId))
+        );
+        if (currentFolder) next.set('folderId', currentFolder.id.toString());
+      }
+      return next;
     }, { replace: true });
-    setMessages([]);
     setCurrentScreen('main');
-  };
-
-  const handleSelectFolder = (id: number | null) => {
-    setSelectedFolderId(id);
-    if (id) {
-      setSearchParams(prev => {
-        prev.set('folderId', id.toString());
-        return prev;
-      }, { replace: true });
-    }
   };
 
   const handleCreateFolder = async (input: { name: string; path?: string }) => {
@@ -112,36 +103,22 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
   }, [activeProjectPath]);
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-canvas text-ink font-sans selection:bg-ink selection:text-canvas relative">
-      <MobileScreenSwitcher
-        currentScreen={currentScreen}
-        onSelectScreen={setCurrentScreen}
-        onDesktopToggle={onDesktopToggle}
-      />
-
-      <div className={`h-full w-full ${currentScreen === 'main' ? 'block' : 'hidden'}`}>
+    <div
+      className="flex flex-col h-dvh w-screen overflow-hidden bg-canvas text-ink font-sans selection:bg-ink selection:text-canvas relative"
+    >
+      <div className={`flex-1 min-h-0 w-full ${currentScreen === 'main' ? 'block' : 'hidden'}`}>
         <MobileMainView
           folders={folders}
-          selectedFolderId={selectedFolderId}
-          onSelectFolder={handleSelectFolder}
-          rootPath={activeProjectPath ?? undefined}
           activeSessionId={sessionId}
           onSelectSession={handleSelectSession}
           onNewSession={handleNewSession}
           onOpenSessionSidebar={() => setCurrentScreen('session')}
           onOpenRightSidebar={() => setCurrentScreen('right')}
-          messages={messages}
-          sessionModel={sessionModel}
-          onSendMessage={handleSendMessage}
-          isGenerating={isGenerating}
-          onStop={handleStopGenerating}
           appSettings={appSettings}
-          messageQueue={messageQueue}
-          setMessageQueue={setMessageQueue}
         />
       </div>
 
-      <div className={`h-full w-full ${currentScreen === 'session' ? 'block' : 'hidden'}`}>
+      <div className={`flex-1 min-h-0 w-full ${currentScreen === 'session' ? 'block' : 'hidden'}`}>
         <MobileSessionSidebar
           folders={folders}
           activeSessionId={sessionId}
@@ -149,11 +126,12 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
           onNewSession={handleNewSession}
           onCreateFolder={handleCreateFolder}
           onClose={() => setCurrentScreen('main')}
+          onDesktopToggle={onDesktopToggle}
           appSettings={appSettings}
         />
       </div>
 
-      <div className={`h-full w-full ${currentScreen === 'right' ? 'block' : 'hidden'}`}>
+      <div className={`flex-1 min-h-0 w-full ${currentScreen === 'right' ? 'block' : 'hidden'}`}>
         <MobileRightSidebar
           enabled={hasContext}
           rootPath={activeProjectPath ?? undefined}

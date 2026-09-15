@@ -1,4 +1,4 @@
-import { Settings, Info } from 'lucide-react';
+import { Settings, Info, Monitor } from 'lucide-react';
 import packageJson from '@/../package.json';
 
 interface MobileSessionFooterProps {
@@ -6,11 +6,24 @@ interface MobileSessionFooterProps {
   onAbout: () => void;
   updateAvailable?: boolean;
   onUpdateClick?: () => void;
+  /** Switch the app to the desktop layout; the choice is persisted server-side
+   *  and in localStorage, so it survives reloads and is reversible from the
+   *  desktop navbar's phone button. */
+  onDesktopToggle?: () => void;
 }
 
-export function MobileSessionFooter({ onSettings, onAbout, updateAvailable, onUpdateClick }: MobileSessionFooterProps) {
+export function MobileSessionFooter({
+  onSettings,
+  onAbout,
+  updateAvailable,
+  onUpdateClick,
+  onDesktopToggle,
+}: MobileSessionFooterProps) {
   return (
-    <div className="p-3 border-t border-ink/10 flex items-center justify-between flex-shrink-0 bg-canvas text-xs text-ink/60">
+    <div
+      className="px-3 pt-3 border-t border-ink/10 flex items-center justify-between flex-shrink-0 bg-canvas text-xs text-ink/60"
+      style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}
+    >
       <div className="flex items-center space-x-3">
         <button
           type="button"
@@ -28,6 +41,17 @@ export function MobileSessionFooter({ onSettings, onAbout, updateAvailable, onUp
           <Info size={14} />
           <span>About</span>
         </button>
+        {onDesktopToggle && (
+          <button
+            type="button"
+            onClick={onDesktopToggle}
+            className="flex items-center space-x-1 hover:text-ink transition-colors"
+            title="Switch to desktop view"
+          >
+            <Monitor size={14} />
+            <span>Desktop</span>
+          </button>
+        )}
       </div>
       <div className="flex items-center gap-2">
         <span className="font-mono text-[10px] text-ink/40">v{packageJson.version}</span>
