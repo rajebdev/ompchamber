@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from '@remix-run/react';
 import { ArrowDown } from 'lucide-react';
 import { ChatInput } from '@/components/workspace/chat-timeline/chat-input/index';
-import { ChatMessageItem } from '@/components/workspace/chat-timeline/MessageItem';
+import { MessageList } from '@/components/workspace/chat-timeline/MessageList';
 import { AskDialog } from '@/components/workspace/chat-timeline/tool-renderers/ask-dialog';
 import { MinimapShortcuts } from '@/components/workspace/chat-timeline/MinimapShortcuts';
 import { EmptyWorkspacePrompt } from '@/components/workspace/chat-timeline/EmptyWorkspacePrompt';
@@ -13,7 +13,6 @@ import { SubagentView } from '@/components/workspace/chat-timeline/SubagentView'
 import { useChatTimeline } from '@/hooks/chat/timeline';
 import { useSessionTitle } from '@/hooks/chat/timeline/session-title';
 import { useModelNames } from '@/hooks/models/use-model-names';
-import { responseRunDurationMs } from '@/lib/chat/duration';
 import { normalizeNoticePositions } from '@/lib/chat/order';
 import { isRecord } from '@/lib/omp/session/parse-message-blocks';
 import { historyEntryToSubagentInfo } from '@/lib/omp/subagent/history/client';
@@ -27,9 +26,16 @@ interface ChatTimelineProps {
   folders?: any[];
   appSettings?: Record<string, any>;
   onSessionTitle?: (title: string | null) => void;
+  /**
+   * `mobile` tightens the outer padding, drops the minimap rail (no room on a
+   * phone) and hands the composer a touch-sized layout. Everything else — the
+   * omp agent bridge, queue, steering, subagents, ask dialogs — is identical.
+   */
+  variant?: 'desktop' | 'mobile';
 }
 
-export function ChatTimeline({ className = '', folders = [], appSettings = {}, onSessionTitle }: ChatTimelineProps) {
+export function ChatTimeline({ className = '', folders = [], appSettings = {}, onSessionTitle, variant = 'desktop' }: ChatTimelineProps) {
+  const isMobile = variant === 'mobile';
   const {
     sessionId,
     selectedFolderId,
@@ -189,6 +195,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
         sessionModel={typeof sessionData?.model === 'object' ? sessionData.model : null}
         sessionThinkingLevel={sessionData?.thinkingLevel}
         generatingVerb={generatingVerb}
+        variant={variant}
       />
     );
   }
@@ -205,57 +212,35 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
           />
         ) : (
           <>
-            {/* Minimap Shortcuts */}
-            <MinimapShortcuts 
-              userMessages={userMessages} 
-              onScrollTo={handleScrollTo} 
-            />
+            {/* Minimap Shortcuts — desktop only: the rail needs side room a
+                phone does not have. */}
+            {!isMobile && (
+              <MinimapShortcuts 
+                userMessages={userMessages} 
+                onScrollTo={handleScrollTo} 
+              />
+            )}
 
             {/* Timeline Body */}
             <div 
               ref={scrollRef}
               onScroll={handleScroll}
-              className={`flex-1 scrollbar-overlay-container overscroll-contain p-4 scroll-smooth overflow-x-hidden pb-10 ${
+              className={`flex-1 scrollbar-overlay-container overscroll-contain scroll-smooth overflow-x-hidden ${
+                isMobile ? 'px-3 py-3 pb-8' : 'p-4 pb-10'
+              } ${
                 isScrolling ? 'timeline-scrollbar-visible' : 'timeline-scrollbar-hidden'
               }`}
             >
               <div className="mx-auto w-full max-w-[970px]">
-                {orderedMessages.map((msg, idx) => {
-                  const prev = orderedMessages[idx - 1];
-                  // The streaming AI message is the last non-notice row: notice
-                  // rows sit above the turn, so a plain "last item" check would
-                  // mark the notice as streaming and render the footer early.
-                  let lastAiIdx = orderedMessages.length - 1;
-                  while (lastAiIdx >= 0 && orderedMessages[lastAiIdx].notice) lastAiIdx--;
-                  const isLoading = isGenerating && idx === lastAiIdx && msg.role === 'ai';
-                  // Notice rows are transparent for footer purposes: the last real
-                  // AI message of a run still owns the footer even when a notice
-                  // row follows it.
-                  const nextReal = orderedMessages.slice(idx + 1).find(m => !m.notice);
-                  const isLastAi = msg.role !== 'user' && !msg.notice && (!nextReal || nextReal.role === 'user');
-                  const isPrevNotice = Boolean(prev?.notice);
-                  const isAiFragment = msg.role !== 'user' && prev && prev.role !== 'user' && !isPrevNotice;
-                  let prevRealIdx = idx - 1;
-                  while (prevRealIdx >= 0 && orderedMessages[prevRealIdx].notice) prevRealIdx--;
-                  const prevReal = prevRealIdx >= 0 ? orderedMessages[prevRealIdx] : null;
-                  const isPrevAssistant = Boolean(msg.role !== 'user' && prevReal && prevReal.role !== 'user');
-                  return (
-                    <ChatMessageItem
-                      key={msg.id}
-                      msg={msg}
-                      modelName={sessionModelName}
-                      modelNames={modelNames}
-                      isStreaming={isLoading}
-                      onUndo={handleUndo}
-                      onRetry={handleRetry}
-                      onNewChat={(content) => setNewChatInitialContent(content)}
-                      footerVisible={isLastAi}
-                      durationMs={isLastAi ? responseRunDurationMs(orderedMessages, idx) : null}
-                      isPrevAssistant={isPrevAssistant}
-                      className={msg.notice ? 'mt-3 mb-1' : isAiFragment ? 'mt-1' : 'mt-3'}
-                    />
-                  );
-                })}
+                <MessageList
+                  messages={orderedMessages}
+                  isGenerating={isGenerating}
+                  modelName={sessionModelName}
+                  modelNames={modelNames}
+                  onUndo={handleUndo}
+                  onRetry={handleRetry}
+                  onNewChat={(content) => setNewChatInitialContent(content)}
+                />
               </div>
             </div>
 
@@ -277,7 +262,10 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
       
       {/* Input Area Footer with Docked Generating Indicator (Seamless & Transparent) */}
       {!activeSubagent && (
-        <div className="p-4 pt-1 bg-transparent border-t-0 flex-shrink-0 space-y-2">
+        <div
+          className={`bg-transparent border-t-0 flex-shrink-0 space-y-2 ${isMobile ? 'px-3 pt-1' : 'p-4 pt-1'}`}
+          style={isMobile ? { paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' } : undefined}
+        >
           <div className="mx-auto w-full max-w-[970px]">
             {isGenerating && (
               <GeneratingIndicator 
@@ -310,6 +298,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
               onModelChange={handleModelChange}
               sessionModel={typeof sessionData?.model === 'object' ? sessionData.model : null}
               sessionThinkingLevel={sessionData?.thinkingLevel}
+              variant={variant}
             />
           </div>
         </div>

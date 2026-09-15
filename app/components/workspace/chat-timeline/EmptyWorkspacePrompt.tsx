@@ -30,6 +30,7 @@ interface EmptyWorkspacePromptProps {
   sessionModel?: { provider: string; modelId: string } | null;
   sessionThinkingLevel?: string | null;
   generatingVerb?: string;
+  variant?: 'desktop' | 'mobile';
 }
 
 export function EmptyWorkspacePrompt({
@@ -53,6 +54,7 @@ export function EmptyWorkspacePrompt({
   sessionModel,
   sessionThinkingLevel,
   generatingVerb,
+  variant = 'desktop',
 }: EmptyWorkspacePromptProps) {
   const [showWorkspace, setShowWorkspace] = useState(false);
   const workspaceRef = useRef<HTMLDivElement>(null);
@@ -70,7 +72,9 @@ export function EmptyWorkspacePrompt({
   }, [localMessages.length]);
 
   return (
-    <div className={`flex flex-col h-full bg-canvas p-8 ${className}`}>
+    <div className={`flex flex-col h-full bg-canvas ${variant === 'mobile' ? 'px-3 py-4' : 'p-8'} ${className}`}
+      style={variant === 'mobile' ? { paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 0px))' } : undefined}
+    >
       <div
         className={`mx-auto w-full max-w-[970px] flex flex-col min-h-0 space-y-3 ${
           localMessages.length > 0 ? 'flex-1' : 'my-auto justify-center'
@@ -170,13 +174,7 @@ export function EmptyWorkspacePrompt({
           rootPath={rootPath}
           attachments={inputAttachments}
           onAttachmentsChange={setInputAttachments}
-          onSend={(attachments) => {
-            if (!selectedFolderId) {
-              alert('Please select a workspace before prompting.');
-              return;
-            }
-            onSend(attachments);
-          }}
+          onSend={onSend}
           isGenerating={isGenerating}
           disabled={!selectedFolderId}
           className="w-full shrink-0"
@@ -185,6 +183,7 @@ export function EmptyWorkspacePrompt({
           onModelChange={onModelChange}
           sessionModel={sessionModel}
           sessionThinkingLevel={sessionThinkingLevel}
+          variant={variant}
         />
         {isGenerating && (
           <GeneratingIndicator

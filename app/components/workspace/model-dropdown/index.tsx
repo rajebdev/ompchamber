@@ -263,7 +263,7 @@ export function ModelDropdown({
           setHoveredModel(null);
           setFocusedIndex(-1);
         }}
-        className="flex items-center space-x-1.5 hover:bg-ink/5 px-2 py-1 rounded transition-colors text-xs text-ink/80 font-medium cursor-pointer"
+        className="flex items-center space-x-1.5 hover:bg-ink/5 px-2 py-1 rounded transition-colors text-xs text-ink/80 font-medium cursor-pointer min-w-0 max-w-full"
         title={`${selectedModel.provider} • ${selectedModel.name}`}
       >
         <span className="text-ink/60 flex-shrink-0">
@@ -275,9 +275,9 @@ export function ModelDropdown({
             <Sparkles size={12} className="text-ink/60" />
           )}
         </span>
-        <span className="flex items-center space-x-1 truncate max-w-[280px]">
-          <span className="text-ink/50 font-normal">{selectedModel.provider}</span>
-          <span className="text-ink/30">•</span>
+        <span className="flex items-center space-x-1 min-w-0 max-w-[280px]">
+          <span className="text-ink/50 font-normal truncate">{selectedModel.provider}</span>
+          <span className="text-ink/30 flex-shrink-0">•</span>
           <span className="truncate">{selectedModel.name}</span>
         </span>
         <ChevronDown size={12} className="text-ink/40 flex-shrink-0" />

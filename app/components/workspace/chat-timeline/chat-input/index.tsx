@@ -1,11 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Send, Square } from 'lucide-react';
 import type { Attachment, AIModelOption, ModelEntry } from '@/types';
-import { ModelDropdown } from '@/components/workspace/model-dropdown/index';
+import { ComposerToolbar } from '@/components/workspace/chat-timeline/chat-input/Toolbar';
 import { ComposerTextarea } from '@/components/common/ComposerTextarea';
 import { AttachmentToolbar } from '@/components/workspace/chat-timeline/chat-input/AttachmentToolbar';
-import { ThinkingLevelDropdown } from '@/components/workspace/chat-timeline/chat-input/ThinkingLevelDropdown';
-import { AccessDropdown } from '@/components/workspace/chat-timeline/chat-input/AccessDropdown';
 import { INITIAL_MODELS_CATALOG } from '@/data/models/catalog';
 import { selectableThinkingLevels } from '@/lib/models/thinking-levels';
 import { fetchModelsData, subscribeModelsUpdated } from '@/lib/models/client';
@@ -26,6 +23,7 @@ export function ChatInput({
   sessionModel,
   sessionThinkingLevel,
   rootPath,
+  variant = 'desktop',
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -44,6 +42,12 @@ export function ChatInput({
   /** Thinking level last used by the active session (omp `thinking_level_change` entry). */
   sessionThinkingLevel?: string | null;
   rootPath?: string | null;
+  /**
+   * `mobile` sizes the composer for a phone: 16px text (iOS Safari zooms the
+   * viewport when focusing an input below that), thumb-sized send/stop
+   * targets, and Enter-to-newline instead of Enter-to-send.
+   */
+  variant?: 'desktop' | 'mobile';
 }) {
   const [internalAttachments, setInternalAttachments] = useState<Attachment[]>([]);
 
@@ -265,6 +269,8 @@ export function ChatInput({
     setAttachments([]);
   };
 
+  const isMobile = variant === 'mobile';
+
   return (
     <div className={`relative border border-ink/20 rounded-md bg-paper focus-within:border-ink transition-colors flex flex-col shadow-sm ${className}`}>
       
@@ -283,63 +289,30 @@ export function ChatInput({
         appSettings={appSettings}
         rootPath={rootPath}
         placeholder={disabled ? "Please select a workspace above to start prompting..." : "@ for files/agents; / for commands and skills; ! for shell; # for snippets (Paste images/files here)"}
-        className="w-full bg-transparent border-none px-3 py-3 text-sm focus:outline-none resize-none text-ink placeholder-ink/40 min-h-[80px] disabled:opacity-50 disabled:cursor-not-allowed"
+        className={`w-full bg-transparent border-none focus:outline-none resize-none text-ink placeholder-ink/40 disabled:opacity-50 disabled:cursor-not-allowed ${
+          isMobile ? 'px-3 py-3 text-base min-h-[68px] max-h-40' : 'px-3 py-3 text-sm min-h-[80px]'
+        }`}
         onPaste={handlePaste}
+        variant={variant}
       />
 
       {/* Bottom Config Toolbar */}
-      <div className="flex items-center justify-between px-3 py-2 border-t border-ink/5 bg-canvas/50 rounded-b-md">
-        <div className="flex items-center space-x-2">
-          
-          {/* Redesigned Model Dropdown */}
-          <ModelDropdown
-            selectedModel={selectedModel}
-            onSelectModel={(model) => {
-              setSelectedModel(model);
-              onModelChange?.(model.provider, model.id);
-            }}
-            onThinkingLevelChange={(level) => {
-              onThinkingLevelChange?.(level);
-            }}
-          />
-
-          <div className="w-[1px] h-3 bg-ink/10" />
-
-          {/* Thinking Level Dropdown */}
-          <ThinkingLevelDropdown
-            thinkingLevels={thinkingLevels}
-            currentThinking={currentThinking}
-            onSelect={handleSelectThinking}
-          />
-
-          <div className="w-[1px] h-3 bg-ink/10" />
-
-          {/* Access Dropdown */}
-          <AccessDropdown />
-
-        </div>
-
-        {isGenerating ? (
-          <button 
-            type="button"
-            onClick={onStop}
-            className="flex items-center justify-center w-7 h-7 rounded bg-ink text-canvas hover:bg-error hover:text-canvas transition-colors cursor-pointer shadow-xs animate-in zoom-in-90 duration-150"
-            title="Stop generation"
-          >
-            <Square size={10} className="fill-current" />
-          </button>
-        ) : (
-          <button 
-            type="button"
-            onClick={() => handleSendClick()}
-            disabled={disabled || (!value.trim() && attachments.length === 0)}
-            className="flex items-center justify-center w-7 h-7 rounded bg-ink text-canvas hover:bg-ink/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-            title="Send message"
-          >
-            <Send size={12} className="ml-px" />
-          </button>
-        )}
-      </div>
+      <ComposerToolbar
+        isMobile={isMobile}
+        selectedModel={selectedModel}
+        onSelectModel={(model) => {
+          setSelectedModel(model);
+          onModelChange?.(model.provider, model.id);
+        }}
+        thinkingLevels={thinkingLevels}
+        currentThinking={currentThinking}
+        onSelectThinking={handleSelectThinking}
+        onThinkingLevelChange={onThinkingLevelChange}
+        isGenerating={isGenerating}
+        onStop={onStop}
+        onSend={() => handleSendClick()}
+        sendDisabled={disabled || (!value.trim() && attachments.length === 0)}
+      />
     </div>
   );
 }

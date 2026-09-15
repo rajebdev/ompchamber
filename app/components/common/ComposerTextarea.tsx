@@ -19,6 +19,14 @@ export interface ComposerTextareaProps {
   className?: string;
   onPaste?: (e: ClipboardEvent<HTMLTextAreaElement>) => void;
   rootPath?: string | null;
+  /**
+   * `mobile` makes a bare Enter insert a newline instead of sending: phone
+   * keyboards have no Shift key, so the configured Enter-to-send binding would
+   * leave no way to write a multi-line prompt. Modifier bindings
+   * (Ctrl/Cmd + Enter) still work with a hardware keyboard; the send button is
+   * the primary affordance on touch.
+   */
+  variant?: 'desktop' | 'mobile';
 }
 
 export function ComposerTextarea({
@@ -31,7 +39,9 @@ export function ComposerTextarea({
   className,
   onPaste,
   rootPath,
+  variant = 'desktop',
 }: ComposerTextareaProps): ReactElement {
+  const isMobile = variant === 'mobile';
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const composer = useComposerTrigger({ value, setValue: onChange, textareaRef, disabled, rootPath });
@@ -57,6 +67,11 @@ export function ComposerTextarea({
       if (binding === 'Ctrl / Cmd + Enter' && !isShift && isCtrlOrCmd && !e.altKey) return true;
       return false;
     };
+
+    // A bare Enter on touch inserts a newline (see `variant`); every modified
+    // combination keeps its configured meaning.
+    const bareEnter = !isShift && !isCtrlOrCmd && !e.altKey;
+    if (isMobile && bareEnter) return;
 
     if (checkBinding(steeringBinding)) {
       e.preventDefault();
@@ -86,6 +101,7 @@ export function ComposerTextarea({
         onPaste={onPaste}
         disabled={disabled}
         placeholder={placeholder}
+        enterKeyHint={isMobile ? 'enter' : undefined}
         className={className}
         aria-autocomplete="list"
         aria-expanded={composer.isOpen}
