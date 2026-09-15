@@ -145,6 +145,16 @@
   background: color-mix(in srgb, var(--theme-ink) 40%, transparent);
 }
 
+/* Horizontally scrollable strips (mobile tab bars) that pan without a visible
+ * scrollbar track eating vertical space. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Terminal xterm custom scrollbars */
 .xterm .xterm-viewport::-webkit-scrollbar {
   width: 8px !important;

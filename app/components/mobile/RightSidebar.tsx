@@ -30,7 +30,15 @@ export function MobileRightSidebar({
     <div className="flex flex-col h-full w-full bg-paper text-ink relative select-none">
 
       {/* Top Header & Tab Navigation Bar */}
-      <div className="h-14 border-b border-ink/10 flex items-center justify-between px-3 flex-shrink-0 bg-canvas">
+      <div
+        className="border-b border-ink/10 flex items-center justify-between px-3 flex-shrink-0 bg-canvas"
+        style={{
+          height: 'calc(3.5rem + env(safe-area-inset-top, 0px))',
+          paddingTop: 'env(safe-area-inset-top, 0px)',
+          paddingLeft: 'max(0.75rem, env(safe-area-inset-left, 0px))',
+          paddingRight: 'max(0.75rem, env(safe-area-inset-right, 0px))',
+        }}
+      >
 
         <div className="flex items-center space-x-1.5 overflow-x-auto no-scrollbar py-1">
           <button
@@ -158,7 +166,10 @@ export function MobileRightSidebar({
       </div>
 
       {/* Main Tab Content — shared components so mobile == desktop features */}
-      <div className="flex-1 overflow-hidden relative">
+      <div
+        className="flex-1 min-h-0 overflow-hidden relative"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      >
         {!enabled ? (
           <div className="h-full flex items-center justify-center text-ink/40">
             <span className="text-xs font-mono">No session selected</span>

@@ -1,17 +1,5 @@
-import { useState, useEffect } from 'react';
-import { FileIcon } from '@/components/common/FileIcon';
-import {
-  ArrowLeft, 
-  Copy, 
-  Check, 
-  Download, 
-  ZoomIn, 
-  ZoomOut, 
-  Eye, 
-  EyeOff, 
-  X,
-  WrapText
-} from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Loader2, AlertTriangle } from 'lucide-react';
 import CodeEditor from 'react-simple-code-editor';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-javascript';
@@ -23,6 +11,7 @@ import 'prismjs/components/prism-markdown';
 import 'prismjs/components/prism-css';
 import 'prismjs/components/prism-bash';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
+import { EditorHeader } from '@/components/mobile/mobile-right-sidebar/Header';
 import { useScrollbarFade } from '@/hooks/ui/scrollbar-fade';
 
 interface MobileFullEditorProps {
@@ -59,52 +48,66 @@ function getLanguage(filename: string): string {
   }
 }
 
-function getDefaultFileContent(filename: string): string {
-  if (filename.endsWith('.md')) {
-    return `# ${filename}\n\n# System Configuration\n\nOMPChamber workspace file.\n\n- Runtime: Bun v1.2.4\n- Mode: Edge Runtime\n\n\`\`\`bash\nbun run build\n\`\`\``;
-  }
-  return `// ${filename}\nimport React from 'react';\n\nexport function Component() {\n  return <div>Loaded content from workspace</div>;\n}\n`;
-}
-
 export function MobileFullEditor({ file, onClose }: MobileFullEditorProps) {
   const [content, setContent] = useState<string>(file.content || '');
   const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isPreview, setIsPreview] = useState(file.name.endsWith('.md'));
   const [fontSize, setFontSize] = useState(12);
   const [wordWrap, setWordWrap] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const { isScrolling, handleScroll } = useScrollbarFade();
 
   const isMd = file.name.endsWith('.md');
   const lang = getLanguage(file.name);
   
 
-  // Load real content from API if path exists and content was not provided
+  // Load real content from the API when the caller did not inline it. A failed
+  // read reports the failure: substituting placeholder text would present
+  // invented file contents as the real file.
   useEffect(() => {
-    if (!file.content && file.path) {
-      setIsLoading(true);
-      const params = new URLSearchParams({ path: file.path });
-      if (file.root) params.set('root', file.root);
-      if (file.repo && file.repo !== '.') params.set('repo', file.repo);
-      fetch(`/api/fs/read?${params.toString()}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data && data.content !== undefined) {
-            setContent(data.content);
-          } else {
-            setContent(getDefaultFileContent(file.name));
-          }
-        })
-        .catch(() => {
-          setContent(getDefaultFileContent(file.name));
-        })
-        .finally(() => {
-          setIsLoading(false);
-        });
-    } else if (!file.content) {
-      setContent(getDefaultFileContent(file.name));
+    if (file.content) {
+      setContent(file.content);
+      setLoadError(null);
+      return;
     }
-  }, [file.path, file.name, file.content]);
+    if (!file.path) {
+      setContent('');
+      setLoadError('No file path supplied for this attachment.');
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoading(true);
+    setLoadError(null);
+    const params = new URLSearchParams({ path: file.path });
+    if (file.root) params.set('root', file.root);
+    if (file.repo && file.repo !== '.') params.set('repo', file.repo);
+    fetch(`/api/fs/read?${params.toString()}`)
+      .then(async (res) => {
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data || typeof data.content !== 'string') {
+          throw new Error(data?.error || `HTTP ${res.status}`);
+        }
+        return data.content as string;
+      })
+      .then((text) => {
+        if (!cancelled) setContent(text);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setContent('');
+        setLoadError(err instanceof Error ? err.message : 'Failed to read file');
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [file.path, file.name, file.content, file.root, file.repo]);
 
   const handleCopy = () => {
     if (navigator.clipboard) {
@@ -113,6 +116,59 @@ export function MobileFullEditor({ file, onClose }: MobileFullEditorProps) {
       setTimeout(() => setCopied(false), 1500);
     }
   };
+
+  // Persist to disk through the same endpoint the desktop editor uses; edits
+  // used to live only in component state and were lost on close.
+  const saveFileToDisk = useCallback(async (text: string) => {
+    if (!file.path) return;
+    setSaveStatus('saving');
+    const formData = new FormData();
+    formData.append('actionType', 'save');
+    formData.append('path', file.path);
+    formData.append('content', text);
+    if (file.root) formData.append('root', file.root);
+    if (file.repo && file.repo !== '.') formData.append('repo', file.repo);
+    try {
+      const res = await fetch('/api/fs/action', { method: 'POST', body: formData });
+      const data = await res.json().catch(() => null);
+      setSaveStatus(res.ok && data?.success ? 'saved' : 'error');
+    } catch {
+      setSaveStatus('error');
+    }
+  }, [file.path, file.root, file.repo]);
+
+  // Pending debounced write. The timer handle and its payload travel together
+  // so the unmount flush below can cancel exactly the write it then performs.
+  const pendingSaveRef = useRef<{ timer: number; content: string } | null>(null);
+  const saveRef = useRef(saveFileToDisk);
+  saveRef.current = saveFileToDisk;
+
+  const handleContentChange = (next: string) => {
+    setContent(next);
+    if (!file.path) return;
+    if (pendingSaveRef.current !== null) window.clearTimeout(pendingSaveRef.current.timer);
+    const timer = window.setTimeout(() => {
+      pendingSaveRef.current = null;
+      void saveRef.current(next);
+    }, 800);
+    pendingSaveRef.current = { timer, content: next };
+  };
+
+  // Closing the overlay within the debounce window must not drop the edit: the
+  // pending write is flushed on unmount, and the request outlives the render.
+  useEffect(() => () => {
+    const pending = pendingSaveRef.current;
+    if (!pending) return;
+    window.clearTimeout(pending.timer);
+    pendingSaveRef.current = null;
+    void saveRef.current(pending.content);
+  }, []);
+
+  useEffect(() => {
+    if (saveStatus !== 'saved') return;
+    const timer = window.setTimeout(() => setSaveStatus('idle'), 1500);
+    return () => window.clearTimeout(timer);
+  }, [saveStatus]);
 
   const handleDownload = () => {
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
@@ -136,110 +192,35 @@ export function MobileFullEditor({ file, onClose }: MobileFullEditorProps) {
   const linesCount = content.split('\n').length;
 
   return (
-    <div className="fixed inset-0 z-[60] bg-paper flex flex-col font-mono text-xs select-none">
+    <div className="fixed inset-x-0 top-0 h-dvh z-[60] bg-paper flex flex-col font-mono text-xs select-none">
       
-      {/* Top Header Bar - Desktop styled: bg-canvas border-b border-ink/10 */}
-      <header className="h-12 bg-canvas border-b border-ink/10 flex items-center justify-between px-3 flex-shrink-0">
-        
-        {/* Left: Back/Close button + File icon and name (removed file type/language label) */}
-        <div className="flex items-center space-x-2 min-w-0 pr-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-ink/10 text-ink transition-colors active:scale-90 flex-shrink-0 cursor-pointer"
-            title="Close editor"
-            aria-label="Close editor"
-          >
-            <ArrowLeft size={18} strokeWidth={2} />
-          </button>
-
-          <div className="flex items-center space-x-1.5 truncate">
-            <FileIcon name={file.name} size={15} className="flex-shrink-0" />
-            <span className="font-semibold text-xs text-ink truncate">{file.name}</span>
-          </div>
-        </div>
-
-        {/* Right action tools: Preview, Zoom, Copy, Download, Close */}
-        <div className="flex items-center space-x-1 text-ink/70 flex-shrink-0">
-          
-          {/* Markdown preview toggle */}
-          {isMd && (
-            <button
-              type="button"
-              onClick={() => setIsPreview(!isPreview)}
-              className={`p-1.5 rounded hover:bg-ink/10 transition-colors cursor-pointer ${isPreview ? 'bg-ink text-canvas' : ''}`}
-              title={isPreview ? 'View code' : 'Preview markdown'}
-            >
-              {isPreview ? <EyeOff size={15} /> : <Eye size={15} />}
-            </button>
-          )}
-
-          {/* Wrap toggle */}
-          <button
-            type="button"
-            onClick={() => setWordWrap(!wordWrap)}
-            className={`p-1.5 rounded hover:bg-ink/10 transition-colors cursor-pointer ${wordWrap ? 'text-ink' : ''}`}
-            title="Toggle word wrap"
-          >
-            <WrapText size={15} />
-          </button>
-          
-          {/* Zoom controls */}
-          <button
-            type="button"
-            onClick={() => setFontSize(prev => Math.max(10, prev - 1))}
-            className="p-1.5 rounded hover:bg-ink/10 transition-colors cursor-pointer"
-            title="Decrease font size"
-          >
-            <ZoomOut size={15} />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setFontSize(prev => Math.min(18, prev + 1))}
-            className="p-1.5 rounded hover:bg-ink/10 transition-colors cursor-pointer"
-            title="Increase font size"
-          >
-            <ZoomIn size={15} />
-          </button>
-
-          {/* Copy button */}
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="p-1.5 rounded hover:bg-ink/10 transition-colors cursor-pointer"
-            title="Copy content"
-          >
-            {copied ? <Check size={15} className="text-success" /> : <Copy size={15} />}
-          </button>
-
-          {/* Download button */}
-          <button
-            type="button"
-            onClick={handleDownload}
-            className="p-1.5 rounded hover:bg-ink/10 transition-colors cursor-pointer"
-            title="Download file"
-          >
-            <Download size={15} />
-          </button>
-
-          {/* Close X */}
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded hover:bg-ink/10 text-ink/80 transition-colors ml-1 cursor-pointer"
-            title="Close editor"
-          >
-            <X size={17} />
-          </button>
-        </div>
-      </header>
+      <EditorHeader
+        fileName={file.name}
+        isMarkdown={isMd}
+        isPreview={isPreview}
+        wordWrap={wordWrap}
+        copied={copied}
+        onClose={onClose}
+        onTogglePreview={() => setIsPreview(!isPreview)}
+        onToggleWrap={() => setWordWrap(!wordWrap)}
+        onZoomOut={() => setFontSize(prev => Math.max(10, prev - 1))}
+        onZoomIn={() => setFontSize(prev => Math.min(18, prev + 1))}
+        onCopy={handleCopy}
+        onDownload={handleDownload}
+      />
 
       {/* Editor Content Area - Desktop styled: bg-paper text-ink */}
-      <div onScroll={handleScroll} className={`flex-1 overflow-auto relative bg-paper text-ink select-text ${isScrolling ? 'scrollbar-overlay-scrolling' : 'scrollbar-overlay'}`}>
+      <div onScroll={handleScroll} className={`flex-1 min-h-0 overflow-auto relative bg-paper text-ink select-text ${isScrolling ? 'scrollbar-overlay-scrolling' : 'scrollbar-overlay'}`}>
         {isLoading ? (
-          <div className="flex items-center justify-center h-full text-ink/40 text-xs">
-            Loading file content...
+          <div className="flex items-center justify-center h-full text-ink/40 text-xs gap-2">
+            <Loader2 size={14} className="animate-spin" />
+            <span>Loading file content...</span>
+          </div>
+        ) : loadError ? (
+          <div className="flex flex-col items-center justify-center h-full gap-2 px-6 text-center">
+            <AlertTriangle size={20} className="text-error" />
+            <span className="text-xs text-error font-sans">Could not read {file.name}</span>
+            <span className="text-[11px] text-ink/50 font-mono break-all">{loadError}</span>
           </div>
         ) : isMd && isPreview ? (
           /* Markdown Preview Mode */
@@ -260,7 +241,7 @@ export function MobileFullEditor({ file, onClose }: MobileFullEditorProps) {
             <div className="flex-1 p-3 overflow-x-auto min-w-0 bg-paper text-ink">
               <CodeEditor
                 value={content}
-                onValueChange={code => setContent(code)}
+                onValueChange={handleContentChange}
                 highlight={highlightCode}
                 padding={0}
                 textareaClassName={`focus:outline-none ${wordWrap ? '!whitespace-pre-wrap !break-words' : '!whitespace-pre !break-normal'}`}
@@ -281,15 +262,40 @@ export function MobileFullEditor({ file, onClose }: MobileFullEditorProps) {
       </div>
 
       {/* Bottom Status Bar - Desktop styled: bg-canvas border-t border-ink/10 */}
-      <footer className="h-7 bg-canvas border-t border-ink/10 px-3 flex items-center justify-between text-[10px] text-ink/60 flex-shrink-0 font-mono">
+      <footer
+        className="bg-canvas border-t border-ink/10 px-3 flex items-center justify-between text-[10px] text-ink/60 flex-shrink-0 font-mono"
+        style={{
+          height: 'calc(1.75rem + env(safe-area-inset-bottom, 0px))',
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+          paddingLeft: 'max(0.75rem, env(safe-area-inset-left, 0px))',
+          paddingRight: 'max(0.75rem, env(safe-area-inset-right, 0px))',
+        }}
+      >
         <div className="flex items-center space-x-3">
           <span>{linesCount} lines</span>
           <span>{content.length} chars</span>
-          <span>UTF-8</span>
+          <span className="uppercase">{lang}</span>
         </div>
         <div className="flex items-center space-x-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-success"></span>
-          <span>Bun v1.2.4</span>
+          {saveStatus === 'saving' && (
+            <>
+              <Loader2 size={10} className="animate-spin" />
+              <span>Saving…</span>
+            </>
+          )}
+          {saveStatus === 'saved' && (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-success"></span>
+              <span>Saved</span>
+            </>
+          )}
+          {saveStatus === 'error' && (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-error"></span>
+              <span className="text-error">Save failed</span>
+            </>
+          )}
+          {saveStatus === 'idle' && file.path && <span className="truncate max-w-[140px]">{file.path}</span>}
         </div>
       </footer>
 
