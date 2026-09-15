@@ -46,10 +46,19 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   const [localMessages, setLocalMessages] = useState<ChatMessageData[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const isGeneratingRef = useRef(false);
+  const [generatingVerb, setGeneratingVerb] = useState('');
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const sessionIdRef = useRef(sessionId);
+  sessionIdRef.current = sessionId;
   // Single throat through which every generation state transition flows
   // (send, queue, steer, retry, undo, agent start/end, stream done/error).
   // Sidebar subscribes here to paint spinner/check on the session item.
-  const setGenerating = (v: boolean) => {
+  //
+  // Stable identity is load-bearing: this is a dependency of the session-load
+  // effect, which re-fetches history and replaces the timeline. A fresh
+  // function per render made that effect re-run every render, and its
+  // setLocalMessages(fetched) then re-rendered again — an unbounded fetch loop.
+  const setGenerating = useCallback((v: boolean) => {
     isGeneratingRef.current = v;
     setIsGenerating(v);
     if (sessionIdRef.current) {
@@ -57,9 +66,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
         detail: { sessionId: sessionIdRef.current, processing: v },
       }));
     }
-  };
-  const [generatingVerb, setGeneratingVerb] = useState('');
-  const abortControllerRef = useRef<AbortController | null>(null);
+  }, []);
   // Fire the sidebar/metadata refresh once per session when the AI starts
   // responding (agent_start = first chunk) — the omp JSONL now carries the
   // user turn, so the sidebar item + real title appear immediately.
@@ -74,8 +81,6 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   // client-side sessions ("new-…", created before the omp spawn) are treated
   // as not-yet-omp so executeSend spawns the real session on first send.
   const isOmpSession = Boolean(sessionId) && !String(sessionId).startsWith('new-') && Number.isNaN(Number(sessionId));
-  const sessionIdRef = useRef(sessionId);
-  sessionIdRef.current = sessionId;
 
   const aiPlaceholderIdRef = useRef<string | null>(null);
 
