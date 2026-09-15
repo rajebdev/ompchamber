@@ -6,7 +6,8 @@ export interface MobileSessionRowProps {
   session: SessionItemData;
   isActive: boolean;
   status?: 'processing' | 'done';
-  timeAgo: string;
+  /** Relative age of the session, or null when no usable timestamp exists. */
+  timeAgo: string | null;
   showTreeGlyph?: boolean;
   onSelect: () => void;
   onArchive: () => void;
@@ -103,7 +104,7 @@ export function MobileSessionRow({
           </span>
         </div>
 
-        <span className="text-[11px] text-ink/45 font-mono flex-shrink-0 ml-2">{timeAgo}</span>
+        <span className="text-[11px] text-ink/45 font-mono flex-shrink-0 ml-2">{timeAgo ?? ''}</span>
       </button>
 
       {onRename && (
