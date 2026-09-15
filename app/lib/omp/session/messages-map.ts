@@ -14,6 +14,7 @@ import {
   parseAssistantContent,
   type OmpMessageEntry,
 } from '@/lib/omp/session/messages-parse';
+import { deriveTurnError } from '@/lib/omp/session/turn-error';
 
 /** omp turn timestamps arrive as epoch-ms numbers inside the message but as
  *  ISO strings at the JSONL entry level — normalize both to epoch ms. */
@@ -65,10 +66,7 @@ export function toChatMessage(entry: OmpMessageEntry): ChatMessageData | null {
 
   // Assistant / developer / custom: parse the rich block structure.
   const parsed = parseAssistantContent(content);
-  const stoppedWithError =
-    msg.stopReason === 'error' ||
-    typeof msg.errorStatus === 'number' ||
-    typeof msg.errorMessage === 'string';
+  const turnError = deriveTurnError(msg);
   const durationMs = typeof msg.duration === 'number'
     ? msg.duration
     : typeof (entry as any).durationMs === 'number'
@@ -94,14 +92,7 @@ export function toChatMessage(entry: OmpMessageEntry): ChatMessageData | null {
     durationMs,
     usage,
   };
-  if (stoppedWithError) {
-    message.error = {
-      status: typeof msg.errorStatus === 'number' ? msg.errorStatus : undefined,
-      id: typeof msg.errorId === 'number' ? msg.errorId : undefined,
-      message: typeof msg.errorMessage === 'string' ? msg.errorMessage : undefined,
-      stopReason: typeof msg.stopReason === 'string' ? msg.stopReason : undefined,
-    };
-  }
+  if (turnError) message.error = turnError;
   if (parsed.thinking) message.thinking = { thought: parsed.thinking, isGenerating: false };
   if (parsed.intent) message.intent = parsed.intent;
   if (parsed.toolCalls.length > 0) {

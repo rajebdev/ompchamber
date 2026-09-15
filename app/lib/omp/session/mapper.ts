@@ -20,6 +20,7 @@ import {
   stripInlinedTextAttachments,
   toToolCallData,
 } from '@/lib/omp/session/parse-message-blocks';
+import { deriveTurnError } from '@/lib/omp/session/turn-error';
 
 /** Extract plain text from omp content (string or [{type:'text',text},...]). */
 export function extractTextFromContent(content: unknown): string {
@@ -137,7 +138,10 @@ export function toChatMessage(raw: Record<string, unknown>, streaming = true): C
       : (raw.thinking as ChatMessageData['thinking']),
     toolCalls: toolCalls.length > 0 ? toolCalls : (raw.toolCalls as ChatMessageData['toolCalls']),
     summary: typeof raw.summary === 'string' ? raw.summary : undefined,
-    error: raw.error as ChatMessageData['error'],
+    // Aborted/errored turns carry no nested `error` — omp writes flat
+    // stopReason/errorMessage fields. Derive them so the turn survives the
+    // empty-content guard below and renders live instead of only after reload.
+    error: (raw.error as ChatMessageData['error']) ?? deriveTurnError(raw),
   };
 
   if (
