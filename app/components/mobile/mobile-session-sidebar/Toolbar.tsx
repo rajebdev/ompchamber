@@ -9,12 +9,11 @@ import {
   Check,
   X
 } from 'lucide-react';
-
-export type MobileSortOption = 'A-Z' | 'Z-A' | 'LATEST_SESSION' | 'LATEST_ADDED';
+import type { SessionSortOption } from '@/types';
 
 interface MobileSessionToolbarProps {
   searchQuery: string;
-  sortOption: MobileSortOption;
+  sortOption: SessionSortOption;
   optionsOpen: boolean;
   showArchived: boolean;
   optionsRef: RefObject<HTMLDivElement | null>;
@@ -22,7 +21,7 @@ interface MobileSessionToolbarProps {
   onNewWorkspace: () => void;
   onScheduler: () => void;
   onToggleOptions: () => void;
-  onSortChange: (opt: MobileSortOption) => void;
+  onSortChange: (opt: SessionSortOption) => void;
   onResetSort: () => void;
   onToggleArchived: () => void;
   onHideArchived: () => void;

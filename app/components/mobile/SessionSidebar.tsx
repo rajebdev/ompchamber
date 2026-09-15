@@ -1,11 +1,12 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useRevalidator } from '@remix-run/react';
-import type { WorkspaceFolderData } from '@/types';
+import type { SessionSortOption, WorkspaceFolderData } from '@/types';
 import { MobileSessionHeader } from '@/components/mobile/mobile-session-sidebar/Header';
-import { MobileSessionToolbar, type MobileSortOption } from '@/components/mobile/mobile-session-sidebar/Toolbar';
+import { MobileSessionToolbar } from '@/components/mobile/mobile-session-sidebar/Toolbar';
 import { MobileSessionList } from '@/components/mobile/mobile-session-sidebar/List';
 import { MobileSessionFooter } from '@/components/mobile/mobile-session-sidebar/Footer';
 import { Toast } from '@/components/common/Toast';
+import { sortFolders } from '@/lib/workspace/sidebar-sort';
 import { 
   SettingsModal, 
   AboutModal, 
@@ -103,13 +104,13 @@ export function MobileSessionSidebar({
 
   // Sorting state (matching desktop)
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const [sortOption, setSortOption] = useState<MobileSortOption>(() => {
+  const [sortOption, setSortOption] = useState<SessionSortOption>(() => {
     if (typeof window === 'undefined') return 'A-Z';
     const saved = localStorage.getItem('omp_sidebar_sort');
     return saved === 'A-Z' || saved === 'Z-A' || saved === 'LATEST_SESSION' || saved === 'LATEST_ADDED' ? saved : 'A-Z';
   });
 
-  const handleSortChange = (opt: MobileSortOption) => {
+  const handleSortChange = (opt: SessionSortOption) => {
     setSortOption(opt);
     localStorage.setItem('omp_sidebar_sort', opt);
     setOptionsOpen(false);
@@ -174,11 +175,8 @@ export function MobileSessionSidebar({
       return { ...folder, sessions: filteredSessions };
     }).filter(f => !searchQuery.trim() || f.sessions && f.sessions.length > 0);
 
-    return [...result].sort((a, b) => {
-      if (sortOption === 'A-Z') return a.name.localeCompare(b.name);
-      if (sortOption === 'Z-A') return b.name.localeCompare(a.name);
-      return 0;
-    });
+    // Ordering is shared with the desktop sidebar so the two cannot drift.
+    return sortFolders(result, sortOption);
   }, [folders, searchQuery, sortOption]);
 
   return (
@@ -197,7 +195,7 @@ export function MobileSessionSidebar({
         onScheduler={() => setSchedulerOpen(true)}
         onToggleOptions={() => setOptionsOpen(!optionsOpen)}
         onSortChange={handleSortChange}
-        onResetSort={() => setSortOption('A-Z')}
+        onResetSort={() => handleSortChange('A-Z')}
         onToggleArchived={handleToggleArchived}
         onHideArchived={() => setShowArchived(false)}
         onSearchChange={setSearchQuery}
