@@ -18,8 +18,8 @@
  * OMPChamber only READS this file — it never writes the agent's registry.
  */
 
-import { existsSync, readFileSync, realpathSync } from 'fs';
-import { getProjectsRegistryPath } from '@/lib/omp/core/paths';
+import { existsSync, readFileSync } from 'fs';
+import { canonicalize, getProjectsRegistryPath } from '@/lib/omp/core/paths';
 import type { OmpProject } from '@/types/omp/session';
 
 /** Error carrying a stable code (errors.* key) for client localization. */
@@ -53,15 +53,6 @@ export interface OmpProjectRegistryFile {
 
 const EMPTY_REGISTRY: OmpProjectRegistryFile = { version: 1, projects: [] };
 
-function canonicalProjectPath(value: string): string {
-  const resolved = realpathSync.native(value);
-  try {
-    return resolved;
-  } catch {
-    return value;
-  }
-}
-
 function comparableProjectPath(value: string): string {
   let normalized = value.replace(/\\/g, '/');
   const windowsForm = /^[a-zA-Z]:[\\/]/.test(normalized) || /^\/\//.test(normalized);
@@ -82,7 +73,7 @@ export function parseProjectRegistry(raw: string): OmpProjectRegistryFile {
       if (!('path' in item) || typeof item.path !== 'string' || !item.path.trim()) continue;
       const record = item as Record<string, unknown>;
       entries.push({
-        path: canonicalProjectPath(record.path as string),
+        path: canonicalize(record.path as string),
         addedAt: typeof record.addedAt === 'string' ? record.addedAt : undefined,
         hidden: record.hidden === true,
         alias: typeof record.alias === 'string' && record.alias.trim() ? record.alias.trim() : undefined,
@@ -139,7 +130,7 @@ export function mergeProjects(registry: OmpProjectRegistryFile, discovered: Iter
 
   const extra: OmpProject[] = [];
   const extraSeen = new Set<string>();
-  for (const raw of new Set([...discovered].filter(Boolean).map(canonicalProjectPath))) {
+  for (const raw of new Set([...discovered].filter(Boolean).map(canonicalize))) {
     const key = comparableProjectPath(raw);
     if (hidden.has(key) || registeredSeen.has(key) || extraSeen.has(key)) continue;
     extraSeen.add(key);
