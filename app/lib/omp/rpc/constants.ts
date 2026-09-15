@@ -11,6 +11,7 @@
 
 import { existsSync } from 'fs';
 import { homedir } from 'os';
+import type { ApprovalMode } from '@/lib/omp/config/access-mode';
 
 export interface AgentEvent {
   type: string;
@@ -161,13 +162,18 @@ export function resolveSpawnCwd(recordedCwd?: string | null): string {
 }
 
 /** Extra CLI args for spawning `omp --mode rpc-ui` for a session. */
-export function buildSessionSpawnArgs(sessionFile: string): string[] {
+export function buildSessionSpawnArgs(sessionFile: string, approvalMode?: ApprovalMode): string[] {
   const args: string[] = [];
   if (sessionFile) {
     // An absolute path resolves deterministically: omp's createSessionManager
     // opens it directly via SessionManager.open without any interactive
     // resume/fork prompts.
     args.push('--resume', sessionFile);
+  }
+  if (approvalMode) {
+    // Spawn-time only: omp exposes no RPC command to change the tool-approval
+    // mode, so the flag is the sole lever. It works with or without --resume.
+    args.push('--approval-mode', approvalMode);
   }
   return args;
 }

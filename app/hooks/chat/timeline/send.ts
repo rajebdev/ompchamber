@@ -13,6 +13,7 @@
 import { useCallback } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Attachment, ChatMessageData, OmpAgentHandle } from '@/types';
+import type { ApprovalMode } from '@/lib/omp/config/access-mode';
 import { streamChatResponse } from '@/hooks/chat/stream';
 import { isTextAttachmentFile, composeMessageWithTextAttachments } from '@/lib/chat/attachments';
 import { loadAgentNames } from '@/lib/chat/composer/client';
@@ -61,6 +62,9 @@ export interface ChatTimelineSendDeps {
    *  applied to the spawn command so the first prompt runs with them. */
   pendingComposerModelRef: { current: { provider: string; modelId: string } | null };
   pendingThinkingLevelRef: { current: string | null };
+  /** Global access-control mode (persisted user preference), read at send time
+   *  so the spawn-capable requests carry the latest value. */
+  accessModeRef: { current: ApprovalMode };
   abortControllerRef: { current: AbortController | null };
   setInputValue: (v: string) => void;
   setSearchParams: (fn: (prev: URLSearchParams) => URLSearchParams, opts?: { replace?: boolean }) => void;
@@ -92,6 +96,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
     setSessionModel,
     pendingComposerModelRef,
     pendingThinkingLevelRef,
+    accessModeRef,
     abortControllerRef,
     setInputValue,
     setSearchParams,
@@ -208,7 +213,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
           size: a.file.size,
         }));
       const promptText = await buildPromptText(text, textFiles);
-      const ok = await ompAgent.sendPrompt(promptText, images.length ? images : undefined);
+      const ok = await ompAgent.sendPrompt(promptText, images.length ? images : undefined, { accessMode: accessModeRef.current });
       if (!ok) {
         // Roll back the optimistic bubbles on a failed send.
         setLocalMessages(prev => prev.filter(m => m.id !== userMsgId && m.id !== aiPlaceholderId));
@@ -245,7 +250,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
           promptText,
           cwd,
           images.length ? images : undefined,
-          { model: composerModel, thinkingLevel: composerThinking },
+          { model: composerModel, thinkingLevel: composerThinking, accessMode: accessModeRef.current },
         );
         if (spawned) {
           adoptedSessionIdRef.current = spawned.sessionId;
@@ -300,7 +305,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
         scrollToBottom,
       })
     );
-  }, [appSettings, folders, isOmpSession, ompAgent, selectedFolderId, sessionId, scrollToBottom, persistMessages, setSessionModel, pendingComposerModelRef, pendingThinkingLevelRef]);
+  }, [appSettings, folders, isOmpSession, ompAgent, selectedFolderId, sessionId, scrollToBottom, persistMessages, setSessionModel, pendingComposerModelRef, pendingThinkingLevelRef, accessModeRef]);
 
   return { prepareDeliverable, steerOmpAgent, executeSend };
 }

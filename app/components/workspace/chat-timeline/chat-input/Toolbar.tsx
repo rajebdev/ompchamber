@@ -3,6 +3,7 @@ import type { AIModelOption } from '@/types';
 import { ModelDropdown } from '@/components/workspace/model-dropdown/index';
 import { ThinkingLevelDropdown } from '@/components/workspace/chat-timeline/chat-input/ThinkingLevelDropdown';
 import { AccessDropdown } from '@/components/workspace/chat-timeline/chat-input/AccessDropdown';
+import type { ApprovalMode } from '@/lib/omp/config/access-mode';
 
 export interface ComposerToolbarProps {
   isMobile: boolean;
@@ -19,6 +20,8 @@ export interface ComposerToolbarProps {
   onSend: () => void;
   /** Send is blocked while no workspace context is selected or nothing is typed. */
   sendDisabled: boolean;
+  accessMode: ApprovalMode;
+  onSelectAccess: (mode: ApprovalMode) => void;
 }
 
 /**
@@ -41,6 +44,8 @@ export function ComposerToolbar({
   onStop,
   onSend,
   sendDisabled,
+  accessMode,
+  onSelectAccess,
 }: ComposerToolbarProps) {
   const showStop = isGenerating && (isMobile ? Boolean(onStop) : true);
 
@@ -64,7 +69,7 @@ export function ComposerToolbar({
 
         <div className="w-[1px] h-3 bg-ink/10" />
 
-        <AccessDropdown />
+        <AccessDropdown value={accessMode} onSelect={onSelectAccess} />
       </div>
 
       <div className="flex items-center gap-1.5 flex-shrink-0">

@@ -1,15 +1,25 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { ChatInput } from '@/components/workspace/chat-timeline/chat-input/index';
+import type { ApprovalMode } from '@/lib/omp/config/access-mode';
 
 interface NewChatModalProps {
   initialContent: string;
   onClose: () => void;
   onSend: (text: string, attachments: any[]) => void;
   appSettings?: Record<string, any>;
+  accessMode: ApprovalMode;
+  onAccessModeChange: (mode: ApprovalMode) => void;
 }
 
-export function NewChatModal({ initialContent, onClose, onSend, appSettings }: NewChatModalProps) {
+export function NewChatModal({
+  initialContent,
+  onClose,
+  onSend,
+  appSettings,
+  accessMode,
+  onAccessModeChange,
+}: NewChatModalProps) {
   const [inputValue, setInputValue] = useState(initialContent);
   const [attachments, setAttachments] = useState<any[]>([]);
 
@@ -46,6 +56,8 @@ export function NewChatModal({ initialContent, onClose, onSend, appSettings }: N
             onSend={handleSend}
             isGenerating={false}
             appSettings={appSettings}
+            accessMode={accessMode}
+            onAccessModeChange={onAccessModeChange}
           />
         </div>
       </div>

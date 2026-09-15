@@ -5,6 +5,7 @@ import { useOnClickOutside } from '@/hooks/ui/on-click-outside';
 import { ChatInput } from '@/components/workspace/chat-timeline/chat-input/index';
 import { ChatMessageItem } from '@/components/workspace/chat-timeline/MessageItem';
 import { GeneratingIndicator } from '@/components/workspace/chat-timeline/GeneratingIndicator';
+import type { ApprovalMode } from '@/lib/omp/config/access-mode';
 
 interface EmptyWorkspacePromptProps {
   className?: string;
@@ -31,6 +32,8 @@ interface EmptyWorkspacePromptProps {
   onModelChange?: (provider: string, modelId: string) => void;
   sessionModel?: { provider: string; modelId: string } | null;
   sessionThinkingLevel?: string | null;
+  accessMode: ApprovalMode;
+  onAccessModeChange: (mode: ApprovalMode) => void;
   generatingVerb?: string;
   variant?: 'desktop' | 'mobile';
 }
@@ -57,6 +60,8 @@ export function EmptyWorkspacePrompt({
   onModelChange,
   sessionModel,
   sessionThinkingLevel,
+  accessMode,
+  onAccessModeChange,
   generatingVerb,
   variant = 'desktop',
 }: EmptyWorkspacePromptProps) {
@@ -189,6 +194,8 @@ export function EmptyWorkspacePrompt({
           onModelChange={onModelChange}
           sessionModel={sessionModel}
           sessionThinkingLevel={sessionThinkingLevel}
+          accessMode={accessMode}
+          onAccessModeChange={onAccessModeChange}
           variant={variant}
         />
         {isGenerating && (

@@ -3,6 +3,9 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from '@remix-run/node';
 import { findSessionFileById } from '@/lib/omp/session/locator';
 import { readRawHeaderLine } from '@/lib/omp/session/files';
 import { startRpcSession, getRpcSession, resolveSpawnCwd, WebRpcError } from '@/lib/omp/rpc/manager';
+import { reconcileSpawnApprovalMode, getSpawnApprovalMode } from '@/lib/omp/rpc/session-registry';
+import { isApprovalMode } from '@/lib/omp/config/access-mode';
+import { loadPersistedAccessMode } from '@/lib/omp/config/access-mode.server';
 import { RpcCommandError, RpcCommandTimeoutError } from '@/lib/omp/rpc/process';
 
 function commandErrorResponse(error: unknown) {
@@ -40,11 +43,24 @@ export async function action({ params, request }: ActionFunctionArgs) {
       return json({ error: 'command type is required', code: 'command_type_required' }, { status: 400 });
     }
 
+    // A request with no explicit mode must never change a live session: use the
+    // wrapper's spawned mode as ground truth. Falling back to the persisted
+    // setting here would let an in-flight settings write clobber the mode the
+    // client just spawned with (sendNewPrompt posts its follow-up prompt
+    // without repeating accessMode). Only a real spawn uses the persisted
+    // default. omp has no RPC to change the mode after spawn.
+    const explicitMode = isApprovalMode(body.accessMode) ? body.accessMode : null;
+
     // Fast path: already-running session.
     const existing = getRpcSession(sessionId);
     if (existing?.isAlive()) {
-      const result = await existing.send(body);
-      return json({ success: true, data: result });
+      // A mid-conversation change is honoured by destroying the idle process so
+      // the spawn path below restarts it with the new --approval-mode flag.
+      const liveMode = explicitMode ?? getSpawnApprovalMode(existing);
+      if (!(await reconcileSpawnApprovalMode(existing, liveMode))) {
+        const result = await existing.send(body);
+        return json({ success: true, data: result });
+      }
     }
 
     const resolved = resolveSessionPathOr404(sessionId);
@@ -52,7 +68,8 @@ export async function action({ params, request }: ActionFunctionArgs) {
     const { filePath, recordedCwd } = resolved;
 
     const cwd = resolveSpawnCwd(recordedCwd);
-    const { session } = await startRpcSession(sessionId, filePath, cwd, recordedCwd);
+    const spawnMode = explicitMode ?? await loadPersistedAccessMode();
+    const { session } = await startRpcSession(sessionId, filePath, cwd, recordedCwd, spawnMode);
     const result = await session.send(body);
     return json({ success: true, data: result });
   } catch (error) {

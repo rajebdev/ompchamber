@@ -11,6 +11,8 @@ import { useSessionLoad } from '@/hooks/chat/timeline/session-load';
 import { useBrowserPageContextInsert } from '@/hooks/chat/timeline/browser-context';
 import { createOmpAgentCallbacks } from '@/lib/chat/timeline/omp-callbacks';
 import { readStreamTransport } from '@/lib/chat/omp/transport';
+import { normalizeApprovalMode, ACCESS_MODE_SETTING_KEY } from '@/lib/omp/config/access-mode';
+import type { ApprovalMode } from '@/lib/omp/config/access-mode';
 import { useSessionState } from '@/hooks/workspace/session-state';
 
 interface UseChatTimelineOptions {
@@ -119,6 +121,27 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   const pendingComposerModelRef = useRef<{ provider: string; modelId: string } | null>(null);
   const pendingThinkingLevelRef = useRef<string | null>(null);
 
+  // Access-control mode is a global, persisted user preference (unlike the
+  // per-session model/thinking picks): it hydrates from appSettings at first
+  // paint and is mirrored into a ref so the send path reads the latest value
+  // without re-creating executeSend.
+  const [accessMode, setAccessMode] = useState<ApprovalMode>(() => normalizeApprovalMode(appSettings.omp_access_mode));
+  const accessModeRef = useRef<ApprovalMode>(accessMode);
+  accessModeRef.current = accessMode;
+
+  const handleAccessModeChange = useCallback((mode: ApprovalMode) => {
+    setAccessMode(mode);
+    accessModeRef.current = mode;
+    // Persist the last selection; the server reads this key as the spawn-time
+    // default. Fire-and-forget: the in-memory value is already authoritative
+    // for this session's requests, which carry it explicitly.
+    fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [ACCESS_MODE_SETTING_KEY]: mode }),
+    }).catch(() => {});
+  }, []);
+
   const persistMessages = useCallback((messagesToSave: any[]) => {
     if (!sessionId) return;
     fetch(`/api/chat/${sessionId}`, {
@@ -183,6 +206,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     setSessionModel,
     pendingComposerModelRef,
     pendingThinkingLevelRef,
+    accessModeRef,
     abortControllerRef,
     setInputValue,
     setSearchParams,
@@ -265,6 +289,8 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     stopGenerating,
     handleThinkingLevelChange,
     handleModelChange,
+    accessMode,
+    handleAccessModeChange,
     extensionDialog,
     closeExtensionDialog,
     respondToExtensionUi: ompAgent.respondToExtensionUi,

@@ -3,6 +3,8 @@ import type { ActionFunctionArgs } from '@remix-run/node';
 import { randomUUID } from 'crypto';
 import { getDb } from '@/db.server';
 import { startRpcSession, WebRpcError } from '@/lib/omp/rpc/manager';
+import { isApprovalMode } from '@/lib/omp/config/access-mode';
+import { loadPersistedAccessMode } from '@/lib/omp/config/access-mode.server';
 import { RpcCommandError, RpcCommandTimeoutError } from '@/lib/omp/rpc/process';
 
 /** The model-dropdown persists its selection here (actionType 'selectModel');
@@ -53,7 +55,9 @@ export async function action({ request }: ActionFunctionArgs) {
     // One-time key: startRpcSession coalesces concurrent callers sharing a
     // key, so a unique key guarantees a fresh session per request.
     const tempKey = `__new__${randomUUID()}`;
-    const { session, realSessionId } = await startRpcSession(tempKey, '', cwd);
+    // Trust a client-supplied mode only when valid; else use the persisted pick.
+    const accessMode = isApprovalMode(body.accessMode) ? body.accessMode : await loadPersistedAccessMode();
+    const { session, realSessionId } = await startRpcSession(tempKey, '', cwd, undefined, accessMode);
 
     const { type, message, images, provider, modelId, thinkingLevel } = body as {
       type: string;

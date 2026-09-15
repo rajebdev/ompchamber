@@ -10,6 +10,7 @@
  */
 
 import type { ChatMessageData } from '@/types/chat';
+import type { ApprovalMode } from '@/lib/omp/config/access-mode';
 
 /** One frame of the live agent event stream (WebSocket or SSE). */
 export interface OmpAgentEvent {
@@ -54,15 +55,18 @@ export interface AgentImage {
 /** Command surface returned by useOmpAgent — the live omp session handle the
  *  chat timeline drives. */
 export interface OmpAgentHandle extends OmpAgentState {
-  /** Send a prompt to an already-spawned session (warms the process up first). */
-  sendPrompt: (message: string, images?: AgentImage[]) => Promise<boolean>;
+  /** Send a prompt to an already-spawned session (warms the process up first).
+   *  `accessMode` rides the warmup + prompt bodies: omp has no RPC to change its
+   *  tool-approval mode, so the CLI `--approval-mode` flag is applied at spawn
+   *  time and the server reconciles an idle session by respawning it. */
+  sendPrompt: (message: string, images?: AgentImage[], options?: { accessMode?: ApprovalMode }) => Promise<boolean>;
   /** Spawn a brand-new omp session and send its first prompt; resolves with the
    *  adopted session id (or null on failure). */
   sendNewPrompt: (
     message: string,
     cwd: string,
     images?: AgentImage[],
-    composerOptions?: { model?: { provider: string; modelId: string } | null; thinkingLevel?: string | null },
+    composerOptions?: { model?: { provider: string; modelId: string } | null; thinkingLevel?: string | null; accessMode?: ApprovalMode },
   ) => Promise<{ sessionId: string; model: { provider: string; modelId: string } | null } | null>;
   /** Abort the running turn and immediately send `message` as a fresh prompt. */
   sendInterruptAndReply: (message: string, images?: AgentImage[]) => Promise<boolean>;

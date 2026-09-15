@@ -1,5 +1,7 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import type { ClipboardEvent, SetStateAction } from 'react';
 import type { Attachment, AIModelOption, ModelEntry } from '@/types';
+import type { ApprovalMode } from '@/lib/omp/config/access-mode';
 import { ComposerToolbar } from '@/components/workspace/chat-timeline/chat-input/Toolbar';
 import { ComposerTextarea } from '@/components/common/ComposerTextarea';
 import { AttachmentToolbar } from '@/components/workspace/chat-timeline/chat-input/AttachmentToolbar';
@@ -24,6 +26,8 @@ export function ChatInput({
   sessionThinkingLevel,
   rootPath,
   variant = 'desktop',
+  accessMode,
+  onAccessModeChange,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -34,7 +38,7 @@ export function ChatInput({
   disabled?: boolean;
   appSettings?: Record<string, any>;
   attachments?: Attachment[];
-  onAttachmentsChange?: (attachments: React.SetStateAction<Attachment[]>) => void;
+  onAttachmentsChange?: (attachments: SetStateAction<Attachment[]>) => void;
   onThinkingLevelChange?: (level: string) => void;
   onModelChange?: (provider: string, modelId: string) => void;
   /** Model last used by the active session (omp `model_change` entry). */
@@ -42,6 +46,8 @@ export function ChatInput({
   /** Thinking level last used by the active session (omp `thinking_level_change` entry). */
   sessionThinkingLevel?: string | null;
   rootPath?: string | null;
+  accessMode: ApprovalMode;
+  onAccessModeChange: (mode: ApprovalMode) => void;
   /**
    * `mobile` sizes the composer for a phone: 16px text (iOS Safari zooms the
    * viewport when focusing an input below that), thumb-sized send/stop
@@ -52,7 +58,7 @@ export function ChatInput({
   const [internalAttachments, setInternalAttachments] = useState<Attachment[]>([]);
 
   const attachments = externalAttachments !== undefined ? externalAttachments : internalAttachments;
-  const setAttachments = (updater: React.SetStateAction<Attachment[]>) => {
+  const setAttachments = (updater: SetStateAction<Attachment[]>) => {
     if (onAttachmentsChange) {
       // Forward the updater untouched: onAttachmentsChange is a state setter,
       // so functional updates stay functional. Evaluating them here against
@@ -226,7 +232,7 @@ export function ChatInput({
     }
   }, [selectedModel.thinkingLevel]);
 
-  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+  const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
     if (e.clipboardData.files.length > 0) {
       e.preventDefault();
       const files = Array.from(e.clipboardData.files);
@@ -312,6 +318,8 @@ export function ChatInput({
         onStop={onStop}
         onSend={() => handleSendClick()}
         sendDisabled={disabled || (!value.trim() && attachments.length === 0)}
+        accessMode={accessMode}
+        onSelectAccess={onAccessModeChange}
       />
     </div>
   );

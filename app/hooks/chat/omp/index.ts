@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessageData, OmpAgentCallbacks, OmpAgentHandle, OmpAgentState, StreamTransport } from '@/types';
 import type { ExtensionUiDialogRequest } from '@/types/omp/agent';
+import type { ApprovalMode } from '@/lib/omp/config/access-mode';
 import { useOmpAgentStream, type ToolResultRecord } from '@/hooks/chat/omp/stream';
 
 /**
@@ -74,7 +75,11 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
   }, [sessionId, disconnect, connect]);
 
   /** Send a prompt to the omp session via the RPC bridge. */
-  const sendPrompt = useCallback(async (message: string, images?: { data: string; mimeType: string }[]) => {
+  const sendPrompt = useCallback(async (
+    message: string,
+    images?: { data: string; mimeType: string }[],
+    options?: { accessMode?: ApprovalMode },
+  ) => {
     const sid = sessionIdRef.current;
     if (!sid) return false;
     setState((prev) => ({ ...prev, isGenerating: true, error: null }));
@@ -85,7 +90,12 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
       const warmup = await fetch(`/api/agent/${encodeURIComponent(sid)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'get_state' }),
+        // The mode rides the warmup too: this is the request that lazily spawns
+        // an idle session, and omp only accepts --approval-mode at spawn time.
+        body: JSON.stringify({
+          type: 'get_state',
+          ...(options?.accessMode ? { accessMode: options.accessMode } : {}),
+        }),
       });
       if (warmup.ok) connect(sid);
 
@@ -96,6 +106,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
           type: 'prompt',
           message,
           ...(images?.length ? { images } : {}),
+          ...(options?.accessMode ? { accessMode: options.accessMode } : {}),
         }),
       });
       const body = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
@@ -122,7 +133,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     message: string,
     cwd: string,
     images?: { data: string; mimeType: string }[],
-    composerOptions?: { model?: { provider: string; modelId: string } | null; thinkingLevel?: string | null },
+    composerOptions?: { model?: { provider: string; modelId: string } | null; thinkingLevel?: string | null; accessMode?: ApprovalMode },
   ): Promise<{ sessionId: string; model: { provider: string; modelId: string } | null } | null> => {
     setState((prev) => ({ ...prev, isGenerating: true, error: null }));
     try {
@@ -134,6 +145,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
           cwd,
           ...(composerOptions?.model ? composerOptions.model : {}),
           ...(composerOptions?.thinkingLevel ? { thinkingLevel: composerOptions.thinkingLevel } : {}),
+          ...(composerOptions?.accessMode ? { accessMode: composerOptions.accessMode } : {}),
         }),
       });
       const createdBody = (await created.json().catch(() => ({}))) as {

@@ -12,9 +12,11 @@
  * usages happen inside functions, never at module init.
  */
 
+import { existsSync } from 'fs';
 import { RpcProcess } from '@/lib/omp/rpc/process';
 import { buildSessionSpawnArgs } from '@/lib/omp/rpc/constants';
 import { AgentSessionWrapper } from '@/lib/omp/rpc/manager';
+import { DEFAULT_APPROVAL_MODE, type ApprovalMode } from '@/lib/omp/config/access-mode';
 
 export interface RunningRpcSession {
   id: string;
@@ -103,6 +105,30 @@ export function notifyRunningChange({ refreshSessionList = false }: { refreshSes
   }
 }
 
+// The approval mode each wrapper's omp child was actually spawned with. omp has
+// no RPC setter for it, so a live wrapper is stale once the desired mode
+// differs and must be respawned with the new --approval-mode flag.
+const spawnApprovalModes = new WeakMap<AgentSessionWrapper, ApprovalMode>();
+
+export function getSpawnApprovalMode(session: AgentSessionWrapper): ApprovalMode {
+  return spawnApprovalModes.get(session) ?? DEFAULT_APPROVAL_MODE;
+}
+
+/** Destroy an idle session whose spawned approval mode differs from `desired`
+ *  so the caller can respawn it with the new --approval-mode flag.
+ *  Returns true when the session was destroyed (caller MUST respawn). */
+export async function reconcileSpawnApprovalMode(session: AgentSessionWrapper, desired: ApprovalMode): Promise<boolean> {
+  if (getSpawnApprovalMode(session) === desired) return false;
+  // Never kill an in-flight run — the caller would lose the active turn.
+  if (session.isRunning()) return false;
+  // A brand-new session has no JSONL on disk yet; destroying it would 404 the
+  // next request that tries to resolve its file.
+  if (!session.sessionFile) return false;
+  if (!existsSync(session.sessionFile)) return false;
+  await session.destroyAndWait();
+  return true;
+}
+
 /**
  * Get or create the omp RPC process for the given session.
  * For new sessions (sessionFile === ''), omp generates its own id.
@@ -112,6 +138,7 @@ export async function startRpcSession(
   sessionFile: string,
   cwd: string,
   recordedCwd?: string | null,
+  approvalMode?: ApprovalMode,
 ): Promise<{ session: AgentSessionWrapper; realSessionId: string }> {
   const registry = getRegistry();
   const locks = getLocks();
@@ -129,10 +156,11 @@ export async function startRpcSession(
     const holder: { wrapper?: AgentSessionWrapper } = {};
     const proc = new RpcProcess({
       cwd,
-      extraArgs: buildSessionSpawnArgs(sessionFile),
+      extraArgs: buildSessionSpawnArgs(sessionFile, approvalMode),
       onExit: ({ stderrTail }) => holder.wrapper?.handleProcessExit(stderrTail),
     });
     const created = new AgentSessionWrapper(proc, cwd, recordedCwd);
+    spawnApprovalModes.set(created, approvalMode ?? DEFAULT_APPROVAL_MODE);
     holder.wrapper = created;
     created.start();
     try {
