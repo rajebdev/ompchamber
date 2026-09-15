@@ -9,8 +9,14 @@
  * ~/.omp/agent/config.yml tools.approval.* with an atomic read-modify-write,
  * preserving all other keys (same technique as roles.ts).
  *
- * Native field names mirror omp-web/lib/omp/settings-config.ts NativeSettings:
- *   tools.approval.{extension,bash,read,edit,webfetch}: allow | ask
+ * Values must be omp's ApprovalPolicy — `allow | deny | prompt`. Anything else
+ * is dropped silently by normalizePolicy, which is how `ask` became a no-op.
+ * Field names must be real omp tool names, since `tools.approval.<key>` is only
+ * consulted when the key matches the tool's `policyKey`.
+ *
+ * omp honours these per-tool overrides ahead of the approval mode in every
+ * mode, so a blanket "allow everything" belongs in tools.approvalMode (the
+ * composer's access control), not here.
  */
 
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'fs';
@@ -18,14 +24,14 @@ import { join } from 'path';
 import { isMap, parseDocument } from 'yaml';
 import { getAgentDir } from '@/lib/omp/core/paths';
 
-export type ApprovalValue = 'allow' | 'ask';
+export type ApprovalValue = 'allow' | 'deny' | 'prompt';
 
 export interface ApprovalFields {
-  extension?: ApprovalValue;
   bash?: ApprovalValue;
   read?: ApprovalValue;
   edit?: ApprovalValue;
-  webfetch?: ApprovalValue;
+  write?: ApprovalValue;
+  web_search?: ApprovalValue;
 }
 
 interface Directive {
@@ -34,19 +40,32 @@ interface Directive {
   value: ApprovalValue;
 }
 
-// Ordered directives — first matching line for a field wins.
-const DIRECTIVES: Directive[] = [
-  { pattern: /^\s*(auto[- ]?approve|allow)\s+all\s*$/i, field: 'extension', value: 'allow' },
-  { pattern: /^\s*ask\s+(for\s+)?(all|everything)\s*$/i, field: 'extension', value: 'ask' },
-  { pattern: /^\s*(auto[- ]?approve|allow)\s+(bash|shell|terminal( commands)?)\s*$/i, field: 'bash', value: 'allow' },
-  { pattern: /^\s*ask\s+(before\s+|for\s+)?(bash|shell|terminal( commands)?)\s*$/i, field: 'bash', value: 'ask' },
-  { pattern: /^\s*(auto[- ]?approve|allow)\s+(safe\s+)?(reads?|read[- ]?only( commands)?)\s*$/i, field: 'read', value: 'allow' },
-  { pattern: /^\s*ask\s+(before\s+|for\s+)?reads?\s*$/i, field: 'read', value: 'ask' },
-  { pattern: /^\s*(auto[- ]?approve|allow)\s+(edits?|writes?|patches?)\s*$/i, field: 'edit', value: 'allow' },
-  { pattern: /^\s*ask\s+(before\s+|for\s+)?(edits?|writes?|patches?)\s*$/i, field: 'edit', value: 'ask' },
-  { pattern: /^\s*(auto[- ]?approve|allow)\s+(web(fetch)?|http|network)\s*$/i, field: 'webfetch', value: 'allow' },
-  { pattern: /^\s*ask\s+(before\s+|for\s+)?(web(fetch)?|http|network)\s*$/i, field: 'webfetch', value: 'ask' },
+const SUBJECTS: Array<{ fields: Array<keyof ApprovalFields>; subject: string }> = [
+  { fields: ['bash'], subject: 'bash|shell|terminal(?:\\s+commands)?' },
+  { fields: ['read'], subject: '(?:safe\\s+)?(?:reads?|read[- ]?only(?:\\s+commands)?)' },
+  // One phrasing governs both: the editor has no way to tell a patch from a
+  // new file, and leaving `write` uncovered let a "writes" rule miss it.
+  { fields: ['edit', 'write'], subject: 'edits?|writes?|patches?' },
+  { fields: ['web_search'], subject: 'web(?:\\s*search)?|http|network' },
 ];
+
+/** "ask" stays a valid phrasing but maps to omp's real `prompt` value. */
+const VERBS: Array<{ value: ApprovalValue; verb: string }> = [
+  { value: 'allow', verb: 'auto[- ]?approve|allow' },
+  { value: 'deny', verb: 'deny|block|forbid' },
+  { value: 'prompt', verb: 'ask|prompt|confirm' },
+];
+
+// Ordered directives — first matching line for a field wins.
+const DIRECTIVES: Directive[] = SUBJECTS.flatMap(({ fields, subject }) =>
+  fields.flatMap((field) =>
+    VERBS.map(({ value, verb }) => ({
+      field,
+      value,
+      pattern: new RegExp(`^\\s*(?:${verb})\\s+(?:(?:before|for)\\s+)?(?:${subject})\\s*$`, 'i'),
+    })),
+  ),
+);
 
 /**
  * Parse freeform behavior rules into native approval fields. Returns null
