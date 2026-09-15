@@ -138,14 +138,6 @@ export function resolveRemixBin(pkgRoot) {
 }
 
 /**
- * Absolute path to the `@remix-run/serve` CLI entry, verified on disk.
- */
-export function resolveRemixServeBin(pkgRoot) {
-  return resolveFromPackage('@remix-run/serve/dist/cli.js', pkgRoot)
-    ?? resolveBinPath(pkgRoot, 'remix-serve');
-}
-
-/**
  * Map a bind host to an address that is actually reachable for probing.
  */
 export function probeHost(host) {
@@ -160,13 +152,15 @@ export function probeHost(host) {
  */
 export function buildServeInvocation({ pkgRoot, mode, port, host }) {
   if (mode === 'prod') {
-    const serveBin = resolveRemixServeBin(pkgRoot);
-    if (!serveBin) {
-      throw new Error('Could not locate the @remix-run/serve CLI. Run `bun install` and retry.');
+    // The production entry owns the HTTP server so it can also carry the agent
+    // event WebSocket; remix-serve exposes no upgrade hook.
+    const entry = path.join(pkgRoot, 'server', 'index.js');
+    if (!fs.existsSync(entry)) {
+      throw new Error(`Could not locate the production server entry at ${entry}. Run \`bun run build\` and retry.`);
     }
     return {
       file: process.execPath,
-      args: [serveBin, path.join(pkgRoot, 'build', 'server', 'index.js')],
+      args: [entry],
       env: { ...process.env, PORT: String(port), HOST: host },
     };
   }
