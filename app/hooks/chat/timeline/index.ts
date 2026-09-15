@@ -4,6 +4,7 @@ import type { Attachment, ChatMessageData } from '@/types';
 import { useOmpAgent, type ExtensionUiDialogRequest } from '@/hooks/chat/omp';
 import { useChatTimelineQueue } from '@/hooks/chat/timeline/queue';
 import { useChatTimelineScroll } from '@/hooks/chat/timeline/scroll';
+import { useTimelineAutoScroll } from '@/hooks/chat/timeline/auto-scroll';
 import { useChatTimelineActions } from '@/hooks/chat/timeline/actions';
 import { useChatTimelineSend } from '@/hooks/chat/timeline/send';
 import { useSessionLoad } from '@/hooks/chat/timeline/session-load';
@@ -39,12 +40,26 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     }, { replace: true });
   }, [setSearchParams]);
 
-  const { scrollRef, showScrollBottom, isScrolling, handleScroll, scrollToBottom } = useChatTimelineScroll();
+  const { scrollRef, contentRef, showScrollBottom, isScrolling, handleScroll, scrollToBottom } = useChatTimelineScroll();
 
   const [inputValue, setInputValue] = useSessionState<string>('chat.draft', '');
   useBrowserPageContextInsert(setInputValue);
   const [inputAttachments, setInputAttachments] = useSessionState<Attachment[]>('chat.draftAttachments', []);
   const [localMessages, setLocalMessages] = useState<ChatMessageData[]>([]);
+
+  // A pending "new-…" session renders the workspace picker, which owns its own
+  // timeline and scroll handling.
+  const isPendingSession = Boolean(sessionId?.startsWith('new-'));
+  // Committed history lands asynchronously (session-load.ts), so the container
+  // paints at the top first; jump to the tail once per session when it does.
+  useTimelineAutoScroll({
+    sessionId,
+    messages: localMessages,
+    scrollRef,
+    scrollToBottom,
+    enabled: !isPendingSession,
+  });
+
   const [isGenerating, setIsGenerating] = useState(false);
   const isGeneratingRef = useRef(false);
   const [generatingVerb, setGeneratingVerb] = useState('');
@@ -236,6 +251,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     inputAttachments,
     setInputAttachments,
     scrollRef,
+    contentRef,
     showScrollBottom,
     isScrolling,
     handleScroll,

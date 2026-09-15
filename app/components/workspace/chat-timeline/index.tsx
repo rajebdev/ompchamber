@@ -54,6 +54,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
     inputAttachments,
     setInputAttachments,
     scrollRef,
+    contentRef,
     showScrollBottom,
     isScrolling,
     handleScroll,
@@ -238,7 +239,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
                 isScrolling ? 'timeline-scrollbar-visible' : 'timeline-scrollbar-hidden'
               }`}
             >
-              <div className="mx-auto w-full max-w-[970px]">
+              <div ref={contentRef} className="mx-auto w-full max-w-[970px]">
                 <MessageList
                   messages={orderedMessages}
                   isGenerating={isGenerating}
