@@ -217,8 +217,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
       if (selectedRow && selectedRow.value) {
         try {
           const parsed = JSON.parse(selectedRow.value);
-          if (parsed && parsed.id) {
-            const match = models.find(m => m.id === parsed.id);
+          if (parsed && parsed.id && parsed.provider) {
+            const match = models.find(m => m.id === parsed.id && m.provider === parsed.provider);
             selectedModel = match || parsed;
           }
         } catch {}
@@ -261,10 +261,13 @@ export async function action({ request }: ActionFunctionArgs) {
       } catch {}
     }
 
-    const { actionType, modelId, thinkingLevel, model, models: newModels } = body;
+    const { actionType, modelId, provider, thinkingLevel, model, models: newModels } = body;
 
-    if (actionType === 'toggleFavorite' && modelId) {
-      models = models.map(m => m.id === modelId ? { ...m, isFavorite: !m.isFavorite } : m);
+    // Model-scoped mutations must match provider + id: the registry serves the
+    // same model id from several providers, so an id-only match rewrites the
+    // first provider's entry instead of the one the user acted on.
+    if (actionType === 'toggleFavorite' && modelId && provider) {
+      models = models.map(m => m.id === modelId && m.provider === provider ? { ...m, isFavorite: !m.isFavorite } : m);
       await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
         MODELS_CATALOG_KEY,
         JSON.stringify(models),
@@ -272,8 +275,8 @@ export async function action({ request }: ActionFunctionArgs) {
       return json({ success: true, models });
     }
 
-    if (actionType === 'setThinking' && modelId && thinkingLevel) {
-      models = models.map(m => m.id === modelId ? { ...m, thinkingLevel } : m);
+    if (actionType === 'setThinking' && modelId && provider && thinkingLevel) {
+      models = models.map(m => m.id === modelId && m.provider === provider ? { ...m, thinkingLevel } : m);
       await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
         MODELS_CATALOG_KEY,
         JSON.stringify(models),
@@ -281,8 +284,8 @@ export async function action({ request }: ActionFunctionArgs) {
       return json({ success: true, models });
     }
 
-    if (actionType === 'toggleCmd' && modelId) {
-      models = models.map(m => m.id === modelId ? { ...m, isCmdAgent: !m.isCmdAgent } : m);
+    if (actionType === 'toggleCmd' && modelId && provider) {
+      models = models.map(m => m.id === modelId && m.provider === provider ? { ...m, isCmdAgent: !m.isCmdAgent } : m);
       await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
         MODELS_CATALOG_KEY,
         JSON.stringify(models),

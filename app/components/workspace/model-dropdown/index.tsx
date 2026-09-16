@@ -5,6 +5,7 @@ import { useOnClickOutside } from '@/hooks/ui/on-click-outside';
 import { INITIAL_MODELS_CATALOG } from '@/data/models/catalog';
 import { fetchModelsData, invalidateModelsCache, subscribeModelsUpdated } from '@/lib/models/client';
 import { ModelDropdownPanel } from '@/components/workspace/model-dropdown/Panel';
+import { modelKey } from '@/lib/models/identity';
 
 interface ModelDropdownProps {
   selectedModel?: AIModelOption;
@@ -158,47 +159,63 @@ export function ModelDropdown({
     return list;
   }, [collapsedSections, favoriteModels, recentModels, providerGroups]);
 
-  const handleToggleFavorite = async (id: string, e: React.MouseEvent) => {
+  // Hover/keyboard focus addresses rows through this map. Keying it on the id
+  // alone collapsed the providers that serve the same model id onto one index,
+  // so hovering one provider's row highlighted every other provider's too.
+  const modelIndex = useMemo(() => {
+    const byKey: Record<string, number> = {};
+    visibleFlatList.forEach((m, i) => {
+      byKey[modelKey(m)] = i;
+    });
+    return byKey;
+  }, [visibleFlatList]);
+  const selectedModelKey = modelKey(selectedModel);
+
+  const handleToggleFavorite = async (model: AIModelOption, e: React.MouseEvent) => {
     e.stopPropagation();
-    setModels(prev => prev.map(m => m.id === id ? { ...m, isFavorite: !m.isFavorite } : m));
+    const key = modelKey(model);
+    setModels(prev => prev.map(m => modelKey(m) === key ? { ...m, isFavorite: !m.isFavorite } : m));
     try {
       await fetch('/api/models', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ actionType: 'toggleFavorite', modelId: id }),
+        body: JSON.stringify({ actionType: 'toggleFavorite', provider: model.provider, modelId: model.id }),
       });
     } catch {}
   };
 
-  const cycleThinkingLevel = (id: string) => {
-    const currentModel = models.find(m => m.id === id);
-    const ladder = currentModel?.thinkingLevels ?? [];
+  const cycleThinkingLevel = (model: AIModelOption) => {
+    const ladder = model.thinkingLevels ?? [];
     if (ladder.length === 0) return;
-    const current = currentModel?.thinkingLevel ?? ladder[0];
+    const current = model.thinkingLevel ?? ladder[0];
     const idx = ladder.indexOf(current);
     const nextThinking = ladder[(idx + 1) % ladder.length];
 
-    setModels(prev => prev.map(m => m.id === id ? { ...m, thinkingLevel: nextThinking } : m));
-    if (selectedModel.id === id) {
+    const key = modelKey(model);
+    setModels(prev => prev.map(m => modelKey(m) === key ? { ...m, thinkingLevel: nextThinking } : m));
+    // Only the active model's preset may reach the live session — cycling
+    // another provider's row (or a non-selected model) must not push its
+    // thinking level onto this session.
+    if (selectedModelKey === key) {
       setSelectedModel(prev => ({ ...prev, thinkingLevel: nextThinking }));
       onSelectModel?.({ ...selectedModel, thinkingLevel: nextThinking });
+      onThinkingLevelChange?.(nextThinking);
     }
-    onThinkingLevelChange?.(nextThinking);
   };
 
-  const toggleAgentCmd = async (id: string) => {
-    const target = models.find(m => m.id === id);
-    const nextCmd = !target?.isCmdAgent;
+  const toggleAgentCmd = async (model: AIModelOption) => {
+    const nextCmd = !model.isCmdAgent;
+    const key = modelKey(model);
 
-    setModels(prev => prev.map(m => m.id === id ? { ...m, isCmdAgent: nextCmd } : m));
-    if (selectedModel.id === id) {
+    setModels(prev => prev.map(m => modelKey(m) === key ? { ...m, isCmdAgent: nextCmd } : m));
+    if (selectedModelKey === key) {
       setSelectedModel(prev => ({ ...prev, isCmdAgent: nextCmd }));
     }
     try {
       await fetch('/api/models', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ actionType: 'toggleCmd', modelId: id }),
+        body: JSON.stringify({ actionType: 'toggleCmd', provider: model.provider, modelId: model.id }),
       });
     } catch {}
   };
@@ -245,11 +262,11 @@ export function ModelDropdown({
     } else if (e.key === 'Tab') {
       e.preventDefault();
       const target = (focusedIndex >= 0 ? visibleFlatList[focusedIndex] : null) || hoveredModel;
-      if (target) toggleAgentCmd(target.id);
+      if (target) toggleAgentCmd(target);
     } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
       e.preventDefault();
       const target = (focusedIndex >= 0 ? visibleFlatList[focusedIndex] : null) || hoveredModel;
-      if (target) cycleThinkingLevel(target.id);
+      if (target) cycleThinkingLevel(target);
     }
   };
 
@@ -295,8 +312,8 @@ export function ModelDropdown({
           providerGroups={providerGroups}
           collapsedSections={collapsedSections}
           onToggleCollapse={toggleSection}
-          selectedModelId={selectedModel.id}
-          visibleFlatList={visibleFlatList}
+          selectedModelKey={selectedModelKey}
+          modelIndex={modelIndex}
           focusedIndex={focusedIndex}
           hoveredModel={hoveredModel}
           onSelect={handleSelect}

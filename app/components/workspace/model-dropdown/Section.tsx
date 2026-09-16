@@ -2,6 +2,7 @@ import React from 'react';
 import { ChevronDown, ChevronUp, Star, History, GripVertical } from 'lucide-react';
 import type { AIModelOption } from '@/types';
 import { ModelDropdownItem } from '@/components/workspace/model-dropdown/Item';
+import { modelKey } from '@/lib/models/identity';
 
 interface ModelDropdownSectionProps {
   id: string;
@@ -10,12 +11,14 @@ interface ModelDropdownSectionProps {
   models: AIModelOption[];
   isCollapsed: boolean;
   onToggleCollapse: (id: string) => void;
-  selectedModelId: string;
-  visibleFlatList: AIModelOption[];
+  /** Composite (`provider:id`) key of the active selection. */
+  selectedModelKey: string;
+  /** Composite key → index in the keyboard-navigation flat list. */
+  modelIndex: Record<string, number>;
   focusedIndex: number;
   onSelect: (model: AIModelOption) => void;
-  onToggleFavorite: (id: string, e: React.MouseEvent) => void;
-  onCycleThinking: (id: string, e: React.MouseEvent) => void;
+  onToggleFavorite: (model: AIModelOption, e: React.MouseEvent) => void;
+  onCycleThinking: (model: AIModelOption, e: React.MouseEvent) => void;
   onHoverItem: (index: number, model: AIModelOption) => void;
 }
 
@@ -26,8 +29,8 @@ export function ModelDropdownSection({
   models,
   isCollapsed,
   onToggleCollapse,
-  selectedModelId,
-  visibleFlatList,
+  selectedModelKey,
+  modelIndex,
   focusedIndex,
   onSelect,
   onToggleFavorite,
@@ -60,12 +63,15 @@ export function ModelDropdownSection({
       {!isCollapsed && (
         <div className="space-y-0.5">
           {models.map((m) => {
-            const index = visibleFlatList.findIndex(item => item.id === m.id);
+            // Identity is provider + id: the same model id is served by several
+            // providers, so an id-only match would focus/select their rows too.
+            const key = modelKey(m);
+            const index = modelIndex[key] ?? -1;
             return (
               <ModelDropdownItem
-                key={`${id}-${m.id}`}
+                key={`${id}-${key}`}
                 model={m}
-                isSelected={selectedModelId === m.id}
+                isSelected={selectedModelKey === key}
                 isFocused={focusedIndex === index}
                 onSelect={onSelect}
                 onToggleFavorite={onToggleFavorite}

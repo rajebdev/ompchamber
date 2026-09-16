@@ -15,13 +15,15 @@ interface ModelDropdownPanelProps {
   providerGroups: Record<string, AIModelOption[]>;
   collapsedSections: Record<string, boolean>;
   onToggleCollapse: (section: string) => void;
-  selectedModelId: string;
-  visibleFlatList: AIModelOption[];
+  /** Composite (`provider:id`) key of the active selection. */
+  selectedModelKey: string;
+  /** Composite key → index in the keyboard-navigation flat list. */
+  modelIndex: Record<string, number>;
   focusedIndex: number;
   hoveredModel: AIModelOption | null;
   onSelect: (model: AIModelOption) => void;
-  onToggleFavorite: (id: string, e: MouseEvent) => void;
-  onCycleThinking: (id: string) => void;
+  onToggleFavorite: (model: AIModelOption, e: MouseEvent) => void;
+  onCycleThinking: (model: AIModelOption, e: MouseEvent) => void;
   onHoverItem: (index: number, model: AIModelOption) => void;
   onMouseLeave: () => void;
 }
@@ -36,8 +38,8 @@ export function ModelDropdownPanel({
   providerGroups,
   collapsedSections,
   onToggleCollapse,
-  selectedModelId,
-  visibleFlatList,
+  selectedModelKey,
+  modelIndex,
   focusedIndex,
   hoveredModel,
   onSelect,
@@ -73,8 +75,8 @@ export function ModelDropdownPanel({
                 models={favoriteModels}
                 isCollapsed={!!collapsedSections['favorites']}
                 onToggleCollapse={onToggleCollapse}
-                selectedModelId={selectedModelId}
-                visibleFlatList={visibleFlatList}
+                selectedModelKey={selectedModelKey}
+                modelIndex={modelIndex}
                 focusedIndex={focusedIndex}
                 onSelect={onSelect}
                 onToggleFavorite={onToggleFavorite}
@@ -89,8 +91,8 @@ export function ModelDropdownPanel({
                 models={recentModels}
                 isCollapsed={!!collapsedSections['recent']}
                 onToggleCollapse={onToggleCollapse}
-                selectedModelId={selectedModelId}
-                visibleFlatList={visibleFlatList}
+                selectedModelKey={selectedModelKey}
+                modelIndex={modelIndex}
                 focusedIndex={focusedIndex}
                 onSelect={onSelect}
                 onToggleFavorite={onToggleFavorite}
@@ -107,8 +109,8 @@ export function ModelDropdownPanel({
                   models={pModels}
                   isCollapsed={!!collapsedSections[provider]}
                   onToggleCollapse={onToggleCollapse}
-                  selectedModelId={selectedModelId}
-                  visibleFlatList={visibleFlatList}
+                  selectedModelKey={selectedModelKey}
+                  modelIndex={modelIndex}
                   focusedIndex={focusedIndex}
                   onSelect={onSelect}
                   onToggleFavorite={onToggleFavorite}

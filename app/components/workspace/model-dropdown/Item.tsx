@@ -19,8 +19,8 @@ interface ModelDropdownItemProps {
   isSelected: boolean;
   isFocused: boolean;
   onSelect: (model: AIModelOption) => void;
-  onToggleFavorite: (id: string, e: React.MouseEvent) => void;
-  onCycleThinking?: (id: string, e: React.MouseEvent) => void;
+  onToggleFavorite: (model: AIModelOption, e: React.MouseEvent) => void;
+  onCycleThinking?: (model: AIModelOption, e: React.MouseEvent) => void;
   onMouseEnter: () => void;
 }
 
@@ -117,7 +117,7 @@ export function ModelDropdownItem({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onCycleThinking?.(model.id, e);
+              onCycleThinking?.(model, e);
             }}
             title={`Thinking preset: ${model.thinkingLevel} (Click or use ← / → to change)`}
             className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[10px] font-mono text-ink/70 bg-ink/5 hover:bg-ink/10 border border-ink/10 transition-colors cursor-pointer"
@@ -133,7 +133,7 @@ export function ModelDropdownItem({
 
         <button
           type="button"
-          onClick={(e) => onToggleFavorite(model.id, e)}
+          onClick={(e) => onToggleFavorite(model, e)}
           title={model.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
           className="p-1 rounded text-ink/30 hover:text-sky-400 hover:bg-ink/5 transition-colors cursor-pointer"
         >
