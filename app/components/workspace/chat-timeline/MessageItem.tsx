@@ -33,6 +33,9 @@ interface ChatMessageItemProps {
    *  response run should show it so multi-part JSONL responses do not repeat
    *  the footer per message. */
   footerVisible?: boolean;
+  /** Mobile uses a compact provider/model footer with a bottom-sheet menu. */
+  isMobile?: boolean;
+
   /** Extra classes on the root wrapper (e.g. spacing between messages). */
   className?: string;
   /** Elapsed ms of the whole AI response run — shown as ⏳ duration. */
@@ -61,6 +64,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   onUndo, 
   onNewChat,
   footerVisible = true,
+  isMobile = false,
   className = '',
   durationMs = null,
   isPrevAssistant = false,
@@ -337,6 +341,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           msgId={msg.id}
           onRetry={onRetry}
           onNewChat={onNewChat}
+          isMobile={isMobile}
         />
       )}
     </div>

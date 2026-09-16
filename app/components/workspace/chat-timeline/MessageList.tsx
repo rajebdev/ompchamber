@@ -14,6 +14,7 @@ export interface MessageListProps {
   onUndo?: (id: string, content?: string) => void;
   onRetry?: (id: string) => void;
   onNewChat?: (content: string) => void;
+  isMobile?: boolean;
 }
 
 /**
@@ -39,6 +40,7 @@ export const MessageList = memo(function MessageList({
   onUndo,
   onRetry,
   onNewChat,
+  isMobile = false,
 }: MessageListProps) {
   const { lastAiIdx, nextNonNotice, prevNonNoticeIdx, durations } = useMemo(() => {
     const count = messages.length;
@@ -105,6 +107,7 @@ export const MessageList = memo(function MessageList({
             footerVisible={isLastAi}
             durationMs={durations[idx]}
             isPrevAssistant={isPrevAssistant}
+            isMobile={isMobile}
             className={msg.notice ? 'mt-3 mb-1' : isAiFragment ? 'mt-1' : 'mt-3'}
           />
         );

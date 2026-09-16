@@ -203,6 +203,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
                   onUndo={handleUndo}
                   onRetry={handleRetry}
                   onNewChat={handleNewChat}
+                  isMobile={isMobile}
                 />
               </div>
             </div>
