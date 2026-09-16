@@ -3,7 +3,7 @@ import { useSearchParams } from '@remix-run/react';
 import { ArrowDown } from 'lucide-react';
 import { ChatInput } from '@/components/workspace/chat-timeline/chat-input/index';
 import { MessageList } from '@/components/workspace/chat-timeline/MessageList';
-import { AskDialog } from '@/components/workspace/chat-timeline/tool-renderers/ask-dialog';
+import { AskDialog } from '@/components/workspace/chat-timeline/tool-renderers/ask-dialog/Lazy';
 import { MinimapShortcuts } from '@/components/workspace/chat-timeline/MinimapShortcuts';
 import { EmptyWorkspacePrompt } from '@/components/workspace/chat-timeline/EmptyWorkspacePrompt';
 import { GeneratingIndicator } from '@/components/workspace/chat-timeline/GeneratingIndicator';
@@ -155,16 +155,18 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
 
   useSessionTitle(sessionId, sessionData?.title, onSessionTitle);
 
-  const handleScrollTo = (id: string) => {
+  const handleScrollTo = useCallback((id: string) => {
     const el = document.getElementById(id);
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  };
+  }, []);
+
+  const handleNewChat = useCallback((content: string) => setNewChatInitialContent(content), []);
 
   const modelNames = useModelNames();
   const providerNames = useProviderNames();
-  const userMessages = localMessages.filter(m => m.role === 'user');
+  const userMessages = useMemo(() => localMessages.filter(m => m.role === 'user'), [localMessages]);
   const sessionProvider = typeof sessionData?.model === 'object' ? sessionData.model.provider : undefined;
   const sessionModelName = typeof sessionData?.model === 'object'
     ? (modelNames[sessionData.model.modelId] ?? sessionData.model.modelId)
@@ -227,10 +229,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
             {/* Minimap Shortcuts — desktop only: the rail needs side room a
                 phone does not have. */}
             {!isMobile && (
-              <MinimapShortcuts 
-                userMessages={userMessages} 
-                onScrollTo={handleScrollTo} 
-              />
+              <MinimapShortcuts userMessages={userMessages} onScrollTo={handleScrollTo} />
             )}
 
             {/* Timeline Body */}
@@ -253,7 +252,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
                   modelNames={modelNames}
                   onUndo={handleUndo}
                   onRetry={handleRetry}
-                  onNewChat={(content) => setNewChatInitialContent(content)}
+                  onNewChat={handleNewChat}
                 />
               </div>
             </div>
