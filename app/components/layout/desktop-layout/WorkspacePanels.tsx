@@ -152,7 +152,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
         )}
       </Group>
 
-      <RightActivityBar activePanel={activeRightPanel} onChangePanel={onChangeRightPanel} isPanelOpen={showRightPanel} />
+      <RightActivityBar activePanel={activeRightPanel} onChangePanel={onChangeRightPanel} isPanelOpen={showRightPanel} hasActiveContext={hasActiveContext} activeProjectPath={activeProjectPath} refreshKey={refreshKey} />
     </div>
   );
 }

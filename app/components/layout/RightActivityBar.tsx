@@ -1,4 +1,5 @@
 import { Files, Search, GitBranch, Terminal, Layers, Globe, Bot, BarChart3 } from 'lucide-react';
+import { useGitStatus } from '@/hooks/workspace/git-status';
 
 export type RightPanelType = 'files' | 'search' | 'git' | 'terminal' | 'context' | 'user-browser' | 'browser' | 'usage';
 
@@ -6,9 +7,14 @@ interface RightActivityBarProps {
   activePanel: RightPanelType;
   onChangePanel: (panel: RightPanelType) => void;
   isPanelOpen: boolean;
+  hasActiveContext: boolean;
+  activeProjectPath?: string | null;
+  refreshKey: number;
 }
 
-export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen }: RightActivityBarProps) {
+export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen, hasActiveContext, activeProjectPath, refreshKey }: RightActivityBarProps) {
+  const { changes } = useGitStatus(activeProjectPath ?? undefined, '.', refreshKey, hasActiveContext);
+  const hasGitChanges = changes.length > 0;
   const getBtnClass = (panel: RightPanelType) => {
     const base = "relative w-full h-10 flex items-center justify-center transition-colors border-l-2";
     const isActive = isPanelOpen && activePanel === panel;
@@ -46,6 +52,12 @@ export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen }: Ri
           title="Source Control"
         >
           <GitBranch size={16} />
+          {hasGitChanges && (
+            <span
+              className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-info"
+              title="Ada perubahan git"
+            />
+          )}
         </button>
         <button
           className={getBtnClass('terminal')}
