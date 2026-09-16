@@ -133,9 +133,6 @@ export function ThinkingSection({
               content={cleanThought}
               className="text-[12px] leading-relaxed text-ink/85 [&_.code-block]:my-2 [&_p]:my-1.5 [&_ul]:my-1.5 [&_ol]:my-1.5"
             />
-            {isGenerating && (
-              <span className="inline-block h-3 w-1 bg-ink/60 ml-0.5 align-middle animate-pulse" />
-            )}
           </div>
         </div>
       )}

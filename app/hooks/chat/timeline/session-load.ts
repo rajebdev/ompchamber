@@ -82,14 +82,16 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
         .then(data => {
           if (!data?.session || !isActive()) return;
           applySessionData(data.session);
-          // Only signal the sidebar once the JSONL carries the user turn, so
-          // the item appears with its real title (not the default).
-          if ((data.session.messages?.length ?? 0) > 0) {
-            window.dispatchEvent(new CustomEvent('omp:session-updated', { detail: { sessionId: sid } }));
-          } else if (attempts < 40) {
-            // The omp JSONL may be written well after agent_start: keep
-            // polling (20s) until the user turn lands so the sidebar item
-            // appears as soon as the chunk arrives.
+          // Signal the sidebar on every poll until the JSONL carries the user
+          // turn, then keep polling (20s) until it does. A just-spawned omp
+          // process often writes its JSONL slightly AFTER agent_start, so the
+          // first fetches see zero messages: dispatching only in the
+          // messages>0 branch stranded the refresh when the revalidation ran
+          // early — the sidebar kept the pending "New Session - timestamp"
+          // row until some later event happened to fire.
+          window.dispatchEvent(new CustomEvent('omp:session-updated', { detail: { sessionId: sid } }));
+          if ((data.session.messages?.length ?? 0) > 0) return;
+          if (attempts < 40) {
             setTimeout(tryFetch, 500);
           }
         })
@@ -128,9 +130,15 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
         setLocalMessages([]);
         setGenerating(false);
         adoptedSessionIdRef.current = null;
-        metaRefreshedRef.current = null;
         seededModelRef.current = null;
       }
+      // metaRefreshedRef must NOT survive a session switch — including a
+      // spawn adoption. It is the once-per-session guard in onAgentStart
+      // (omp-callbacks.ts); keeping the stale value here ate the retrigger,
+      // so a title refresh that landed before the omp JSONL had messages
+      // (default timestamped title) never ran again and the sidebar stayed
+      // on the placeholder until some later event refreshed it.
+      metaRefreshedRef.current = null;
       prevSessionIdRef.current = sessionId;
     }
     if (sessionId) {

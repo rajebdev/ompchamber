@@ -179,6 +179,15 @@ export function EmptyWorkspacePrompt({
           </div>
         )}
 
+        {/* Docked above the input, mirroring chat-timeline/index.tsx so the
+            indicator does not jump when a pending new chat adopts its omp
+            session and the main timeline branch takes over rendering. */}
+        {isGenerating && (
+          <GeneratingIndicator
+            modelName={modelName}
+            generatingVerb={generatingVerb}
+          />
+        )}
         <ChatInput
           value={inputValue}
           onChange={setInputValue}
@@ -198,12 +207,6 @@ export function EmptyWorkspacePrompt({
           onAccessModeChange={onAccessModeChange}
           variant={variant}
         />
-        {isGenerating && (
-          <GeneratingIndicator
-            modelName={modelName}
-            generatingVerb={generatingVerb}
-          />
-        )}
       </div>
     </div>
   );

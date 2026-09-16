@@ -270,9 +270,6 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         {hasRenderableContent && (
           <div className="text-[13px] text-ink leading-relaxed font-sans bg-transparent px-3 py-1 select-text">
             <MarkdownRenderer content={assistantContent} />
-            {isStreaming && (
-              <span className="inline-block w-1.5 h-3.5 bg-ink/70 ml-1 translate-y-0.5 animate-pulse" />
-            )}
           </div>
         )}
 
