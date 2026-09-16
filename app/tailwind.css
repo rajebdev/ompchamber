@@ -255,7 +255,12 @@
 .prose-content .code-block .token.entity,
 .prose-content .code-block .token.url,
 .prose-content .code-block .language-css .token.string,
-.prose-content .code-block .style .token.string {
+.prose-content .code-block .style .token.string,
+.prism-code-surface .token.operator,
+.prism-code-surface .token.entity,
+.prism-code-surface .token.url,
+.prism-code-surface .language-css .token.string,
+.prism-code-surface .style .token.string {
   background: transparent;
   color: color-mix(in srgb, var(--theme-ink) 78%, transparent);
 }

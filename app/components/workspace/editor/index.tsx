@@ -265,7 +265,7 @@ export function Editor({
                       <div key={i + 1} className="min-w-[1.5rem]">{i + 1}</div>
                     ))}
                   </div>
-                  <div className="flex-1 min-w-max">
+                  <div className="flex-1 min-w-max prism-code-surface">
                     <CodeEditor
                       value={currentContent}
                       onValueChange={handleContentChange}

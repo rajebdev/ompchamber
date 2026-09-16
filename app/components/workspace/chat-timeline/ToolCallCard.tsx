@@ -260,7 +260,7 @@ export const ToolCallCard = memo(function ToolCallCard({ tool, isOpen, onToggle,
       <ToolDetailsPanel tool={tool} />
 
       {!hasPanel && commandOrInput && (
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 prism-code-surface">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <SectionLabel>Input</SectionLabel>
