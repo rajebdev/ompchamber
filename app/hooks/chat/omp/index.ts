@@ -64,12 +64,22 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     // resume the generating UI.
     fetch(`/api/agent/${encodeURIComponent(sessionId)}`)
       .then(res => (res.ok ? res.json() : null))
-      .then((data: { running?: boolean; state?: { isStreaming?: boolean; isPromptRunning?: boolean } } | null) => {
+      .then((data: {
+        running?: boolean;
+        state?: { isStreaming?: boolean; isPromptRunning?: boolean };
+        pendingUiRequests?: ExtensionUiDialogRequest[];
+      } | null) => {
         if (cancelled || !data?.running) return;
         const probe = data.state;
         if (probe && (probe.isStreaming || probe.isPromptRunning)) {
           connect(sessionId);
           callbacksRef.current.onResumeStream?.();
+        }
+        // An ask/approval dialog raised before the reload is still blocking the
+        // agent, and omp never re-sends the frame: replay what the server
+        // remembered so the modal reappears instead of the run hanging.
+        for (const request of data.pendingUiRequests ?? []) {
+          callbacksRef.current.onExtensionUiRequest?.(request);
         }
       })
       .catch(() => {});

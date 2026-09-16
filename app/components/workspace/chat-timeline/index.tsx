@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useSearchParams } from '@remix-run/react';
 import { ArrowDown } from 'lucide-react';
 import { ChatInput } from '@/components/workspace/chat-timeline/chat-input/index';
@@ -12,17 +12,13 @@ import { NewChatModal } from '@/components/workspace/chat-timeline/NewChatModal'
 import { SubagentView } from '@/components/workspace/chat-timeline/SubagentView';
 import { useChatTimeline } from '@/hooks/chat/timeline';
 import { useSessionTitle } from '@/hooks/chat/timeline/session-title';
+import { useSubagentView } from '@/hooks/chat/timeline/subagent-view';
 import { useModelNames } from '@/hooks/models/use-model-names';
 import { useProviderNames } from '@/hooks/models/use-provider-names';
 import { useToasts } from '@/hooks/ui/toasts';
 import { Toast } from '@/components/common/Toast';
 import { normalizeNoticePositions } from '@/lib/chat/order';
-import { isRecord } from '@/lib/omp/session/parse-message-blocks';
-import { historyEntryToSubagentInfo } from '@/lib/omp/subagent/history/client';
 import { composerRootFor } from '@/lib/workspace/active-project';
-
-import type { ExtensionUiDialogRequest } from '@/hooks/chat/omp';
-import type { SubagentHistoryEntry, SubagentInfo } from '@/types';
 
 interface ChatTimelineProps {
   className?: string;
@@ -79,8 +75,6 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
   const { toasts, pushToast, dismissToast } = useToasts();
 
   const [newChatInitialContent, setNewChatInitialContent] = useState<string | null>(null);
-  const [previewDialog, setPreviewDialog] = useState<ExtensionUiDialogRequest | null>(null);
-  const [activeSubagent, setActiveSubagent] = useState<SubagentInfo | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Stop-all semantics: the run stops AND the queued follow-ups stay in the
@@ -101,79 +95,11 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
       },
     );
   }, [stopGenerating, pushToast, messageQueue, handleSendNowQueueItem]);
-  // The transcript view is URL-addressable (?subagent=<id>) so a reload
-  // restores it — but the SubagentInfo body only lives in state, so a
-  // deep-link/hydrated entry is reconstructed from the history route.
-  const urlSubagentId = searchParams.get('subagent');
-
-  // Roster clicks open the transcript; when the row belongs to another
-  // session, the same update navigates there — a click must never be a no-op.
-  const handleViewSubagentEvent = useCallback((e: Event) => {
-    const detail = (e as CustomEvent<{ sessionId?: string; subagent?: SubagentInfo }>).detail;
-    const subagent = detail?.subagent;
-    const detailSessionId = detail?.sessionId;
-    if (!subagent || !detailSessionId) return;
-    setActiveSubagent(subagent);
-    setSearchParams(prev => {
-      if (prev.get('sessionId') === detailSessionId && prev.get('subagent') === subagent.id) return prev;
-      prev.set('sessionId', detailSessionId);
-      prev.set('subagent', subagent.id);
-      return prev;
-    }, { replace: false });
-  }, [setSearchParams]);
-
-  useEffect(() => {
-    window.addEventListener('omp:view-subagent', handleViewSubagentEvent);
-    return () => window.removeEventListener('omp:view-subagent', handleViewSubagentEvent);
-  }, [handleViewSubagentEvent]);
-
-  // Back paths (banner button / Escape) clear both state and URL.
-  const handleSubagentBack = useCallback(() => {
-    setActiveSubagent(null);
-    setSearchParams(prev => {
-      if (!prev.has('subagent')) return prev;
-      prev.delete('subagent');
-      return prev;
-    }, { replace: true });
-  }, [setSearchParams]);
-
-  // The ?subagent param drives the view: absent → main timeline (covers
-  // session switches and back navigation); present → the transcript. Deep
-  // links hydrate the roster entry from the history route, where a finished
-  // subagent is always recoverable.
-  useEffect(() => {
-    if (!urlSubagentId) {
-      setActiveSubagent(null);
-      return;
-    }
-    if (activeSubagent?.id === urlSubagentId) return;
-    if (!sessionId) return;
-    let cancelled = false;
-    fetch(`/api/sessions/${encodeURIComponent(sessionId)}/subagents`)
-      .then(res => (res.ok ? res.json() : null))
-      .then((body: { subagents?: unknown[] } | null) => {
-        if (cancelled || !body?.subagents) return;
-        const entry = body.subagents.find(s => isRecord(s) && s.id === urlSubagentId);
-        if (!entry) return;
-        setActiveSubagent(historyEntryToSubagentInfo(entry as SubagentHistoryEntry));
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-    // activeSubagent is intentionally not a dep: the guard above only needs
-    // the current render's value.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, urlSubagentId]);
-
-  useEffect(() => {
-    const handleOpenAsk = (e: Event) => {
-      const customEvent = e as CustomEvent<ExtensionUiDialogRequest>;
-      if (customEvent.detail) {
-        setPreviewDialog(customEvent.detail);
-      }
-    };
-    window.addEventListener('omp:open_ask_dialog', handleOpenAsk);
-    return () => window.removeEventListener('omp:open_ask_dialog', handleOpenAsk);
-  }, []);
+  const { activeSubagent, back: handleSubagentBack } = useSubagentView(
+    sessionId,
+    searchParams.get('subagent'),
+    setSearchParams,
+  );
 
   useSessionTitle(sessionId, sessionData?.title, onSessionTitle);
 
@@ -352,16 +278,12 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
         />
       )}
 
-      {(extensionDialog || previewDialog) && (
+      {extensionDialog && (
         <AskDialog
-          request={extensionDialog || previewDialog!}
+          request={extensionDialog}
           onRespond={(request, response) => {
-            if (extensionDialog) {
-              void respondToExtensionUi(request, response);
-              closeExtensionDialog();
-            } else {
-              setPreviewDialog(null);
-            }
+            void respondToExtensionUi(request, response);
+            closeExtensionDialog();
           }}
         />
       )}

@@ -120,6 +120,12 @@ export const PASSTHROUGH_COMMANDS = new Set([
 // payload reaches omp — a client is free to POST any of them directly.
 export const IMAGE_BEARING_COMMANDS = new Set(['prompt', 'steer', 'follow_up', 'abort_and_prompt']);
 
+// `extension_ui_request` methods that BLOCK the agent until the matching
+// `extension_ui_response` arrives. omp emits no re-delivery, so the server is
+// the only place a still-pending request can be remembered across a client
+// reload. `cancel`, `notify`, `open_url`, `setWidget`, ... are fire-and-forget.
+export const ANSWERABLE_UI_METHODS = new Set(['select', 'confirm', 'input', 'editor']);
+
 export const MAX_ATTACHED_IMAGES = 20;
 export const MAX_ATTACHED_IMAGE_BYTES = 20 * 1024 * 1024;
 export const MAX_AGGREGATE_IMAGE_BYTES = 40 * 1024 * 1024;

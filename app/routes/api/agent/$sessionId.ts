@@ -89,7 +89,10 @@ export async function loader({ params }: LoaderFunctionArgs) {
     }
     try {
       const state = await session.send({ type: 'get_state' });
-      return json({ running: true, state });
+      // Dialogs omp is still blocked on: a client that reloaded mid-ask has no
+      // other way to learn the request id it must answer, and omp never
+      // re-emits the frame.
+      return json({ running: true, state, pendingUiRequests: session.getPendingUiDialogs() });
     } catch (error) {
       if (error instanceof WebRpcError && error.code === 'session_unresponsive') {
         return json({ running: false, recovered: true });

@@ -41,7 +41,9 @@ export function useExtensionDialogQueue(sessionId: string | null): ExtensionDial
   }, [sessionId]);
 
   const enqueue = useCallback((request: ExtensionUiDialogRequest) => {
-    setQueue((current) => [...current, request]);
+    // Replay-on-reattach can race the live stream for the same request; one
+    // entry per omp id keeps the queue answerable exactly once.
+    setQueue((current) => (current.some((pending) => pending.id === request.id) ? current : [...current, request]));
   }, []);
   const dismiss = useCallback(() => {
     setQueue((current) => current.slice(1));

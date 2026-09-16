@@ -16,6 +16,7 @@
  */
 
 import { RpcProcess, type RpcFrame } from '@/lib/omp/rpc/process';
+import { PendingUiDialogs } from '@/lib/omp/rpc/pending-ui-dialogs';
 import { clearSessionFileCaches } from '@/lib/omp/session/files';
 import { notifyRunningChange } from '@/lib/omp/rpc/session-registry';
 import { dispatchSessionCommand } from '@/lib/omp/rpc/session-commands';
@@ -27,7 +28,6 @@ import {
   type AgentEvent,
   type EventListener,
   type RpcSessionState,
-  type WebSessionState,
 } from '@/lib/omp/rpc/constants';
 
 export type {
@@ -46,7 +46,7 @@ export class AgentSessionWrapper {
   awaitingAgentStartDeadline = 0;
   continuationGraceUntil = 0;
   bashRunning = false;
-  private streaming = false;
+  streaming = false;
   compacting = false;
   fastModeEnabled = false;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -58,6 +58,10 @@ export class AgentSessionWrapper {
   destroyPromise: Promise<void> | null = null;
   private _sessionId = '';
   private _sessionFile = '';
+  // Ask/approval dialogs omp is currently blocked on. omp never re-delivers an
+  // `extension_ui_request`, so a client that reloads mid-dialog can only learn
+  // the id it must answer from here.
+  private readonly pendingUiDialogs = new PendingUiDialogs();
   proc: RpcProcess;
   readonly cwd: string;
   private readonly recordedCwd: string | null;
@@ -183,6 +187,9 @@ export class AgentSessionWrapper {
         clearSessionFileCaches();
         refreshSessionList = true;
         break;
+      case 'extension_ui_request':
+        this.pendingUiDialogs.track(event);
+        break;
       case 'response': {
         if (event.success === false && event.command === 'prompt') {
           this.promptRunning = false;
@@ -236,6 +243,17 @@ export class AgentSessionWrapper {
     };
   }
 
+  /** Dialogs omp is still blocked on, oldest first. A client reattaching to a
+   *  live session replays these so the modal it lost on reload comes back. */
+  getPendingUiDialogs(): RpcFrame[] {
+    return this.pendingUiDialogs.list();
+  }
+
+  /** Forget a dialog once its response is on the wire. */
+  resolvePendingUiDialog(id: string): void {
+    this.pendingUiDialogs.resolve(id);
+  }
+
   onDestroy(cb: () => void): void {
     this.onDestroyCallback = cb;
   }
@@ -248,67 +266,11 @@ export class AgentSessionWrapper {
     }
   }
 
-  buildWebState(state: RpcSessionState): WebSessionState {
-    const wasRunning = this.isRunning();
-
-    this.streaming = state.isStreaming;
-    this.compacting = state.isCompacting;
-    if (state.sessionId) {
-      this._sessionId = state.sessionId;
-      this._sessionFile = state.sessionFile ?? this._sessionFile;
-    }
-
-    const awaitingExpired = !this.awaitingAgentStart || Date.now() >= this.awaitingAgentStartDeadline;
-    const hasPendingWork =
-      this.promptDispatchPendingCount > 0 ||
-      (this.awaitingAgentStart && !awaitingExpired);
-
-    if (
-      state.isStreaming === false &&
-      state.isCompacting === false &&
-      !hasPendingWork &&
-      Date.now() >= this.continuationGraceUntil
-    ) {
-      this.promptRunning = false;
-      this.awaitingAgentStart = false;
-      this.awaitingAgentStartDeadline = 0;
-    }
-
-    if (wasRunning && !this.isRunning()) {
-      notifyRunningChange();
-    }
-    return {
-      sessionId: state.sessionId,
-      sessionFile: state.sessionFile ?? '',
-      sessionName: state.sessionName,
-      isStreaming: state.isStreaming,
-      isPromptRunning: this.promptRunning,
-      isBashRunning: this.bashRunning,
-      isCompacting: state.isCompacting,
-      autoCompactionEnabled: state.autoCompactionEnabled,
-      autoRetryEnabled: state.autoRetryEnabled,
-      interruptMode: state.interruptMode,
-      steeringMode: state.steeringMode,
-      followUpMode: state.followUpMode,
-      model: state.model
-        ? {
-            id: state.model.id,
-            provider: state.model.provider,
-            name: state.model.name,
-            reasoning: state.model.reasoning,
-            thinking: state.model.thinking ? { efforts: state.model.thinking.efforts } : undefined,
-          }
-        : undefined,
-      messageCount: state.messageCount,
-      queuedMessageCount: state.queuedMessageCount,
-      contextUsage: state.contextUsage ?? null,
-      systemPrompt: state.systemPrompt?.join('\n\n') ?? '',
-      thinkingLevel: state.thinkingLevel ?? 'off',
-      fastModeEnabled: state.fastModeEnabled ?? state.fastMode ?? this.fastModeEnabled,
-      fastModeActive: state.fastModeActive,
-      tokensPerSecond: state.tokensPerSecond ?? null,
-      todoPhases: state.todoPhases ?? [],
-    };
+  /** Persist the session identity omp reports in a get_state payload. */
+  adoptSessionIdentity(state: RpcSessionState): void {
+    if (!state.sessionId) return;
+    this._sessionId = state.sessionId;
+    this._sessionFile = state.sessionFile ?? this._sessionFile;
   }
 
   private async getStateWithTimeout(): Promise<RpcSessionState> {
@@ -332,6 +294,7 @@ export class AgentSessionWrapper {
     this._alive = false;
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.unsubscribeFrames?.();
+    this.pendingUiDialogs.clear();
     this.promptDispatchPendingCount = 0;
     this.awaitingAgentStart = false;
     this.awaitingAgentStartDeadline = 0;

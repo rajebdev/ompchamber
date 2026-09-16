@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { HelpCircle, CheckCircle2, ExternalLink, XCircle, Copy, Check } from 'lucide-react';
+import { HelpCircle, CheckCircle2, XCircle, Copy, Check } from 'lucide-react';
 import type { ToolCallData } from '@/types';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
 import { tryParseJson } from '@/lib/code/syntax-highlight';
@@ -85,49 +85,19 @@ export function Ask({ tool }: { tool: ToolCallData }) {
     }
   };
 
-  const handleOpenDialog = () => {
-    window.dispatchEvent(
-      new CustomEvent('omp:open_ask_dialog', {
-        detail: {
-          type: 'extension_ui_request',
-          id: tool.id || 'ask-interactive-preview',
-          method: options.length > 0 ? 'select' : 'confirm',
-          title: header || 'Confirmation Required',
-          message: question,
-          options: options.length > 0 ? options.map((o) => o.label) : undefined,
-          optionDetails: options.map((o) => ({ description: o.description })),
-        },
-      })
-    );
-  };
-
   return (
     <div className="space-y-2">
       <div className="rounded-lg border border-ink/10 bg-paper p-3 shadow-xs">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-start gap-2 min-w-0">
-            <HelpCircle size={14} className="mt-0.5 shrink-0 text-ink/60" />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-ink/40">
-                  {header ? `Agent Question · ${header}` : 'Agent Question'}
-                </span>
-              </div>
-              <div className="mt-1 text-[12.5px] leading-relaxed text-ink/90 select-text">
-                <MarkdownRenderer content={question} />
-              </div>
+        <div className="flex items-start gap-2 min-w-0">
+          <HelpCircle size={14} className="mt-0.5 shrink-0 text-ink/60" />
+          <div className="min-w-0 flex-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-ink/40">
+              {header ? `Agent Question · ${header}` : 'Agent Question'}
+            </span>
+            <div className="mt-1 text-[12.5px] leading-relaxed text-ink/90 select-text">
+              <MarkdownRenderer content={question} />
             </div>
           </div>
-
-          <button
-            type="button"
-            onClick={handleOpenDialog}
-            title="Open interactive modal dialog"
-            className="flex items-center gap-1 rounded-md border border-ink/10 bg-canvas/40 px-2 py-1 text-[10.5px] font-medium text-ink/60 transition-colors hover:border-ink/25 hover:bg-canvas hover:text-ink shrink-0"
-          >
-            <span>Open Modal</span>
-            <ExternalLink size={10} className="opacity-70" />
-          </button>
         </div>
 
         {options.length > 0 && (

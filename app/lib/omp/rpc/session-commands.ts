@@ -22,29 +22,21 @@ import {
   WebRpcError,
   type AgentEvent,
   type RpcSessionState,
-  type WebSessionState,
 } from '@/lib/omp/rpc/constants';
 import { clearSessionFileCaches } from '@/lib/omp/session/files';
 import { notifyRunningChange } from '@/lib/omp/rpc/session-registry';
+import { buildWebState, type WebStateHost } from '@/lib/omp/rpc/web-state';
 
 /** Runtime surface AgentSessionWrapper exposes to the command dispatcher. */
-export interface SessionCommandHost {
+export interface SessionCommandHost extends WebStateHost {
   restarting: boolean;
-  bashRunning: boolean;
-  promptRunning: boolean;
-  promptDispatchPendingCount: number;
-  awaitingAgentStart: boolean;
-  awaitingAgentStartDeadline: number;
-  continuationGraceUntil: number;
-  compacting: boolean;
-  fastModeEnabled: boolean;
   proc: RpcProcess;
   isAlive(): boolean;
-  isRunning(): boolean;
   emit(event: AgentEvent): void;
   resetIdleTimer(force?: boolean): void;
+  /** Forget a pending ask/approval dialog once its response is sent. */
+  resolvePendingUiDialog(id: string): void;
   withFinalRunningNotification<T>(operation: () => Promise<T>): Promise<T>;
-  buildWebState(state: RpcSessionState): WebSessionState;
   destroyAndWait(): Promise<void>;
 }
 
@@ -121,7 +113,7 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
     case 'get_state': {
       try {
         const state = await host.proc.sendCommand<RpcSessionState>({ type: 'get_state' }, GET_STATE_TIMEOUT_MS);
-        return host.buildWebState(state);
+        return buildWebState(host, state);
       } catch (error) {
         if (error instanceof RpcCommandTimeoutError) {
           await host.destroyAndWait();
@@ -204,6 +196,8 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
       const { id, ...rest } = command as { id: string; [key: string]: unknown };
       if (!id) throw new Error('extension_ui_response requires an id');
       host.proc.sendFrame({ type: 'extension_ui_response', id, ...rest });
+      // Answered — stop offering it to clients that attach later.
+      host.resolvePendingUiDialog(id);
       return null;
     }
 
