@@ -15,6 +15,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { ChatMessageData } from '@/types';
 import type { StreamChunkCallbacks } from '@/hooks/chat/stream';
 import { triggerChatCompletionSound } from '@/hooks/ui/notification-sound';
+import { createRafBatch } from '@/lib/chat/timeline/stream-raf';
 
 export interface MockStreamCallbacksDeps {
   aiPlaceholderId: string;
@@ -37,14 +38,31 @@ export function createMockStreamCallbacks(deps: MockStreamCallbacksDeps): Stream
     scrollToBottom,
   } = deps;
 
+  // Coalesce the SSE deltas into one commit per animation frame. Deltas are
+  // incremental, so every queued updater runs in arrival order; a smooth scroll
+  // fires once per frame, after the updates land.
+  let scrollPending = false;
+  const batch = createRafBatch<ChatMessageData[]>(
+    updater => setLocalMessages(updater),
+    () => {
+      if (!scrollPending) return;
+      scrollPending = false;
+      scrollToBottom('smooth');
+    },
+  );
+  const enqueue = (updater: (prev: ChatMessageData[]) => ChatMessageData[], scroll = false) => {
+    if (scroll) scrollPending = true;
+    batch.queue(updater);
+  };
+
   return {
     onInit: (data) => {
-      setLocalMessages(prev =>
+      enqueue(prev =>
         prev.map(m => (m.id === aiPlaceholderId ? { ...m, id: data.id, date: data.date } : m))
       );
     },
     onThinkingStart: () => {
-      setLocalMessages(prev =>
+      enqueue(prev =>
         prev.map(m =>
           m.id === aiPlaceholderId || m.role === 'ai'
             ? { ...m, thinking: { thought: '', isGenerating: true } }
@@ -54,7 +72,7 @@ export function createMockStreamCallbacks(deps: MockStreamCallbacksDeps): Stream
       setTimeout(() => scrollToBottom('smooth'), 50);
     },
     onThinkingChunk: (data) => {
-      setLocalMessages(prev =>
+      enqueue(prev =>
         prev.map(m => {
           if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {
             const currentThought = typeof m.thinking === 'object' ? m.thinking.thought || '' : '';
@@ -64,12 +82,11 @@ export function createMockStreamCallbacks(deps: MockStreamCallbacksDeps): Stream
             };
           }
           return m;
-        })
+        }), true
       );
-      scrollToBottom('smooth');
     },
     onThinkingEnd: (data) => {
-      setLocalMessages(prev =>
+      enqueue(prev =>
         prev.map(m => {
           if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {
             return {
@@ -87,7 +104,7 @@ export function createMockStreamCallbacks(deps: MockStreamCallbacksDeps): Stream
       );
     },
     onToolStart: (data) => {
-      setLocalMessages(prev =>
+      enqueue(prev =>
         prev.map(m => {
           if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {
             return {
@@ -101,7 +118,7 @@ export function createMockStreamCallbacks(deps: MockStreamCallbacksDeps): Stream
       setTimeout(() => scrollToBottom('smooth'), 50);
     },
     onToolOutputChunk: (data) => {
-      setLocalMessages(prev =>
+      enqueue(prev =>
         prev.map(m => {
           if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {
             return {
@@ -112,12 +129,11 @@ export function createMockStreamCallbacks(deps: MockStreamCallbacksDeps): Stream
             };
           }
           return m;
-        })
+        }), true
       );
-      scrollToBottom('smooth');
     },
     onToolEnd: (data) => {
-      setLocalMessages(prev =>
+      enqueue(prev =>
         prev.map(m => {
           if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {
             return {
@@ -130,7 +146,7 @@ export function createMockStreamCallbacks(deps: MockStreamCallbacksDeps): Stream
       );
     },
     onContentChunk: (data) => {
-      setLocalMessages(prev =>
+      enqueue(prev =>
         prev.map(m => {
           if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {
             return {
@@ -139,12 +155,11 @@ export function createMockStreamCallbacks(deps: MockStreamCallbacksDeps): Stream
             };
           }
           return m;
-        })
+        }), true
       );
-      scrollToBottom('smooth');
     },
     onSummary: (data) => {
-      setLocalMessages(prev =>
+      enqueue(prev =>
         prev.map(m => {
           if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {
             return { ...m, summary: data.summary };
@@ -154,6 +169,7 @@ export function createMockStreamCallbacks(deps: MockStreamCallbacksDeps): Stream
       );
     },
     onDone: (data) => {
+      batch.flush();
       setLocalMessages(prev => {
         const updated = prev.map(m =>
           m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)

@@ -16,6 +16,27 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { ChatMessageData, ExtensionUiDialogRequest, IncomingExtensionUiRequest, OmpAgentCallbacks } from '@/types';
 import { normalizeNoticePositions } from '@/lib/chat/order';
 import { triggerChatCompletionSound } from '@/hooks/ui/notification-sound';
+import { createRafBatch } from '@/lib/chat/timeline/stream-raf';
+
+// omp emits one message_update per model chunk, each carrying that message's
+// FULL accumulated content, so a burst only needs the newest payload per
+// message id. This batch commits at most once per animation frame; the terminal
+// frame flushes synchronously first so the last chunk is never dropped.
+// `apply`/`afterFlush` delegate through module vars because the callbacks
+// factory re-runs on every render.
+let applyMessageUpdater: Dispatch<SetStateAction<ChatMessageData[]>> = () => {};
+let scrollAfterFlush: () => void = () => {};
+
+const messageBatch = createRafBatch<ChatMessageData[]>(
+  updater => applyMessageUpdater(updater),
+  () => scrollAfterFlush(),
+);
+
+/** Apply any coalesced update, then invalidate its scheduled frame. */
+export function disposeStreamingCoalescer(): void {
+  messageBatch.flush();
+  messageBatch.cancel();
+}
 
 export interface OmpAgentCallbacksDeps {
   removeDeliveredFromQueue: (text: string) => void;
@@ -56,6 +77,9 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
     setExtensionDialog,
   } = deps;
 
+  applyMessageUpdater = setLocalMessages;
+  scrollAfterFlush = () => scrollToBottom('smooth');
+
   return {
     // A queued steer/follow-up text was picked up by the agent (user turn
     // arrived) — drop it from whichever queue mirrors it so the panel stays
@@ -89,7 +113,9 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
       // React may invoke state updaters more than once (eager-state bailout),
       // so this ref mutation must stay OUTSIDE the updater to keep it pure.
       if (msg.role !== 'user' && !msg.notice) optimisticUserIdRef.current = null;
-      setLocalMessages(prev => {
+      // Queue for the next frame, collapsing same-message bursts to the newest
+      // full-content frame; scroll runs once per rendered frame.
+      messageBatch.queue(prev => {
         const placeholderId = aiPlaceholderIdRef.current;
         // Notice rows (e.g. background job done, system alerts) belong chronologically
         // right before the next AI response, NEVER backwards before the initiating user message.
@@ -149,10 +175,12 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
           return [...prev.slice(0, existingIdx), msg, ...prev.slice(existingIdx + 1)];
         }
         return [...prev, msg];
-      });
-      scrollToBottom('smooth');
+      }, msg.id);
     },
     onMessageEnd: (msg) => {
+      // Apply any coalesced update before the terminal frame so the last chunk
+      // is never dropped and the end always runs after it.
+      messageBatch.flush();
       if (msg.role !== 'user') optimisticUserIdRef.current = null;
       setLocalMessages(prev => {
         const placeholderId = aiPlaceholderIdRef.current;
@@ -197,6 +225,7 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
       });
     },
     onAgentEnd: () => {
+      disposeStreamingCoalescer();
       setGenerating(false);
       abortControllerRef.current = null;
       optimisticUserIdRef.current = null;
