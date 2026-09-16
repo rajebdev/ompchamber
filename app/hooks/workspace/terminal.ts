@@ -5,6 +5,12 @@ import type { TerminalLogItem } from '@/types';
 
 const DEFAULT_COMMAND_HISTORY = ['bun --version', 'bun run build', 'git status -s'];
 
+const MAX_TERMINAL_LOGS = 50;
+
+function capLogs(items: TerminalLogItem[]): TerminalLogItem[] {
+  return items.length > MAX_TERMINAL_LOGS ? items.slice(-MAX_TERMINAL_LOGS) : items;
+}
+
 export interface UseTerminalOptions {
   onStreamChunk?: (text: string) => void;
   onCommandStart?: (cmd: string, options?: { fromXterm?: boolean }) => void;
@@ -202,17 +208,19 @@ export function useTerminal(options?: UseTerminalOptions) {
         abortControllerRef.current = null;
         commandEndRef.current?.(exitCode, nextCwd);
 
-        setTerminalLogs(prev => [
-          ...prev,
-          {
-            id: commandId,
-            command: rawCmd,
-            stdout: accumulatedStdout,
-            exitCode,
-            timestamp,
-            cwd: nextCwd,
-          },
-        ]);
+        setTerminalLogs(prev =>
+          capLogs([
+            ...prev,
+            {
+              id: commandId,
+              command: rawCmd,
+              stdout: accumulatedStdout,
+              exitCode,
+              timestamp,
+              cwd: nextCwd,
+            },
+          ])
+        );
       }
     },
     [terminalInput, isRunning, cwd, sessionId]

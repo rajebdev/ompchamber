@@ -41,7 +41,7 @@ export function Editor({
 }: EditorProps) {
   const activeFile = openedFiles.find(f => f.id === activeFileId);
   
-  const [contents, setContents] = useState<Record<number, string>>({});
+  const [contents, setContents] = useState<Record<string, string>>({});
   const [previewMode, setPreviewMode, previewReady] = useSessionState<Record<string | number, boolean>>('editor.previewMode', {});
   const [zoomLevel, setZoomLevel] = useSessionState<number>('editor.zoomLevel', 12);
   const [isMaximized, setIsMaximized] = useState(false);
@@ -57,6 +57,19 @@ export function Editor({
       setContents({});
     }
   }, [refreshKey]);
+
+  useEffect(() => {
+    const openIdStrings = new Set(openedFiles.map(f => String(f.id)));
+    setContents(prev => {
+      const keys = Object.keys(prev);
+      if (keys.every(key => openIdStrings.has(key))) return prev;
+      const next: Record<string, string> = {};
+      for (const key of keys) {
+        if (openIdStrings.has(key)) next[key] = prev[key];
+      }
+      return next;
+    });
+  }, [openedFiles]);
 
   useEffect(() => {
     if (activeFile && contents[activeFile.id] === undefined) {
