@@ -163,10 +163,15 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
       // Fall back to prompt without inlined contents if a file cannot be read.
     }
 
+    const now = Date.now();
     const newUserMsg: ChatMessageData = {
       id: userMsgId,
       role: 'user',
       date: `Today, ${time}`,
+      // Precise epoch anchor: the footer run-duration measures from here until
+      // the last AI message. The display `date` label is minute-granular, so a
+      // string fallback would inflate the measured span by up to 59s.
+      startedAt: now,
       content: text,
       attachments: attachments.map(a => ({
         name: a.file.name,
@@ -181,6 +186,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
       id: aiPlaceholderId,
       role: 'ai',
       date: `Today, ${time}`,
+      startedAt: now,
       content: '',
     };
 

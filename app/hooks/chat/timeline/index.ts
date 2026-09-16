@@ -111,6 +111,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     sessionId,
     setLocalMessages,
     setGenerating,
+    isGeneratingRef,
     aiPlaceholderIdRef,
     metaRefreshedRef,
   });

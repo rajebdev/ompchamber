@@ -34,6 +34,9 @@ export interface UseSessionLoadDeps {
   sessionId: string | null;
   setLocalMessages: Dispatch<SetStateAction<ChatMessageData[]>>;
   setGenerating: (v: boolean) => void;
+  /** Live generating flag written by the caller's `setGenerating` throat. Gates
+   *  the committed-fetch clobber guard and the seeded-model fallback. */
+  isGeneratingRef: { current: boolean };
   /** Live AI placeholder ref: when non-null it owns the timeline tail and the
    *  committed fetch must not replace it mid-stream. */
   aiPlaceholderIdRef: { current: string | null };
@@ -41,10 +44,9 @@ export interface UseSessionLoadDeps {
 }
 
 export function useSessionLoad(deps: UseSessionLoadDeps) {
-  const { sessionId, setLocalMessages, setGenerating, aiPlaceholderIdRef, metaRefreshedRef } = deps;
+  const { sessionId, setLocalMessages, setGenerating, isGeneratingRef, aiPlaceholderIdRef, metaRefreshedRef } = deps;
 
   const [sessionData, setSessionData] = useState<SessionDataShape | null>(null);
-  const isGeneratingRef = useRef(false);
   const prevSessionIdRef = useRef<string | null>(null);
   // Real session id adopted by a fresh spawn ("new-…" → UUID). onAgentStart
   // may fire before React re-renders with the new URL, so it reads the id
@@ -174,7 +176,6 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
 
   return {
     sessionData,
-    isGeneratingRef,
     adoptedSessionIdRef,
     seededModelRef,
     applySessionData,
