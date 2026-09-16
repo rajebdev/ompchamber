@@ -124,9 +124,7 @@ export function computeSessionContextTelemetry(
     });
   });
 
-  const totalTokens = totalInput + totalOutput + totalCacheRead;
   const contextLimit = 1_000_000;
-  const contextPercent = Number(((totalTokens / contextLimit) * 100).toFixed(1));
   const totalCostVal = ((totalInput * 0.14) + (totalOutput * 0.28) + (totalCacheRead * 0.014)) / 1_000_000;
 
   // Last assistant message stats
@@ -137,6 +135,14 @@ export function computeSessionContextTelemetry(
   const lastMsgCacheRead = lastAiMessage?.info.tokens.cache.read || 62080;
   const lastMsgCacheWrite = lastAiMessage?.info.tokens.cache.write || 0;
   const cacheHitPercent = lastMsgCacheRead > 0 ? 98.4 : 0;
+
+  // oh-my-pi semantics: current context occupancy is the latest anchored provider
+  // prompt estimate (input + cacheRead + cacheWrite), never the cumulative
+  // session/billing sums. With no assistant turn there is no occupancy to show.
+  const contextUsed = lastAiMessage
+    ? lastAiMessage.info.tokens.input + lastAiMessage.info.tokens.cache.read + lastAiMessage.info.tokens.cache.write
+    : 0;
+  const contextPercent = Math.min(100, Math.max(0, Number(((contextUsed / contextLimit) * 100).toFixed(1))));
 
   // Compute distribution percentages
   const grandChars = Math.max(1, totalUserChars + totalAiChars + totalToolChars + 500);
@@ -151,9 +157,9 @@ export function computeSessionContextTelemetry(
     modelId: 'deepseek/deepseek-v4-flash',
     modelName: 'DeepSeek V4 Flash',
     timestamp: dateFormatted,
-    contextUsed: totalTokens || 63417,
+    contextUsed,
     contextLimit,
-    contextPercent: contextPercent || 6.3,
+    contextPercent,
     messagesCount: messages.length,
     userCount,
     assistantCount,
@@ -182,7 +188,7 @@ export function computeSessionContextTelemetry(
       assistantPercent: aiPct,
       toolTokens: totalToolChars,
       toolPercent: toolPct,
-      otherTokens: 500,
+      otherTokens: totalCacheRead,
       otherPercent: otherPct
     },
     rawMessages
