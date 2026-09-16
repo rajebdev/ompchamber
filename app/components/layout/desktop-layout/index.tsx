@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useSearchParams } from '@remix-run/react';
-import { Group, Panel, Separator, type PanelImperativeHandle } from 'react-resizable-panels';
+import { Group, Panel, type PanelImperativeHandle } from 'react-resizable-panels';
 import { SessionSidebar } from '@/components/layout/session-sidebar/index';
-import { type RightPanelType } from '@/components/layout/RightActivityBar';
+import { type RightPanelType } from '@/lib/workspace/right-panels';
 import { SettingsModal } from '@/components/settings/Modal';
 import { PanelLeft } from 'lucide-react';
 import type { WorkspaceFolderData, SettingsCategoryId } from '@/types';
@@ -12,6 +12,9 @@ import { useSessionState } from '@/hooks/workspace/session-state';
 import { TopNavbar } from '@/components/layout/desktop-layout/TopNavbar';
 import { WorkspacePanels } from '@/components/layout/desktop-layout/WorkspacePanels';
 import { useAgentStreamStatus } from '@/hooks/chat/omp/status';
+import { usePanelWidths } from '@/hooks/workspace/panel-widths';
+import { DEFAULT_PANEL_WIDTHS, type EditorWidthMode } from '@/lib/workspace/panel-widths';
+import { ResizeHandle } from '@/components/layout/desktop-layout/ResizeHandle';
 
 interface DesktopLayoutProps {
   folders: WorkspaceFolderData[];
@@ -20,21 +23,23 @@ interface DesktopLayoutProps {
   appSettings?: Record<string, any>;
 }
 
-function CustomResizeHandle() {
-  return (
-    <Separator className="relative w-1 outline-none group flex justify-center cursor-col-resize z-10">
-      <div className="h-full w-[1px] bg-ink/10 group-hover:bg-ink/40 group-active:bg-ink/60 group-hover:w-0.5 transition-all" />
-    </Separator>
-  );
+/**
+ * Push a remembered width onto a mounted panel. Panels report nothing while
+ * unmounted, so a missing width (never resized) or a missing handle (panel
+ * closed) simply leaves the panel at whatever its `defaultSize` derived.
+ */
+function applyWidth(
+  ref: React.RefObject<PanelImperativeHandle | null>,
+  px: number | undefined,
+) {
+  if (px != null) ref.current?.resize(px);
 }
 
 export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSettings = {} }: DesktopLayoutProps) {
   const [showRightPanel, setShowRightPanel] = useSessionState<boolean>('layout.showRightPanel', appSettings.showRightPanel ?? true);
   const [activeRightPanel, setActiveRightPanel] = useSessionState<RightPanelType>('layout.activeRightPanel', (appSettings.activeRightPanel as RightPanelType) ?? 'files');
   const [showLeftPanel, setShowLeftPanel] = useState(appSettings.showLeftPanel ?? true);
-  const [layoutWeights, setLayoutWeights] = useState<Record<string, number>>(appSettings.desktopLayoutSizes || {});
-  const weightsRef = useRef<Record<string, number>>(appSettings.desktopLayoutSizes || {});
-  const layoutSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { widths: panelWidths, widthsRef, commitWidths } = usePanelWidths(appSettings, activeRightPanel);
 
   const editorPanelRef = useRef<PanelImperativeHandle>(null);
   const rightPanelRef = useRef<PanelImperativeHandle>(null);
@@ -67,6 +72,13 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
 
   const showEditor = openedFiles.length > 0 && (userToggledEditor ?? true);
 
+  // A diff wants room a source file does not, so the editor panel keeps a
+  // separate remembered width per tab kind.
+  const editorWidthMode: EditorWidthMode = useMemo(
+    () => (openedFiles.find(f => String(f.id) === String(activeFileId))?.isDiff ? 'diff' : 'editor'),
+    [openedFiles, activeFileId],
+  );
+
   const saveSetting = (key: string, value: any) => {
     fetch('/api/settings', {
       method: 'POST',
@@ -75,24 +87,15 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
     }).catch(console.error);
   };
 
-  // Single-owner layout persistence: merge the live weights of BOTH groups (the
-  // outer left panel and the inner center/editor/right stack) into one complete
-  // map before writing, so no group clobbers the other's widths.
-  const persistLayout = useCallback(() => {
-    if (layoutSaveTimerRef.current) clearTimeout(layoutSaveTimerRef.current);
-    layoutSaveTimerRef.current = setTimeout(() => {
-      saveSetting('desktopLayoutSizes', { ...weightsRef.current });
-    }, 500);
-  }, [saveSetting]);
-
-  const handleWorkspaceLayout = useCallback(
-    (inner: Record<string, number>) => {
-      weightsRef.current = { ...weightsRef.current, ...inner };
-      setLayoutWeights(weightsRef.current);
-      persistLayout();
-    },
-    [persistLayout],
-  );
+  // The sidebar shares a group with the workspace stack, so the stack absorbs
+  // its width and only the toggle can lose it: reapplying it after the panel
+  // remounts is what keeps the sidebar where the user left it.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      applyWidth(leftPanelRef, widthsRef.current.left);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [showLeftPanel, widthsRef]);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategoryId>('appearance');
@@ -147,14 +150,9 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
     setShowRightPanel(nextShow);
     setActiveRightPanel(nextActive);
 
-    // Adjust width dynamically (browser = 804px [3x268], terminal/context = 536px [2x268], others = 268px)
-    if (nextShow && rightPanelRef.current) {
-      setTimeout(() => {
-        const targetPx = nextActive === 'browser' || nextActive === 'user-browser' ? (268 * 3) : (nextActive === 'terminal' || nextActive === 'context' || nextActive === 'usage') ? 536 : 268;
-        rightPanelRef.current?.resize(targetPx);
-      }, 50);
-    }
-    
+    // The width is not set here: the restore effect re-applies whichever width
+    // this view remembers, and a view that opens for the first time derives it
+    // from its own defaultSize. Reopening the same view keeps its width.
     fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -177,12 +175,8 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
     const nextShow = !showEditor;
     setUserToggledEditor(nextShow);
     saveSetting('userToggledEditor', nextShow);
-
-    if (nextShow && editorPanelRef.current) {
-      setTimeout(() => {
-        editorPanelRef.current?.resize(536);
-      }, 50);
-    }
+    // Reopening the editor re-applies the width its tab kind remembers (see the
+    // restore effect), so a dragged width survives the toggle.
   };
 
   return (
@@ -206,18 +200,17 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
           orientation="horizontal"
           id="ompchamber-main"
           onLayoutChanged={(_, meta) => {
-            if (meta.isUserInteraction) {
-              const left = leftPanelRef.current?.getSize()?.inPixels;
-              if (left != null && left > 0) handleWorkspaceLayout({ left });
-            }
+            if (!meta.isUserInteraction) return;
+            const left = leftPanelRef.current?.getSize()?.inPixels;
+            if (left != null && left > 0) commitWidths({ left: Math.round(left) });
           }}
         >
           {showLeftPanel && (
             <>
-              <Panel panelRef={leftPanelRef} id="left-panel" defaultSize={layoutWeights.left ?? 268} minSize={200} maxSize={600} collapsible>
+              <Panel panelRef={leftPanelRef} id="left-panel" defaultSize={panelWidths.left ?? DEFAULT_PANEL_WIDTHS.left} minSize={200} maxSize={600} collapsible>
                 <SessionSidebar className="w-full h-full" folders={folders} onClose={() => handleToggleLeftPanel(false)} appSettings={appSettings} />
               </Panel>
-              <CustomResizeHandle />
+              <ResizeHandle />
             </>
           )}
 
@@ -243,7 +236,8 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
                 showRightPanel={showRightPanel}
                 activeRightPanel={activeRightPanel}
                 rightPanelRef={rightPanelRef}
-                initialLayoutSizes={layoutWeights}
+                panelWidths={panelWidths}
+                editorWidthMode={editorWidthMode}
                 hasActiveContext={hasActiveContext}
                 activeProjectPath={activeProjectPath}
                 openedFiles={openedFiles}
@@ -256,7 +250,7 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
                 onChangeRightPanel={handleChangeRightPanel}
                 onToggleRightPanel={handleToggleRightPanel}
                 onSessionTitle={setSessionTitle}
-                onWorkspaceLayout={handleWorkspaceLayout}
+                onPanelWidths={commitWidths}
               />
             </div>
           </Panel>

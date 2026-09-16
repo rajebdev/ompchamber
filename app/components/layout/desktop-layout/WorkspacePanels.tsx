@@ -1,8 +1,16 @@
-import React, { Suspense, lazy, useRef } from 'react';
-import { Group, Panel, Separator, type PanelImperativeHandle } from 'react-resizable-panels';
+import React, { Suspense, lazy, useEffect, useRef } from 'react';
+import { Group, Panel, type GroupImperativeHandle, type Layout, type PanelImperativeHandle } from 'react-resizable-panels';
 import { ChatTimeline } from '@/components/workspace/chat-timeline/index';
 import { LazyFileExplorer, LazySearchPanel, LazyGitPanel, LazyTerminalPanel, LazyContextPanel, LazyBrowserPanel, LazyUserBrowserPanel, LazyUsagePanel } from '@/components/common/lazy-panels';
-import { RightActivityBar, type RightPanelType } from '@/components/layout/RightActivityBar';
+import { RightActivityBar } from '@/components/layout/RightActivityBar';
+import { ResizeHandle } from '@/components/layout/desktop-layout/ResizeHandle';
+import {
+  DEFAULT_RIGHT_PANEL_WIDTHS,
+  MAX_RIGHT_PANEL_WIDTH,
+  MIN_RIGHT_PANEL_WIDTHS,
+  type RightPanelType,
+} from '@/lib/workspace/right-panels';
+import { DEFAULT_PANEL_WIDTHS, type EditorWidthMode, type PanelWidths } from '@/lib/workspace/panel-widths';
 import type { WorkspaceFolderData } from '@/types';
 
 const Editor = lazy(() => import('@/components/workspace/editor/index').then((m) => ({ default: m.Editor })));
@@ -25,7 +33,10 @@ interface WorkspacePanelsProps {
   showRightPanel: boolean;
   activeRightPanel: RightPanelType;
   rightPanelRef: React.RefObject<PanelImperativeHandle | null>;
-  initialLayoutSizes?: Record<string, number>;
+  /** Remembered width per panel, keyed the same way the layout reports them. */
+  panelWidths: PanelWidths;
+  /** Whether the editor panel currently shows a source file or a diff. */
+  editorWidthMode: EditorWidthMode;
   hasActiveContext: boolean;
   activeProjectPath?: string | null;
   openedFiles: any[];
@@ -38,15 +49,7 @@ interface WorkspacePanelsProps {
   onChangeRightPanel: (panel: RightPanelType) => void;
   onToggleRightPanel: () => void;
   onSessionTitle: (title: string | null) => void;
-  onWorkspaceLayout: (sizes: Record<string, number>) => void;
-}
-
-function CustomResizeHandle() {
-  return (
-    <Separator className="relative w-1 outline-none group flex justify-center cursor-col-resize z-10">
-      <div className="h-full w-[1px] bg-ink/10 group-hover:bg-ink/40 group-active:bg-ink/60 group-hover:w-0.5 transition-all" />
-    </Separator>
-  );
+  onPanelWidths: (patch: PanelWidths) => void;
 }
 
 export function WorkspacePanels(props: WorkspacePanelsProps) {
@@ -58,7 +61,8 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
     showRightPanel,
     activeRightPanel,
     rightPanelRef,
-    initialLayoutSizes,
+    panelWidths,
+    editorWidthMode,
     hasActiveContext,
     activeProjectPath,
     openedFiles,
@@ -71,47 +75,89 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
     onChangeRightPanel,
     onToggleRightPanel,
     onSessionTitle,
-    onWorkspaceLayout,
+    onPanelWidths,
   } = props;
 
-  // Live pixel sizes of the inner panels, kept in sync on every layout commit
-  // (including imperative resizes) but only persisted to the server on real
-  // user drags. Pixel sizes are stable across panel mount/unmount, so toggling
-  // the editor or right panel never re-distributes the chat panel's width.
-  const savedSizesRef = useRef<Record<string, number>>({ ...(initialLayoutSizes ?? {}) });
+  const chatPanelRef = useRef<PanelImperativeHandle>(null);
+  const layoutGroupRef = useRef<GroupImperativeHandle>(null);
+  // Read inside the restore effect without making a drag re-trigger it.
+  const panelWidthsRef = useRef(panelWidths);
+  panelWidthsRef.current = panelWidths;
 
-  const readPanelSizes = () => {
-    const sizes: Record<string, number> = {};
-    const editorSize = editorPanelRef.current?.getSize()?.inPixels;
-    const rightSize = rightPanelRef.current?.getSize()?.inPixels;
-    if (editorSize != null && editorSize > 0) sizes.editor = editorSize;
-    if (rightSize != null && rightSize > 0) sizes.right = rightSize;
-    return sizes;
+  /**
+   * Widths of the panels in this group as they are right now, keyed by slot:
+   * the chat column, the editor (source or diff, whichever is showing) and the
+   * right panel under the view it currently holds. A drag on one separator
+   * commits every panel it moved, so the group's sizes never drift apart.
+   */
+  const readPanelWidths = (): PanelWidths => {
+    const patch: PanelWidths = {};
+    const chat = chatPanelRef.current?.getSize()?.inPixels;
+    const editor = editorPanelRef.current?.getSize()?.inPixels;
+    const right = rightPanelRef.current?.getSize()?.inPixels;
+    if (chat != null && chat > 0) patch.chat = Math.round(chat);
+    if (editor != null && editor > 0) patch[editorWidthMode] = Math.round(editor);
+    if (right != null && right > 0) patch.right = { [activeRightPanel]: Math.round(right) };
+    return patch;
   };
 
-  const rightDefault = activeRightPanel === 'browser' ? 804 : (activeRightPanel === 'terminal' || activeRightPanel === 'context' || activeRightPanel === 'usage') ? 536 : 268;
+  /**
+   * The panels library caches one layout per panel composition, so a panel that
+   * comes back — editor reopened, a different right view, a source tab swapped
+   * for a diff — would otherwise replay the sizes that composition held the
+   * last time it was on screen. Rebuild the whole layout from the remembered
+   * pixel widths instead: the fixed panels take their own width back and the
+   * chat column absorbs the remainder, so the map always sums to 100% and no
+   * panel is scaled behind the user's back.
+   */
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const group = layoutGroupRef.current;
+      const current = group?.getLayout();
+      const chat = chatPanelRef.current?.getSize();
+      if (!group || !current || !chat || chat.asPercentage <= 0) return;
+
+      const saved = panelWidthsRef.current;
+      const editorPx = showEditor
+        ? saved[editorWidthMode] ?? DEFAULT_PANEL_WIDTHS[editorWidthMode]
+        : 0;
+      const rightPx = showRightPanel
+        ? saved.right?.[activeRightPanel] ?? DEFAULT_RIGHT_PANEL_WIDTHS[activeRightPanel]
+        : 0;
+      // A panel's size over its own percentage recovers the group's content
+      // width, the same basis the library normalizes layouts against.
+      const basisPx = chat.inPixels / (chat.asPercentage / 100);
+      const toPercent = (px: number) => (px / basisPx) * 100;
+
+      const next: Layout = { ...current, 'center-panel': toPercent(basisPx - editorPx - rightPx) };
+      if (showEditor) next['editor-panel'] = toPercent(editorPx);
+      if (showRightPanel) next['right-panel'] = toPercent(rightPx);
+      group.setLayout(next);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [showEditor, showRightPanel, activeRightPanel, editorWidthMode]);
 
   return (
     <div className="flex flex-1 overflow-hidden">
       <Group
         orientation="horizontal"
         id="ompchamber-layout"
+        groupRef={layoutGroupRef}
         onLayoutChanged={(_, meta) => {
-          const sizes = readPanelSizes();
-          savedSizesRef.current = { ...savedSizesRef.current, ...sizes };
-          // Persist only real user drags; ignore mount/remount/constraint
-          // recomputes so a reload never rewrites the saved layout.
-          if (meta.isUserInteraction) onWorkspaceLayout(sizes);
+          // Persist only real drags: mount, imperative restores and constraint
+          // recomputes would otherwise rewrite the saved widths with the
+          // clamped sizes they just derived from them.
+          if (meta.isUserInteraction) onPanelWidths(readPanelWidths());
         }}
       >
-        <Panel id="center-panel" minSize="540px">
+        <Panel panelRef={chatPanelRef} id="center-panel" defaultSize={panelWidths.chat ?? DEFAULT_PANEL_WIDTHS.chat} minSize="540px">
           <ChatTimeline className="w-full h-full" folders={folders} appSettings={appSettings} onSessionTitle={onSessionTitle} />
         </Panel>
 
         {showEditor && (
           <>
-            <CustomResizeHandle />
-            <Panel panelRef={editorPanelRef} id="editor-panel" defaultSize={savedSizesRef.current.editor ?? 536} minSize={300}>
+            <ResizeHandle />
+            <Panel panelRef={editorPanelRef} id="editor-panel" defaultSize={panelWidths[editorWidthMode] ?? DEFAULT_PANEL_WIDTHS[editorWidthMode]} minSize={300}>
               <PanelSuspense>
                 <Editor
                   className="w-full h-full"
@@ -129,8 +175,8 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
 
         {showRightPanel && (
           <>
-            <CustomResizeHandle />
-            <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={savedSizesRef.current.right ?? rightDefault} minSize={activeRightPanel === 'browser' || activeRightPanel === 'user-browser' ? 320 : (activeRightPanel === 'context' || activeRightPanel === 'usage') ? 420 : activeRightPanel === 'git' ? 260 : 200} maxSize={1200} collapsible>
+            <ResizeHandle />
+            <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={panelWidths.right?.[activeRightPanel] ?? DEFAULT_RIGHT_PANEL_WIDTHS[activeRightPanel]} minSize={MIN_RIGHT_PANEL_WIDTHS[activeRightPanel]} maxSize={MAX_RIGHT_PANEL_WIDTH} collapsible>
               <PanelSuspense>
                 {activeRightPanel === 'files' && <LazyFileExplorer className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} onOpenFile={onOpenFile} refreshKey={refreshKey} onRefresh={onRefreshWorkspace} />}
                 {activeRightPanel === 'search' && <LazySearchPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} />}

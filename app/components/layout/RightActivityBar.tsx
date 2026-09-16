@@ -1,7 +1,6 @@
 import { Files, Search, GitBranch, Terminal, Layers, Globe, Bot, BarChart3 } from 'lucide-react';
 import { useGitStatus } from '@/hooks/workspace/git-status';
-
-export type RightPanelType = 'files' | 'search' | 'git' | 'terminal' | 'context' | 'user-browser' | 'browser' | 'usage';
+import type { RightPanelType } from '@/lib/workspace/right-panels';
 
 interface RightActivityBarProps {
   activePanel: RightPanelType;

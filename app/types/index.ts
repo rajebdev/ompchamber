@@ -18,4 +18,4 @@ export * from '@/types/omp/agent';
 export * from '@/types/omp/subagent';
 export * from '@/types/browser';
 export * from '@/types/updates';
-export type { RightPanelType } from '@/components/layout/RightActivityBar';
+export type { RightPanelType } from '@/lib/workspace/right-panels';
