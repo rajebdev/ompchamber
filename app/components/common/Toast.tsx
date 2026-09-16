@@ -6,6 +6,10 @@ export interface ToastData {
   id: number;
   message: string;
   type: 'success' | 'error';
+  /** Optional action button (e.g. "Send now") shown beside the message. */
+  action?: { label: string; onClick: () => void };
+  /** Override the auto-dismiss duration (ms). */
+  duration?: number;
 }
 
 interface ToastProps {
@@ -14,8 +18,9 @@ interface ToastProps {
   duration?: number;
 }
 
-export function Toast({ toast, onDismiss, duration = 4000 }: ToastProps) {
+export function Toast({ toast, onDismiss, duration: durationProp }: ToastProps) {
   const [visible, setVisible] = useState(false);
+  const duration = durationProp ?? toast.duration ?? 4000;
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => setVisible(true));
@@ -42,6 +47,19 @@ export function Toast({ toast, onDismiss, duration = 4000 }: ToastProps) {
         <CheckCircle2 size={15} className="text-success flex-shrink-0" />
       )}
       <span className="text-ink max-w-[320px]">{toast.message}</span>
+      {toast.action && (
+        <button
+          type="button"
+          onClick={() => {
+            toast.action?.onClick();
+            setVisible(false);
+            setTimeout(() => onDismiss(toast.id), 200);
+          }}
+          className="flex-shrink-0 px-2 py-0.5 rounded bg-ink text-paper font-semibold hover:opacity-80 transition-opacity"
+        >
+          {toast.action.label}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => {

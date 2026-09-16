@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams } from '@remix-run/react';
 import type { Attachment, ChatMessageData } from '@/types';
 import { useOmpAgent, type ExtensionUiDialogRequest } from '@/hooks/chat/omp';
@@ -42,7 +42,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     }, { replace: true });
   }, [setSearchParams]);
 
-  const { scrollRef, contentRef, showScrollBottom, isScrolling, handleScroll, scrollToBottom } = useChatTimelineScroll();
+  const { scrollRef, contentRef, showScrollBottom, isScrolling, handleScroll, scrollToBottom, jumpToBottom } = useChatTimelineScroll();
 
   const [inputValue, setInputValue] = useSessionState<string>('chat.draft', '');
   useBrowserPageContextInsert(setInputValue);
@@ -85,6 +85,10 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
       }));
     }
   }, []);
+  // Set when the user presses Stop; the queue auto-process effect holds off
+  // while this is armed so a stopped run does NOT trigger the next queued
+  // item (stop-all semantics). Disarmed by any explicit send.
+  const stopHoldRef = useRef(false);
   // Fire the sidebar/metadata refresh once per session when the AI starts
   // responding (agent_start = first chunk) — the omp JSONL now carries the
   // user turn, so the sidebar item + real title appear immediately.
@@ -152,22 +156,13 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     }).catch(err => console.error('Error persisting messages via API:', err));
   }, [sessionId]);
 
-  const currentSession = useMemo(() => {
-    if (!sessionId) return null;
-    for (const folder of folders) {
-      const session = folder.sessions?.find((s: any) => String(s.id) === String(sessionId));
-      if (session) return session;
-    }
-    return null;
-  }, [sessionId, folders]);
-
   const {
     messageQueue,
     setMessageQueue,
     steeringQueue,
     setSteeringQueue,
     removeDeliveredFromQueue,
-  } = useChatTimelineQueue(sessionId, currentSession);
+  } = useChatTimelineQueue(sessionId);
   const [extensionDialog, setExtensionDialog] = useState<ExtensionUiDialogRequest | null>(null);
 
   const ompAgent = useOmpAgent(isOmpSession ? sessionId : null, createOmpAgentCallbacks({
@@ -188,7 +183,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     appSettings,
     setExtensionDialog,
   }), readStreamTransport(appSettings));
-  const { prepareDeliverable, steerOmpAgent, executeSend } = useChatTimelineSend({
+  const { steerOmpAgent, executeSend } = useChatTimelineSend({
     folders,
     selectedFolderId,
     sessionId,
@@ -200,6 +195,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     setGenerating,
     setGeneratingVerb,
     scrollToBottom,
+    jumpToBottom,
     aiPlaceholderIdRef,
     adoptedSessionIdRef,
     optimisticUserIdRef,
@@ -213,16 +209,20 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     setSearchParams,
   });
 
-  // Auto-process queue: follow-ups queued by the mock/chamber path deliver
-  // when the run ends. omp sessions need no client delivery — omp runs the
-  // queued follow-up natively and its user message_end removes the mirror.
+  // Auto-process queue: when the run ends (or was never active), deliver the
+  // head item. Both modes queue client-side now — omp sends it as a normal
+  // prompt via executeSend (which routes to the omp bridge); the mock path
+  // streams the same way. A user Stop arms `stopHoldRef`: the run ends but the
+  // queue stays put (stop-all semantics — the toast offers Send now); the next
+  // explicit send disarms it.
   useEffect(() => {
-    if (!isOmpSession && !isGenerating && messageQueue.length > 0) {
+    if (stopHoldRef.current) return;
+    if (!isGenerating && messageQueue.length > 0) {
       const nextMessage = messageQueue[0];
       setMessageQueue(q => q.slice(1));
       executeSend(nextMessage.text, nextMessage.attachments);
     }
-  }, [isOmpSession, isGenerating, messageQueue, executeSend, setMessageQueue]);
+  }, [isGenerating, messageQueue, executeSend, setMessageQueue]);
 
   const {
     handleSend,
@@ -242,13 +242,14 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     isGenerating,
     isOmpSession,
     appSettings,
+    messageQueue,
     setMessageQueue,
     executeSend,
     steerOmpAgent,
-    prepareDeliverable,
     ompAgent,
     abortControllerRef,
     setGenerating,
+    stopHoldRef,
     persistMessages,
     setLocalMessages,
     pendingComposerModelRef,
@@ -281,6 +282,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     isScrolling,
     handleScroll,
     scrollToBottom,
+    jumpToBottom,
     handleSend,
     handleEditQueueItem,
     handleSendNowQueueItem,

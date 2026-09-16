@@ -14,6 +14,8 @@ import { useChatTimeline } from '@/hooks/chat/timeline';
 import { useSessionTitle } from '@/hooks/chat/timeline/session-title';
 import { useModelNames } from '@/hooks/models/use-model-names';
 import { useProviderNames } from '@/hooks/models/use-provider-names';
+import { useToasts } from '@/hooks/ui/toasts';
+import { Toast } from '@/components/common/Toast';
 import { normalizeNoticePositions } from '@/lib/chat/order';
 import { isRecord } from '@/lib/omp/session/parse-message-blocks';
 import { historyEntryToSubagentInfo } from '@/lib/omp/subagent/history/client';
@@ -58,7 +60,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
     showScrollBottom,
     isScrolling,
     handleScroll,
-    scrollToBottom,
+    jumpToBottom,
     handleSend,
     handleEditQueueItem,
     handleSendNowQueueItem,
@@ -74,11 +76,31 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
     closeExtensionDialog,
     respondToExtensionUi,
   } = useChatTimeline({ folders, appSettings });
+  const { toasts, pushToast, dismissToast } = useToasts();
 
   const [newChatInitialContent, setNewChatInitialContent] = useState<string | null>(null);
   const [previewDialog, setPreviewDialog] = useState<ExtensionUiDialogRequest | null>(null);
   const [activeSubagent, setActiveSubagent] = useState<SubagentInfo | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // Stop-all semantics: the run stops AND the queued follow-ups stay in the
+  // panel (the auto-process holds off). Surface what just happened and how to
+  // proceed — the toast action delivers the head item immediately.
+  const handleStop = useCallback(() => {
+    const heldCount = stopGenerating();
+    if (heldCount === 0) return;
+    pushToast(
+      `Stopped. ${heldCount} message${heldCount > 1 ? 's' : ''} still queued — nothing was sent.`,
+      'success',
+      {
+        action: { label: 'Send now', onClick: () => {
+          const first = messageQueue[0];
+          if (first) void handleSendNowQueueItem(first);
+        } },
+        duration: 8000,
+      },
+    );
+  }, [stopGenerating, pushToast, messageQueue, handleSendNowQueueItem]);
   // The transcript view is URL-addressable (?subagent=<id>) so a reload
   // restores it — but the SubagentInfo body only lives in state, so a
   // deep-link/hydrated entry is reconstructed from the history route.
@@ -260,8 +282,8 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
             {/* Scroll to bottom button */}
             {showScrollBottom && (
               <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-20">
-                <button 
-                  onClick={() => scrollToBottom('smooth')}
+                <button
+                  onClick={() => jumpToBottom('smooth')}
                   className="flex items-center justify-center w-8 h-8 rounded-full border border-ink/20 bg-paper text-ink/60 hover:text-ink hover:bg-ink/5 transition-all shadow-sm"
                   title="Scroll to bottom"
                 >
@@ -305,7 +327,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
               onAttachmentsChange={setInputAttachments}
               onSend={handleSend}
               isGenerating={isGenerating}
-              onStop={stopGenerating}
+              onStop={handleStop}
               appSettings={appSettings}
               onThinkingLevelChange={handleThinkingLevelChange}
               onModelChange={handleModelChange}
@@ -343,6 +365,10 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
           }}
         />
       )}
+
+      {toasts.map(t => (
+        <Toast key={t.id} toast={t} onDismiss={dismissToast} />
+      ))}
     </div>
   );
 }

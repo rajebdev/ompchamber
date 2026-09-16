@@ -52,7 +52,10 @@ export interface ChatTimelineSendDeps {
   persistMessages: (messages: any[]) => void;
   setGenerating: (v: boolean) => void;
   setGeneratingVerb: (v: string) => void;
+  /** Follow-gated scroll for stream chunks. */
   scrollToBottom: (behavior?: ScrollBehavior) => void;
+  /** Explicit user-action scroll: re-engages follow mode (send/steer). */
+  jumpToBottom: (behavior?: ScrollBehavior) => void;
   aiPlaceholderIdRef: { current: string | null };
   adoptedSessionIdRef: { current: string | null };
   optimisticUserIdRef: { current: string | null };
@@ -71,7 +74,6 @@ export interface ChatTimelineSendDeps {
 }
 
 export interface ChatTimelineSendResult {
-  prepareDeliverable: (text: string, attachments: Attachment[]) => Promise<{ promptText: string; images?: { data: string; mimeType: string }[] }>;
   steerOmpAgent: (text: string, attachments: Attachment[]) => Promise<void>;
   executeSend: (text: string, attachments: Attachment[]) => Promise<void>;
 }
@@ -89,6 +91,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
     setGenerating,
     setGeneratingVerb,
     scrollToBottom,
+    jumpToBottom,
     aiPlaceholderIdRef,
     adoptedSessionIdRef,
     optimisticUserIdRef,
@@ -199,7 +202,9 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
     setGenerating(true);
     const verbs = ['Synthesizing solution', 'Deep reasoning', 'Architecting patch', 'Compiling edge routes'];
     setGeneratingVerb(verbs[Math.floor(Math.random() * verbs.length)]);
-    setTimeout(() => scrollToBottom('smooth'), 50);
+    // An explicit send is user intent to watch the answer: re-engage follow
+    // mode even if the user had scrolled away, then scroll to the tail.
+    setTimeout(() => jumpToBottom('smooth'), 50);
 
     // Real mode: route through the omp agent RPC bridge + event stream.
     if (isOmpSession) {
@@ -311,7 +316,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
         scrollToBottom,
       })
     );
-  }, [appSettings, folders, isOmpSession, ompAgent, selectedFolderId, sessionId, scrollToBottom, persistMessages, setSessionModel, pendingComposerModelRef, pendingThinkingLevelRef, accessModeRef]);
+  }, [appSettings, folders, isOmpSession, ompAgent, selectedFolderId, sessionId, scrollToBottom, jumpToBottom, persistMessages, setSessionModel, pendingComposerModelRef, pendingThinkingLevelRef, accessModeRef]);
 
-  return { prepareDeliverable, steerOmpAgent, executeSend };
+  return { steerOmpAgent, executeSend };
 }

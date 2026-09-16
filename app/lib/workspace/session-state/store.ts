@@ -179,8 +179,15 @@ export async function loadSession(sessionId: string): Promise<void> {
       const data = (await res.json()) as { state?: SessionState };
       const incoming = data.state && typeof data.state === 'object' ? data.state : {};
       const existing = cache.get(sessionId) ?? {};
-      // Writes made while the fetch was in flight win over the stored blob.
-      cache.set(sessionId, { ...incoming, ...existing });
+      // Only keys written locally while the fetch was in flight win over the
+      // stored blob. Merging the WHOLE local cache over the blob (the old
+      // behavior) resurrected stale values on every tab: a second browser
+      // opening the session had cached the pre-write blob, and its stale
+      // copy clobbered another tab's fresh writes — queue items written in
+      // one tab never appeared in the other.
+      const dirty = dirtySessions.get(sessionId) === true;
+      const merged = dirty ? { ...incoming, ...existing } : incoming;
+      cache.set(sessionId, merged);
       touchCacheEntry(sessionId);
     }
   } catch (err) {

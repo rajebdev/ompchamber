@@ -246,6 +246,19 @@
 .prose-content .code-block pre { margin: 0; padding: 0.75rem; overflow-x: auto; line-height: var(--markdown-code-block-line-height); }
 .prose-content .code-block code { font-family: 'Fira Code', monospace; font-size: 0.75rem; line-height: var(--markdown-code-block-line-height); }
 .prose-content .code-block pre code { background: transparent; text-shadow: none; }
+/* Prism's default theme paints .token.operator/.entity/.url with a
+ * half-white background (`hsla(0,0%,100%,.5)`) — a glaring white box on the
+ * dark theme's code blocks. Neutralize it inside code blocks: transparent
+ * background everywhere, and recolor operators to the ink color so they read
+ * on both themes (default #9a6e3a is tuned for white backgrounds). */
+.prose-content .code-block .token.operator,
+.prose-content .code-block .token.entity,
+.prose-content .code-block .token.url,
+.prose-content .code-block .language-css .token.string,
+.prose-content .code-block .style .token.string {
+  background: transparent;
+  color: color-mix(in srgb, var(--theme-ink) 78%, transparent);
+}
 .prose-content .katex-display { overflow-x: auto; overflow-y: hidden; }
 
 /* Mermaid diagram blocks (```mermaid fences hydrated to SVG client-side). */

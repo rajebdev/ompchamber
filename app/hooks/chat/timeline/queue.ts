@@ -4,15 +4,26 @@
  */
 
 /**
- * Follow-up + steering queue state for the chamber chat. Follow-ups queued by
- * the mock/chamber path persist to the SQLite `sessions` table (numeric ids);
- * omp sessions (string UUIDs) own their queue server-side, so their mirror is
- * client-only and removed once the agent delivers the text (message_end).
+ * Follow-up + steering queue state for the chamber chat. Both mirrors persist
+ * to the per-session `session_ui_state` blob so a page reload mid-stream
+ * restores them:
+ *
+ *  - Mock/numeric sessions additionally mirror into the SQLite `sessions`
+ *    `queue_list` column (the sidebar loader reads it from there).
+ *  - omp sessions (string UUIDs) have no such row — their queue lives in the
+ *    session-state blob only, restored on mount.
+ *
+ * Steering mirrors live in the same blob under a separate key. Delivered
+ * texts are removed once the agent picks them up (message_end).
  * Kept out of useChatTimeline so that hook stays under the size ceiling.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import type { QueuedMessage } from '@/components/workspace/chat-timeline/QueueList';
+import { useSessionState } from '@/hooks/workspace/session-state';
+
+const QUEUE_STATE_KEY = 'chat.messageQueue';
+const STEERING_STATE_KEY = 'chat.steeringQueue';
 
 export interface ChatTimelineQueueResult {
   messageQueue: QueuedMessage[];
@@ -23,52 +34,31 @@ export interface ChatTimelineQueueResult {
   removeDeliveredFromQueue: (text: string) => void;
 }
 
-export function useChatTimelineQueue(
-  sessionId: string | null,
-  currentSession: { queue_list?: any } | null,
-): ChatTimelineQueueResult {
-  const [messageQueue, setMessageQueueLocal] = useState<QueuedMessage[]>([]);
-  const [steeringQueue, setSteeringQueueLocal] = useState<QueuedMessage[]>([]);
+export function useChatTimelineQueue(sessionId: string | null): ChatTimelineQueueResult {
+  const [messageQueue, setMessageQueue] = useSessionState<QueuedMessage[]>(QUEUE_STATE_KEY, []);
+  const [steeringQueue, setSteeringQueue] = useSessionState<QueuedMessage[]>(STEERING_STATE_KEY, []);
 
-  const setMessageQueue = useCallback((updater: React.SetStateAction<QueuedMessage[]>) => {
-    setMessageQueueLocal(prev => {
-      const newQueue = typeof updater === 'function' ? updater(prev) : updater;
-      // Queue persistence targets the SQLite `sessions` table (mock/numeric
-      // sessions). omp sessions (string UUIDs) have no such row — the follow-up
-      // queue is delivered to omp immediately and lives there server-side.
+  const setQueueWithMirror = useCallback((updater: React.SetStateAction<QueuedMessage[]>) => {
+    setMessageQueue(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      // Keep the legacy SQLite mirror for mock/numeric sessions (the sidebar
+      // loader reads `sessions.queue_list`); omp UUIDs have no row — skip.
       if (sessionId && !Number.isNaN(Number(sessionId))) {
         fetch(`/api/sessions/${sessionId}/queue`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ queue_list: newQueue })
+          body: JSON.stringify({ queue_list: next })
         }).catch(console.error);
       }
-      return newQueue;
+      return next;
     });
-  }, [sessionId]);
-
-  const setSteeringQueue = useCallback((updater: React.SetStateAction<QueuedMessage[]>) => {
-    setSteeringQueueLocal(prev => {
-      const newQueue = typeof updater === 'function' ? updater(prev) : updater;
-      return newQueue;
-    });
-  }, []);
-
-  // Initialize queue from DB on mount or session change
-  useEffect(() => {
-    if (currentSession && currentSession.queue_list) {
-      setMessageQueueLocal(currentSession.queue_list);
-    } else {
-      setMessageQueueLocal([]);
-    }
-    setSteeringQueueLocal([]);
-  }, [currentSession]);
+  }, [setMessageQueue, sessionId]);
 
   const removeDeliveredFromQueue = useCallback((text: string) => {
     const exact = (q: QueuedMessage[]) => q.some(i => i.text === text);
     setSteeringQueue(q => (exact(q) ? q.filter(i => i.text !== text) : q));
-    setMessageQueue(q => (exact(q) ? q.filter(i => i.text !== text) : q));
-  }, [setSteeringQueue, setMessageQueue]);
+    setQueueWithMirror(q => (exact(q) ? q.filter(i => i.text !== text) : q));
+  }, [setSteeringQueue, setQueueWithMirror]);
 
-  return { messageQueue, setMessageQueue, steeringQueue, setSteeringQueue, removeDeliveredFromQueue };
+  return { messageQueue, setMessageQueue: setQueueWithMirror, steeringQueue, setSteeringQueue, removeDeliveredFromQueue };
 }

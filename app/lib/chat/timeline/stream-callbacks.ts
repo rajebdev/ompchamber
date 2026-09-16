@@ -24,6 +24,7 @@ export interface MockStreamCallbacksDeps {
   setGenerating: (v: boolean) => void;
   abortControllerRef: { current: AbortController | null };
   appSettings: Record<string, any>;
+  /** Follow-gated stream scroll: no-ops while the user has scrolled away. */
   scrollToBottom: (behavior?: ScrollBehavior) => void;
 }
 

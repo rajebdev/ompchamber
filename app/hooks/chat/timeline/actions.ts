@@ -24,13 +24,15 @@ export interface ChatTimelineActionsDeps {
   isGenerating: boolean;
   isOmpSession: boolean;
   appSettings: Record<string, any>;
+  messageQueue: QueuedMessage[];
   setMessageQueue: (updater: SetStateAction<QueuedMessage[]>) => void;
   executeSend: (text: string, attachments: Attachment[]) => Promise<void>;
   steerOmpAgent: (text: string, attachments: Attachment[]) => Promise<void>;
-  prepareDeliverable: (text: string, attachments: Attachment[]) => Promise<{ promptText: string; images?: { data: string; mimeType: string }[] }>;
   ompAgent: OmpAgentHandle;
   abortControllerRef: { current: AbortController | null };
   setGenerating: (v: boolean) => void;
+  /** Armed by Stop; the queue auto-process holds off while it is set. */
+  stopHoldRef: { current: boolean };
   persistMessages: (messages: any[]) => void;
   setLocalMessages: Dispatch<SetStateAction<ChatMessageData[]>>;
   /** Composer model picked before the omp session exists (pending "new-…"
@@ -49,7 +51,8 @@ export interface ChatTimelineActionsResult {
   handleUndo: (msgId: string, content?: string) => void;
   handleRetry: (msgId: string) => void;
   submitNewChat: (text: string, attachments: any[]) => void;
-  stopGenerating: () => void;
+  /** Stop the active run; returns the number of queue items held back. */
+  stopGenerating: () => number;
   handleThinkingLevelChange: (level: string) => void;
   handleModelChange: (provider: string, modelId: string) => void;
   closeExtensionDialog: () => void;
@@ -63,13 +66,14 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     isGenerating,
     isOmpSession,
     appSettings,
+    messageQueue,
     setMessageQueue,
     executeSend,
     steerOmpAgent,
-    prepareDeliverable,
     ompAgent,
     abortControllerRef,
     setGenerating,
+    stopHoldRef,
     persistMessages,
     setLocalMessages,
     pendingComposerModelRef,
@@ -81,6 +85,10 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
   const handleSend = useCallback(async (attachments: Attachment[], options?: { steering?: boolean }) => {
     const textToSend = inputValue.trim();
     if (!textToSend && attachments.length === 0) return;
+
+    // An explicit send disarms the Stop hold: the queue auto-process may
+    // resume delivering after this run ends.
+    stopHoldRef.current = false;
 
     if (isGenerating) {
       if (options?.steering) {
@@ -111,23 +119,20 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
         text: textToSend,
         attachments,
       };
-      if (isOmpSession) {
-        // omp owns the follow-up queue; keep a client mirror for the panel.
-        setInputValue('');
-        setMessageQueue(prev => [...prev, queuedItem]);
-        const { promptText, images } = await prepareDeliverable(textToSend, attachments);
-        const ok = await ompAgent.sendFollowUp(promptText, images);
-        if (!ok) setMessageQueue(q => q.filter(i => i.id !== queuedItem.id));
-      } else {
-        setMessageQueue(prev => [...prev, queuedItem]);
-        setInputValue('');
-      }
+      // Both modes: hold the follow-up in the client queue. The panel is the
+      // source of truth (editable, removable, survives reload via the
+      // session-state blob); delivery happens when the run ends — the
+      // auto-process effect sends the head item. For omp this replaces the
+      // old immediate `follow_up` RPC, whose server-side queue the client
+      // could never cancel (Stop kept executing it).
+      setInputValue('');
+      setMessageQueue(prev => [...prev, queuedItem]);
       return;
     }
 
     setInputValue('');
     executeSend(textToSend, attachments);
-  }, [inputValue, isGenerating, executeSend, setMessageQueue, isOmpSession, appSettings, steerOmpAgent, prepareDeliverable, ompAgent, setInputValue, abortControllerRef, setGenerating]);
+  }, [inputValue, isGenerating, executeSend, setMessageQueue, isOmpSession, appSettings, steerOmpAgent, setInputValue, abortControllerRef, setGenerating, stopHoldRef]);
 
   const handleEditQueueItem = useCallback((item: QueuedMessage) => {
     setMessageQueue(q => q.filter(i => i.id !== item.id));
@@ -136,6 +141,8 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
   }, [setMessageQueue, setInputValue, setInputAttachments]);
 
   const handleSendNowQueueItem = useCallback(async (item: QueuedMessage) => {
+    // Explicit delivery also lifts the Stop hold.
+    stopHoldRef.current = false;
     setMessageQueue(q => q.filter(i => i.id !== item.id));
 
     if (isGenerating) {
@@ -152,7 +159,7 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     } else {
       executeSend(item.text, item.attachments);
     }
-  }, [isGenerating, executeSend, setMessageQueue, isOmpSession, steerOmpAgent, abortControllerRef, setGenerating]);
+  }, [isGenerating, executeSend, setMessageQueue, isOmpSession, steerOmpAgent, abortControllerRef, setGenerating, stopHoldRef]);
 
   const handleUndo = useCallback((msgId: string, content?: string) => {
     if (isGenerating) {
@@ -221,7 +228,11 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     }, 0);
   }, [setSearchParams, executeSend, setLocalMessages]);
 
-  const stopGenerating = useCallback(() => {
+  /** Stop the active run. Returns how many queue items were held back so the
+   *  caller can surface a "still queued" toast. Stop-all semantics: the queue
+   *  auto-process holds off until the next explicit send. */
+  const stopGenerating = useCallback((): number => {
+    stopHoldRef.current = true;
     if (isOmpSession) {
       void ompAgent.abort();
     } else if (abortControllerRef.current) {
@@ -229,7 +240,8 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
       abortControllerRef.current = null;
     }
     setGenerating(false);
-  }, [isOmpSession, ompAgent, abortControllerRef, setGenerating]);
+    return messageQueue.length;
+  }, [isOmpSession, ompAgent, abortControllerRef, setGenerating, messageQueue.length, stopHoldRef]);
 
   const handleThinkingLevelChange = useCallback((level: string) => {
     if (level === 'auto') return;
