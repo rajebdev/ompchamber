@@ -62,8 +62,56 @@ const persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 const PERSIST_DEBOUNCE_MS = 600;
 
+// Bounded LRU cache: cap the number of sessions kept in memory so the tab
+// doesn't grow unboundedly as the user visits more sessions.
+const MAX_CACHED_SESSIONS = 20;
+
+/**
+ * Reorder a cache entry to the end of the Map's iteration order (the
+ * most-recently-used position) via delete-then-set. Map.set on an existing
+ * key updates the value but keeps its original position, so the explicit
+ * delete is required for true LRU semantics.
+ */
+function touchCacheEntry(sessionId: string): void {
+  const value = cache.get(sessionId);
+  if (value !== undefined) {
+    cache.delete(sessionId);
+    cache.set(sessionId, value);
+  }
+}
+
+/**
+ * Evict the oldest clean sessions until the cache is within bounds.
+ *
+ * Dirty-safety rule: a session with unsaved writes (`dirtySessions.get(id) ===
+ * true`) must never be evicted, or the user's drafts and editor state would be
+ * silently lost. If every candidate is dirty (or is the protected id currently
+ * being written), stop evicting rather than lose data.
+ */
+function evictIfNeeded(protectedId: string | null): void {
+  while (cache.size > MAX_CACHED_SESSIONS) {
+    let evicted = false;
+    for (const id of cache.keys()) {
+      if (id === protectedId) continue;
+      if (dirtySessions.get(id)) continue;
+      cache.delete(id);
+      readySessions.delete(id);
+      dirtySessions.delete(id);
+      const timer = persistTimers.get(id);
+      if (timer) {
+        clearTimeout(timer);
+        persistTimers.delete(id);
+      }
+      evicted = true;
+      break;
+    }
+    if (!evicted) break;
+  }
+}
+
 export function getSessionValue<T>(sessionId: string | null, key: string): T | undefined {
   if (!sessionId) return undefined;
+  touchCacheEntry(sessionId);
   return cache.get(sessionId)?.[key] as T | undefined;
 }
 
@@ -72,8 +120,10 @@ export function setSessionKey(sessionId: string | null, key: string, value: unkn
   const state = cache.get(sessionId) ?? {};
   state[key] = value;
   cache.set(sessionId, state);
+  touchCacheEntry(sessionId);
   dirtySessions.set(sessionId, true);
   schedulePersist(sessionId);
+  evictIfNeeded(sessionId);
 }
 
 function schedulePersist(sessionId: string): void {
@@ -131,18 +181,22 @@ export async function loadSession(sessionId: string): Promise<void> {
       const existing = cache.get(sessionId) ?? {};
       // Writes made while the fetch was in flight win over the stored blob.
       cache.set(sessionId, { ...incoming, ...existing });
+      touchCacheEntry(sessionId);
     }
   } catch (err) {
     console.warn('session-state load failed:', err);
   }
   readySessions.add(sessionId);
+  evictIfNeeded(sessionId);
 }
 
 /** Seed the cache synchronously (e.g. from SSR-provided data). */
 export function hydrateSession(sessionId: string | null, state: SessionState): void {
   if (!sessionId) return;
   cache.set(sessionId, { ...(cache.get(sessionId) ?? {}), ...state });
+  touchCacheEntry(sessionId);
   readySessions.add(sessionId);
+  evictIfNeeded(sessionId);
 }
 
 /** Mark a session as loaded without fetching (fresh / ephemeral sessions). */
@@ -157,10 +211,12 @@ export function markSessionReady(sessionId: string | null): void {
 export function migrateSessionState(fromId: string, toId: string): void {
   const from = cache.get(fromId);
   if (from) cache.set(toId, { ...from, ...(cache.get(toId) ?? {}) });
+  touchCacheEntry(toId);
   readySessions.add(toId);
   dirtySessions.set(toId, true);
   schedulePersist(toId);
   cache.delete(fromId);
   readySessions.delete(fromId);
   dirtySessions.delete(fromId);
+  evictIfNeeded(toId);
 }
