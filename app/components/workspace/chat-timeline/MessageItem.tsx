@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { 
   Copy, 
   User, 
@@ -50,8 +50,8 @@ function capitalizeFirstLetter(text: string): string {
   return text;
 }
 
-export function ChatMessageItem({ 
-  msg, 
+export const ChatMessageItem = memo(function ChatMessageItem({
+  msg,
   provider,
   providerNames,
   modelName, 
@@ -68,6 +68,12 @@ export function ChatMessageItem({
   const [copied, setCopied] = useState(false);
 
   const isUser = msg.role === 'user';
+
+  /** Stable string references for MarkdownRenderer so its internal
+   *  useMemo([content]) holds across parent re-renders (streaming frames
+   *  replace the timeline array identity every frame). */
+  const userContent = useMemo(() => (typeof msg.content === 'string' ? msg.content.trim() : msg.content), [msg.content]);
+  const assistantContent = useMemo(() => (typeof msg.content === 'string' ? capitalizeFirstLetter(msg.content) : msg.content), [msg.content]);
 
   /** Content is not worth rendering when it is empty or only punctuation
    *  placeholders ("." / "..." etc.) — chunked assistant turns often carry a
@@ -132,7 +138,7 @@ export function ChatMessageItem({
               <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-ink/5 text-ink/60">Delegated</span>
             </div>
           )}
-          <MarkdownRenderer content={msg.content.trim()} />
+          <MarkdownRenderer content={userContent} />
           
           <AttachmentChips
             attachments={msg.attachments || []}
@@ -263,7 +269,7 @@ export function ChatMessageItem({
         {/* Main AI Response Content (Rich Markdown with code blocks, tables, lists) rendered before tool calls */}
         {hasRenderableContent && (
           <div className="text-[13px] text-ink leading-relaxed font-sans bg-transparent px-3 py-1 select-text">
-            <MarkdownRenderer content={capitalizeFirstLetter(msg.content)} />
+            <MarkdownRenderer content={assistantContent} />
             {isStreaming && (
               <span className="inline-block w-1.5 h-3.5 bg-ink/70 ml-1 translate-y-0.5 animate-pulse" />
             )}
@@ -338,4 +344,4 @@ export function ChatMessageItem({
       )}
     </div>
   );
-}
+});
