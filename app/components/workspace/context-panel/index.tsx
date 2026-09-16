@@ -8,6 +8,11 @@ import { LastMessageCard } from '@/components/workspace/context-panel/LastMessag
 import { TokenDistributionBar } from '@/components/workspace/context-panel/TokenDistributionBar';
 import { RawMessagesList } from '@/components/workspace/context-panel/RawMessagesList';
 import { useScrollbarFade } from '@/hooks/ui/scrollbar-fade';
+import { useAgentProcessing } from '@/hooks/chat/omp/processing';
+
+// Poll cadence while the agent is streaming — telemetry (context usage, token
+// cost) advances per assistant turn, not per frame, so 2s is plenty.
+const STREAM_POLL_MS = 2000;
 
 interface ContextPanelProps {
   className?: string;
@@ -24,6 +29,7 @@ export function ContextPanel({
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('sessionId');
   const { isScrolling, handleScroll } = useScrollbarFade();
+  const isProcessing = useAgentProcessing(sessionId);
 
   const [telemetry, setTelemetry] = useState<SessionContextTelemetry>(() =>
     emptyTelemetry(sessionId || 'default', 'Session not started')
@@ -34,23 +40,33 @@ export function ContextPanel({
     let cancelled = false;
     const param = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : '';
 
-    fetch(`/api/telemetry/context${param}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!cancelled && data && data.telemetry) {
-          setTelemetry(data.telemetry);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          console.warn('Failed to fetch context telemetry:', err);
-        }
-      });
+    const loadTelemetry = () => {
+      fetch(`/api/telemetry/context${param}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (!cancelled && data && data.telemetry) {
+            setTelemetry(data.telemetry);
+          }
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            console.warn('Failed to fetch context telemetry:', err);
+          }
+        });
+    };
 
+    loadTelemetry();
+
+    // Live refresh: while the session streams, telemetry (context usage,
+    // tokens, cost) advances per assistant turn — re-read on a short cadence
+    // so the panel tracks the stream without the user switching panels.
+    if (!isProcessing) return () => { cancelled = true; };
+    const timer = window.setInterval(loadTelemetry, STREAM_POLL_MS);
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
-  }, [sessionId, refreshKey, enabled]);
+  }, [sessionId, refreshKey, enabled, isProcessing]);
 
   if (!enabled) {
     return (
