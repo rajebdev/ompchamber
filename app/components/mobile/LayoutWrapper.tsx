@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from '@remix-run/react';
-import type { WorkspaceFolderData } from '@/types';
+import type { WorkspaceFolderData, SettingsCategoryId } from '@/types';
 import { MobileMainView } from '@/components/mobile/MainView';
 import { MobileSessionSidebar } from '@/components/mobile/SessionSidebar';
 import { MobileRightSidebar } from '@/components/mobile/RightSidebar';
 import { MobileFullEditor } from '@/components/mobile/mobile-right-sidebar/FullEditor';
+import { MobileFullDiff } from '@/components/mobile/mobile-right-sidebar/FullDiff';
+import { SettingsModal } from '@/components/settings/Modal';
 import { activeProjectForSession } from '@/lib/workspace/active-project';
 
 interface MobileLayoutWrapperProps {
@@ -24,6 +26,15 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
 
   const [currentScreen, setCurrentScreen] = useState<MobileScreen>('main');
   const [mobileEditorFile, setMobileEditorFile] = useState<{ name: string; path?: string; content?: string; root?: string } | null>(null);
+  const [mobileDiff, setMobileDiff] = useState<{ path: string; status?: string; staged?: boolean; repo?: string; root?: string } | null>(null);
+  // Bumped whenever a write lands so the workspace panels (explorer, git,
+  // context) re-read from disk — the same signal the desktop layout passes down.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsCategory, setSettingsCategory] = useState<SettingsCategoryId>('appearance');
+  const [autoOpenAddProvider, setAutoOpenAddProvider] = useState(false);
+
+  const handleWorkspaceChanged = useCallback(() => setRefreshKey(k => k + 1), []);
 
   const { folder: sessionFolder } = activeProjectForSession(folders, sessionId);
   const contextFolder = sessionFolder ?? (folderId ? folders.find(f => String(f.id) === String(folderId)) ?? null : null);
@@ -47,6 +58,43 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
 
     window.addEventListener('omp:open-file', handleCustomOpenFile);
     return () => window.removeEventListener('omp:open-file', handleCustomOpenFile);
+  }, []);
+
+  // The git panel and the file explorer announce a diff through
+  // `omp:open-diff`, which the desktop layout turns into an editor tab. On the
+  // phone the same event opens the full-screen diff; without a listener here
+  // the tap was silently dropped.
+  useEffect(() => {
+    const handleCustomOpenDiff = (e: Event) => {
+      const detail = (e as CustomEvent<{ file?: string; status?: string; staged?: boolean; repo?: string; root?: string }>).detail;
+      if (!detail?.file) return;
+      setMobileDiff({
+        path: detail.file.replace(/^\/+/, ''),
+        status: detail.status,
+        staged: detail.staged,
+        repo: detail.repo,
+        root: detail.root ?? activeProjectPath ?? undefined,
+      });
+    };
+
+    window.addEventListener('omp:open-diff', handleCustomOpenDiff);
+    return () => window.removeEventListener('omp:open-diff', handleCustomOpenDiff);
+  }, [activeProjectPath]);
+
+  // Settings requests (e.g. the model dropdown asking for Settings → Providers
+  // when no provider is configured) arrive on the same global channel the
+  // desktop layout listens on. SettingsModal itself only reads the payload and
+  // never opens, so the open has to be handled here.
+  useEffect(() => {
+    const handleCustomOpenSettings = (e: Event) => {
+      const detail = (e as CustomEvent<{ category?: SettingsCategoryId; autoOpenAdd?: boolean }>).detail;
+      setSettingsCategory(detail?.category ?? 'appearance');
+      setAutoOpenAddProvider(Boolean(detail?.autoOpenAdd));
+      setSettingsOpen(true);
+    };
+
+    window.addEventListener('omp:open-settings', handleCustomOpenSettings);
+    return () => window.removeEventListener('omp:open-settings', handleCustomOpenSettings);
   }, []);
 
   const handleSelectSession = (id: number | string) => {
@@ -135,6 +183,8 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
         <MobileRightSidebar
           enabled={hasContext}
           rootPath={activeProjectPath ?? undefined}
+          refreshKey={refreshKey}
+          onRefresh={handleWorkspaceChanged}
           onOpenFile={handleOpenFile}
           onClose={() => setCurrentScreen('main')}
         />
@@ -144,8 +194,30 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
         <MobileFullEditor
           file={mobileEditorFile}
           onClose={() => setMobileEditorFile(null)}
+          onFileSaved={handleWorkspaceChanged}
         />
       )}
+
+      {mobileDiff && (
+        <MobileFullDiff
+          diff={mobileDiff}
+          onClose={() => setMobileDiff(null)}
+          onFileSaved={handleWorkspaceChanged}
+        />
+      )}
+
+      {/* Single settings modal for the mobile layout, fed by omp:open-settings
+          and by the sidebar's Settings button. */}
+      <SettingsModal
+        isOpen={settingsOpen}
+        onClose={() => {
+          setSettingsOpen(false);
+          setAutoOpenAddProvider(false);
+        }}
+        initialCategory={settingsCategory}
+        autoOpenAddProvider={autoOpenAddProvider}
+        appSettings={appSettings}
+      />
     </div>
   );
 }

@@ -54,9 +54,11 @@ export function DiffToolbar({
   const statusInfo = getGitStatusInfo(status, isStaged);
 
   return (
-    <div className="flex items-center justify-between px-3 py-1.5 bg-paper border-b border-ink/10 text-xs font-sans select-none flex-shrink-0">
-      {/* Left: File name, status badge, additions/deletions */}
-      <div className="flex items-center space-x-2 min-w-0 pr-2">
+    <div className="flex items-center justify-between px-3 py-1.5 bg-paper border-b border-ink/10 text-xs font-sans select-none flex-shrink-0 overflow-x-auto no-scrollbar">
+      {/* Left: File name, status badge, additions/deletions. Hidden on phone
+          widths: the mobile diff header already carries the file identity, and
+          dropping it keeps the actions reachable without a sideways scroll. */}
+      <div className="hidden md:flex items-center space-x-2 min-w-0 pr-2">
         <FileIcon name={fileName} size={14} className="flex-shrink-0" />
         <span className="font-mono text-ink font-medium truncate" title={filePath}>
           {fileName}
@@ -74,8 +76,9 @@ export function DiffToolbar({
         )}
       </div>
 
-      {/* Right: Controls & actions */}
-      <div className="flex items-center space-x-1 text-ink/70 flex-shrink-0">
+      {/* Right: Controls & actions. `ml-auto` keeps them right-aligned on phone
+          widths, where the identity block above is hidden. */}
+      <div className="flex items-center space-x-1 text-ink/70 flex-shrink-0 ml-auto">
         {/* View mode toggle (Unified vs Split) */}
         <div className="flex items-center bg-canvas rounded border border-ink/15 p-0.5 mr-1">
           <button

@@ -8,7 +8,6 @@ import { MobileSessionFooter } from '@/components/mobile/mobile-session-sidebar/
 import { Toast } from '@/components/common/Toast';
 import { isValidSessionSortOption, sortFolders } from '@/lib/workspace/sidebar-sort';
 import { 
-  SettingsModal, 
   AboutModal, 
   NewWorkspaceModal, 
   SchedulerModal 
@@ -49,7 +48,6 @@ export function MobileSessionSidebar({
   // Modals state (matching desktop)
   const [newWorkspaceOpen, setNewWorkspaceOpen] = useState(false);
   const [schedulerOpen, setSchedulerOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const revalidator = useRevalidator();
@@ -246,7 +244,7 @@ export function MobileSessionSidebar({
       />
 
       <MobileSessionFooter
-        onSettings={() => setSettingsOpen(true)}
+        onSettings={() => window.dispatchEvent(new CustomEvent('omp:open-settings', { detail: {} }))}
         onAbout={() => setAboutOpen(true)}
         onDesktopToggle={onDesktopToggle}
         updateAvailable={updates.hasUpdate}
@@ -265,11 +263,6 @@ export function MobileSessionSidebar({
       <SchedulerModal
         isOpen={schedulerOpen}
         onClose={() => setSchedulerOpen(false)}
-      />
-      <SettingsModal
-        isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        appSettings={appSettings}
       />
       <AboutModal
         isOpen={aboutOpen}

@@ -23,6 +23,8 @@ interface MobileFullEditorProps {
     repo?: string;
   };
   onClose: () => void;
+  /** Fired after a debounced write lands, so the workspace panels can refresh. */
+  onFileSaved?: () => void;
 }
 
 function getLanguage(filename: string): string {
@@ -48,7 +50,7 @@ function getLanguage(filename: string): string {
   }
 }
 
-export function MobileFullEditor({ file, onClose }: MobileFullEditorProps) {
+export function MobileFullEditor({ file, onClose, onFileSaved }: MobileFullEditorProps) {
   const [content, setContent] = useState<string>(file.content || '');
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -131,11 +133,13 @@ export function MobileFullEditor({ file, onClose }: MobileFullEditorProps) {
     try {
       const res = await fetch('/api/fs/action', { method: 'POST', body: formData });
       const data = await res.json().catch(() => null);
-      setSaveStatus(res.ok && data?.success ? 'saved' : 'error');
+      const saved = res.ok && Boolean(data?.success);
+      setSaveStatus(saved ? 'saved' : 'error');
+      if (saved) onFileSaved?.();
     } catch {
       setSaveStatus('error');
     }
-  }, [file.path, file.root, file.repo]);
+  }, [file.path, file.root, file.repo, onFileSaved]);
 
   // Pending debounced write. The timer handle and its payload travel together
   // so the unmount flush below can cancel exactly the write it then performs.
@@ -238,7 +242,7 @@ export function MobileFullEditor({ file, onClose }: MobileFullEditorProps) {
             </div>
 
             {/* Simple Code Editor area */}
-            <div className="flex-1 p-3 overflow-x-auto min-w-0 bg-paper text-ink">
+            <div className="flex-1 p-3 overflow-x-auto min-w-0 bg-paper text-ink prism-code-surface">
               <CodeEditor
                 value={content}
                 onValueChange={handleContentChange}

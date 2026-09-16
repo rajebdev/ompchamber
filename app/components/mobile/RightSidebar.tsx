@@ -1,11 +1,15 @@
 import { useState, Suspense } from 'react';
 import { GitBranch, Files, Search, Terminal, Layers, Globe, Bot, BarChart3, X } from 'lucide-react';
 import { LazyFileExplorer, LazySearchPanel, LazyGitPanel, LazyTerminalPanel, LazyContextPanel, LazyBrowserPanel, LazyUserBrowserPanel, LazyUsagePanel } from '@/components/common/lazy-panels';
+import { useGitStatus } from '@/hooks/workspace/git-status';
 
 interface MobileRightSidebarProps {
   enabled?: boolean;
   rootPath?: string;
-  onOpenFile?: (file: any) => void;
+  /** Bumped after a write so the explorer, git and context panels re-read. */
+  refreshKey?: number;
+  onRefresh?: () => void;
+  onOpenFile?: (file: unknown) => void;
   onClose: () => void;
 }
 
@@ -14,10 +18,16 @@ type MobileTab = 'git' | 'files' | 'search' | 'context' | 'terminal' | 'user-bro
 export function MobileRightSidebar({
   enabled = true,
   rootPath,
+  refreshKey = 0,
+  onRefresh,
   onOpenFile,
   onClose
 }: MobileRightSidebarProps) {
   const [activeTab, setActiveTab] = useState<MobileTab>('files');
+  // Same source the desktop activity bar uses, so the "uncommitted changes"
+  // dot means the same thing on both layouts.
+  const { changes } = useGitStatus(rootPath, '.', refreshKey, enabled, 15000);
+  const hasGitChanges = changes.length > 0;
 
   return (
     <div className="flex flex-col h-full w-full bg-paper text-ink relative select-none">
@@ -65,7 +75,7 @@ export function MobileRightSidebar({
           <button
             type="button"
             onClick={() => setActiveTab('git')}
-            className={`flex items-center transition-all cursor-pointer ${
+            className={`relative flex items-center transition-all cursor-pointer ${
               activeTab === 'git'
                 ? 'space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-ink text-canvas shadow-sm'
                 : 'p-2 rounded-lg text-ink/70 hover:bg-ink/5'
@@ -74,6 +84,12 @@ export function MobileRightSidebar({
           >
             <GitBranch size={14} className="flex-shrink-0" />
             {activeTab === 'git' && <span className="tracking-wide">GIT</span>}
+            {hasGitChanges && (
+              <span
+                className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-info"
+                title="Uncommitted changes"
+              />
+            )}
           </button>
 
           <button
@@ -171,16 +187,16 @@ export function MobileRightSidebar({
           <>
             <Suspense fallback={<div className="h-full flex items-center justify-center text-ink/40"><span className="text-xs font-mono">Loading…</span></div>}>
               {activeTab === 'files' && (
-                <LazyFileExplorer className="h-full w-full" enabled={enabled} rootPath={rootPath} onOpenFile={onOpenFile} />
+                <LazyFileExplorer className="h-full w-full" enabled={enabled} rootPath={rootPath} refreshKey={refreshKey} onRefresh={onRefresh} onOpenFile={onOpenFile} />
               )}
               {activeTab === 'search' && (
                 <LazySearchPanel className="h-full w-full" enabled={enabled} rootPath={rootPath} />
               )}
               {activeTab === 'git' && (
-                <LazyGitPanel className="h-full w-full" enabled={enabled} rootPath={rootPath} />
+                <LazyGitPanel className="h-full w-full" enabled={enabled} rootPath={rootPath} refreshKey={refreshKey} />
               )}
               {activeTab === 'context' && (
-                <LazyContextPanel className="h-full w-full" enabled={enabled} onClose={onClose} />
+                <LazyContextPanel className="h-full w-full" enabled={enabled} refreshKey={refreshKey} onClose={onClose} />
               )}
               <div className={`h-full w-full ${activeTab === 'terminal' ? 'block' : 'hidden'}`}>
                 <LazyTerminalPanel className="h-full w-full" enabled={enabled} rootPath={rootPath} showHeader={false} />
