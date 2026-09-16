@@ -1,17 +1,21 @@
-import React, { useRef } from 'react';
+import React, { Suspense, lazy, useRef } from 'react';
 import { Group, Panel, Separator, type PanelImperativeHandle } from 'react-resizable-panels';
 import { ChatTimeline } from '@/components/workspace/chat-timeline/index';
-import { Editor } from '@/components/workspace/editor/index';
-import { FileExplorer } from '@/components/workspace/file-explorer/index';
-import { SearchPanel } from '@/components/workspace/SearchPanel';
-import { GitPanel } from '@/components/workspace/git-panel/index';
-import { TerminalPanel } from '@/components/workspace/terminal-panel/index';
-import { ContextPanel } from '@/components/workspace/context-panel/index';
-import { BrowserPanel } from '@/components/workspace/browser-panel/index';
-import { UserBrowserPanel } from '@/components/workspace/user-browser-panel/index';
-import { UsagePanel } from '@/components/workspace/usage-panel/index';
+import { LazyFileExplorer, LazySearchPanel, LazyGitPanel, LazyTerminalPanel, LazyContextPanel, LazyBrowserPanel, LazyUserBrowserPanel, LazyUsagePanel } from '@/components/common/lazy-panels';
 import { RightActivityBar, type RightPanelType } from '@/components/layout/RightActivityBar';
 import type { WorkspaceFolderData } from '@/types';
+
+const Editor = lazy(() => import('@/components/workspace/editor/index').then((m) => ({ default: m.Editor })));
+
+function PanelSuspense({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={
+      <div className="w-full h-full flex items-center justify-center text-ink/40 text-xs">Loading…</div>
+    }>
+      {children}
+    </Suspense>
+  );
+}
 
 interface WorkspacePanelsProps {
   folders: WorkspaceFolderData[];
@@ -108,15 +112,17 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
           <>
             <CustomResizeHandle />
             <Panel panelRef={editorPanelRef} id="editor-panel" defaultSize={savedSizesRef.current.editor ?? 536} minSize={300}>
-              <Editor
-                className="w-full h-full"
-                openedFiles={openedFiles}
-                activeFileId={activeFileId}
-                onSelectFile={onSetActiveFileId}
-                onCloseFile={onCloseFile}
-                refreshKey={refreshKey}
-                onFileSaved={onRefreshWorkspace}
-              />
+              <PanelSuspense>
+                <Editor
+                  className="w-full h-full"
+                  openedFiles={openedFiles}
+                  activeFileId={activeFileId}
+                  onSelectFile={onSetActiveFileId}
+                  onCloseFile={onCloseFile}
+                  refreshKey={refreshKey}
+                  onFileSaved={onRefreshWorkspace}
+                />
+              </PanelSuspense>
             </Panel>
           </>
         )}
@@ -125,20 +131,22 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
           <>
             <CustomResizeHandle />
             <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={savedSizesRef.current.right ?? rightDefault} minSize={activeRightPanel === 'browser' || activeRightPanel === 'user-browser' ? 320 : (activeRightPanel === 'context' || activeRightPanel === 'usage') ? 420 : activeRightPanel === 'git' ? 260 : 200} maxSize={1200} collapsible>
-              {activeRightPanel === 'files' && <FileExplorer className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} onOpenFile={onOpenFile} refreshKey={refreshKey} onRefresh={onRefreshWorkspace} />}
-              {activeRightPanel === 'search' && <SearchPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} />}
-              {activeRightPanel === 'git' && <GitPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} refreshKey={refreshKey} />}
-              {activeRightPanel === 'context' && <ContextPanel className="w-full h-full" enabled={hasActiveContext} refreshKey={refreshKey} onClose={onToggleRightPanel} />}
-              <div className={`w-full h-full ${activeRightPanel === 'terminal' ? 'block' : 'hidden'}`}>
-                <TerminalPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} />
-              </div>
-              <div className={`w-full h-full ${activeRightPanel === 'user-browser' ? 'block' : 'hidden'}`}>
-                <UserBrowserPanel className="w-full h-full" />
-              </div>
-              <div className={`w-full h-full ${activeRightPanel === 'browser' ? 'block' : 'hidden'}`}>
-                <BrowserPanel className="w-full h-full" active={activeRightPanel === 'browser'} />
-              </div>
-              {activeRightPanel === 'usage' && <UsagePanel className="w-full h-full" />}
+              <PanelSuspense>
+                {activeRightPanel === 'files' && <LazyFileExplorer className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} onOpenFile={onOpenFile} refreshKey={refreshKey} onRefresh={onRefreshWorkspace} />}
+                {activeRightPanel === 'search' && <LazySearchPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} />}
+                {activeRightPanel === 'git' && <LazyGitPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} refreshKey={refreshKey} />}
+                {activeRightPanel === 'context' && <LazyContextPanel className="w-full h-full" enabled={hasActiveContext} refreshKey={refreshKey} onClose={onToggleRightPanel} />}
+                <div className={`w-full h-full ${activeRightPanel === 'terminal' ? 'block' : 'hidden'}`}>
+                  <LazyTerminalPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} />
+                </div>
+                <div className={`w-full h-full ${activeRightPanel === 'user-browser' ? 'block' : 'hidden'}`}>
+                  <LazyUserBrowserPanel className="w-full h-full" />
+                </div>
+                <div className={`w-full h-full ${activeRightPanel === 'browser' ? 'block' : 'hidden'}`}>
+                  <LazyBrowserPanel className="w-full h-full" active={activeRightPanel === 'browser'} />
+                </div>
+                {activeRightPanel === 'usage' && <LazyUsagePanel className="w-full h-full" />}
+              </PanelSuspense>
             </Panel>
           </>
         )}

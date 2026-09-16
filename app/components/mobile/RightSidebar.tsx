@@ -1,13 +1,6 @@
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { GitBranch, Files, Search, Terminal, Layers, Globe, Bot, BarChart3, X } from 'lucide-react';
-import { FileExplorer } from '@/components/workspace/file-explorer/index';
-import { SearchPanel } from '@/components/workspace/SearchPanel';
-import { GitPanel } from '@/components/workspace/git-panel/index';
-import { TerminalPanel } from '@/components/workspace/terminal-panel/index';
-import { ContextPanel } from '@/components/workspace/context-panel/index';
-import { BrowserPanel } from '@/components/workspace/browser-panel/index';
-import { UserBrowserPanel } from '@/components/workspace/user-browser-panel/index';
-import { UsagePanel } from '@/components/workspace/usage-panel/index';
+import { LazyFileExplorer, LazySearchPanel, LazyGitPanel, LazyTerminalPanel, LazyContextPanel, LazyBrowserPanel, LazyUserBrowserPanel, LazyUsagePanel } from '@/components/common/lazy-panels';
 
 interface MobileRightSidebarProps {
   enabled?: boolean;
@@ -176,28 +169,30 @@ export function MobileRightSidebar({
           </div>
         ) : (
           <>
-            {activeTab === 'files' && (
-              <FileExplorer className="h-full w-full" enabled={enabled} rootPath={rootPath} onOpenFile={onOpenFile} />
-            )}
-            {activeTab === 'search' && (
-              <SearchPanel className="h-full w-full" enabled={enabled} rootPath={rootPath} />
-            )}
-            {activeTab === 'git' && (
-              <GitPanel className="h-full w-full" enabled={enabled} rootPath={rootPath} />
-            )}
-            {activeTab === 'context' && (
-              <ContextPanel className="h-full w-full" enabled={enabled} onClose={onClose} />
-            )}
-            <div className={`h-full w-full ${activeTab === 'terminal' ? 'block' : 'hidden'}`}>
-              <TerminalPanel className="h-full w-full" enabled={enabled} rootPath={rootPath} showHeader={false} />
-            </div>
-            <div className={`h-full w-full ${activeTab === 'user-browser' ? 'block' : 'hidden'}`}>
-              <UserBrowserPanel className="h-full w-full" />
-            </div>
-            <div className={`h-full w-full ${activeTab === 'browser' ? 'block' : 'hidden'}`}>
-              <BrowserPanel className="h-full w-full" active={activeTab === 'browser'} />
-            </div>
-            {activeTab === 'usage' && <UsagePanel className="h-full w-full" />}
+            <Suspense fallback={<div className="h-full flex items-center justify-center text-ink/40"><span className="text-xs font-mono">Loading…</span></div>}>
+              {activeTab === 'files' && (
+                <LazyFileExplorer className="h-full w-full" enabled={enabled} rootPath={rootPath} onOpenFile={onOpenFile} />
+              )}
+              {activeTab === 'search' && (
+                <LazySearchPanel className="h-full w-full" enabled={enabled} rootPath={rootPath} />
+              )}
+              {activeTab === 'git' && (
+                <LazyGitPanel className="h-full w-full" enabled={enabled} rootPath={rootPath} />
+              )}
+              {activeTab === 'context' && (
+                <LazyContextPanel className="h-full w-full" enabled={enabled} onClose={onClose} />
+              )}
+              <div className={`h-full w-full ${activeTab === 'terminal' ? 'block' : 'hidden'}`}>
+                <LazyTerminalPanel className="h-full w-full" enabled={enabled} rootPath={rootPath} showHeader={false} />
+              </div>
+              <div className={`h-full w-full ${activeTab === 'user-browser' ? 'block' : 'hidden'}`}>
+                <LazyUserBrowserPanel className="h-full w-full" />
+              </div>
+              <div className={`h-full w-full ${activeTab === 'browser' ? 'block' : 'hidden'}`}>
+                <LazyBrowserPanel className="h-full w-full" active={activeTab === 'browser'} />
+              </div>
+              {activeTab === 'usage' && <LazyUsagePanel className="h-full w-full" />}
+            </Suspense>
           </>
         )}
       </div>
