@@ -22,7 +22,17 @@ interface OmpUsage {
   cacheWrite?: number;
   totalTokens?: number;
   reasoningTokens?: number;
+  /** Anchored prompt occupancy reported by the provider (never a per-turn total). */
+  contextTokens?: number;
   cost?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; total?: number };
+}
+
+interface OmpContextSnapshot {
+  promptTokens?: number;
+  /** Estimated prompt tokens removed by local history rewrites after the snapshot. */
+  historyRewriteTokensRemoved?: number;
+  nonMessageTokens?: number;
+  compactionEpoch?: number;
 }
 
 interface OmpMessage {
@@ -31,6 +41,7 @@ interface OmpMessage {
   model?: string;
   provider?: string;
   usage?: OmpUsage;
+  contextSnapshot?: OmpContextSnapshot;
   stopReason?: string;
   isError?: boolean;
 }
@@ -91,6 +102,18 @@ function tokensOf(usage: OmpUsage | undefined): {
   const reasoning = usage?.reasoningTokens ?? 0;
   const total = usage?.totalTokens ?? input + output + cacheRead + cacheWrite;
   return { input, output, cacheRead, cacheWrite, reasoning, total };
+}
+
+function contextAnchorTokens(msg: OmpMessage): number | undefined {
+  const snapshot = msg.contextSnapshot;
+  const usage = msg.usage;
+  let promptTokens: number;
+  if (snapshot?.promptTokens !== undefined) promptTokens = snapshot.promptTokens;
+  else if (usage?.contextTokens !== undefined && usage.contextTokens > 0) promptTokens = usage.contextTokens;
+  else if (usage) promptTokens = (usage.input ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
+  else return undefined;
+  if (promptTokens <= 0) return undefined;
+  return Math.max(0, promptTokens - (snapshot?.historyRewriteTokensRemoved ?? 0));
 }
 
 function buildInfo(
@@ -159,8 +182,8 @@ export function computeRealSessionTelemetry(
   let userChars = 0;
   let assistantChars = 0;
   let toolChars = 0;
-  let totalTokens = 0;
   let totalCost = 0;
+  let contextAnchor = 0;
   let modelProvider = '';
   let modelId = '';
   let effectiveTitle = '';
@@ -216,10 +239,11 @@ export function computeRealSessionTelemetry(
       assistantCount++;
       assistantChars += text.length;
       if (msg.usage) lastAsstUsage = msg.usage;
+      const anchor = contextAnchorTokens(msg);
+      if (anchor !== undefined) contextAnchor = anchor;
     }
 
     if (msg.usage) {
-      totalTokens += tokens.total;
       totalCost += msg.usage.cost?.total ?? 0;
       sumInput += tokens.input;
       sumOutput += tokens.output;
@@ -257,7 +281,7 @@ export function computeRealSessionTelemetry(
   }
 
   const providerModel = modelProvider && modelId ? `${modelProvider}/${modelId}` : '';
-  const contextUsed = totalTokens || 0;
+  const contextUsed = contextAnchor;
   const contextPercent = Math.min(100, Math.max(0, Number(((contextUsed / CONTEXT_LIMIT) * 100).toFixed(1))));
 
   // Distribution: real token categories (input→user, output→assistant, cacheWrite→tool, cacheRead→other); char fallback when no usage.
@@ -265,7 +289,7 @@ export function computeRealSessionTelemetry(
   const userTokens = hasUsage ? sumInput : userChars;
   const assistantTokens = hasUsage ? sumOutput : assistantChars;
   const toolTokens = hasUsage ? sumCacheWrite : toolChars;
-  const otherTokens = Math.max(0, contextUsed - userTokens - assistantTokens - toolTokens);
+  const otherTokens = hasUsage ? sumCacheRead : 0;
   const grand = Math.max(1, userTokens + assistantTokens + toolTokens + otherTokens);
   const userPercent = Math.max(0, Math.round((userTokens / grand) * 100));
   const assistantPercent = Math.max(0, Math.round((assistantTokens / grand) * 100));
