@@ -13,7 +13,7 @@ interface RightActivityBarProps {
 }
 
 export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen, hasActiveContext, activeProjectPath, refreshKey }: RightActivityBarProps) {
-  const { changes } = useGitStatus(activeProjectPath ?? undefined, '.', refreshKey, hasActiveContext);
+  const { changes } = useGitStatus(activeProjectPath ?? undefined, '.', refreshKey, hasActiveContext, 15000);
   const hasGitChanges = changes.length > 0;
   const getBtnClass = (panel: RightPanelType) => {
     const base = "relative w-full h-10 flex items-center justify-center transition-colors border-l-2";

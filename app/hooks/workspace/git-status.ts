@@ -6,7 +6,8 @@ export function useGitStatus(
   rootPath?: string,
   activeRepo: string = '.',
   refreshKey: number = 0,
-  enabled: boolean = true
+  enabled: boolean = true,
+  pollMs: number = 0
 ) {
   const [changes, setChanges] = useState<GitChange[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -35,6 +36,26 @@ export function useGitStatus(
   useEffect(() => {
     loadGitStatus();
   }, [loadGitStatus, refreshKey]);
+
+  // Optional background polling so indicators stay fresh after external
+  // actions (terminal commits, agent edits) that never bump `refreshKey`.
+  useEffect(() => {
+    if (!enabled || !pollMs) return;
+    const id = setInterval(loadGitStatus, pollMs);
+    return () => clearInterval(id);
+  }, [enabled, pollMs, loadGitStatus]);
+
+  // Re-check when the tab regains focus (covers most post-commit cases).
+  useEffect(() => {
+    if (!enabled) return;
+    const onFocus = () => loadGitStatus();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [enabled, loadGitStatus]);
 
   const { fileMap, folderMap } = useMemo(() => {
     return buildGitStatusMaps(changes);
