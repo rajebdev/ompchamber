@@ -4,6 +4,7 @@ import type { ToolCallData } from '@/types';
 import { copyToClipboard } from '@/hooks/ui/clipboard';
 import { highlightCode, isCodeLike, tryParseJson } from '@/lib/code/syntax-highlight';
 import { JsonCodeBlock } from '@/components/workspace/chat-timeline/tool-renderers/shared/JsonCodeBlock';
+import { truncateTailLines, MAX_OUTPUT_LINES } from '@/components/workspace/chat-timeline/tool-renderers/shared/truncate';
 
 interface BashMeta {
   exitCode?: unknown;
@@ -55,6 +56,22 @@ export function Bash({ tool }: { tool: ToolCallData }) {
   const jsonResult = useMemo(
     () => (!isSilent && !tool.isError ? tryParseJson(output) : { isValid: false }),
     [output, isSilent, tool.isError]
+  );
+
+  const truncatedOutput = useMemo(() => truncateTailLines(output, MAX_OUTPUT_LINES), [output]);
+  const outputIsCode = useMemo(() => isCodeLike(output), [output]);
+  const outputLang = useMemo(
+    () => (output.trim().startsWith('{') || output.trim().startsWith('[') ? 'json' : 'javascript'),
+    [output]
+  );
+  const truncatedPretty = useMemo(
+    () => (jsonResult.isValid && jsonResult.pretty ? truncateTailLines(jsonResult.pretty, MAX_OUTPUT_LINES) : null),
+    [jsonResult]
+  );
+  const highlightedCommand = useMemo(() => (command ? highlightCode(command, 'bash') : ''), [command]);
+  const highlightedOutput = useMemo(
+    () => (outputIsCode ? highlightCode(truncatedOutput.text, outputLang) : ''),
+    [outputIsCode, truncatedOutput, outputLang]
   );
 
   const handleCopyCmd = async () => {
@@ -128,7 +145,7 @@ export function Bash({ tool }: { tool: ToolCallData }) {
             <span className="select-none font-bold text-ink/40">$</span>
             <pre
               className="min-w-0 flex-1 overflow-x-auto whitespace-pre-wrap break-all text-ink/90 select-text"
-              dangerouslySetInnerHTML={{ __html: highlightCode(command, 'bash') }}
+              dangerouslySetInnerHTML={{ __html: highlightedCommand }}
             />
           </div>
         </div>
@@ -162,8 +179,13 @@ export function Bash({ tool }: { tool: ToolCallData }) {
               {copiedOut ? 'Copied' : 'Copy'}
             </button>
           </div>
+          {truncatedPretty && truncatedPretty.skipped > 0 && (
+            <div className="border-b border-ink/6 bg-canvas/40 px-3 py-1 font-mono text-[9.5px] text-ink/45">
+              … {truncatedPretty.skipped} earlier lines hidden
+            </div>
+          )}
           <JsonCodeBlock
-            jsonString={jsonResult.pretty}
+            jsonString={truncatedPretty ? truncatedPretty.text : jsonResult.pretty}
             maxHeightClass="max-h-72"
             showHeader={false}
           />
@@ -181,19 +203,19 @@ export function Bash({ tool }: { tool: ToolCallData }) {
               {copiedOut ? 'Copied' : 'Copy'}
             </button>
           </div>
+          {truncatedOutput.skipped > 0 && (
+            <div className="border-b border-ink/6 bg-canvas/40 px-3 py-1 font-mono text-[9.5px] text-ink/45">
+              … {truncatedOutput.skipped} earlier lines hidden
+            </div>
+          )}
           <div className="max-h-72 overflow-y-auto overscroll-contain p-3 font-mono text-[11px] leading-relaxed select-text">
-            {isCodeLike(output) ? (
+            {outputIsCode ? (
               <pre
                 className="overflow-x-auto whitespace-pre text-ink/85 leading-relaxed"
-                dangerouslySetInnerHTML={{
-                  __html: highlightCode(
-                    output,
-                    output.trim().startsWith('{') || output.trim().startsWith('[') ? 'json' : 'javascript',
-                  ),
-                }}
+                dangerouslySetInnerHTML={{ __html: highlightedOutput }}
               />
             ) : (
-              output.split('\n').map((line, idx) => {
+              truncatedOutput.text.split('\n').map((line, idx) => {
                 const isSuccessLine = line.includes('✓') || line.includes('built in') || line.includes('ready: 0 errors');
                 const isErrorLine = line.includes('Error:') || line.includes('error:') || line.includes('FAILED');
                 const isWarningLine = line.includes('warning:') || line.includes('warn:');

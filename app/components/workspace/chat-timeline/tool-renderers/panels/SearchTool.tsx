@@ -3,6 +3,7 @@ import { FileSearch, FolderSearch, FileText, Check, Copy, ChevronRight } from 'l
 import type { ToolCallData } from '@/types';
 import { copyToClipboard } from '@/hooks/ui/clipboard';
 import { highlightCode, getLanguageFromPath } from '@/lib/code/syntax-highlight';
+import { truncateTailLines, MAX_OUTPUT_LINES } from '@/components/workspace/chat-timeline/tool-renderers/shared/truncate';
 
 interface MatchLine {
   lineNum: number;
@@ -168,7 +169,8 @@ export function SearchTool({ tool }: { tool: ToolCallData }) {
   const query = queryOf(tool);
   const isGlob = tool.type === 'glob' || tool.name === 'glob';
 
-  const { files, totalMatches, isGlobList } = useMemo(() => parseGrepOutput(output), [output]);
+  const display = useMemo(() => truncateTailLines(output, MAX_OUTPUT_LINES), [output]);
+  const { files, totalMatches, isGlobList } = useMemo(() => parseGrepOutput(display.text), [display.text]);
 
   const filteredFiles = useMemo(() => {
     if (!filterText) return files;
@@ -185,6 +187,23 @@ export function SearchTool({ tool }: { tool: ToolCallData }) {
       })
       .filter((f): f is ParsedFileMatches => f !== null);
   }, [files, filterText]);
+
+  const highlightedLines = useMemo(() => {
+    const cache = new Map<string, string>();
+    for (const file of filteredFiles) {
+      const lang = getLanguageFromPath(file.path);
+      for (const line of file.lines) {
+        const key = `${lang}\u0000${line.text}`;
+        if (!cache.has(key)) {
+          cache.set(key, line.text ? highlightCode(line.text, lang) : '&nbsp;');
+        }
+      }
+    }
+    return cache;
+  }, [filteredFiles]);
+
+  const highlightLine = (path: string, text: string) =>
+    highlightedLines.get(`${getLanguageFromPath(path)}\u0000${text}`) ?? '&nbsp;';
 
   const handleCopyAll = async () => {
     if (!output) return;
@@ -252,6 +271,11 @@ export function SearchTool({ tool }: { tool: ToolCallData }) {
       </div>
 
       {/* Results Container */}
+      {display.skipped > 0 && (
+        <div className="rounded-lg border border-dashed border-ink/15 bg-canvas/50 px-3 py-1.5 font-mono text-[10.5px] text-ink/55">
+          … {display.skipped} earlier lines hidden
+        </div>
+      )}
       <div className="max-h-80 space-y-2 overflow-y-auto overscroll-contain pr-0.5">
         {filteredFiles.map((file, fileIdx) => (
           <div key={fileIdx} className="overflow-hidden rounded-lg border border-ink/8 bg-paper">
@@ -288,9 +312,7 @@ export function SearchTool({ tool }: { tool: ToolCallData }) {
                     </span>
                     <pre
                       className="min-w-0 flex-1 overflow-x-auto whitespace-pre font-mono"
-                      dangerouslySetInnerHTML={{
-                        __html: line.text ? highlightCode(line.text, getLanguageFromPath(file.path)) : '&nbsp;',
-                      }}
+                      dangerouslySetInnerHTML={{ __html: highlightLine(file.path, line.text) }}
                     />
                   </div>
                 ))}

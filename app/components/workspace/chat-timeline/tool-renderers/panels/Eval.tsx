@@ -3,6 +3,7 @@ import { Code2, Play, Check, Copy, AlertCircle, Clock, Ban } from 'lucide-react'
 import type { ToolCallData } from '@/types';
 import { copyToClipboard } from '@/hooks/ui/clipboard';
 import { tryParseJson, highlightJson } from '@/lib/code/syntax-highlight';
+import { truncateTailLines, MAX_OUTPUT_LINES } from '@/components/workspace/chat-timeline/tool-renderers/shared/truncate';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-javascript';
 import 'prismjs/components/prism-typescript';
@@ -47,6 +48,15 @@ export function Eval({ tool }: { tool: ToolCallData }) {
     () => (!isError && !isAborted ? tryParseJson(output) : { isValid: false }),
     [output, isError, isAborted]
   );
+
+  const truncatedCode = useMemo(() => truncateTailLines(code, MAX_OUTPUT_LINES), [code]);
+  const highlightedCode = useMemo(() => highlightJs(truncatedCode.text), [truncatedCode]);
+  const truncatedOutput = useMemo(() => truncateTailLines(output, MAX_OUTPUT_LINES), [output]);
+  const truncatedJson = useMemo(
+    () => (jsonResult.isValid && jsonResult.pretty ? truncateTailLines(jsonResult.pretty, MAX_OUTPUT_LINES) : null),
+    [jsonResult]
+  );
+  const highlightedJson = useMemo(() => (truncatedJson ? highlightJson(truncatedJson.text) : ''), [truncatedJson]);
 
   const handleCopyCode = async () => {
     if (!code) return;
@@ -99,15 +109,20 @@ export function Eval({ tool }: { tool: ToolCallData }) {
             </button>
           </div>
 
+          {truncatedCode.skipped > 0 && (
+            <div className="border-b border-ink/6 bg-canvas/40 px-3 py-1 font-mono text-[9.5px] text-ink/45">
+              … {truncatedCode.skipped} earlier lines hidden
+            </div>
+          )}
           <div className="flex max-h-56 items-start overflow-x-auto font-mono text-[11px] leading-relaxed select-text">
             <div className="sticky left-0 flex-shrink-0 select-none border-r border-ink/6 bg-canvas/50 py-2.5 pl-2.5 pr-2 text-right text-[10px] text-ink/25">
-              {code.split('\n').map((_, idx) => (
+              {truncatedCode.text.split('\n').map((_, idx) => (
                 <div key={idx}>{idx + 1}</div>
               ))}
             </div>
             <pre
               className="flex-1 overflow-x-auto p-2.5 whitespace-pre text-ink/85 font-mono"
-              dangerouslySetInnerHTML={{ __html: highlightJs(code) }}
+              dangerouslySetInnerHTML={{ __html: highlightedCode }}
             />
           </div>
         </div>
@@ -181,25 +196,39 @@ export function Eval({ tool }: { tool: ToolCallData }) {
           </div>
 
           {jsonResult.isValid && jsonResult.pretty ? (
-            <div className="flex max-h-56 items-start overflow-x-auto font-mono text-[11px] leading-relaxed select-text">
-              <div className="sticky left-0 flex-shrink-0 select-none border-r border-ink/6 bg-canvas/50 py-2 pl-2.5 pr-2 text-right text-[10px] text-ink/25">
-                {jsonResult.pretty.split('\n').map((_, idx) => (
-                  <div key={idx}>{idx + 1}</div>
-                ))}
+            <>
+              {truncatedJson && truncatedJson.skipped > 0 && (
+                <div className="border-b border-ink/6 bg-canvas/40 px-3 py-1 font-mono text-[9.5px] text-ink/45">
+                  … {truncatedJson.skipped} earlier lines hidden
+                </div>
+              )}
+              <div className="flex max-h-56 items-start overflow-x-auto font-mono text-[11px] leading-relaxed select-text">
+                <div className="sticky left-0 flex-shrink-0 select-none border-r border-ink/6 bg-canvas/50 py-2 pl-2.5 pr-2 text-right text-[10px] text-ink/25">
+                  {(truncatedJson ? truncatedJson.text : jsonResult.pretty).split('\n').map((_, idx) => (
+                    <div key={idx}>{idx + 1}</div>
+                  ))}
+                </div>
+                <pre
+                  className="flex-1 overflow-x-auto p-2.5 whitespace-pre text-ink/85 font-mono"
+                  dangerouslySetInnerHTML={{ __html: highlightedJson }}
+                />
               </div>
-              <pre
-                className="flex-1 overflow-x-auto p-2.5 whitespace-pre text-ink/85 font-mono"
-                dangerouslySetInnerHTML={{ __html: highlightJson(jsonResult.pretty) }}
-              />
-            </div>
+            </>
           ) : (
-            <pre
-              className={`max-h-48 overflow-y-auto p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-words select-text ${
-                isError ? 'text-error' : isAborted ? 'text-warning' : 'text-ink/80'
-              }`}
-            >
-              {output}
-            </pre>
+            <>
+              {truncatedOutput.skipped > 0 && (
+                <div className="border-b border-ink/6 bg-canvas/40 px-3 py-1 font-mono text-[9.5px] text-ink/45">
+                  … {truncatedOutput.skipped} earlier lines hidden
+                </div>
+              )}
+              <pre
+                className={`max-h-48 overflow-y-auto p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-words select-text ${
+                  isError ? 'text-error' : isAborted ? 'text-warning' : 'text-ink/80'
+                }`}
+              >
+                {truncatedOutput.text}
+              </pre>
+            </>
           )}
         </div>
       )}

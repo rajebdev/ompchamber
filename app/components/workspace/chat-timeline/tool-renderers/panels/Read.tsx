@@ -4,6 +4,7 @@ import { copyToClipboard } from '@/hooks/ui/clipboard';
 import { highlightCode, getLanguageFromPath } from '@/lib/code/syntax-highlight';
 import { parseDirListing, parseNumberedCode } from '@/lib/code/parser';
 import type { ToolCallData } from '@/types/chat';
+import { truncateTailLines, MAX_OUTPUT_LINES } from '@/components/workspace/chat-timeline/tool-renderers/shared/truncate';
 
 interface ReadPanelProps {
   tool?: ToolCallData;
@@ -195,10 +196,16 @@ export function Read({ tool, targetFilePath, output }: ReadPanelProps) {
   const isDir = dirInfo.isDirectory;
   const lang = getLanguageFromPath(filePath);
 
+  const visibleEntries = dirInfo.entries.slice(-MAX_OUTPUT_LINES);
+  const skippedEntries = dirInfo.entries.length - visibleEntries.length;
+
+  const truncatedCode = useMemo(() => truncateTailLines(parsedCode.cleanCode, MAX_OUTPUT_LINES), [parsedCode.cleanCode]);
+  const visibleLines = truncatedCode.skipped > 0 ? parsedCode.lines.slice(truncatedCode.skipped) : parsedCode.lines;
+
   const highlightedCode = useMemo(() => {
-    if (!parsedCode.cleanCode) return '';
-    return highlightCode(parsedCode.cleanCode, lang);
-  }, [parsedCode.cleanCode, lang]);
+    if (!truncatedCode.text) return '';
+    return highlightCode(truncatedCode.text, lang);
+  }, [truncatedCode, lang]);
 
   const handleCopy = async () => {
     const textToCopy = parsedCode.hasLineNumbers ? parsedCode.cleanCode : (rawContent || '');
@@ -246,8 +253,14 @@ export function Read({ tool, targetFilePath, output }: ReadPanelProps) {
       ) : isDir ? (
         /* Render Directory Listing */
         <div className="overflow-hidden rounded-lg border border-ink/8 bg-paper">
+          {skippedEntries > 0 && (
+            <div className="flex items-center gap-1.5 border-b border-ink/8 bg-canvas/60 px-3 py-1.5 text-[10px] text-ink/50">
+              <Info size={11} className="shrink-0" />
+              <span>… {skippedEntries} earlier entries hidden</span>
+            </div>
+          )}
           <div className="max-h-72 divide-y divide-ink/[0.04] overflow-y-auto font-mono text-[11px]">
-            {dirInfo.entries.map((entry, idx) => (
+            {visibleEntries.map((entry, idx) => (
               <div
                 key={idx}
                 className="flex items-center gap-2 px-3 py-1.5 transition-colors hover:bg-ink/[0.02]"
@@ -285,13 +298,19 @@ export function Read({ tool, targetFilePath, output }: ReadPanelProps) {
       ) : rawContent ? (
         /* Render Code Content with synchronized, straight line numbers and clean code */
         <div className="space-y-1.5">
+          {truncatedCode.skipped > 0 && (
+            <div className="flex items-center gap-2 rounded-lg border border-dashed border-ink/15 bg-canvas/50 px-3 py-1.5 font-mono text-[10.5px] text-ink/55">
+              <Info size={12} className="shrink-0 text-ink/40" />
+              <span>… {truncatedCode.skipped} earlier lines hidden</span>
+            </div>
+          )}
           <div className="relative flex max-h-80 items-start overflow-auto rounded-lg border border-ink/8 bg-paper font-mono text-[11px] leading-[20px] select-text overscroll-contain">
             {/* Gutter: Line numbers */}
             <div
               className="sticky left-0 z-10 flex-shrink-0 select-none border-r border-ink/8 bg-canvas/90 py-2.5 pl-3 pr-2.5 text-right font-mono text-[11px] leading-[20px] tabular-nums text-ink/35 backdrop-blur-xs"
               aria-hidden="true"
             >
-              {parsedCode.lines.map((line, idx) => (
+              {visibleLines.map((line, idx) => (
                 <div key={idx} className="h-[20px] leading-[20px]">
                   {line.lineNum}
                 </div>

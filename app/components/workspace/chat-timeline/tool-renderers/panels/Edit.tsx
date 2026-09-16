@@ -4,6 +4,7 @@ import type { ToolCallData } from '@/types';
 import { copyToClipboard } from '@/hooks/ui/clipboard';
 import { DiffView } from '@/components/workspace/chat-timeline/tool-renderers/shared/DiffView';
 import { highlightCode, getLanguageFromPath, isCodeLike } from '@/lib/code/syntax-highlight';
+import { truncateTailLines, MAX_OUTPUT_LINES } from '@/components/workspace/chat-timeline/tool-renderers/shared/truncate';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -135,6 +136,21 @@ export function Edit({ tool }: { tool: ToolCallData }) {
   const output = tool.output || '';
   const lang = getLanguageFromPath(targetPath);
 
+  const truncatedOld = useMemo(() => (oldString ? truncateTailLines(oldString, MAX_OUTPUT_LINES) : null), [oldString]);
+  const truncatedNew = useMemo(() => (newString ? truncateTailLines(newString, MAX_OUTPUT_LINES) : null), [newString]);
+  const highlightedOld = useMemo(() => (truncatedOld ? highlightCode(truncatedOld.text, lang) : ''), [truncatedOld, lang]);
+  const highlightedNew = useMemo(() => (truncatedNew ? highlightCode(truncatedNew.text, lang) : ''), [truncatedNew, lang]);
+  const previewLineCount = useMemo(() => (newContent ? newContent.split('\n').length : 0), [newContent]);
+  const highlightedPreview = useMemo(
+    () => (newContent ? highlightCode(newContent.split('\n').slice(0, 80).join('\n'), lang) : ''),
+    [newContent, lang]
+  );
+  const truncatedOutput = useMemo(() => truncateTailLines(output, MAX_OUTPUT_LINES), [output]);
+  const highlightedOutput = useMemo(
+    () => (isCodeLike(output) ? highlightCode(truncatedOutput.text, lang) : ''),
+    [output, truncatedOutput, lang]
+  );
+
   const handleCopy = async () => {
     const textToCopy = newContent || newString || output;
     if (!textToCopy) return;
@@ -191,9 +207,12 @@ export function Edit({ tool }: { tool: ToolCallData }) {
                 <div className="mb-1 flex items-center gap-1 text-[9.5px] font-semibold uppercase tracking-wider text-error">
                   <span>- Original Content</span>
                 </div>
+                {truncatedOld && truncatedOld.skipped > 0 && (
+                  <div className="mb-1 font-mono text-[9.5px] text-ink/45">… {truncatedOld.skipped} earlier lines hidden</div>
+                )}
                 <pre
                   className="max-h-40 overflow-x-auto font-mono text-[11px] leading-relaxed text-error/90 whitespace-pre-wrap break-words"
-                  dangerouslySetInnerHTML={{ __html: highlightCode(oldString, lang) }}
+                  dangerouslySetInnerHTML={{ __html: highlightedOld }}
                 />
               </div>
             )}
@@ -202,9 +221,12 @@ export function Edit({ tool }: { tool: ToolCallData }) {
                 <div className="mb-1 flex items-center gap-1 text-[9.5px] font-semibold uppercase tracking-wider text-success">
                   <span>+ Replaced With</span>
                 </div>
+                {truncatedNew && truncatedNew.skipped > 0 && (
+                  <div className="mb-1 font-mono text-[9.5px] text-ink/45">… {truncatedNew.skipped} earlier lines hidden</div>
+                )}
                 <pre
                   className="max-h-48 overflow-x-auto font-mono text-[11px] leading-relaxed text-success/90 whitespace-pre-wrap break-words"
-                  dangerouslySetInnerHTML={{ __html: highlightCode(newString, lang) }}
+                  dangerouslySetInnerHTML={{ __html: highlightedNew }}
                 />
               </div>
             )}
@@ -221,21 +243,19 @@ export function Edit({ tool }: { tool: ToolCallData }) {
               <span>Written File Preview</span>
             </span>
             <span className="font-mono text-[9px] text-ink/50">
-              {newContent.split('\n').length} lines · {formatBytes(newContent.length)}
+              {previewLineCount} lines · {formatBytes(newContent.length)}
             </span>
           </div>
           <div className="flex max-h-64 items-start overflow-x-auto rounded-lg border border-ink/8 bg-paper font-mono text-[11px] leading-relaxed select-text">
             <div className="sticky left-0 flex-shrink-0 select-none border-r border-ink/8 bg-canvas/60 py-2.5 pl-2.5 pr-2 text-right text-[10px] leading-relaxed text-ink/25">
-              {newContent.split('\n').slice(0, 80).map((_, idx) => (
+              {Array.from({ length: Math.min(previewLineCount, 80) }, (_, idx) => (
                 <div key={idx}>{idx + 1}</div>
               ))}
-              {newContent.split('\n').length > 80 && <div>...</div>}
+              {previewLineCount > 80 && <div>...</div>}
             </div>
             <div
               className="flex-1 overflow-x-auto p-2.5 whitespace-pre text-ink/85"
-              dangerouslySetInnerHTML={{
-                __html: highlightCode(newContent.split('\n').slice(0, 80).join('\n'), lang),
-              }}
+              dangerouslySetInnerHTML={{ __html: highlightedPreview }}
             />
           </div>
         </div>
@@ -249,14 +269,17 @@ export function Edit({ tool }: { tool: ToolCallData }) {
             <span>Execution Output</span>
           </div>
           {isCodeLike(output) ? (
-            <pre
-              className="max-h-56 overflow-auto rounded bg-canvas/40 p-2 text-ink/85 whitespace-pre leading-relaxed scrollbar-overlay-container scrollbar-overlay-static"
-              dangerouslySetInnerHTML={{
-                __html: highlightCode(output, lang),
-              }}
-            />
+            <>
+              {truncatedOutput.skipped > 0 && (
+                <div className="mb-1 font-mono text-[9.5px] text-ink/45">… {truncatedOutput.skipped} earlier lines hidden</div>
+              )}
+              <pre
+                className="max-h-56 overflow-auto rounded bg-canvas/40 p-2 text-ink/85 whitespace-pre leading-relaxed scrollbar-overlay-container scrollbar-overlay-static"
+                dangerouslySetInnerHTML={{ __html: highlightedOutput }}
+              />
+            </>
           ) : (
-            <div className="text-ink/75 leading-relaxed whitespace-pre-wrap">{output}</div>
+            <div className="text-ink/75 leading-relaxed whitespace-pre-wrap">{truncatedOutput.text}</div>
           )}
         </div>
       )}

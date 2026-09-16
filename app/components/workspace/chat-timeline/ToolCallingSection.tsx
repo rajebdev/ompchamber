@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import type { ToolCallData, AgentActionData, ToolType } from '@/types';
 import { isSkippedTool } from '@/lib/chat/tool-status';
 import { ToolCallCard } from '@/components/workspace/chat-timeline/ToolCallCard';
@@ -63,14 +63,15 @@ export function ToolCallingSection({ tools, title, defaultExpanded = false }: To
     return initial;
   });
 
-  if (!normalizedTools || normalizedTools.length === 0) return null;
-
-  const toggleTool = (toolId: string) => {
+  // Stable identity so memoized ToolCallCard rows skip re-rendering while streaming.
+  const toggleTool = useCallback((toolId: string) => {
     setOpenMap(prev => ({
       ...prev,
       [toolId]: !prev[toolId]
     }));
-  };
+  }, []);
+
+  if (!normalizedTools || normalizedTools.length === 0) return null;
 
   return (
     <div className="mx-3 space-y-1.5">
@@ -87,7 +88,7 @@ export function ToolCallingSection({ tools, title, defaultExpanded = false }: To
           key={tool.id}
           tool={tool}
           isOpen={Boolean(openMap[tool.id])}
-          onToggle={() => toggleTool(tool.id)}
+          onToggle={toggleTool}
         />
       ))}
     </div>

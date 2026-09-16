@@ -1,4 +1,4 @@
-import { useState, useMemo, type MouseEvent } from 'react';
+import { useState, useMemo, useCallback, memo, type MouseEvent } from 'react';
 import {
   Terminal,
   FileCode,
@@ -37,7 +37,7 @@ import { getTodoSummary } from '@/lib/chat/todo-parser';
 interface ToolCallCardProps {
   tool: ToolCallData;
   isOpen?: boolean;
-  onToggle?: () => void;
+  onToggle?: (toolId: string) => void;
   defaultExpanded?: boolean;
 }
 
@@ -160,12 +160,18 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   );
 }
 
-export function ToolCallCard({ tool, isOpen, onToggle, defaultExpanded = false }: ToolCallCardProps) {
+export const ToolCallCard = memo(function ToolCallCard({ tool, isOpen, onToggle, defaultExpanded = false }: ToolCallCardProps) {
   const toolKey = resolveToolKey(tool);
-  const hasPanel = hasToolDetailsPanel(tool);
+  // hasToolDetailsPanel invokes the renderer once as a plain probe — cache it per tool identity
+  // so the probe does not re-run on every timeline re-render.
+  const hasPanel = useMemo(() => hasToolDetailsPanel(tool), [tool]);
   const commandOrInput = commandOrInputOf(tool);
   const outputText = tool.output || (tool.error ? `Error: ${tool.error}` : '');
   const diffText = diffTextOf(tool);
+
+  const handleToggle = useCallback(() => {
+    onToggle?.(tool.id);
+  }, [onToggle, tool.id]);
 
   const inputJson = useMemo(
     () => (!hasPanel && commandOrInput ? tryParseJson(commandOrInput) : null),
@@ -247,7 +253,7 @@ export function ToolCallCard({ tool, isOpen, onToggle, defaultExpanded = false }
       subtitle={subtitle}
       meta={meta}
       isOpen={isOpen}
-      onToggle={onToggle}
+      onToggle={onToggle ? handleToggle : undefined}
       defaultExpanded={defaultExpanded}
       alwaysExpanded={toolKey === 'yield' && hasPanel}
     >
@@ -295,4 +301,4 @@ export function ToolCallCard({ tool, isOpen, onToggle, defaultExpanded = false }
       )}
     </ToolCardShell>
   );
-}
+});

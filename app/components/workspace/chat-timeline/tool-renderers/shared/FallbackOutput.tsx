@@ -6,6 +6,7 @@ import { copyToClipboard } from '@/hooks/ui/clipboard';
 import { detectOutputFormat } from '@/lib/chat/detect-format';
 import { tryParseJson, highlightCode } from '@/lib/code/syntax-highlight';
 import { JsonCodeBlock } from '@/components/workspace/chat-timeline/tool-renderers/shared/JsonCodeBlock';
+import { truncateTailLines, MAX_OUTPUT_LINES } from '@/components/workspace/chat-timeline/tool-renderers/shared/truncate';
 
 interface FallbackOutputProps {
   /** Teks output mentah dari tool result. */
@@ -23,6 +24,17 @@ export function FallbackOutput({ text }: FallbackOutputProps) {
     return text.split(/\r?\n/).length;
   }, [jsonResult, text]);
 
+  const display = useMemo(() => {
+    const source = format === 'json' && jsonResult?.isValid && jsonResult.pretty ? jsonResult.pretty : text;
+    return truncateTailLines(source, MAX_OUTPUT_LINES);
+  }, [format, jsonResult, text]);
+
+  const isPlainText = format !== 'markdown' && format !== 'json' && format !== 'html';
+  const highlightedText = useMemo(
+    () => (isPlainText ? highlightCode(display.text, 'javascript') : ''),
+    [isPlainText, display]
+  );
+
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
     const textToCopy = jsonResult?.isValid && jsonResult.pretty ? jsonResult.pretty : text;
@@ -37,20 +49,19 @@ export function FallbackOutput({ text }: FallbackOutputProps) {
   if (format === 'markdown') {
     body = (
       <div className="prose-content max-h-72 overflow-auto rounded-lg border border-ink/8 bg-paper px-3 py-2.5 text-[12px] leading-relaxed text-ink/85 select-text">
-        <MarkdownRenderer content={text} />
+        <MarkdownRenderer content={display.text} />
       </div>
     );
   } else if (format === 'json') {
-    const prettyJson = jsonResult?.isValid && jsonResult.pretty ? jsonResult.pretty : text;
     body = (
       <JsonCodeBlock
-        jsonString={prettyJson}
+        jsonString={display.text}
         maxHeightClass="max-h-72"
         showHeader={false}
       />
     );
   } else if (format === 'html') {
-    const sanitized = sanitizeHtml(text);
+    const sanitized = sanitizeHtml(display.text);
     body = (
       <div
         className="max-h-72 overflow-auto rounded-lg border border-ink/8 bg-paper px-3 py-2.5 text-[12px] leading-relaxed text-ink/85 select-text"
@@ -61,7 +72,7 @@ export function FallbackOutput({ text }: FallbackOutputProps) {
     body = (
       <pre
         className="max-h-72 overflow-auto rounded-lg border border-ink/8 bg-paper px-3 py-2.5 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-words text-ink/80 select-text"
-        dangerouslySetInnerHTML={{ __html: highlightCode(text, 'javascript') }}
+        dangerouslySetInnerHTML={{ __html: highlightedText }}
       />
     );
   }
@@ -90,6 +101,9 @@ export function FallbackOutput({ text }: FallbackOutputProps) {
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
+      {display.skipped > 0 && (
+        <div className="font-mono text-[10px] text-ink/45">… {display.skipped} earlier lines hidden</div>
+      )}
       {body}
     </div>
   );
