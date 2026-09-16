@@ -9,6 +9,10 @@ import type { MetaFunction, LoaderFunctionArgs } from '@remix-run/node';
 import { useLoaderData, useSearchParams } from '@remix-run/react';
 import { getDb } from '@/db.server';
 import { isMockMode } from '@/mock.server';
+import { sortFolders, isValidSessionSortOption } from '@/lib/workspace/sidebar-sort';
+import { loadOmpSidebarData } from '@/lib/omp/session/reader';
+import { siblingDirForSession } from '@/lib/omp/subagent/history/paths';
+import { extractSubagentHistory } from '@/lib/omp/subagent/history';
 import { DesktopLayout } from '@/components/layout/desktop-layout/index';
 import { MobileLayoutWrapper } from '@/components/mobile/LayoutWrapper';
 import { SessionStateProvider } from '@/components/common/session-state-provider';
@@ -96,7 +100,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
   // Sidebar ordering is a server concern: the loader applies the persisted
   // preference so the SSR HTML already matches the client's render. Shipping
   // one order and re-sorting in the browser is what read as a flicker on load.
-  const { sortFolders, isValidSessionSortOption } = await import('@/lib/workspace/sidebar-sort');
   const sidebarSort = isValidSessionSortOption(appSettings.omp_sidebar_sort)
     ? appSettings.omp_sidebar_sort
     : 'A-Z';
@@ -116,14 +119,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
  * no omp sessions (a local/empty workspace).
  */
 async function buildRealFolders(folderRows: any[], archivedIds: Set<string>): Promise<WorkspaceFolderData[]> {
-  const { loadOmpSidebarData } = await import('@/lib/omp/session/reader');
   const { sessionTitleFor, groupSessionsByRoot } = await import('@/lib/omp/session/sidebar');
 
   const data = await loadOmpSidebarData();
   const sessionsByRoot = groupSessionsByRoot(data.sessions);
   const { existsSync, readdirSync } = await import('fs');
-  const { siblingDirForSession } = await import('@/lib/omp/subagent/history/paths');
-  const { extractSubagentHistory } = await import('@/lib/omp/subagent/history');
 
   return folderRows.map((folder: any) => {
     const root = (folder.project_path as string | null) ?? '';

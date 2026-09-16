@@ -4,6 +4,8 @@ import { computeSessionContextTelemetry, emptyTelemetry } from '@/data/context-d
 import { getSessionData } from '@/data/mock/chat';
 import { getDb } from '@/db.server';
 import { isMockMode } from '@/mock.server';
+import { findSessionFileById } from '@/lib/omp/session/locator';
+import { computeRealSessionTelemetry } from '@/lib/omp/session/telemetry';
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
@@ -27,8 +29,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const db = await getDb();
     if (sessionId) {
       // JSONL-first: omp sessions live on disk, so the raw panel shows full entries.
-      const { findSessionFileById } = await import('@/lib/omp/session/locator');
-      const { computeRealSessionTelemetry } = await import('@/lib/omp/session/telemetry');
       const filePath = findSessionFileById(sessionId);
       if (filePath) {
         const telemetry = computeRealSessionTelemetry(filePath, sessionId);

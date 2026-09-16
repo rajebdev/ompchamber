@@ -4,6 +4,10 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import { isMockMode } from '@/mock.server';
+import { getSampleToolsSession, SAMPLE_TOOLS_SESSION_ID } from '@/data/samples/tools-session';
+import { getSampleDialogueSession, SAMPLE_DIALOGUE_SESSION_ID } from '@/data/samples/dialogue-session';
+import { getSampleDevicesSession, SAMPLE_DEVICES_SESSION_ID } from '@/data/samples/virtual-devices-session';
+import { loadOmpSidebarData } from '@/lib/omp/session/reader';
 
 let dbPromise: Promise<Database> | null = null;
 
@@ -164,17 +168,14 @@ export async function getDb(): Promise<Database> {
 
       // Pre-seed sample sessions data
       try {
-        const { getSampleToolsSession, SAMPLE_TOOLS_SESSION_ID } = await import('@/data/samples/tools-session');
         const s1 = getSampleToolsSession();
         await db.run('INSERT OR REPLACE INTO chat_sessions (session_id, title, messages, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)', ['1', s1.title, JSON.stringify(s1.messages)]);
         await db.run('INSERT OR REPLACE INTO chat_sessions (session_id, title, messages, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)', [SAMPLE_TOOLS_SESSION_ID, s1.title, JSON.stringify(s1.messages)]);
 
-        const { getSampleDialogueSession, SAMPLE_DIALOGUE_SESSION_ID } = await import('@/data/samples/dialogue-session');
         const s2 = getSampleDialogueSession();
         await db.run('INSERT OR REPLACE INTO chat_sessions (session_id, title, messages, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)', ['2', s2.title, JSON.stringify(s2.messages)]);
         await db.run('INSERT OR REPLACE INTO chat_sessions (session_id, title, messages, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)', [SAMPLE_DIALOGUE_SESSION_ID, s2.title, JSON.stringify(s2.messages)]);
 
-        const { getSampleDevicesSession, SAMPLE_DEVICES_SESSION_ID } = await import('@/data/samples/virtual-devices-session');
         const s3 = getSampleDevicesSession();
         await db.run('INSERT OR REPLACE INTO chat_sessions (session_id, title, messages, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)', ['3', s3.title, JSON.stringify(s3.messages)]);
         await db.run('INSERT OR REPLACE INTO chat_sessions (session_id, title, messages, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)', [SAMPLE_DEVICES_SESSION_ID, s3.title, JSON.stringify(s3.messages)]);
@@ -291,12 +292,10 @@ export async function getDb(): Promise<Database> {
  * `deleted_workspaces`), so a deleted workspace stays deleted.
  */
 async function syncWorkspaceFoldersWithOmp(db: Database): Promise<void> {
-  const { loadOmpSidebarData } = await import('@/lib/omp/session/reader');
   const { orderedOmpProjects, projectDisplayName } = await import('@/lib/omp/session/sidebar');
 
   const data = await loadOmpSidebarData();
-  const existing = await db.all('SELECT id, name, project_path FROM workspace_folders');
-  const tombstoned = await db.all('SELECT project_path FROM deleted_workspaces');
+  const existing = await db.all('SELECT id, name, project_path FROM workspace_folders');  const tombstoned = await db.all('SELECT project_path FROM deleted_workspaces');
 
   const byPath = new Set(existing.map((r) => r.project_path).filter(Boolean));
   const usedNames = new Set(existing.map((r) => (r.name as string).toLowerCase()));
