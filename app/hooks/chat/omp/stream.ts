@@ -25,6 +25,8 @@ export interface OmpStreamRefs {
   toolResultsRef: RefObject<Map<string, ToolResultRecord>>;
   lastToolMessageRef: RefObject<ChatMessageData | null>;
   interruptPendingRef: RefObject<boolean>;
+  /** Last activity phrase published to the indicator (repeat suppression). */
+  activityRef: RefObject<string>;
 }
 
 interface UseOmpAgentStreamOptions extends OmpStreamRefs {
@@ -44,6 +46,7 @@ export function useOmpAgentStream({
   toolResultsRef,
   lastToolMessageRef,
   interruptPendingRef,
+  activityRef,
   transport,
 }: UseOmpAgentStreamOptions) {
   const connectionRef = useRef<AgentStreamConnection | null>(null);
@@ -80,6 +83,7 @@ export function useOmpAgentStream({
           toolResultsRef,
           lastToolMessageRef,
           interruptPendingRef,
+          activityRef,
         });
       },
       onClose: () => {
@@ -88,7 +92,7 @@ export function useOmpAgentStream({
       },
     };
     connectionRef.current = CONNECTORS[transport](sid, handlers);
-  }, [disconnect, setState, callbacksRef, toolResultsRef, lastToolMessageRef, interruptPendingRef, transport]);
+  }, [disconnect, setState, callbacksRef, toolResultsRef, lastToolMessageRef, interruptPendingRef, activityRef, transport]);
 
   return { connect, disconnect };
 }

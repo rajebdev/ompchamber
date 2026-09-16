@@ -38,6 +38,9 @@ export interface OmpAgentCallbacks {
   /** omp applied a model change (set_model). The frame carries no payload, so
    *  consumers should re-read session metadata to refresh the displayed model. */
   onModelChanged?: () => void;
+  /** Live activity phrase for the generating indicator ("Editing app/x.ts"),
+   *  derived from the tool call or assistant phase the stream is on. */
+  onActivity?: (verb: string) => void;
 }
 
 export interface OmpAgentState {

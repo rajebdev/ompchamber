@@ -16,12 +16,15 @@ import type { ChatMessageData } from '@/types';
 import type { StreamChunkCallbacks } from '@/hooks/chat/stream';
 import { triggerChatCompletionSound } from '@/hooks/ui/notification-sound';
 import { createRafBatch } from '@/lib/chat/timeline/stream-raf';
+import { PHASE_VERBS, describeToolCall } from '@/lib/chat/timeline/tool-verbs';
 
 export interface MockStreamCallbacksDeps {
   aiPlaceholderId: string;
   setLocalMessages: Dispatch<SetStateAction<ChatMessageData[]>>;
   persistMessages: (messages: any[]) => void;
   setGenerating: (v: boolean) => void;
+  /** Live activity phrase for the indicator (tool call / phase). */
+  setGeneratingVerb: (v: string) => void;
   abortControllerRef: { current: AbortController | null };
   appSettings: Record<string, any>;
   /** Follow-gated stream scroll: no-ops while the user has scrolled away. */
@@ -34,6 +37,7 @@ export function createMockStreamCallbacks(deps: MockStreamCallbacksDeps): Stream
     setLocalMessages,
     persistMessages,
     setGenerating,
+    setGeneratingVerb,
     abortControllerRef,
     appSettings,
     scrollToBottom,
@@ -63,6 +67,7 @@ export function createMockStreamCallbacks(deps: MockStreamCallbacksDeps): Stream
       );
     },
     onThinkingStart: () => {
+      setGeneratingVerb(PHASE_VERBS.thinking);
       enqueue(prev =>
         prev.map(m =>
           m.id === aiPlaceholderId || m.role === 'ai'
@@ -105,6 +110,7 @@ export function createMockStreamCallbacks(deps: MockStreamCallbacksDeps): Stream
       );
     },
     onToolStart: (data) => {
+      setGeneratingVerb(describeToolCall(data));
       enqueue(prev =>
         prev.map(m => {
           if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {
@@ -134,6 +140,7 @@ export function createMockStreamCallbacks(deps: MockStreamCallbacksDeps): Stream
       );
     },
     onToolEnd: (data) => {
+      setGeneratingVerb(PHASE_VERBS.processing);
       enqueue(prev =>
         prev.map(m => {
           if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {
@@ -147,6 +154,7 @@ export function createMockStreamCallbacks(deps: MockStreamCallbacksDeps): Stream
       );
     },
     onContentChunk: (data) => {
+      setGeneratingVerb(PHASE_VERBS.writing);
       enqueue(prev =>
         prev.map(m => {
           if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {

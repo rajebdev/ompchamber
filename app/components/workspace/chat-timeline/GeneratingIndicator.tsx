@@ -8,9 +8,9 @@ interface GeneratingIndicatorProps {
 
 const COOL_VERBS = [
   'Synthesizing solution',
-  'Deep reasoning',
-  'Architecting patch',
   'Evaluating context',
+  'Reading workspace',
+  'Planning next step',
   'Executing diagnostics',
   'Compiling edge routes'
 ];
@@ -34,7 +34,7 @@ export function GeneratingIndicator({ modelName, generatingVerb }: GeneratingInd
   return (
     <div 
       id="generating-docked-indicator"
-      className="w-full flex items-center justify-between px-1 py-1 bg-transparent border-0 border-none text-[11px] font-mono select-none animate-in fade-in duration-200"
+      className="w-full flex items-center px-1 py-1 bg-transparent border-0 border-none text-[11px] font-mono select-none animate-in fade-in duration-200"
     >
       <style>{`
         @keyframes bounce-dot {
@@ -80,13 +80,6 @@ export function GeneratingIndicator({ modelName, generatingVerb }: GeneratingInd
             </span>
           </span>
         </div>
-      </div>
-
-      {/* Right status label */}
-      <div className="flex items-center space-x-2 shrink-0">
-        <span className="text-[10px] text-ink/40 font-mono italic hidden sm:inline">
-          active stream
-        </span>
       </div>
     </div>
   );

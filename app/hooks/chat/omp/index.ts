@@ -35,6 +35,9 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
   // events arriving after message_end can re-emit it with the result paired.
   const lastToolMessageRef = useRef<ChatMessageData | null>(null);
   const interruptPendingRef = useRef(false);
+  // Last phrase handed to the indicator; the fold compares against it so
+  // per-token frames cannot spam state updates with the same string.
+  const activityRef = useRef('');
 
   const { connect, disconnect } = useOmpAgentStream({
     setState,
@@ -42,6 +45,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     toolResultsRef,
     lastToolMessageRef,
     interruptPendingRef,
+    activityRef,
     transport,
   });
 
@@ -52,6 +56,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     // a resumed session's reattach below.
     toolResultsRef.current.clear();
     lastToolMessageRef.current = null;
+    activityRef.current = '';
     // Do NOT auto-connect here: the stream endpoint refuses (409) until the
     // session's omp process is spawned (POST /api/agent/:id), and a client
     // dialing a refused endpoint loops network errors in the console.

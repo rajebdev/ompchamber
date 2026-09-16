@@ -16,6 +16,11 @@
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import type { ChatMessageData, ToolCallData, IncomingExtensionUiRequest, OmpAgentCallbacks, OmpAgentEvent, OmpAgentState } from '@/types';
 import { extractTextFromContent, toolResultText, toChatMessage } from '@/lib/omp/session/mapper';
+import {
+  PHASE_VERBS,
+  describeAssistantPhase,
+  describeToolActivity,
+} from '@/lib/chat/timeline/tool-verbs';
 
 /** Tool output accumulated between a `toolCall` block and its result frame. */
 export interface ToolResultRecord {
@@ -56,6 +61,17 @@ export interface OmpAgentFoldDeps {
   toolResultsRef: RefObject<Map<string, ToolResultRecord>>;
   lastToolMessageRef: RefObject<ChatMessageData | null>;
   interruptPendingRef: RefObject<boolean>;
+  /** Last activity phrase published to the indicator; guards per-token frames
+   *  from re-setting identical state. */
+  activityRef: RefObject<string>;
+}
+
+/** Publish a new indicator phrase, skipping repeats (thinking/text deltas
+ *  arrive per token and would otherwise re-set state on every frame). */
+function setActivity(verb: string | undefined, deps: OmpAgentFoldDeps): void {
+  if (!verb || verb === deps.activityRef.current) return;
+  deps.activityRef.current = verb;
+  deps.callbacksRef.current?.onActivity?.(verb);
 }
 
 /** Re-emit the last tool-carrying assistant message with its results paired. */
@@ -137,6 +153,7 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       deps.toolResultsRef.current?.clear();
       deps.lastToolMessageRef.current = null;
       deps.interruptPendingRef.current = false;
+      setActivity(PHASE_VERBS.thinking, deps);
       callbacks?.onAgentStart?.();
       break;
 
@@ -146,8 +163,12 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       if (!msg) break;
       if (msg.role === 'toolResult') {
         recordToolResult(msg, deps);
+        setActivity(PHASE_VERBS.processing, deps);
         break;
       }
+      // Assistant phases (thinking / prose / tool-call assembly) name the
+      // action directly — a tool that never starts still shows its phrase.
+      setActivity(describeAssistantPhase(data.assistantMessageEvent), deps);
       // Steering (abort_and_prompt) and follow-up deliveries create no
       // optimistic bubble — the user turn only exists on the stream. Convert
       // it here so the bubble renders live instead of after a JSONL reload.
@@ -181,6 +202,11 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
 
     case 'tool_execution_start': {
       const callId = typeof data.toolCallId === 'string' ? data.toolCallId : undefined;
+      setActivity(describeToolActivity({
+        name: typeof data.toolName === 'string' ? data.toolName : undefined,
+        args: data.args,
+        intent: typeof data.intent === 'string' ? data.intent : undefined,
+      }), deps);
       if (callId) deps.toolResultsRef.current?.set(callId, { output: '' });
       const last = deps.lastToolMessageRef.current;
       if (last?.toolCalls?.some(tc => tc.id === callId)) {
@@ -207,6 +233,7 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
     case 'tool_execution_end': {
       const callId = typeof data.toolCallId === 'string' ? data.toolCallId : undefined;
       if (!callId) break;
+      setActivity(PHASE_VERBS.processing, deps);
       const map = deps.toolResultsRef.current;
       if (map) storeToolResult(map, callId, {
         output: toolResultText(data.result),
@@ -219,6 +246,7 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
 
     case 'agent_end': {
       deps.setState((prev) => ({ ...prev, isGenerating: false }));
+      deps.activityRef.current = '';
       const terminal = materializeTerminalMessages(data, deps, callbacks);
       if (deps.interruptPendingRef.current) {
         deps.interruptPendingRef.current = false;
@@ -236,6 +264,7 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       const errorMessage = typeof data.errorMessage === 'string' ? data.errorMessage : 'Prompt failed';
       deps.setState((prev) => ({ ...prev, isGenerating: false, error: errorMessage }));
       deps.interruptPendingRef.current = false;
+      deps.activityRef.current = '';
       callbacks?.onPromptError?.(errorMessage);
       break;
     }

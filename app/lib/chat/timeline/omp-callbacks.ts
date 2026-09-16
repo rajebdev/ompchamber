@@ -17,6 +17,7 @@ import type { ChatMessageData, ExtensionUiDialogRequest, IncomingExtensionUiRequ
 import { normalizeNoticePositions } from '@/lib/chat/order';
 import { triggerChatCompletionSound } from '@/hooks/ui/notification-sound';
 import { createRafBatch } from '@/lib/chat/timeline/stream-raf';
+import { PHASE_VERBS } from '@/lib/chat/timeline/tool-verbs';
 
 // omp emits one message_update per model chunk, each carrying that message's
 // FULL accumulated content, so a burst only needs the newest payload per
@@ -93,7 +94,7 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
     },
     onAgentStart: () => {
       setGenerating(true);
-      setGeneratingVerb('Deep reasoning');
+      setGeneratingVerb(PHASE_VERBS.thinking);
       setTimeout(() => scrollToBottom('smooth'), 50);
       const sid = adoptedSessionIdRef.current ?? sessionIdRef.current;
       if (sid && metaRefreshedRef.current !== sid) {
@@ -106,8 +107,13 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
     // fetch already loaded the committed messages; live updates continue).
     onResumeStream: () => {
       setGenerating(true);
-      setGeneratingVerb('Deep reasoning');
+      setGeneratingVerb(PHASE_VERBS.thinking);
       setTimeout(() => scrollToBottom('smooth'), 50);
+    },
+    // The stream names what the agent is doing right now (tool call or
+    // assistant phase), so the indicator stops guessing.
+    onActivity: (verb) => {
+      setGeneratingVerb(verb);
     },
     // omp-web mirrors this exactly: streaming updates live in a SEPARATE
     // slot that is replaced wholesale on every update (never merged into the

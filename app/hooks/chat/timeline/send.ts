@@ -20,6 +20,7 @@ import { loadAgentNames } from '@/lib/chat/composer/client';
 import { translateAgentMentions, translateFileMentions } from '@/lib/chat/composer/translate';
 import { normalizeNoticePositions } from '@/lib/chat/order';
 import { createMockStreamCallbacks } from '@/lib/chat/timeline/stream-callbacks';
+import { PHASE_VERBS } from '@/lib/chat/timeline/tool-verbs';
 
 type TextFileAttachment = Parameters<typeof composeMessageWithTextAttachments>[1][number];
 
@@ -217,8 +218,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
     });
 
     setGenerating(true);
-    const verbs = ['Synthesizing solution', 'Deep reasoning', 'Architecting patch', 'Compiling edge routes'];
-    setGeneratingVerb(verbs[Math.floor(Math.random() * verbs.length)]);
+    setGeneratingVerb(PHASE_VERBS.thinking);
     // An explicit send is user intent to watch the answer: re-engage follow
     // mode even if the user had scrolled away, then scroll to the tail.
     setTimeout(() => jumpToBottom('smooth'), 50);
@@ -336,6 +336,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
         setLocalMessages,
         persistMessages,
         setGenerating,
+        setGeneratingVerb,
         abortControllerRef,
         appSettings,
         scrollToBottom,

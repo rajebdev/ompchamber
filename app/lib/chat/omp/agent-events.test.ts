@@ -24,8 +24,12 @@ const ABORTED_TURN = {
 
 function makeDeps() {
   const ended: ChatMessageData[] = [];
+  const activity: string[] = [];
   let state: OmpAgentState = { isGenerating: false, connected: true, error: null };
-  const callbacks: OmpAgentCallbacks = { onMessageEnd: (msg) => ended.push(msg) };
+  const callbacks: OmpAgentCallbacks = {
+    onMessageEnd: (msg) => ended.push(msg),
+    onActivity: (verb) => activity.push(verb),
+  };
   const deps: OmpAgentFoldDeps = {
     sessionId: 's1',
     setState: (update) => {
@@ -35,8 +39,9 @@ function makeDeps() {
     toolResultsRef: { current: new Map<string, { output: string }>() },
     lastToolMessageRef: { current: null },
     interruptPendingRef: { current: false },
+    activityRef: { current: '' },
   };
-  return { deps, ended };
+  return { deps, ended, activity };
 }
 
 describe('toChatMessage error derivation', () => {
@@ -50,6 +55,57 @@ describe('toChatMessage error derivation', () => {
   test('leaves a normally finished turn without an error', () => {
     const msg = toChatMessage({ ...ABORTED_TURN, stopReason: 'end_turn', errorMessage: undefined }, false);
     expect(msg?.error).toBeUndefined();
+  });
+});
+
+describe('foldAgentEvent activity phrases', () => {
+  test('names the tool being executed, not a generic reasoning verb', () => {
+    const { deps, activity } = makeDeps();
+    foldAgentEvent({ type: 'agent_start' }, deps);
+    foldAgentEvent({
+      type: 'tool_execution_start',
+      toolCallId: 'c1',
+      toolName: 'edit',
+      args: { path: 'app/lib/chat/order.ts', old_string: 'a', new_string: 'b' },
+    }, deps);
+    expect(activity).toEqual(['Thinking', 'Editing app/lib/chat/order.ts']);
+  });
+
+  test('resolves an xd:// device write to the device action', () => {
+    const { deps, activity } = makeDeps();
+    foldAgentEvent({
+      type: 'tool_execution_start',
+      toolCallId: 'c2',
+      toolName: 'write',
+      args: { path: 'xd://ast_edit', content: JSON.stringify({ pat: 'x', out: 'y', paths: ['src/**/*.ts'] }) },
+    }, deps);
+    expect(activity).toEqual(['Rewriting AST src/**/*.ts']);
+  });
+
+  test('follows the assistant phase before any tool starts', () => {
+    const { deps, activity } = makeDeps();
+    foldAgentEvent({ type: 'message_update', message: { role: 'assistant', content: [] }, assistantMessageEvent: { type: 'thinking_delta', delta: 'x' } }, deps);
+    foldAgentEvent({ type: 'message_update', message: { role: 'assistant', content: [] }, assistantMessageEvent: { type: 'text_delta', delta: 'x' } }, deps);
+    foldAgentEvent({
+      type: 'message_update',
+      message: { role: 'assistant', content: [] },
+      assistantMessageEvent: { type: 'toolcall_end', toolCall: { id: 'c3', name: 'bash', arguments: { command: 'bun test' } } },
+    }, deps);
+    expect(activity).toEqual(['Thinking', 'Writing response', 'Running bun test']);
+  });
+
+  test('does not re-publish the same phrase for per-token frames', () => {
+    const { deps, activity } = makeDeps();
+    for (let i = 0; i < 5; i++) {
+      foldAgentEvent({ type: 'message_update', message: { role: 'assistant', content: [] }, assistantMessageEvent: { type: 'thinking_delta', delta: 'x' } }, deps);
+    }
+    expect(activity).toEqual(['Thinking']);
+  });
+
+  test('never emits a dangling verb for a tool call with empty arguments', () => {
+    const { deps, activity } = makeDeps();
+    foldAgentEvent({ type: 'tool_execution_start', toolCallId: 'c4', toolName: 'bash', args: {} }, deps);
+    expect(activity).toEqual(['bash']);
   });
 });
 
