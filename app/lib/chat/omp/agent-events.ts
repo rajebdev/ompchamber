@@ -24,6 +24,31 @@ export interface ToolResultRecord {
   details?: Record<string, any>;
 }
 
+/** Per-entry cap on stored tool output; the tail of a build log is what matters. */
+const MAX_TOOL_OUTPUT_CHARS = 200_000;
+/** Max tool results retained per session; oldest entries are dropped first. */
+const MAX_TRACKED_TOOL_RESULTS = 200;
+
+/** Truncate tool output to the cap, keeping the tail and marking the cut. */
+function capToolOutput(output: string): string {
+  if (output.length <= MAX_TOOL_OUTPUT_CHARS) return output;
+  return `…[truncated]\n${output.slice(-MAX_TOOL_OUTPUT_CHARS)}`;
+}
+
+/** Write a tool result into the map, enforcing both caps. */
+function storeToolResult(
+  map: Map<string, ToolResultRecord>,
+  callId: string,
+  record: ToolResultRecord,
+): void {
+  map.set(callId, { ...record, output: capToolOutput(record.output) });
+  while (map.size > MAX_TRACKED_TOOL_RESULTS) {
+    const oldest = map.keys().next().value;
+    if (oldest === undefined) break;
+    map.delete(oldest);
+  }
+}
+
 export interface OmpAgentFoldDeps {
   sessionId: string;
   setState: Dispatch<SetStateAction<OmpAgentState>>;
@@ -173,7 +198,8 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       const partial = toolResultText(data.partialResult);
       if (!callId || !partial) break;
       const prev = deps.toolResultsRef.current?.get(callId)?.output ?? '';
-      deps.toolResultsRef.current?.set(callId, { output: prev + partial });
+      const map = deps.toolResultsRef.current;
+      if (map) storeToolResult(map, callId, { output: prev + partial });
       refreshToolMessage(callId, deps);
       break;
     }
@@ -181,7 +207,8 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
     case 'tool_execution_end': {
       const callId = typeof data.toolCallId === 'string' ? data.toolCallId : undefined;
       if (!callId) break;
-      deps.toolResultsRef.current?.set(callId, {
+      const map = deps.toolResultsRef.current;
+      if (map) storeToolResult(map, callId, {
         output: toolResultText(data.result),
         isError: data.isError === true,
         details: (data.details && typeof data.details === 'object' ? data.details : undefined) as ToolResultRecord['details'],

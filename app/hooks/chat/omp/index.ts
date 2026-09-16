@@ -47,6 +47,11 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
 
   useEffect(() => {
     if (!sessionId) return;
+    // Session changed (or first mount): drop the previous session's tool
+    // results. On first mount the refs are already empty, so this cannot disturb
+    // a resumed session's reattach below.
+    toolResultsRef.current.clear();
+    lastToolMessageRef.current = null;
     // Do NOT auto-connect here: the stream endpoint refuses (409) until the
     // session's omp process is spawned (POST /api/agent/:id), and a client
     // dialing a refused endpoint loops network errors in the console.
