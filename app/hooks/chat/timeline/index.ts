@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams } from '@remix-run/react';
 import type { Attachment, ChatMessageData } from '@/types';
-import { useOmpAgent, type ExtensionUiDialogRequest } from '@/hooks/chat/omp';
+import { useOmpAgent } from '@/hooks/chat/omp';
 import { useChatTimelineQueue } from '@/hooks/chat/timeline/queue';
+import { useExtensionDialogQueue } from '@/hooks/chat/timeline/extension-dialog';
 import { useChatTimelineScroll } from '@/hooks/chat/timeline/scroll';
 import { useTimelineAutoScroll } from '@/hooks/chat/timeline/auto-scroll';
 import { useChatTimelineActions } from '@/hooks/chat/timeline/actions';
@@ -163,7 +164,12 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     setSteeringQueue,
     removeDeliveredFromQueue,
   } = useChatTimelineQueue(sessionId);
-  const [extensionDialog, setExtensionDialog] = useState<ExtensionUiDialogRequest | null>(null);
+  const {
+    dialog: extensionDialog,
+    enqueue: enqueueExtensionDialog,
+    dismiss: dismissExtensionDialog,
+    withdraw: withdrawExtensionDialog,
+  } = useExtensionDialogQueue(sessionId);
 
   const ompAgent = useOmpAgent(isOmpSession ? sessionId : null, createOmpAgentCallbacks({
     removeDeliveredFromQueue,
@@ -181,7 +187,8 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     persistMessages,
     abortControllerRef,
     appSettings,
-    setExtensionDialog,
+    enqueueExtensionDialog,
+    withdrawExtensionDialog,
   }), readStreamTransport(appSettings));
   const { steerOmpAgent, executeSend } = useChatTimelineSend({
     folders,
@@ -255,7 +262,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     pendingComposerModelRef,
     pendingThinkingLevelRef,
     setSearchParams,
-    setExtensionDialog,
+    dismissExtensionDialog,
   });
 
   return {

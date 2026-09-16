@@ -54,7 +54,10 @@ export interface OmpAgentCallbacksDeps {
   persistMessages: (messages: any[]) => void;
   abortControllerRef: { current: AbortController | null };
   appSettings: Record<string, any>;
-  setExtensionDialog: Dispatch<SetStateAction<ExtensionUiDialogRequest | null>>;
+  /** Queue one omp ask/approval dialog; a turn can raise several at once. */
+  enqueueExtensionDialog: (request: ExtensionUiDialogRequest) => void;
+  /** Drop a queued request omp withdrew (`method: 'cancel'`). */
+  withdrawExtensionDialog: (targetId: string) => void;
 }
 
 export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCallbacks {
@@ -74,7 +77,8 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
     persistMessages,
     abortControllerRef,
     appSettings,
-    setExtensionDialog,
+    enqueueExtensionDialog,
+    withdrawExtensionDialog,
   } = deps;
 
   applyMessageUpdater = setLocalMessages;
@@ -253,9 +257,9 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
     },
     onExtensionUiRequest: (request: IncomingExtensionUiRequest) => {
       if (request.method === 'select' || request.method === 'confirm' || request.method === 'input' || request.method === 'editor') {
-        setExtensionDialog(request);
+        enqueueExtensionDialog(request);
       } else if (request.method === 'cancel') {
-        setExtensionDialog((current) => (current?.id === request.targetId ? null : current));
+        withdrawExtensionDialog(request.targetId);
       }
     },
   };

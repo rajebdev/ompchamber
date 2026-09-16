@@ -15,7 +15,6 @@ import { useCallback } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Attachment, ChatMessageData, OmpAgentHandle } from '@/types';
 import type { QueuedMessage } from '@/components/workspace/chat-timeline/QueueList';
-import type { ExtensionUiDialogRequest } from '@/types/omp/agent';
 
 export interface ChatTimelineActionsDeps {
   inputValue: string;
@@ -41,7 +40,8 @@ export interface ChatTimelineActionsDeps {
   /** Same as pendingComposerModelRef, for the thinking level. */
   pendingThinkingLevelRef: { current: string | null };
   setSearchParams: (fn: (prev: URLSearchParams) => URLSearchParams, opts?: { replace?: boolean }) => void;
-  setExtensionDialog: Dispatch<SetStateAction<ExtensionUiDialogRequest | null>>;
+  /** Advance the pending-dialog queue after the head was answered. */
+  dismissExtensionDialog: () => void;
 }
 
 export interface ChatTimelineActionsResult {
@@ -79,7 +79,7 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     pendingComposerModelRef,
     pendingThinkingLevelRef,
     setSearchParams,
-    setExtensionDialog,
+    dismissExtensionDialog,
   } = deps;
 
   const handleSend = useCallback(async (attachments: Attachment[], options?: { steering?: boolean }) => {
@@ -261,8 +261,8 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
   }, [isOmpSession, ompAgent, pendingComposerModelRef]);
 
   const closeExtensionDialog = useCallback(() => {
-    setExtensionDialog(null);
-  }, [setExtensionDialog]);
+    dismissExtensionDialog();
+  }, [dismissExtensionDialog]);
 
   return {
     handleSend,
