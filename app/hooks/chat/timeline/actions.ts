@@ -13,8 +13,9 @@
 
 import { useCallback } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import type { Attachment, ChatMessageData, OmpAgentHandle } from '@/types';
+import type { Attachment, ChatMessageData, OmpAgentHandle, QueuedMessageModel } from '@/types';
 import type { QueuedMessage } from '@/components/workspace/chat-timeline/QueueList';
+import type { ApprovalMode } from '@/lib/omp/config/access-mode';
 
 export interface ChatTimelineActionsDeps {
   inputValue: string;
@@ -25,7 +26,7 @@ export interface ChatTimelineActionsDeps {
   appSettings: Record<string, any>;
   messageQueue: QueuedMessage[];
   setMessageQueue: (updater: SetStateAction<QueuedMessage[]>) => void;
-  executeSend: (text: string, attachments: Attachment[]) => Promise<void>;
+  executeSend: (text: string, attachments: Attachment[], options?: { model?: QueuedMessageModel | null }) => Promise<void>;
   steerOmpAgent: (text: string, attachments: Attachment[]) => Promise<void>;
   ompAgent: OmpAgentHandle;
   abortControllerRef: { current: AbortController | null };
@@ -39,6 +40,11 @@ export interface ChatTimelineActionsDeps {
   pendingComposerModelRef: { current: { provider: string; modelId: string } | null };
   /** Same as pendingComposerModelRef, for the thinking level. */
   pendingThinkingLevelRef: { current: string | null };
+  /** Live composer model/thinking mirror, snapshotted onto queued items so
+   *  auto-delivery replays the exact settings. */
+  composerModelRef: { current: { provider: string; modelId: string; thinkingLevel: string } | null };
+  /** Global access-control mode, snapshotted onto queued items. */
+  accessModeRef: { current: ApprovalMode };
   setSearchParams: (fn: (prev: URLSearchParams) => URLSearchParams, opts?: { replace?: boolean }) => void;
   /** Advance the pending-dialog queue after the head was answered. */
   dismissExtensionDialog: () => void;
@@ -78,6 +84,8 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     setLocalMessages,
     pendingComposerModelRef,
     pendingThinkingLevelRef,
+    composerModelRef,
+    accessModeRef,
     setSearchParams,
     dismissExtensionDialog,
   } = deps;
@@ -114,10 +122,16 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
         await steerOmpAgent(textToSend, attachments);
         return;
       }
-      const queuedItem = {
+      const composerPick = composerModelRef.current;
+      const queuedItem: QueuedMessage = {
         id: `queue-${Date.now()}`,
         text: textToSend,
         attachments,
+        // Snapshot the composer's model/thinking plus the live access mode so
+        // auto-delivery runs the item with exactly these settings.
+        model: composerPick
+          ? { ...composerPick, accessMode: accessModeRef.current }
+          : null,
       };
       // Both modes: hold the follow-up in the client queue. The panel is the
       // source of truth (editable, removable, survives reload via the
@@ -132,7 +146,7 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
 
     setInputValue('');
     executeSend(textToSend, attachments);
-  }, [inputValue, isGenerating, executeSend, setMessageQueue, isOmpSession, appSettings, steerOmpAgent, setInputValue, abortControllerRef, setGenerating, stopHoldRef]);
+  }, [inputValue, isGenerating, executeSend, setMessageQueue, isOmpSession, appSettings, steerOmpAgent, setInputValue, abortControllerRef, setGenerating, stopHoldRef, composerModelRef, accessModeRef]);
 
   const handleEditQueueItem = useCallback((item: QueuedMessage) => {
     setMessageQueue(q => q.filter(i => i.id !== item.id));
@@ -154,10 +168,10 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
           abortControllerRef.current = null;
         }
         setGenerating(false);
-        setTimeout(() => executeSend(item.text, item.attachments), 0);
+        setTimeout(() => executeSend(item.text, item.attachments, { model: item.model }), 0);
       }
     } else {
-      executeSend(item.text, item.attachments);
+      executeSend(item.text, item.attachments, { model: item.model });
     }
   }, [isGenerating, executeSend, setMessageQueue, isOmpSession, steerOmpAgent, abortControllerRef, setGenerating, stopHoldRef]);
 

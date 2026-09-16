@@ -126,6 +126,9 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   // here and applied to the spawn command on first send.
   const pendingComposerModelRef = useRef<{ provider: string; modelId: string } | null>(null);
   const pendingThinkingLevelRef = useRef<string | null>(null);
+  // Live mirror of the composer's model/thinking pick: the enqueue path
+  // snapshots it onto queued items so auto-delivery replays those settings.
+  const composerModelRef = useRef<{ provider: string; modelId: string; thinkingLevel: string } | null>(null);
 
   // Access-control mode is a global, persisted user preference (unlike the
   // per-session model/thinking picks): it hydrates from appSettings at first
@@ -210,6 +213,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     setSessionModel,
     pendingComposerModelRef,
     pendingThinkingLevelRef,
+    composerModelRef,
     accessModeRef,
     abortControllerRef,
     setInputValue,
@@ -227,7 +231,8 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     if (!isGenerating && messageQueue.length > 0) {
       const nextMessage = messageQueue[0];
       setMessageQueue(q => q.slice(1));
-      executeSend(nextMessage.text, nextMessage.attachments);
+      // The queued snapshot re-applies model/thinking/access before the prompt.
+      executeSend(nextMessage.text, nextMessage.attachments, { model: nextMessage.model });
     }
   }, [isGenerating, messageQueue, executeSend, setMessageQueue]);
 
@@ -261,6 +266,8 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     setLocalMessages,
     pendingComposerModelRef,
     pendingThinkingLevelRef,
+    composerModelRef,
+    accessModeRef,
     setSearchParams,
     dismissExtensionDialog,
   });
@@ -301,6 +308,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     handleModelChange,
     accessMode,
     handleAccessModeChange,
+    composerModelRef,
     extensionDialog,
     closeExtensionDialog,
     respondToExtensionUi: ompAgent.respondToExtensionUi,

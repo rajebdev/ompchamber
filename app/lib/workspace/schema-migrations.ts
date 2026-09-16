@@ -17,7 +17,3 @@ export async function migrateWorkspaceFolderColumns(db: Database): Promise<void>
   await addColumn(db, "ALTER TABLE workspace_folders ADD COLUMN icon TEXT DEFAULT 'default';");
   await addColumn(db, 'ALTER TABLE workspace_folders ADD COLUMN custom_icon_url TEXT;');
 }
-
-export async function migrateSessionColumns(db: Database): Promise<void> {
-  await addColumn(db, "ALTER TABLE sessions ADD COLUMN queue_list TEXT DEFAULT '[]';");
-}

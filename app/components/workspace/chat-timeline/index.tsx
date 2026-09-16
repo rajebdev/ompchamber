@@ -68,6 +68,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
     handleModelChange,
     accessMode,
     handleAccessModeChange,
+    composerModelRef,
     extensionDialog,
     closeExtensionDialog,
     respondToExtensionUi,
@@ -152,6 +153,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
         onModelChange={handleModelChange}
         accessMode={accessMode}
         onAccessModeChange={handleAccessModeChange}
+        composerModelRef={composerModelRef}
         sessionModel={typeof sessionData?.model === 'object' ? sessionData.model : null}
         sessionThinkingLevel={sessionData?.thinkingLevel}
         generatingVerb={generatingVerb}
@@ -259,6 +261,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
               onModelChange={handleModelChange}
               accessMode={accessMode}
               onAccessModeChange={handleAccessModeChange}
+              composerModelRef={composerModelRef}
               sessionModel={typeof sessionData?.model === 'object' ? sessionData.model : null}
               sessionThinkingLevel={sessionData?.thinkingLevel}
               variant={variant}
@@ -275,6 +278,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
           appSettings={appSettings}
           accessMode={accessMode}
           onAccessModeChange={handleAccessModeChange}
+          composerModelRef={composerModelRef}
         />
       )}
 

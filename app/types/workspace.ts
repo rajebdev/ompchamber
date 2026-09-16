@@ -10,7 +10,6 @@ export interface SessionItemData {
   created_at?: string;
   updated_at?: string;
   is_archived?: number;
-  queue_list?: any[];
   timeAgo?: string;
   hasArrow?: boolean;
   hasSubagents?: boolean;

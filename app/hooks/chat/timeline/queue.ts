@@ -4,25 +4,24 @@
  */
 
 /**
- * Follow-up + steering queue state for the chamber chat. Both mirrors persist
- * to the per-session `session_ui_state` blob so a page reload mid-stream
- * restores them:
+ * Follow-up + steering queue state for the chamber chat, backed by the SQLite
+ * `queued_messages` table via /api/sessions/:id/queue (one row per item with a
+ * model snapshot, so auto-delivery replays the settings the item was queued
+ * with).
  *
- *  - Mock/numeric sessions additionally mirror into the SQLite `sessions`
- *    `queue_list` column (the sidebar loader reads it from there).
- *  - omp sessions (string UUIDs) have no such row — their queue lives in the
- *    session-state blob only, restored on mount.
+ * The client panel stays the source of truth while the session is open: every
+ * mutation updates React state first, then PUTs the full remaining list to the
+ * route (replace-on-write keeps ids stable for reorder/edit/delete). The queue
+ * hydrates from the table on mount — a page reload mid-stream restores it.
+ * Steering mirrors live in the session-state blob under a separate key.
  *
- * Steering mirrors live in the same blob under a separate key. Delivered
- * texts are removed once the agent picks them up (message_end).
  * Kept out of useChatTimeline so that hook stays under the size ceiling.
  */
 
-import { useCallback } from 'react';
-import type { QueuedMessage } from '@/components/workspace/chat-timeline/QueueList';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { QueuedMessage } from '@/types';
 import { useSessionState } from '@/hooks/workspace/session-state';
 
-const QUEUE_STATE_KEY = 'chat.messageQueue';
 const STEERING_STATE_KEY = 'chat.steeringQueue';
 
 export interface ChatTimelineQueueResult {
@@ -35,30 +34,53 @@ export interface ChatTimelineQueueResult {
 }
 
 export function useChatTimelineQueue(sessionId: string | null): ChatTimelineQueueResult {
-  const [messageQueue, setMessageQueue] = useSessionState<QueuedMessage[]>(QUEUE_STATE_KEY, []);
+  const [messageQueue, setMessageQueueState] = useState<QueuedMessage[]>([]);
   const [steeringQueue, setSteeringQueue] = useSessionState<QueuedMessage[]>(STEERING_STATE_KEY, []);
 
-  const setQueueWithMirror = useCallback((updater: React.SetStateAction<QueuedMessage[]>) => {
-    setMessageQueue(prev => {
+  // Hydrate from the table once per session. A generation-safe ref skips the
+  // stale-response race when the user switches sessions quickly.
+  const hydrateEpochRef = useRef(0);
+  useEffect(() => {
+    if (!sessionId) {
+      setMessageQueueState([]);
+      return;
+    }
+    const epoch = ++hydrateEpochRef.current;
+    let cancelled = false;
+    fetch(`/api/sessions/${encodeURIComponent(sessionId)}/queue`)
+      .then(res => (res.ok ? res.json() : { queue: [] }))
+      .then((data: { queue?: QueuedMessage[] }) => {
+        if (cancelled || hydrateEpochRef.current !== epoch) return;
+        setMessageQueueState(Array.isArray(data.queue) ? data.queue : []);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [sessionId]);
+
+  // Replace-on-write mirror: every client mutation PUTs the full list so the
+  // table always matches the panel (order, edits, deletions included).
+  const mirrorQueue = useCallback((next: QueuedMessage[]) => {
+    if (!sessionId) return;
+    fetch(`/api/sessions/${encodeURIComponent(sessionId)}/queue`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ queue: next }),
+    }).catch(console.error);
+  }, [sessionId]);
+
+  const setMessageQueue = useCallback((updater: React.SetStateAction<QueuedMessage[]>) => {
+    setMessageQueueState(prev => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
-      // Keep the legacy SQLite mirror for mock/numeric sessions (the sidebar
-      // loader reads `sessions.queue_list`); omp UUIDs have no row — skip.
-      if (sessionId && !Number.isNaN(Number(sessionId))) {
-        fetch(`/api/sessions/${sessionId}/queue`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ queue_list: next })
-        }).catch(console.error);
-      }
+      mirrorQueue(next);
       return next;
     });
-  }, [setMessageQueue, sessionId]);
+  }, [mirrorQueue]);
 
   const removeDeliveredFromQueue = useCallback((text: string) => {
     const exact = (q: QueuedMessage[]) => q.some(i => i.text === text);
     setSteeringQueue(q => (exact(q) ? q.filter(i => i.text !== text) : q));
-    setQueueWithMirror(q => (exact(q) ? q.filter(i => i.text !== text) : q));
-  }, [setSteeringQueue, setQueueWithMirror]);
+    setMessageQueue(q => (exact(q) ? q.filter(i => i.text !== text) : q));
+  }, [setSteeringQueue, setMessageQueue]);
 
-  return { messageQueue, setMessageQueue: setQueueWithMirror, steeringQueue, setSteeringQueue, removeDeliveredFromQueue };
+  return { messageQueue, setMessageQueue, steeringQueue, setSteeringQueue, removeDeliveredFromQueue };
 }

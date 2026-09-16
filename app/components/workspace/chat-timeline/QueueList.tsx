@@ -1,12 +1,8 @@
 import { useRef } from 'react';
 import { GripVertical, X, Pencil, Send } from 'lucide-react';
-import type { Attachment } from '@/types';
+import type { QueuedMessage } from '@/types';
 
-export interface QueuedMessage {
-  id: string;
-  text: string;
-  attachments: Attachment[];
-}
+export type { QueuedMessage };
 
 interface QueueListProps {
   queue: QueuedMessage[];

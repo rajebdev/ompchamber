@@ -12,7 +12,7 @@
 
 import { useCallback } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import type { Attachment, ChatMessageData, OmpAgentHandle } from '@/types';
+import type { Attachment, ChatMessageData, OmpAgentHandle, QueuedMessageModel } from '@/types';
 import type { ApprovalMode } from '@/lib/omp/config/access-mode';
 import { streamChatResponse } from '@/hooks/chat/stream';
 import { isTextAttachmentFile, composeMessageWithTextAttachments } from '@/lib/chat/attachments';
@@ -68,6 +68,9 @@ export interface ChatTimelineSendDeps {
   /** Global access-control mode (persisted user preference), read at send time
    *  so the spawn-capable requests carry the latest value. */
   accessModeRef: { current: ApprovalMode };
+  /** Live composer model/thinking mirror (written by ChatInput) so enqueue can
+   *  snapshot the selection onto queued items. */
+  composerModelRef: { current: { provider: string; modelId: string; thinkingLevel: string } | null };
   abortControllerRef: { current: AbortController | null };
   setInputValue: (v: string) => void;
   setSearchParams: (fn: (prev: URLSearchParams) => URLSearchParams, opts?: { replace?: boolean }) => void;
@@ -75,7 +78,13 @@ export interface ChatTimelineSendDeps {
 
 export interface ChatTimelineSendResult {
   steerOmpAgent: (text: string, attachments: Attachment[]) => Promise<void>;
-  executeSend: (text: string, attachments: Attachment[]) => Promise<void>;
+  /** `model` re-applies a queued item's snapshot before the prompt runs
+   *  (set_model / set_thinking_level RPC + prompt access mode). */
+  executeSend: (
+    text: string,
+    attachments: Attachment[],
+    options?: { model?: QueuedMessageModel | null },
+  ) => Promise<void>;
 }
 
 export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSendResult {
@@ -146,7 +155,15 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
     if (!ok) setInputValue(text);
   }, [ompAgent, prepareDeliverable, setInputValue]);
 
-  const executeSend = useCallback(async (text: string, attachments: Attachment[]) => {
+  const executeSend = useCallback(async (
+    text: string,
+    attachments: Attachment[],
+    options?: { model?: QueuedMessageModel | null },
+  ) => {
+    // A queued delivery replays the snapshot the item was queued with; a plain
+    // send keeps the session's live picks. 'auto' thinking leaves omp alone.
+    const modelOverride = options?.model ?? null;
+    const effectiveAccessMode = modelOverride?.accessMode ?? accessModeRef.current;
     const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     const userMsgId = `msg-${Date.now()}-user`;
     const aiPlaceholderId = `msg-${Date.now() + 1}-ai`;
@@ -210,6 +227,14 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
     if (isOmpSession) {
       aiPlaceholderIdRef.current = aiPlaceholderId;
       optimisticUserIdRef.current = userMsgId;
+      // Replay the queued snapshot first so the prompt runs on the exact
+      // model/thinking the item was queued with.
+      if (modelOverride) {
+        await ompAgent.setModel(modelOverride.provider, modelOverride.modelId);
+        if (modelOverride.thinkingLevel !== 'auto') {
+          await ompAgent.setThinkingLevel(modelOverride.thinkingLevel);
+        }
+      }
       const images = attachments
         .filter(a => a.file.type.startsWith('image/') && a.dataBase64)
         .map(a => ({ data: a.dataBase64 as string, mimeType: a.file.type }));
@@ -224,7 +249,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
           size: a.file.size,
         }));
       const promptText = await buildPromptText(text, textFiles);
-      const ok = await ompAgent.sendPrompt(promptText, images.length ? images : undefined, { accessMode: accessModeRef.current });
+      const ok = await ompAgent.sendPrompt(promptText, images.length ? images : undefined, { accessMode: effectiveAccessMode });
       if (!ok) {
         // Roll back the optimistic bubbles on a failed send.
         setLocalMessages(prev => prev.filter(m => m.id !== userMsgId && m.id !== aiPlaceholderId));
@@ -317,6 +342,5 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
       })
     );
   }, [appSettings, folders, isOmpSession, ompAgent, selectedFolderId, sessionId, scrollToBottom, jumpToBottom, persistMessages, setSessionModel, pendingComposerModelRef, pendingThinkingLevelRef, accessModeRef]);
-
   return { steerOmpAgent, executeSend };
 }

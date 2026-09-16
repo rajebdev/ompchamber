@@ -71,7 +71,6 @@ export async function getDb(): Promise<Database> {
         folder_id INTEGER NOT NULL,
         title TEXT NOT NULL,
         is_active BOOLEAN DEFAULT 0,
-        queue_list TEXT DEFAULT '[]',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (folder_id) REFERENCES workspace_folders (id)
       );
@@ -103,11 +102,24 @@ export async function getDb(): Promise<Database> {
         state TEXT NOT NULL DEFAULT '{}',
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS queued_messages (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        message TEXT NOT NULL DEFAULT '',
+        attachments TEXT NOT NULL DEFAULT '[]',
+        provider TEXT,
+        model_id TEXT,
+        thinking_level TEXT,
+        access_mode TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_queued_messages_session ON queued_messages (session_id, position);
     `);
 
-    const { migrateSessionColumns, migrateWorkspaceFolderColumns } = await import('@/lib/workspace/schema-migrations');
+    const { migrateWorkspaceFolderColumns } = await import('@/lib/workspace/schema-migrations');
     await migrateWorkspaceFolderColumns(db);
-    await migrateSessionColumns(db);
 
     await db.exec(`
       CREATE TABLE IF NOT EXISTS files (

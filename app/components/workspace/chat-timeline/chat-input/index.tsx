@@ -28,6 +28,9 @@ export function ChatInput({
   variant = 'desktop',
   accessMode,
   onAccessModeChange,
+  /** Written on every model/thinking pick so the send path can snapshot the
+   *  selection into queued items without lifting ChatInput state. */
+  composerModelRef,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -54,6 +57,7 @@ export function ChatInput({
    * targets, and Enter-to-newline instead of Enter-to-send.
    */
   variant?: 'desktop' | 'mobile';
+  composerModelRef: { current: { provider: string; modelId: string; thinkingLevel: string } | null };
 }) {
   const [internalAttachments, setInternalAttachments] = useState<Attachment[]>([]);
 
@@ -75,6 +79,15 @@ export function ChatInput({
     INITIAL_MODELS_CATALOG[5] || INITIAL_MODELS_CATALOG[0]
   );
   const [currentThinking, setCurrentThinking] = useState('auto');
+  // Live mirror for the send path's queue snapshot (see composerModelRef).
+  useEffect(() => {
+    if (!selectedModel.id) return;
+    composerModelRef.current = {
+      provider: selectedModel.provider,
+      modelId: selectedModel.id,
+      thinkingLevel: selectedModel.thinkingLevel ?? 'auto',
+    };
+  }, [selectedModel.provider, selectedModel.id, selectedModel.thinkingLevel, composerModelRef]);
   // Mirrors sessionThinkingLevel for the async model-sync effects below,
   // which may resolve after the session-level effect and must not erase it.
   const sessionThinkingLevelRef = useRef<string | null>(null);

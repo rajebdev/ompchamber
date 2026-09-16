@@ -64,13 +64,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
       const folderSessions = sessions
         .filter((s: any) => String(s.folder_id) === String(folder.id))
         .map((s: any) => {
-          let queue_list;
-          try { queue_list = JSON.parse(s.queue_list); } catch (e) { queue_list = []; }
           const hasSub = hasMockSubagents(s.id);
           const subCount = getMockSubagents(s.id).length;
           return {
             ...s,
-            queue_list,
             is_archived: archivedIds.has(String(s.id)) ? 1 : 0,
             hasSubagents: hasSub,
             subagentCount: subCount,

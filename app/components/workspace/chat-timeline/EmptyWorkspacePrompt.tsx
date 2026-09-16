@@ -34,6 +34,7 @@ interface EmptyWorkspacePromptProps {
   sessionThinkingLevel?: string | null;
   accessMode: ApprovalMode;
   onAccessModeChange: (mode: ApprovalMode) => void;
+  composerModelRef: { current: { provider: string; modelId: string; thinkingLevel: string } | null };
   generatingVerb?: string;
   variant?: 'desktop' | 'mobile';
 }
@@ -62,6 +63,7 @@ export function EmptyWorkspacePrompt({
   sessionThinkingLevel,
   accessMode,
   onAccessModeChange,
+  composerModelRef,
   generatingVerb,
   variant = 'desktop',
 }: EmptyWorkspacePromptProps) {
@@ -205,6 +207,7 @@ export function EmptyWorkspacePrompt({
           sessionThinkingLevel={sessionThinkingLevel}
           accessMode={accessMode}
           onAccessModeChange={onAccessModeChange}
+          composerModelRef={composerModelRef}
           variant={variant}
         />
       </div>

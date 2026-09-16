@@ -10,6 +10,7 @@ interface NewChatModalProps {
   appSettings?: Record<string, any>;
   accessMode: ApprovalMode;
   onAccessModeChange: (mode: ApprovalMode) => void;
+  composerModelRef: { current: { provider: string; modelId: string; thinkingLevel: string } | null };
 }
 
 export function NewChatModal({
@@ -19,6 +20,7 @@ export function NewChatModal({
   appSettings,
   accessMode,
   onAccessModeChange,
+  composerModelRef,
 }: NewChatModalProps) {
   const [inputValue, setInputValue] = useState(initialContent);
   const [attachments, setAttachments] = useState<any[]>([]);
@@ -58,6 +60,7 @@ export function NewChatModal({
             appSettings={appSettings}
             accessMode={accessMode}
             onAccessModeChange={onAccessModeChange}
+            composerModelRef={composerModelRef}
           />
         </div>
       </div>

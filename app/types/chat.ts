@@ -1,4 +1,5 @@
 import React from 'react';
+import type { ApprovalMode } from '@/lib/omp/config/access-mode';
 
 export interface Attachment {
   id: string;
@@ -158,6 +159,27 @@ export interface ChatMessageData {
     message?: string;
     stopReason?: string;
   };
+}
+
+/** Model settings snapshotted with a queued message so auto-delivery replays
+ *  them (set_model / set_thinking_level RPC + spawn access mode) instead of
+ *  using whatever the session happens to run with at delivery time. */
+export interface QueuedMessageModel {
+  provider: string;
+  modelId: string;
+  /** 'auto' means "leave omp's current level untouched" at delivery. */
+  thinkingLevel: string;
+  accessMode: ApprovalMode;
+}
+
+/** One row of the follow-up/steering queue (SQLite `queued_messages`). */
+export interface QueuedMessage {
+  id: string;
+  text: string;
+  attachments: Attachment[];
+  /** Null when queued before any model was selected — delivery falls back to
+   *  the session's current model. */
+  model: QueuedMessageModel | null;
 }
 
 export interface AIModelOption {
