@@ -46,6 +46,33 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./app"),
     },
   },
+  build: {
+    /**
+     * The remaining >500 kB chunks are all lazy-loaded vendor libraries
+     * (mermaid/elk/cynefin diagrams, katex) that never block initial page
+     * load, plus the single-file SSR bundle — so the default warning limit
+     * only produces noise here.
+     */
+    chunkSizeWarningLimit: 2000,
+    rollupOptions: {
+      output: {
+        /**
+         * Split heavy vendor libraries out of the entry/route chunks. These
+         * groups stay under the 500 kB warning limit, load in parallel with
+         * the entry chunk (no behavior change), and cache independently —
+         * app code updates no longer invalidate the vendor chunk hashes.
+         */
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            if (id.includes("katex")) return "katex-vendor";
+            if (id.includes("remend") || id.includes("marked")) return "markdown-vendor";
+            if (id.includes("prismjs")) return "prism-vendor";
+            if (id.includes("prismjs")) return "prism-vendor";
+          }
+        },
+      },
+    },
+  },
   optimizeDeps: {
     include: ["@xterm/xterm", "@xterm/addon-fit"],
   },
