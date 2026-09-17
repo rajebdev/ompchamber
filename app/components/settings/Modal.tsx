@@ -171,7 +171,7 @@ export function SettingsModal({
       case 'agents':
         return <AgentSettings settings={settings} onUpdate={handleUpdateSettings} />;
       case 'behavior':
-        return <BehaviorSettings settings={settings} onUpdate={handleUpdateSettings} />;
+        return <BehaviorSettings />;
       case 'commands':
         return <CommandSettings settings={settings} onUpdate={handleUpdateSettings} />;
       case 'mcp':

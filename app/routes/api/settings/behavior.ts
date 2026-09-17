@@ -4,71 +4,125 @@ import { getDb } from '@/db.server';
 import { DEFAULT_BEHAVIOR_RULES } from '@/data/settings/behavior';
 import { isMockMode } from '@/mock.server';
 import { parseApprovalRules, writeToolsApproval } from '@/lib/omp/config/behavior';
+import {
+  isInstructionFileKind,
+  readInstructionFile,
+  saveInstructionFile,
+} from '@/lib/omp/config/instructions';
+import type { InstructionFileKind } from '@/types';
 
-const SETTINGS_KEY = 'omp_behavior_rules';
+/**
+ * Preset stores for MOCK mode only. In real mode the Behavior panel is bound to
+ * the native user instruction files (~/.omp/agent/AGENTS.md and RULES.md), so
+ * the chamber never keeps a second copy of them; the `agents` key keeps its
+ * historical name from when the panel only edited behavior rules.
+ */
+const MOCK_KEYS: Record<InstructionFileKind, string> = {
+  agents: 'omp_behavior_rules',
+  rules: 'omp_rules_md',
+};
 
-export async function loader({ request: _request }: LoaderFunctionArgs) {
+/** MOCK preset per file: shipped rules for AGENTS.md, nothing for RULES.md. */
+const MOCK_PRESETS: Record<InstructionFileKind, string> = {
+  agents: DEFAULT_BEHAVIOR_RULES,
+  rules: '',
+};
+
+function readKind(value: unknown): InstructionFileKind | null {
+  const kind = value ?? 'agents';
+  return isInstructionFileKind(kind) ? kind : null;
+}
+
+export async function loader({ request }: LoaderFunctionArgs) {
+  const mock = isMockMode();
+  const kind = readKind(new URL(request.url).searchParams.get('file'));
+  if (!kind) {
+    return json({ error: 'file must be "agents" or "rules"' }, { status: 400 });
+  }
+
   try {
-    const db = await getDb();
-    const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-    const mock = isMockMode();
-    const defaultRules = mock ? DEFAULT_BEHAVIOR_RULES : '';
-    const rules = row && row.value !== undefined ? row.value : defaultRules;
-
-    if (!row && mock) {
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        SETTINGS_KEY,
-        DEFAULT_BEHAVIOR_RULES,
-      ]);
+    if (mock) {
+      const db = await getDb();
+      const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [MOCK_KEYS[kind]]);
+      const stored = typeof row?.value === 'string' ? row.value : undefined;
+      if (stored === undefined && MOCK_PRESETS[kind]) {
+        await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [MOCK_KEYS[kind], MOCK_PRESETS[kind]]);
+      }
+      return json({ kind, rules: stored ?? MOCK_PRESETS[kind], path: null, exists: false, isMock: true });
     }
 
-    return json({ rules, isMock: mock });
-  } catch (error: any) {
-    const mock = isMockMode();
-    return json({ error: error.message, rules: mock ? DEFAULT_BEHAVIOR_RULES : '', isMock: mock }, { status: 500 });
+    const file = readInstructionFile(kind);
+    return json({ kind, rules: file.content, path: file.path, exists: file.exists, isMock: false });
+  } catch (error) {
+    return json(
+      {
+        error: error instanceof Error ? error.message : String(error),
+        kind,
+        rules: MOCK_PRESETS[kind],
+        path: null,
+        exists: false,
+        isMock: mock,
+      },
+      { status: 500 },
+    );
   }
 }
 
 export async function action({ request }: ActionFunctionArgs) {
   try {
-    const db = await getDb();
-
-    if (request.method === 'POST' || request.method === 'PUT') {
-      const body = await request.json();
-
-      if (body.action === 'reset') {
-        await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-          SETTINGS_KEY,
-          DEFAULT_BEHAVIOR_RULES,
-        ]);
-        return json({ success: true, rules: DEFAULT_BEHAVIOR_RULES });
-      }
-
-      const content = typeof body.rules === 'string' ? body.rules : (typeof body.content === 'string' ? body.content : DEFAULT_BEHAVIOR_RULES);
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        SETTINGS_KEY,
-        content,
-      ]);
-
-      let nativeSynced = false;
-      let nativeError: string | undefined;
-      if (!isMockMode()) {
-        const approval = parseApprovalRules(content);
-        if (approval) {
-          try {
-            writeToolsApproval(approval);
-            nativeSynced = true;
-          } catch (error) {
-            nativeError = error instanceof Error ? error.message : String(error);
-          }
-        }
-      }
-
-      return json({ success: true, rules: content, nativeSynced, ...(nativeError ? { nativeError } : {}) });
+    if (request.method !== 'POST' && request.method !== 'PUT') {
+      return json({ error: 'Method not allowed' }, { status: 405 });
     }
 
-    return json({ error: 'Method not allowed' }, { status: 405 });
-  } catch (error: any) {
-    return json({ error: error.message }, { status: 500 });
+    const body = await request.json();
+    const kind = readKind(body.file);
+    if (!kind) {
+      return json({ error: 'file must be "agents" or "rules"' }, { status: 400 });
+    }
+
+    // Resetting AGENTS.md restores the shipped default rules; RULES.md has no
+    // shipped default, so resetting it clears the file.
+    const rules = body.action === 'reset' ? MOCK_PRESETS[kind] : body.rules;
+    if (typeof rules !== 'string') {
+      return json({ error: 'rules must be a string' }, { status: 400 });
+    }
+
+    const mock = isMockMode();
+    if (mock) {
+      const db = await getDb();
+      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [MOCK_KEYS[kind], rules]);
+      return json({ success: true, kind, rules, path: null, exists: rules.trim().length > 0, isMock: true, nativeSynced: false });
+    }
+
+    const saved = saveInstructionFile(kind, rules);
+
+    // Best-effort, AGENTS.md only: recognizable approval directives in the
+    // behavior rules also land in config.yml tools.approval. RULES.md holds
+    // hard constraints, so mirroring approvals out of it would be surprising,
+    // and a YAML failure must not fail the file save either way.
+    let nativeSynced = false;
+    let nativeError: string | undefined;
+    const approval = kind === 'agents' ? parseApprovalRules(rules) : null;
+    if (approval) {
+      try {
+        writeToolsApproval(approval);
+        nativeSynced = true;
+      } catch (error) {
+        nativeError = error instanceof Error ? error.message : String(error);
+      }
+    }
+
+    return json({
+      success: true,
+      kind,
+      rules: saved.content,
+      path: saved.path,
+      exists: saved.exists,
+      isMock: false,
+      nativeSynced,
+      ...(nativeError ? { nativeError } : {}),
+    });
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 }

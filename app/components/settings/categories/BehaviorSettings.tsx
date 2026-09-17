@@ -1,75 +1,71 @@
-import React, { useState, useEffect } from 'react';
-import type { SettingsState } from '@/types';
+import React, { useState } from 'react';
+import type { InstructionFileKind } from '@/types';
 import { BehaviorEditor } from '@/components/settings/categories/behavior-settings/Editor';
+import { useInstructionFile } from '@/hooks/settings/instruction-file';
 
-interface BehaviorSettingsProps {
-  settings: SettingsState;
-  onUpdate: (settings: SettingsState) => void;
-}
+/** The two native user instruction files, in the order omp loads them. */
+const TABS: Array<{ kind: InstructionFileKind; label: string; hint: string }> = [
+  { kind: 'agents', label: 'AGENTS.md', hint: 'context file' },
+  { kind: 'rules', label: 'RULES.md', hint: 'sticky rule' },
+];
 
-export const BehaviorSettings: React.FC<BehaviorSettingsProps> = () => {
-  const [content, setContent] = useState<string>('');
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    fetch('/api/settings/behavior')
-      .then((res) => res.json())
-      .then((data) => {
-        if (!active) return;
-        if (data && typeof data.rules === 'string') {
-          setContent(data.rules);
-        }
-      })
-      .catch((err) => console.error('Failed to load behavior rules from API:', err))
-      .finally(() => {
-        if (active) setIsLoading(false);
-      });
-    return () => { active = false; };
-  }, []);
-
-  const handleSave = (newContent: string) => {
-    setContent(newContent);
-    fetch('/api/settings/behavior', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rules: newContent }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.rules) setContent(data.rules);
-      })
-      .catch((err) => console.error('Failed to save behavior rules via API:', err));
-  };
-
-  const handleReset = () => {
-    fetch('/api/settings/behavior', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'reset' }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.rules) setContent(data.rules);
-      })
-      .catch((err) => console.error('Failed to reset behavior rules via API:', err));
-  };
-
-  if (isLoading) {
-    return (
-      <div className="h-full w-full flex items-center justify-center text-xs text-ink/40 bg-paper">
-        Loading behavior rules from database...
-      </div>
-    );
-  }
+/**
+ * Behavior rules live in omp's native user instruction files, and this panel
+ * reads and writes them directly: AGENTS.md (context file, loaded when a
+ * session starts) and RULES.md (sticky rule, re-sent on every request).
+ * MOCK=true keeps the demo on chamber-local preset rows instead of the real
+ * agent directory.
+ */
+export const BehaviorSettings: React.FC = () => {
+  const [activeKind, setActiveKind] = useState<InstructionFileKind>('agents');
+  const agents = useInstructionFile('agents');
+  const rules = useInstructionFile('rules');
+  const active = activeKind === 'agents' ? agents : rules;
+  const activeTab = TABS.find((tab) => tab.kind === activeKind) ?? TABS[0];
 
   return (
     <div className="h-full w-full overflow-hidden flex flex-col bg-paper">
-      <BehaviorEditor
-        content={content}
-        onSave={handleSave}
-        onReset={handleReset}
-      />
+      {/* File Tabs */}
+      <div className="flex items-center gap-1.5 px-6 md:px-8 pt-5">
+        {TABS.map((tab) => (
+          <button
+            key={tab.kind}
+            type="button"
+            onClick={() => setActiveKind(tab.kind)}
+            className={`px-3 py-1.5 text-xs font-mono rounded-lg border transition-colors cursor-pointer ${
+              tab.kind === activeKind
+                ? 'border-ink bg-ink text-paper'
+                : 'border-ink/20 text-ink/60 hover:border-ink/40 hover:bg-ink/5'
+            }`}
+          >
+            {tab.label}
+            <span className="ml-2 opacity-60">{tab.hint}</span>
+          </button>
+        ))}
+      </div>
+
+      {active.error && (
+        <div className="mx-6 md:mx-8 mt-3 px-3 py-2 text-xs font-mono text-error bg-error/5 border border-error/30 rounded-lg">
+          Failed to load {active.filePath ?? activeTab.label}: {active.error}
+        </div>
+      )}
+
+      {active.isLoading ? (
+        <div className="flex-1 flex items-center justify-center text-xs text-ink/40">
+          Loading {activeTab.label} from {active.filePath ?? 'the preset store'}...
+        </div>
+      ) : (
+        <BehaviorEditor
+          key={activeKind}
+          kind={activeKind}
+          content={active.content}
+          filePath={active.filePath}
+          exists={active.exists}
+          isMock={active.isMock}
+          onSave={active.save}
+          onReset={activeKind === 'agents' ? active.reset : undefined}
+        />
+      )}
     </div>
   );
 };
