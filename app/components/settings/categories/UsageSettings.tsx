@@ -18,7 +18,7 @@ export function UsageSettings() {
         <p className="text-error text-xs">{error}</p>
         <button
           type="button"
-          onClick={reload}
+          onClick={() => reload()}
           className="text-[11px] font-semibold text-ink/70 hover:text-ink underline underline-offset-2"
         >
           Try again
@@ -57,7 +57,7 @@ export function UsageSettings() {
           </div>
           <button
             type="button"
-            onClick={reload}
+            onClick={() => reload()}
             disabled={isLoading}
             className="p-1.5 bg-paper border border-ink/15 rounded-md hover:bg-ink/5 text-ink/80 transition-colors disabled:opacity-50 flex-shrink-0"
             title="Refresh usage"

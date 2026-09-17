@@ -5,7 +5,7 @@ export interface UsageReportState {
   report: UsageReport | null;
   isLoading: boolean;
   error: string | null;
-  reload: () => void;
+  reload: (opts?: { silent?: boolean }) => void;
 }
 
 /**
@@ -18,8 +18,8 @@ export function useUsageReport(): UsageReportState {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const reload = useCallback(async () => {
-    setIsLoading(true);
+  const reload = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setIsLoading(true);
     setError(null);
     try {
       const response = await fetch('/api/settings/usage');
@@ -29,7 +29,7 @@ export function useUsageReport(): UsageReportState {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load provider usage');
     } finally {
-      setIsLoading(false);
+      if (!opts?.silent) setIsLoading(false);
     }
   }, []);
 

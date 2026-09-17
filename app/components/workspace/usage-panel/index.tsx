@@ -8,6 +8,7 @@ import { formatDateTime } from '@/components/settings/categories/usage-settings/
 import { ProviderSelect } from '@/components/workspace/usage-panel/ProviderSelect';
 import { useUsageReport } from '@/hooks/settings/useUsageReport';
 import { useSessionState } from '@/hooks/workspace/session-state';
+import { usePanelRefresh } from '@/hooks/workspace/panel-refresh';
 
 interface UsagePanelProps {
   className?: string;
@@ -21,6 +22,10 @@ export function UsagePanel({ className = '' }: UsagePanelProps) {
     'kenari',
   );
 
+  // Auto refresh: keep balance/quota current without a manual reload. Silent —
+  // the spinner stays reserved for the user's own refresh button.
+  usePanelRefresh(() => reload({ silent: true }), true);
+
   if (error && !report) {
     return (
       <div className={`flex h-full w-full flex-col items-center justify-center gap-2 p-8 text-center text-xs ${className}`}>
@@ -28,7 +33,7 @@ export function UsagePanel({ className = '' }: UsagePanelProps) {
         <p className="text-error text-xs">{error}</p>
         <button
           type="button"
-          onClick={reload}
+          onClick={() => reload()}
           className="text-[11px] font-semibold text-ink/70 hover:text-ink underline underline-offset-2"
         >
           Try again
@@ -63,7 +68,7 @@ export function UsagePanel({ className = '' }: UsagePanelProps) {
         </div>
         <button
           type="button"
-          onClick={reload}
+          onClick={() => reload()}
           disabled={isLoading}
           className="p-1.5 bg-paper border border-ink/15 rounded-md hover:bg-ink/5 text-ink/80 transition-colors disabled:opacity-50 flex-shrink-0"
           title="Refresh usage"

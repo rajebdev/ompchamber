@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useSearchParams } from '@remix-run/react';
 import type { SessionContextTelemetry } from '@/types';
 import { emptyTelemetry } from '@/data/context-data';
@@ -8,11 +8,7 @@ import { LastMessageCard } from '@/components/workspace/context-panel/LastMessag
 import { TokenDistributionBar } from '@/components/workspace/context-panel/TokenDistributionBar';
 import { RawMessagesList } from '@/components/workspace/context-panel/RawMessagesList';
 import { useScrollbarFade } from '@/hooks/ui/scrollbar-fade';
-import { useAgentProcessing } from '@/hooks/chat/omp/processing';
-
-// Poll cadence while the agent is streaming — telemetry (context usage, token
-// cost) advances per assistant turn, not per frame, so 2s is plenty.
-const STREAM_POLL_MS = 2000;
+import { usePanelRefresh } from '@/hooks/workspace/panel-refresh';
 
 interface ContextPanelProps {
   className?: string;
@@ -29,44 +25,44 @@ export function ContextPanel({
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('sessionId');
   const { isScrolling, handleScroll } = useScrollbarFade();
-  const isProcessing = useAgentProcessing(sessionId);
 
   const [telemetry, setTelemetry] = useState<SessionContextTelemetry>(() =>
     emptyTelemetry(sessionId || 'default', 'Session not started')
   );
 
-  useEffect(() => {
-    if (!enabled || typeof window === 'undefined') return;
-    let cancelled = false;
+  // Bound to the current session and live until unmount so the auto-refresh
+  // interval below can re-read it without being torn down per render.
+  const cancelledRef = useRef(false);
+  const loadTelemetry = useCallback(() => {
+    if (typeof window === 'undefined') return;
     const param = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : '';
+    fetch(`/api/telemetry/context${param}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelledRef.current && data && data.telemetry) {
+          setTelemetry(data.telemetry);
+        }
+      })
+      .catch((err) => {
+        if (!cancelledRef.current) {
+          console.warn('Failed to fetch context telemetry:', err);
+        }
+      });
+  }, [sessionId]);
 
-    const loadTelemetry = () => {
-      fetch(`/api/telemetry/context${param}`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          if (!cancelled && data && data.telemetry) {
-            setTelemetry(data.telemetry);
-          }
-        })
-        .catch((err) => {
-          if (!cancelled) {
-            console.warn('Failed to fetch context telemetry:', err);
-          }
-        });
-    };
-
+  useEffect(() => {
+    cancelledRef.current = false;
+    if (!enabled) return;
     loadTelemetry();
-
-    // Live refresh: while the session streams, telemetry (context usage,
-    // tokens, cost) advances per assistant turn — re-read on a short cadence
-    // so the panel tracks the stream without the user switching panels.
-    if (!isProcessing) return () => { cancelled = true; };
-    const timer = window.setInterval(loadTelemetry, STREAM_POLL_MS);
     return () => {
-      cancelled = true;
-      window.clearInterval(timer);
+      cancelledRef.current = true;
     };
-  }, [sessionId, refreshKey, enabled, isProcessing]);
+  }, [enabled, refreshKey, loadTelemetry]);
+
+  // Auto refresh: telemetry (context usage, tokens, cost) advances per
+  // assistant turn — re-read on a short cadence so the panel tracks it without
+  // the user switching panels.
+  usePanelRefresh(loadTelemetry, enabled);
 
   if (!enabled) {
     return (

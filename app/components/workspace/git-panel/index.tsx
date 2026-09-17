@@ -9,6 +9,7 @@ import { GitChangesList } from '@/components/workspace/git-panel/ChangesList';
 import { Toast } from '@/components/common/Toast';
 import { useToasts } from '@/hooks/ui/toasts';
 import { useSessionState } from '@/hooks/workspace/session-state';
+import { usePanelRefresh } from '@/hooks/workspace/panel-refresh';
 
 interface GitPanelProps {
   className?: string;
@@ -73,6 +74,12 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
     if (!activeRepoReady) return;
     loadRepo(storedActiveRepo);
   }, [refreshKey, rootPath, enabled, activeRepoReady]);
+
+  // Auto refresh: keep the change list in step with external mutations
+  // (terminal commits, agent edits) that never bump `refreshKey`. `loadRepo`
+  // re-reads via `fetcher.load`, whose `t` param busts the cache; a load
+  // already in flight is ignored by the loader so polls cannot pile up.
+  usePanelRefresh(() => loadRepo(storedActiveRepo), enabled && activeRepoReady);
 
   useEffect(() => {
     if (fetcher.data?.activeRepo && fetcher.data.activeRepo !== storedActiveRepo) {

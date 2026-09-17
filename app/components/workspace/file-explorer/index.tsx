@@ -6,6 +6,7 @@ import { FileTreeItem } from '@/components/workspace/file-explorer/TreeItem';
 import { useScrollbarFade } from '@/hooks/ui/scrollbar-fade';
 import { useSessionState } from '@/hooks/workspace/session-state';
 import { useGitStatus } from '@/hooks/workspace/git-status';
+import { usePanelRefresh } from '@/hooks/workspace/panel-refresh';
 
 export function FileExplorer({ className = '', enabled = true, rootPath, onOpenFile, refreshKey = 0, onRefresh }: { className?: string, enabled?: boolean, rootPath?: string, onOpenFile?: (file: any) => void, refreshKey?: number, onRefresh?: () => void }) {
   const [tree, setTree] = useState<any[]>([]);
@@ -36,9 +37,9 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
     return `/api/fs/dir?${params.toString()}`;
   };
 
-  const loadFiles = () => {
+  const loadFiles = (opts?: { silent?: boolean }) => {
     if (!enabled) return;
-    setIsLoading(true);
+    if (!opts?.silent) setIsLoading(true);
     fetch(listUrl())
       .then(r => r.json())
       .then(data => {
@@ -47,13 +48,20 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
         }
       })
       .catch(() => {})
-      .finally(() => setIsLoading(false));
+      .finally(() => {
+        if (!opts?.silent) setIsLoading(false);
+      });
   };
 
   useEffect(() => {
     if (!expandedPathsReady) return;
     loadFiles();
   }, [refreshKey, rootPath, enabled, activeRepo, expandedPathsReady]);
+
+  // Auto refresh: re-read the directory tree on a cadence so external changes
+  // (terminal output, agent edits) surface without a manual refresh. Silent —
+  // the loading spinner stays reserved for the user's own refresh button.
+  usePanelRefresh(() => loadFiles({ silent: true }), enabled && expandedPathsReady);
 
   const loadChildren = (path: string) => {
     return fetch(listUrl(path))

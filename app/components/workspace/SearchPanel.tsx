@@ -5,6 +5,7 @@ import { useFetcher } from '@remix-run/react';
 import { GitRepoDropdown } from '@/components/workspace/file-explorer/GitRepoDropdown';
 import { useScrollbarFade } from '@/hooks/ui/scrollbar-fade';
 import { useSessionState } from '@/hooks/workspace/session-state';
+import { usePanelRefresh } from '@/hooks/workspace/panel-refresh';
 
 export function SearchPanel({ className = '', enabled = true, rootPath }: { className?: string, enabled?: boolean, rootPath?: string }) {
   const [query, setQuery] = useSessionState<string>('search.query', '');
@@ -59,6 +60,11 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
     }, 300);
     return () => clearTimeout(timeoutId);
   }, [query, matchCase, wholeWord, useRegex, includeFiles, showIncludeField, rootPath, enabled, activeRepo]);
+
+  // Auto refresh: re-run the query on a cadence so edits that alter matches
+  // surface without re-typing. No-op while there is nothing to search (the
+  // 3-char minimum guard in `triggerSearch`).
+  usePanelRefresh(triggerSearch, enabled);
 
   if (!enabled) {
     return (

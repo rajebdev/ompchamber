@@ -284,6 +284,7 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
           onSortChange={handleSortChange}
           onNewWorkspace={() => setNewWorkspaceOpen(true)}
           onScheduler={() => setSchedulerOpen(true)}
+          onRefresh={() => revalidator.revalidate()}
           onClose={onClose}
         />
 

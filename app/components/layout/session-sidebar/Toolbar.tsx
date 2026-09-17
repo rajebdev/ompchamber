@@ -1,4 +1,4 @@
-import { Search, FolderPlus, Calendar, Archive, MoreHorizontal, PanelLeftClose, X } from 'lucide-react';
+import { Search, FolderPlus, Calendar, Archive, MoreHorizontal, PanelLeftClose, X, RefreshCw } from 'lucide-react';
 import type { SessionSortOption } from '@/types';
 
 interface SessionSidebarToolbarProps {
@@ -16,6 +16,7 @@ interface SessionSidebarToolbarProps {
   onSortChange: (opt: SessionSortOption) => void;
   onNewWorkspace: () => void;
   onScheduler: () => void;
+  onRefresh: () => void;
   onClose?: () => void;
 }
 
@@ -34,6 +35,7 @@ export function SessionSidebarToolbar({
   onSortChange,
   onNewWorkspace,
   onScheduler,
+  onRefresh,
   onClose,
 }: SessionSidebarToolbarProps) {
   return (
@@ -42,6 +44,16 @@ export function SessionSidebarToolbar({
         <div className="flex space-x-3 items-center">
           <FolderPlus size={14} className="hover:text-ink cursor-pointer"  onClick={onNewWorkspace} />
           <Calendar size={14} className="hover:text-ink cursor-pointer" onClick={onScheduler} />
+          <span 
+            title="Refresh sessions" 
+            onClick={onRefresh}
+            className="inline-flex cursor-pointer"
+          >
+            <RefreshCw 
+              size={14} 
+              className="hover:text-ink" 
+            />
+          </span>
         </div>
         <div className="flex space-x-3 items-center relative">
           <Search 
