@@ -58,7 +58,7 @@ export interface ChatTimelineActionsResult {
   handleSend: (attachments: Attachment[], options?: { steering?: boolean }) => Promise<void>;
   handleEditQueueItem: (item: QueuedMessage) => void;
   handleSendNowQueueItem: (item: QueuedMessage) => Promise<void>;
-  handleUndo: (msgId: string, content?: string) => void;
+  handleUndo: (msgId: string, content?: string) => Promise<boolean>;
   handleRetry: (msgId: string) => void;
   submitNewChat: (text: string, attachments: any[]) => void;
   /** Stop the active run; returns the number of queue items held back. */
@@ -180,7 +180,7 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     }
   }, [isGenerating, executeSend, setMessageQueue, isOmpSession, steerOmpAgent, abortControllerRef, setGenerating, stopHoldRef]);
 
-  const handleUndo = useCallback((msgId: string, content?: string) => {
+  const handleUndo = useCallback(async (msgId: string, content?: string): Promise<boolean> => {
     if (isGenerating) {
       if (isOmpSession) {
         void ompAgent.abort();
@@ -199,20 +199,20 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     // truncates the session JSONL before the turn (session id unchanged) and
     // respawns the agent on the truncated context. The chamber-side truncate
     // below would be undone by the next reload, because the timeline loads
-    // from the omp JSONL — not from the chamber DB copy.
+    // from the omp JSONL — not from the chamber DB copy. Resolve false on
+    // failure so the confirmation modal can stop its loading state instead of
+    // closing on a no-op.
     if (isOmpSession && sessionId) {
-      void (async () => {
-        const res = await fetch(`/api/chat/${encodeURIComponent(sessionId)}/rewind`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ entryId: msgId }),
-        });
-        if (!res.ok) return;
-        const next = await fetch(`/api/chat/${encodeURIComponent(sessionId)}`).then(r => r.json()).catch(() => null);
-        const messages: ChatMessageData[] = next?.session?.messages ?? [];
-        if (messages.length > 0) setLocalMessages(normalizeNoticePositions(messages));
-      })();
-      return;
+      const res = await fetch(`/api/chat/${encodeURIComponent(sessionId)}/rewind`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entryId: msgId }),
+      });
+      if (!res.ok) return false;
+      const next = await fetch(`/api/chat/${encodeURIComponent(sessionId)}`).then(r => r.json()).catch(() => null);
+      const messages: ChatMessageData[] = next?.session?.messages ?? [];
+      if (messages.length > 0) setLocalMessages(normalizeNoticePositions(messages));
+      return true;
     }
 
     setLocalMessages(prev => {
@@ -221,6 +221,7 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
       persistMessages(next);
       return next;
     });
+    return true;
   }, [isGenerating, isOmpSession, sessionId, persistMessages, abortControllerRef, setGenerating, setInputValue, setLocalMessages]);
 
   const handleRetry = useCallback((msgId: string) => {

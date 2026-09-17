@@ -83,7 +83,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
   const { toasts, pushToast, dismissToast } = useToasts();
 
   const [newChatInitialContent, setNewChatInitialContent] = useState<string | null>(null);
-  const { pendingUndo, requestUndo: handleRequestUndo, closeUndoConfirm, confirmUndo } = useUndoConfirmation(handleUndo);
+  const { pendingUndo, undoing, requestUndo: handleRequestUndo, closeUndoConfirm, confirmUndo } = useUndoConfirmation(handleUndo);
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Stop-all semantics: the run stops AND the queued follow-ups stay in the
@@ -313,6 +313,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
         <UndoConfirmModal
           isOmpSession={Boolean(sessionId) && !sessionId.startsWith('new-') && Number.isNaN(Number(sessionId))}
           content={pendingUndo.content}
+          undoing={undoing}
           onClose={closeUndoConfirm}
           onConfirm={confirmUndo}
         />
