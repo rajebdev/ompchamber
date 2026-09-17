@@ -27,9 +27,11 @@ interface AskDialogProps {
 export function AskDialog({ request, onRespond }: AskDialogProps) {
   const [value, setValue] = useState(request.method === 'editor' ? request.prefill ?? '' : '');
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [customValue, setCustomValue] = useState('');
   const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const customInputRef = useRef<HTMLInputElement>(null);
 
   const options = request.options ?? [];
   const optionDetails = request.optionDetails ?? [];
@@ -37,6 +39,7 @@ export function AskDialog({ request, onRespond }: AskDialogProps) {
   useEffect(() => {
     setValue(request.method === 'editor' ? request.prefill ?? '' : '');
     setSelectedOption(options.length > 0 ? options[0] : null);
+    setCustomValue('');
   }, [request, options]);
 
   useEffect(() => {
@@ -45,8 +48,15 @@ export function AskDialog({ request, onRespond }: AskDialogProps) {
       inputRef.current?.focus();
     } else if (request.method === 'editor') {
       textareaRef.current?.focus();
+    } else if (request.method === 'select') {
+      // When the AI offers an "Other"-style option, the intended interaction
+      // is typing a custom answer — focus the input right away.
+      const hasOther = options.some((option) => /^other\b/i.test(option.trim()));
+      if (hasOther) {
+        customInputRef.current?.focus();
+      }
     }
-  }, [request.id, request.method]);
+  }, [request.id, request.method, options]);
 
   const cancel = useCallback(() => {
     onRespond(request, { cancelled: true });
@@ -56,19 +66,42 @@ export function AskDialog({ request, onRespond }: AskDialogProps) {
     if (request.method === 'confirm') {
       onRespond(request, { confirmed: true });
     } else if (request.method === 'select') {
-      if (selectedOption) {
+      // A typed custom answer is the actual response — the "Other" option
+      // label itself is not. It wins over the highlighted option.
+      if (customValue.trim()) {
+        onRespond(request, { value: customValue.trim() });
+      } else if (selectedOption) {
         onRespond(request, { value: selectedOption });
       }
     } else {
       onRespond(request, { value });
     }
-  }, [onRespond, request, selectedOption, value]);
+  }, [onRespond, request, selectedOption, value, customValue]);
 
   const handleConfirmOption = useCallback(
     (option: string) => {
+      // Never submit the literal "Other…" label (e.g. via double-click) —
+      // it is a prompt to type, not an answer. Redirect to the input instead.
+      if (/^other\b/i.test(option.trim())) {
+        setSelectedOption(option);
+        customInputRef.current?.focus();
+        return;
+      }
       onRespond(request, { value: option });
     },
     [onRespond, request]
+  );
+
+  const handleSelectOption = useCallback(
+    (option: string) => {
+      setSelectedOption(option);
+      // "Other"-style options expect a typed answer; put the caret in the
+      // custom input instead of leaving the label itself as the response.
+      if (/^other\b/i.test(option.trim())) {
+        customInputRef.current?.focus();
+      }
+    },
+    []
   );
 
   // Keyboard navigation & shortcuts
@@ -82,6 +115,13 @@ export function AskDialog({ request, onRespond }: AskDialogProps) {
       }
 
       if (request.method === 'select' && options.length > 0) {
+        // Typing in the custom "Other" input must not trigger number/arrow/Enter
+        // shortcuts — those keys belong to the text field while focused.
+        const typingCustom = e.target instanceof HTMLInputElement && e.target === customInputRef.current;
+        if (typingCustom) {
+          return;
+        }
+
         const num = parseInt(e.key, 10);
         if (!isNaN(num) && num >= 1 && num <= options.length) {
           e.preventDefault();
@@ -220,7 +260,10 @@ export function AskDialog({ request, onRespond }: AskDialogProps) {
                 options={options}
                 optionDetails={optionDetails}
                 selectedOption={selectedOption}
-                onSelect={setSelectedOption}
+                customValue={customValue}
+                onCustomChange={setCustomValue}
+                customInputRef={customInputRef}
+                onSelect={handleSelectOption}
                 onConfirmOption={handleConfirmOption}
               />
             )}
@@ -284,6 +327,7 @@ export function AskDialog({ request, onRespond }: AskDialogProps) {
             method={request.method}
             optionsLength={options.length}
             selectedOption={selectedOption}
+            hasCustomAnswer={customValue.trim().length > 0}
             onCancel={cancel}
             onSubmit={submitValue}
           />

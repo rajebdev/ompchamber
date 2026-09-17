@@ -4,6 +4,7 @@ interface AskDialogFooterProps {
   method: string;
   optionsLength: number;
   selectedOption: string | null;
+  hasCustomAnswer?: boolean;
   onCancel: () => void;
   onSubmit: () => void;
 }
@@ -12,10 +13,11 @@ export function AskDialogFooter({
   method,
   optionsLength,
   selectedOption,
+  hasCustomAnswer = false,
   onCancel,
   onSubmit,
 }: AskDialogFooterProps) {
-  const isSelectDisabled = method === 'select' && !selectedOption;
+  const isSelectDisabled = method === 'select' && !selectedOption && !hasCustomAnswer;
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-ink/8 bg-canvas/40 px-5 py-3.5">
