@@ -16,8 +16,8 @@
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import type { ChatMessageData, ToolCallData, IncomingExtensionUiRequest, OmpAgentCallbacks, OmpAgentEvent, OmpAgentState } from '@/types';
 import { extractTextFromContent, toolResultText, toChatMessage } from '@/lib/omp/session/mapper';
+import { PHASE_VERBS } from '@/lib/chat/timeline/tool-phrases';
 import {
-  PHASE_VERBS,
   describeAssistantPhase,
   describeToolActivity,
 } from '@/lib/chat/timeline/tool-verbs';
@@ -163,7 +163,7 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       if (!msg) break;
       if (msg.role === 'toolResult') {
         recordToolResult(msg, deps);
-        setActivity(PHASE_VERBS.processing, deps);
+        setActivity(PHASE_VERBS.thinking, deps);
         break;
       }
       // Assistant phases (thinking / prose / tool-call assembly) name the
@@ -233,7 +233,7 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
     case 'tool_execution_end': {
       const callId = typeof data.toolCallId === 'string' ? data.toolCallId : undefined;
       if (!callId) break;
-      setActivity(PHASE_VERBS.processing, deps);
+      setActivity(PHASE_VERBS.thinking, deps);
       const map = deps.toolResultsRef.current;
       if (map) storeToolResult(map, callId, {
         output: toolResultText(data.result),

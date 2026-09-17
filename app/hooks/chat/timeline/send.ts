@@ -20,7 +20,7 @@ import { loadAgentNames } from '@/lib/chat/composer/client';
 import { translateAgentMentions, translateFileMentions } from '@/lib/chat/composer/translate';
 import { normalizeNoticePositions } from '@/lib/chat/order';
 import { createMockStreamCallbacks } from '@/lib/chat/timeline/stream-callbacks';
-import { PHASE_VERBS } from '@/lib/chat/timeline/tool-verbs';
+import { PHASE_VERBS } from '@/lib/chat/timeline/tool-phrases';
 
 type TextFileAttachment = Parameters<typeof composeMessageWithTextAttachments>[1][number];
 

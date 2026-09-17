@@ -94,6 +94,27 @@ describe('foldAgentEvent activity phrases', () => {
     expect(activity).toEqual(['Thinking', 'Writing response', 'Running bun test']);
   });
 
+  test('names the tool as soon as its call starts streaming, with no preparing state', () => {
+    const { deps, activity } = makeDeps();
+    // omp puts the streaming call at partial.content[contentIndex] while the
+    // event's own `toolCall` field only lands on toolcall_end.
+    const streaming = (name: string) => ({
+      type: 'message_update',
+      message: { role: 'assistant', content: [] },
+      assistantMessageEvent: { type: 'toolcall_start', contentIndex: 0, partial: { content: [{ type: 'toolCall', name, arguments: {} }] } },
+    });
+    foldAgentEvent(streaming('write'), deps);
+    foldAgentEvent({ ...streaming('edit'), assistantMessageEvent: { type: 'toolcall_delta', contentIndex: 0, partial: { content: [{ type: 'toolCall', name: 'edit', arguments: {} }] } } }, deps);
+    expect(activity).toEqual(['Writing', 'Editing']);
+  });
+
+  test('reports Thinking, not a results phase, once a tool returns', () => {
+    const { deps, activity } = makeDeps();
+    foldAgentEvent({ type: 'tool_execution_start', toolCallId: 'c5', toolName: 'bash', args: { command: 'ls' } }, deps);
+    foldAgentEvent({ type: 'tool_execution_end', toolCallId: 'c5', result: { content: [{ type: 'text', text: 'ok' }] } }, deps);
+    expect(activity).toEqual(['Running ls', 'Thinking']);
+  });
+
   test('does not re-publish the same phrase for per-token frames', () => {
     const { deps, activity } = makeDeps();
     for (let i = 0; i < 5; i++) {
@@ -102,10 +123,12 @@ describe('foldAgentEvent activity phrases', () => {
     expect(activity).toEqual(['Thinking']);
   });
 
-  test('never emits a dangling verb for a tool call with empty arguments', () => {
+  test('keeps a complete phrase when a tool call carries no arguments', () => {
     const { deps, activity } = makeDeps();
+    // A model can emit `arguments: {}` (seen with deepseek-v4-flash): the tool
+    // name alone must still read as an activity, never a dangling verb.
     foldAgentEvent({ type: 'tool_execution_start', toolCallId: 'c4', toolName: 'bash', args: {} }, deps);
-    expect(activity).toEqual(['bash']);
+    expect(activity).toEqual(['Running']);
   });
 });
 

@@ -16,7 +16,8 @@ import type { ChatMessageData } from '@/types';
 import type { StreamChunkCallbacks } from '@/hooks/chat/stream';
 import { triggerChatCompletionSound } from '@/hooks/ui/notification-sound';
 import { createRafBatch } from '@/lib/chat/timeline/stream-raf';
-import { PHASE_VERBS, describeToolCall } from '@/lib/chat/timeline/tool-verbs';
+import { PHASE_VERBS } from '@/lib/chat/timeline/tool-phrases';
+import { describeToolCall } from '@/lib/chat/timeline/tool-verbs';
 
 export interface MockStreamCallbacksDeps {
   aiPlaceholderId: string;
@@ -140,7 +141,7 @@ export function createMockStreamCallbacks(deps: MockStreamCallbacksDeps): Stream
       );
     },
     onToolEnd: (data) => {
-      setGeneratingVerb(PHASE_VERBS.processing);
+      setGeneratingVerb(PHASE_VERBS.thinking);
       enqueue(prev =>
         prev.map(m => {
           if (m.id === aiPlaceholderId || (m.role === 'ai' && prev[prev.length - 1]?.id === m.id)) {

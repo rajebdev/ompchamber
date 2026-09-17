@@ -17,7 +17,7 @@ import type { ChatMessageData, ExtensionUiDialogRequest, IncomingExtensionUiRequ
 import { normalizeNoticePositions } from '@/lib/chat/order';
 import { triggerChatCompletionSound } from '@/hooks/ui/notification-sound';
 import { createRafBatch } from '@/lib/chat/timeline/stream-raf';
-import { PHASE_VERBS } from '@/lib/chat/timeline/tool-verbs';
+import { PHASE_VERBS } from '@/lib/chat/timeline/tool-phrases';
 
 // omp emits one message_update per model chunk, each carrying that message's
 // FULL accumulated content, so a burst only needs the newest payload per
