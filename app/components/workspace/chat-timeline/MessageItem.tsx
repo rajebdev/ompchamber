@@ -221,6 +221,18 @@ export const ChatMessageItem = memo(function ChatMessageItem({
       {/* Main AI Response Container */}
       <div className="w-full space-y-2.5 font-sans leading-relaxed">
         
+        {/* System Notice Alert */}
+        {msg.notice && <SystemNotice notice={msg.notice} />}
+
+        {/* Thinking / Reasoning Accordion */}
+        {thinkingData && (
+          <ThinkingSection 
+            thinking={thinkingData} 
+            defaultExpanded={false}
+            showSeparator={isPrevAssistant}
+          />
+        )}
+
         {/* Provider / API Error Alert */}
         {msg.error && (
           <div className="flex items-start space-x-2.5 bg-error/10 border border-error/30 rounded-lg mx-3 px-3.5 py-2.5 text-[12px] text-ink select-text">
@@ -251,18 +263,6 @@ export const ChatMessageItem = memo(function ChatMessageItem({
               )}
             </div>
           </div>
-        )}
-
-        {/* System Notice Alert */}
-        {msg.notice && <SystemNotice notice={msg.notice} />}
-
-        {/* Thinking / Reasoning Accordion */}
-        {thinkingData && (
-          <ThinkingSection 
-            thinking={thinkingData} 
-            defaultExpanded={false}
-            showSeparator={isPrevAssistant}
-          />
         )}
 
         {/* Main AI Response Content (Rich Markdown with code blocks, tables, lists) rendered before tool calls */}
