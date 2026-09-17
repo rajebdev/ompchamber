@@ -39,6 +39,13 @@ export function disposeStreamingCoalescer(): void {
   messageBatch.cancel();
 }
 
+/** Drop coalesced updates without applying them — a session switch discards
+ *  the previous session's queued `message_update` frames so they cannot leak
+ *  into the freshly cleared timeline of the next session. */
+export function cancelStreamingCoalescer(): void {
+  messageBatch.cancel();
+}
+
 export interface OmpAgentCallbacksDeps {
   removeDeliveredFromQueue: (text: string) => void;
   setGenerating: (v: boolean) => void;

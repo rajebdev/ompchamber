@@ -40,6 +40,14 @@ export interface UseSessionLoadDeps {
   /** Live AI placeholder ref: when non-null it owns the timeline tail and the
    *  committed fetch must not replace it mid-stream. */
   aiPlaceholderIdRef: { current: string | null };
+  /** Caller-owned timeline state mirror: lets the committed fetch merge the
+   *  live stream tail (rows the JSONL does not carry yet) into history. */
+  localMessagesRef: { current: ChatMessageData[] };
+  /** Live optimistic user bubble ref: cleared together with the placeholder on
+   *  a session switch so stale ids cannot survive into the next session. */
+  optimisticUserIdRef: { current: string | null };
+  /** Drop queued stream updates belonging to the previous session (coalescer). */
+  cancelStreamingCoalescer: () => void;
   metaRefreshedRef: { current: string | null };
   /** Scroll container of the timeline: lets loadOlder preserve the viewport
    *  position when older rows are prepended above it. */
@@ -47,7 +55,7 @@ export interface UseSessionLoadDeps {
 }
 
 export function useSessionLoad(deps: UseSessionLoadDeps) {
-  const { sessionId, setLocalMessages, setGenerating, isGeneratingRef, aiPlaceholderIdRef, metaRefreshedRef, scrollRef } = deps;
+  const { sessionId, setLocalMessages, setGenerating, isGeneratingRef, aiPlaceholderIdRef, localMessagesRef, optimisticUserIdRef, cancelStreamingCoalescer, metaRefreshedRef, scrollRef } = deps;
 
   const [sessionData, setSessionData] = useState<SessionDataShape | null>(null);
   // History pagination state: the first fetch receives the newest window only;
@@ -153,6 +161,18 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
         setGenerating(false);
         adoptedSessionIdRef.current = null;
         seededModelRef.current = null;
+        // The placeholder/optimistic ids belong to the PREVIOUS session's
+        // in-flight send; message_end never arrives after a switch away (the
+        // stream is disconnected), so they must be dropped here. A stale
+        // placeholder made timelineOwnedByOptimistic() report true on return,
+        // which silently DISCARDED the committed history fetch of the
+        // mid-run session — only newly streamed frames ever appeared.
+        aiPlaceholderIdRef.current = null;
+        optimisticUserIdRef.current = null;
+        // Drop coalesced message_update frames queued by the previous
+        // session's stream: otherwise they apply to this (cleared) timeline
+        // as phantom bubbles.
+        cancelStreamingCoalescer();
       }
       // Reset pagination cursor on every session switch — the window belongs
       // to the previous session otherwise.
@@ -184,7 +204,17 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
             const fetched = data.session.messages || [];
             const optimisticOwnsTail = timelineOwnedByOptimistic();
             if (fetched.length > 0 && !optimisticOwnsTail) {
-              setLocalMessages(normalizeNoticePositions(fetched));
+              // Reattach race: a resumed stream may have appended the
+              // in-flight segment before this committed fetch resolved (the
+              // JSONL does not carry it yet). Keep those live rows instead of
+              // dropping them until the next message_update re-renders them.
+              if (isGeneratingRef.current) {
+                const fetchedIds = fetched.map((m: ChatMessageData) => m.id);
+                const liveTail = localMessagesRef.current.filter(m => !fetchedIds.includes(m.id));
+                setLocalMessages(normalizeNoticePositions([...fetched, ...liveTail]));
+              } else {
+                setLocalMessages(normalizeNoticePositions(fetched));
+              }
             } else if (!sessionId.startsWith('new-') && !optimisticOwnsTail) {
               setLocalMessages([]);
             }

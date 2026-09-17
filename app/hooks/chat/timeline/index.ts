@@ -10,7 +10,7 @@ import { useChatTimelineActions } from '@/hooks/chat/timeline/actions';
 import { useChatTimelineSend } from '@/hooks/chat/timeline/send';
 import { useSessionLoad } from '@/hooks/chat/timeline/session-load';
 import { useBrowserPageContextInsert } from '@/hooks/chat/timeline/browser-context';
-import { createOmpAgentCallbacks } from '@/lib/chat/timeline/omp-callbacks';
+import { createOmpAgentCallbacks, cancelStreamingCoalescer } from '@/lib/chat/timeline/omp-callbacks';
 import { readStreamTransport } from '@/lib/chat/omp/transport';
 import { normalizeApprovalMode, ACCESS_MODE_SETTING_KEY } from '@/lib/omp/config/access-mode';
 import type { ApprovalMode } from '@/lib/omp/config/access-mode';
@@ -71,6 +71,9 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
 
   const [isGenerating, setIsGenerating] = useState(false);
   const isGeneratingRef = useRef(false);
+  // Mirror of localMessages for non-reactive reads (session-load merge path).
+  const localMessagesRef = useRef<ChatMessageData[]>([]);
+  localMessagesRef.current = localMessages;
   const [generatingVerb, setGeneratingVerb] = useState('');
   const abortControllerRef = useRef<AbortController | null>(null);
   const sessionIdRef = useRef(sessionId);
@@ -124,6 +127,9 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     setGenerating,
     isGeneratingRef,
     aiPlaceholderIdRef,
+    localMessagesRef,
+    optimisticUserIdRef,
+    cancelStreamingCoalescer,
     metaRefreshedRef,
     scrollRef,
   });
