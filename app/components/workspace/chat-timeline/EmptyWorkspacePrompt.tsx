@@ -191,7 +191,6 @@ export function EmptyWorkspacePrompt({
             generatingVerb={generatingVerb}
             provider={provider}
             providerNames={providerNames}
-            thinkingLevel={sessionThinkingLevel ?? undefined}
           />
         )}
         <ChatInput

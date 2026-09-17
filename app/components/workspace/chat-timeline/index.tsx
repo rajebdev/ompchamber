@@ -268,7 +268,6 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
                 generatingVerb={generatingVerb} 
                 provider={sessionProvider}
                 providerNames={providerNames}
-                thinkingLevel={sessionData?.thinkingLevel}
               />
             )}
             <QueueList 
