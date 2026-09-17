@@ -17,7 +17,7 @@
  * while an optimistic AI placeholder actually owns the tail of the timeline.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { ChatMessageData } from '@/types';
 import { normalizeNoticePositions } from '@/lib/chat/order';
@@ -41,12 +41,25 @@ export interface UseSessionLoadDeps {
    *  committed fetch must not replace it mid-stream. */
   aiPlaceholderIdRef: { current: string | null };
   metaRefreshedRef: { current: string | null };
+  /** Scroll container of the timeline: lets loadOlder preserve the viewport
+   *  position when older rows are prepended above it. */
+  scrollRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 export function useSessionLoad(deps: UseSessionLoadDeps) {
-  const { sessionId, setLocalMessages, setGenerating, isGeneratingRef, aiPlaceholderIdRef, metaRefreshedRef } = deps;
+  const { sessionId, setLocalMessages, setGenerating, isGeneratingRef, aiPlaceholderIdRef, metaRefreshedRef, scrollRef } = deps;
 
   const [sessionData, setSessionData] = useState<SessionDataShape | null>(null);
+  // History pagination state: the first fetch receives the newest window only;
+  // scrolling to the top pages further back via ?before=oldestIndex.
+  const [hasMore, setHasMore] = useState(false);
+  const [oldestIndex, setOldestIndex] = useState(0);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const loadingOlderRef = useRef(false);
+  const [sessionLoading, setSessionLoading] = useState(false);
+  // Set while prepending older rows; the layout effect below re-anchors the
+  // viewport to the content the user was reading instead of jumping.
+  const pendingScrollAnchorRef = useRef<{ prevHeight: number; prevTop: number } | null>(null);
   const prevSessionIdRef = useRef<string | null>(null);
   // Real session id adopted by a fresh spawn ("new-…" → UUID). onAgentStart
   // may fire before React re-renders with the new URL, so it reads the id
@@ -117,6 +130,7 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
   // Fetch session messages and details from API
   useEffect(() => {
     let active = true;
+    setSessionLoading(true);
     // Track the previous session id so a session switch (including "New
     // Session" → new-…) clears the timeline, while the optimistic spawn
     // transition (new-… → real UUID) keeps its bubbles.
@@ -132,6 +146,12 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
         adoptedSessionIdRef.current = null;
         seededModelRef.current = null;
       }
+      // Reset pagination cursor on every session switch — the window belongs
+      // to the previous session otherwise.
+      setHasMore(false);
+      setOldestIndex(0);
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
       // metaRefreshedRef must NOT survive a session switch — including a
       // spawn adoption. It is the once-per-session guard in onAgentStart
       // (omp-callbacks.ts); keeping the stale value here ate the retrigger,
@@ -146,6 +166,7 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
         .then(res => res.json())
         .then(data => {
           if (!active) return;
+          setSessionLoading(false);
           if (data?.session) {
             applySessionData(data.session);
             // Only replace the timeline when the fetch actually has messages.
@@ -158,6 +179,8 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
             } else if (!sessionId.startsWith('new-') && !optimisticOwnsTail) {
               setLocalMessages([]);
             }
+            if (typeof data.hasMore === 'boolean') setHasMore(data.hasMore);
+            if (typeof data.oldestIndex === 'number') setOldestIndex(data.oldestIndex);
           } else {
             setSessionData(null);
             if (!timelineOwnedByOptimistic()) setLocalMessages([]);
@@ -165,6 +188,7 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
         })
         .catch(err => {
           console.error('Error loading session from API:', err);
+          if (active) setSessionLoading(false);
           if (active && !timelineOwnedByOptimistic()) {
             setSessionData(null);
             setLocalMessages([]);
@@ -182,8 +206,57 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, applySessionData, timelineOwnedByOptimistic, setLocalMessages, setGenerating]);
 
+  /** Page the next older window into the timeline. Called from the scroll
+   *  handler when the viewport reaches the top; a no-op while a page is in
+   *  flight, when the session has no more history, or while the timeline is
+   *  owned by an optimistic in-flight send. */
+  const loadOlder = useCallback(() => {
+    if (!sessionId || sessionId.startsWith('new-')) return;
+    if (!hasMore || loadingOlderRef.current) return;
+    if (isGeneratingRef.current && aiPlaceholderIdRef.current) return;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    const el = scrollRef?.current;
+    if (el) pendingScrollAnchorRef.current = { prevHeight: el.scrollHeight, prevTop: el.scrollTop };
+    fetch(`/api/chat/${sessionId}?before=${oldestIndex}`)
+      .then(res => res.json())
+      .then((data: { session?: { messages?: ChatMessageData[] }; hasMore?: boolean; oldestIndex?: number }) => {
+        const older = data.session?.messages ?? [];
+        setHasMore(Boolean(data.hasMore));
+        if (typeof data.oldestIndex === 'number') setOldestIndex(data.oldestIndex);
+        if (older.length === 0) return;
+        setLocalMessages(prev => {
+          // Drop overlap guard: the server window is index-based, so the
+          // fetched slice is strictly older than everything already mounted.
+          return [...normalizeNoticePositions(older), ...prev];
+        });
+      })
+      .catch(() => {})
+      .finally(() => {
+        loadingOlderRef.current = false;
+        setLoadingOlder(false);
+      });
+  }, [sessionId, hasMore, oldestIndex, isGeneratingRef, aiPlaceholderIdRef, scrollRef, setLocalMessages]);
+
+  // Position preservation: after older rows commit above the viewport, shift
+  // scrollTop by the height delta so the rows the user was reading stay put.
+  // setLocalMessages identity is stable; every prepend bumps it.
+  useLayoutEffect(() => {
+    const anchor = pendingScrollAnchorRef.current;
+    if (!anchor) return;
+    const el = scrollRef?.current;
+    if (!el) return;
+    pendingScrollAnchorRef.current = null;
+    const delta = el.scrollHeight - anchor.prevHeight;
+    if (delta > 0) el.scrollTop = anchor.prevTop + delta;
+  }, [setLocalMessages, scrollRef]);
+
   return {
     sessionData,
+    hasMore,
+    loadingOlder,
+    sessionLoading,
+    loadOlder,
     adoptedSessionIdRef,
     seededModelRef,
     applySessionData,

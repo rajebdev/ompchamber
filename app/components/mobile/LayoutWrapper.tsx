@@ -8,6 +8,7 @@ import { MobileFullEditor } from '@/components/mobile/mobile-right-sidebar/FullE
 import { MobileFullDiff } from '@/components/mobile/mobile-right-sidebar/FullDiff';
 import { SettingsModal } from '@/components/settings/Modal';
 import { activeProjectForSession } from '@/lib/workspace/active-project';
+import { triggerSessionPrewarm, spawnCwdForNewSession } from '@/lib/omp/session/prewarm';
 
 interface MobileLayoutWrapperProps {
   folders: WorkspaceFolderData[];
@@ -111,6 +112,10 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
   // the chat timeline replaces with the real omp session id on first send.
   // The current folder stays selected so the composer keeps its context.
   const handleNewSession = () => {
+    // Same resolution the send path uses (active session's folder, else the
+    // URL folderId) so the prewarmed cwd matches the eventual spawn cwd.
+    const cwd = spawnCwdForNewSession(folders, sessionParam, folderId ?? undefined);
+    if (cwd) triggerSessionPrewarm(cwd);
     setSearchParams(prev => {
       const currentSessionId = prev.get('sessionId');
       const next = new URLSearchParams(prev);

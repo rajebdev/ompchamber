@@ -1,8 +1,7 @@
 import { json } from '@remix-run/node';
 import type { ActionFunctionArgs } from '@remix-run/node';
-import { randomUUID } from 'crypto';
 import { getDb } from '@/db.server';
-import { startRpcSession, WebRpcError } from '@/lib/omp/rpc/manager';
+import { startNewRpcSession, WebRpcError } from '@/lib/omp/rpc/manager';
 import { isApprovalMode } from '@/lib/omp/config/access-mode';
 import { loadPersistedAccessMode } from '@/lib/omp/config/access-mode.server';
 import { RpcCommandError, RpcCommandTimeoutError } from '@/lib/omp/rpc/process';
@@ -52,12 +51,12 @@ export async function action({ request }: ActionFunctionArgs) {
       return json({ error: 'cwd is required', code: 'cwd_required' }, { status: 400 });
     }
 
-    // One-time key: startRpcSession coalesces concurrent callers sharing a
-    // key, so a unique key guarantees a fresh session per request.
-    const tempKey = `__new__${randomUUID()}`;
     // Trust a client-supplied mode only when valid; else use the persisted pick.
     const accessMode = isApprovalMode(body.accessMode) ? body.accessMode : await loadPersistedAccessMode();
-    const { session, realSessionId } = await startRpcSession(tempKey, '', cwd, undefined, accessMode);
+    // startNewRpcSession adopts the prewarmed idle process for this cwd when
+    // one exists (fired by the sidebar's New Session click) and otherwise
+    // cold-spawns — same contract, minus the boot wait when prewarmed.
+    const { session, realSessionId } = await startNewRpcSession(cwd, accessMode);
 
     const { type, message, images, provider, modelId, thinkingLevel } = body as {
       type: string;

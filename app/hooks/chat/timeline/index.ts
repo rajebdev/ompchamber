@@ -43,7 +43,13 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     }, { replace: true });
   }, [setSearchParams]);
 
-  const { scrollRef, contentRef, showScrollBottom, isScrolling, handleScroll, scrollToBottom, jumpToBottom } = useChatTimelineScroll();
+  // Ref mirror of loadOlder so the scroll handler can call the latest one
+  // without re-creating it (useSessionLoad is defined below the scroll hook).
+  const loadOlderRef = useRef<() => void>(() => {});
+
+  const { scrollRef, contentRef, showScrollBottom, isScrolling, handleScroll, scrollToBottom, jumpToBottom } = useChatTimelineScroll({
+    onScrollTop: () => loadOlderRef.current(),
+  });
 
   const [inputValue, setInputValue] = useSessionState<string>('chat.draft', '');
   useBrowserPageContextInsert(setInputValue);
@@ -112,6 +118,10 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     adoptedSessionIdRef,
     refreshSessionMeta,
     setSessionModel,
+    hasMore,
+    loadingOlder,
+    sessionLoading,
+    loadOlder,
   } = useSessionLoad({
     sessionId,
     setLocalMessages,
@@ -119,7 +129,9 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     isGeneratingRef,
     aiPlaceholderIdRef,
     metaRefreshedRef,
+    scrollRef,
   });
+  loadOlderRef.current = loadOlder;
 
   // Composer picks made BEFORE the omp session exists (pending "new-…" view):
   // there is no live session to receive the RPC yet, so the selection is held
@@ -281,6 +293,10 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     sessionData,
     localMessages,
     isGenerating,
+    hasMore,
+    loadingOlder,
+    sessionLoading,
+    loadOlder,
     generatingVerb,
     messageQueue,
     setMessageQueue,

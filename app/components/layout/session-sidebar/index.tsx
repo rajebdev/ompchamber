@@ -7,6 +7,7 @@ import { SessionSidebarFooter } from '@/components/layout/session-sidebar/Footer
 import { SessionSidebarSessionList } from '@/components/layout/session-sidebar/SessionList';
 import { Toast } from '@/components/common/Toast';
 import { pendingSessionCreatedAt, pendingSessionTitle } from '@/lib/omp/session/default-title';
+import { triggerSessionPrewarm, spawnCwdForNewSession } from '@/lib/omp/session/prewarm';
 import { isValidSessionSortOption, sortFolders } from '@/lib/workspace/sidebar-sort';
 import type { SessionSortOption } from '@/types';
 import { useScrollbarFade } from '@/hooks/ui/scrollbar-fade';
@@ -159,7 +160,15 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
     }, { replace: true });
   };
 
+  /** The folder whose context a new session will inherit — same resolution
+   *  the send path uses, so the prewarmed cwd matches the spawn cwd. */
+  const prewarmForNewSession = (folderId?: number) => {
+    const cwd = spawnCwdForNewSession(folders, sessionParam, folderId);
+    if (cwd) triggerSessionPrewarm(cwd, appSettings.omp_access_mode);
+  };
+
   const handleNewSession = () => {
+    prewarmForNewSession();
     setSearchParams(prev => {
       const currentSessionId = prev.get('sessionId');
       const next = new URLSearchParams(prev);
@@ -179,6 +188,7 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
   };
 
   const handleNewSessionForFolder = (folderId: number) => {
+    prewarmForNewSession(folderId);
     setSearchParams(prev => {
       const next = new URLSearchParams(prev);
       next.set('sessionId', `new-${Date.now()}`);

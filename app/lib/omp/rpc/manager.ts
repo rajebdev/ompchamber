@@ -308,4 +308,4 @@ export class AgentSessionWrapper {
 }
 
 export type { RunningRpcSession, RunningSessionUpdate } from '@/lib/omp/rpc/session-registry';
-export { getRpcSession, getRunningRpcSessions, getRunningRpcSessionIds, subscribeRunningSessions, notifyRunningChange, startRpcSession } from '@/lib/omp/rpc/session-registry';
+export { getRpcSession, getRunningRpcSessions, getRunningRpcSessionIds, subscribeRunningSessions, notifyRunningChange, startRpcSession, prewarmRpcSession, startNewRpcSession } from '@/lib/omp/rpc/session-registry';

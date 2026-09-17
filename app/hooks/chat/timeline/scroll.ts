@@ -26,6 +26,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 /** Distance from the tail, in pixels, that still counts as "at the bottom". */
 const FOLLOW_BOTTOM_THRESHOLD_PX = 100;
 
+export interface ChatTimelineScrollOptions {
+  /** Called when the viewport reaches the top (history paging trigger).
+   *  Ref-indirect; the hook never depends on the callback's identity. */
+  onScrollTop?: () => void;
+}
+
 export interface ChatTimelineScrollResult {
   scrollRef: React.RefObject<HTMLDivElement | null>;
   /** Attach to the timeline's inner content wrapper so its growth is observed. */
@@ -40,7 +46,12 @@ export interface ChatTimelineScrollResult {
   jumpToBottom: (behavior?: ScrollBehavior) => void;
 }
 
-export function useChatTimelineScroll(): ChatTimelineScrollResult {
+/** Distance from the top that counts as "reached the history boundary". */
+const SCROLL_TOP_TRIGGER_PX = 40;
+
+export function useChatTimelineScroll(options: ChatTimelineScrollOptions = {}): ChatTimelineScrollResult {
+  const onScrollTopRef = useRef<(() => void) | undefined>(options.onScrollTop);
+  onScrollTopRef.current = options.onScrollTop ?? onScrollTopRef.current;
   const scrollRef = useRef<HTMLDivElement>(null);
   const [contentNode, setContentNode] = useState<HTMLDivElement | null>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
@@ -74,6 +85,9 @@ export function useChatTimelineScroll(): ChatTimelineScrollResult {
       if (el.scrollTop < lastScrollTopRef.current - 1) followRef.current = false;
       if (el.scrollHeight - el.scrollTop - el.clientHeight < FOLLOW_BOTTOM_THRESHOLD_PX) followRef.current = true;
       lastScrollTopRef.current = el.scrollTop;
+      // History paging: the viewport hit the top — ask for the older window.
+      // Idempotent: the loader ignores calls while a page is in flight.
+      if (el.scrollTop <= SCROLL_TOP_TRIGGER_PX) onScrollTopRef.current?.();
     }
     syncFollowBottom();
     setIsScrolling(true);

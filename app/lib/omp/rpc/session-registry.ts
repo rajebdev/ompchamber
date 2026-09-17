@@ -12,6 +12,7 @@
  * usages happen inside functions, never at module init.
  */
 
+import { randomUUID } from 'crypto';
 import { existsSync } from 'fs';
 import { RpcProcess } from '@/lib/omp/rpc/process';
 import { buildSessionSpawnArgs } from '@/lib/omp/rpc/constants';
@@ -181,4 +182,108 @@ export async function startRpcSession(
 
   locks.set(sessionId, starting);
   return starting;
+}
+
+// ============================================================================
+// Prewarm pool: one idle "new session" spawned ahead of the first prompt so
+// adopting it on send skips the multi-second omp boot. Keyed per cwd (the
+// spawn's project directory) with its approval mode; consumed exactly once by
+// startNewRpcSession.
+// ============================================================================
+
+interface PrewarmedEntry {
+  cwd: string;
+  approvalMode: ApprovalMode;
+  /** Resolves when the wrapper is ready, or rejects when the spawn failed or
+   *  the entry was torn down before being claimed. */
+  ready: Promise<AgentSessionWrapper>;
+  claimed: boolean;
+}
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __ompPrewarmed: Map<string, PrewarmedEntry> | undefined;
+}
+
+function getPrewarmed(): Map<string, PrewarmedEntry> {
+  if (!globalThis.__ompPrewarmed) globalThis.__ompPrewarmed = new Map();
+  return globalThis.__ompPrewarmed;
+}
+
+/** Spawn (at most one) idle omp process for `cwd` so the next new-session
+ *  send starts instantly. Fire-and-forget; a failed spawn just clears itself.
+ *  Safe to call repeatedly — an existing live or in-flight entry wins. */
+export function prewarmRpcSession(cwd: string, approvalMode?: ApprovalMode): void {
+  const pool = getPrewarmed();
+  const existing = pool.get(cwd);
+  if (existing) return;
+  const mode = approvalMode ?? DEFAULT_APPROVAL_MODE;
+  const holder: { wrapper?: AgentSessionWrapper } = {};
+  const proc = new RpcProcess({
+    cwd,
+    extraArgs: buildSessionSpawnArgs('', mode),
+    onExit: ({ stderrTail }) => holder.wrapper?.handleProcessExit(stderrTail),
+  });
+  const wrapper = new AgentSessionWrapper(proc, cwd);
+  spawnApprovalModes.set(wrapper, mode);
+  holder.wrapper = wrapper;
+  wrapper.start();
+  const ready = wrapper
+    .waitUntilReady()
+    .then(() => {
+      // A dead wrapper (idle-kill, crash, exit) must not be handed out.
+      if (!wrapper.isAlive()) throw new Error('prewarmed process exited');
+      return wrapper;
+    })
+    .catch((error) => {
+      void wrapper.destroyAndWait();
+      const entry = pool.get(cwd);
+      if (entry?.ready === ready) pool.delete(cwd);
+      throw error;
+    });
+  pool.set(cwd, { cwd, approvalMode: mode, ready, claimed: false });
+}
+
+/** Consume the prewarmed process for `cwd` when its approval mode matches, or
+ *  spawn a fresh session. The returned wrapper is already registered under its
+ *  real session id, mirroring startRpcSession's bookkeeping. */
+export async function startNewRpcSession(
+  cwd: string,
+  approvalMode?: ApprovalMode,
+): Promise<{ session: AgentSessionWrapper; realSessionId: string }> {
+  const pool = getPrewarmed();
+  const entry = pool.get(cwd);
+  const mode = approvalMode ?? DEFAULT_APPROVAL_MODE;
+  let wrapper: AgentSessionWrapper | undefined;
+  if (entry && !entry.claimed && entry.approvalMode === mode) {
+    entry.claimed = true;
+    pool.delete(cwd);
+    try {
+      const candidate = await entry.ready;
+      // Died between readiness and claim (idle kill, crash) → cold spawn.
+      if (candidate.isAlive()) wrapper = candidate;
+      else await candidate.destroyAndWait();
+    } catch {
+      wrapper = undefined; // fall through to a cold spawn
+    }
+  } else if (entry && !entry.claimed) {
+    // Wrong mode: the prewarmed process cannot serve this request. Kill it and
+    // spawn cold — reconcileSpawnApprovalMode would refuse (no session file).
+    entry.claimed = true;
+    pool.delete(cwd);
+    void entry.ready.then((w) => w.destroyAndWait()).catch(() => {});
+  }
+
+  if (!wrapper) {
+    return startRpcSession(`__new__${randomUUID()}`, '', cwd, undefined, mode);
+  }
+
+  const registry = getRegistry();
+  const realSessionId = wrapper.sessionId;
+  wrapper.onDestroy(() => {
+    if (registry.get(wrapper.sessionId) === wrapper) registry.delete(wrapper.sessionId);
+    if (registry.get(realSessionId) === wrapper) registry.delete(realSessionId);
+  });
+  registry.set(realSessionId, wrapper);
+  return { session: wrapper, realSessionId };
 }

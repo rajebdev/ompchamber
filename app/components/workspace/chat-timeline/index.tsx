@@ -7,6 +7,7 @@ import { AskDialog } from '@/components/workspace/chat-timeline/tool-renderers/a
 import { MinimapShortcuts } from '@/components/workspace/chat-timeline/MinimapShortcuts';
 import { EmptyWorkspacePrompt } from '@/components/workspace/chat-timeline/EmptyWorkspacePrompt';
 import { GeneratingIndicator } from '@/components/workspace/chat-timeline/GeneratingIndicator';
+import { SessionSkeleton, LoadingOlderIndicator } from '@/components/workspace/chat-timeline/SessionSkeleton';
 import { QueueList } from '@/components/workspace/chat-timeline/QueueList';
 import { NewChatModal } from '@/components/workspace/chat-timeline/NewChatModal';
 import { SubagentView } from '@/components/workspace/chat-timeline/SubagentView';
@@ -42,6 +43,10 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
     sessionData,
     localMessages,
     isGenerating,
+    hasMore,
+    loadingOlder,
+    sessionLoading,
+    loadOlder,
     generatingVerb,
     messageQueue,
     setMessageQueue,
@@ -129,6 +134,12 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
   const isPendingSession = Boolean(sessionId?.startsWith('new-'));
   const composerRoot = composerRootFor(folders, sessionId, selectedFolderId);
 
+  // Full-panel skeleton while a session's committed history is still loading:
+  // covers the whole chat timeline (body + composer) so a session switch shows
+  // one coherent placeholder instead of a half-drawn view. Skipped while an
+  // optimistic send owns the tail (fresh spawn adoption must keep its bubbles).
+  const showFullSkeleton = !isPendingSession && sessionLoading && orderedMessages.length === 0;
+
   if (!sessionId || isPendingSession) {
     return (
       <EmptyWorkspacePrompt
@@ -164,65 +175,84 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
 
   return (
     <div className={`flex flex-col h-full min-h-0 overflow-hidden bg-canvas relative ${className}`}>
-      {/* Main chat container wrapper */}
-      <div className="relative flex-1 min-h-0 flex flex-col">
-        {activeSubagent ? (
-          <SubagentView
-            sessionId={sessionId}
-            subagent={activeSubagent}
-            onBack={handleSubagentBack}
-            provider={sessionProvider}
-            providerNames={providerNames}
-          />
-        ) : (
-          <>
-            {/* Minimap Shortcuts — desktop only: the rail needs side room a
-                phone does not have. */}
-            {!isMobile && (
-              <MinimapShortcuts userMessages={userMessages} onScrollTo={handleScrollTo} />
-            )}
+      {showFullSkeleton ? (
+        <SessionSkeleton />
+      ) : (
+        <>
+          {/* Main chat container wrapper */}
+          <div className="relative flex-1 min-h-0 flex flex-col">
+            {activeSubagent ? (
+              <SubagentView
+                sessionId={sessionId}
+                subagent={activeSubagent}
+                onBack={handleSubagentBack}
+                provider={sessionProvider}
+                providerNames={providerNames}
+              />
+            ) : (
+              <>
+                {/* Minimap Shortcuts — desktop only: the rail needs side room a
+                    phone does not have. */}
+                {!isMobile && (
+                  <MinimapShortcuts userMessages={userMessages} onScrollTo={handleScrollTo} />
+                )}
 
-            {/* Timeline Body */}
-            <div 
-              ref={scrollRef}
-              onScroll={handleScroll}
-              className={`flex-1 scrollbar-overlay-container overscroll-contain scroll-smooth overflow-x-hidden ${
-                isMobile ? 'px-3 py-3 pb-8' : 'p-4 pb-10'
-              } ${
-                isScrolling ? 'timeline-scrollbar-visible' : 'timeline-scrollbar-hidden'
-              }`}
-            >
-              <div ref={contentRef} className="mx-auto w-full max-w-[970px]">
-                <MessageList
-                  messages={orderedMessages}
-                  isGenerating={isGenerating}
-                  provider={sessionProvider}
-                  providerNames={providerNames}
-                  modelName={sessionModelName}
-                  modelNames={modelNames}
-                  onUndo={handleUndo}
-                  onRetry={handleRetry}
-                  onNewChat={handleNewChat}
-                  isMobile={isMobile}
-                />
-              </div>
-            </div>
-
-            {/* Scroll to bottom button */}
-            {showScrollBottom && (
-              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-20">
-                <button
-                  onClick={() => jumpToBottom('smooth')}
-                  className="flex items-center justify-center w-8 h-8 rounded-full border border-ink/20 bg-paper text-ink/60 hover:text-ink hover:bg-ink/5 transition-all shadow-sm"
-                  title="Scroll to bottom"
+                {/* Timeline Body */}
+                <div
+                  ref={scrollRef}
+                  onScroll={handleScroll}
+                  className={`flex-1 scrollbar-overlay-container overscroll-contain scroll-smooth overflow-x-hidden ${
+                    isMobile ? 'px-3 py-3 pb-8' : 'p-4 pb-10'
+                  } ${
+                    isScrolling ? 'timeline-scrollbar-visible' : 'timeline-scrollbar-hidden'
+                  }`}
                 >
-                  <ArrowDown size={16} />
-                </button>
-              </div>
+                  <div ref={contentRef} className="mx-auto w-full max-w-[970px]">
+                    {(loadingOlder || hasMore) && (
+                      <div className="pb-1">
+                        {loadingOlder
+                          ? <LoadingOlderIndicator />
+                          : (
+                            <button
+                              type="button"
+                              onClick={loadOlder}
+                              className="block mx-auto px-3 py-1 rounded-full border border-ink/15 text-ink/50 hover:text-ink hover:border-ink/30 text-[11px] font-mono transition-colors"
+                            >
+                              Load earlier messages
+                            </button>
+                          )}
+                      </div>
+                    )}
+                    <MessageList
+                      messages={orderedMessages}
+                      isGenerating={isGenerating}
+                      provider={sessionProvider}
+                      providerNames={providerNames}
+                      modelName={sessionModelName}
+                      modelNames={modelNames}
+                      onUndo={handleUndo}
+                      onRetry={handleRetry}
+                      onNewChat={handleNewChat}
+                      isMobile={isMobile}
+                    />
+                  </div>
+                </div>
+
+                {/* Scroll to bottom button */}
+                {showScrollBottom && (
+                  <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-20">
+                    <button
+                      onClick={() => jumpToBottom('smooth')}
+                      className="flex items-center justify-center w-8 h-8 rounded-full border border-ink/20 bg-paper text-ink/60 hover:text-ink hover:bg-ink/5 transition-all shadow-sm"
+                      title="Scroll to bottom"
+                    >
+                      <ArrowDown size={16} />
+                    </button>
+                  </div>
+                )}
+              </>
             )}
-          </>
-        )}
-      </div>
+          </div>
       
       {/* Input Area Footer with Docked Generating Indicator (Seamless & Transparent) */}
       {!activeSubagent && (
@@ -269,6 +299,8 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
             />
           </div>
         </div>
+      )}
+        </>
       )}
 
       {newChatInitialContent !== null && (

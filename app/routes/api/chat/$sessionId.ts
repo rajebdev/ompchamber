@@ -8,6 +8,12 @@ import { loadSessionMessages, loadSessionTitle, loadSessionModel, loadSessionThi
 import { readRawHeaderLine } from '@/lib/omp/session/files';
 import { formatNewSessionTitle } from '@/lib/omp/session/default-title';
 
+/** Newest-message window served by default for omp JSONL sessions; the client
+ *  pages further back via `?before=` when the user scrolls to the top. Large
+ *  enough to cover every realistic chat turn, small enough to keep the JSON
+ *  payload (and the mobile parse+mount cost) bounded. */
+const DEFAULT_MESSAGE_WINDOW = 120;
+
 interface StoredAttachment {
   name?: string;
   preview?: string;
@@ -123,13 +129,45 @@ function mergeOmpAttachments(
   });
 }
 
-export async function loader({ params }: LoaderFunctionArgs) {
+/** Slice a fully loaded message list into the requested tail window. */
+function windowMessages<T>(
+  messages: T[],
+  limit: number | null,
+  before: number | null,
+): { messages: T[]; total: number; hasMore: boolean; oldestIndex: number } {
+  const total = messages.length;
+  if (limit === null || total <= limit) {
+    return { messages, total, hasMore: false, oldestIndex: 0 };
+  }
+  // `before` is an exclusive upper bound into the full list; the window is the
+  // `limit` messages ending just before it. A pending "new-…" session or a
+  // fresh spawn has no index to continue from — the tail is the only window.
+  const end = before !== null && before > 0 && before <= total ? before : total;
+  const start = Math.max(0, end - limit);
+  return { messages: messages.slice(start, end), total, hasMore: start > 0, oldestIndex: start };
+}
+
+export async function loader({ params, request }: LoaderFunctionArgs) {
   const { sessionId } = params;
   if (!sessionId) {
     return json({ error: 'Session ID is required' }, { status: 400 });
   }
 
   const mock = isMockMode();
+  // Timeline pagination: default to the newest `limit` messages; `before`
+  // (0-based index into the FULL message list, from a previous response's
+  // `oldestIndex`) pages further back. The full load stays available for
+  // callers that need it (limit=all).
+  const url = new URL(request.url);
+  const limitParam = url.searchParams.get('limit');
+  const beforeParam = url.searchParams.get('before');
+  const parseCount = (raw: string | null): number | null => {
+    if (raw === null) return null;
+    const n = Number.parseInt(raw, 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const before = parseCount(beforeParam);
+  const limit = limitParam === 'all' ? null : (parseCount(limitParam) ?? DEFAULT_MESSAGE_WINDOW);
 
   try {
     // Real mode: an omp session UUID found on disk is authoritative — load its
@@ -161,16 +199,20 @@ export async function loader({ params }: LoaderFunctionArgs) {
           || rawFirstUser?.slice(0, 120)
           || (headerTimestamp ? formatNewSessionTitle(new Date(headerTimestamp)) : undefined)
           || `Session ${sessionId}`;
+        const win = windowMessages(overlaid, limit, before);
         return json({
           session: {
             id: sessionId,
             title,
-            messages: overlaid,
+            messages: win.messages,
             model: loadSessionModel(filePath),
             thinkingLevel: loadSessionThinkingLevel(filePath),
           },
           isMock: false,
           source: 'omp-jsonl',
+          total: win.total,
+          hasMore: win.hasMore,
+          oldestIndex: win.oldestIndex,
         });
       }
     }
