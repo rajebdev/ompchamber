@@ -9,11 +9,13 @@ import { EmptyWorkspacePrompt } from '@/components/workspace/chat-timeline/Empty
 import { GeneratingIndicator } from '@/components/workspace/chat-timeline/GeneratingIndicator';
 import { SessionSkeleton, LoadingOlderIndicator } from '@/components/workspace/chat-timeline/SessionSkeleton';
 import { QueueList } from '@/components/workspace/chat-timeline/QueueList';
+import { UndoConfirmModal } from '@/components/workspace/chat-timeline/UndoConfirmModal';
 import { NewChatModal } from '@/components/workspace/chat-timeline/NewChatModal';
 import { SubagentView } from '@/components/workspace/chat-timeline/SubagentView';
 import { useChatTimeline } from '@/hooks/chat/timeline';
 import { useSessionTitle } from '@/hooks/chat/timeline/session-title';
 import { useSubagentView } from '@/hooks/chat/timeline/subagent-view';
+import { useUndoConfirmation } from '@/hooks/chat/timeline/undo-confirmation';
 import { useModelNames } from '@/hooks/models/use-model-names';
 import { useProviderNames } from '@/hooks/models/use-provider-names';
 import { useToasts } from '@/hooks/ui/toasts';
@@ -81,6 +83,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
   const { toasts, pushToast, dismissToast } = useToasts();
 
   const [newChatInitialContent, setNewChatInitialContent] = useState<string | null>(null);
+  const { pendingUndo, requestUndo: handleRequestUndo, closeUndoConfirm, confirmUndo } = useUndoConfirmation(handleUndo);
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Stop-all semantics: the run stops AND the queued follow-ups stay in the
@@ -231,7 +234,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
                       modelName={sessionModelName}
                       modelNames={modelNames}
                       thinkingLevel={sessionData?.thinkingLevel}
-                      onUndo={handleUndo}
+                      onUndo={handleRequestUndo}
                       onRetry={handleRetry}
                       onNewChat={handleNewChat}
                       isMobile={isMobile}
@@ -306,6 +309,14 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
         </>
       )}
 
+      {pendingUndo && (
+        <UndoConfirmModal
+          isOmpSession={Boolean(sessionId) && !sessionId.startsWith('new-') && Number.isNaN(Number(sessionId))}
+          content={pendingUndo.content}
+          onClose={closeUndoConfirm}
+          onConfirm={confirmUndo}
+        />
+      )}
       {newChatInitialContent !== null && (
         <NewChatModal
           initialContent={newChatInitialContent}
