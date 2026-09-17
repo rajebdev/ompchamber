@@ -46,8 +46,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
     localMessages,
     isGenerating,
     hasMore,
-    loadingOlder,
-    sessionLoading,
+    loadingOlder, loadOlderError, sessionLoading,
     loadOlder,
     generatingVerb,
     messageQueue,
@@ -211,7 +210,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
                   }`}
                 >
                   <div ref={contentRef} className="mx-auto w-full max-w-[970px]">
-                    {(loadingOlder || hasMore) && (
+                    {(loadingOlder || hasMore || loadOlderError) && (
                       <div className="pb-1">
                         {loadingOlder
                           ? <LoadingOlderIndicator />
@@ -219,9 +218,11 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
                             <button
                               type="button"
                               onClick={loadOlder}
-                              className="block mx-auto px-3 py-1 rounded-full border border-ink/15 text-ink/50 hover:text-ink hover:border-ink/30 text-[11px] font-mono transition-colors"
+                              className={`block mx-auto px-3 py-1 rounded-full border text-[11px] font-mono transition-colors ${loadOlderError
+                                ? 'border-error/40 text-error hover:border-error'
+                                : 'border-ink/15 text-ink/50 hover:text-ink hover:border-ink/30'}`}
                             >
-                              Load earlier messages
+                              {loadOlderError ? 'Failed to load — retry' : 'Load earlier messages'}
                             </button>
                           )}
                       </div>

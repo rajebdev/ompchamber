@@ -115,6 +115,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     setSessionModel,
     hasMore,
     loadingOlder,
+    loadOlderError,
     sessionLoading,
     loadOlder,
   } = useSessionLoad({
@@ -291,6 +292,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     isGenerating,
     hasMore,
     loadingOlder,
+    loadOlderError,
     sessionLoading,
     loadOlder,
     generatingVerb,

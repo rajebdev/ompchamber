@@ -55,6 +55,14 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
   const [hasMore, setHasMore] = useState(false);
   const [oldestIndex, setOldestIndex] = useState(0);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  // Sticky failure flag for the "Load earlier messages" affordance: a failed
+  // page fetch must keep the button visible (retryable) instead of silently
+  // dropping hasMore, which made the button vanish with no feedback.
+  const [loadOlderError, setLoadOlderError] = useState(false);
+  // Bumped on every successful older-window prepend; the scroll-anchor layout
+  // effect keys on it (its other deps have stable identities, so it needs an
+  // explicit change signal per commit).
+  const [prependTick, setPrependTick] = useState(0);
   const loadingOlderRef = useRef(false);
   const [sessionLoading, setSessionLoading] = useState(false);
   // Set while prepending older rows; the layout effect below re-anchors the
@@ -152,6 +160,7 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
       setOldestIndex(0);
       loadingOlderRef.current = false;
       setLoadingOlder(false);
+      setLoadOlderError(false);
       // metaRefreshedRef must NOT survive a session switch — including a
       // spawn adoption. It is the once-per-session guard in onAgentStart
       // (omp-callbacks.ts); keeping the stale value here ate the retrigger,
@@ -206,41 +215,69 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, applySessionData, timelineOwnedByOptimistic, setLocalMessages, setGenerating]);
 
-  /** Page the next older window into the timeline. Called from the scroll
-   *  handler when the viewport reaches the top; a no-op while a page is in
-   *  flight, when the session has no more history, or while the timeline is
-   *  owned by an optimistic in-flight send. */
+  /** Page the next older window into the timeline. Called from the click
+   *  handler and the scroll handler when the viewport reaches the top; a no-op
+   *  while a page is in flight, when the session has no more history, or while
+   *  the session is a pending optimistic spawn. Prepending older rows only
+   *  grows the list ABOVE the tail, so it is safe while the agent is
+   *  generating — unlike a committed refetch, it never clobbers the AI
+   *  placeholder, and blocking it made the button feel dead mid-run. */
   const loadOlder = useCallback(() => {
     if (!sessionId || sessionId.startsWith('new-')) return;
     if (!hasMore || loadingOlderRef.current) return;
-    if (isGeneratingRef.current && aiPlaceholderIdRef.current) return;
     loadingOlderRef.current = true;
     setLoadingOlder(true);
+    setLoadOlderError(false);
     const el = scrollRef?.current;
     if (el) pendingScrollAnchorRef.current = { prevHeight: el.scrollHeight, prevTop: el.scrollTop };
+    // Session id snapshot: prepending a window fetched for the PREVIOUS
+    // session into the freshly-switched timeline is worse than dropping the
+    // page, so the response is discarded if the user switched mid-flight.
+    const requestedSessionId = sessionId;
     fetch(`/api/chat/${sessionId}?before=${oldestIndex}`)
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
       .then((data: { session?: { messages?: ChatMessageData[] }; hasMore?: boolean; oldestIndex?: number }) => {
+        // The main load effect may have cleared/repurposed localMessages for a
+        // new session while this fetch was in flight.
+        if (sessionIdRef.current !== requestedSessionId) return;
         const older = data.session?.messages ?? [];
         setHasMore(Boolean(data.hasMore));
         if (typeof data.oldestIndex === 'number') setOldestIndex(data.oldestIndex);
-        if (older.length === 0) return;
+        if (older.length === 0) {
+          // No rows prepended: the recorded anchor is stale — drop it so a
+          // later tick cannot apply it against the wrong geometry.
+          pendingScrollAnchorRef.current = null;
+          return;
+        }
         setLocalMessages(prev => {
           // Drop overlap guard: the server window is index-based, so the
           // fetched slice is strictly older than everything already mounted.
           return [...normalizeNoticePositions(older), ...prev];
         });
+        // Bump the prepend tick so the layout effect below re-runs for THIS
+        // commit — it previously depended only on stable identities and ran
+        // exactly once at mount, so the viewport anchor never fired and every
+        // pagination jump snapped the user to the (shifted) top.
+        setPrependTick(t => t + 1);
       })
-      .catch(() => {})
+      .catch(() => {
+        // Keep the button mounted and marked for retry; a swallowed failure
+        // previously also cleared hasMore on the next full reload path.
+        if (sessionIdRef.current === requestedSessionId) setLoadOlderError(true);
+      })
       .finally(() => {
         loadingOlderRef.current = false;
         setLoadingOlder(false);
       });
-  }, [sessionId, hasMore, oldestIndex, isGeneratingRef, aiPlaceholderIdRef, scrollRef, setLocalMessages]);
+  }, [sessionId, hasMore, oldestIndex, scrollRef, setLocalMessages]);
 
   // Position preservation: after older rows commit above the viewport, shift
   // scrollTop by the height delta so the rows the user was reading stay put.
-  // setLocalMessages identity is stable; every prepend bumps it.
+  // prependTick changes on every prepend — without it the effect ran only at
+  // mount (its other deps are stable) and never re-anchored.
   useLayoutEffect(() => {
     const anchor = pendingScrollAnchorRef.current;
     if (!anchor) return;
@@ -249,12 +286,13 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
     pendingScrollAnchorRef.current = null;
     const delta = el.scrollHeight - anchor.prevHeight;
     if (delta > 0) el.scrollTop = anchor.prevTop + delta;
-  }, [setLocalMessages, scrollRef]);
+  }, [prependTick, scrollRef]);
 
   return {
     sessionData,
     hasMore,
     loadingOlder,
+    loadOlderError,
     sessionLoading,
     loadOlder,
     adoptedSessionIdRef,
