@@ -41,6 +41,16 @@ export function thinkingLevelsForMeta(meta: ThinkingModelMeta): string[] {
 }
 
 /**
+ * Normalize an omp `thinking_level_change` value for display: a concrete
+ * level string passes through trimmed; null/undefined/empty collapse to
+ * `off`. Callers only invoke this when a change record actually exists, so
+ * "no record" (undefined return upstream) stays distinct from "off".
+ */
+export function normalizeThinkingLevel(level: unknown): string {
+  return typeof level === 'string' && level.trim() ? level.trim() : 'off';
+}
+
+/**
  * Levels offered for the current model: the catalog's baked ladder wins; the
  * live session model backs non-catalog models. Returns null when neither
  * source knows the model — callers then fall back to the generic ladder.

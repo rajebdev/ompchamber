@@ -23,6 +23,7 @@
 import { readFileSync, statSync } from 'fs';
 import { parseJsonlLenient } from '@/lib/omp/session/jsonl';
 import { normalizeNoticePositions } from '@/lib/chat/order';
+import { normalizeThinkingLevel } from '@/lib/models/thinking-levels';
 import type { ChatMessageData } from '@/types/chat';
 import {
   toChatMessage,
@@ -79,8 +80,20 @@ export function loadSessionMessages(filePath: string): ChatMessageData[] {
 
   const records = parseJsonlLenient<Record<string, unknown>>(body);
   const state: SequenceState = { messages: [], outputsByCall: collectToolOutputs(records) };
+  // omp records the thinking level as separate `thinking_level_change` entries
+  // (session state), not as a per-message field. Walk the records in order and
+  // stamp the level in effect onto each assistant turn so the footer shows the
+  // level that actually served it — not the last level used in the session.
+  let currentLevel: string | undefined;
+  const levelFor = (record: Record<string, unknown>): string | undefined => {
+    if (record?.type === 'thinking_level_change') {
+      currentLevel = normalizeThinkingLevel(record.thinkingLevel);
+    }
+    return currentLevel;
+  };
 
   for (const record of records) {
+    const level = levelFor(record);
     if (record?.type === 'custom_message' && record.customType === 'skill-prompt') {
       const skillMsg = skillUserMessageFromRecord(record);
       if (skillMsg) {
@@ -96,6 +109,9 @@ export function loadSessionMessages(filePath: string): ChatMessageData[] {
     if (record?.type !== 'message') continue;
     const mapped = toChatMessage(record as unknown as OmpMessageEntry);
     if (!mapped) continue;
+    if (level !== undefined && mapped.role !== 'user') {
+      mapped.thinkingLevel = level;
+    }
     // Fold the collected outputs into this message's tool calls.
     if (mapped.toolCalls?.length) {
       mapped.toolCalls = mapped.toolCalls.map((call) => {
@@ -200,10 +216,8 @@ export function loadSessionThinkingLevel(filePath: string): string | undefined {
     let last: string | undefined;
     for (const record of records) {
       if (record?.type !== 'thinking_level_change') continue;
-      const level = typeof record.thinkingLevel === 'string' && record.thinkingLevel.trim()
-        ? record.thinkingLevel.trim()
-        : undefined;
-      if (level) last = level;
+      // A change entry always yields a display level: null/unset → "off".
+      last = normalizeThinkingLevel(record.thinkingLevel);
     }
     return last;
   } catch {

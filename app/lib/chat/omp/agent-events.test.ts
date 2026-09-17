@@ -40,6 +40,7 @@ function makeDeps() {
     lastToolMessageRef: { current: null },
     interruptPendingRef: { current: false },
     activityRef: { current: '' },
+    currentThinkingLevelRef: { current: undefined },
   };
   return { deps, ended, activity };
 }

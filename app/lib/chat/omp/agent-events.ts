@@ -16,6 +16,7 @@
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import type { ChatMessageData, ToolCallData, IncomingExtensionUiRequest, OmpAgentCallbacks, OmpAgentEvent, OmpAgentState } from '@/types';
 import { extractTextFromContent, toolResultText, toChatMessage } from '@/lib/omp/session/mapper';
+import { normalizeThinkingLevel } from '@/lib/models/thinking-levels';
 import { PHASE_VERBS } from '@/lib/chat/timeline/tool-phrases';
 import {
   describeAssistantPhase,
@@ -64,6 +65,9 @@ export interface OmpAgentFoldDeps {
   /** Last activity phrase published to the indicator; guards per-token frames
    *  from re-setting identical state. */
   activityRef: RefObject<string>;
+  /** Thinking level in effect for the live run (last `thinking_level_changed`
+   *  frame); stamped onto assistant turns as they stream. */
+  currentThinkingLevelRef: RefObject<string | undefined>;
 }
 
 /** Publish a new indicator phrase, skipping repeats (thinking/text deltas
@@ -153,6 +157,9 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       deps.toolResultsRef.current?.clear();
       deps.lastToolMessageRef.current = null;
       deps.interruptPendingRef.current = false;
+      // A fresh run restarts level tracking; the first turn relies on the
+      // session-level value until omp emits thinking_level_changed (or not).
+      deps.currentThinkingLevelRef.current = undefined;
       setActivity(PHASE_VERBS.thinking, deps);
       callbacks?.onAgentStart?.();
       break;
@@ -175,7 +182,12 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       // The callbacks append user rows (never overwrite the streaming AI
       // placeholder) and dedup by omp message id.
       const converted = toChatMessage(msg);
-      if (converted) callbacks?.onMessageUpdate?.(converted);
+      if (converted) {
+        if (converted.role !== 'user' && deps.currentThinkingLevelRef.current) {
+          converted.thinkingLevel = deps.currentThinkingLevelRef.current;
+        }
+        callbacks?.onMessageUpdate?.(converted);
+      }
       break;
     }
 
@@ -194,6 +206,9 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       }
       const converted = toChatMessage(completed, false);
       if (!converted) break;
+      if (converted.role !== 'user' && deps.currentThinkingLevelRef.current) {
+        converted.thinkingLevel = deps.currentThinkingLevelRef.current;
+      }
       const paired = pairToolOutputs(converted, deps.toolResultsRef);
       if (paired.toolCalls?.length) deps.lastToolMessageRef.current = paired;
       callbacks?.onMessageEnd?.(paired);
@@ -299,9 +314,16 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       callbacks?.onModelChanged?.();
       break;
 
-    // No chamber-side effect: thinking/config/command inventory frames and the
-    // transport's own `connected` greeting.
+    // The live `thinking_level_changed` frame carries the new session level
+    // (e.g. { thinkingLevel: "high", configured, resolved }); null → "off".
+    // Record it so subsequent assistant turns are stamped with the level that
+    // actually served them — mirrors the JSONL `thinking_level_change` walk.
     case 'thinking_level_changed':
+      deps.currentThinkingLevelRef.current = normalizeThinkingLevel(data.thinkingLevel);
+      break;
+
+    // No chamber-side effect: config/command inventory frames and the
+    // transport's own `connected` greeting.
     case 'config_update':
     case 'available_commands_update':
     case 'connected':

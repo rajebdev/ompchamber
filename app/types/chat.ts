@@ -135,6 +135,9 @@ export interface ChatMessageData {
   model?: string;
   /** Provider that served this turn (omp `message.provider`). */
   provider?: string;
+  /** Thinking level in effect for this turn (omp `thinking_level_change`).
+   *  Null/unset records normalize to `off`; absent = no level recorded. */
+  thinkingLevel?: string;
   /** Wall-clock start of the turn in epoch ms (omp `message.timestamp`). */
   startedAt?: number;
   /** Wall-clock end of the turn in epoch ms (omp `message.completedAt`), or

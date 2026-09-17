@@ -38,6 +38,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
   // Last phrase handed to the indicator; the fold compares against it so
   // per-token frames cannot spam state updates with the same string.
   const activityRef = useRef('');
+  const currentThinkingLevelRef = useRef<string | undefined>(undefined); // live thinking level (last `thinking_level_changed`)
 
   const { connect, disconnect } = useOmpAgentStream({
     setState,
@@ -46,6 +47,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     lastToolMessageRef,
     interruptPendingRef,
     activityRef,
+    currentThinkingLevelRef,
     transport,
   });
 
