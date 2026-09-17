@@ -266,6 +266,14 @@
 }
 .prose-content .katex-display { overflow-x: auto; overflow-y: hidden; }
 
+/* Streaming placeholder: remend turns a half-received [text](url into this
+ * span; it becomes a real link once the URL arrives in a later frame. */
+.prose-content .md-incomplete-link {
+  opacity: 0.45;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+
 /* Mermaid diagram blocks (```mermaid fences hydrated to SVG client-side). */
 .prose-content .mermaid-block { margin: 0.5rem 0; }
 .prose-content .mermaid-block[data-mermaid-state='pending'],

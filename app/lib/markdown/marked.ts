@@ -224,6 +224,11 @@ function escapeHtmlOutsideCode(source: string): string {
     .join('`');
 }
 
+/** remend heals a streaming-incomplete `[text](url` into
+ * `[text](streamdown:incomplete-link)`. Swap it for a dimmed span before
+ * parsing so the placeholder URL never leaks into the DOM as an href. */
+const INCOMPLETE_LINK_RE = /\[([^\]]*)\]\(streamdown:incomplete-link\)/g;
+
 /**
  * Heal streaming markdown (remend) then parse to HTML via marked.
  * Synchronous and side-effect free — safe in both server loaders and the
@@ -236,7 +241,8 @@ function escapeHtmlOutsideCode(source: string): string {
  */
 export function renderMarkdown(markdown: string): string {
   const escaped = escapeHtmlOutsideCode(markdown);
-  const healed = remend(escaped, { katex: true, inlineKatex: true });
+  const healed = remend(escaped, { katex: true, inlineKatex: true })
+    .replace(INCOMPLETE_LINK_RE, (_, text: string) => `<span class="md-incomplete-link">${text}</span>`);
   return (marked.parse(healed) as string).trim();
 }
 
