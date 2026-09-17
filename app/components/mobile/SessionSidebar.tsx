@@ -40,7 +40,7 @@ export function MobileSessionSidebar({
   onDesktopToggle,
   appSettings = {}
 }: MobileSessionSidebarProps) {
-  const { folders, initializing, refresh } = useSidebarData();
+  const { folders, initializing, refresh, markSeen, hasSeen } = useSidebarData();
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedFolders, setExpandedFolders] = useState<Record<number, boolean>>({
     1: true,
@@ -66,7 +66,9 @@ export function MobileSessionSidebar({
   // payload as the session list. Spinner while `stream`; a one-shot terminal
   // badge (acknowledged server-side on open, dropped by the next refetch).
   const sessionStatus = useMemo(() => buildSidebarSessionStatus(folders), [folders]);
-  useSessionStatusAck(sessionStatus, activeSessionId, refresh);
+  // hasSeen: clicks already acked + optimistically stripped these badges, so
+  // the effect must not re-POST while the authoritative list is still stale.
+  useSessionStatusAck(sessionStatus, activeSessionId, refresh, hasSeen);
   // Background sessions finishing while the user sits elsewhere: refetch
   // on a cadence — but only while something is actually streaming.
   useStreamPoll(sessionStatus, refresh);
@@ -151,6 +153,9 @@ export function MobileSessionSidebar({
   }, [folders]);
 
   const handleSelectSession = (id: number | string) => {
+    // One-shot terminal badge (check) clears on open: optimistic strip +
+    // server ack. Keep BEFORE closing the drawer so the click feels instant.
+    markSeen(id);
     onSelectSession(id);
     onClose();
   };

@@ -20,7 +20,7 @@ import { useSidebarRevalidation } from '@/hooks/chat/omp/revalidation-throttle';
 import { useSidebarData } from '@/hooks/chat/omp/session-list';
 
 export function SessionSidebar({ className = '', onClose, appSettings = {} }: { className?: string, onClose?: () => void, appSettings?: Record<string, any> }) {
-  const { folders, initializing, refresh } = useSidebarData();
+  const { folders, initializing, refresh, markSeen, hasSeen } = useSidebarData();
   const [searchParams, setSearchParams] = useSearchParams();
   const sessionParam = searchParams.get('sessionId');
   const activeSessionId = sessionParam ? (Number.isNaN(Number(sessionParam)) ? sessionParam : Number(sessionParam)) : null;
@@ -105,12 +105,17 @@ export function SessionSidebar({ className = '', onClose, appSettings = {} }: { 
   // data as the session list. Spinner while `stream`; a one-shot terminal
   // badge (acknowledged server-side on open, dropped by the next revalidate).
   const sessionStatus = useMemo(() => buildSidebarSessionStatus(folders), [folders]);
-  useSessionStatusAck(sessionStatus, activeSessionId, () => refreshRef.current());
+  // hasSeen: clicks already acked + optimistically stripped these badges, so
+  // the effect must not re-POST while the authoritative list is still stale.
+  useSessionStatusAck(sessionStatus, activeSessionId, () => refreshRef.current(), hasSeen);
   // Background sessions finishing while the user sits elsewhere: refetch
   // on a cadence — but only while something is actually streaming.
   useStreamPoll(sessionStatus, () => refreshRef.current());
 
   const handleSelectSession = (id: number | string) => {
+    // One-shot terminal badge (check) clears on open: optimistic strip +
+    // server ack. Keep BEFORE the URL swap so the click feels instant.
+    markSeen(id);
     setSearchParams(prev => {
       prev.set('sessionId', id.toString());
       // Navigating away from a session must also exit its transcript view.
