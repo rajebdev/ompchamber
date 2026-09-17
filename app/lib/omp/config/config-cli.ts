@@ -69,8 +69,13 @@ export async function getOmpConfigValue(key: string): Promise<unknown> {
   }
 }
 
-/** Write one config key; returns the value omp reports after the write. */
-export async function setOmpConfigValue(key: string, value: string | number | boolean): Promise<unknown> {
+/** Write one config key; returns the value omp reports after the write.
+ * Arrays/records serialize to JSON strings, which `omp config set` parses
+ * against the key's schema type. */
+export async function setOmpConfigValue(
+  key: string,
+  value: string | number | boolean | unknown[] | Record<string, unknown>,
+): Promise<unknown> {
   if (isMockMode()) throw new Error('config writes are unavailable in mock mode');
   const serialized = typeof value === 'string' ? value : JSON.stringify(value);
   await runOmp(['config', 'set', key, serialized], WRITE_TIMEOUT_MS);

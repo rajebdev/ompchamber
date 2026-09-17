@@ -36,11 +36,12 @@ export async function action({ request }: ActionFunctionArgs) {
       const value = await resetOmpConfigKey(body.key);
       return json({ success: true, key: body.key, value: value ?? null });
     }
-    if (!('value' in body) || typeof body.value === 'object' || body.value === null) {
-      return json({ error: 'value must be a string, number, or boolean' }, { status: 400 });
+    if (!('value' in body) || body.value === null) {
+      return json({ error: 'value must be a string, number, boolean, array, or record' }, { status: 400 });
     }
-    if (typeof body.value !== 'string' && typeof body.value !== 'number' && typeof body.value !== 'boolean') {
-      return json({ error: 'value must be a string, number, or boolean' }, { status: 400 });
+    const valueType = typeof body.value;
+    if (valueType !== 'string' && valueType !== 'number' && valueType !== 'boolean' && !Array.isArray(body.value) && valueType !== 'object') {
+      return json({ error: 'value must be a string, number, boolean, array, or record' }, { status: 400 });
     }
     const value = await setOmpConfigValue(body.key, body.value);
     return json({ success: true, key: body.key, value: value ?? null });
