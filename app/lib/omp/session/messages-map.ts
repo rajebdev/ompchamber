@@ -92,6 +92,20 @@ export function toChatMessage(entry: OmpMessageEntry): ChatMessageData | null {
     durationMs,
     usage,
   };
+  // Live-path parity (mapper.toChatMessage): an assistant turn whose text is a
+  // <system-reminder> block renders as a SystemNotice alert, never as raw
+  // content — otherwise the reminder leaks into the timeline as markdown.
+  if (parsed.textParts.some((t) => /<\/?system-reminder[^>]*>/i.test(t))) {
+    const notice = parsed.textParts.join('\n').replace(/<\/?system-reminder[^>]*>/gi, '').trim();
+    if (notice) {
+      message.notice = notice;
+      message.content = '';
+    } else if (!parsed.thinking && parsed.toolCalls.length === 0 && !turnError) {
+      return null;
+    } else {
+      message.content = '';
+    }
+  }
   if (turnError) message.error = turnError;
   if (parsed.thinking) message.thinking = { thought: parsed.thinking, isGenerating: false };
   if (parsed.intent) message.intent = parsed.intent;
@@ -104,7 +118,7 @@ export function toChatMessage(entry: OmpMessageEntry): ChatMessageData | null {
   }
   // Error turns are kept even when they carry no text/tools so the failure is
   // visible in the timeline instead of silently vanishing.
-  if (!message.content && !message.thinking && !message.toolCalls?.length && !message.systemNote && !message.error) {
+  if (!message.content && !message.thinking && !message.toolCalls?.length && !message.systemNote && !message.error && !message.notice) {
     return null;
   }
   return message;
