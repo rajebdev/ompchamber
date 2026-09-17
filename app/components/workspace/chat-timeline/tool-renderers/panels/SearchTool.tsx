@@ -292,30 +292,32 @@ export function SearchTool({ tool }: { tool: ToolCallData }) {
               )}
             </div>
 
-            {/* Code Lines inside file */}
+            {/* Code Lines inside file — satu scroll horizontal per file, semua row selebar konten terlebar */}
             {file.lines.length > 0 && (
-              <div className="divide-y divide-ink/[0.04] font-mono text-[11px] leading-relaxed select-text">
-                {file.lines.map((line, lineIdx) => (
-                  <div
-                    key={lineIdx}
-                    className={`flex items-start gap-2.5 px-2.5 py-1 transition-colors ${
-                      line.isMatch ? 'bg-warning/[0.08] text-ink' : 'text-ink/60 hover:bg-ink/[0.02]'
-                    }`}
-                  >
-                    <span
-                      className={`flex w-9 shrink-0 select-none items-center justify-end font-mono text-[10px] ${
-                        line.isMatch ? 'font-semibold text-warning-dark dark:text-warning' : 'text-ink/30'
+              <div className="overflow-x-auto overscroll-x-contain">
+                <div className="w-max min-w-full divide-y divide-ink/[0.04] font-mono text-[11px] leading-relaxed select-text">
+                  {file.lines.map((line, lineIdx) => (
+                    <div
+                      key={lineIdx}
+                      className={`flex items-start gap-2.5 px-2.5 py-1 transition-colors ${
+                        line.isMatch ? 'bg-warning/[0.08] text-ink' : 'bg-paper text-ink/60 hover:bg-ink/[0.02]'
                       }`}
                     >
-                      {line.isMatch && <ChevronRight size={10} className="mr-0.5 text-warning" />}
-                      {line.lineNum}
-                    </span>
-                    <pre
-                      className="min-w-0 flex-1 overflow-x-auto whitespace-pre font-mono"
-                      dangerouslySetInnerHTML={{ __html: highlightLine(file.path, line.text) }}
-                    />
-                  </div>
-                ))}
+                      <span
+                        className={`sticky left-0 z-10 flex w-9 shrink-0 select-none items-center justify-end bg-inherit font-mono text-[10px] ${
+                          line.isMatch ? 'font-semibold text-warning-dark dark:text-warning' : 'text-ink/30'
+                        }`}
+                      >
+                        {line.isMatch && <ChevronRight size={10} className="mr-0.5 text-warning" />}
+                        {line.lineNum}
+                      </span>
+                      <pre
+                        className="whitespace-pre font-mono"
+                        dangerouslySetInnerHTML={{ __html: highlightLine(file.path, line.text) }}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
