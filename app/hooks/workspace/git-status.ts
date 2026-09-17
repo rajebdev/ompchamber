@@ -39,10 +39,24 @@ export function useGitStatus(
 
   // Optional background polling so indicators stay fresh after external
   // actions (terminal commits, agent edits) that never bump `refreshKey`.
+  // Ticks pause while the document is hidden and re-check on visibility —
+  // a background tab cannot show the dot, so the poll would be wasted wakeups.
   useEffect(() => {
     if (!enabled || !pollMs) return;
-    const id = setInterval(loadGitStatus, pollMs);
-    return () => clearInterval(id);
+    let visible = typeof document === 'undefined' || document.visibilityState === 'visible';
+    const id = setInterval(() => {
+      if (visible) loadGitStatus();
+    }, pollMs);
+    const onVisibility = () => {
+      const next = document.visibilityState === 'visible';
+      if (next && !visible) loadGitStatus();
+      visible = next;
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [enabled, pollMs, loadGitStatus]);
 
   // Re-check when the tab regains focus (covers most post-commit cases).

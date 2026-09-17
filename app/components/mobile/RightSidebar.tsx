@@ -25,7 +25,8 @@ export function MobileRightSidebar({
 }: MobileRightSidebarProps) {
   const [activeTab, setActiveTab] = useState<MobileTab>('files');
   // Same source the desktop activity bar uses, so the "uncommitted changes"
-  // dot means the same thing on both layouts.
+  // dot means the same thing on both layouts. Polls only while this drawer is
+  // the mounted screen — the poll itself is visibility-gated by the hook.
   const { changes } = useGitStatus(rootPath, '.', refreshKey, enabled, 15000);
   const hasGitChanges = changes.length > 0;
 
@@ -198,15 +199,11 @@ export function MobileRightSidebar({
               {activeTab === 'context' && (
                 <LazyContextPanel className="h-full w-full" enabled={enabled} refreshKey={refreshKey} onClose={onClose} />
               )}
-              <div className={`h-full w-full ${activeTab === 'terminal' ? 'block' : 'hidden'}`}>
+              {activeTab === 'terminal' && (
                 <LazyTerminalPanel className="h-full w-full" enabled={enabled} rootPath={rootPath} showHeader={false} />
-              </div>
-              <div className={`h-full w-full ${activeTab === 'user-browser' ? 'block' : 'hidden'}`}>
-                <LazyUserBrowserPanel className="h-full w-full" />
-              </div>
-              <div className={`h-full w-full ${activeTab === 'browser' ? 'block' : 'hidden'}`}>
-                <LazyBrowserPanel className="h-full w-full" active={activeTab === 'browser'} />
-              </div>
+              )}
+              {activeTab === 'user-browser' && <LazyUserBrowserPanel className="h-full w-full" />}
+              {activeTab === 'browser' && <LazyBrowserPanel className="h-full w-full" active />}
               {activeTab === 'usage' && <LazyUsagePanel className="h-full w-full" />}
             </Suspense>
           </>

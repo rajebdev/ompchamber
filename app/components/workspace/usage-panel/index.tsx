@@ -12,10 +12,13 @@ import { usePanelRefresh } from '@/hooks/workspace/panel-refresh';
 
 interface UsagePanelProps {
   className?: string;
+  /** False while the panel is hidden (desktop right panel / mobile tab):
+   *  pauses the auto-refresh poll. */
+  active?: boolean;
 }
 
 /** Right-panel Usage: the selected provider's balance/quota via a dropdown. */
-export function UsagePanel({ className = '' }: UsagePanelProps) {
+export function UsagePanel({ className = '', active = true }: UsagePanelProps) {
   const { report, isLoading, error, reload } = useUsageReport();
   const [selectedProviderId, setSelectedProviderId] = useSessionState<UsageProviderId>(
     'usage.selectedProviderId',
@@ -23,8 +26,9 @@ export function UsagePanel({ className = '' }: UsagePanelProps) {
   );
 
   // Auto refresh: keep balance/quota current without a manual reload. Silent —
-  // the spinner stays reserved for the user's own refresh button.
-  usePanelRefresh(() => reload({ silent: true }), true);
+  // the spinner stays reserved for the user's own refresh button. Polls only
+  // while the panel is actually visible.
+  usePanelRefresh(() => reload({ silent: true }), active);
 
   if (error && !report) {
     return (

@@ -66,14 +66,6 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
   // 3-char minimum guard in `triggerSearch`).
   usePanelRefresh(triggerSearch, enabled);
 
-  if (!enabled) {
-    return (
-      <div className={`flex flex-col h-full bg-paper items-center justify-center text-ink/40 ${className}`}>
-        <span className="text-xs font-mono">No session selected</span>
-      </div>
-    );
-  }
-
   const handleReplace = (file?: string) => {
     if (!query) return;
     
@@ -103,6 +95,17 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
       triggerSearch();
     }
   }, [replaceFetcher.state, replaceFetcher.data]);
+
+  // NOTE: keep this early return below every hook — the desktop layout keeps
+  // the panel mounted (hidden) while another view is active, and a hook count
+  // that changes with `enabled` would crash React's hook dispatcher.
+  if (!enabled) {
+    return (
+      <div className={`flex flex-col h-full bg-paper items-center justify-center text-ink/40 ${className}`}>
+        <span className="text-xs font-mono">No session selected</span>
+      </div>
+    );
+  }
 
   const results = fetcher.data?.results || [];
   const isLoading = fetcher.state === 'submitting';

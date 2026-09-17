@@ -14,6 +14,12 @@ export const PANEL_REFRESH_MS = 2000;
  *
  * Deliberately does not run the callback on mount: each panel already loads
  * once from its own mount effect, and re-running here would double-fetch.
+ *
+ * Polling also pauses while the document is hidden (background tab, mobile
+ * screen lock): a hidden page cannot render the results, so each tick would
+ * be wasted work — and on mobile it keeps waking the CPU. A visibilitychange
+ * back to visible immediately re-reads, so the panel is never stale when the
+ * user returns.
  */
 export function usePanelRefresh(callback: () => void, enabled: boolean, intervalMs: number = PANEL_REFRESH_MS) {
   const cbRef = useRef(callback);
@@ -21,7 +27,19 @@ export function usePanelRefresh(callback: () => void, enabled: boolean, interval
 
   useEffect(() => {
     if (!enabled) return;
-    const id = setInterval(() => cbRef.current(), intervalMs);
-    return () => clearInterval(id);
+    let visible = typeof document === 'undefined' || document.visibilityState === 'visible';
+    const id = setInterval(() => {
+      if (visible) cbRef.current();
+    }, intervalMs);
+    const onVisibility = () => {
+      const next = document.visibilityState === 'visible';
+      if (next && !visible) cbRef.current();
+      visible = next;
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [enabled, intervalMs]);
 }

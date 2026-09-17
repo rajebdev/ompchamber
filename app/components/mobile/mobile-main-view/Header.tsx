@@ -9,6 +9,7 @@ import {
 import type { WorkspaceFolderData } from '@/types';
 import type { SessionContextTelemetry } from '@/types/context';
 import { useOnClickOutside } from '@/hooks/ui/on-click-outside';
+import { getLastOpenedAt } from '@/lib/workspace/session-state/store';
 
 interface MobileHeaderProps {
   activeSessionTitle: string;
@@ -24,10 +25,15 @@ interface RecentSession {
   id: number | string;
   title: string;
   folderName: string;
+  /** Sort key: the user's last-open time when within the window, else the
+   *  session file's modification time. */
   modified: number;
 }
 
 const MAX_RECENT_SESSIONS = 10;
+/** A session is "recent" only while the user opened it within this window
+ *  (mirrors the session-state store's idle TTL). */
+const RECENT_OPEN_WINDOW_MS = 10 * 60 * 1000;
 
 function formatTokens(value: number): string {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
@@ -76,22 +82,36 @@ export function MobileHeader({
     };
   }, [activeSessionId]);
 
-  // Recent sessions: archived rows are hidden and the list is ordered by real
-  // modification time — not by folder iteration order.
+  // Recent sessions: archived rows are hidden. A session the user actually
+  // opened in this tab within the last 10 minutes ranks by that open time
+  // ("last opened by user"); sessions never opened here fall back to file
+  // modification time so the picker is never empty on a fresh tab, and rows
+  // whose open is older than the window drop out of the list.
   const recentSessions = useMemo<RecentSession[]>(() => {
+    const now = Date.now();
     const rows: RecentSession[] = [];
     for (const folder of folders) {
       for (const session of folder.sessions ?? []) {
         if (session.is_archived === 1) continue;
+        const lastOpenedAt = getLastOpenedAt(String(session.id));
+        const modified = session.updated_at ? Date.parse(session.updated_at) : 0;
+        // Within the window: the open time is the ranking key. Without a
+        // recorded open, keep the row only if the file is itself recent.
+        const sortKey = lastOpenedAt !== undefined && now - lastOpenedAt <= RECENT_OPEN_WINDOW_MS
+          ? lastOpenedAt
+          : modified;
+        if (lastOpenedAt !== undefined && now - lastOpenedAt > RECENT_OPEN_WINDOW_MS) continue;
         rows.push({
           id: session.id,
           title: session.title,
           folderName: folder.name,
-          modified: session.updated_at ? Date.parse(session.updated_at) : 0,
+          modified: sortKey,
         });
       }
     }
-    return rows.sort((a, b) => b.modified - a.modified).slice(0, MAX_RECENT_SESSIONS);
+    return rows
+      .sort((a, b) => b.modified - a.modified)
+      .slice(0, MAX_RECENT_SESSIONS);
   }, [folders]);
 
   const displayTitle = activeSessionTitle

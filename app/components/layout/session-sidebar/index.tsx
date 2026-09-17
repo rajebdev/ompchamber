@@ -15,6 +15,7 @@ import { useToasts } from '@/hooks/ui/toasts';
 import { useUpdates } from '@/hooks/ui/updates';
 import { useSessionStatusAck, buildSidebarSessionStatus } from '@/hooks/chat/omp/session-statuses';
 import { useStreamPoll } from '@/hooks/chat/omp/stream-poll';
+import { useSidebarRevalidation } from '@/hooks/chat/omp/revalidation-throttle';
 
 export function SessionSidebar({ className = '', folders = [], onClose, appSettings = {} }: { className?: string, folders?: any[], onClose?: () => void, appSettings?: Record<string, any> }) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -24,27 +25,12 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
 
   // Refresh the session list when a new omp session is spawned or its title
   // changes (the chat timeline dispatches omp:session-updated after the JSONL
-  // is written). No SSE — a plain event + revalidator keeps it cheap.
+  // is written). No SSE — a plain event + throttled revalidator keeps it cheap,
+  // and the trailing throttle coalesces per-frame dispatches during a run into
+  // one revalidation per second.
   const revalidatorRef = useRef(revalidator);
   revalidatorRef.current = revalidator;
-  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    const scheduleRefresh = () => {
-      if (refreshTimerRef.current) return;
-      refreshTimerRef.current = setTimeout(() => {
-        refreshTimerRef.current = null;
-        revalidatorRef.current.revalidate();
-      }, 300);
-    };
-    window.addEventListener('omp:session-updated', scheduleRefresh);
-    return () => {
-      window.removeEventListener('omp:session-updated', scheduleRefresh);
-      if (refreshTimerRef.current) {
-        clearTimeout(refreshTimerRef.current);
-        refreshTimerRef.current = null;
-      }
-    };
-  }, []);
+  useSidebarRevalidation(revalidatorRef.current.revalidate);
 
   useEffect(() => {
     const handleWorkspaceUpdated = () => revalidatorRef.current.revalidate();

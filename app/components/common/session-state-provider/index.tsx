@@ -5,6 +5,7 @@ import {
   markSessionReady,
   flushSession,
   migrateSessionState,
+  recordSessionOpen,
 } from '@/lib/workspace/session-state/store';
 import { SessionStateContext } from '@/hooks/workspace/session-state/context';
 
@@ -24,6 +25,9 @@ export function SessionStateProvider({ sessionId, children }: { sessionId: strin
     const prev = prevSessionIdRef.current;
     prevSessionIdRef.current = effectiveSessionId;
     if (prev === effectiveSessionId) return;
+    // Every distinct session the user opens is a "last opened" data point —
+    // the picker recency window and the cache TTL both hang off it.
+    recordSessionOpen(effectiveSessionId);
 
     // Spawn adoption ("new-…" → real UUID): carry the pending state over
     // instead of loading (nothing is stored under the real id yet).

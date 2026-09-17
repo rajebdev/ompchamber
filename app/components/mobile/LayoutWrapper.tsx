@@ -184,16 +184,24 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
         />
       </div>
 
-      <div className={`flex-1 min-h-0 w-full ${currentScreen === 'right' ? 'block' : 'hidden'}`}>
-        <MobileRightSidebar
-          enabled={hasContext}
-          rootPath={activeProjectPath ?? undefined}
-          refreshKey={refreshKey}
-          onRefresh={handleWorkspaceChanged}
-          onOpenFile={handleOpenFile}
-          onClose={() => setCurrentScreen('main')}
-        />
-      </div>
+      {/* Mounted only while the drawer is open: its panels (explorer, git,
+          terminal, context) cost real CPU and fetch real data — a hidden
+          phone drawer must not keep them alive behind the chat screen. The
+          session screen above stays mounted on purpose: its status-ack effect
+          must run even while the drawer is closed, and its stream poll is
+          already inert when nothing is running. */}
+      {currentScreen === 'right' && (
+        <div className="flex-1 min-h-0 w-full">
+          <MobileRightSidebar
+            enabled={hasContext}
+            rootPath={activeProjectPath ?? undefined}
+            refreshKey={refreshKey}
+            onRefresh={handleWorkspaceChanged}
+            onOpenFile={handleOpenFile}
+            onClose={() => setCurrentScreen('main')}
+          />
+        </div>
+      )}
 
       {mobileEditorFile && (
         <MobileFullEditor

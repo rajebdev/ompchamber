@@ -9,6 +9,9 @@ interface UserBrowserFrameProps {
   viewportMode: ViewportMode;
   zoomLevel: number;
   onLoad: () => void;
+  /** False while the panel is hidden: no iframe is mounted, so a background
+   *  page cannot keep loading scripts or animating behind the panel. */
+  active?: boolean;
 }
 
 const ALLOW = 'clipboard-read; clipboard-write; fullscreen';
@@ -18,7 +21,8 @@ const ALLOW = 'clipboard-read; clipboard-write; fullscreen';
  * typing, cookies, logins) is the browser's own, so this costs nothing to keep
  * mounted. Cross-origin pages cannot read this app, and vice versa.
  */
-export function UserBrowserFrame({ url, frameKey, loading, viewportMode, zoomLevel, onLoad }: UserBrowserFrameProps) {
+export function UserBrowserFrame({ url, frameKey, loading, viewportMode, zoomLevel, onLoad, active = true }: UserBrowserFrameProps) {
+  if (!active) return null;
   if (!url) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-6 text-center select-none">

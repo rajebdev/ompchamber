@@ -8,6 +8,8 @@ import type { ViewportMode } from '@/types';
 
 interface UserBrowserPanelProps {
   className?: string;
+  /** False while the panel is hidden: pauses the iframe's live loading. */
+  active?: boolean;
 }
 
 /**
@@ -18,7 +20,7 @@ interface UserBrowserPanelProps {
  * that forbid embedding (Google, GitHub) show an empty frame; the toolbar's
  * open-in-new-tab action is the escape hatch for those.
  */
-export function UserBrowserPanel({ className = '' }: UserBrowserPanelProps) {
+export function UserBrowserPanel({ className = '', active = true }: UserBrowserPanelProps) {
   const [viewportMode, setViewportMode] = useSessionState<ViewportMode>('userBrowser.viewportMode', 'responsive');
   const [zoomLevel, setZoomLevel] = useSessionState<number>('userBrowser.zoomLevel', 100);
   const {
@@ -78,6 +80,7 @@ export function UserBrowserPanel({ className = '' }: UserBrowserPanelProps) {
         viewportMode={viewportMode}
         zoomLevel={zoomLevel}
         onLoad={markLoaded}
+        active={active}
       />
     </div>
   );

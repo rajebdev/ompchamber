@@ -28,6 +28,39 @@ import type { OmpProject, OmpSession, OmpSidebarData } from '@/types/omp/session
 
 const CONCURRENCY = 6;
 
+declare global {
+  // eslint-disable-next-line no-var
+  var __ompChamberSidebarDataCache: {
+    data: OmpSidebarData;
+    expiresAt: number;
+    inFlight: Promise<OmpSidebarData> | null;
+  } | undefined;
+}
+
+/**
+ * Per-process SWR cache for the sidebar dataset. The loader revalidates on
+ * every stream event; deduplicating concurrent requests and re-serving a
+ * snapshot for up to 5s turns a burst of revalidations into one disk scan
+ * (4 KiB prefix per session file) instead of one scan each.
+ */
+const SIDEBAR_DATA_SWR_MS = 5000;
+
+export async function loadOmpSidebarData(): Promise<OmpSidebarData> {
+  let slot = globalThis.__ompChamberSidebarDataCache;
+  if (!slot) {
+    slot = { data: undefined as unknown as OmpSidebarData, expiresAt: 0, inFlight: null };
+    globalThis.__ompChamberSidebarDataCache = slot;
+  }
+  const now = Date.now();
+  if (slot.data && slot.expiresAt > now) return slot.data;
+  if (slot.inFlight) return slot.inFlight;
+
+  slot.inFlight = buildOmpSidebarData().finally(() => {
+    if (slot && slot.inFlight) slot.inFlight = null;
+  });
+  return slot.inFlight;
+}
+
 /** Resolve each unique cwd to its project root; bounded concurrency so 100+
  *  unique cwds don't spawn 100 parallel git processes. */
 async function resolveRootsByCwd(cwds: string[]): Promise<Map<string, string>> {
@@ -77,10 +110,10 @@ function discoveredProjectPaths(sessions: OmpSessionInfo[]): string[] {
 }
 
 /**
- * Load the complete sidebar dataset in omp-web's shape:
+ * Build the complete sidebar dataset in omp-web's shape:
  * registered + discovered projects, plus every session (newest first).
  */
-export async function loadOmpSidebarData(): Promise<OmpSidebarData> {
+async function buildOmpSidebarData(): Promise<OmpSidebarData> {
   const agentDir = getAgentDir();
   const sessionsDir = getSessionsDir();
   const available = existsSync(sessionsDir);
@@ -94,13 +127,19 @@ export async function loadOmpSidebarData(): Promise<OmpSidebarData> {
   const projects = mergeProjects(registry, discoveredProjectPaths(ompSessions));
   const sessions = ompSessions.map((info) => toOmpSession(info, projectRootByCwd));
 
-  return {
+  const data: OmpSidebarData = {
     projects,
     sessions,
     agentDir,
     available,
     generatedAt: new Date().toISOString(),
   };
+  const slot = globalThis.__ompChamberSidebarDataCache;
+  if (slot) {
+    slot.data = data;
+    slot.expiresAt = Date.now() + SIDEBAR_DATA_SWR_MS;
+  }
+  return data;
 }
 
 /** Convenience: only the project list (cheap — no per-session git lookups). */

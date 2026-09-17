@@ -18,6 +18,7 @@ import { useToasts } from '@/hooks/ui/toasts';
 import { useUpdates } from '@/hooks/ui/updates';
 import { useSessionStatusAck, buildSidebarSessionStatus } from '@/hooks/chat/omp/session-statuses';
 import { useStreamPoll } from '@/hooks/chat/omp/stream-poll';
+import { useSidebarRevalidation } from '@/hooks/chat/omp/revalidation-throttle';
 
 interface MobileSessionSidebarProps {
   folders: WorkspaceFolderData[];
@@ -70,6 +71,9 @@ export function MobileSessionSidebar({
   // Background sessions finishing while the user sits elsewhere: revalidate
   // on a cadence — but only while something is actually streaming.
   useStreamPoll(sessionStatus, revalidator.revalidate);
+  // Spawn/title/stream events: throttle the per-frame dispatches so a busy
+  // run coalesces into one loader revalidation per second.
+  useSidebarRevalidation(revalidator.revalidate);
 
   // Sorting state (matching desktop)
   const [optionsOpen, setOptionsOpen] = useState(false);

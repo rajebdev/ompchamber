@@ -56,6 +56,8 @@
 type SessionState = Record<string, unknown>;
 
 const cache = new Map<string, SessionState>();
+/** Epoch ms of the last user-driven access per session (get/set/hydrate). */
+const lastTouched = new Map<string, number>();
 const readySessions = new Set<string>();
 const dirtySessions = new Map<string, boolean>();
 const persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -64,7 +66,11 @@ const PERSIST_DEBOUNCE_MS = 600;
 
 // Bounded LRU cache: cap the number of sessions kept in memory so the tab
 // doesn't grow unboundedly as the user visits more sessions.
-const MAX_CACHED_SESSIONS = 20;
+const MAX_CACHED_SESSIONS = 10;
+/** A session whose last user access is older than this is evicted regardless
+ *  of the size cap, so stale per-session UI state (drafts, panel layouts)
+ *  stops occupying memory 10 minutes after the user last opened it. */
+const SESSION_IDLE_TTL_MS = 10 * 60 * 1000;
 
 /**
  * Reorder a cache entry to the end of the Map's iteration order (the
@@ -78,6 +84,7 @@ function touchCacheEntry(sessionId: string): void {
     cache.delete(sessionId);
     cache.set(sessionId, value);
   }
+  lastTouched.set(sessionId, Date.now());
 }
 
 /**
@@ -87,21 +94,37 @@ function touchCacheEntry(sessionId: string): void {
  * true`) must never be evicted, or the user's drafts and editor state would be
  * silently lost. If every candidate is dirty (or is the protected id currently
  * being written), stop evicting rather than lose data.
+ *
+ * Entries idle past SESSION_IDLE_TTL_MS are evicted first — even when the
+ * cache is under the size cap — so long-unused sessions drop out on schedule.
  */
 function evictIfNeeded(protectedId: string | null): void {
+  const now = Date.now();
+  const evict = (id: string): void => {
+    cache.delete(id);
+    readySessions.delete(id);
+    dirtySessions.delete(id);
+    lastTouched.delete(id);
+    const timer = persistTimers.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      persistTimers.delete(id);
+    }
+  };
+  // TTL pass: safe to skip only while the timer still holds the unsaved state
+  // or the session is the one currently being written.
+  for (const [id, touched] of lastTouched) {
+    if (now - touched <= SESSION_IDLE_TTL_MS) continue;
+    if (id === protectedId) continue;
+    if (dirtySessions.get(id)) continue;
+    evict(id);
+  }
   while (cache.size > MAX_CACHED_SESSIONS) {
     let evicted = false;
     for (const id of cache.keys()) {
       if (id === protectedId) continue;
       if (dirtySessions.get(id)) continue;
-      cache.delete(id);
-      readySessions.delete(id);
-      dirtySessions.delete(id);
-      const timer = persistTimers.get(id);
-      if (timer) {
-        clearTimeout(timer);
-        persistTimers.delete(id);
-      }
+      evict(id);
       evicted = true;
       break;
     }
@@ -212,6 +235,20 @@ export function markSessionReady(sessionId: string | null): void {
 }
 
 /**
+ * Record that the user opened this session now. Drives the mobile header's
+ * recent-session picker and the cache TTL: a session is "recent" only while
+ * its last open is within SESSION_IDLE_TTL_MS.
+ */
+export function recordSessionOpen(sessionId: string | null): void {
+  if (sessionId) lastTouched.set(sessionId, Date.now());
+}
+
+/** Epoch ms of the user's last open of this session in this tab, if any. */
+export function getLastOpenedAt(sessionId: string): number | undefined {
+  return lastTouched.get(sessionId);
+}
+
+/**
  * Move a pending `new-…` session's state onto the real session id adopted
  * by a spawn, then discard the transient slot.
  */
@@ -225,5 +262,6 @@ export function migrateSessionState(fromId: string, toId: string): void {
   cache.delete(fromId);
   readySessions.delete(fromId);
   dirtySessions.delete(fromId);
+  lastTouched.delete(fromId);
   evictIfNeeded(toId);
 }
