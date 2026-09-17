@@ -11,6 +11,8 @@ export interface MessageListProps {
   providerNames?: Record<string, string>;
   modelName?: string;
   modelNames?: Record<string, string>;
+  /** Session thinking level shown in the AI footer. */
+  thinkingLevel?: string;
   onUndo?: (id: string, content?: string) => void;
   onRetry?: (id: string) => void;
   onNewChat?: (content: string) => void;
@@ -37,6 +39,7 @@ export const MessageList = memo(function MessageList({
   providerNames,
   modelName,
   modelNames,
+  thinkingLevel,
   onUndo,
   onRetry,
   onNewChat,
@@ -100,6 +103,7 @@ export const MessageList = memo(function MessageList({
             providerNames={providerNames}
             modelName={modelName}
             modelNames={modelNames}
+            thinkingLevel={thinkingLevel}
             isStreaming={isLoading}
             onUndo={onUndo}
             onRetry={onRetry}

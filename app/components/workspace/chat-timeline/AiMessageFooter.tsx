@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Bot, Check, Clock3, Coins, Copy, Hourglass, MessageSquarePlus, MoreHorizontal, RotateCcw, X } from 'lucide-react';
+import { Bot, Brain, Check, Clock3, Coins, Copy, Hourglass, MessageSquarePlus, MoreHorizontal, RotateCcw, X } from 'lucide-react';
 import { copyToClipboard } from '@/hooks/ui/clipboard';
 import { formatDuration } from '@/lib/chat/duration';
 import { providerLabel } from '@/lib/models/provider-label';
@@ -17,6 +17,8 @@ interface AiMessageFooterProps {
     reasoningTokens?: number;
     cost?: { total?: number; input?: number; output?: number };
   };
+  /** Session thinking level (last `thinking_level_change`) shown next to the model. */
+  thinkingLevel?: string;
   content: string;
   msgId: string;
   onRetry?: (msgId: string) => void;
@@ -38,6 +40,7 @@ export function AiMessageFooter({
   usage,
   content,
   msgId,
+  thinkingLevel,
   onRetry,
   onNewChat,
   isMobile = false,
@@ -82,6 +85,15 @@ export function AiMessageFooter({
   const metadataItems: Array<{ key: string; content: ReactNode; className?: string; title?: string }> = [];
   if (providerText) metadataItems.push({ key: 'provider', content: providerText });
   if (currentModel) metadataItems.push({ key: 'model', content: currentModel, className: 'font-semibold text-ink min-w-0 truncate shrink' });
+  if (thinkingLevel) metadataItems.push({
+    key: 'thinking',
+    content: (
+      <span className="text-ink/60 whitespace-nowrap flex items-center space-x-1" title={`Thinking level: ${thinkingLevel}`}>
+        <Brain size={11} className="text-ink/50 flex-shrink-0" />
+        <span>{thinkingLevel}</span>
+      </span>
+    ),
+  });
   if (dateStr) metadataItems.push({ key: 'date', content: dateStr });
   if (formattedDuration) {
     metadataItems.push({
@@ -117,6 +129,13 @@ export function AiMessageFooter({
             {providerText && <span className="shrink-0 truncate">{providerText}</span>}
             {providerText && currentModel && <span className="text-ink/35 shrink-0">•</span>}
             {currentModel && <span className="font-semibold text-ink min-w-0 truncate">{currentModel}</span>}
+            {currentModel && thinkingLevel && <span className="text-ink/35 shrink-0">•</span>}
+            {thinkingLevel && (
+              <span className="shrink-0 inline-flex items-center gap-1 text-ink/60" title={`Thinking level: ${thinkingLevel}`}>
+                <Brain size={10} className="text-ink/50" />
+                <span>{thinkingLevel}</span>
+              </span>
+            )}
           </div>
           <button
             type="button"

@@ -171,6 +171,7 @@ export function EmptyWorkspacePrompt({
                     providerNames={providerNames}
                     modelName={modelName}
                     modelNames={modelNames}
+                    thinkingLevel={sessionThinkingLevel ?? undefined}
                     isStreaming={isLoading}
                     footerVisible={isLastAi}
                     className={isAiFragment ? 'mt-1' : 'mt-8'}
@@ -188,6 +189,9 @@ export function EmptyWorkspacePrompt({
           <GeneratingIndicator
             modelName={modelName}
             generatingVerb={generatingVerb}
+            provider={provider}
+            providerNames={providerNames}
+            thinkingLevel={sessionThinkingLevel ?? undefined}
           />
         )}
         <ChatInput

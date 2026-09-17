@@ -1,9 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Bot } from 'lucide-react';
+import { Bot, Brain } from 'lucide-react';
+import { providerLabel } from '@/lib/models/provider-label';
 
 interface GeneratingIndicatorProps {
   modelName?: string;
   generatingVerb?: string;
+  provider?: string;
+  providerNames?: Record<string, string>;
+  /** Session thinking level (last `thinking_level_change`). */
+  thinkingLevel?: string;
 }
 
 const COOL_VERBS = [
@@ -15,7 +20,7 @@ const COOL_VERBS = [
   'Compiling edge routes'
 ];
 
-export function GeneratingIndicator({ modelName, generatingVerb }: GeneratingIndicatorProps) {
+export function GeneratingIndicator({ modelName, generatingVerb, provider, providerNames, thinkingLevel }: GeneratingIndicatorProps) {
   const [activeVerbIndex, setActiveVerbIndex] = useState(0);
 
   // Rotate action verb every 2.8s
@@ -30,6 +35,8 @@ export function GeneratingIndicator({ modelName, generatingVerb }: GeneratingInd
   const displayVerb = generatingVerb 
     ? (generatingVerb.charAt(0).toUpperCase() + generatingVerb.slice(1))
     : COOL_VERBS[activeVerbIndex];
+
+  const providerText = provider ? providerLabel(provider, providerNames) : '';
 
   return (
     <div 
@@ -65,11 +72,23 @@ export function GeneratingIndicator({ modelName, generatingVerb }: GeneratingInd
           </div>
         </div>
 
-        {/* Model name & dynamic verb with dots */}
+        {/* Provider & model name with dynamic verb + dots */}
         <div className="flex items-center space-x-1.5 min-w-0 truncate">
+          {providerText && (
+            <span className="text-ink/55 truncate shrink">{providerText}</span>
+          )}
           <span className="font-semibold text-ink truncate">
             {modelName}
           </span>
+          {thinkingLevel && (
+            <span
+              className="shrink-0 inline-flex items-center space-x-1 text-ink/55"
+              title={`Thinking level: ${thinkingLevel}`}
+            >
+              <Brain size={10} className="text-ink/50" />
+              <span>{thinkingLevel}</span>
+            </span>
+          )}
           <span className="text-ink/40 shrink-0">•</span>
           <span className="text-ink/75 flex items-center space-x-1 shrink-0 font-medium">
             <span className="transition-all duration-300">{displayVerb}</span>

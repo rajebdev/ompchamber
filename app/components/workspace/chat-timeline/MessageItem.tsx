@@ -17,6 +17,7 @@ import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
 import { AttachmentChips } from '@/components/workspace/chat-timeline/AttachmentChips';
 import { AiMessageFooter } from '@/components/workspace/chat-timeline/AiMessageFooter';
 import { copyToClipboard } from '@/hooks/ui/clipboard';
+import { capitalizeFirstLetter } from '@/lib/chat/capitalize';
 
 interface ChatMessageItemProps {
   msg: ChatMessageData | any;
@@ -25,6 +26,8 @@ interface ChatMessageItemProps {
   modelName?: string;
   /** id → display-name map from the model catalog; resolves per-message ids. */
   modelNames?: Record<string, string>;
+  /** Session thinking level shown in the AI footer. */
+  thinkingLevel?: string;
   isStreaming?: boolean;
   onRetry?: (msgId: string) => void;
   onUndo?: (msgId: string, content?: string) => void;
@@ -44,21 +47,13 @@ interface ChatMessageItemProps {
   isPrevAssistant?: boolean;
 }
 
-function capitalizeFirstLetter(text: string): string {
-  if (!text) return text;
-  const match = text.match(/^(\s*)([a-zA-Z\u00C0-\u024F])(.*)$/s);
-  if (match) {
-    return match[1] + match[2].toUpperCase() + match[3];
-  }
-  return text;
-}
-
 export const ChatMessageItem = memo(function ChatMessageItem({
   msg,
   provider,
   providerNames,
   modelName, 
   modelNames,
+  thinkingLevel,
   isStreaming = false,
   onRetry, 
   onUndo, 
@@ -334,6 +329,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           provider={msg.provider || provider}
           providerNames={providerNames}
           currentModel={(msg.model ? (modelNames?.[msg.model] ?? msg.model) : '') || modelName || ''}
+          thinkingLevel={thinkingLevel}
           dateStr={formatFooterDate()}
           durationMs={durationMs ?? msg.durationMs}
           usage={msg.usage}

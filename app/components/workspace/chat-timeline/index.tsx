@@ -230,6 +230,7 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
                       providerNames={providerNames}
                       modelName={sessionModelName}
                       modelNames={modelNames}
+                      thinkingLevel={sessionData?.thinkingLevel}
                       onUndo={handleUndo}
                       onRetry={handleRetry}
                       onNewChat={handleNewChat}
@@ -265,6 +266,9 @@ export function ChatTimeline({ className = '', folders = [], appSettings = {}, o
               <GeneratingIndicator 
                 modelName={sessionModelName} 
                 generatingVerb={generatingVerb} 
+                provider={sessionProvider}
+                providerNames={providerNames}
+                thinkingLevel={sessionData?.thinkingLevel}
               />
             )}
             <QueueList 
