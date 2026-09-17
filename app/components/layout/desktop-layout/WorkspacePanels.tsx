@@ -1,7 +1,7 @@
-import React, { Suspense, lazy, useEffect, useRef } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useRef } from 'react';
 import { Group, Panel, type GroupImperativeHandle, type Layout, type PanelImperativeHandle } from 'react-resizable-panels';
 import { ChatTimeline } from '@/components/workspace/chat-timeline/index';
-import { LazyFileExplorer, LazySearchPanel, LazyGitPanel, LazyTerminalPanel, LazyContextPanel, LazyBrowserPanel, LazyUserBrowserPanel, LazyUsagePanel } from '@/components/common/lazy-panels';
+import { getDesktopPanelView } from '@/components/common/lazy-panels';
 import { RightActivityBar } from '@/components/layout/RightActivityBar';
 import { ResizeHandle } from '@/components/layout/desktop-layout/ResizeHandle';
 import {
@@ -83,6 +83,17 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
   // Read inside the restore effect without making a drag re-trigger it.
   const panelWidthsRef = useRef(panelWidths);
   panelWidthsRef.current = panelWidths;
+
+  // One cached lazy per view, scoped to this layout instance: switching the
+  // right panel toggles CSS visibility instead of unmounting, so a view's
+  // state (tree expansion, search results, terminal buffer) survives switches
+  // and no panel re-fetches its data just because the user looked away.
+  const viewScope = useMemo(() => ({}), []);
+  const rightViews = useMemo(
+    () => (['files', 'search', 'git', 'terminal', 'context', 'user-browser', 'browser', 'usage'] as const)
+      .map((view) => ({ view, Comp: getDesktopPanelView(viewScope, view) })),
+    [viewScope],
+  );
 
   /**
    * Widths of the panels in this group as they are right now, keyed by slot:
@@ -178,20 +189,27 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
             <ResizeHandle />
             <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={panelWidths.right?.[activeRightPanel] ?? DEFAULT_RIGHT_PANEL_WIDTHS[activeRightPanel]} minSize={MIN_RIGHT_PANEL_WIDTHS[activeRightPanel]} maxSize={MAX_RIGHT_PANEL_WIDTH} collapsible>
               <PanelSuspense>
-                {activeRightPanel === 'files' && <LazyFileExplorer className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} onOpenFile={onOpenFile} refreshKey={refreshKey} onRefresh={onRefreshWorkspace} />}
-                {activeRightPanel === 'search' && <LazySearchPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} />}
-                {activeRightPanel === 'git' && <LazyGitPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} refreshKey={refreshKey} />}
-                {activeRightPanel === 'context' && <LazyContextPanel className="w-full h-full" enabled={hasActiveContext} refreshKey={refreshKey} onClose={onToggleRightPanel} />}
-                <div className={`w-full h-full ${activeRightPanel === 'terminal' ? 'block' : 'hidden'}`}>
-                  <LazyTerminalPanel className="w-full h-full" enabled={hasActiveContext} rootPath={activeProjectPath ?? undefined} />
-                </div>
-                <div className={`w-full h-full ${activeRightPanel === 'user-browser' ? 'block' : 'hidden'}`}>
-                  <LazyUserBrowserPanel className="w-full h-full" />
-                </div>
-                <div className={`w-full h-full ${activeRightPanel === 'browser' ? 'block' : 'hidden'}`}>
-                  <LazyBrowserPanel className="w-full h-full" active={activeRightPanel === 'browser'} />
-                </div>
-                {activeRightPanel === 'usage' && <LazyUsagePanel className="w-full h-full" />}
+                {rightViews.map(({ view, Comp }) => {
+                  const isActiveView = activeRightPanel === view;
+                  const base = {
+                    className: 'w-full h-full',
+                    // The terminal must stay enabled while hidden: swapping it
+                    // to the placeholder mid-command would unmount the live
+                    // stream. Everything else polls/re-reads only while shown.
+                    enabled: view === 'terminal' ? hasActiveContext : hasActiveContext && isActiveView,
+                    active: isActiveView,
+                    refreshKey,
+                    rootPath: activeProjectPath ?? undefined,
+                    onRefresh: onRefreshWorkspace,
+                    onOpenFile,
+                    onClose: onToggleRightPanel,
+                  };
+                  return (
+                    <div key={view} className={isActiveView ? 'w-full h-full' : 'hidden'}>
+                      <Comp {...base} />
+                    </div>
+                  );
+                })}
               </PanelSuspense>
             </Panel>
           </>
