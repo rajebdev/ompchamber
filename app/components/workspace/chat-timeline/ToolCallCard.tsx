@@ -8,6 +8,7 @@ import {
   Wrench,
   Copy,
   Check,
+  Boxes,
   ListTodo,
   Code2,
   Server,
@@ -93,6 +94,7 @@ function getToolIcon(key: string) {
     case 'learn':
       return <Brain size={14} />;
     default:
+      if (key.startsWith('mcp__')) return <Boxes size={14} />;
       return <Wrench size={14} />;
   }
 }
@@ -118,6 +120,30 @@ function commandOrInputOf(tool: ToolCallData): string {
   if (tool.input && typeof tool.input === 'object') return JSON.stringify(tool.input, null, 2);
   if (tool.target || tool.detail) return tool.target || tool.detail || '';
   return '';
+}
+
+/** Inner `xd://mcp__<tool>` (or `mcp__<tool>` name) carried by an MCP call.
+ *  Returns the bare MCP tool name, e.g. `codegraph_explore`. */
+function mcpToolNameOf(tool: ToolCallData): string | undefined {
+  const inputObj = typeof tool.input === 'object' && tool.input !== null ? (tool.input as Record<string, any>) : undefined;
+  const path = typeof inputObj?.path === 'string' ? inputObj.path : tool.target || '';
+  const raw = path.startsWith('xd://') ? path.slice(5) : typeof tool.name === 'string' && tool.name.startsWith('mcp__') ? tool.name : '';
+  const name = raw.split(/[/?#]/)[0].trim();
+  return name.startsWith('mcp__') ? name.slice(5) : undefined;
+}
+
+/** Human subject for an MCP call: the intent line wins, else first meaningful
+ *  argument (query/pattern/path/…), else nothing. */
+function mcpSubjectOf(tool: ToolCallData, inputObj: Record<string, any> | undefined): string | undefined {
+  if (tool.intent) return tool.intent;
+  const content = typeof inputObj?.content === 'string' ? inputObj.content : '';
+  const parsed = content ? tryParseJson(content) : { isValid: false, data: undefined };
+  const data = parsed.isValid ? (parsed.data as Record<string, any>) : inputObj;
+  if (data && typeof data === 'object') {
+    const first = ['query', 'q', 'pattern', 'pat', 'name', 'sql', 'path', 'symbol', 'url', 'command'].find((k) => typeof data[k] === 'string' && data[k]);
+    if (first) return data[first];
+  }
+  return undefined;
 }
 
 function diffTextOf(tool: ToolCallData): string | undefined {
@@ -213,6 +239,15 @@ export const ToolCallCard = memo(function ToolCallCard({ tool, isOpen, onToggle,
         .filter((p) => !/^0\s+(complete|in progress|pending)/i.test(p))
         .join(' · ');
       displaySubtitle = cleaned || sub;
+    }
+  } else if (mcpToolNameOf(tool)) {
+    // MCP call: `write xd://mcp__<tool>` (or a direct `mcp__<tool>` name) —
+    // the MCP tool names the action, never the transport `write`.
+    const inputObj = typeof tool.input === 'object' && tool.input !== null ? (tool.input as Record<string, any>) : undefined;
+    displayTitle = toTitleCase(mcpToolNameOf(tool)!);
+    const subject = mcpSubjectOf(tool, inputObj);
+    if (subject) {
+      displaySubtitle = subject.length > 80 ? `${subject.slice(0, 79)}…` : subject;
     }
   } else if (tool.title && (tool.title.includes('—') || tool.title.includes(' - ') || tool.title.includes(': '))) {
     const parts = tool.title.split(/\s+[—\-:]\s+/);

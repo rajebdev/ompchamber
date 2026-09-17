@@ -23,6 +23,7 @@ import { Ask } from '@/components/workspace/chat-timeline/tool-renderers/panels/
 import { Think } from '@/components/workspace/chat-timeline/tool-renderers/panels/Think';
 import { Read } from '@/components/workspace/chat-timeline/tool-renderers/panels/Read';
 import { Edit } from '@/components/workspace/chat-timeline/tool-renderers/panels/Edit';
+import { Mcp } from '@/components/workspace/chat-timeline/tool-renderers/panels/Mcp';
 
 function resolveTargetFile(tool: ToolCallData): string | undefined {
   if (tool.target) return tool.target;
@@ -138,6 +139,11 @@ export function ToolDetailsPanel({ tool }: { tool: ToolCallData }): ReactNode {
   if (key === 'goal' || key === 'yield') return <Goal tool={tool} />;
   if (key === 'ask') return <Ask tool={tool} />;
   if (key === 'think') return <Think tool={tool} />;
+
+  // Dynamic MCP / custom tools — `mcp__<tool>` names and xd:// device writes
+  if (key.startsWith('mcp__') || (typeof tool.name === 'string' && tool.name.startsWith('mcp__'))) {
+    return <Mcp tool={tool} />;
+  }
 
   return null;
 }

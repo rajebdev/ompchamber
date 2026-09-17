@@ -94,8 +94,11 @@ export function describeToolActivity(tool: ToolActivity): string {
 
   const device = xdDeviceOf(args, tool);
   if (device) {
-    const verb = DEVICE_VERBS[device] ?? `Running ${device}`;
-    const subject = subjectFor(device, deviceArgs(args));
+    const mcpTool = device.startsWith('mcp__') ? device.slice(5) : undefined;
+    const verb = mcpTool
+      ? `Running ${mcpTool}`
+      : DEVICE_VERBS[device] ?? `Running ${device}`;
+    const subject = subjectFor(mcpTool ?? device, deviceArgs(args));
     if (subject) return truncate(`${verb} ${subject}`);
     if (intent) return truncate(intent);
     return truncate(verb);
