@@ -246,15 +246,20 @@ export function Edit({ tool }: { tool: ToolCallData }) {
               {previewLineCount} lines · {formatBytes(newContent.length)}
             </span>
           </div>
-          <div className="flex max-h-64 items-start overflow-x-auto rounded-lg border border-ink/8 bg-paper font-mono text-[11px] leading-relaxed select-text">
-            <div className="sticky left-0 flex-shrink-0 select-none border-r border-ink/8 bg-canvas/60 py-2.5 pl-2.5 pr-2 text-right text-[10px] leading-relaxed text-ink/25">
+          <div className="flex max-h-64 items-start overflow-x-auto rounded-lg border border-ink/8 bg-paper font-mono text-[11px] leading-[20px] select-text overscroll-contain">
+            <div
+              className="sticky left-0 z-10 flex-shrink-0 select-none border-r border-ink/8 bg-canvas/60 py-2.5 pl-2.5 pr-2 text-right font-mono text-[11px] leading-[20px] tabular-nums text-ink/25"
+              aria-hidden="true"
+            >
               {Array.from({ length: Math.min(previewLineCount, 80) }, (_, idx) => (
-                <div key={idx}>{idx + 1}</div>
+                <div key={idx} className="h-[20px] leading-[20px]">
+                  {idx + 1}
+                </div>
               ))}
-              {previewLineCount > 80 && <div>...</div>}
+              {previewLineCount > 80 && <div className="h-[20px] leading-[20px]">…</div>}
             </div>
             <div
-              className="flex-1 overflow-x-auto p-2.5 whitespace-pre text-ink/85"
+              className="m-0 flex-1 min-w-max overflow-visible py-2.5 pl-3 pr-4 leading-[20px] whitespace-pre text-ink/85"
               dangerouslySetInnerHTML={{ __html: highlightedPreview }}
             />
           </div>
