@@ -14,6 +14,7 @@
  */
 
 import { isRecord } from '@/lib/omp/session/parse-message-blocks';
+import { hashlineTargetPath } from '@/lib/omp/session/hashline-patch';
 
 /** Longest subject kept in the indicator; the tail is elided. */
 export const MAX_SUBJECT = 72;
@@ -158,7 +159,9 @@ export function subjectFor(name: string, args: Record<string, unknown>): string 
     case 'read':
     case 'write':
     case 'edit':
-      return pick(args, ['path', 'file', 'AbsolutePath', 'TargetFile']);
+      // omp's hashline `edit` has no `path` argument — the file lives in the
+      // patch header, so the phrase would otherwise degrade to the bare intent.
+      return pick(args, ['path', 'file', 'AbsolutePath', 'TargetFile']) ?? hashlineTargetPath(args);
     case 'ast_edit':
       return pick(args, ['paths', 'path']);
     case 'ast_grep': {

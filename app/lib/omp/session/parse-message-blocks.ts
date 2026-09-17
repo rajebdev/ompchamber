@@ -17,6 +17,7 @@
  */
 
 import type { ToolCallData, ToolType } from '@/types/chat';
+import { hashlineTargetPath } from '@/lib/omp/session/hashline-patch';
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -121,7 +122,10 @@ export function parseMessageBlocks(content: unknown): ParsedMessageBlocks {
       const rawInput = (block.arguments ?? block.input) as Record<string, unknown> | undefined;
       const args = isRecord(rawInput) ? rawInput : undefined;
       const command = stringArg(args, COMMAND_KEYS);
-      const target = stringArg(args, TARGET_KEYS);
+      // An omp `edit` carries its target inside the patch header (`input:
+      // "[PATH#TAG]\nCUT …"`) — no `path` key — so the card would otherwise
+      // render without a file name until the result's `details.path` arrives.
+      const target = stringArg(args, TARGET_KEYS) || (args ? hashlineTargetPath(args) : undefined);
       const intent = typeof args?.i === 'string' ? args.i : undefined;
       const detail = command || target;
       result.toolCalls.push({

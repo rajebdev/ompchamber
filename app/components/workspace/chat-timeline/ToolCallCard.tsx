@@ -27,6 +27,7 @@ import { DiffView } from '@/components/workspace/chat-timeline/tool-renderers/sh
 import {
   ToolDetailsPanel,
   hasToolDetailsPanel,
+  resolveTargetFile,
   resolveToolKey,
 } from '@/components/workspace/chat-timeline/tool-renderers';
 import { toTitleCase } from '@/lib/chat/title-case';
@@ -97,21 +98,6 @@ function getToolIcon(key: string) {
       if (key.startsWith('mcp__')) return <Boxes size={14} />;
       return <Wrench size={14} />;
   }
-}
-
-function resolveTargetFile(tool: ToolCallData): string | undefined {
-  if (tool.target) return tool.target;
-  if (tool.diff?.file) return tool.diff.file;
-  if (tool.input && typeof tool.input === 'object' && typeof (tool.input as any).path === 'string') {
-    return (tool.input as any).path;
-  }
-  if (typeof tool.input === 'string' && (tool.input.includes('.') || tool.input.includes('/'))) {
-    return tool.input;
-  }
-  if (tool.detail && (tool.detail.includes('.') || tool.detail.includes('/'))) {
-    return tool.detail;
-  }
-  return undefined;
 }
 
 function commandOrInputOf(tool: ToolCallData): string {

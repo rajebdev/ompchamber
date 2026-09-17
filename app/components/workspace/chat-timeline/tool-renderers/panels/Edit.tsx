@@ -3,8 +3,10 @@ import { FileEdit, FilePlus, Check, Copy, ArrowRight, FileCode } from 'lucide-re
 import type { ToolCallData } from '@/types';
 import { copyToClipboard } from '@/hooks/ui/clipboard';
 import { DiffView } from '@/components/workspace/chat-timeline/tool-renderers/shared/DiffView';
+import { HashlinePatch } from '@/components/workspace/chat-timeline/tool-renderers/hashline-patch';
 import { highlightCode, getLanguageFromPath, isCodeLike } from '@/lib/code/syntax-highlight';
 import { truncateTailLines, MAX_OUTPUT_LINES } from '@/components/workspace/chat-timeline/tool-renderers/shared/truncate';
+import { hashlinePatchFromArgs } from '@/lib/omp/session/hashline-patch';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -70,8 +72,12 @@ export function Edit({ tool }: { tool: ToolCallData }) {
   const input = tool.input;
   const inputObj = typeof input === 'object' && input !== null ? (input as Record<string, any>) : undefined;
 
+  // omp's hashline `edit` sends the patch text instead of path/old/new strings.
+  const hashline = useMemo(() => hashlinePatchFromArgs(inputObj), [inputObj]);
+
   const targetPath =
     tool.target ||
+    hashline?.sections[0].path ||
     (inputObj?.path as string) ||
     (inputObj?.TargetFile as string) ||
     (inputObj?.targetFile as string) ||
@@ -79,6 +85,7 @@ export function Edit({ tool }: { tool: ToolCallData }) {
     (inputObj?.filePath as string) ||
     (inputObj?.AbsolutePath as string) ||
     (inputObj?.absolutePath as string) ||
+    (typeof tool.details?.path === 'string' ? tool.details.path : undefined) ||
     (typeof input === 'string' && (input.includes('/') || input.includes('.')) ? input : undefined) ||
     '';
 
@@ -152,7 +159,7 @@ export function Edit({ tool }: { tool: ToolCallData }) {
   );
 
   const handleCopy = async () => {
-    const textToCopy = newContent || newString || output;
+    const textToCopy = hashline?.text || newContent || newString || output;
     if (!textToCopy) return;
     const ok = await copyToClipboard(textToCopy);
     if (ok) {
@@ -177,7 +184,7 @@ export function Edit({ tool }: { tool: ToolCallData }) {
           </span>
         </div>
 
-        {(newContent || newString) && (
+        {(newContent || newString || hashline) && (
           <button
             type="button"
             onClick={handleCopy}
@@ -196,6 +203,10 @@ export function Edit({ tool }: { tool: ToolCallData }) {
           <DiffView text={diffText} />
         </div>
       )}
+
+      {/* Hashline patch (omp `edit` args) — shown until the toolResult carries
+          the applied diff in `details.diff`/`details.patch`. */}
+      {!diffText && hashline && <HashlinePatch sections={hashline.sections} />}
 
       {/* Replacement Diff (old_string vs new_string) */}
       {!diffText && (oldString || newString) && (

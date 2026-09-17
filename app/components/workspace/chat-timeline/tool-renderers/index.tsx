@@ -24,8 +24,11 @@ import { Think } from '@/components/workspace/chat-timeline/tool-renderers/panel
 import { Read } from '@/components/workspace/chat-timeline/tool-renderers/panels/Read';
 import { Edit } from '@/components/workspace/chat-timeline/tool-renderers/panels/Edit';
 import { Mcp } from '@/components/workspace/chat-timeline/tool-renderers/panels/Mcp';
+import { hashlineTargetPath } from '@/lib/omp/session/hashline-patch';
 
-function resolveTargetFile(tool: ToolCallData): string | undefined {
+/** File a tool call targets: explicit `target`, result details, its arguments
+ *  (plain path keys or an omp hashline patch header), then the raw input. */
+export function resolveTargetFile(tool: ToolCallData): string | undefined {
   if (tool.target) return tool.target;
   if (tool.diff?.file) return tool.diff.file;
   if (tool.input && typeof tool.input === 'object') {
@@ -38,7 +41,10 @@ function resolveTargetFile(tool: ToolCallData): string | undefined {
     if (typeof obj.AbsolutePath === 'string') return obj.AbsolutePath;
     if (typeof obj.absolutePath === 'string') return obj.absolutePath;
     if (typeof obj.file === 'string') return obj.file;
+    const patchPath = hashlineTargetPath(obj);
+    if (patchPath) return patchPath;
   }
+  if (typeof tool.details?.path === 'string') return tool.details.path;
   if (typeof tool.input === 'string' && (tool.input.includes('.') || tool.input.includes('/'))) {
     return tool.input;
   }
