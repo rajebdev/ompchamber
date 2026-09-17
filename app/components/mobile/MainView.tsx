@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
-import type { WorkspaceFolderData } from '@/types';
 import { MobileHeader } from '@/components/mobile/mobile-main-view/Header';
 import { ChatTimeline } from '@/components/workspace/chat-timeline/index';
 
+import { useSidebarData } from '@/hooks/chat/omp/session-list';
+
 interface MobileMainViewProps {
-  folders: WorkspaceFolderData[];
   activeSessionId: number | string | null;
   onSelectSession: (id: number | string) => void;
   onNewSession: () => void;
@@ -22,7 +22,6 @@ interface MobileMainViewProps {
  * of those.
  */
 export function MobileMainView({
-  folders,
   activeSessionId,
   onSelectSession,
   onNewSession,
@@ -30,6 +29,7 @@ export function MobileMainView({
   onOpenRightSidebar,
   appSettings = {},
 }: MobileMainViewProps) {
+  const { folders } = useSidebarData();
   // Title reported by the timeline: the live omp title, the pending-session
   // placeholder, or an optimistic rename. Null until the session loads.
   const [liveTitle, setLiveTitle] = useState<string | null>(null);
@@ -50,7 +50,6 @@ export function MobileMainView({
       <MobileHeader
         activeSessionTitle={activeSessionTitle}
         activeSessionId={activeSessionId}
-        folders={folders}
         onOpenSessionSidebar={onOpenSessionSidebar}
         onOpenRightSidebar={onOpenRightSidebar}
         onNewSession={onNewSession}
@@ -59,7 +58,6 @@ export function MobileMainView({
 
       <div className="flex-1 min-h-0">
         <ChatTimeline
-          folders={folders}
           appSettings={appSettings}
           onSessionTitle={setLiveTitle}
           variant="mobile"

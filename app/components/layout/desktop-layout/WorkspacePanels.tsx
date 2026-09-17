@@ -11,7 +11,6 @@ import {
   type RightPanelType,
 } from '@/lib/workspace/right-panels';
 import { DEFAULT_PANEL_WIDTHS, type EditorWidthMode, type PanelWidths } from '@/lib/workspace/panel-widths';
-import type { WorkspaceFolderData } from '@/types';
 
 const Editor = lazy(() => import('@/components/workspace/editor/index').then((m) => ({ default: m.Editor })));
 
@@ -26,7 +25,6 @@ function PanelSuspense({ children }: { children: React.ReactNode }) {
 }
 
 interface WorkspacePanelsProps {
-  folders: WorkspaceFolderData[];
   appSettings?: Record<string, any>;
   showEditor: boolean;
   editorPanelRef: React.RefObject<PanelImperativeHandle | null>;
@@ -54,7 +52,6 @@ interface WorkspacePanelsProps {
 
 export function WorkspacePanels(props: WorkspacePanelsProps) {
   const {
-    folders,
     appSettings,
     showEditor,
     editorPanelRef,
@@ -162,7 +159,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
         }}
       >
         <Panel panelRef={chatPanelRef} id="center-panel" defaultSize={panelWidths.chat ?? DEFAULT_PANEL_WIDTHS.chat} minSize="540px">
-          <ChatTimeline className="w-full h-full" folders={folders} appSettings={appSettings} onSessionTitle={onSessionTitle} />
+          <ChatTimeline className="w-full h-full" appSettings={appSettings} onSessionTitle={onSessionTitle} />
         </Panel>
 
         {showEditor && (

@@ -1,39 +1,41 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { useSearchParams, useRevalidator } from '@remix-run/react';
+import { useSearchParams } from '@remix-run/react';
 import { SettingsModal, AboutModal, NewWorkspaceModal, SchedulerModal } from '@/components/layout/session-sidebar/Modals';
 import { SessionSidebarHeader } from '@/components/layout/session-sidebar/Header';
 import { SessionSidebarToolbar } from '@/components/layout/session-sidebar/Toolbar';
 import { SessionSidebarFooter } from '@/components/layout/session-sidebar/Footer';
 import { SessionSidebarSessionList } from '@/components/layout/session-sidebar/SessionList';
+import { SessionListSkeleton } from '@/components/layout/session-sidebar/Skeleton';
 import { Toast } from '@/components/common/Toast';
 import { pendingSessionCreatedAt, pendingSessionTitle } from '@/lib/omp/session/default-title';
 import { triggerSessionPrewarm, spawnCwdForNewSession } from '@/lib/omp/session/prewarm';
 import { isValidSessionSortOption, sortFolders } from '@/lib/workspace/sidebar-sort';
-import type { SessionSortOption } from '@/types';
+import type { SessionItemData, SessionSortOption } from '@/types';
 import { useScrollbarFade } from '@/hooks/ui/scrollbar-fade';
 import { useToasts } from '@/hooks/ui/toasts';
 import { useUpdates } from '@/hooks/ui/updates';
 import { useSessionStatusAck, buildSidebarSessionStatus } from '@/hooks/chat/omp/session-statuses';
 import { useStreamPoll } from '@/hooks/chat/omp/stream-poll';
 import { useSidebarRevalidation } from '@/hooks/chat/omp/revalidation-throttle';
+import { useSidebarData } from '@/hooks/chat/omp/session-list';
 
-export function SessionSidebar({ className = '', folders = [], onClose, appSettings = {} }: { className?: string, folders?: any[], onClose?: () => void, appSettings?: Record<string, any> }) {
+export function SessionSidebar({ className = '', onClose, appSettings = {} }: { className?: string, onClose?: () => void, appSettings?: Record<string, any> }) {
+  const { folders, initializing, refresh } = useSidebarData();
   const [searchParams, setSearchParams] = useSearchParams();
-  const revalidator = useRevalidator();
   const sessionParam = searchParams.get('sessionId');
   const activeSessionId = sessionParam ? (Number.isNaN(Number(sessionParam)) ? sessionParam : Number(sessionParam)) : null;
 
   // Refresh the session list when a new omp session is spawned or its title
   // changes (the chat timeline dispatches omp:session-updated after the JSONL
-  // is written). No SSE — a plain event + throttled revalidator keeps it cheap,
+  // is written). No SSE — a plain event + throttled refetch keeps it cheap,
   // and the trailing throttle coalesces per-frame dispatches during a run into
-  // one revalidation per second.
-  const revalidatorRef = useRef(revalidator);
-  revalidatorRef.current = revalidator;
-  useSidebarRevalidation(revalidatorRef.current.revalidate);
+  // one list fetch per second.
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  useSidebarRevalidation(() => refreshRef.current());
 
   useEffect(() => {
-    const handleWorkspaceUpdated = () => revalidatorRef.current.revalidate();
+    const handleWorkspaceUpdated = () => refreshRef.current();
     window.addEventListener('omp:workspace-updated', handleWorkspaceUpdated);
     return () => window.removeEventListener('omp:workspace-updated', handleWorkspaceUpdated);
   }, []);
@@ -103,10 +105,10 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
   // data as the session list. Spinner while `stream`; a one-shot terminal
   // badge (acknowledged server-side on open, dropped by the next revalidate).
   const sessionStatus = useMemo(() => buildSidebarSessionStatus(folders), [folders]);
-  useSessionStatusAck(sessionStatus, activeSessionId, revalidatorRef.current.revalidate);
-  // Background sessions finishing while the user sits elsewhere: revalidate
+  useSessionStatusAck(sessionStatus, activeSessionId, () => refreshRef.current());
+  // Background sessions finishing while the user sits elsewhere: refetch
   // on a cadence — but only while something is actually streaming.
-  useStreamPoll(sessionStatus, revalidatorRef.current.revalidate);
+  useStreamPoll(sessionStatus, () => refreshRef.current());
 
   const handleSelectSession = (id: number | string) => {
     setSearchParams(prev => {
@@ -186,10 +188,10 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
           : new Date().toISOString();
         result = result.map(f => {
           if (f.id !== target.id) return f;
-          const pending = {
+          const pending: SessionItemData = {
             id: pendingId,
+            folder_id: f.id,
             title: pendingSessionTitle(pendingId),
-            is_active: 1,
             // Read by @/lib/workspace/sidebar-sort to rank this folder newest.
             created_at: stamp,
             updated_at: stamp,
@@ -241,21 +243,25 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
           onSortChange={handleSortChange}
           onNewWorkspace={() => setNewWorkspaceOpen(true)}
           onScheduler={() => setSchedulerOpen(true)}
-          onRefresh={() => revalidator.revalidate()}
+          onRefresh={() => refreshRef.current()}
           onClose={onClose}
         />
 
-        <SessionSidebarSessionList
-          folders={processedFolders}
-          activeSessionId={activeSessionId}
-          searchQuery={searchQuery}
-          showArchived={showArchived}
-          sessionStatus={sessionStatus}
-          isScrolling={isScrolling}
-          onScroll={handleScroll}
-          onSelectSession={handleSelectSession}
-          onNewSessionForFolder={handleNewSessionForFolder}
-        />
+        {initializing ? (
+          <SessionListSkeleton />
+        ) : (
+          <SessionSidebarSessionList
+            folders={processedFolders}
+            activeSessionId={activeSessionId}
+            searchQuery={searchQuery}
+            showArchived={showArchived}
+            sessionStatus={sessionStatus}
+            isScrolling={isScrolling}
+            onScroll={handleScroll}
+            onSelectSession={handleSelectSession}
+            onNewSessionForFolder={handleNewSessionForFolder}
+          />
+        )}
 
         <SessionSidebarFooter
           onSettings={() => setSettingsOpen(true)}

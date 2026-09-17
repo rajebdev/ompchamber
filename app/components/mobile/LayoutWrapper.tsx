@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from '@remix-run/react';
-import type { WorkspaceFolderData, SettingsCategoryId } from '@/types';
+import type { SettingsCategoryId } from '@/types';
 import { MobileMainView } from '@/components/mobile/MainView';
 import { MobileSessionSidebar } from '@/components/mobile/SessionSidebar';
 import { MobileRightSidebar } from '@/components/mobile/RightSidebar';
@@ -9,16 +9,17 @@ import { MobileFullDiff } from '@/components/mobile/mobile-right-sidebar/FullDif
 import { SettingsModal } from '@/components/settings/Modal';
 import { activeProjectForSession } from '@/lib/workspace/active-project';
 import { triggerSessionPrewarm, spawnCwdForNewSession } from '@/lib/omp/session/prewarm';
+import { useSidebarData } from '@/hooks/chat/omp/session-list';
 
 interface MobileLayoutWrapperProps {
-  folders: WorkspaceFolderData[];
   onDesktopToggle?: () => void;
   appSettings?: Record<string, any>;
 }
 
 export type MobileScreen = 'main' | 'session' | 'right';
 
-export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {} }: MobileLayoutWrapperProps) {
+export function MobileLayoutWrapper({ onDesktopToggle, appSettings = {} }: MobileLayoutWrapperProps) {
+  const { folders } = useSidebarData();
   const [searchParams, setSearchParams] = useSearchParams();
   const sessionParam = searchParams.get('sessionId');
   const sessionId = sessionParam ? (Number.isNaN(Number(sessionParam)) ? sessionParam : Number(sessionParam)) : null;
@@ -161,7 +162,6 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
     >
       <div className={`flex-1 min-h-0 w-full ${currentScreen === 'main' ? 'block' : 'hidden'}`}>
         <MobileMainView
-          folders={folders}
           activeSessionId={sessionId}
           onSelectSession={handleSelectSession}
           onNewSession={handleNewSession}
@@ -173,7 +173,6 @@ export function MobileLayoutWrapper({ folders, onDesktopToggle, appSettings = {}
 
       <div className={`flex-1 min-h-0 w-full ${currentScreen === 'session' ? 'block' : 'hidden'}`}>
         <MobileSessionSidebar
-          folders={folders}
           activeSessionId={sessionId}
           onSelectSession={handleSelectSession}
           onNewSession={handleNewSession}

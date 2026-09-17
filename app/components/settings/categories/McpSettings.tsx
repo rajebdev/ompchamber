@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useRouteLoaderData } from '@remix-run/react';
 import type { McpServerItem, SettingsState } from '@/types';
-import type { loader as indexLoader } from '@/routes/_index';
 import { McpSidebarList } from '@/components/settings/categories/mcp-settings/SidebarList';
 import type { McpProjectOption } from '@/components/settings/categories/mcp-settings/SidebarList';
 import { McpDetailPane } from '@/components/settings/categories/mcp-settings/DetailPane';
 import { McpImportModal } from '@/components/settings/categories/mcp-settings/ImportModal';
+import { useSidebarData } from '@/hooks/chat/omp/session-list';
 
 interface McpSettingsProps {
   settings: SettingsState;
@@ -15,14 +14,13 @@ interface McpSettingsProps {
 const GLOBAL_PROJECT: McpProjectOption = { id: 'global', name: 'Global (all projects)', path: '' };
 
 export const McpSettings: React.FC<McpSettingsProps> = () => {
-  const rootData = useRouteLoaderData<typeof indexLoader>('routes/_index');
+  const { folders } = useSidebarData();
   const projects = useMemo<McpProjectOption[]>(() => {
-    const folders = rootData?.folders ?? [];
     const bound = folders.flatMap<McpProjectOption>((folder) =>
       folder.project_path ? [{ id: String(folder.id), name: folder.name, path: folder.project_path }] : [],
     );
     return [GLOBAL_PROJECT, ...bound];
-  }, [rootData]);
+  }, [folders]);
 
   const [servers, setServers] = useState<McpServerItem[]>([]);
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null);

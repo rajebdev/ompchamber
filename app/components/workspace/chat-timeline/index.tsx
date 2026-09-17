@@ -22,10 +22,10 @@ import { useToasts } from '@/hooks/ui/toasts';
 import { Toast } from '@/components/common/Toast';
 import { normalizeNoticePositions } from '@/lib/chat/order';
 import { composerRootFor } from '@/lib/workspace/active-project';
+import { useSidebarData } from '@/hooks/chat/omp/session-list';
 
 interface ChatTimelineProps {
   className?: string;
-  folders?: any[];
   appSettings?: Record<string, any>;
   onSessionTitle?: (title: string | null) => void;
   /**
@@ -36,7 +36,8 @@ interface ChatTimelineProps {
   variant?: 'desktop' | 'mobile';
 }
 
-export function ChatTimeline({ className = '', folders = [], appSettings = {}, onSessionTitle, variant = 'desktop' }: ChatTimelineProps) {
+export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle, variant = 'desktop' }: ChatTimelineProps) {
+  const { folders } = useSidebarData();
   const isMobile = variant === 'mobile';
   const {
     sessionId,

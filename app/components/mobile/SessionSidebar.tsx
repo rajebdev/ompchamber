@@ -1,6 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { useRevalidator } from '@remix-run/react';
-import type { SessionSortOption, WorkspaceFolderData } from '@/types';
+import type { SessionSortOption } from '@/types';
 import { MobileSessionHeader } from '@/components/mobile/mobile-session-sidebar/Header';
 import { MobileSessionToolbar } from '@/components/mobile/mobile-session-sidebar/Toolbar';
 import { MobileSessionList } from '@/components/mobile/mobile-session-sidebar/List';
@@ -19,9 +18,10 @@ import { useUpdates } from '@/hooks/ui/updates';
 import { useSessionStatusAck, buildSidebarSessionStatus } from '@/hooks/chat/omp/session-statuses';
 import { useStreamPoll } from '@/hooks/chat/omp/stream-poll';
 import { useSidebarRevalidation } from '@/hooks/chat/omp/revalidation-throttle';
+import { useSidebarData } from '@/hooks/chat/omp/session-list';
+import { MobileSessionListSkeleton } from '@/components/mobile/mobile-session-sidebar/Skeleton';
 
 interface MobileSessionSidebarProps {
-  folders: WorkspaceFolderData[];
   activeSessionId: number | string | null;
   onSelectSession: (id: number | string) => void;
   onNewSession: () => void;
@@ -32,7 +32,6 @@ interface MobileSessionSidebarProps {
 }
 
 export function MobileSessionSidebar({
-  folders,
   activeSessionId,
   onSelectSession,
   onNewSession,
@@ -41,6 +40,7 @@ export function MobileSessionSidebar({
   onDesktopToggle,
   appSettings = {}
 }: MobileSessionSidebarProps) {
+  const { folders, initializing, refresh } = useSidebarData();
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedFolders, setExpandedFolders] = useState<Record<number, boolean>>({
     1: true,
@@ -53,27 +53,26 @@ export function MobileSessionSidebar({
   const [schedulerOpen, setSchedulerOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
-  const revalidator = useRevalidator();
   const updates = useUpdates();
   const { toasts, pushToast, dismissToast } = useToasts();
 
   useEffect(() => {
-    const handleWorkspaceUpdated = () => revalidator.revalidate();
+    const handleWorkspaceUpdated = () => refresh();
     window.addEventListener('omp:workspace-updated', handleWorkspaceUpdated);
     return () => window.removeEventListener('omp:workspace-updated', handleWorkspaceUpdated);
-  }, [revalidator]);
+  }, [refresh]);
 
-  // Live session status — server-tracked via SQLite, riding the same loader
-  // data as the session list. Spinner while `stream`; a one-shot terminal
-  // badge (acknowledged server-side on open, dropped by the next revalidate).
+  // Live session status — server-tracked via SQLite, riding the same list
+  // payload as the session list. Spinner while `stream`; a one-shot terminal
+  // badge (acknowledged server-side on open, dropped by the next refetch).
   const sessionStatus = useMemo(() => buildSidebarSessionStatus(folders), [folders]);
-  useSessionStatusAck(sessionStatus, activeSessionId, revalidator.revalidate);
-  // Background sessions finishing while the user sits elsewhere: revalidate
+  useSessionStatusAck(sessionStatus, activeSessionId, refresh);
+  // Background sessions finishing while the user sits elsewhere: refetch
   // on a cadence — but only while something is actually streaming.
-  useStreamPoll(sessionStatus, revalidator.revalidate);
+  useStreamPoll(sessionStatus, refresh);
   // Spawn/title/stream events: throttle the per-frame dispatches so a busy
-  // run coalesces into one loader revalidation per second.
-  useSidebarRevalidation(revalidator.revalidate);
+  // run coalesces into one list fetch per second.
+  useSidebarRevalidation(refresh);
 
   // Sorting state (matching desktop)
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -206,17 +205,21 @@ export function MobileSessionSidebar({
         onClearSearch={() => setSearchQuery('')}
       />
 
-      <MobileSessionList
-        folders={processedFolders}
-        activeSessionId={activeSessionId}
-        expandedFolders={expandedFolders}
-        showArchived={showArchived}
-        sessionStatus={sessionStatus}
-        isScrolling={isScrolling}
-        onScroll={handleScroll}
-        onSelectSession={handleSelectSession}
-        onToggleFolder={toggleFolder}
-      />
+      {initializing ? (
+        <MobileSessionListSkeleton />
+      ) : (
+        <MobileSessionList
+          folders={processedFolders}
+          activeSessionId={activeSessionId}
+          expandedFolders={expandedFolders}
+          showArchived={showArchived}
+          sessionStatus={sessionStatus}
+          isScrolling={isScrolling}
+          onScroll={handleScroll}
+          onSelectSession={handleSelectSession}
+          onToggleFolder={toggleFolder}
+        />
+      )}
 
       <MobileSessionFooter
         onSettings={() => window.dispatchEvent(new CustomEvent('omp:open-settings', { detail: {} }))}

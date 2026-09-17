@@ -9,17 +9,10 @@ import type { MetaFunction, LoaderFunctionArgs } from '@remix-run/node';
 import { useLoaderData, useSearchParams } from '@remix-run/react';
 import { getDb } from '@/db.server';
 import { isMockMode } from '@/mock.server';
-import { sortFolders, isValidSessionSortOption } from '@/lib/workspace/sidebar-sort';
-import { loadOmpSidebarData } from '@/lib/omp/session/reader';
-import { loadStreamStatuses, healStaleStreamStatuses } from '@/lib/omp/session/stream-state.server';
-import { getRunningRpcSessionIds } from '@/lib/omp/rpc/session-registry';
-import { siblingDirForSession } from '@/lib/omp/subagent/history/paths';
-import { extractSubagentHistory } from '@/lib/omp/subagent/history';
 import { DesktopLayout } from '@/components/layout/desktop-layout/index';
 import { MobileLayoutWrapper } from '@/components/mobile/LayoutWrapper';
 import { SessionStateProvider } from '@/components/common/session-state-provider';
-import type { WorkspaceFolderData } from '@/types';
-import type { OmpSession } from '@/types/omp/session';
+import { SidebarDataProvider } from '@/hooks/chat/omp/session-list';
 
 export const meta: MetaFunction = () => {
   return [
@@ -30,168 +23,45 @@ export const meta: MetaFunction = () => {
   ];
 };
 
+/**
+ * SSR shell loader — deliberately cheap. Only data needed for the first
+ * paint without a flash lives here: app settings (layout prefs, sort, access
+ * mode) and the mobile User-Agent verdict. The folder/session list is heavy
+ * (omp JSONL discovery + subagent scan) and is fetched client-side from
+ * `GET /api/sessions/list` via `SidebarDataProvider`, rendering a skeleton
+ * until the first payload lands.
+ */
 export async function loader({ request }: LoaderFunctionArgs) {
   const userAgent = request.headers.get('user-agent') || '';
   const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile|CriOS/i.test(userAgent);
 
   const mock = isMockMode();
   const db = await getDb();
-  const folderRows = await db.all('SELECT * FROM workspace_folders ORDER BY id ASC');
 
   // Fetch app settings
-  let appSettings: Record<string, any> = {};
+  let appSettings: Record<string, unknown> = {};
   try {
     const settingsRows = await db.all('SELECT * FROM app_settings');
     for (const row of settingsRows) {
       try {
         appSettings[row.key] = JSON.parse(row.value);
-      } catch (e) {
+      } catch {
         appSettings[row.key] = row.value;
       }
     }
-  } catch (e) {
+  } catch {
     // app_settings table might not exist yet if just created
   }
 
-  const groupedFolders: WorkspaceFolderData[] = [];
-  // Archive state lives in archived_sessions (session_id TEXT PK) so it works
-  // for both numeric mock ids and omp session UUIDs in real mode.
-  const archivedRows = await db.all('SELECT session_id FROM archived_sessions');
-  const archivedIds = new Set(archivedRows.map((r: any) => String(r.session_id)));
-  if (mock) {
-    // Demo mode: sessions come from the SQLite `sessions` table.
-    const { hasMockSubagents, getMockSubagents } = await import('@/data/mock/subagents');
-    const sessions = await db.all('SELECT * FROM sessions ORDER BY id ASC');
-    for (const folder of folderRows) {
-      const folderSessions = sessions
-        .filter((s: any) => String(s.folder_id) === String(folder.id))
-        .map((s: any) => {
-          const hasSub = hasMockSubagents(s.id);
-          const subCount = getMockSubagents(s.id).length;
-          return {
-            ...s,
-            is_archived: archivedIds.has(String(s.id)) ? 1 : 0,
-            hasSubagents: hasSub,
-            subagentCount: subCount,
-          };
-        });
-      groupedFolders.push({
-        id: folder.id,
-        name: folder.name,
-        project_path: folder.project_path ?? null,
-         isPinned: folder.is_pinned === 1,
-         isExpanded: folder.is_expanded === 1,
-         model: folder.model || 'Not selected',
-         accentColor: folder.accent_color || '',
-         icon: folder.icon || 'default',
-         customIconUrl: folder.custom_icon_url || undefined,
-         sessions: folderSessions,
-        hasMore: folderSessions.length > 7,
-        totalSessions: folderSessions.length,
-      });
-    }
-  } else {
-    // Real mode: workspace folders are bound to omp projects via project_path;
-    // the session items under each folder come from the omp JSONL discovery.
-    groupedFolders.push(...(await buildRealFolders(folderRows, archivedIds)));
-  }
-
-  // Sidebar ordering is a server concern: the loader applies the persisted
-  // preference so the SSR HTML already matches the client's render. Shipping
-  // one order and re-sorting in the browser is what read as a flicker on load.
-  const sidebarSort = isValidSessionSortOption(appSettings.omp_sidebar_sort)
-    ? appSettings.omp_sidebar_sort
-    : 'A-Z';
-
-  // Live stream status per session (spinner / one-shot done badge), written by
-  // the RPC manager on agent_start/agent_end/abort/error. `stream` rows whose
-  // session is no longer running are stale (restart mid-run) and heal to
-  // `finish` right here — the authoritative status travels with the same
-  // revalidation that refreshes the sidebar list.
-  const streamStatuses: Record<string, 'stream' | 'finish' | 'abort' | 'error'> = {};
-  if (!mock) {
-    await healStaleStreamStatuses(new Set(getRunningRpcSessionIds()));
-    Object.assign(streamStatuses, await loadStreamStatuses());
-  }
-  const foldersWithStatus = groupedFolders.map((folder) => ({
-    ...folder,
-    sessions: (folder.sessions ?? []).map((s: WorkspaceFolderData['sessions'][number]) => ({
-      ...s,
-      streamStatus: streamStatuses[String(s.id)],
-    })),
-  }));
-
   return json({
-    folders: sortFolders(foldersWithStatus, sidebarSort),
     initialIsMobile: isMobileUA,
     appSettings,
     isMock: mock,
   });
 }
 
-/**
- * Real-mode folder assembly: run the omp discovery scan once and bucket the
- * discovered sessions under each folder whose project_path matches the
- * session's resolved project root. Folders without a project_path render with
- * no omp sessions (a local/empty workspace).
- */
-async function buildRealFolders(folderRows: any[], archivedIds: Set<string>): Promise<WorkspaceFolderData[]> {
-  const { sessionTitleFor, groupSessionsByRoot } = await import('@/lib/omp/session/sidebar');
-
-  const data = await loadOmpSidebarData();
-  const sessionsByRoot = groupSessionsByRoot(data.sessions);
-  const { existsSync, readdirSync } = await import('fs');
-
-  return folderRows.map((folder: any) => {
-    const root = (folder.project_path as string | null) ?? '';
-    const rootSessions: OmpSession[] = root ? sessionsByRoot.get(root) ?? [] : [];
-    const folderSessions = rootSessions.map((session: OmpSession) => {
-      let hasSub = false;
-      if (session.path) {
-        try {
-          const siblingDir = siblingDirForSession(session.path);
-          if (existsSync(siblingDir)) {
-            const files = readdirSync(siblingDir);
-            hasSub = files.some((f) => f.endsWith('.jsonl'));
-          }
-          if (!hasSub) {
-            const subs = extractSubagentHistory(session.path);
-            hasSub = subs.length > 0;
-          }
-        } catch {
-          hasSub = false;
-        }
-      }
-      return {
-        id: session.id,
-        folder_id: folder.id,
-        title: sessionTitleFor(session),
-        created_at: session.created,
-        updated_at: session.modified,
-        is_active: 0,
-        is_archived: archivedIds.has(String(session.id)) ? 1 : 0,
-        hasSubagents: hasSub,
-      };
-    });
-    return {
-      id: folder.id,
-      name: folder.name,
-      project_path: folder.project_path ?? null,
-       isPinned: folder.is_pinned === 1,
-       isExpanded: folder.is_expanded === 1,
-       model: folder.model || 'Not selected',
-       accentColor: folder.accent_color || '',
-       icon: folder.icon || 'default',
-       customIconUrl: folder.custom_icon_url || undefined,
-       sessions: folderSessions,
-      hasMore: folderSessions.length > 7,
-      totalSessions: folderSessions.length,
-    };
-  });
-}
-
 export default function App() {
-  const { folders, initialIsMobile, appSettings } = useLoaderData<typeof loader>();
+  const { initialIsMobile, appSettings } = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('sessionId') || '1';
 
@@ -210,10 +80,10 @@ export default function App() {
       const isNarrow = window.innerWidth < 768;
       const isTouch = window.matchMedia('(pointer: coarse)').matches;
       const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile|CriOS/i.test(navigator.userAgent);
-      
+
       // On mobile devices in landscape mode, width might be 768-932px, but height is < 500px and it's a touch device
       const isMobileLandscape = isTouch && window.innerHeight < 550 && window.innerWidth < 1024;
-      
+
       return isNarrow || isMobileUA || isMobileLandscape;
     };
 
@@ -246,23 +116,25 @@ export default function App() {
   if (isMobileMode) {
     return (
       <SessionStateProvider sessionId={sessionId}>
-        <MobileLayoutWrapper
-          folders={folders}
-          onDesktopToggle={handleSwitchToDesktop}
-          appSettings={appSettings}
-        />
+        <SidebarDataProvider>
+          <MobileLayoutWrapper
+            onDesktopToggle={handleSwitchToDesktop}
+            appSettings={appSettings}
+          />
+        </SidebarDataProvider>
       </SessionStateProvider>
     );
   }
 
   return (
     <SessionStateProvider sessionId={sessionId}>
-      <DesktopLayout
-        folders={folders}
-        sessionId={sessionId}
-        onSwitchToMobile={handleSwitchToMobile}
-        appSettings={appSettings}
-      />
+      <SidebarDataProvider>
+        <DesktopLayout
+          sessionId={sessionId}
+          onSwitchToMobile={handleSwitchToMobile}
+          appSettings={appSettings}
+        />
+      </SidebarDataProvider>
     </SessionStateProvider>
   );
 }

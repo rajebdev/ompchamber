@@ -5,7 +5,7 @@ import { SessionSidebar } from '@/components/layout/session-sidebar/index';
 import { type RightPanelType } from '@/lib/workspace/right-panels';
 import { SettingsModal } from '@/components/settings/Modal';
 import { PanelLeft } from 'lucide-react';
-import type { WorkspaceFolderData, SettingsCategoryId } from '@/types';
+import type { SettingsCategoryId } from '@/types';
 import { activeProjectForSession } from '@/lib/workspace/active-project';
 import { useFileTabs } from '@/hooks/workspace/file-tabs';
 import { useSessionState } from '@/hooks/workspace/session-state';
@@ -13,11 +13,11 @@ import { TopNavbar } from '@/components/layout/desktop-layout/TopNavbar';
 import { WorkspacePanels } from '@/components/layout/desktop-layout/WorkspacePanels';
 import { useAgentStreamStatus } from '@/hooks/chat/omp/status';
 import { usePanelWidths } from '@/hooks/workspace/panel-widths';
+import { useSidebarData } from '@/hooks/chat/omp/session-list';
 import { DEFAULT_PANEL_WIDTHS, type EditorWidthMode } from '@/lib/workspace/panel-widths';
 import { ResizeHandle } from '@/components/layout/desktop-layout/ResizeHandle';
 
 interface DesktopLayoutProps {
-  folders: WorkspaceFolderData[];
   sessionId: string | null;
   onSwitchToMobile?: () => void;
   appSettings?: Record<string, any>;
@@ -35,7 +35,8 @@ function applyWidth(
   if (px != null) ref.current?.resize(px);
 }
 
-export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSettings = {} }: DesktopLayoutProps) {
+export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }: DesktopLayoutProps) {
+  const { folders } = useSidebarData();
   const [showRightPanel, setShowRightPanel] = useSessionState<boolean>('layout.showRightPanel', appSettings.showRightPanel ?? true);
   const [activeRightPanel, setActiveRightPanel] = useSessionState<RightPanelType>('layout.activeRightPanel', (appSettings.activeRightPanel as RightPanelType) ?? 'files');
   const [showLeftPanel, setShowLeftPanel] = useState(appSettings.showLeftPanel ?? true);
@@ -208,7 +209,7 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
           {showLeftPanel && (
             <>
               <Panel panelRef={leftPanelRef} id="left-panel" defaultSize={panelWidths.left ?? DEFAULT_PANEL_WIDTHS.left} minSize={200} maxSize={600} collapsible>
-                <SessionSidebar className="w-full h-full" folders={folders} onClose={() => handleToggleLeftPanel(false)} appSettings={appSettings} />
+                <SessionSidebar className="w-full h-full" onClose={() => handleToggleLeftPanel(false)} appSettings={appSettings} />
               </Panel>
               <ResizeHandle />
             </>
@@ -229,7 +230,6 @@ export function DesktopLayout({ folders, sessionId, onSwitchToMobile, appSetting
               />
 
               <WorkspacePanels
-                folders={folders}
                 appSettings={appSettings}
                 showEditor={showEditor}
                 editorPanelRef={editorPanelRef}

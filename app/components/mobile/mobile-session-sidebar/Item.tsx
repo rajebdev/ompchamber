@@ -9,11 +9,12 @@ import {
   PinOff,
   Trash2,
 } from 'lucide-react';
-import { useFetcher, useRevalidator } from '@remix-run/react';
+import { useFetcher } from '@remix-run/react';
 import { MobileSessionRow } from '@/components/mobile/mobile-session-sidebar/SessionRow';
 import { getProjectIcon } from '@/lib/workspace/project-icon';
 import { relativeTimeAgo } from '@/lib/workspace/relative-time';
 import { useOnClickOutside } from '@/hooks/ui/on-click-outside';
+import { useSidebarData } from '@/hooks/chat/omp/session-list';
 import type { WorkspaceFolderData, SessionItemData } from '@/types';
 
 interface MobileSessionCategoryProps {
@@ -40,7 +41,7 @@ export function MobileSessionCategory({
 }: MobileSessionCategoryProps) {
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
   const archiveFetcher = useFetcher();
-  const revalidator = useRevalidator();
+  const { refresh } = useSidebarData();
   const [showMenu, setShowMenu] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -65,7 +66,7 @@ export function MobileSessionCategory({
       { method: 'POST', action: `/api/folders/${folder.id}/pin` },
     );
     setShowMenu(false);
-    revalidator.revalidate();
+    refresh();
   };
 
   const handleDelete = () => {
@@ -76,7 +77,7 @@ export function MobileSessionCategory({
     );
     setShowMenu(false);
     setConfirmDelete(false);
-    revalidator.revalidate();
+    refresh();
   };
 
   const handleArchive = (session: SessionItemData) => {
@@ -85,7 +86,7 @@ export function MobileSessionCategory({
       { archived: String(nextArchived) },
       { method: 'POST', action: `/api/sessions/${session.id}/archive` }
     );
-    revalidator.revalidate();
+    refresh();
   };
 
   const handleRename = async (session: SessionItemData, name: string) => {
@@ -98,7 +99,7 @@ export function MobileSessionCategory({
       return;
     }
     window.dispatchEvent(new CustomEvent('omp:session-renamed', { detail: { sessionId: String(session.id), title: name } }));
-    revalidator.revalidate();
+    refresh();
   };
 
   // Archived rows are filtered first; the badge reports the visible set so the

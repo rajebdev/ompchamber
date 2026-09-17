@@ -6,15 +6,14 @@ import {
   Check,
   Plus,
 } from 'lucide-react';
-import type { WorkspaceFolderData } from '@/types';
 import type { SessionContextTelemetry } from '@/types/context';
 import { useOnClickOutside } from '@/hooks/ui/on-click-outside';
 import { getLastOpenedAt } from '@/lib/workspace/session-state/store';
+import { useSidebarData } from '@/hooks/chat/omp/session-list';
 
 interface MobileHeaderProps {
   activeSessionTitle: string;
   activeSessionId: number | string | null;
-  folders: WorkspaceFolderData[];
   onOpenSessionSidebar: () => void;
   onOpenRightSidebar: () => void;
   onNewSession: () => void;
@@ -44,12 +43,12 @@ function formatTokens(value: number): string {
 export function MobileHeader({
   activeSessionTitle,
   activeSessionId,
-  folders,
   onOpenSessionSidebar,
   onOpenRightSidebar,
   onNewSession,
   onSelectSession,
 }: MobileHeaderProps) {
+  const { folders } = useSidebarData();
   const [showSessionPicker, setShowSessionPicker] = useState(false);
   const [showTelemetry, setShowTelemetry] = useState(false);
   const [telemetry, setTelemetry] = useState<SessionContextTelemetry | null>(null);

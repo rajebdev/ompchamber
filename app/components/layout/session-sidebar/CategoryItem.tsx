@@ -6,12 +6,13 @@ import {
   PinOff, 
   Trash2, 
 } from 'lucide-react';
-import { useFetcher, useRevalidator, useSearchParams } from '@remix-run/react';
+import { useFetcher, useSearchParams } from '@remix-run/react';
 import { useOnClickOutside } from '@/hooks/ui/on-click-outside';
 import { SessionItem } from '@/components/layout/session-sidebar/SessionItem';
 import { SubagentList } from '@/components/layout/session-sidebar/SubagentList';
 import { loadExpandedSessionIds, saveExpandedSessionIds } from '@/lib/workspace/sidebar-expanded';
 import { getProjectIcon } from '@/lib/workspace/project-icon';
+import { useSidebarData } from '@/hooks/chat/omp/session-list';
 
 export { SessionItem };
 
@@ -71,7 +72,7 @@ export function Category({
   const pinFetcher = useFetcher<{ success?: boolean }>();
   const deleteFetcher = useFetcher<{ success?: boolean }>();
   const archiveFetcher = useFetcher();
-  const revalidator = useRevalidator();
+  const { refresh } = useSidebarData();
 
   useEffect(() => {
     if (toggleFetcher.data?.success || pinFetcher.data?.success || deleteFetcher.data?.success) {
@@ -116,7 +117,7 @@ export function Category({
       { method: 'POST', action: `/api/folders/${folder.id}/pin` }
     );
     setShowMenu(false);
-    revalidator.revalidate();
+    refresh();
   };
 
   const handleDelete = () => {
@@ -127,7 +128,7 @@ export function Category({
     );
     setShowMenu(false);
     setConfirmDelete(false);
-    revalidator.revalidate();
+    refresh();
   };
 
   const handleArchive = (session: any) => {
@@ -136,7 +137,7 @@ export function Category({
       { archived: String(nextArchived) },
       { method: 'POST', action: `/api/sessions/${session.id}/archive` }
     );
-    revalidator.revalidate();
+    refresh();
   };
 
   const handleRename = async (session: any, name: string) => {
@@ -149,7 +150,7 @@ export function Category({
       return;
     }
     window.dispatchEvent(new CustomEvent('omp:session-renamed', { detail: { sessionId: String(session.id), title: name } }));
-    revalidator.revalidate();
+    refresh();
   };
 
   const isActuallyOpen = forceExpanded || isOpen;
