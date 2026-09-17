@@ -41,13 +41,24 @@ export async function markStreamStatus(sessionId: string, status: SessionStreamS
   }
 }
 
-/** Opening the session clears its terminal badge (one-shot contract). */
-export async function markStreamSeen(sessionId: string): Promise<void> {
+/**
+ * Opening the session clears its terminal badge (one-shot contract).
+ *
+ * Terminal-only: a `stream` row is a LIVE run and must never be deleted here.
+ * Deleting one used to be possible when a client acked from a stale status
+ * map (a `finish` row the sidebar last saw before `agent_start` overwrote it
+ * with `stream`) — the spinner vanished while the run kept going. The client
+ * `markSeen` path also guards terminal-only, but the server is the source of
+ * truth and must hold the line on its own.
+ */
+export async function markStreamSeen(sessionId: string): Promise<boolean> {
   try {
     const db = await getDb();
-    await db.run('DELETE FROM session_stream_state WHERE session_id = ?', [sessionId]);
+    const result = await db.run("DELETE FROM session_stream_state WHERE session_id = ? AND status != 'stream'", [sessionId]);
+    return (result.changes ?? 0) > 0;
   } catch {
     // Best-effort.
+    return false;
   }
 }
 

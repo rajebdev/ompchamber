@@ -65,8 +65,19 @@ export function useSessionStatusAck(
     const ackKey = `${activeId}:${activeStatus}`;
     if (ackedRef.current === ackKey) return;
     ackedRef.current = ackKey;
+    // Stale-map guard: statusMap can lag a busy list by up to one fetch. If
+    // the badge was actually overwritten by a fresh `stream` (agent_start
+    // raced the sidebar refetch), the server now refuses to delete the row
+    // and reports deleted:false — treat the POST as void so the effect can
+    // re-ack the real terminal badge when the run later ends.
     fetch(`/api/sessions/${encodeURIComponent(activeId as string)}/stream-seen`, { method: 'POST' })
-      .then(() => revalidateRef.current())
-      .catch(() => {});
+      .then((res) => res.json() as Promise<{ deleted?: boolean }>)
+      .then((body) => {
+        if (body.deleted === false) ackedRef.current = null;
+        revalidateRef.current();
+      })
+      .catch(() => {
+        ackedRef.current = null;
+      });
   }, [activeId, activeStatus]);
 }
