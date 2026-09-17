@@ -1,6 +1,7 @@
 import { json } from '@remix-run/node';
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@remix-run/node';
 import { getDb } from '@/db.server';
+import { withTransaction } from '@/lib/db/transaction.server';
 import { isApprovalMode } from '@/lib/omp/config/access-mode';
 import type { QueuedMessage, QueuedMessageModel } from '@/types/chat';
 
@@ -108,8 +109,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       position: index,
     }));
 
-  await db.run('BEGIN');
-  try {
+  await withTransaction(db, async () => {
     await db.run('DELETE FROM queued_messages WHERE session_id = ?', [sessionId]);
     for (const item of items) {
       await db.run(
@@ -128,11 +128,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         ],
       );
     }
-    await db.run('COMMIT');
-  } catch (error) {
-    await db.run('ROLLBACK');
-    throw error;
-  }
+  });
 
   return json({ success: true });
 }
