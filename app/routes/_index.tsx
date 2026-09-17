@@ -11,6 +11,8 @@ import { getDb } from '@/db.server';
 import { isMockMode } from '@/mock.server';
 import { sortFolders, isValidSessionSortOption } from '@/lib/workspace/sidebar-sort';
 import { loadOmpSidebarData } from '@/lib/omp/session/reader';
+import { loadStreamStatuses, healStaleStreamStatuses } from '@/lib/omp/session/stream-state.server';
+import { getRunningRpcSessionIds } from '@/lib/omp/rpc/session-registry';
 import { siblingDirForSession } from '@/lib/omp/subagent/history/paths';
 import { extractSubagentHistory } from '@/lib/omp/subagent/history';
 import { DesktopLayout } from '@/components/layout/desktop-layout/index';
@@ -101,8 +103,26 @@ export async function loader({ request }: LoaderFunctionArgs) {
     ? appSettings.omp_sidebar_sort
     : 'A-Z';
 
+  // Live stream status per session (spinner / one-shot done badge), written by
+  // the RPC manager on agent_start/agent_end/abort/error. `stream` rows whose
+  // session is no longer running are stale (restart mid-run) and heal to
+  // `finish` right here — the authoritative status travels with the same
+  // revalidation that refreshes the sidebar list.
+  const streamStatuses: Record<string, 'stream' | 'finish' | 'abort' | 'error'> = {};
+  if (!mock) {
+    await healStaleStreamStatuses(new Set(getRunningRpcSessionIds()));
+    Object.assign(streamStatuses, await loadStreamStatuses());
+  }
+  const foldersWithStatus = groupedFolders.map((folder) => ({
+    ...folder,
+    sessions: (folder.sessions ?? []).map((s: WorkspaceFolderData['sessions'][number]) => ({
+      ...s,
+      streamStatus: streamStatuses[String(s.id)],
+    })),
+  }));
+
   return json({
-    folders: sortFolders(groupedFolders, sidebarSort),
+    folders: sortFolders(foldersWithStatus, sidebarSort),
     initialIsMobile: isMobileUA,
     appSettings,
     isMock: mock,

@@ -23,7 +23,7 @@ interface MobileSessionCategoryProps {
   isExpanded: boolean;
   onToggleExpand: () => void;
   showArchived?: boolean;
-  sessionStatus?: Record<string, 'processing' | 'done'>;
+  sessionStatus?: Record<string, 'stream' | 'finish' | 'abort' | 'error'>;
 }
 
 const INITIAL_VISIBLE = 5;

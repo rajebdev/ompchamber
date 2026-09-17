@@ -25,6 +25,7 @@ import {
 } from '@/lib/omp/rpc/constants';
 import { clearSessionFileCaches } from '@/lib/omp/session/files';
 import { notifyRunningChange } from '@/lib/omp/rpc/session-registry';
+import { markStreamStatus } from '@/lib/omp/session/stream-state.server';
 import { buildWebState, type WebStateHost } from '@/lib/omp/rpc/web-state';
 
 /** Runtime surface AgentSessionWrapper exposes to the command dispatcher. */
@@ -32,6 +33,8 @@ export interface SessionCommandHost extends WebStateHost {
   restarting: boolean;
   proc: RpcProcess;
   isAlive(): boolean;
+  /** Real omp session id (empty before the first get_state). */
+  sessionId: string;
   emit(event: AgentEvent): void;
   resetIdleTimer(force?: boolean): void;
   /** Forget a pending ask/approval dialog once its response is sent. */
@@ -107,6 +110,7 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
         host.awaitingAgentStart = false;
         host.awaitingAgentStartDeadline = 0;
         host.continuationGraceUntil = 0;
+        if (host.sessionId) void markStreamStatus(host.sessionId, 'abort');
       });
       return null;
 

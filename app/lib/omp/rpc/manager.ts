@@ -20,6 +20,7 @@ import { PendingUiDialogs } from '@/lib/omp/rpc/pending-ui-dialogs';
 import { clearSessionFileCaches } from '@/lib/omp/session/files';
 import { notifyRunningChange } from '@/lib/omp/rpc/session-registry';
 import { dispatchSessionCommand } from '@/lib/omp/rpc/session-commands';
+import { markStreamStatus } from '@/lib/omp/session/stream-state.server';
 import {
   GET_STATE_TIMEOUT_MS,
   IDLE_DESTROY_MS,
@@ -140,7 +141,10 @@ export class AgentSessionWrapper {
       level: 'error',
       message: `The omp process for this session exited unexpectedly${detail ? `: ${detail}` : '.'}`,
     });
-    if (this.streaming || this.promptRunning) this.emit({ type: 'agent_end', isTerminal: true, messages: [] });
+    if (this.streaming || this.promptRunning) {
+      this.emit({ type: 'agent_end', isTerminal: true, messages: [] });
+      if (this.sessionId) void markStreamStatus(this.sessionId, 'finish');
+    }
     this.destroy();
   }
 
@@ -158,6 +162,7 @@ export class AgentSessionWrapper {
         this.continuationGraceUntil = 0;
         clearSessionFileCaches();
         refreshSessionList = true;
+        if (this.sessionId) void markStreamStatus(this.sessionId, 'stream');
         break;
       case 'agent_end':
         if (event.isTerminal !== false) {
@@ -167,6 +172,7 @@ export class AgentSessionWrapper {
           this.awaitingAgentStartDeadline = 0;
           this.continuationGraceUntil = 0;
           clearSessionFileCaches();
+          if (this.sessionId) void markStreamStatus(this.sessionId, 'finish');
         } else {
           this.continuationGraceUntil = Date.now() + NON_TERMINAL_CONTINUATION_GRACE_MS;
         }
@@ -195,6 +201,7 @@ export class AgentSessionWrapper {
           this.promptRunning = false;
           this.awaitingAgentStart = false;
           this.awaitingAgentStartDeadline = 0;
+          if (this.sessionId) void markStreamStatus(this.sessionId, 'error');
           this.emit({ type: 'prompt_error', errorMessage: (event.error as string) ?? 'Prompt failed' });
           notifyRunningChange();
           return;

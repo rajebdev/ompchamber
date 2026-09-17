@@ -14,6 +14,9 @@ export interface SessionItemData {
   hasArrow?: boolean;
   hasSubagents?: boolean;
   subagentCount?: number;
+  /** Server-tracked stream state: `stream` while a run is in flight, then a
+   *  one-shot `finish`/`abort`/`error` badge cleared when the session opens. */
+  streamStatus?: 'stream' | 'finish' | 'abort' | 'error';
 }
 
 /**

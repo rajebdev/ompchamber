@@ -86,11 +86,6 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   const setGenerating = useCallback((v: boolean) => {
     isGeneratingRef.current = v;
     setIsGenerating(v);
-    if (sessionIdRef.current) {
-      window.dispatchEvent(new CustomEvent('omp:session-processing', {
-        detail: { sessionId: sessionIdRef.current, processing: v },
-      }));
-    }
   }, []);
   // Set when the user presses Stop; the queue auto-process effect holds off
   // while this is armed so a stopped run does NOT trigger the next queued

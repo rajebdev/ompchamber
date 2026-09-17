@@ -5,7 +5,7 @@ interface SessionSidebarSessionListProps {
   activeSessionId: number | string | null;
   searchQuery: string;
   showArchived: boolean;
-  sessionStatus: Record<string, 'processing' | 'done'>;
+  sessionStatus: Record<string, 'stream' | 'finish' | 'abort' | 'error'>;
   isScrolling: boolean;
   onScroll: () => void;
   onSelectSession: (id: number | string) => void;

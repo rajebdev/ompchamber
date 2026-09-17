@@ -14,7 +14,7 @@ export interface SessionItemProps {
   title: string;
   isActive?: boolean;
   isArchived?: boolean;
-  status?: 'processing' | 'done';
+  status?: 'stream' | 'finish' | 'abort' | 'error';
   onClick?: () => void;
   onArchive?: () => void;
   onRename?: (name: string) => void;
@@ -75,7 +75,8 @@ export function SessionItem({
           : 'text-ink/75 hover:text-ink hover:bg-ink/5'
       }`}
     >
-      {/* Chevron or status indicator in a fixed w-4 slot aligned with Folder Icon */}
+      {/* Chevron in its own slot; the run-status indicator rides a second
+          slot so a session that has subagents still shows its spinner/check. */}
       <span className="w-4 h-4 flex items-center justify-center shrink-0">
         {showChevron && onToggleExpand ? (
           <button
@@ -90,12 +91,23 @@ export function SessionItem({
           >
             {isExpanded ? <ChevronDown size={13} className="text-ink/70" /> : <ChevronRight size={13} />}
           </button>
-        ) : status === 'processing' ? (
-          <Loader2 size={12} className="animate-spin text-ink/60" />
-        ) : status === 'done' ? (
-          <Check size={12} className="text-ink/60" />
+        ) : status ? (
+          status === 'stream' ? (
+            <Loader2 size={12} className="animate-spin text-ink/60" />
+          ) : (
+            <Check size={12} className="text-ink/60" />
+          )
         ) : null}
       </span>
+      {showChevron && onToggleExpand && status && (
+        <span className="w-4 h-4 flex items-center justify-center shrink-0 -ml-1">
+          {status === 'stream' ? (
+            <Loader2 size={12} className="animate-spin text-ink/60" />
+          ) : (
+            <Check size={12} className="text-ink/60" />
+          )}
+        </span>
+      )}
 
       {/* Gap between icon and text */}
       <span className="w-2 shrink-0" />

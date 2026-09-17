@@ -301,7 +301,7 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
     case 'subagent_progress':
     case 'subagent_event': {
       // Forward live subagent frames to feature listeners as scoped window
-      // events (same pattern as omp:session-processing).
+      // events (same pattern as the other omp:* signals).
       const payload = data.payload;
       if (payload === undefined || payload === null || typeof payload !== 'object') break;
       window.dispatchEvent(new CustomEvent(data.type, {

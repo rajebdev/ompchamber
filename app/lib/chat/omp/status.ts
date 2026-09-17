@@ -8,8 +8,8 @@
  *
  * The socket lives deep inside the chat timeline while its indicator sits in
  * the top navbar — a sibling subtree — so the status travels the same way as
- * the other chamber-wide signals (`omp:session-processing`,
- * `omp:theme-changed`): a window CustomEvent. The latest value is also kept
+ * the other chamber-wide signals (`omp:theme-changed` and the shared
+ * session-status store): a window CustomEvent. The latest value is also kept
  * here so a consumer that mounts mid-flight (layout toggle, session switch)
  * paints the current state instead of waiting for the next transition.
  */

@@ -13,6 +13,8 @@ import type { SessionSortOption } from '@/types';
 import { useScrollbarFade } from '@/hooks/ui/scrollbar-fade';
 import { useToasts } from '@/hooks/ui/toasts';
 import { useUpdates } from '@/hooks/ui/updates';
+import { useSessionStatusAck, buildSidebarSessionStatus } from '@/hooks/chat/omp/session-statuses';
+import { useStreamPoll } from '@/hooks/chat/omp/stream-poll';
 
 export function SessionSidebar({ className = '', folders = [], onClose, appSettings = {} }: { className?: string, folders?: any[], onClose?: () => void, appSettings?: Record<string, any> }) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -111,45 +113,14 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
 
   const { isScrolling, handleScroll } = useScrollbarFade();
 
-  // Live session status: the chat timeline dispatches omp:session-processing
-  // (processing true/false) through its single setGenerating throat, so the
-  // sidebar can paint a spinner while a session runs and a check when done.
-  const [sessionStatus, setSessionStatus] = useState<Record<string, 'processing' | 'done'>>({});
-  const activeSessionIdRef = useRef(activeSessionId);
-  activeSessionIdRef.current = activeSessionId;
-  useEffect(() => {
-    const onProcessing = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { sessionId?: string; processing?: boolean } | undefined;
-      const sid = detail?.sessionId;
-      if (!sid) return;
-      setSessionStatus(prev => {
-        const next = { ...prev };
-        if (detail.processing) {
-          next[sid] = 'processing';
-        } else if (String(sid) === String(activeSessionIdRef.current)) {
-          // Completed while the user is already looking at it — no check.
-          delete next[sid];
-        } else {
-          next[sid] = 'done';
-        }
-        return next;
-      });
-    };
-    window.addEventListener('omp:session-processing', onProcessing);
-    return () => window.removeEventListener('omp:session-processing', onProcessing);
-  }, []);
-
-  // The check is a "finished while you weren't looking" badge: opening a
-  // session or navigating to another one clears it. Spinners survive.
-  useEffect(() => {
-    setSessionStatus(prev => {
-      const next: Record<string, 'processing' | 'done'> = {};
-      for (const [k, v] of Object.entries(prev)) {
-        if (v === 'processing') next[k] = v;
-      }
-      return next;
-    });
-  }, [activeSessionId]);
+  // Live session status — server-tracked via SQLite, riding the same loader
+  // data as the session list. Spinner while `stream`; a one-shot terminal
+  // badge (acknowledged server-side on open, dropped by the next revalidate).
+  const sessionStatus = useMemo(() => buildSidebarSessionStatus(folders), [folders]);
+  useSessionStatusAck(sessionStatus, activeSessionId);
+  // Background sessions finishing while the user sits elsewhere: revalidate
+  // on a cadence — but only while something is actually streaming.
+  useStreamPoll(sessionStatus, revalidatorRef.current.revalidate);
 
   const handleSelectSession = (id: number | string) => {
     setSearchParams(prev => {

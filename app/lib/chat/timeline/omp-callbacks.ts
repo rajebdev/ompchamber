@@ -97,9 +97,15 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
       setGeneratingVerb(PHASE_VERBS.thinking);
       setTimeout(() => scrollToBottom('smooth'), 50);
       const sid = adoptedSessionIdRef.current ?? sessionIdRef.current;
-      if (sid && metaRefreshedRef.current !== sid) {
-        metaRefreshedRef.current = sid;
-        setTimeout(() => refreshSessionMeta(sid), 100);
+      if (sid) {
+        // Sidebar signal on EVERY run start — the metaRefreshedRef guard below
+        // is once-per-session (title refresh), but the sidebar must revalidate
+        // each time to pick up the server's `stream` status row.
+        window.dispatchEvent(new CustomEvent('omp:session-updated', { detail: { sessionId: sid } }));
+        if (metaRefreshedRef.current !== sid) {
+          metaRefreshedRef.current = sid;
+          setTimeout(() => refreshSessionMeta(sid), 100);
+        }
       }
     },
     // Reload recovery: the omp process kept running server-side, so the event
@@ -109,6 +115,9 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
       setGenerating(true);
       setGeneratingVerb(PHASE_VERBS.thinking);
       setTimeout(() => scrollToBottom('smooth'), 50);
+      const sid = adoptedSessionIdRef.current ?? sessionIdRef.current;
+      // Reattach mid-run: the sidebar needs the `stream` status row.
+      if (sid) window.dispatchEvent(new CustomEvent('omp:session-updated', { detail: { sessionId: sid } }));
     },
     // The stream names what the agent is doing right now (tool call or
     // assistant phase), so the indicator stops guessing.

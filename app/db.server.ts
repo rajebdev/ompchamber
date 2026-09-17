@@ -116,6 +116,12 @@ export async function getDb(): Promise<Database> {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
       CREATE INDEX IF NOT EXISTS idx_queued_messages_session ON queued_messages (session_id, position);
+
+      CREATE TABLE IF NOT EXISTS session_stream_state (
+        session_id TEXT PRIMARY KEY,
+        status TEXT NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
     `);
 
     const { migrateWorkspaceFolderColumns } = await import('@/lib/workspace/schema-migrations');

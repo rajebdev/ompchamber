@@ -30,7 +30,7 @@ export function Category({
   onNewSessionForFolder: (id: number) => void;
   forceExpanded?: boolean;
   showArchived?: boolean;
-  sessionStatus?: Record<string, 'processing' | 'done'>;
+  sessionStatus?: Record<string, 'stream' | 'finish' | 'abort' | 'error'>;
 }) {
   const [isOpen, setIsOpen] = useState(folder.isExpanded || false);
   const [showMenu, setShowMenu] = useState(false);
