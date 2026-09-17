@@ -24,32 +24,36 @@ export function Header({
   totalCount,
 }: HeaderProps) {
   return (
-    <div className="flex flex-col gap-2 px-5 py-3.5 border-b border-ink/10 bg-paper select-none">
-      <div className="flex items-center justify-between gap-4">
+    <div
+      className="flex flex-col gap-2 px-3 lg:px-5 py-3 border-b border-ink/10 bg-paper select-none
+        pl-[max(0.75rem,env(safe-area-inset-left,0px))] pr-[max(0.75rem,env(safe-area-inset-right,0px))]"
+    >
+      <div className="flex items-center justify-between gap-2 lg:gap-4">
         {/* Title and Subtitle */}
-        <div className="flex flex-col">
-          <div className="flex items-center gap-2.5">
+        <div className="flex flex-col min-w-0">
+          <div className="flex items-center gap-2.5 min-w-0">
             <h2 className="text-base font-semibold text-ink tracking-tight">
               {isGraphMode ? 'Graph' : 'History'}
             </h2>
-            <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-ink/5 text-ink/50 border border-ink/10">
+            <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-ink/5 text-ink/50 border border-ink/10 whitespace-nowrap">
               {totalCount && totalCount > totalCommits
-                ? `${totalCommits} of ${totalCount} commits`
+                ? `${totalCommits} of ${totalCount}`
                 : `${totalCommits} commits`}
             </span>
           </div>
-          <p className="text-xs text-ink/50 mt-0.5">
+          <p className="text-xs text-ink/50 mt-0.5 hidden lg:block">
             Browse recent commits and inspect changed files.
           </p>
         </div>
 
         {/* Action Controls on the Right */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 lg:gap-2 flex-shrink-0">
           {/* Mode Switcher */}
           <div className="flex items-center bg-ink/5 p-0.5 rounded-lg border border-ink/10 text-xs">
             <button
               type="button"
               onClick={() => onToggleMode(false)}
+              title="History view"
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
                 !isGraphMode
                   ? 'bg-paper text-ink shadow-xs'
@@ -57,11 +61,12 @@ export function Header({
               }`}
             >
               <History size={13} />
-              <span>History</span>
+              <span className="hidden lg:inline">History</span>
             </button>
             <button
               type="button"
               onClick={() => onToggleMode(true)}
+              title="Graph view"
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
                 isGraphMode
                   ? 'bg-paper text-ink shadow-xs'
@@ -69,7 +74,7 @@ export function Header({
               }`}
             >
               <GitMerge size={13} />
-              <span>Graph</span>
+              <span className="hidden lg:inline">Graph</span>
             </button>
           </div>
 
@@ -82,14 +87,14 @@ export function Header({
             title="Refresh commit history"
           >
             <RotateCw size={13} className={isRefreshing ? 'animate-spin text-ink' : ''} />
-            <span>refresh</span>
+            <span className="hidden lg:inline">refresh</span>
           </button>
 
           {/* Close Button */}
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-md hover:bg-ink/5 text-ink/60 hover:text-ink transition-colors cursor-pointer"
+            className="p-2 -mr-1 rounded-md hover:bg-ink/5 text-ink/60 hover:text-ink transition-colors cursor-pointer"
             title="Close modal"
           >
             <X size={16} />

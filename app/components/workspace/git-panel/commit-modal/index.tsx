@@ -167,13 +167,16 @@ export function GitCommitModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-canvas/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5"
+      className="fixed inset-0 z-50 bg-canvas/80 backdrop-blur-xs flex items-center justify-center p-0 lg:p-5"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
     >
       <div
-        className="bg-paper border border-ink/20 rounded-xl shadow-2xl flex flex-col w-[min(96vw,980px)] h-[88vh] overflow-hidden"
+        className="bg-paper border-ink/20 shadow-2xl flex flex-col overflow-hidden
+          w-full h-full rounded-none border-0
+          lg:w-[min(96vw,980px)] lg:h-[88vh] lg:rounded-xl lg:border
+          pt-[env(safe-area-inset-top,0px)] lg:pt-0"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
