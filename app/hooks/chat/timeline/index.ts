@@ -260,6 +260,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     setInputAttachments,
     isGenerating,
     isOmpSession,
+    sessionId,
     appSettings,
     messageQueue,
     setMessageQueue,

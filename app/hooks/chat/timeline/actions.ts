@@ -16,6 +16,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { Attachment, ChatMessageData, OmpAgentHandle, QueuedMessageModel } from '@/types';
 import type { QueuedMessage } from '@/components/workspace/chat-timeline/QueueList';
 import type { ApprovalMode } from '@/lib/omp/config/access-mode';
+import { normalizeNoticePositions } from '@/lib/chat/order';
 
 export interface ChatTimelineActionsDeps {
   inputValue: string;
@@ -23,6 +24,9 @@ export interface ChatTimelineActionsDeps {
   setInputAttachments: Dispatch<SetStateAction<Attachment[]>>;
   isGenerating: boolean;
   isOmpSession: boolean;
+  /** Active session id (null on pending "new-…"); the omp undo path posts the
+   *  rewind against it. */
+  sessionId: string | null;
   appSettings: Record<string, any>;
   messageQueue: QueuedMessage[];
   setMessageQueue: (updater: SetStateAction<QueuedMessage[]>) => void;
@@ -71,6 +75,7 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     setInputAttachments,
     isGenerating,
     isOmpSession,
+    sessionId,
     appSettings,
     messageQueue,
     setMessageQueue,
@@ -190,13 +195,33 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
       setInputValue(content);
     }
 
+    // Real omp sessions rewind in place: POST /api/chat/:sessionId/rewind
+    // truncates the session JSONL before the turn (session id unchanged) and
+    // respawns the agent on the truncated context. The chamber-side truncate
+    // below would be undone by the next reload, because the timeline loads
+    // from the omp JSONL — not from the chamber DB copy.
+    if (isOmpSession && sessionId) {
+      void (async () => {
+        const res = await fetch(`/api/chat/${encodeURIComponent(sessionId)}/rewind`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ entryId: msgId }),
+        });
+        if (!res.ok) return;
+        const next = await fetch(`/api/chat/${encodeURIComponent(sessionId)}`).then(r => r.json()).catch(() => null);
+        const messages: ChatMessageData[] = next?.session?.messages ?? [];
+        if (messages.length > 0) setLocalMessages(normalizeNoticePositions(messages));
+      })();
+      return;
+    }
+
     setLocalMessages(prev => {
       const idx = prev.findIndex(m => m.id === msgId);
       const next = idx !== -1 ? prev.slice(0, idx) : prev;
       persistMessages(next);
       return next;
     });
-  }, [isGenerating, persistMessages, isOmpSession, ompAgent, abortControllerRef, setGenerating, setInputValue, setLocalMessages]);
+  }, [isGenerating, isOmpSession, sessionId, persistMessages, abortControllerRef, setGenerating, setInputValue, setLocalMessages]);
 
   const handleRetry = useCallback((msgId: string) => {
     if (isGenerating) {
