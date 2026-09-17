@@ -117,7 +117,7 @@ export function SessionSidebar({ className = '', folders = [], onClose, appSetti
   // data as the session list. Spinner while `stream`; a one-shot terminal
   // badge (acknowledged server-side on open, dropped by the next revalidate).
   const sessionStatus = useMemo(() => buildSidebarSessionStatus(folders), [folders]);
-  useSessionStatusAck(sessionStatus, activeSessionId);
+  useSessionStatusAck(sessionStatus, activeSessionId, revalidatorRef.current.revalidate);
   // Background sessions finishing while the user sits elsewhere: revalidate
   // on a cadence — but only while something is actually streaming.
   useStreamPoll(sessionStatus, revalidatorRef.current.revalidate);

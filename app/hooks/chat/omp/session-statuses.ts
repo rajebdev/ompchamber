@@ -36,24 +36,29 @@ export function buildSidebarSessionStatus(
  * Opening a session with a terminal badge acknowledges it on the server
  * (one POST per session+status) so the check shows EXACTLY ONCE: the badge
  * keeps rendering on this pass — stripping it here would suppress the paint
- * entirely for an open session — and the next revalidate, which no longer
- * sees the deleted row, drops it naturally.
+ * entirely for an open session. Once the POST lands, a revalidate pulls
+ * loader data without the deleted row, dropping the check from the list.
  */
 export function useSessionStatusAck(
   statusMap: Record<string, SessionStreamStatus>,
   activeSessionId: number | string | null,
+  revalidate: () => void,
 ): void {
   const activeId = activeSessionId === null ? null : String(activeSessionId);
   const activeStatus = activeId !== null ? statusMap[activeId] : undefined;
   // One POST per (session, status): between the ack and the revalidate that
   // drops the row, identity changes in statusMap would re-fire the effect.
   const ackedRef = useRef<string | null>(null);
+  const revalidateRef = useRef(revalidate);
+  revalidateRef.current = revalidate;
 
   useEffect(() => {
     if (!activeStatus || activeStatus === 'stream') return;
     const ackKey = `${activeId}:${activeStatus}`;
     if (ackedRef.current === ackKey) return;
     ackedRef.current = ackKey;
-    void fetch(`/api/sessions/${encodeURIComponent(activeId as string)}/stream-seen`, { method: 'POST' }).catch(() => {});
+    fetch(`/api/sessions/${encodeURIComponent(activeId as string)}/stream-seen`, { method: 'POST' })
+      .then(() => revalidateRef.current())
+      .catch(() => {});
   }, [activeId, activeStatus]);
 }
