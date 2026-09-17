@@ -17,11 +17,11 @@ function parseWallTime(text: string): { cleanText: string; wallTime?: string } {
   const match = text.match(/\n*Wall time:\s*([^\n\r]+)$/);
   if (match) {
     return {
-      cleanText: text.replace(/\n*Wall time:\s*[^\n\r]+$/, '').trim(),
+      cleanText: text.replace(/\n*Wall time:\s*[^\n\r]+$/, ''),
       wallTime: match[1].trim(),
     };
   }
-  return { cleanText: text.trim() };
+  return { cleanText: text };
 }
 
 /** Panel untuk tool `bash` / `terminal` — terminal styled console dengan log highlighting & stats. */
