@@ -31,18 +31,35 @@ export function parsePageTargets(result: unknown): PageTarget[] {
 }
 
 /**
- * Choose the tab to view: an explicit preference while it is still live, else
- * the newest owned page (creation-ordered registry), else the newest page.
+ * Choose the tab to view: an explicit preference while it is still a live page
+ * this session owns (chamber-user click), else the newest owned page from the
+ * session's creation-ordered registry. Never picks another session's tab — the
+ * shared daemon hosts every session's pages, so both the unscoped fallback and
+ * an unowned pin would leak one session's browsing into another session's
+ * panel.
  */
 export function pickTargetId(pages: PageTarget[], ownedIds: string[], preferTargetId?: string): string | null {
-  if (pages.length === 0) return null;
+  if (pages.length === 0 || ownedIds.length === 0) return null;
   const live = new Set(pages.map((page) => page.targetId));
-  if (preferTargetId && live.has(preferTargetId)) return preferTargetId;
+  const owned = new Set(ownedIds);
+  if (preferTargetId && owned.has(preferTargetId) && live.has(preferTargetId)) return preferTargetId;
   for (let index = ownedIds.length - 1; index >= 0; index -= 1) {
     const candidate = ownedIds[index];
     if (candidate && live.has(candidate)) return candidate;
   }
-  return pages[pages.length - 1]?.targetId ?? null;
+  return null;
+}
+
+/** Filter live pages down to the session's owned targets, registry order. */
+export function ownedPages(pages: PageTarget[], ownedIds: string[]): PageTarget[] {
+  if (ownedIds.length === 0) return [];
+  const live = new Map(pages.map((page) => [page.targetId, page]));
+  const owned: PageTarget[] = [];
+  for (const id of ownedIds) {
+    const page = live.get(id);
+    if (page) owned.push(page);
+  }
+  return owned;
 }
 
 /** Extract a page-target patch from a `Target.targetInfoChanged` event. */

@@ -6,11 +6,13 @@
 /**
  * Screen-cast manager for the project-shared omp Chromium.
  *
- * One viewer handle per SSE client: it picks a live page target (the caller's
- * preference, else the newest selectable tab from the agent-owned and
- * chamber-user registries, else the newest tab), attaches a flattened CDP
- * session, and streams `Page.screencastFrame` JPEGs. A 2s poll re-reads the
- * registries so the view follows either side's tab when a page is opened,
+ * One viewer handle per SSE client: it picks a live page target — the caller's
+ * pinned tab while it is still a live, owned tab, else the newest tab this
+ * session's omp process owns — attaches a flattened CDP session, and streams
+ * `Page.screencastFrame` JPEGs. It never attaches to a tab another session
+ * owns, and the tab list it reports is scoped to those owned targets too,
+ * because the shared daemon hosts every session's pages. A 1s poll re-reads the
+ * registry so the view follows the agent's tab when a page is opened,
  * navigated, or replaced.
  *
  * The viewer NEVER closes the browser or kills Chromium — `close()` stops our
@@ -23,7 +25,7 @@ import { shortUrl, type BrowserActionDraft } from '@/shared/lib/browser/activity
 import { CdpConnection } from '@/shared/lib/browser/cdp';
 import { acquireConnection, releaseConnection } from '@/shared/lib/browser/connection';
 import { OBSERVER_BINDING, installObserver, parseObserverPayload, type ObserverHandle } from '@/shared/lib/browser/observer';
-import { parsePageTargets, pickTargetId, readTargetInfoPatch, type PageTarget } from '@/shared/lib/browser/targets';
+import { ownedPages, parsePageTargets, pickTargetId, readTargetInfoPatch, type PageTarget } from '@/shared/lib/browser/targets';
 import { isRecord, readNumber, readString } from '@/shared/lib/browser/util';
 
 const POLL_INTERVAL_MS = 1_000;
@@ -36,7 +38,7 @@ const SCREENCAST_PARAMS = {
 };
 
 interface ScreencastOptions {
-  /** Caller's preferred tab id; honored while it is still a live page. */
+  /** Caller's preferred tab id; honored while it is still a live, owned page. */
   preferTargetId?: string;
   /** Re-read the session's agent-owned target ids from the runtime registry. */
   getOwnedTargetIds: () => Promise<string[]>;
@@ -76,6 +78,7 @@ class ScreencastSession {
   private readonly conn: CdpConnection;
   private readonly opts: ScreencastOptions;
   private targets: PageTarget[] = [];
+  private ownedIds: string[] = [];
   private currentTargetId: string | null = null;
   private currentSessionId: string | null = null;
   private lastStateKey = '';
@@ -98,7 +101,7 @@ class ScreencastSession {
   async start(): Promise<void> {
     this.unsubscribeClose = this.conn.onClose(() => this.handleDisconnect());
     this.unsubscribeEvents = this.conn.onEvent((method, params, sessionId) => this.handleEvent(method, params, sessionId));
-    // Lifecycle events are best-effort: the 2s poll covers discovery without them.
+    // Lifecycle events are best-effort: the 1s poll covers discovery without them.
     await this.conn.send('Target.setDiscoverTargets', { discover: true }).catch(() => {});
     await this.tick();
     if (this._closed) return;
@@ -127,6 +130,7 @@ class ScreencastSession {
         this.fetchTargets(),
       ]);
       if (this._closed) return;
+      this.ownedIds = ownedIds;
       this.targets = targets;
       const nextTargetId = pickTargetId(targets, ownedIds, this.opts.preferTargetId);
       if (nextTargetId !== this.currentTargetId) await this.switchTarget(nextTargetId);
@@ -245,11 +249,9 @@ class ScreencastSession {
   private emitCurrent(): void {
     if (this._closed) return;
     const current = this.targets.find((target) => target.targetId === this.currentTargetId);
-    const tabs: BrowserTabInfo[] = this.targets.map((target) => ({
-      targetId: target.targetId,
-      url: target.url,
-      title: target.title,
-    }));
+    // Owned targets only: the shared daemon lists every session's pages, so
+    // handing the raw target list to the panel would leak other sessions' tabs.
+    const tabs: BrowserTabInfo[] = ownedPages(this.targets, this.ownedIds);
     if (current) {
       this.emit({ status: 'live', url: current.url, title: current.title, targetId: current.targetId, tabs });
     } else {
