@@ -8,6 +8,7 @@
     "isolatedModules": true,
     "esModuleInterop": true,
     "jsx": "react-jsx",
+    "jsxImportSource": "preact",
     "moduleResolution": "Bundler",
     "resolveJsonModule": true,
     "strict": true,
@@ -15,11 +16,27 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "~/*": ["./app/*"],
-      "@/*": ["./app/*"]
+      "@/*": ["./src/*"],
+
+      /* THIRD-PARTY COMPAT SHIM ONLY — do not import these in src/.
+       * Every module under src/ imports preact, preact/hooks, or preact/compat
+       * directly. These mappings exist because three npm packages import
+       * 'react' inside their own published code and ship React-typed JSX:
+       *   - react-resizable-panels  (desktop-layout panel groups)
+       *   - react-simple-code-editor (editor panel)
+       *   - react-icons             (FileIcon)
+       * Removing them fails the typecheck with 21 errors in exactly those
+       * call sites. Replace the package, not this mapping, if that day comes. */
+      "react": ["./node_modules/preact/compat"],
+      "react-dom": ["./node_modules/preact/compat"],
+      "react-dom/client": ["./node_modules/preact/compat/client"],
+      "react-dom/test-utils": ["./node_modules/preact/test-utils"],
+      "react/jsx-runtime": ["./node_modules/preact/jsx-runtime"],
+      "react/jsx-dev-runtime": ["./node_modules/preact/jsx-dev-runtime"]
     },
+    "types": ["bun-types"],
     "skipLibCheck": true,
     "noEmit": true
   },
-  "exclude": ["node_modules", "build", "bin"]
+  "exclude": ["node_modules", "dist"]
 }

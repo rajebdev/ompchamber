@@ -5,24 +5,84 @@
 
 ---
 
+## Runtime: Bun Only
+
+**This application runs exclusively on Bun. Do not introduce Node-only APIs, and do not assume `node <entry>` works.**
+
+- **Server** (`src/server/**`) imports `bun:sqlite` and resolves the `@/` path alias — Node fails on both with `ERR_MODULE_NOT_FOUND`. Run it with `bun run src/server/index.ts` (dev, watched) or `NODE_ENV=production bun run src/server/index.ts` (prod). `bun run start` and `ompchamber serve --prod` both do the latter.
+- **Tests** run under `bun test`; do not add a Node test runner.
+- **CLI** (`src/cli/**`) is Bun too: `#!/usr/bin/env bun` shebang and `@/cli/...` imports, so it needs Bun on `PATH`. It resolves the Bun binary via `resolveBunBin()` and spawns the server with it. **`rsbuild` is the only piece that still runs under Node** — it is a build tool and never ships.
+- **Practical rules:** never swap `bun:sqlite` for a Node driver; never add a `node:` import to `src/client/**` or `src/shared/lib/**`; keep `.ts`/`.tsx` execution in Bun's hands (no `tsx`/`ts-node`).
+
+### Bun-Native APIs vs `node:*` Imports
+
+Bun implements `node:*` builtins natively — they do **not** shell out to a Node binary. Verified: `node:child_process` runs with `node` off `PATH` and `process.execPath` stays `bun`. So a `node:` import is not a correctness bug; it is only a preference when Bun ships a first-class equivalent. **Do not "convert" a `node:` import to a `Bun.*` call when no equivalent exists** — the conversion is either impossible or silently changes behavior.
+
+| Prefer | Instead of | Why |
+|---|---|---|
+| `Bun.env.X` | `process.env.X` | Same object in Bun (`Bun.env === process.env`), but the Bun name states the runtime. **Server/CLI only** — `Bun.env` does not exist in the browser, so `src/client/**` and `src/shared/**` must never use it. |
+| `crypto.randomUUID()` (global) | `import { randomUUID } from 'crypto'` | Global is available; no import needed. |
+| `Bun.gzipSync` / `Bun.gunzipSync` | `zlib.gzipSync` / `gunzipSync` | Byte-identical output, verified. |
+| `Bun.which('bin')` | `which` via `spawnSync` | Direct PATH lookup. |
+| `Bun.spawnSync([cmd, ...])` | `child_process.spawnSync` | Same shape; `.success` replaces the `status === 0` check. |
+| `await Bun.file(p).text()` | `fs.readFileSync(p, 'utf8')` / `fs.promises.readFile` | Only where the call site is already `async`. `Bun.file()` is async; do not force a sync caller to become async just to use it. |
+| `await Bun.write(p, data)` | `fs.writeFileSync` / `fs.promises.writeFile` | **`Bun.write` ignores `mode`** — it cannot create a `0o600` file. Keep `fs.writeFileSync(..., { mode: 0o600 })` for the CLI registry (`src/cli/lib/runtime.js`). |
+
+**These stay `node:*` — Bun has no equivalent, so do not attempt a conversion:**
+
+- **`node:path`** — `Bun.path` is `undefined`. No replacement exists.
+- **`node:fs` directory + metadata ops** — `mkdir`/`readdir`/`stat`/`exists`/`rm`/`rename`/`Dirent`. Bun's own docs point at `node:fs` for directories; `Bun.file()` is for file contents.
+- **`node:fs` sync reads in sync functions** — `Bun.file()` is async, so converting a `readFileSync` inside a synchronous function forces that function and every caller up the chain to become async. ~20 modules under `src/server/lib/omp/**` are pure-sync by design (config readers, session parsers) and keep `readFileSync`; the CLI registry helpers (`readRegistry`/`listRegistries` in `src/cli/lib/runtime.js`) *were* converted because their callers were already async. Convert a read only when the enclosing call chain is already async.
+- **`node:os`** — `Bun.os` is `undefined`. `os.homedir()` also resolves `USERPROFILE` on Windows, which `Bun.env.HOME` does not; `os.constants.signals` is used for signal names.
+- **`node:readline`** — no Bun equivalent.
+- **`node:zlib` brotli** — `Bun.brotliCompressSync` is `undefined`; Bun ships gzip only (`src/server/plugins/compress.ts` keeps brotli here).
+- **`node:child_process` `exec`/`execFile`/`spawn`** — Bun implements these natively and they are the established pattern across `src/server/**`. `Bun.spawn` is preferred only for **new** code; there is no mass-migration value in rewriting working calls.
+
+### Toolchain Commands: Bun Only (no npm, npx, yarn, pnpm)
+
+**`bun.lock` is the only lockfile.** `npm`, `npx`, `yarn`, and `pnpm` are never used in this repo — not to install, not to run scripts, not to execute a binary. Every tool that would otherwise be reached through `npx` is reached through **`bunx`**, which resolves the same local `node_modules/.bin` binary.
+
+| Never | Always |
+|---|---|
+| `npm install` / `npm i <pkg>` / `npm uninstall <pkg>` | `bun install` / `bun add <pkg>` / `bun remove <pkg>` (add `-d` for dev deps) |
+| `npm run <script>` | `bun run <script>` (or bare `bun <script>` when it is unambiguous) |
+| `npx <bin>` / `npx -y <pkg>` | `bunx <bin>` — e.g. `bunx tsc --noEmit`, `bunx rsbuild build` |
+| `node <entry>` / `tsx` / `ts-node` | `bun run <entry.ts>` — Bun executes TypeScript directly |
+| `npx jest` / `npx vitest` / `npx mocha` | `bun test` |
+
+- **Never commit** `package-lock.json`, `yarn.lock`, or `pnpm-lock.yaml`; if one appears, delete it and re-run `bun install`.
+- `bunx` is preferred over `./node_modules/.bin/...` for readability; both hit the identical local binary.
+
+---
+
 ## Architecture & Agent Roles
 
 ### The Oh-My-Pi Autonomous Agent (`oh-my-pi`)
 - **Primary Function**: Autonomous CI/CD pipeline monitoring, build log analysis, dependency resolution, and edge deployment verification.
-- **Runtime Target**: Bun v1.2.4 with native ESM and TypeScript striping.
-- **Framework Integration**: remisJS edge routes & build plugins.
+- **Runtime Target**: Bun 1.4.x with native ESM and TypeScript striping.
+- **Framework Integration**: Elysia edge routes & Rsbuild plugins.
 
 ### OMPChamber Web View Interface
-- **Session Sidebar** (left, default 268px): workspace folders bound to oh-my-pi projects, each listing its sessions, plus search/sort/archive toolbar and the settings/about/new-workspace/scheduler modals (`app/components/layout/session-sidebar/`).
-- **Top Navbar**: active session title plus view controls — switch to mobile view, toggle the editor panel, and toggle the right panel (`app/components/layout/desktop-layout/TopNavbar.tsx`).
-- **Chat Timeline** (center): the streaming agent conversation — thinking accordions, tool-call cards, queue panel, and the composer (`app/components/workspace/chat-timeline/`).
-- **Editor Panel**: opened-file tabs and code editing (`app/components/workspace/editor/`).
-- **Right Panel + Activity Bar**: switchable developer panels — `context` (Context & Telemetry), `files`, `search`, `git` (Source Control), `terminal` (Bun), and `browser` (`app/components/workspace/`, `app/components/layout/RightActivityBar.tsx`).
+- **Session Sidebar** (left, default 268px): workspace folders bound to oh-my-pi projects, each listing its sessions, plus search/sort/archive toolbar and the settings/about/new-workspace/scheduler modals (`src/client/components/layout/session-sidebar/`).
+- **Top Navbar**: active session title plus view controls — switch to mobile view, toggle the editor panel, and toggle the right panel (`src/client/components/layout/desktop-layout/TopNavbar.tsx`).
+- **Chat Timeline** (center): the streaming agent conversation — thinking accordions, tool-call cards, queue panel, and the composer (`src/client/components/workspace/chat-timeline/`).
+- **Editor Panel**: opened-file tabs and code editing (`src/client/components/workspace/editor/`).
+- **Right Panel + Activity Bar**: switchable developer panels — `context` (Context & Telemetry), `files`, `search`, `git` (Source Control), `terminal` (Bun), and `browser` (`src/client/components/workspace/`, `src/client/components/layout/RightActivityBar.tsx`).
 
 ### Agent Event Stream Transport
 - The live omp agent bridge (`POST /api/agent/:sessionId` for commands) streams events over **WebSocket by default** — `GET /api/agent/:sessionId/ws` — with **SSE** (`/api/agent/:sessionId/events`) as the fallback, selected in **Settings → Chats → Streaming Transport** (`streamTransport` in `omp_chamber_settings`; default `websocket`).
-- Server side is shared by dev and prod: `server/agent-stream-websocket.js` attaches to whatever `http.Server` owns the port — the Vite dev server (plugin in `vite.config.ts`) and the production entry `server/index.js` (started by `npm start` and `ompchamber serve --prod`).
-- Client side: `app/lib/chat/omp/{transport,socket,sse}.ts` own the connections; both hand every frame to `app/lib/chat/omp/agent-events.ts`, which folds it into chamber state. Keep frame handling in that folder — never fork behavior per transport.
+- Server side is one Elysia app for dev and prod: `src/server/index.ts` owns the port and mounts `src/server/routes/`, so the agent WebSocket (`src/server/routes/agent/ws.ts`) is a first-class `.ws()` route on that same listener. Started by `bun run dev` (watched) and `bun run start` / `ompchamber serve --prod`.
+- Client side: `src/shared/lib/chat/omp/{transport,socket,sse}.ts` own the connections; both hand every frame to `src/shared/lib/chat/omp/agent-events.ts`, which folds it into chamber state. Keep frame handling in that folder — never fork behavior per transport.
+
+### Build & Dev Loop
+- **`bun run build`** produces `dist/client` (the only build artifact). There is **no `dist/server`**: Bun executes `src/server/index.ts` as TypeScript directly, so the server is never bundled. `bun run start` and `ompchamber serve --prod` both run that same entry with `NODE_ENV=production`.
+- **`bun run dev`** watches the server. The HTML shell is read from `dist/client/index.html`, so run **`bun run dev:client`** (`rsbuild build --watch`) alongside it for a rebuild-on-change loop. There is no HMR/prefresh: the server reloads on save and the client bundle rebuilds; refresh the page to pick it up.
+- If `dist/client` is missing the server answers **503** with the exact command to run — not a bare 500.
+
+### Route Method Contract
+- Route modules keep the ported Remix shape: an exported `loader` (GET) and/or `action` (mutating verbs). **`action` owns method dispatch** — it branches on `request.method` and returns its own `405 { error: 'Method not allowed' }`.
+- Because of that, `bindingsFor`/`actionBindings` mount `action` on **all four** mutating verbs, and add a 405 GET fallback when the path has no `loader`. Registering only the "supported" verb would turn a wrong-verb call into a 404 and hide the real problem.
+- **One parameter name per path position.** Elysia's router rejects `/api/files/:sessionId` and `/api/files/:fileId/toggle` in the same tree. When two routes share a segment position, unify the name (the handlers map it to their own local variable). Current shared names: `sessions/:sessionId` (also carries a folder id for `GET /api/sessions/:sessionId`), `files/:fileId`.
 
 ---
 
@@ -35,7 +95,7 @@
 4. **Execution in Chamber**: The user or agent triggers execution directly in the right sidebar chamber panel.
 
 ### Code Style & Persistence Guidelines
-- Use the CSS variable system defined in `app/tailwind.css` (`var(--theme-ink)`, `var(--theme-paper)`, etc.) and standard Tailwind classes mapped to them (`bg-paper`, `text-ink`, `border-ink/20`).
+- Use the CSS variable system defined in `src/client/tailwind.css` (`var(--theme-ink)`, `var(--theme-paper)`, etc.) and standard Tailwind classes mapped to them (`bg-paper`, `text-ink`, `border-ink/20`).
 - The application supports multiple themes (e.g., E-Ink Paper Monochrome, One Dark Pro Soft). **DO NOT** hardcode raw hex colors like `#141310` or `#faf8f3` in component files.
 - Semantic states are expressed purely through these theme variables.
 - The only allowable chroma (outside of dark theme) is the signal red variable `var(--theme-error)` (`text-error`, `bg-error`) reserved for failures and error messages.
@@ -49,72 +109,84 @@
 - **Decompose before you hit the limit**: When a file approaches the ceiling, split it immediately — never let it cross 350 and never "temporarily" exceed it.
 - **Extraction patterns** (pick the one that matches the code):
   - Large render blocks ➔ sub-components in the parent's kebab-case folder (`git-panel/TreeView.tsx`).
-  - Stateful logic clusters ➔ custom hooks under `app/hooks/<domain>/`.
-  - Pure functions / constants / validators ➔ `app/lib/<domain>/` modules.
+  - Stateful logic clusters ➔ custom hooks under `src/client/hooks/<domain>/`.
+  - Pure functions / constants / validators ➔ `src/shared/lib/<domain>/` modules.
   - Large callback objects / factories ➔ factory functions taking a single `deps` record (preserves closure semantics exactly).
   - Shared low-level utilities ➔ a sibling `shared/` or `utils.ts` inside the feature folder.
-- **Verify**: `find app -name "*.ts" -o -name "*.tsx" | xargs wc -l | grep -v total | awk '$1>350'` must print nothing.
+- **Verify**: `find src -name "*.ts" -o -name "*.tsx" | xargs wc -l | grep -v total | awk '$1>350'` must print nothing.
 
 ### 2. Folder & Filename Conventions (Clean Names)
 - **Symmetrical folders**: A component's folder mirrors its name in **kebab-case**, and the folder's main entry is `index.tsx`:
-  - `ChatTimeline` ➔ `app/components/workspace/chat-timeline/index.tsx`
-  - `GitPanel` ➔ `app/components/workspace/git-panel/index.tsx`
-  - `SessionSidebar` ➔ `app/components/layout/session-sidebar/index.tsx`
-  - `ModelDropdown` ➔ `app/components/workspace/model-dropdown/index.tsx`
+  - `ChatTimeline` ➔ `src/client/components/workspace/chat-timeline/index.tsx`
+  - `GitPanel` ➔ `src/client/components/workspace/git-panel/index.tsx`
+  - `SessionSidebar` ➔ `src/client/components/layout/session-sidebar/index.tsx`
+  - `ModelDropdown` ➔ `src/client/components/workspace/model-dropdown/index.tsx`
 - **Suffix-only filenames**: When the folder already supplies the context, child files DROP the redundant prefix and keep only the suffix:
-  - `app/components/workspace/model-dropdown/Header.tsx` — not `ModelDropdownHeader.tsx`
-  - `app/components/workspace/git-panel/TreeView.tsx` — not `GitTreeView.tsx`
-  - `app/components/workspace/chat-timeline/tool-renderers/panels/Bash.tsx` — not `BashPanel.tsx`
-  - `app/hooks/chat/timeline/actions.ts` — not `useChatTimelineActions.ts`
-  - `app/lib/omp/rpc/manager.ts` — not `rpc-manager.ts`
+  - `src/client/components/workspace/model-dropdown/Header.tsx` — not `ModelDropdownHeader.tsx`
+  - `src/client/components/workspace/git-panel/TreeView.tsx` — not `GitTreeView.tsx`
+  - `src/client/components/workspace/chat-timeline/tool-renderers/panels/Bash.tsx` — not `BashPanel.tsx`
+  - `src/client/hooks/chat/timeline/actions.ts` — not `useChatTimelineActions.ts`
+  - `src/shared/lib/omp/rpc/manager.ts` — not `rpc-manager.ts`
 - **No duplicate basenames in the same folder**: if two files would collide, move one to its correct domain folder or give it a distinguishing suffix (e.g. `panels/SearchTool.tsx` vs `panels/SearchFs.tsx`).
 - **`index` is reserved for the folder's real entry point** (the main component/hook implementation) — never a re-export barrel (see rule 3).
-- **Naming case**: kebab-case for folders and multi-word non-component files (`active-project.ts`, `notification-sound.ts`); PascalCase for React component files; `useXxx` prefix only when the file is a standalone reusable hook at a domain root.
-- Reusable or cross-cutting components belong in `app/components/common/`.
-- No empty, abandoned, or ghost folders (`app/applet/`, duplicate `routes/api+`, etc.).
+- **Naming case**: kebab-case for folders and multi-word non-component files (`active-project.ts`, `notification-sound.ts`); PascalCase for Preact component files; `useXxx` prefix only when the file is a standalone reusable hook at a domain root.
+- Reusable or cross-cutting components belong in `src/client/components/common/`.
+- No empty, abandoned, or ghost folders (`src/applet/`, duplicate domain folders, etc.).
 
 ### 3. Direct, Explicit Imports (No Barrel Clutter)
-- Do NOT create re-export-only `index.ts` barrels inside `app/components/`, `app/hooks/`, or `app/lib/` — they pollute editor fuzzy-search and hide file origins.
+- Do NOT create re-export-only `index.ts` barrels inside `src/client/components/`, `src/client/hooks/`, or `src/shared/lib/` — they pollute editor fuzzy-search and hide file origins.
 - `index.tsx`/`index.ts` is allowed ONLY when it contains the folder's actual implementation (the main component/hook), not a list of `export ... from` statements.
 - Import the concrete module explicitly via the `@/` alias:
-  - `import { ChatTimeline } from '@/components/workspace/chat-timeline';` (folder entry)
-  - `import { Header } from '@/components/workspace/model-dropdown/Header';`
-  - `import { useChatTimeline } from '@/hooks/chat/timeline';`
-  - `import { normalizeNoticePositions } from '@/lib/chat/order';`
-- The only intentional barrel is `app/types/index.ts` (the central type barrel).
+  - `import { ChatTimeline } from '@/client/components/workspace/chat-timeline';` (folder entry)
+  - `import { Header } from '@/client/components/workspace/model-dropdown/Header';`
+  - `import { useChatTimeline } from '@/client/hooks/chat/timeline';`
+  - `import { normalizeNoticePositions } from '@/shared/lib/chat/order';`
+- The only intentional barrel is `src/shared/types/index.ts` (the central type barrel).
 
 ### 4. Absolute Imports via `@/` Alias (No Relative Imports)
-- **All** internal imports MUST use the `@/` path alias (mapped to `./app/*` in both `tsconfig.json` and `vite.config.ts`). Relative imports (`./`, `../`) are **forbidden** in application code.
+- **All** internal imports MUST use the `@/` path alias (mapped to `./src/*` in both `tsconfig.json` and `rsbuild.config.ts`). Relative imports (`./`, `../`) are **forbidden** in application code.
 - This applies to every import form: `import`, `import type`, `export ... from`, and side-effect imports.
 - Examples:
-  - `import { ChatTimeline } from '@/components/workspace/chat-timeline';`
-  - `import type { OmpSession } from '@/types/omp/session';`
-  - `import { getDb } from '@/db.server';`
-  - `import '@/tailwind.css';`
+  - `import { ChatTimeline } from '@/client/components/workspace/chat-timeline';`
+  - `import type { OmpSession } from '@/shared/types/omp/session';`
+  - `import { getDb } from '@/server/db.server';`
+  - `import '@/client/tailwind.css';`
 - Exceptions (keep relative):
   - Third-party packages and node built-ins (never prefixed with `@/`).
-  - Assets outside `app/` (e.g., `package.json` at the project root) — use `@/../package.json` or a relative path.
+  - Assets outside `src/` (e.g., `package.json` at the project root) — use a relative path.
 - The `~` alias is deprecated; use `@/` exclusively.
-- **Verify**: `grep -rnE "from '\.\.?/" app --include='*.ts' --include='*.tsx' | grep -v node_modules` must print nothing.
+- **Verify**: `grep -rnE "from '\.\.?/" src --include='*.ts' --include='*.tsx' --include='*.js' | grep -v node_modules` must print nothing. `src/cli/**` is covered by this gate too — it is Bun-run plain ESM, so `@/cli/...` resolves there like everywhere else.
 
-### 5. Domain Grouping for hooks / lib / data / types
-- Non-UI modules MUST be grouped into domain subfolders — never dumped flat in the root of `app/hooks/`, `app/lib/`, `app/data/`, or `app/types/`.
-- **`app/hooks/<domain>/`**: `chat/`, `ui/`, `workspace/`. Split further when a family grows: `chat/timeline/` (timeline state + actions), `chat/omp/` (live agent bridge).
-- **`app/lib/<domain>/`**: `chat/`, `code/`, `fs/`, `markdown/`, `models/`, `omp/`, `workspace/`. `omp/` splits into `core/`, `rpc/`, `session/`, `config/`.
-- **`app/data/<domain>/`**: `settings/`, `samples/`, `mock/`, `models/`, `theme/`, `agent-data/`, `context-data/`.
-- **`app/types/<domain>/`**: group related interfaces (`settings/`, `omp/`); truly cross-cutting types stay at the root.
+### 4b. Import Preact Directly (the `react` alias is a third-party shim only)
+- **Never write `from 'react'` or `from 'react-dom'` in `src/`.** Import the runtime directly:
+  - Hooks → `import { useState, useEffect, useRef } from 'preact/hooks';`
+  - Components, context, portals, and React-shaped types → `import { memo, Suspense, lazy, createContext, createPortal } from 'preact/compat';`
+  - Generic element/event types → `import type { TargetedMouseEvent, TargetedKeyboardEvent } from 'preact';`
+- **Why the alias still exists:** three npm packages import `'react'` inside their own published code — `react-resizable-panels`, `react-simple-code-editor`, and `react-icons`. The `react*` mappings in `tsconfig.json` (`paths`) and `pluginPreact({ reactAliasesEnabled: true })` in `rsbuild.config.ts` keep those packages on Preact. Removing them pulls real React into the bundle and breaks the typecheck in exactly four files: `common/FileIcon.tsx`, `layout/desktop-layout/{index,WorkspacePanels}.tsx`, and `workspace/editor/index.tsx`.
+- **Consequence for new code:** the alias is not an invitation. If you add a dependency that imports `react`, either pick a Preact-native alternative or hand-port it — do not widen the alias.
+- **Event types:** Preact's `MouseEvent`/`KeyboardEvent` from `preact/compat` are generics requiring one type argument. Use `TargetedMouseEvent<HTMLElement>` for JSX handlers, and the DOM's own `globalThis.MouseEvent`/`globalThis.KeyboardEvent` for native `addEventListener` callbacks and xterm handlers.
+
+### 5. Server vs Shared vs Client Modules
+- **Three-way split.** `src/server/**` is Bun-only (see the Runtime section at the top), `src/client/**` is browser-only, and `src/shared/**` is imported by both. Never import a `node:` builtin or `bun:sqlite` from `src/client/**` or `src/shared/lib/**`; if a shared module needs one, it belongs in `src/server/lib/**` instead.
+- Non-UI modules MUST be grouped into domain subfolders — never dumped flat in the root of `src/client/hooks/`, `src/client/data/`, `src/server/lib/`, `src/shared/lib/`, or `src/shared/types/`.
+- **`src/client/hooks/<domain>/`**: `chat/`, `ui/`, `workspace/`, `browser/`, `models/`, `settings/`. Split further when a family grows: `chat/timeline/` (timeline state + actions), `chat/omp/` (live agent bridge).
+- **`src/shared/lib/<domain>/`**: `chat/`, `code/`, `fs/`, `markdown/`, `models/`, `omp/`, `workspace/`. `omp/` splits into `core/`, `rpc/`, `session/`, `config/`.
+- **`src/server/lib/<domain>/`**: the same domain tree, holding only the modules that touch Node/Bun builtins or the database.
+- **`src/client/data/<domain>/`**: `settings/`, `samples/`, `mock/`, `models/`, `theme/`, `agent-data/`, `context-data/`.
+- **`src/shared/types/<domain>/`**: group related interfaces (`settings/`, `omp/`); truly cross-cutting types stay at the root.
 - Grouping changes are atomic: move the files AND update every importer in the same change.
 
 ### 6. Pure UI Components & Semantic Separation
-- **`app/components/` is for React UI (`.tsx`)**. Co-located pure helpers are allowed when scoped to that feature, but must be `.ts` and live under the feature folder or its `shared/` (e.g. `tool-renderers/shared/detect-format.ts`, `editor/utils.ts`).
-- Anything reusable beyond a single feature belongs in `app/lib/`, never in a component folder.
+- **`src/client/components/` is for Preact UI (`.tsx`)**. Co-located pure helpers are allowed when scoped to that feature, but must be `.ts` and live under the feature folder or its `shared/` (e.g. `tool-renderers/shared/detect-format.ts`, `editor/utils.ts`).
+- Anything reusable beyond a single feature belongs in `src/shared/lib/`, never in a component folder.
 - **Dedicated non-UI directories**:
-  - **Hooks (`app/hooks/<domain>/`)**: Custom React hooks.
-  - **Data (`app/data/<domain>/`)**: Mock or static datasets.
-  - **Types (`app/types/<domain>/`)**: Domain interfaces and types.
+  - **Hooks (`src/client/hooks/<domain>/`)**: Custom Preact hooks.
+  - **Data (`src/client/data/<domain>/`)**: Mock or static datasets.
+  - **Types (`src/shared/types/<domain>/`)**: Domain interfaces and types.
+  - **CLI (`src/cli/`)**: The `ompchamber` command-line entry (`ompchamber.js`) and its `lib/` (arg parsing, process lifecycle, registry, serve/stop/restart/status/logs). These stay `.js` (plain ESM, no build step) and run under Bun via the `#!/usr/bin/env bun` shebang. `pkgRoot` is resolved two levels up from `src/cli/ompchamber.js`; keep that depth if the file ever moves.
 
 ### 7. Domain Types Architecture
-- Domain data models and shared TypeScript interfaces must be organized cleanly under `app/types/`:
+- Domain data models and shared TypeScript interfaces must be organized cleanly under `src/shared/types/`:
   - `workspace.ts` — folders, session entities, and sorting types
   - `fs.ts` — file explorer node trees, opened files, and search result items
   - `git.ts` — git changes, branch lists, and view mode states
@@ -125,14 +197,14 @@
 
 ### 8. Verification Requirements
 - Every change must pass:
-  1. `npm run lint` (`tsc --noEmit`) without errors.
-  2. `npx tsc --noEmit --noUnusedLocals --noUnusedParameters` without errors.
-  3. Production build verification (`npm run build`).
+  1. `bun run lint` (`tsc --noEmit`) without errors.
+  2. `bunx tsc --noEmit --noUnusedLocals --noUnusedParameters` without errors.
+  3. Production build verification (`bun run build`).
 - **Unused Code Check (MANDATORY before task completion)**: Before declaring any task done, verify no unused imports, locals, or dead props were introduced or left behind:
   - Fix every `TS6133` (declared but never read), `TS6192` (all imports unused), `TS6196` (declared but never used), and `TS6198` (all destructured elements unused) error.
   - Remove unused imports (icons, types, components) and unused destructured props/state — do not leave dead code behind.
   - If a component's props/state become unused because a feature was stubbed or removed, strip them from the interface, the destructure, and every call-site in the same change.
-  - Do NOT ship `import React from 'react'` in `.tsx` files — the React 19 JSX transform makes it unnecessary (keep named imports like `useState`).
+  - Do NOT ship `import React from 'react'` in `.tsx` files — the Preact JSX transform makes it unnecessary (keep named imports like `useState`).
 - **Structural Checks (MANDATORY for refactors that move/rename files)**:
   - No file exceeds 350 lines (rule 1 command).
   - No relative imports remain (rule 4 command).
@@ -141,20 +213,20 @@
 
 ### 9. Layout & Panel Resizing
 - **Panel Width**: Be aware that the width of the layout panels (like the sidebar or right sidebar) is considered and calculated in **pixels**. When handling layout persistence or default sizes, ensure they are treated as pixel values rather than just percentages, adapting library APIs (like `react-resizable-panels`) as needed to accommodate pixel-based design intent.
-- **One remembered width PER PANEL, never per group**: the sidebar, the chat column, the editor panel (a separate width for source tabs and for diff tabs), and each of the eight right-panel views (`files`, `search`, `git`, `terminal`, `context`, `user-browser`, `browser`, `usage`) each own their width. The map and its slots live in `app/lib/workspace/panel-widths.ts` (data) and `app/hooks/workspace/panel-widths.ts` (state + `desktopLayoutSizes` persistence); per-view defaults, minimums, and the view list live in `app/lib/workspace/right-panels.ts`. Sharing one number between panels — or resetting a panel to a hard-coded width when it is toggled or switched — is exactly the bug this shape exists to prevent.
+- **One remembered width PER PANEL, never per group**: the sidebar, the chat column, the editor panel (a separate width for source tabs and for diff tabs), and each of the eight right-panel views (`files`, `search`, `git`, `terminal`, `context`, `user-browser`, `browser`, `usage`) each own their width. The map and its slots live in `src/shared/lib/workspace/panel-widths.ts` (data) and `src/client/hooks/workspace/panel-widths.ts` (state + `desktopLayoutSizes` persistence); per-view defaults, minimums, and the view list live in `src/shared/lib/workspace/right-panels.ts`. Sharing one number between panels — or resetting a panel to a hard-coded width when it is toggled or switched — is exactly the bug this shape exists to prevent.
 - **Restore through the group, not the panel**: `react-resizable-panels` caches one layout per panel composition, so a returning panel would replay stale sizes. `WorkspacePanels` rebuilds the inner group's layout from the remembered pixel widths with a single `setLayout` (fixed panels take their width back, the chat column absorbs the remainder); append an entry here if a new resizable group is introduced.
 
 ### 10. Route Organization & Domain Grouping
-- **Domain-Based Subdirectories**: Routes under `app/routes/` MUST be organized and grouped into subdirectories matching their functional domain (e.g., `app/routes/api/settings/`, `app/routes/api/chat/`, `app/routes/api/fs/`, `app/routes/api/terminal/`, `app/routes/api/telemetry/`, `app/routes/api/sessions/`, `app/routes/api/files/`, `app/routes/api/folders/`).
-- **No Monolithic Flat Folder Clutter**: Do NOT dump all API route endpoints loosely in the root of `app/routes/api/` as flat files. Group related child endpoints inside domain folders (e.g., `settings/route.ts`, `settings/agents.ts`, `settings/providers.ts`).
-- **Nested & Parametric Routes**: Parametric and dynamic routes follow Remix flat-routes directory nesting conventions (e.g., `chat/$sessionId.ts`, `sessions/$sessionId.queue.ts`).
+- **Domain-Based Subdirectories**: Routes under `src/server/routes/` MUST be organized and grouped into subdirectories matching their functional domain (e.g., `src/server/routes/settings/`, `src/server/routes/chat/`, `src/server/routes/fs/`, `src/server/routes/terminal/`, `src/server/routes/telemetry/`, `src/server/routes/sessions/`, `src/server/routes/files/`, `src/server/routes/folders/`).
+- **No Monolithic Flat Folder Clutter**: Do NOT dump API endpoints loosely in the root of `src/server/routes/` as flat files. `src/server/routes/index.ts` is the only file that enumerates domains; every domain folder owns its own modules and never imports a sibling domain.
+- **One Elysia plugin per domain**: Each domain folder exports `HandlerBinding[]` built from its route modules (see `src/server/lib/route-adapter.ts`). Route modules keep the ported Remix shape — an exported `loader` (GET) and/or `action` (mutating verbs) — so status codes and payloads stay identical to the pre-migration API. Prefixes are declared once, in `routes/index.ts`.
 
 ### 11. Environment Data Modes (`MOCK=true` vs `MOCK=false`)
 - **`MOCK=true` (Simulation & Demo Mode)**:
-  - All features and loaders utilize rich predefined datasets and presets from `app/data/` (simulated demo chats, token telemetry ranges, agent/project presets).
+  - All features and loaders utilize rich predefined datasets and presets from `src/client/data/` (simulated demo chats, token telemetry ranges, agent/project presets).
   - Database seeding automatically injects sample workspace folders, demo commit sessions, and file structures.
 - **`MOCK=false` (Real Data Mode)**:
   - The application operates strictly against real backend resources and real SQLite database persistence.
   - No synthetic sample sessions, fake dialogues, or hardcoded mock files are auto-injected.
-  - Managed globally through `process.env.MOCK` and verified via `@/mock.server`.
+  - Managed globally through `Bun.env.MOCK` and verified via `@/server/mock.server`.
 

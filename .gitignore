@@ -8,6 +8,8 @@ coverage/
 !.env.example
 workspace.db
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 .ompchamber/
 .playwright-mcp
