@@ -1,18 +1,47 @@
-import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
+import { useCallback, useSyncExternalStore } from 'preact/compat';
 
 /**
- * `useSearchParams` replacement. The app's only routing state is `?sessionId=`,
- * so this is a `popstate`/`pushState` subscription over `location.search` with
- * the same `[params, setParams]` tuple the Remix hook returned — including the
+ * `useSearchParams` replacement. The app's only routing state is `?sessionId=`
+ * (plus `?folderId=`), so this is a subscription over `location.search` with the
+ * same `[params, setParams]` tuple the Remix hook returned — including the
  * functional-updater form, so call sites keep working unchanged.
+ *
+ * The search string lives in ONE module-level store, not per-component state:
+ * Remix shared router state across every mounted component, so a `setParams`
+ * call from the sidebar must re-render `App` and the chat timeline too. With
+ * per-component `useState` only the caller re-rendered and the rest of the tree
+ * kept reading the stale value (selecting a session updated the URL but left
+ * "No session selected" on screen).
  */
 
 type SetParamsInit = URLSearchParams | Record<string, string> | string;
 type SetParamsFn = (prev: URLSearchParams) => URLSearchParams;
 type SetParams = (next: SetParamsInit | SetParamsFn, options?: { replace?: boolean }) => void;
 
-function readSearch(): string {
-  return typeof window === 'undefined' ? '' : window.location.search;
+const listeners = new Set<() => void>();
+let currentSearch = typeof window === 'undefined' ? '' : window.location.search;
+
+function emit(): void {
+  for (const listener of listeners) listener();
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+/** Re-read `location.search` and notify only when it actually changed. */
+function syncFromLocation(): void {
+  const next = typeof window === 'undefined' ? '' : window.location.search;
+  if (next === currentSearch) return;
+  currentSearch = next;
+  emit();
+}
+
+if (typeof window !== 'undefined') {
+  // Back/forward navigation. `pushState`/`replaceState` do NOT fire popstate,
+  // so setParams notifies directly.
+  window.addEventListener('popstate', syncFromLocation);
 }
 
 function toSearchString(init: SetParamsInit): string {
@@ -30,24 +59,24 @@ function resolveNext(next: SetParamsInit | SetParamsFn, current: URLSearchParams
   return toSearchString(next);
 }
 
-export function useSearchParams(defaultInit?: SetParamsInit): [URLSearchParams, SetParams] {
-  const [search, setSearch] = useState<string>(() => readSearch() || (defaultInit ? toSearchString(defaultInit) : ''));
+function getSnapshot(): string {
+  return currentSearch;
+}
 
-  useEffect(() => {
-    const onPopState = () => setSearch(readSearch());
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
-  }, []);
-
-  const params = useMemo(() => new URLSearchParams(search), [search]);
+export function useSearchParams(): [URLSearchParams, SetParams] {
+  // Preact's `useSyncExternalStore` takes only (subscribe, getSnapshot) — no
+  // server-snapshot argument — and the app is client-rendered, so `currentSearch`
+  // is the single source of truth.
+  const search = useSyncExternalStore(subscribe, getSnapshot);
 
   const setParams = useCallback<SetParams>((next, options) => {
-    const searchString = resolveNext(next, new URLSearchParams(readSearch()));
+    const searchString = resolveNext(next, new URLSearchParams(currentSearch));
     const url = `${window.location.pathname}${searchString}${window.location.hash}`;
     if (options?.replace) window.history.replaceState(null, '', url);
     else window.history.pushState(null, '', url);
-    setSearch(searchString);
+    currentSearch = searchString;
+    emit();
   }, []);
 
-  return [params, setParams];
+  return [new URLSearchParams(search), setParams];
 }

@@ -1,5 +1,4 @@
 import { Elysia } from 'elysia';
-import { readFile } from 'fs/promises';
 import { existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { getDb } from '@/server/db.server';
@@ -20,7 +19,7 @@ async function readTemplate(): Promise<string> {
   }
   const { mtimeMs } = statSync(CLIENT_INDEX);
   if (cachedTemplate !== null && mtimeMs === cachedMtimeMs) return cachedTemplate;
-  cachedTemplate = await readFile(CLIENT_INDEX, 'utf8');
+  cachedTemplate = await Bun.file(CLIENT_INDEX).text();
   cachedMtimeMs = mtimeMs;
   return cachedTemplate;
 }

@@ -40,7 +40,7 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
   const triggerSearch = () => {
     if (!enabled) return;
     if (query.trim().length > 2) {
-      fetcher.submit(
+      return fetcher.submit(
         { 
           q: query, 
           matchCase: String(matchCase), 

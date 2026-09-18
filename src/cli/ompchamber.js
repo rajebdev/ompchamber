@@ -1,14 +1,12 @@
 #!/usr/bin/env bun
 
 import path from 'node:path';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
 
+import packageJson from '@/../package.json';
 import { parseArgs, helpText } from '@/cli/lib/args.js';
 import { configure, error, fail } from '@/cli/lib/output.js';
 
-const requireFromCli = createRequire(import.meta.url);
-const { version } = requireFromCli('../../package.json');
+const { version } = packageJson;
 
 const COMMANDS = ['serve', 'stop', 'restart', 'status', 'logs'];
 
@@ -32,7 +30,7 @@ async function main() {
   }
 
   // src/cli/ompchamber.js -> package root is two levels up.
-  const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+  const pkgRoot = path.resolve(import.meta.dir, '..', '..');
   const ctx = { cwd: process.cwd(), pkgRoot, version };
 
   const name = command ?? 'serve';

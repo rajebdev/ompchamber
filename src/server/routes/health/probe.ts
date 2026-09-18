@@ -21,7 +21,8 @@ export async function loader() {
       uptime: Math.round((Date.now() - STARTED_AT) / 10) / 100,
       startedAt: STARTED_ISO,
       mock: isMockMode(),
-      node: process.version,
+      runtime: 'bun',
+      bun: Bun.version,
     },
     { headers: NO_STORE },
   );

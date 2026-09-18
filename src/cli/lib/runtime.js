@@ -18,8 +18,7 @@ const HEALTH_TIMEOUT_MS = 30_000;
  */
 export async function readRegistry(port) {
   try {
-    const raw = await Bun.file(getRegistryPath(port)).text();
-    const parsed = JSON.parse(raw);
+    const parsed = await Bun.file(getRegistryPath(port)).json();
     return parsed && typeof parsed === 'object' ? parsed : null;
   } catch {
     return null;
@@ -36,7 +35,7 @@ export async function listRegistries() {
     for (const file of fs.readdirSync(dir)) {
       if (!/^\d+\.json$/.test(file)) continue;
       try {
-        const parsed = JSON.parse(await Bun.file(path.join(dir, file)).text());
+        const parsed = await Bun.file(path.join(dir, file)).json();
         if (parsed && typeof parsed === 'object') entries.push(parsed);
       } catch {
         // Skip unreadable or corrupt registry files.

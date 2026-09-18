@@ -8,6 +8,12 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
  * semantics: `state` is `'idle' | 'loading' | 'submitting'`, and every settled
  * request writes its parsed JSON into `data`. `submit` accepts the same plain
  * object and `FormData` bodies Remix accepted.
+ *
+ * Every new request aborts the previous one. Panels poll on a 2s cadence
+ * (`usePanelRefresh`) and the search box re-submits as you type, so without
+ * this each superseded request kept its socket open until the browser's
+ * per-host connection limit (6 in Chrome) was exhausted — after that every
+ * request, including unrelated ones, stalled forever.
  */
 
 export type FetcherState = 'idle' | 'loading' | 'submitting';
@@ -42,24 +48,35 @@ export function useFetcher<T = unknown>(): FetcherLike<T> {
   const [data, setData] = useState<T | undefined>(undefined);
   const [state, setState] = useState<FetcherState>('idle');
   const aliveRef = useRef(true);
+  const inFlightRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     aliveRef.current = true;
     return () => {
       aliveRef.current = false;
+      inFlightRef.current?.abort();
+      inFlightRef.current = null;
     };
   }, []);
 
   const run = useCallback(async (url: string, init: RequestInit, phase: FetcherState) => {
+    inFlightRef.current?.abort();
+    const controller = new AbortController();
+    inFlightRef.current = controller;
+
     setState(phase);
     try {
-      const response = await fetch(url, init);
+      const response = await fetch(url, { ...init, signal: controller.signal });
       const parsed = await readJson(response);
-      if (aliveRef.current) setData(parsed as T);
+      if (aliveRef.current && inFlightRef.current === controller) setData(parsed as T);
     } catch {
-      if (aliveRef.current) setData(undefined);
+      // An aborted request is superseded by a newer one; leave `data` alone so
+      // the panel keeps showing the last good result instead of blanking.
     } finally {
-      if (aliveRef.current) setState('idle');
+      if (aliveRef.current && inFlightRef.current === controller) {
+        inFlightRef.current = null;
+        setState('idle');
+      }
     }
   }, []);
 

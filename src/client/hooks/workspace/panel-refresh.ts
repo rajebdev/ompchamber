@@ -15,25 +15,50 @@ export const PANEL_REFRESH_MS = 2000;
  * Deliberately does not run the callback on mount: each panel already loads
  * once from its own mount effect, and re-running here would double-fetch.
  *
+ * A tick is skipped while the previous invocation is still running. Some
+ * panels do genuinely slow work — a `grep -r` over a multi-GB workspace can
+ * take tens of seconds — and the panel's fetcher aborts its previous request
+ * whenever a new one starts, so an unguarded 2s tick would cancel every search
+ * before it could finish and the panel would sit on "Searching..." forever.
+ *
  * Polling also pauses while the document is hidden (background tab, mobile
  * screen lock): a hidden page cannot render the results, so each tick would
  * be wasted work — and on mobile it keeps waking the CPU. A visibilitychange
  * back to visible immediately re-reads, so the panel is never stale when the
  * user returns.
  */
-export function usePanelRefresh(callback: () => void, enabled: boolean, intervalMs: number = PANEL_REFRESH_MS) {
+export function usePanelRefresh(
+  callback: () => void | Promise<unknown>,
+  enabled: boolean,
+  intervalMs: number = PANEL_REFRESH_MS,
+) {
   const cbRef = useRef(callback);
   cbRef.current = callback;
 
   useEffect(() => {
     if (!enabled) return;
     let visible = typeof document === 'undefined' || document.visibilityState === 'visible';
+    let inFlight = false;
+
+    const tick = () => {
+      if (inFlight) return;
+      const result = cbRef.current();
+      if (!result || typeof (result as Promise<unknown>).then !== 'function') return;
+      inFlight = true;
+      const release = () => {
+        inFlight = false;
+      };
+      // Both arms release the lock. The callback owns its error surface (panels
+      // render their own failure state), so a rejection must not wedge the lock.
+      Promise.resolve(result).then(release, release);
+    };
+
     const id = setInterval(() => {
-      if (visible) cbRef.current();
+      if (visible) tick();
     }, intervalMs);
     const onVisibility = () => {
       const next = document.visibilityState === 'visible';
-      if (next && !visible) cbRef.current();
+      if (next && !visible) tick();
       visible = next;
     };
     document.addEventListener('visibilitychange', onVisibility);
