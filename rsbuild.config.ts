@@ -4,10 +4,7 @@ import { pluginPreact } from '@rsbuild/plugin-preact';
 const isDev = process.env.NODE_ENV !== 'production';
 
 export default defineConfig({
-  // Third-party shim only — src/ imports preact directly. react-resizable-panels,
-  // react-simple-code-editor, and react-icons import 'react' in their own code,
-  // so this alias is what keeps them on Preact. See the note in tsconfig.json.
-  plugins: [pluginPreact({ reactAliasesEnabled: true })],
+  plugins: [pluginPreact()],
 
   source: {
     entry: { index: './src/client/main.tsx' },
