@@ -6,7 +6,7 @@ import { useFetcher } from '@/client/lib/router/fetcher';
 import { GitRepoDropdown } from '@/client/components/workspace/file-explorer/GitRepoDropdown';
 import { useScrollbarFade } from '@/client/hooks/ui/scrollbar-fade';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
-import { usePanelRefresh } from '@/client/hooks/workspace/panel-refresh';
+import { useSearchStream } from '@/client/hooks/workspace/search-stream';
 
 export function SearchPanel({ className = '', enabled = true, rootPath }: { className?: string, enabled?: boolean, rootPath?: string }) {
   const [query, setQuery] = useSessionState<string>('search.query', '');
@@ -24,8 +24,8 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
   const menuRef = useRef<HTMLDivElement>(null);
   const { isScrolling, handleScroll } = useScrollbarFade();
 
-  const fetcher = useFetcher<{ results: any[] }>();
   const replaceFetcher = useFetcher<{ success: boolean, results: any[] }>();
+  const { results, isSearching, start: startSearch } = useSearchStream();
 
   useEffect(() => {
     const handleClickOutside = (event: globalThis.MouseEvent) => {
@@ -40,18 +40,15 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
   const triggerSearch = () => {
     if (!enabled) return;
     if (query.trim().length > 2) {
-      return fetcher.submit(
-        { 
-          q: query, 
-          matchCase: String(matchCase), 
-          wholeWord: String(wholeWord), 
-          useRegex: String(useRegex),
-          includeFiles: showIncludeField ? includeFiles : '',
-          ...(rootPath ? { root: rootPath } : {}),
-          ...(activeRepo !== '.' ? { repo: activeRepo } : {})
-        },
-        { method: 'POST', action: '/api/fs/search' }
-      );
+      return startSearch({
+        q: query,
+        matchCase: String(matchCase),
+        wholeWord: String(wholeWord),
+        useRegex: String(useRegex),
+        includeFiles: showIncludeField ? includeFiles : '',
+        ...(rootPath ? { root: rootPath } : {}),
+        ...(activeRepo !== '.' ? { repo: activeRepo } : {})
+      });
     }
   };
 
@@ -61,11 +58,6 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
     }, 300);
     return () => clearTimeout(timeoutId);
   }, [query, matchCase, wholeWord, useRegex, includeFiles, showIncludeField, rootPath, enabled, activeRepo]);
-
-  // Auto refresh: re-run the query on a cadence so edits that alter matches
-  // surface without re-typing. No-op while there is nothing to search (the
-  // 3-char minimum guard in `triggerSearch`).
-  usePanelRefresh(triggerSearch, enabled);
 
   const handleReplace = (file?: string) => {
     if (!query) return;
@@ -108,9 +100,8 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
     );
   }
 
-  const results = fetcher.data?.results || [];
-  const isLoading = fetcher.state === 'submitting';
-  
+  const isLoading = isSearching;
+
   const groupedResults = results.reduce((acc, curr) => {
     if (!acc[curr.file]) acc[curr.file] = [];
     acc[curr.file].push(curr);
@@ -229,6 +220,9 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
           <div className="text-ink/40 italic text-center py-4">No results found.</div>
         ) : (
           <div className="space-y-4">
+            {isLoading && (
+              <div className="text-ink/40 italic">Searching…</div>
+            )}
             {Object.entries(groupedResults).map(([file, fileResults]: [string, any]) => (
               <div key={file}>
                 <div className="font-semibold text-ink/80 flex items-center justify-between mb-1 group">
