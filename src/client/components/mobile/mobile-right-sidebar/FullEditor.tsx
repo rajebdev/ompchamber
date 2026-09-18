@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { AlertTriangle, Loader2 } from 'lucide-preact';
-import CodeEditor from 'react-simple-code-editor';
+import { CodeEditor } from '@/client/components/common/code-editor';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-javascript';
 import 'prismjs/components/prism-typescript';

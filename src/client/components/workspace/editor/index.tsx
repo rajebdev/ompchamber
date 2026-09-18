@@ -1,7 +1,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import { FileIcon } from '@/client/components/common/FileIcon';
-import CodeEditor from 'react-simple-code-editor';
+import { FileIcon } from '@/client/components/common/file-icon';
+import { CodeEditor } from '@/client/components/common/code-editor';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-javascript';
 import 'prismjs/components/prism-typescript';
