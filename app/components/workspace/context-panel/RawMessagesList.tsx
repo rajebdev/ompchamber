@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { ChevronDown, ChevronRight, ChevronsUpDown } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown } from 'lucide-react';
 import { useSessionState } from '@/hooks/workspace/session-state';
 import type { RawMessageItem } from '@/types';
 import { RawJsonViewer } from '@/components/workspace/context-panel/RawJsonViewer';
@@ -40,14 +40,94 @@ function modelLabel(id: string): string {
   return model ? `${provider} · ${model}` : provider;
 }
 
-interface RawMessagesListProps {
+const PAGE_SIZE = 20;
+
+interface RawMessagesPageResponse {
   items: RawMessageItem[];
+  total: number;
+  filteredTotal: number;
+  error?: string;
 }
 
-export function RawMessagesList({ items }: RawMessagesListProps) {
+/** Condensed page list: 1 … around-current … last, with ellipsis gaps. */
+function pageWindow(current: number, total: number): (number | '…')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages = new Set<number>([1, total, current, current - 1, current + 1]);
+  if (current <= 3) [2, 3, 4].forEach(p => pages.add(p));
+  if (current >= total - 2) [total - 3, total - 2, total - 1].forEach(p => pages.add(p));
+  const sorted = [...pages].filter(p => p >= 1 && p <= total).sort((a, b) => a - b);
+  const out: (number | '…')[] = [];
+  let prev = 0;
+  for (const p of sorted) {
+    if (p - prev > 1) out.push('…');
+    out.push(p);
+    prev = p;
+  }
+  return out;
+}
+
+interface RawMessagesListProps {
+  sessionId: string | null;
+  /** Bumped by the parent on panel refresh ticks so the page re-reads. */
+  refreshKey?: number;
+}
+
+/**
+ * Server-side paged raw messages: only the current 20-row page is held in
+ * client state. Every fetch REPLACES the array (never appends), so memory
+ * stays flat no matter how long the session runs.
+ */
+export function RawMessagesList({ sessionId, refreshKey = 0 }: RawMessagesListProps) {
   // All messages collapsed by default
   const [expandedIds, setExpandedIds] = useSessionState<Record<string, boolean>>('context.rawExpandedIds', {});
   const [filterRole, setFilterRole] = useSessionState<'all' | 'assistant' | 'user'>('context.rawFilterRole', 'all');
+  const [page, setPage] = useState(1);
+
+  // The single source of truth for visible rows — swapped wholesale on each
+  // page load, never accumulated.
+  const [items, setItems] = useState<RawMessageItem[]>([]);
+  const [filteredTotal, setFilteredTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+
+  // Tracks the latest request so stale responses can never clobber a newer
+  // page (rapid page flips, session switches mid-flight).
+  const requestSeqRef = useRef(0);
+  const cancelledRef = useRef(false);
+
+  const loadPage = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const seq = ++requestSeqRef.current;
+    setLoading(true);
+    const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE), role: filterRole });
+    if (sessionId) params.set('sessionId', sessionId);
+    fetch(`/api/telemetry/raw-messages?${params.toString()}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: RawMessagesPageResponse | null) => {
+        if (cancelledRef.current || seq !== requestSeqRef.current) return;
+        setItems(data && Array.isArray(data.items) ? data.items : []);
+        setFilteredTotal(data && Number.isFinite(data.filteredTotal) ? data.filteredTotal : 0);
+      })
+      .catch(() => {
+        if (cancelledRef.current || seq !== requestSeqRef.current) return;
+        setItems([]);
+        setFilteredTotal(0);
+      })
+      .finally(() => {
+        if (seq === requestSeqRef.current) setLoading(false);
+      });
+  }, [sessionId, page, filterRole]);
+
+  useEffect(() => {
+    cancelledRef.current = false;
+    loadPage();
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, [loadPage, refreshKey]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredTotal / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const goToPage = (p: number) => setPage(Math.min(Math.max(1, p), totalPages));
 
   const toggleExpand = (id: string) => {
     setExpandedIds(prev => ({
@@ -66,16 +146,6 @@ export function RawMessagesList({ items }: RawMessagesListProps) {
       setExpandedIds(next);
     }
   };
-
-  const filteredItems = items.filter(item => {
-    if (filterRole === 'all') return true;
-    if (filterRole === 'assistant') return item.info.role === 'assistant';
-    if (filterRole === 'user') return item.info.role === 'user';
-    return true;
-  });
-
-  // Newest first (raw messages are fed oldest → newest).
-  const orderedItems = [...filteredItems].reverse();
 
   const modelLegend = useMemo(() => {
     const seen: string[] = [];
@@ -116,30 +186,30 @@ export function RawMessagesList({ items }: RawMessagesListProps) {
         <div className="flex items-center space-x-2">
           <span className="text-xs font-semibold text-ink/80">Raw Messages</span>
           <span className="text-[10px] font-mono text-ink/50 bg-ink/5 px-1.5 py-0.5 rounded-full border border-ink/10">
-            {filteredItems.length}
+            {filteredTotal}
           </span>
         </div>
 
         <div className="flex items-center space-x-1">
-          {/* Quick Filter */}
+          {/* Quick Filter (resets to first page) */}
           <div className="flex items-center bg-canvas border border-ink/10 rounded-lg p-0.5 text-[10px]">
             <button
               type="button"
-              onClick={() => setFilterRole('all')}
+              onClick={() => { setFilterRole('all'); setPage(1); }}
               className={`px-1.5 py-0.5 rounded ${filterRole === 'all' ? 'bg-ink text-canvas font-medium' : 'text-ink/60 hover:text-ink'}`}
             >
               All
             </button>
             <button
               type="button"
-              onClick={() => setFilterRole('assistant')}
+              onClick={() => { setFilterRole('assistant'); setPage(1); }}
               className={`px-1.5 py-0.5 rounded ${filterRole === 'assistant' ? 'bg-ink text-canvas font-medium' : 'text-ink/60 hover:text-ink'}`}
             >
               AI
             </button>
             <button
               type="button"
-              onClick={() => setFilterRole('user')}
+              onClick={() => { setFilterRole('user'); setPage(1); }}
               className={`px-1.5 py-0.5 rounded ${filterRole === 'user' ? 'bg-ink text-canvas font-medium' : 'text-ink/60 hover:text-ink'}`}
             >
               User
@@ -159,18 +229,18 @@ export function RawMessagesList({ items }: RawMessagesListProps) {
 
       {/* Accordion Messages */}
       <div className="space-y-1.5">
-        {filteredItems.length === 0 ? (
+        {!loading && items.length === 0 ? (
           <div className="p-4 text-center text-xs text-ink/40 italic bg-canvas rounded-xl border border-ink/10">
             No raw messages recorded yet.
           </div>
         ) : (
-          orderedItems.map((item) => {
+          items.map((item) => {
             const isExpanded = Boolean(expandedIds[item.id]);
 
             return (
               <div
                 key={item.id}
-                className="bg-canvas border border-ink/10 rounded-xl overflow-hidden transition-all duration-200"
+                className={`bg-canvas border border-ink/10 rounded-xl overflow-hidden transition-all duration-200 ${loading ? 'opacity-50' : ''}`}
               >
                 {/* Accordion Header */}
                 <button
@@ -209,6 +279,54 @@ export function RawMessagesList({ items }: RawMessagesListProps) {
           })
         )}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-1">
+          <span className="text-[10px] font-mono text-ink/50">
+            {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filteredTotal)} of {filteredTotal}
+          </span>
+
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              disabled={safePage <= 1}
+              onClick={() => goToPage(safePage - 1)}
+              className="p-1 rounded text-ink/60 hover:text-ink hover:bg-ink/5 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+              title="Previous page"
+            >
+              <ChevronLeft size={14} />
+            </button>
+
+            {pageWindow(safePage, totalPages).map((p, i) =>
+              p === '…' ? (
+                <span key={`gap-${i}`} className="px-1 text-[10px] font-mono text-ink/40 select-none">…</span>
+              ) : (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => goToPage(p)}
+                  className={`min-w-[22px] h-[22px] px-1 rounded text-[10px] font-mono transition-colors ${
+                    p === safePage ? 'bg-ink text-canvas font-medium' : 'text-ink/60 hover:text-ink hover:bg-ink/5'
+                  }`}
+                >
+                  {p}
+                </button>
+              ),
+            )}
+
+            <button
+              type="button"
+              disabled={safePage >= totalPages}
+              onClick={() => goToPage(safePage + 1)}
+              className="p-1 rounded text-ink/60 hover:text-ink hover:bg-ink/5 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+              title="Next page"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

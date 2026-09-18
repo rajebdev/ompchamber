@@ -131,8 +131,8 @@ export function ContextPanel({
           otherPercent={telemetry.distribution.otherPercent}
         />
 
-        {/* 5. Raw Messages List */}
-        <RawMessagesList items={telemetry.rawMessages} />
+        {/* 5. Raw Messages List (server-side paged) */}
+        <RawMessagesList sessionId={sessionId} refreshKey={refreshKey} />
       </div>
     </div>
   );

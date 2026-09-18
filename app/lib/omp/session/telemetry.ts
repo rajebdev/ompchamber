@@ -35,7 +35,7 @@ interface OmpContextSnapshot {
   compactionEpoch?: number;
 }
 
-interface OmpMessage {
+export interface OmpMessage {
   role?: string;
   content?: unknown;
   model?: string;
@@ -46,7 +46,7 @@ interface OmpMessage {
   isError?: boolean;
 }
 
-interface SessionEntry {
+export interface SessionEntry {
   type?: string;
   id?: string;
   parentId?: string | null;
@@ -58,7 +58,7 @@ interface SessionEntry {
 }
 
 /** Flatten an omp content value (string or block array) to plain text. */
-function textOf(content: unknown): string {
+export function textOf(content: unknown): string {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';
   const parts: string[] = [];
@@ -70,7 +70,7 @@ function textOf(content: unknown): string {
   return parts.join(' ').trim();
 }
 
-function formatTs(ts: string | number | undefined): string {
+export function formatTs(ts: string | number | undefined): string {
   if (ts === undefined) return '';
   const date = typeof ts === 'number' ? new Date(ts) : new Date(ts);
   if (Number.isNaN(date.getTime())) return '';
@@ -87,7 +87,7 @@ function formatCost(value: number): string {
   return value < 0.01 ? '$0.01' : `$${value.toFixed(2)}`;
 }
 
-function tokensOf(usage: OmpUsage | undefined): {
+export function tokensOf(usage: OmpUsage | undefined): {
   input: number;
   output: number;
   cacheRead: number;
@@ -116,7 +116,7 @@ function contextAnchorTokens(msg: OmpMessage): number | undefined {
   return Math.max(0, promptTokens - (snapshot?.historyRewriteTokensRemoved ?? 0));
 }
 
-function buildInfo(
+export function buildInfo(
   entry: SessionEntry,
   msg: OmpMessage,
   cwd: string,
@@ -155,26 +155,34 @@ function emptyTelemetry(sessionId: string, sessionTitle: string): SessionContext
   };
 }
 
+/** Streaming JSONL pass for the telemetry builders; `visit` returns `false` to stop early. */
+export function scanSessionEntries(filePath: string, visit: (entry: SessionEntry, index: number) => boolean | void): void {
+  let body: string;
+  try {
+    body = readFileSync(filePath, 'utf8');
+  } catch {
+    return;
+  }
+  const records = parseJsonlLenient<SessionEntry>(body);
+  for (let index = 0; index < records.length; index++) {
+    const entry = records[index];
+    if (!entry) continue;
+    if (visit(entry, index) === false) break;
+  }
+}
+
 /**
- * Compute real `SessionContextTelemetry` for a session file. Falls back to an
- * all-zero telemetry when the file is unreadable or carries no message stream.
+ * Compute real `SessionContextTelemetry` for a session file (all-zero on
+ * unreadable/empty). `rawLimit` caps materialized raw items (0 = none): the
+ * panel reads full pages from `computeRawMessagesPage` in ./telemetry-raw.ts.
  */
 export function computeRealSessionTelemetry(
   filePath: string,
   sessionId: string,
   fallbackTitle?: string,
+  rawLimit = 0,
 ): SessionContextTelemetry {
   const defaultTitle = fallbackTitle || 'New Session';
-
-  let body: string;
-  try {
-    body = readFileSync(filePath, 'utf8');
-  } catch {
-    return emptyTelemetry(sessionId, defaultTitle);
-  }
-
-  const records = parseJsonlLenient<SessionEntry>(body);
-  if (records.length === 0) return emptyTelemetry(sessionId, defaultTitle);
 
   let header: SessionEntry | undefined;
   let userCount = 0;
@@ -201,31 +209,31 @@ export function computeRealSessionTelemetry(
   let costOutput = 0;
   let costCacheRead = 0;
   let costCacheWrite = 0;
+  let messagesCount = 0;
   const rawMessages: RawMessageItem[] = [];
+  let cwd = '';
 
-  for (let index = 0; index < records.length; index++) {
-    const entry = records[index];
-    if (!entry) continue;
+  scanSessionEntries(filePath, (entry, index) => {
     // Modern session files start with a fixed-width title slot line, so the
     // header is never at index 0 when one exists. A filled slot (auto/user
     // rename) outranks the header's own title field.
     if (entry.type === 'title') {
       if (typeof entry.title === 'string' && entry.title.trim()) effectiveTitle = entry.title.trim();
-      continue;
+      return;
     }
     if (entry.type === 'session' && !header) {
       header = entry;
+      cwd = entry.cwd ?? '';
       if (!effectiveTitle && typeof entry.title === 'string') effectiveTitle = entry.title;
-      continue;
+      return;
     }
     if (entry.type === 'compaction' && typeof entry.shortSummary === 'string' && !shortSummary) shortSummary = entry.shortSummary;
-    if (entry.type !== 'message' || !entry.message) continue;
+    if (entry.type !== 'message' || !entry.message) return;
 
     const msg = entry.message;
     const role = msg.role ?? '';
     const text = textOf(msg.content);
     const profile = contentProfile(msg.content);
-    const cwd = header?.cwd ?? '';
     const info = buildInfo(entry, msg, cwd, index);
     const tokens = tokensOf(msg.usage);
 
@@ -262,23 +270,28 @@ export function computeRealSessionTelemetry(
     if (msg.model) modelId = msg.model;
 
     if (role === 'user' || role === 'assistant') {
-      const isAssistant = role === 'assistant';
-      const snippet = text.slice(0, 70);
-      rawMessages.push({
-        id: entry.id ?? `m${index}`,
-        type: isAssistant ? (profile.parts.length ? profile.parts.join('_') : 'text') : 'user',
-        badgeLabel: isAssistant
-          ? (profile.parts.length ? profile.parts.join(' + ') : 'text')
-          : `user: ${snippet}${text.length > 70 ? '...' : ''}`,
-        tokenSummary: isAssistant
-          ? `${tokens.input.toLocaleString()} / ${tokens.output.toLocaleString()}`
-          : '',
-        timestamp: formatTs(entry.timestamp),
-        info,
-        rawPayload: entry as unknown as Record<string, any>,
-      });
+      messagesCount++;
+      if (rawLimit === 0 || rawMessages.length < rawLimit) {
+        const isAssistant = role === 'assistant';
+        const snippet = text.slice(0, 70);
+        rawMessages.push({
+          id: entry.id ?? `m${index}`,
+          type: isAssistant ? (profile.parts.length ? profile.parts.join('_') : 'text') : 'user',
+          badgeLabel: isAssistant
+            ? (profile.parts.length ? profile.parts.join(' + ') : 'text')
+            : `user: ${snippet}${text.length > 70 ? '...' : ''}`,
+          tokenSummary: isAssistant
+            ? `${tokens.input.toLocaleString()} / ${tokens.output.toLocaleString()}`
+            : '',
+          timestamp: formatTs(entry.timestamp),
+          info,
+          rawPayload: entry as unknown as Record<string, any>,
+        });
+      }
     }
-  }
+  });
+
+  if (messagesCount === 0 && !header && !effectiveTitle) return emptyTelemetry(sessionId, defaultTitle);
 
   const providerModel = modelProvider && modelId ? `${modelProvider}/${modelId}` : '';
   const contextUsed = contextAnchor;
@@ -310,7 +323,7 @@ export function computeRealSessionTelemetry(
     contextUsed,
     contextLimit: CONTEXT_LIMIT,
     contextPercent,
-    messagesCount: rawMessages.length,
+    messagesCount,
     userCount,
     assistantCount,
     totalCost,
@@ -335,6 +348,7 @@ export function computeRealSessionTelemetry(
       otherTokens,
       otherPercent,
     },
+    // Held to `rawLimit` items — the panel pages via computeRawMessagesPage.
     rawMessages,
   };
 }
