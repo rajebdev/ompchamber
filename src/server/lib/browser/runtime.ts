@@ -51,6 +51,32 @@ function candidateRoots(): string[] {
   return roots;
 }
 
+/**
+ * TCP probe with a short timeout — Chromium writes DevToolsActivePort before
+ * it starts listening, and the file survives a crash, so the port must be
+ * checked before the endpoint is trusted.
+ */
+export async function isTcpPortLive(port: number, host = '127.0.0.1', timeoutMs = 750): Promise<boolean> {
+  const socket = Bun.connect({
+    hostname: host,
+    port,
+    socket: {
+      data() {},
+      close() {},
+      error() {},
+    },
+  });
+  // Bun.connect resolves to a TCPSocket on success and rejects with
+  // "Failed to connect" when nothing listens — no timeout race needed for the
+  // loopback case, but guard against a hung connect anyway.
+  const opened = await Promise.race([
+    socket.then(() => true, () => false),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), timeoutMs)),
+  ]);
+  if (opened) await socket.then((s) => s.end());
+  return opened;
+}
+
 /** Read a daemon's live CDP endpoint from its DevToolsActivePort file. */
 async function readDaemonEndpoint(
   runtimeDir: string,
@@ -67,6 +93,9 @@ async function readDaemonEndpoint(
     const port = Number.parseInt(portLine.trim(), 10);
     const wsPath = pathLine.trim();
     if (!Number.isInteger(port) || port <= 0 || !wsPath) continue;
+    // Stale file: Chromium crashed or was killed after writing it. Treat the
+    // daemon as gone so callers report `browser-offline` instead of hanging.
+    if (!(await isTcpPortLive(port))) continue;
     return { daemonName, port, wsUrl: `ws://127.0.0.1:${port}${wsPath}` };
   }
   return null;

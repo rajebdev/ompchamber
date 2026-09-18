@@ -12,10 +12,12 @@
  *   no-tab | live, plus url/title/targetId/tabs when known)
  * - `frame` → BrowserViewFrame JSON (base64 JPEG + dimensions + targetId)
  *
- * While the agent, the shared browser, an owned tab, or a chamber-user tab is
- * missing, the route emits a coarse state and keeps polling every 2s instead
- * of erroring — any of those can appear later in the session's life. A live
- * user tab alone (agent has no tab) still streams. Frames are dropped under
+ * While the agent, the shared browser, or an agent-owned tab is missing, the
+ * route emits a coarse state and keeps polling every 1s instead of erroring —
+ * any of those can appear later in the session's life. The stream stays scoped
+ * to this session's own tabs: the daemon is project-shared, so neither the
+ * framebuffer nor the tab list ever falls back to another session's page.
+ * Frames are dropped under
  * consumer backpressure (desiredSize < 0); the screencast itself is already
  * acked upstream, so dropping is lossless latest-wins.
  */
