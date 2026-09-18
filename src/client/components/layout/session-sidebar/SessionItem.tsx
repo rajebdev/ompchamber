@@ -67,16 +67,13 @@ export function SessionItem({
           : 'text-ink/75 hover:text-ink hover:bg-ink/5'
       }`}
     >
-      {/* Status indicator wins the slot; the chevron is hover-reveal only
-          (and stays visible while the subagent list is expanded). */}
-      <span className="w-4 h-4 flex items-center justify-center shrink-0">
-        {status ? (
-          status === 'stream' ? (
-            <Loader2 size={12} className="animate-spin text-ink/60" />
-          ) : (
-            <Check size={12} className="text-ink/60" />
-          )
-        ) : showChevron && onToggleExpand ? (
+      {/* One 16px slot owns both icons: the run-status indicator (spinner /
+          check) shows at rest, and the expand toggle takes the slot over on
+          hover — or permanently while the roster is open. Never two icons.
+          The toggle is pointer-inert while invisible so the slot keeps
+          selecting the session until the chevron is what you see. */}
+      <span className="relative w-4 h-4 shrink-0">
+        {showChevron && onToggleExpand && (
           <button
             type="button"
             onClick={(e) => {
@@ -85,34 +82,29 @@ export function SessionItem({
             }}
             title={isExpanded ? 'Collapse subagents' : 'Expand subagents'}
             aria-expanded={isExpanded}
-            className={`w-full h-full flex items-center justify-center text-ink/40 hover:text-ink rounded cursor-pointer transition-colors ${
-              isExpanded ? '' : 'opacity-0 group-hover/item:opacity-100'
+            className={`peer absolute inset-0 flex items-center justify-center rounded cursor-pointer text-ink/40 transition-opacity hover:text-ink ${
+              isExpanded
+                ? ''
+                : 'pointer-events-none opacity-0 group-hover/item:pointer-events-auto group-hover/item:opacity-100 focus-visible:opacity-100'
             }`}
           >
             {isExpanded ? <ChevronDown size={13} className="text-ink/70" /> : <ChevronRight size={13} />}
           </button>
-        ) : null}
-      </span>
-      {showChevron && onToggleExpand && status && (
-        <span
-          className={`w-4 h-4 flex items-center justify-center shrink-0 -ml-1 transition-opacity ${
-            isExpanded ? '' : 'opacity-0 group-hover/item:opacity-100'
-          }`}
-        >
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleExpand(e);
-            }}
-            title={isExpanded ? 'Collapse subagents' : 'Expand subagents'}
-            aria-expanded={isExpanded}
-            className="w-full h-full flex items-center justify-center text-ink/40 hover:text-ink rounded cursor-pointer transition-colors"
+        )}
+        {status && !(showChevron && isExpanded) && (
+          <span
+            className={`absolute inset-0 flex items-center justify-center text-ink/60 transition-opacity ${
+              showChevron ? 'group-hover/item:opacity-0 peer-focus-visible:opacity-0' : ''
+            }`}
           >
-            {isExpanded ? <ChevronDown size={13} className="text-ink/70" /> : <ChevronRight size={13} />}
-          </button>
-        </span>
-      )}
+            {status === 'stream' ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <Check size={12} />
+            )}
+          </span>
+        )}
+      </span>
 
       {/* Gap between icon and text */}
       <span className="w-2 shrink-0" />
