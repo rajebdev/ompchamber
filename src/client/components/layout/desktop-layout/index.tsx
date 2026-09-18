@@ -1,7 +1,7 @@
 import type { RefObject } from 'preact/compat';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useSearchParams } from '@/client/lib/router/search-params';
-import { Group, Panel, type PanelImperativeHandle } from 'react-resizable-panels';
+import { Group, Panel, type PanelImperativeHandle } from '@/client/components/layout/desktop-layout/resizer';
 import { SessionSidebar } from '@/client/components/layout/session-sidebar/index';
 import { type RightPanelType } from '@/shared/lib/workspace/right-panels';
 import { SettingsModal } from '@/client/components/settings/Modal';
@@ -30,7 +30,7 @@ interface DesktopLayoutProps {
  * closed) simply leaves the panel at whatever its `defaultSize` derived.
  */
 function applyWidth(
-  ref: RefObject<PanelImperativeHandle>,
+  ref: RefObject<PanelImperativeHandle | null>,
   px: number | undefined,
 ) {
   if (px != null) ref.current?.resize(px);
@@ -43,9 +43,9 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
   const [showLeftPanel, setShowLeftPanel] = useState(appSettings.showLeftPanel ?? true);
   const { widths: panelWidths, widthsRef, commitWidths } = usePanelWidths(appSettings, activeRightPanel);
 
-  const editorPanelRef = useRef<PanelImperativeHandle>(null);
-  const rightPanelRef = useRef<PanelImperativeHandle>(null);
-  const leftPanelRef = useRef<PanelImperativeHandle>(null);
+  const editorPanelRef = useRef<PanelImperativeHandle | null>(null);
+  const rightPanelRef = useRef<PanelImperativeHandle | null>(null);
+  const leftPanelRef = useRef<PanelImperativeHandle | null>(null);
   const [userToggledEditor, setUserToggledEditor] = useState<boolean | null>(appSettings.userToggledEditor ?? null);
 
   const [searchParams] = useSearchParams();
@@ -202,8 +202,7 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
         <Group
           orientation="horizontal"
           id="ompchamber-main"
-          onLayoutChanged={(_, meta) => {
-            if (!meta.isUserInteraction) return;
+          onLayoutChanged={() => {
             const left = leftPanelRef.current?.getSize()?.inPixels;
             if (left != null && left > 0) commitWidths({ left: Math.round(left) });
           }}
@@ -217,8 +216,8 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
             </>
           )}
 
-          {/* Right stack: top navbar + resizable workspace */}
-          <Panel id="main-right-stack">
+          {/* Right stack: top navbar + resizable workspace (the group's filler) */}
+          <Panel id="main-right-stack" filler minSize={0}>
             <div className="flex flex-col h-full">
               <TopNavbar
                 sessionTitle={sessionTitle}

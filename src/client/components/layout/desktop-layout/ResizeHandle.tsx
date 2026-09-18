@@ -1,4 +1,4 @@
-import { Separator } from 'react-resizable-panels';
+import { Separator } from '@/client/components/layout/desktop-layout/resizer';
 
 /** Hairline drag handle shared by both resizable groups in the desktop layout. */
 export function ResizeHandle() {
