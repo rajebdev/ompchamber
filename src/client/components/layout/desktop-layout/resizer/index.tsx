@@ -136,7 +136,7 @@ export function Group(props: {
         data-panel-group=""
         data-panel-group-id={id}
         className={className}
-        style={{ display: 'flex', flexDirection: orientation === 'horizontal' ? 'row' : 'column', minWidth: 0, minHeight: 0 } as CSSProperties}
+        style={{ display: 'flex', flex: '1 1 0%', flexDirection: orientation === 'horizontal' ? 'row' : 'column', minWidth: 0, minHeight: 0 } as CSSProperties}
       >
         {children}
       </div>
@@ -219,9 +219,9 @@ export function Panel(props: {
   }, [panelRef, minPx, maxPx]);
 
   const baseStyle: CSSProperties = filler
-    ? { flex: '1 1 0%', minWidth: minPx || 0, minHeight: 0, overflow: 'hidden', position: 'relative' }
+    ? { flex: '1 1 0%', minWidth: 0, minHeight: 0, overflow: 'hidden', position: 'relative' }
     : {
-        flex: '0 0 auto',
+        flex: '0 1 auto',
         width: orientation === 'horizontal' ? sizePx ?? undefined : undefined,
         height: orientation === 'horizontal' ? undefined : sizePx ?? undefined,
         minWidth: orientation === 'horizontal' ? minPx : undefined,
