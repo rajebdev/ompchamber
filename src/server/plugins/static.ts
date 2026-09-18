@@ -14,6 +14,11 @@ const PUBLIC_ROOT = resolve('public');
 const IMMUTABLE = 'public, max-age=31536000, immutable';
 const SHORT = 'public, max-age=3600';
 
+// Only production output carries content hashes in its filenames. Dev output
+// keeps stable names (`static/js/index.js`), so an immutable response there
+// pins a stale bundle in the browser and the dev loop silently stops updating.
+const ASSET_CACHE = Bun.env.NODE_ENV === 'production' ? IMMUTABLE : 'no-store';
+
 const MIME: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -64,7 +69,7 @@ function serveFile(filePath: string, cacheControl: string): Response | null {
 export function tryServeStatic(pathname: string): Response | null {
   if (pathname.startsWith('/static/')) {
     const filePath = resolveWithin(CLIENT_ROOT, pathname);
-    return filePath ? serveFile(filePath, IMMUTABLE) : null;
+    return filePath ? serveFile(filePath, ASSET_CACHE) : null;
   }
 
   const publicPath = resolveWithin(PUBLIC_ROOT, pathname);
