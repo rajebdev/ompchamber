@@ -1,5 +1,5 @@
 import { ArrowLeft } from 'lucide-preact';
-import { FileIcon } from '@/client/components/common/FileIcon';
+import { FileIcon } from '@/client/components/common/file-icon';
 import { DiffPanel } from '@/client/components/workspace/diff-panel';
 import { getGitStatusInfo } from '@/shared/lib/fs/git-status';
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { FileIcon } from '@/client/components/common/FileIcon';
+import { FileIcon } from '@/client/components/common/file-icon';
 import { ChevronDown, GitCompare, X } from 'lucide-preact';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 import { getGitStatusInfo } from '@/shared/lib/fs/git-status';

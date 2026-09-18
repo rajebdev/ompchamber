@@ -1,5 +1,5 @@
 import { ArrowLeft, Check, Copy, Download, Eye, EyeOff, WrapText, ZoomIn, ZoomOut } from 'lucide-preact';
-import { FileIcon } from '@/client/components/common/FileIcon';
+import { FileIcon } from '@/client/components/common/file-icon';
 
 interface EditorHeaderProps {
   fileName: string;

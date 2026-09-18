@@ -1,7 +1,7 @@
 
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { CaseSensitive, Check, MoreHorizontal, Regex, Replace, ReplaceAll, Search, WholeWord } from 'lucide-preact';
-import { FileIcon } from '@/client/components/common/FileIcon';
+import { FileIcon } from '@/client/components/common/file-icon';
 import { useFetcher } from '@/client/lib/router/fetcher';
 import { GitRepoDropdown } from '@/client/components/workspace/file-explorer/GitRepoDropdown';
 import { useScrollbarFade } from '@/client/hooks/ui/scrollbar-fade';

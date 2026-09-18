@@ -1,5 +1,5 @@
 import { Minus, Plus, Undo2 } from 'lucide-preact';
-import { FileIcon } from '@/client/components/common/FileIcon';
+import { FileIcon } from '@/client/components/common/file-icon';
 import { getGitStatusInfo } from '@/shared/lib/fs/git-status';
 import type { GitChange } from '@/shared/types';
 

@@ -1,5 +1,5 @@
 import { AlignJustify, Check, Code2, Columns, Copy, Minus, Plus, RefreshCw, Space, Undo2 } from 'lucide-preact';
-import { FileIcon } from '@/client/components/common/FileIcon';
+import { FileIcon } from '@/client/components/common/file-icon';
 import { getGitStatusInfo } from '@/shared/lib/fs/git-status';
 
 interface DiffToolbarProps {

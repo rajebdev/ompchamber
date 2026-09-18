@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import type { FormEvent } from 'preact/compat';
 import { ChevronDown, ChevronRight } from 'lucide-preact';
 import { useFetcher } from '@/client/lib/router/fetcher';
-import { FileIcon } from '@/client/components/common/FileIcon';
+import { FileIcon } from '@/client/components/common/file-icon';
 import { FileContextMenu, FileDeleteModal, FileHistoryModal, FileRenameModal } from '@/client/components/workspace/file-explorer/Modals';
 import { getGitStatusInfo, type FolderGitStatusInfo } from '@/shared/lib/fs/git-status';
 import type { GitChange } from '@/shared/types/git';
