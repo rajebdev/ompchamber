@@ -67,10 +67,38 @@ export function SessionItem({
           : 'text-ink/75 hover:text-ink hover:bg-ink/5'
       }`}
     >
-      {/* Chevron in its own slot; the run-status indicator rides a second
-          slot so a session that has subagents still shows its spinner/check. */}
+      {/* Status indicator wins the slot; the chevron is hover-reveal only
+          (and stays visible while the subagent list is expanded). */}
       <span className="w-4 h-4 flex items-center justify-center shrink-0">
-        {showChevron && onToggleExpand ? (
+        {status ? (
+          status === 'stream' ? (
+            <Loader2 size={12} className="animate-spin text-ink/60" />
+          ) : (
+            <Check size={12} className="text-ink/60" />
+          )
+        ) : showChevron && onToggleExpand ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleExpand(e);
+            }}
+            title={isExpanded ? 'Collapse subagents' : 'Expand subagents'}
+            aria-expanded={isExpanded}
+            className={`w-full h-full flex items-center justify-center text-ink/40 hover:text-ink rounded cursor-pointer transition-colors ${
+              isExpanded ? '' : 'opacity-0 group-hover/item:opacity-100'
+            }`}
+          >
+            {isExpanded ? <ChevronDown size={13} className="text-ink/70" /> : <ChevronRight size={13} />}
+          </button>
+        ) : null}
+      </span>
+      {showChevron && onToggleExpand && status && (
+        <span
+          className={`w-4 h-4 flex items-center justify-center shrink-0 -ml-1 transition-opacity ${
+            isExpanded ? '' : 'opacity-0 group-hover/item:opacity-100'
+          }`}
+        >
           <button
             type="button"
             onClick={(e) => {
@@ -83,21 +111,6 @@ export function SessionItem({
           >
             {isExpanded ? <ChevronDown size={13} className="text-ink/70" /> : <ChevronRight size={13} />}
           </button>
-        ) : status ? (
-          status === 'stream' ? (
-            <Loader2 size={12} className="animate-spin text-ink/60" />
-          ) : (
-            <Check size={12} className="text-ink/60" />
-          )
-        ) : null}
-      </span>
-      {showChevron && onToggleExpand && status && (
-        <span className="w-4 h-4 flex items-center justify-center shrink-0 -ml-1">
-          {status === 'stream' ? (
-            <Loader2 size={12} className="animate-spin text-ink/60" />
-          ) : (
-            <Check size={12} className="text-ink/60" />
-          )}
         </span>
       )}
 
