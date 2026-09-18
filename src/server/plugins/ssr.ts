@@ -3,6 +3,7 @@ import { existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { getDb } from '@/server/db.server';
 import { tryServeStatic } from '@/server/plugins/static';
+import { tryProxyDevAsset } from '@/server/plugins/dev-assets';
 
 const CLIENT_INDEX = join(process.cwd(), 'dist/client/index.html');
 
@@ -75,6 +76,9 @@ export const ssrRoutes = new Elysia({ name: 'ssr' }).get('*', async ({ request }
 
   const asset = tryServeStatic(pathname);
   if (asset) return asset;
+
+  const devAsset = await tryProxyDevAsset(request, pathname);
+  if (devAsset) return devAsset;
 
   if (!existsSync(CLIENT_INDEX)) return missingBuildResponse();
 

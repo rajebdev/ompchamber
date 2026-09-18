@@ -34,9 +34,28 @@ export default defineConfig({
     dataUriLimit: 4096,
   },
 
+  // Dev-only HMR setup. The Bun server (port 3000) stays the single entry
+  // point: `writeToDisk` makes rsbuild emit the HMR-injected `index.html` and
+  // its assets into `dist/client`, so `ssr.ts` serves the shell (and injects
+  // theme/bootstrap) without changes. Asset URLs stay relative, so the Bun
+  // static handler serves everything from disk; only assets rsbuild generates
+  // per-update (hot-update chunks) miss on disk and are proxied to the dev
+  // server by `src/server/plugins/dev-assets.ts`. `dev.client.port` points the
+  // HMR websocket straight at rsbuild, because Elysia cannot proxy WebSockets.
+  ...(isDev
+    ? {
+        dev: {
+          writeToDisk: true,
+          client: { protocol: 'ws' as const, port: 3100 },
+        },
+      }
+    : {}),
   server: {
-    port: 3000,
+    port: isDev ? 3100 : 3000,
     host: '0.0.0.0',
+    // The Bun server on port 3000 is the app entry point; the rsbuild URL
+    // banner would mislead people into opening the HMR helper port instead.
+    printUrls: false,
     publicDir: { name: 'public' },
   },
 

@@ -7,8 +7,9 @@
     "ompchamber": "./src/cli/ompchamber.js"
   },
   "scripts": {
-    "dev": "bun run --watch src/server/index.ts",
+    "dev:server": "bun run --watch src/server/index.ts",
     "dev:client": "rsbuild build --watch",
+    "dev": "NODE_ENV=development bun --watch src/server/index.ts & rsbuild dev; wait",
     "build": "rsbuild build",
     "start": "NODE_ENV=production bun run src/server/index.ts",
     "typecheck": "tsc",
