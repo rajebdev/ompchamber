@@ -47,6 +47,10 @@ export default defineConfig({
         dev: {
           writeToDisk: true,
           client: { protocol: 'ws' as const, port: 3100 },
+          // Lazy compilation's runtime POSTs to /_rspack/lazy/trigger on the
+          // page origin (3000), where the endpoint only exists on the rsbuild
+          // dev server (3100) — a 404 that makes the page reload in a loop.
+          lazyCompilation: false,
         },
       }
     : {}),
