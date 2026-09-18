@@ -157,13 +157,13 @@ Bun implements `node:*` builtins natively — they do **not** shell out to a Nod
 - The `~` alias is deprecated; use `@/` exclusively.
 - **Verify**: `grep -rnE "from '\.\.?/" src --include='*.ts' --include='*.tsx' --include='*.js' | grep -v node_modules` must print nothing. `src/cli/**` is covered by this gate too — it is Bun-run plain ESM, so `@/cli/...` resolves there like everywhere else.
 
-### 4b. Import Preact Directly (the `react` alias is a third-party shim only)
+### 4b. Import Preact Directly (zero React packages)
 - **Never write `from 'react'` or `from 'react-dom'` in `src/`.** Import the runtime directly:
   - Hooks → `import { useState, useEffect, useRef } from 'preact/hooks';`
   - Components, context, portals, and React-shaped types → `import { memo, Suspense, lazy, createContext, createPortal } from 'preact/compat';`
   - Generic element/event types → `import type { TargetedMouseEvent, TargetedKeyboardEvent } from 'preact';`
-- **Why the alias still exists:** three npm packages import `'react'` inside their own published code — `react-resizable-panels`, `react-simple-code-editor`, and `react-icons`. The `react*` mappings in `tsconfig.json` (`paths`) and `pluginPreact({ reactAliasesEnabled: true })` in `rsbuild.config.ts` keep those packages on Preact. Removing them pulls real React into the bundle and breaks the typecheck in exactly four files: `common/FileIcon.tsx`, `layout/desktop-layout/{index,WorkspacePanels}.tsx`, and `workspace/editor/index.tsx`.
-- **Consequence for new code:** the alias is not an invitation. If you add a dependency that imports `react`, either pick a Preact-native alternative or hand-port it — do not widen the alias.
+- **Zero-react state:** package.json contains no React packages and `tsconfig.json`/`rsbuild.config.ts` carry no `react*` alias. The three former shim consumers were replaced: `react-icons` → `lucide-preact` + static brand SVGs (`src/client/components/common/file-icon/`), `react-simple-code-editor` → the hand-rolled editor in `src/client/components/common/code-editor/`, `react-resizable-panels` → the hand-rolled group/panel/separator trio in `src/client/components/layout/desktop-layout/resizer/`.
+- **Adding dependencies:** if a package imports `'react'` in its published code, either pick a Preact-native alternative or hand-port the small surface you need — never re-introduce a react→preact alias to accommodate it.
 - **Event types:** Preact's `MouseEvent`/`KeyboardEvent` from `preact/compat` are generics requiring one type argument. Use `TargetedMouseEvent<HTMLElement>` for JSX handlers, and the DOM's own `globalThis.MouseEvent`/`globalThis.KeyboardEvent` for native `addEventListener` callbacks and xterm handlers.
 
 ### 5. Server vs Shared vs Client Modules
@@ -212,9 +212,9 @@ Bun implements `node:*` builtins natively — they do **not** shell out to a Nod
   - Every moved/renamed file's importers are updated in the same change; grep for the old path returns nothing.
 
 ### 9. Layout & Panel Resizing
-- **Panel Width**: Be aware that the width of the layout panels (like the sidebar or right sidebar) is considered and calculated in **pixels**. When handling layout persistence or default sizes, ensure they are treated as pixel values rather than just percentages, adapting library APIs (like `react-resizable-panels`) as needed to accommodate pixel-based design intent.
+- **Panel Width**: The width of the layout panels (like the sidebar or right sidebar) is calculated in **pixels**. The hand-rolled resizer (`src/client/components/layout/desktop-layout/resizer/`) sizes fixed panels with px flex-basis and lets one filler panel absorb the remainder — keep persistence and defaults in pixels, never percentages.
 - **One remembered width PER PANEL, never per group**: the sidebar, the chat column, the editor panel (a separate width for source tabs and for diff tabs), and each of the eight right-panel views (`files`, `search`, `git`, `terminal`, `context`, `user-browser`, `browser`, `usage`) each own their width. The map and its slots live in `src/shared/lib/workspace/panel-widths.ts` (data) and `src/client/hooks/workspace/panel-widths.ts` (state + `desktopLayoutSizes` persistence); per-view defaults, minimums, and the view list live in `src/shared/lib/workspace/right-panels.ts`. Sharing one number between panels — or resetting a panel to a hard-coded width when it is toggled or switched — is exactly the bug this shape exists to prevent.
-- **Restore through the group, not the panel**: `react-resizable-panels` caches one layout per panel composition, so a returning panel would replay stale sizes. `WorkspacePanels` rebuilds the inner group's layout from the remembered pixel widths with a single `setLayout` (fixed panels take their width back, the chat column absorbs the remainder); append an entry here if a new resizable group is introduced.
+- **Restore through props, not imperative rebuilds**: a returning panel renders straight from the remembered pixel widths (its `defaultSize`), and the filler panel absorbs the remainder — no layout cache exists to go stale. Append an entry here if a new resizable group is introduced.
 
 ### 10. Route Organization & Domain Grouping
 - **Domain-Based Subdirectories**: Routes under `src/server/routes/` MUST be organized and grouped into subdirectories matching their functional domain (e.g., `src/server/routes/settings/`, `src/server/routes/chat/`, `src/server/routes/fs/`, `src/server/routes/terminal/`, `src/server/routes/telemetry/`, `src/server/routes/sessions/`, `src/server/routes/files/`, `src/server/routes/folders/`).
