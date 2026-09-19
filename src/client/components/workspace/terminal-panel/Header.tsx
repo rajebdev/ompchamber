@@ -6,6 +6,8 @@ interface TerminalHeaderProps {
   rootPath?: string;
   activeRepo: string;
   onSelectRepo: (repo: string) => void;
+  bunVersion?: string;
+  nodeVersion?: string;
 }
 
 export function TerminalHeader({
@@ -13,6 +15,8 @@ export function TerminalHeader({
   rootPath,
   activeRepo,
   onSelectRepo,
+  bunVersion,
+  nodeVersion,
 }: TerminalHeaderProps) {
   return (
     <div className="h-10 px-3 border-b border-ink/10 bg-paper flex items-center justify-between flex-shrink-0 select-none">
@@ -34,6 +38,13 @@ export function TerminalHeader({
 
         <GitRepoDropdown rootPath={rootPath} activeRepo={activeRepo} onSelectRepo={onSelectRepo} />
       </div>
+
+      {bunVersion && (
+        <span className="hidden sm:flex items-center space-x-2 text-[10px] font-mono text-ink/40 flex-shrink-0">
+          <span>Bun {bunVersion}</span>
+          {nodeVersion && <span>Node {nodeVersion}</span>}
+        </span>
+      )}
     </div>
   );
 }

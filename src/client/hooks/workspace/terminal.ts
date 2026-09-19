@@ -33,8 +33,8 @@ export function useTerminal(options?: UseTerminalOptions) {
     nodeVersion: string;
     gitBranch: string;
   }>({
-    bunVersion: '1.4.0',
-    nodeVersion: 'v22.x',
+    bunVersion: '',
+    nodeVersion: '',
     gitBranch: 'main',
   });
 
@@ -98,8 +98,8 @@ export function useTerminal(options?: UseTerminalOptions) {
       .then(data => {
         if (data && data.bunVersion) {
           setSystemInfo({
-            bunVersion: data.bunVersion || '1.4.0',
-            nodeVersion: data.nodeVersion || 'v22.x',
+            bunVersion: data.bunVersion ?? '',
+            nodeVersion: data.nodeVersion ?? '',
             gitBranch: data.gitBranch || 'main',
           });
         }

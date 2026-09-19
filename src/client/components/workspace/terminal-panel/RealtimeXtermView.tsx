@@ -209,7 +209,7 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
         if (savedOutput) {
           term.write(savedOutput);
         } else {
-          const welcome = '\x1b[1;33m[OMPChamber Realtime Terminal]\x1b[0m\r\n\x1b[90mRuntime: Bun v1.4.0 • Node v22 • remisJS Edge\x1b[0m\r\n\x1b[90mStream connected. Live xterm canvas active.\x1b[0m\r\n\r\n\x1b[33m$\x1b[0m ';
+          const welcome = '\x1b[1;33m[OMPChamber Realtime Terminal]\x1b[0m\r\n\x1b[90mStream connected. Live xterm canvas active.\x1b[0m\r\n\r\n\x1b[33m$\x1b[0m ';
           term.write(welcome);
           recordOutput(welcome);
         }

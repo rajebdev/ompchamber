@@ -43,6 +43,7 @@ export function TerminalPanel({ className = '', enabled = true, rootPath, showHe
     setTerminalInput,
     isRunning,
     cwd,
+    systemInfo,
     executeCommand,
     cancelRunningCommand,
     handleKeyDown,
@@ -75,6 +76,8 @@ export function TerminalPanel({ className = '', enabled = true, rootPath, showHe
           rootPath={rootPath}
           activeRepo={activeRepo}
           onSelectRepo={setActiveRepo}
+          bunVersion={systemInfo.bunVersion}
+          nodeVersion={systemInfo.nodeVersion}
         />
       )}
 

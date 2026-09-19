@@ -15,14 +15,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const rootDir = await resolveRoot(url.searchParams.get('root'), process.cwd());
   const targetDir = await scopeToRepo(rootDir, url.searchParams.get('repo'));
   let bunVersion = '';
-  let nodeVersion = process.version;
+  // `process.version` is the Node version Bun emulates, not a real Node binary.
+  const nodeVersion = process.version;
   let gitBranch = 'main';
 
   try {
     const bunOut = await runShell('bun --version', { cwd: targetDir });
     bunVersion = bunOut.stdout.trim();
   } catch {
-    bunVersion = '1.4.0';
+    bunVersion = Bun.version;
   }
 
   try {
