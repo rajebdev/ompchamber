@@ -20,7 +20,6 @@
 
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs } from '@/server/lib/remix-compat';
-import { statSync } from 'fs';
 import { basename, resolve } from 'path';
 import { homedir } from 'os';
 import { getDb } from '@/server/db.server';
@@ -62,7 +61,7 @@ export async function action({ request }: ActionFunctionArgs) {
   if (rawPath) {
     const candidate = expandHome(rawPath);
     try {
-      if (!statSync(candidate).isDirectory()) {
+      if (!(await Bun.file(candidate).stat()).isDirectory()) {
         return json({ error: `Not a directory: ${rawPath}`, code: 'not_a_directory' }, { status: 400 });
       }
     } catch {

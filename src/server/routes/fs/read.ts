@@ -6,7 +6,6 @@
 import { json, type LoaderFunctionArgs } from '@/server/lib/remix-compat';
 import { homedir } from 'os';
 import { dirname, isAbsolute, join, resolve } from 'path';
-import { readdirSync, statSync } from 'fs';
 import fs from 'fs';
 import path from 'path';
 import { isMockMode } from '@/server/mock.server';
@@ -47,25 +46,28 @@ export async function browseDirectories({ request }: LoaderFunctionArgs) {
 
   let entries: string[] = [];
   try {
-    entries = readdirSync(current, { withFileTypes: true })
+    entries = (await fs.promises.readdir(current, { withFileTypes: true }))
       .filter((d) => d.isDirectory() && !HIDDEN_ENTRY_PREFIXES.some((p) => d.name.startsWith(p)))
       .map((d) => d.name);
   } catch {
     return json({ error: `Cannot read directory: ${current}`, code: 'unreadable' }, { status: 400 });
   }
 
-  const directories = entries
-    .map((name) => {
-      const full = join(current, name);
-      try {
-        // Skip symlinks that point outside the tree or are broken; follow
-        // only real directories.
-        if (!statSync(full).isDirectory()) return null;
-        return { name, path: full };
-      } catch {
-        return null;
-      }
-    })
+  const directories = (
+    await Promise.all(
+      entries.map(async (name) => {
+        const full = join(current, name);
+        try {
+          // Skip symlinks that point outside the tree or are broken; follow
+          // only real directories.
+          if (!(await Bun.file(full).stat()).isDirectory()) return null;
+          return { name, path: full };
+        } catch {
+          return null;
+        }
+      }),
+    )
+  )
     .filter((entry): entry is { name: string; path: string } => entry !== null)
     .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -81,31 +83,33 @@ export async function browseDirectories({ request }: LoaderFunctionArgs) {
 // emitted with `children: null` meaning "not loaded yet" so the client can
 // fetch them on demand — directories are NOT recursed here (keeps the initial
 // payload tiny for deep workspaces).
-function listEntries(dirPath: string, rootPath: string): any[] {
-  const entries = fs.readdirSync(dirPath)
-    .filter(child => !child.startsWith('.') && child !== 'node_modules' && child !== '.git' && child !== 'dist' && child !== 'build')
-    .map(child => {
-      const full = path.join(dirPath, child);
-      try {
-        const st = fs.statSync(full);
-        const rel = path.relative(rootPath, full);
-        if (st.isDirectory()) {
-          return { id: rel, name: child, type: 'folder', path: rel, children: null, is_expanded: 0 };
-        }
-        return { id: rel, name: child, type: 'file', path: rel };
-      } catch {
-        return null; // unreadable entry / broken symlink — skip
-      }
-    })
-    .filter((x): x is any => Boolean(x));
+async function listEntries(dirPath: string, rootPath: string): Promise<any[]> {
+  const entries = (await fs.promises.readdir(dirPath))
+    .filter(child => !child.startsWith('.') && child !== 'node_modules' && child !== '.git' && child !== 'dist' && child !== 'build');
 
-  entries.sort((a, b) => {
+  const mapped = await Promise.all(entries.map(async child => {
+    const full = path.join(dirPath, child);
+    try {
+      const st = await Bun.file(full).stat();
+      const rel = path.relative(rootPath, full);
+      if (st.isDirectory()) {
+        return { id: rel, name: child, type: 'folder', path: rel, children: null, is_expanded: 0 };
+      }
+      return { id: rel, name: child, type: 'file', path: rel };
+    } catch {
+      return null; // unreadable entry / broken symlink — skip
+    }
+  }));
+
+  const result = mapped.filter((x): x is any => Boolean(x));
+
+  result.sort((a, b) => {
     if (a.type === 'folder' && b.type === 'file') return -1;
     if (a.type === 'file' && b.type === 'folder') return 1;
     return a.name.localeCompare(b.name);
   });
 
-  return entries;
+  return result;
 }
 
 export async function listDirectory({ request }: LoaderFunctionArgs) {
@@ -132,7 +136,7 @@ export async function listDirectory({ request }: LoaderFunctionArgs) {
   }
 
   try {
-    const files = listEntries(fullPath, baseDir);
+    const files = await listEntries(fullPath, baseDir);
     return json({ files, isMock: mock, root: baseDir, path: targetPath });
   } catch (error) {
     console.error(error);
@@ -156,12 +160,12 @@ interface ListFileEntry {
  * path from `baseDir`. Hidden entries, skip-listed dirs, and symlinks (which
  * could cycle) are ignored; unreadable directories are skipped silently.
  */
-function walk(dir: string, baseDir: string, out: ListFileEntry[]): void {
+async function walk(dir: string, baseDir: string, out: ListFileEntry[]): Promise<void> {
   if (out.length >= MAX_FILES) return;
 
   let entries: fs.Dirent[];
   try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
+    entries = await fs.promises.readdir(dir, { withFileTypes: true });
   } catch {
     return;
   }
@@ -173,7 +177,7 @@ function walk(dir: string, baseDir: string, out: ListFileEntry[]): void {
 
     if (entry.isDirectory()) {
       if (SKIP_DIRS.has(entry.name)) continue;
-      walk(path.join(dir, entry.name), baseDir, out);
+      await walk(path.join(dir, entry.name), baseDir, out);
       continue;
     }
 
@@ -193,7 +197,7 @@ export async function listFiles({ request }: LoaderFunctionArgs) {
 
   try {
     const files: ListFileEntry[] = [];
-    walk(baseDir, baseDir, files);
+    await walk(baseDir, baseDir, files);
     files.sort((a, b) => a.path.localeCompare(b.path));
     return json({ files, root: baseDir, truncated: files.length >= MAX_FILES });
   } catch (error) {
