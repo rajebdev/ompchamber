@@ -87,6 +87,19 @@ export function canonicalize(value: string): string {
 }
 
 /**
+ * Comparison key for a project path. Realpath resolution alone is not enough
+ * to match two spellings of the same directory: macOS reports `/var/...` while
+ * its realpath is `/private/var/...`, and a tombstone written before the path
+ * existed keeps its unresolved form. Canonicalizing both sides plus a
+ * trailing-separator strip makes the two forms comparable.
+ */
+export function projectPathKey(value: string): string {
+  const canonical = canonicalize(value);
+  const withoutTrailingSeparators = canonical.replace(/\/+$/, '');
+  return withoutTrailingSeparators || canonical;
+}
+
+/**
  * Session directory slug for a cwd — faithful port of
  * getDefaultSessionDirName (oh-my-pi session-paths.ts):
  * - under $HOME: "-" + relative path with [/\:] replaced by dashes ("-" for $HOME itself)

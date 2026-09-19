@@ -23,6 +23,7 @@ import type { ActionFunctionArgs } from '@/server/lib/remix-compat';
 import { basename, resolve } from 'path';
 import { homedir } from 'os';
 import { getDb } from '@/server/db.server';
+import { projectPathKey } from '@/server/lib/omp/core/paths';
 
 function expandHome(value: string): string {
   if (value === '~') return homedir();
@@ -76,7 +77,15 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   if (projectPath) {
-    await db.run('DELETE FROM deleted_workspaces WHERE project_path = ?', [projectPath]);
+    // Tombstones may hold the unresolved spelling of the same directory, so
+    // clear by canonical key instead of an exact string match.
+    const stale = await db.all('SELECT project_path FROM deleted_workspaces');
+    const target = projectPathKey(projectPath);
+    for (const row of stale) {
+      if (typeof row.project_path !== 'string') continue;
+      if (projectPathKey(row.project_path) !== target) continue;
+      await db.run('DELETE FROM deleted_workspaces WHERE project_path = ?', [row.project_path]);
+    }
   }
 
   const result = await db.run(

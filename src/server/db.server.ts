@@ -7,6 +7,7 @@ import { SAMPLE_TOOLS_SESSION_ID, getSampleToolsSession } from '@/client/data/sa
 import { SAMPLE_DIALOGUE_SESSION_ID, getSampleDialogueSession } from '@/client/data/samples/dialogue-session';
 import { SAMPLE_DEVICES_SESSION_ID, getSampleDevicesSession } from '@/client/data/samples/virtual-devices-session';
 import { loadOmpSidebarData } from '@/server/lib/omp/session/reader';
+import { projectPathKey } from '@/server/lib/omp/core/paths';
 
 let dbPromise: Promise<DbClient> | null = null;
 
@@ -309,15 +310,18 @@ async function syncWorkspaceFoldersWithOmp(db: DbClient): Promise<void> {
   const { orderedOmpProjects, projectDisplayName } = await import('@/shared/lib/omp/session/sidebar');
 
   const data = await loadOmpSidebarData();
-  const existing = await db.all('SELECT id, name, project_path FROM workspace_folders');  const tombstoned = await db.all('SELECT project_path FROM deleted_workspaces');
+  const existing = await db.all('SELECT id, name, project_path FROM workspace_folders');
+  const tombstoned = await db.all('SELECT project_path FROM deleted_workspaces');
 
-  const byPath = new Set(existing.map((r) => r.project_path).filter(Boolean));
+  // Compare by canonical key, not raw string: tombstones may predate the
+  // directory (unresolved symlink spelling) while project.path is realpath'd.
+  const byPath = new Set(existing.map((r) => r.project_path).filter(Boolean).map(projectPathKey));
   const usedNames = new Set(existing.map((r) => (r.name as string).toLowerCase()));
-  const deletedPaths = new Set(tombstoned.map((r) => r.project_path as string));
+  const deletedPaths = new Set(tombstoned.map((r) => projectPathKey(r.project_path as string)));
 
   for (const project of orderedOmpProjects(data)) {
-    if (deletedPaths.has(project.path)) continue;
-    if (byPath.has(project.path)) continue;
+    if (deletedPaths.has(projectPathKey(project.path))) continue;
+    if (byPath.has(projectPathKey(project.path))) continue;
 
     const name = projectDisplayName(project);
     let candidate = name;
