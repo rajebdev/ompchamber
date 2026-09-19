@@ -16,6 +16,7 @@
 
 import { promises as fsp } from 'fs';
 import { dirname, join } from 'path';
+import { pathExists } from '@/server/lib/omp/core/paths';
 
 declare global {
   var __ompChamberProjectCache: Map<string, { root: string; expiresAt: number }> | undefined;
@@ -28,15 +29,6 @@ async function realPathOrSelf(filePath: string): Promise<string> {
     return await fsp.realpath(filePath);
   } catch {
     return filePath;
-  }
-}
-
-async function pathExists(target: string): Promise<boolean> {
-  try {
-    await Bun.file(target).stat();
-    return true;
-  } catch {
-    return false;
   }
 }
 

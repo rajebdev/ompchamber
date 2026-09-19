@@ -24,6 +24,7 @@ import { healStaleStreamStatuses, loadStreamStatuses } from '@/shared/lib/omp/se
 import { getRunningRpcSessionIds } from '@/server/lib/omp/rpc/session-registry';
 import { siblingDirForSession } from '@/server/lib/omp/subagent/history/paths';
 import { extractSubagentHistory } from '@/server/lib/omp/subagent/history';
+import { pathExists } from '@/server/lib/omp/core/paths';
 import type { SessionItemData, SessionSortOption, WorkspaceFolderData } from '@/shared/types';
 import type { OmpSession } from '@/shared/types/omp/session';
 
@@ -169,7 +170,7 @@ async function buildRealFolders(folderRows: FolderRow[], archivedIds: Set<string
       if (session.path) {
         try {
           const siblingDir = siblingDirForSession(session.path);
-          if (await Bun.file(siblingDir).exists()) {
+          if (await pathExists(siblingDir)) {
             const files = await fsp.promises.readdir(siblingDir);
             hasSub = files.some((f) => f.endsWith('.jsonl'));
           }

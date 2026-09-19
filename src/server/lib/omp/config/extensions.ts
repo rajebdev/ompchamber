@@ -11,7 +11,7 @@
 
 import fs from 'fs';
 import { join } from 'path';
-import { getAgentDir } from '@/server/lib/omp/core/paths';
+import { getAgentDir, pathExists } from '@/server/lib/omp/core/paths';
 import { isRecord } from '@/server/lib/omp/config/mcp';
 
 export interface DiscoveredExtension {
@@ -27,7 +27,7 @@ const EXTENSION_GLOB = new Bun.Glob('*.{ts,js,mjs,cjs}');
 const MAX_EXTENSION_BYTES = 2 * 1024 * 1024;
 
 async function scanExtensionsDir(dir: string, sourceRoot: 'user' | 'project', disabled: Set<string>): Promise<DiscoveredExtension[]> {
-  if (!(await Bun.file(dir).exists())) return [];
+  if (!(await pathExists(dir))) return [];
   try {
     const found: DiscoveredExtension[] = [];
     for (const relativePath of EXTENSION_GLOB.scanSync({ cwd: dir, onlyFiles: true })) {

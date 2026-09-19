@@ -10,6 +10,7 @@
  */
 
 import { homedir } from 'os';
+import { pathExists } from '@/server/lib/omp/core/paths';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 
 export interface AgentEvent {
@@ -150,16 +151,6 @@ export function validateAgentImages(images: unknown): string | null {
 export function toImageContents(value: unknown): Array<{ type: 'image'; data: string; mimeType: string }> | undefined {
   const images = value as Array<{ type: 'image'; data: string; mimeType: string }> | undefined;
   return images?.length ? images : undefined;
-}
-
-/** True when `path` exists (file, dir, or resolvable symlink). */
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await Bun.file(path).stat();
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /** Pick a spawn cwd that actually exists. A session records the directory it

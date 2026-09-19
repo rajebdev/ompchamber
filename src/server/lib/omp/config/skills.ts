@@ -12,7 +12,7 @@
 
 import fs from 'fs';
 import { join } from 'path';
-import { getAgentDir } from '@/server/lib/omp/core/paths';
+import { getAgentDir, pathExists } from '@/server/lib/omp/core/paths';
 
 const MAX_SKILL_MD_BYTES = 512 * 1024;
 
@@ -67,7 +67,7 @@ async function parseSkillMd(filePath: string, sourceRoot: 'user' | 'project'): P
  * SKILL.md) or nested layouts — any SKILL.md within depth 2 is accepted.
  */
 async function scanSkillRoot(root: string, sourceRoot: 'user' | 'project'): Promise<DiscoveredSkill[]> {
-  if (!(await Bun.file(root).exists())) return [];
+  if (!(await pathExists(root))) return [];
   const found: DiscoveredSkill[] = [];
   try {
     const entries = await fs.promises.readdir(root, { withFileTypes: true });

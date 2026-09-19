@@ -87,6 +87,22 @@ export function canonicalize(value: string): string {
 }
 
 /**
+ * True when a path exists — directory, file, or resolvable symlink. Use this
+ * instead of `Bun.file(p).exists()`: that method answers for regular files
+ * only and reports false for a directory that exists, so a directory guard
+ * silently empties every scan behind it. `stat()` follows symlinks like
+ * `existsSync` and throws for missing or dangling paths.
+ */
+export async function pathExists(target: string): Promise<boolean> {
+  try {
+    await Bun.file(target).stat();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Comparison key for a project path. Realpath resolution alone is not enough
  * to match two spellings of the same directory: macOS reports `/var/...` while
  * its realpath is `/private/var/...`, and a tombstone written before the path

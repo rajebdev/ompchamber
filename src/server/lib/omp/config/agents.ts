@@ -12,7 +12,7 @@
 
 import fs from 'fs';
 import { join } from 'path';
-import { getAgentDir } from '@/server/lib/omp/core/paths';
+import { getAgentDir, pathExists } from '@/server/lib/omp/core/paths';
 
 export interface DiscoveredAgent {
   id: string;
@@ -85,7 +85,7 @@ async function parseAgentFile(filePath: string, sourceRoot: 'user' | 'project'):
 }
 
 async function scanAgentsDir(dir: string, sourceRoot: 'user' | 'project'): Promise<DiscoveredAgent[]> {
-  if (!(await Bun.file(dir).exists())) return [];
+  if (!(await pathExists(dir))) return [];
   try {
     const found: DiscoveredAgent[] = [];
     for (const entry of await fs.promises.readdir(dir, { withFileTypes: true })) {

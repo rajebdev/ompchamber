@@ -22,7 +22,7 @@
 import { listAllSessionInfos, type OmpSessionInfo } from '@/server/lib/omp/session/files';
 import { loadProjectRegistry, mergeProjects } from '@/server/lib/omp/core/registry';
 import { resolveProjectRoot } from '@/server/lib/omp/core/worktree';
-import { getAgentDir, getSessionsDir } from '@/server/lib/omp/core/paths';
+import { getAgentDir, getSessionsDir, pathExists } from '@/server/lib/omp/core/paths';
 import type { OmpProject, OmpSession, OmpSidebarData } from '@/shared/types/omp/session';
 
 const CONCURRENCY = 6;
@@ -115,7 +115,7 @@ function discoveredProjectPaths(sessions: OmpSessionInfo[]): string[] {
 async function buildOmpSidebarData(): Promise<OmpSidebarData> {
   const agentDir = getAgentDir();
   const sessionsDir = getSessionsDir();
-  const available = await Bun.file(sessionsDir).exists();
+  const available = await pathExists(sessionsDir);
 
   const ompSessions = await listAllSessionInfos(sessionsDir);
   const projectRootByCwd = await resolveRootsByCwd(
@@ -144,7 +144,7 @@ async function buildOmpSidebarData(): Promise<OmpSidebarData> {
 /** Convenience: only the project list (cheap — no per-session git lookups). */
 export async function loadOmpProjects(): Promise<OmpProject[]> {
   const sessionsDir = getSessionsDir();
-  const ompSessions = (await Bun.file(sessionsDir).exists()) ? await listAllSessionInfos(sessionsDir) : [];
+  const ompSessions = (await pathExists(sessionsDir)) ? await listAllSessionInfos(sessionsDir) : [];
   const registry = await loadProjectRegistry();
   return mergeProjects(registry, discoveredProjectPaths(ompSessions));
 }

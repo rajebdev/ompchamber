@@ -13,6 +13,7 @@
 
 import path from 'path';
 import { getDb } from '@/server/db.server';
+import { pathExists } from '@/server/lib/omp/core/paths';
 
 const APP_ROOT = process.cwd();
 
@@ -23,7 +24,7 @@ const APP_ROOT = process.cwd();
 export async function getDefaultFsRoot(mock: boolean): Promise<string> {
   if (mock) {
     const examplesDir = path.join(APP_ROOT, 'examples');
-    if (await Bun.file(examplesDir).exists()) return examplesDir;
+    if (await pathExists(examplesDir)) return examplesDir;
   }
   return APP_ROOT;
 }
@@ -46,7 +47,7 @@ export async function resolveRoot(
 
   // Fast path: the app root and anything beneath it are always allowed.
   if (resolved === APP_ROOT || resolved.startsWith(APP_ROOT + path.sep)) {
-    return (await Bun.file(resolved).exists()) ? resolved : fallback;
+    return (await pathExists(resolved)) ? resolved : fallback;
   }
 
   // Registered workspaces are user-opted project roots — allow exact matches.
@@ -56,7 +57,7 @@ export async function resolveRoot(
       'SELECT project_path FROM workspace_folders WHERE project_path IS NOT NULL AND project_path = ? LIMIT 1',
       [resolved]
     );
-    if (row && (await Bun.file(resolved).exists())) return resolved;
+    if (row && (await pathExists(resolved))) return resolved;
   } catch {
     // Database unavailable — fall through to the safe fallback.
   }
