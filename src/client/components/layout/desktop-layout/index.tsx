@@ -100,6 +100,26 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
     return () => cancelAnimationFrame(frame);
   }, [showLeftPanel, widthsRef]);
 
+  // The right panel survives activity-bar view switches (only CSS hides the
+  // outgoing view), so a mounted panel never re-reads its defaultSize. The
+  // width the incoming view remembers must be pushed on imperatively; a
+  // toggle-on remount already derives from defaultSize, making this a no-op.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      applyWidth(rightPanelRef, widthsRef.current?.right?.[activeRightPanel]);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [showRightPanel, activeRightPanel, widthsRef]);
+
+  // Same story for the editor across a source↔diff tab switch: the panel
+  // stays mounted, so the width its tab kind remembers is re-applied here.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      applyWidth(editorPanelRef, widthsRef.current?.[editorWidthMode]);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [showEditor, editorWidthMode, widthsRef]);
+
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategoryId>('appearance');
   const [autoOpenAddProvider, setAutoOpenAddProvider] = useState(false);
