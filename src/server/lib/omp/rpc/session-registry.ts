@@ -274,7 +274,7 @@ export async function startNewRpcSession(
   }
 
   if (!wrapper) {
-    return startRpcSession(`__new__${crypto.randomUUID()}`, '', cwd, undefined, mode);
+    return startRpcSession(`__new__${Bun.randomUUIDv7()}`, '', cwd, undefined, mode);
   }
 
   const registry = getRegistry();
