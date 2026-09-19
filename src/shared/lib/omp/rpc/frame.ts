@@ -24,7 +24,7 @@ interface PendingChunks {
   count: number;
   byteLength: number;
   nextIndex: number;
-  chunks: Buffer[];
+  chunks: Uint8Array[];
   receivedBytes: number;
 }
 
@@ -36,19 +36,39 @@ function isSafeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value);
 }
 
-function lineByteLength(value: string): number {
-  return Buffer.byteLength(value, 'utf8') + 1;
+function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
 }
 
-function decodeBase64(value: unknown): Buffer {
+function lineByteLength(value: string): number {
+  return utf8ByteLength(value) + 1;
+}
+
+/** Strict base64 decode (canonical padding + round-trip equality). */
+function decodeBase64(value: unknown): Uint8Array {
   if (
     typeof value !== 'string' ||
     value.length === 0 ||
     !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)
   ) throw new Error('invalid RPC chunk data');
-  const bytes = Buffer.from(value, 'base64');
-  if (bytes.toString('base64') !== value) throw new Error('invalid RPC chunk data');
+  let bytes: Uint8Array;
+  try {
+    bytes = Uint8Array.fromBase64(value, { lastChunkHandling: 'strict' });
+  } catch {
+    throw new Error('invalid RPC chunk data');
+  }
+  if (bytes.toBase64() !== value) throw new Error('invalid RPC chunk data');
   return bytes;
+}
+
+function concatChunks(chunks: Uint8Array[], byteLength: number): Uint8Array {
+  const merged = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return merged;
 }
 
 /** Decodes complete logical frames from parsed JSONL records. */
@@ -87,7 +107,7 @@ export class RpcFrameDecoder {
     if (pending.receivedBytes !== pending.byteLength) throw new Error('RPC chunk sequence length mismatch');
 
     this.pending = undefined;
-    const json = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(pending.chunks));
+    const json = new TextDecoder('utf-8', { fatal: true }).decode(concatChunks(pending.chunks, pending.byteLength));
     const frame: unknown = JSON.parse(json);
     if (!isRecord(frame) || typeof frame.type !== 'string') throw new Error('RPC frame must be an object');
     return frame as RpcFrameRecord;
@@ -99,14 +119,14 @@ export function encodeRpcFrames(frame: RpcFrameRecord, protocolVersion: RpcProto
   const json = JSON.stringify(frame);
   if (lineByteLength(json) <= MAX_RPC_FRAME_BYTES) return [`${json}\n`];
   if (protocolVersion === 1) throw new Error('RPC frame exceeds the v1 transport limit');
-  const bytes = Buffer.from(json, 'utf8');
+  const bytes = new TextEncoder().encode(json);
   if (bytes.byteLength > MAX_RPC_REASSEMBLED_BYTES) throw new Error('RPC frame exceeds the v2 reassembly limit');
   const count = Math.ceil(bytes.byteLength / RPC_CHUNK_PAYLOAD_BYTES);
   const lines: string[] = [];
   for (let index = 0; index < count; index++) {
     const chunk = {
       type: 'rpc_chunk', chunkId, index, count, byteLength: bytes.byteLength,
-      data: bytes.subarray(index * RPC_CHUNK_PAYLOAD_BYTES, (index + 1) * RPC_CHUNK_PAYLOAD_BYTES).toString('base64'),
+      data: bytes.subarray(index * RPC_CHUNK_PAYLOAD_BYTES, (index + 1) * RPC_CHUNK_PAYLOAD_BYTES).toBase64(),
     };
     const line = JSON.stringify(chunk);
     if (lineByteLength(line) > MAX_RPC_FRAME_BYTES) throw new Error('RPC chunk exceeds the transport limit');
