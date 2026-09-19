@@ -74,7 +74,7 @@ export const ssrRoutes = new Elysia({ name: 'ssr' }).get('*', async ({ request }
     });
   }
 
-  const asset = tryServeStatic(pathname);
+  const asset = await tryServeStatic(pathname);
   if (asset) return asset;
 
   const devAsset = await tryProxyDevAsset(request, pathname);

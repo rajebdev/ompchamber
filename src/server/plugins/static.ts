@@ -1,4 +1,3 @@
-import { existsSync, statSync } from 'fs';
 import { extname, join, normalize, resolve, sep } from 'path';
 
 /**
@@ -48,9 +47,13 @@ function resolveWithin(root: string, pathname: string): string | null {
   return candidate;
 }
 
-function serveFile(filePath: string, cacheControl: string): Response | null {
-  if (!existsSync(filePath)) return null;
-  const stat = statSync(filePath);
+async function serveFile(filePath: string, cacheControl: string): Promise<Response | null> {
+  let stat;
+  try {
+    stat = await Bun.file(filePath).stat();
+  } catch {
+    return null;
+  }
   if (!stat.isFile()) return null;
 
   const type = MIME[extname(filePath).toLowerCase()] ?? 'application/octet-stream';
@@ -66,7 +69,7 @@ function serveFile(filePath: string, cacheControl: string): Response | null {
 }
 
 /** A file for `pathname`, or null when the request should reach the app. */
-export function tryServeStatic(pathname: string): Response | null {
+export async function tryServeStatic(pathname: string): Promise<Response | null> {
   if (pathname.startsWith('/static/')) {
     const filePath = resolveWithin(CLIENT_ROOT, pathname);
     return filePath ? serveFile(filePath, ASSET_CACHE) : null;
