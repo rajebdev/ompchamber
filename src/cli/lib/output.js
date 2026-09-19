@@ -20,7 +20,7 @@ export function isJson() {
 }
 
 function colorsEnabled() {
-  return Boolean(process.stdout && process.stdout.isTTY) && !Bun.env.NO_COLOR;
+  return Bun.enableANSIColors;
 }
 
 function paint(open, close, text) {
@@ -33,7 +33,8 @@ function paint(open, close, text) {
 
 /**
  * ANSI helpers. Every entry is `(text) => string` and degrades to a plain
- * pass-through when stdout is not a TTY or NO_COLOR is set.
+ * pass-through when Bun reports ANSI colors unsupported (non-TTY stdout,
+ * NO_COLOR set, or FORCE_COLOR=0).
  */
 export const color = {
   red: (text) => paint(31, 39, text),
