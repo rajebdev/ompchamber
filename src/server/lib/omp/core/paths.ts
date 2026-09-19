@@ -13,7 +13,7 @@
  * and the XDG data layout (used only when $XDG_DATA_HOME/omp already exists).
  */
 
-import { existsSync, realpathSync, statSync } from 'fs';
+import { existsSync, realpathSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import * as path from 'path';
 
@@ -116,13 +116,4 @@ function encodeRelativeSessionDirName(prefix: string, relative: string): string 
 function encodeLegacyAbsoluteSessionDirName(cwd: string): string {
   const resolvedCwd = path.resolve(cwd);
   return `--${resolvedCwd.replace(/^[/\\]/, '').replace(/[/\\:]/g, '-')}--`;
-}
-
-/** Whether a directory exists (statSync guard). */
-export function isDirectory(value: string): boolean {
-  try {
-    return statSync(value).isDirectory();
-  } catch {
-    return false;
-  }
 }
