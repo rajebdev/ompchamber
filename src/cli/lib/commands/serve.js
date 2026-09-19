@@ -1,7 +1,5 @@
 // `ompchamber serve` — start the Remix dev or production server.
 
-import fs from 'node:fs';
-
 import { joinPath } from '@/cli/lib/path-utils.js';
 import {
   spawnDetachedServer,
@@ -49,7 +47,7 @@ export async function run(options, ctx) {
 
   if (mode === 'prod') {
     const serverEntry = joinPath(pkgRoot, 'dist', 'client', 'index.html');
-    if (!fs.existsSync(serverEntry)) {
+    if (!(await Bun.file(serverEntry).exists())) {
       fail(`Production build not found at ${serverEntry}.\nRun \`bun run build\` first, then retry with --prod.`);
     }
   }
