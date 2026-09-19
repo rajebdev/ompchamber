@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown } from 'lucide-preact';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
+import { usePanelRefresh } from '@/client/hooks/workspace/panel-refresh';
 import type { RawMessageItem } from '@/shared/types';
 import { RawJsonViewer } from '@/client/components/workspace/context-panel/RawJsonViewer';
 
@@ -94,10 +95,10 @@ export function RawMessagesList({ sessionId, refreshKey = 0 }: RawMessagesListPr
   const requestSeqRef = useRef(0);
   const cancelledRef = useRef(false);
 
-  const loadPage = useCallback(() => {
+  const loadPage = useCallback((opts?: { silent?: boolean }) => {
     if (typeof window === 'undefined') return;
     const seq = ++requestSeqRef.current;
-    setLoading(true);
+    if (!opts?.silent) setLoading(true);
     const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE), role: filterRole });
     if (sessionId) params.set('sessionId', sessionId);
     fetch(`/api/telemetry/raw-messages?${params.toString()}`)
@@ -113,7 +114,7 @@ export function RawMessagesList({ sessionId, refreshKey = 0 }: RawMessagesListPr
         setFilteredTotal(0);
       })
       .finally(() => {
-        if (seq === requestSeqRef.current) setLoading(false);
+        if (!opts?.silent && seq === requestSeqRef.current) setLoading(false);
       });
   }, [sessionId, page, filterRole]);
 
@@ -124,6 +125,11 @@ export function RawMessagesList({ sessionId, refreshKey = 0 }: RawMessagesListPr
       cancelledRef.current = true;
     };
   }, [loadPage, refreshKey]);
+
+  // Auto refresh: silent — the spinner stays reserved for the user's own
+  // interactions (page flips, filter, refresh button). The seq guard above
+  // keeps a slow poll response from clobbering a newer user-driven page load.
+  usePanelRefresh(() => loadPage({ silent: true }), sessionId !== null);
 
   const totalPages = Math.max(1, Math.ceil(filteredTotal / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);

@@ -18,8 +18,12 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'p
 import { createContext } from 'preact/compat';
 import type { ReactNode } from 'preact/compat';
 import { useFetcher } from '@/client/lib/router/fetcher';
+import { usePanelRefresh } from '@/client/hooks/workspace/panel-refresh';
 import type { WorkspaceFolderData } from '@/shared/types';
 import type { SidebarData } from '@/server/lib/omp/session/sidebar-data.server';
+
+/** Slow keep-alive cadence (ms) for external changes while nothing streams. */
+const SIDEBAR_IDLE_REFRESH_MS = 15000;
 
 export interface SidebarDataHandle {
   folders: WorkspaceFolderData[];
@@ -69,6 +73,14 @@ export function SidebarDataProvider({ children, initialFolders = [] }: { childre
       if (fetcher.state === 'idle') void fetcher.load('/api/sessions/list');
     };
   }, [fetcher]);
+
+  // Idle keep-alive: the throttled stream-event hook and useStreamPoll only
+  // fire while THIS client streams, so changes made elsewhere (another tab,
+  // a background omp process finishing, an archive from a second browser)
+  // never surfaced until the user interacted. A slow poll closes that gap;
+  // the idle-check above keeps it from piling onto a load the event path
+  // just started.
+  usePanelRefresh(refresh, true, SIDEBAR_IDLE_REFRESH_MS);
 
   const markSeen = useCallback((sessionId: number | string) => {
     const key = String(sessionId);
