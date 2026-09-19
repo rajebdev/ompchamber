@@ -41,6 +41,7 @@ function makeDeps() {
     interruptPendingRef: { current: false },
     activityRef: { current: '' },
     currentThinkingLevelRef: { current: undefined },
+    fileMutatingCallsRef: { current: new Set<string>() },
   };
   return { deps, ended, activity };
 }

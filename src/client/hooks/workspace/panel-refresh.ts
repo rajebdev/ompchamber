@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'preact/hooks';
+import { FILE_MUTATION_EVENT } from '@/shared/lib/chat/omp/file-mutations';
 
 /**
  * Cadence (ms) the data-bearing right panels re-read their source at. Panels
@@ -67,4 +68,45 @@ export function usePanelRefresh(
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [enabled, intervalMs]);
+}
+
+/** Coalescing window (ms) for back-to-back mutation events; mirrors the
+ *  sidebar's `useSidebarRevalidation` trailing throttle. */
+const FILE_MUTATION_THROTTLE_MS = 500;
+
+/**
+ * Event-driven companion to `usePanelRefresh`: re-invokes `callback` shortly
+ * after `omp:files-mutated` fires — the chat fold dispatches it when a
+ * file-mutating tool (edit / write / ast_edit / bash) completes. Panels keep
+ * their poll as the belt; this just removes the up-to-2s staleness after an
+ * AI edit. Same in-flight guard and visibility pause as the poll. Throttled
+ * because a bash that touches many files still ends once, but a burst of
+ * quick tool calls should collapse to one re-read.
+ */
+export function useFileMutationRefresh(
+  callback: () => void | Promise<unknown>,
+  enabled: boolean,
+  throttleMs: number = FILE_MUTATION_THROTTLE_MS,
+) {
+  const cbRef = useRef(callback);
+  cbRef.current = callback;
+
+  useEffect(() => {
+    if (!enabled) return;
+    let timer: number | undefined;
+    const schedule = () => {
+      clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        timer = undefined;
+        if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+          void cbRef.current();
+        }
+      }, throttleMs);
+    };
+    window.addEventListener(FILE_MUTATION_EVENT, schedule);
+    return () => {
+      window.removeEventListener(FILE_MUTATION_EVENT, schedule);
+      clearTimeout(timer);
+    };
+  }, [enabled, throttleMs]);
 }

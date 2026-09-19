@@ -10,7 +10,7 @@ import { GitChangesList } from '@/client/components/workspace/git-panel/ChangesL
 import { Toast } from '@/client/components/common/Toast';
 import { useToasts } from '@/client/hooks/ui/toasts';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
-import { usePanelRefresh } from '@/client/hooks/workspace/panel-refresh';
+import { usePanelRefresh, useFileMutationRefresh } from '@/client/hooks/workspace/panel-refresh';
 
 interface GitPanelProps {
   className?: string;
@@ -81,6 +81,9 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
   // re-reads via `fetcher.load`, whose `t` param busts the cache; a load
   // already in flight is ignored by the loader so polls cannot pile up.
   usePanelRefresh(() => loadRepo(storedActiveRepo), enabled && activeRepoReady);
+  // Agent edits/commits land between poll ticks: re-read right after a
+  // file-mutating tool finishes so the change list tracks the AI's work.
+  useFileMutationRefresh(() => loadRepo(storedActiveRepo), enabled && activeRepoReady);
 
   useEffect(() => {
     if (fetcher.data?.activeRepo && fetcher.data.activeRepo !== storedActiveRepo) {

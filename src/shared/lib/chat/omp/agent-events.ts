@@ -19,6 +19,7 @@ import { extractTextFromContent, toChatMessage, toolResultText } from '@/shared/
 import { normalizeThinkingLevel } from '@/shared/lib/models/thinking-levels';
 import { PHASE_VERBS } from '@/shared/lib/chat/timeline/tool-phrases';
 import { describeAssistantPhase, describeToolActivity } from '@/shared/lib/chat/timeline/tool-verbs';
+import { FILE_MUTATION_EVENT, isFileMutatingTool } from '@/shared/lib/chat/omp/file-mutations';
 
 /** Tool output accumulated between a `toolCall` block and its result frame. */
 export interface ToolResultRecord {
@@ -65,6 +66,8 @@ export interface OmpAgentFoldDeps {
   /** Thinking level in effect for the live run (last `thinking_level_changed`
    *  frame); stamped onto assistant turns as they stream. */
   currentThinkingLevelRef: RefObject<string | undefined>;
+  /** toolCallIds of in-flight file-mutating calls, cleared on `agent_start`. */
+  fileMutatingCallsRef: RefObject<Set<string>>;
 }
 
 /** Publish a new indicator phrase, skipping repeats (thinking/text deltas
@@ -152,6 +155,7 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
     case 'agent_start':
       deps.setState((prev) => ({ ...prev, isGenerating: true, error: null }));
       deps.toolResultsRef.current?.clear();
+      deps.fileMutatingCallsRef.current?.clear();
       deps.lastToolMessageRef.current = null;
       deps.interruptPendingRef.current = false;
       // A fresh run restarts level tracking; the first turn relies on the
@@ -220,6 +224,11 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
         intent: typeof data.intent === 'string' ? data.intent : undefined,
       }), deps);
       if (callId) deps.toolResultsRef.current?.set(callId, { output: '' });
+      // Remember whether this call can change workspace files; the end frame
+      // then signals the data panels to re-read (see file-mutations.ts).
+      if (callId && isFileMutatingTool({ toolName: data.toolName, args: data.args })) {
+        deps.fileMutatingCallsRef.current?.add(callId);
+      }
       const last = deps.lastToolMessageRef.current;
       if (last?.toolCalls?.some(tc => tc.id === callId)) {
         deps.lastToolMessageRef.current = {
@@ -253,6 +262,14 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
         details: (data.details && typeof data.details === 'object' ? data.details : undefined) as ToolResultRecord['details'],
       });
       refreshToolMessage(callId, deps);
+      // A file-mutating tool just finished — tell the data-bearing right panels
+      // (files / git / context) to re-read now, not on their next poll tick.
+      // Guarded: the fold also runs headless under `bun test` (no window).
+      if (typeof window !== 'undefined' && deps.fileMutatingCallsRef.current?.delete(callId)) {
+        window.dispatchEvent(new CustomEvent(FILE_MUTATION_EVENT, {
+          detail: { sessionId: deps.sessionId },
+        }));
+      }
       break;
     }
 

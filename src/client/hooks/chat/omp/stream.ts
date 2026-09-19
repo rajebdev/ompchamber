@@ -29,6 +29,8 @@ export interface OmpStreamRefs {
   activityRef: RefObject<string>;
   /** Live thinking level (last `thinking_level_changed` frame). */
   currentThinkingLevelRef: RefObject<string | undefined>;
+  /** toolCallIds of in-flight file-mutating calls (see file-mutations.ts). */
+  fileMutatingCallsRef: RefObject<Set<string>>;
 }
 
 interface UseOmpAgentStreamOptions extends OmpStreamRefs {
@@ -50,6 +52,7 @@ export function useOmpAgentStream({
   interruptPendingRef,
   activityRef,
   currentThinkingLevelRef,
+  fileMutatingCallsRef,
   transport,
 }: UseOmpAgentStreamOptions) {
   const connectionRef = useRef<AgentStreamConnection | null>(null);
@@ -88,6 +91,7 @@ export function useOmpAgentStream({
           interruptPendingRef,
           activityRef,
           currentThinkingLevelRef,
+          fileMutatingCallsRef,
         });
       },
       onClose: () => {
@@ -96,7 +100,7 @@ export function useOmpAgentStream({
       },
     };
     connectionRef.current = CONNECTORS[transport](sid, handlers);
-  }, [disconnect, setState, callbacksRef, toolResultsRef, lastToolMessageRef, interruptPendingRef, activityRef, currentThinkingLevelRef, transport]);
+  }, [disconnect, setState, callbacksRef, toolResultsRef, lastToolMessageRef, interruptPendingRef, activityRef, currentThinkingLevelRef, fileMutatingCallsRef, transport]);
 
   return { connect, disconnect };
 }

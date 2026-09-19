@@ -82,6 +82,15 @@ export function SidebarDataProvider({ children, initialFolders = [] }: { childre
   // just started.
   usePanelRefresh(refresh, true, SIDEBAR_IDLE_REFRESH_MS);
 
+  // Immediate refresh when an AI response starts (agent_start): the throttled
+  // `omp:session-updated` path lands ~1s later, so the session's `stream`
+  // status row (spinner) would lag the run. One fetch per run start; the
+  // in-flight guard inside `refresh` dedups against the throttled path.
+  useEffect(() => {
+    window.addEventListener('omp:session-stream-start', refresh);
+    return () => window.removeEventListener('omp:session-stream-start', refresh);
+  }, [refresh]);
+
   const markSeen = useCallback((sessionId: number | string) => {
     const key = String(sessionId);
     const status = fetcher.data?.folders

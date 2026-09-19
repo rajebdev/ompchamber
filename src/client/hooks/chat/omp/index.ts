@@ -5,17 +5,11 @@ import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { type ToolResultRecord, useOmpAgentStream } from '@/client/hooks/chat/omp/stream';
 
 /**
- * Live omp agent bridge for the chamber chat (real mode, MOCK=false).
- *
- * Mirrors the omp-web useAgentSession streaming surface, scoped to what the
- * chamber timeline needs: send a prompt over the RPC bridge
- * (POST /api/agent/:sessionId), then consume agent events over the configured
- * transport (WebSocket by default, SSE on request) from
- * `/api/agent/:sessionId/*` and fold them into ChatMessageData.
- *
- * The omp event stream carries full accumulated messages (message_update),
- * so the client keeps a single "current assistant message" that is replaced
- * on every update and finalized on message_end / agent_end.
+ * Live omp agent bridge for the chamber chat (real mode, MOCK=false). Mirrors
+ * the omp-web useAgentSession streaming surface: send a prompt over the RPC
+ * bridge (POST /api/agent/:sessionId), consume agent events over the configured
+ * transport, and fold them into ChatMessageData — one "current assistant
+ * message" replaced per message_update, finalized on message_end / agent_end.
  */
 
 export type { ExtensionUiDialogMethod, ExtensionUiDialogRequest, IncomingExtensionUiRequest } from '@/shared/types/omp/agent';
@@ -39,6 +33,9 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
   // per-token frames cannot spam state updates with the same string.
   const activityRef = useRef('');
   const currentThinkingLevelRef = useRef<string | undefined>(undefined); // live thinking level (last `thinking_level_changed`)
+  // toolCallIds of in-flight file-mutating tool calls; cleared per run in the
+  // fold so a completed edit/write/bash signals the right panels once.
+  const fileMutatingCallsRef = useRef<Set<string>>(new Set());
 
   const { connect, disconnect } = useOmpAgentStream({
     setState,
@@ -48,6 +45,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     interruptPendingRef,
     activityRef,
     currentThinkingLevelRef,
+    fileMutatingCallsRef,
     transport,
   });
 
@@ -57,6 +55,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     // results. On first mount the refs are already empty, so this cannot disturb
     // a resumed session's reattach below.
     toolResultsRef.current.clear();
+    fileMutatingCallsRef.current.clear();
     lastToolMessageRef.current = null;
     activityRef.current = '';
     // Do NOT auto-connect here: the stream endpoint refuses (409) until the

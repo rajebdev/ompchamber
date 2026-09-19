@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown } from 'lucide-preact';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
-import { usePanelRefresh } from '@/client/hooks/workspace/panel-refresh';
+import { usePanelRefresh, useFileMutationRefresh } from '@/client/hooks/workspace/panel-refresh';
 import type { RawMessageItem } from '@/shared/types';
 import { RawJsonViewer } from '@/client/components/workspace/context-panel/RawJsonViewer';
 
@@ -130,6 +130,9 @@ export function RawMessagesList({ sessionId, refreshKey = 0 }: RawMessagesListPr
   // interactions (page flips, filter, refresh button). The seq guard above
   // keeps a slow poll response from clobbering a newer user-driven page load.
   usePanelRefresh(() => loadPage({ silent: true }), sessionId !== null);
+  // A completed file-mutating tool changes what the JSONL holds — re-read now
+  // instead of on the next poll tick.
+  useFileMutationRefresh(() => loadPage({ silent: true }), sessionId !== null);
 
   const totalPages = Math.max(1, Math.ceil(filteredTotal / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);

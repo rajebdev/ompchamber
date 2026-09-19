@@ -6,7 +6,7 @@ import { FileTreeItem } from '@/client/components/workspace/file-explorer/TreeIt
 import { useScrollbarFade } from '@/client/hooks/ui/scrollbar-fade';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
-import { usePanelRefresh } from '@/client/hooks/workspace/panel-refresh';
+import { usePanelRefresh, useFileMutationRefresh } from '@/client/hooks/workspace/panel-refresh';
 
 export function FileExplorer({ className = '', enabled = true, rootPath, onOpenFile, refreshKey = 0, onRefresh }: { className?: string, enabled?: boolean, rootPath?: string, onOpenFile?: (file: any) => void, refreshKey?: number, onRefresh?: () => void }) {
   const [tree, setTree] = useState<any[]>([]);
@@ -62,6 +62,9 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
   // (terminal output, agent edits) surface without a manual refresh. Silent —
   // the loading spinner stays reserved for the user's own refresh button.
   usePanelRefresh(() => loadFiles({ silent: true }), enabled && expandedPathsReady);
+  // AI edits land between poll ticks: re-read right after a file-mutating tool
+  // (edit / write / ast_edit / bash) finishes, not up to 2s later.
+  useFileMutationRefresh(() => loadFiles({ silent: true }), enabled && expandedPathsReady);
 
   const loadChildren = (path: string) => {
     return fetch(listUrl(path))

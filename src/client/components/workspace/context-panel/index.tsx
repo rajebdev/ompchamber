@@ -8,7 +8,7 @@ import { LastMessageCard } from '@/client/components/workspace/context-panel/Las
 import { TokenDistributionBar } from '@/client/components/workspace/context-panel/TokenDistributionBar';
 import { RawMessagesList } from '@/client/components/workspace/context-panel/RawMessagesList';
 import { useScrollbarFade } from '@/client/hooks/ui/scrollbar-fade';
-import { usePanelRefresh } from '@/client/hooks/workspace/panel-refresh';
+import { usePanelRefresh, useFileMutationRefresh } from '@/client/hooks/workspace/panel-refresh';
 
 interface ContextPanelProps {
   className?: string;
@@ -63,6 +63,9 @@ export function ContextPanel({
   // assistant turn — re-read on a short cadence so the panel tracks it without
   // the user switching panels.
   usePanelRefresh(loadTelemetry, enabled);
+  // An AI turn can advance token/cost telemetry mid-poll-cycle: re-read right
+  // after a file-mutating tool (edit / write / ast_edit / bash) completes.
+  useFileMutationRefresh(loadTelemetry, enabled);
 
   if (!enabled) {
     return (
