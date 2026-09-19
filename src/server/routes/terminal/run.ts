@@ -1,12 +1,9 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from '@/server/lib/remix-compat';
-import { exec } from 'child_process';
-import util from 'util';
 import path from 'path';
 import fs from 'fs';
+import { runShell } from '@/server/lib/fs/shell';
 import { resolveRoot } from '@/server/lib/fs/root';
 import { scopeToRepo } from '@/server/lib/fs/repo-scope';
-
-const execAsync = util.promisify(exec);
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
@@ -17,15 +14,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
   let gitBranch = 'main';
 
   try {
-    const { stdout } = await execAsync('bun --version', { cwd: targetDir });
-    bunVersion = stdout.trim();
+    const bunOut = await runShell('bun --version', { cwd: targetDir });
+    bunVersion = bunOut.stdout.trim();
   } catch {
     bunVersion = '1.4.0';
   }
 
   try {
-    const { stdout } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: targetDir });
-    gitBranch = stdout.trim() || 'main';
+    const branchOut = await runShell('git rev-parse --abbrev-ref HEAD', { cwd: targetDir });
+    gitBranch = branchOut.stdout.trim() || 'main';
   } catch {
     gitBranch = 'main';
   }
@@ -131,39 +128,28 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   const startTime = Date.now();
-  try {
-    const { stdout, stderr } = await execAsync(command, {
-      cwd: currentDir,
-      timeout: 30000,
-      maxBuffer: 1024 * 1024 * 2, // 2MB
-      env: {
-        ...Bun.env,
-        PAGER: 'cat',
-        FORCE_COLOR: '0',
-      },
-    });
+  const result = await runShell(command, {
+    cwd: currentDir,
+    timeout: 30000,
+    maxBuffer: 1024 * 1024 * 2,
+    env: {
+      PAGER: 'cat',
+      FORCE_COLOR: '0',
+    },
+  });
+  const durationMs = Date.now() - startTime;
+  // Timeout detection uses signalCode (SIGTERM from Bun), not `killed` —
+  // Bun 1.4 sets killed=true even for normal non-zero exits.
+  const timedOut = result.signalCode !== null;
+  const exitCode = timedOut ? 1 : (result.exitCode ?? 1);
+  const stderr = result.stderr || (timedOut ? 'Command timed out' : '') || (exitCode === 0 ? '' : result.error?.message || 'Command execution failed');
 
-    const durationMs = Date.now() - startTime;
-    return json({
-      stdout,
-      stderr,
-      exitCode: 0,
-      durationMs,
-      cwd: path.relative(rootDir, currentDir) || '.',
-    });
-  } catch (error: any) {
-    const durationMs = Date.now() - startTime;
-    const stdout = error.stdout ? String(error.stdout) : '';
-    const stderr = error.stderr ? String(error.stderr) : error.message || 'Command execution failed';
-    const exitCode = typeof error.code === 'number' ? error.code : 1;
-
-    return json({
-      stdout,
-      stderr,
-      exitCode,
-      durationMs,
-      cwd: path.relative(rootDir, currentDir) || '.',
-      error: error.message,
-    });
-  }
+  return json({
+    stdout: result.stdout,
+    stderr,
+    exitCode,
+    durationMs,
+    cwd: path.relative(rootDir, currentDir) || '.',
+    ...(exitCode === 0 ? {} : { error: result.error?.message || (timedOut ? 'Command timed out' : `Command exited with code ${exitCode}`) }),
+  });
 }

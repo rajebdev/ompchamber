@@ -1,12 +1,9 @@
 import { json, type ActionFunctionArgs } from '@/server/lib/remix-compat';
 import fs from 'fs';
 import path from 'path';
-import { exec } from 'child_process';
-import util from 'util';
 import { isMockMode } from '@/server/mock.server';
 import { getDefaultFsRoot, resolveRoot } from '@/server/lib/fs/root';
-
-const execAsync = util.promisify(exec);
+import { runShell } from '@/server/lib/fs/shell';
 
 export async function action({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
@@ -54,32 +51,31 @@ export async function action({ request }: ActionFunctionArgs) {
       } else {
         command = `xdg-open "${dirToOpen}"`;
       }
-      execAsync(command).catch(e => console.error('Failed to open explorer:', e));
+      runShell(command, { timeout: 5000 }).catch(e => console.error('Failed to open explorer:', e));
       return json({ success: true });
     } else if (actionType === 'git_history') {
-      const targetDir = scopedRoot; 
-      try {
-        const { stdout } = await execAsync(`git log -n 50 --date-order --pretty=format:"|~|%h|~|%an|~|%ar|~|%s" -- "${filePath}"`, { cwd: targetDir });
-        const parsedData = stdout.split('\n').filter(Boolean).map(line => {
-          const parts = line.split('|~|');
-          if (parts.length === 1) {
-            return { graph: '', message: parts[0] };
-          }
-          return {
-            graph: parts[0],
-            hash: parts[1],
-            author: parts[2],
-            time: parts[3],
-            message: parts[4]
-          };
-        });
-        return json({ success: true, type: 'history', data: parsedData });
-      } catch (err: any) {
-        if (err.message?.includes('not a git repository')) {
-           return json({ error: 'Not a git repository' }, { status: 200 });
-        }
-        throw err;
+      const targetDir = scopedRoot;
+      const history = await runShell(
+        `git log -n 50 --date-order --pretty=format:"|~|%h|~|%an|~|%ar|~|%s" -- "${filePath}"`,
+        { cwd: targetDir, maxBuffer: 1024 * 1024 }
+      );
+      if (history.exitCode !== 0 && history.stderr.includes('not a git repository')) {
+        return json({ error: 'Not a git repository' }, { status: 200 });
       }
+      const parsedData = history.stdout.split('\n').filter(Boolean).map(line => {
+        const parts = line.split('|~|');
+        if (parts.length === 1) {
+          return { graph: '', message: parts[0] };
+        }
+        return {
+          graph: parts[0],
+          hash: parts[1],
+          author: parts[2],
+          time: parts[3],
+          message: parts[4]
+        };
+      });
+      return json({ success: true, type: 'history', data: parsedData });
     }
     
     return json({ error: 'Unknown action' }, { status: 400 });

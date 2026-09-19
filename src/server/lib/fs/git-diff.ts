@@ -1,10 +1,13 @@
-import { exec } from 'child_process';
-import util from 'util';
 import path from 'path';
 import fs from 'fs';
 import type { FileDiffData } from '@/shared/types/git';
+import { runShell, shellOk } from '@/server/lib/fs/shell';
 
-const execAsync = util.promisify(exec);
+/** Runs one git diff probe and returns its stdout ('' on failure). */
+async function gitOut(command: string, cwd: string, timeout: number): Promise<string> {
+  const result = await runShell(command, { cwd, timeout, maxBuffer: 1024 * 1024 * 2 });
+  return shellOk(result) ? result.stdout : '';
+}
 
 /**
  * Fetch git diff for a specific file in the working directory or index.
@@ -26,14 +29,10 @@ export async function fetchWorkingFileDiff(
 
   try {
     // Check porcelain status of this file
-    try {
-      const { stdout: statusOut } = await execAsync(`git status --porcelain=v1 -- "${cleanFile}"`, { cwd: targetDir });
-      const statusLine = statusOut.trim();
-      if (statusLine) {
-        status = statusLine.slice(0, 2).trim() || status;
-      }
-    } catch {
-      // ignore status check failure
+    const statusResult = await gitOut(`git status --porcelain=v1 -- "${cleanFile}"`, targetDir, 10000);
+    const statusLine = statusResult.trim();
+    if (statusLine) {
+      status = statusLine.slice(0, 2).trim() || status;
     }
 
     // Try reading current new content from disk if it exists
@@ -46,87 +45,24 @@ export async function fetchWorkingFileDiff(
     }
 
     // Read old content from index or HEAD
-    try {
-      const { stdout: headOut } = await execAsync(`git show HEAD:"${cleanFile}"`, { cwd: targetDir, timeout: 5000 });
-      oldContent = headOut;
-    } catch {
-      try {
-        const { stdout: indexOut } = await execAsync(`git show :0:"${cleanFile}"`, { cwd: targetDir, timeout: 5000 });
-        oldContent = indexOut;
-      } catch {
-        oldContent = '';
-      }
-    }
+    oldContent = await gitOut(`git show HEAD:"${cleanFile}"`, targetDir, 5000)
+      || await gitOut(`git show :0:"${cleanFile}"`, targetDir, 5000);
 
     if (staged) {
-      // 1. Try staged diff (index vs HEAD)
-      try {
-        const { stdout: diffOut } = await execAsync(`git diff --cached -- "${cleanFile}"`, { cwd: targetDir, timeout: 10000 });
-        if (diffOut && diffOut.trim()) diff = diffOut;
-      } catch (err: any) {
-        if (err?.stdout && err.stdout.trim()) diff = err.stdout;
-      }
-
-      // 2. Fallback to git diff HEAD
-      if (!diff.trim()) {
-        try {
-          const { stdout: headDiff } = await execAsync(`git diff HEAD -- "${cleanFile}"`, { cwd: targetDir, timeout: 10000 });
-          if (headDiff && headDiff.trim()) diff = headDiff;
-        } catch (err: any) {
-          if (err?.stdout && err.stdout.trim()) diff = err.stdout;
-        }
-      }
-
-      // 3. Fallback to unstaged diff
-      if (!diff.trim()) {
-        try {
-          const { stdout: workingDiff } = await execAsync(`git diff -- "${cleanFile}"`, { cwd: targetDir, timeout: 10000 });
-          if (workingDiff && workingDiff.trim()) diff = workingDiff;
-        } catch (err: any) {
-          if (err?.stdout && err.stdout.trim()) diff = err.stdout;
-        }
-      }
+      // 1. Try staged diff (index vs HEAD), 2. HEAD diff, 3. unstaged diff
+      diff = await gitOut(`git diff --cached -- "${cleanFile}"`, targetDir, 10000)
+        || await gitOut(`git diff HEAD -- "${cleanFile}"`, targetDir, 10000)
+        || await gitOut(`git diff -- "${cleanFile}"`, targetDir, 10000);
+    } else if (status === '??' || status === 'U' || status === '?') {
+      // Untracked file: --no-index exits 1 when a diff exists, so read stdout
+      // directly instead of relying on the exit code.
+      const untracked = await runShell(`git diff --no-index /dev/null "${cleanFile}"`, { cwd: targetDir, timeout: 10000, maxBuffer: 1024 * 1024 * 2 });
+      diff = untracked.stdout.trim() ? untracked.stdout : '';
     } else {
-      // Unstaged diff
-      if (status === '??' || status === 'U' || status === '?') {
-        // Untracked file: create synthetic diff
-        try {
-          const { stdout: diffOut } = await execAsync(`git diff --no-index /dev/null "${cleanFile}"`, { cwd: targetDir, timeout: 10000 });
-          if (diffOut && diffOut.trim()) diff = diffOut;
-        } catch (err: any) {
-          if (err?.stdout && err.stdout.trim()) {
-            diff = err.stdout;
-          }
-        }
-      } else {
-        // 1. Try working tree diff
-        try {
-          const { stdout: diffOut } = await execAsync(`git diff -- "${cleanFile}"`, { cwd: targetDir, timeout: 10000 });
-          if (diffOut && diffOut.trim()) diff = diffOut;
-        } catch (err: any) {
-          if (err?.stdout && err.stdout.trim()) diff = err.stdout;
-        }
-
-        // 2. Fallback to git diff --cached (if file was staged already)
-        if (!diff.trim()) {
-          try {
-            const { stdout: cachedDiff } = await execAsync(`git diff --cached -- "${cleanFile}"`, { cwd: targetDir, timeout: 10000 });
-            if (cachedDiff && cachedDiff.trim()) diff = cachedDiff;
-          } catch (err: any) {
-            if (err?.stdout && err.stdout.trim()) diff = err.stdout;
-          }
-        }
-
-        // 3. Fallback to git diff HEAD
-        if (!diff.trim()) {
-          try {
-            const { stdout: headDiff } = await execAsync(`git diff HEAD -- "${cleanFile}"`, { cwd: targetDir, timeout: 10000 });
-            if (headDiff && headDiff.trim()) diff = headDiff;
-          } catch (err: any) {
-            if (err?.stdout && err.stdout.trim()) diff = err.stdout;
-          }
-        }
-      }
+      // 1. Working tree diff, 2. cached diff, 3. HEAD diff
+      diff = await gitOut(`git diff -- "${cleanFile}"`, targetDir, 10000)
+        || await gitOut(`git diff --cached -- "${cleanFile}"`, targetDir, 10000)
+        || await gitOut(`git diff HEAD -- "${cleanFile}"`, targetDir, 10000);
     }
 
     // 4. If git diff is still empty but new content exists:

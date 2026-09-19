@@ -1,13 +1,10 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from '@/server/lib/remix-compat';
-import { exec } from 'child_process';
-import util from 'util';
 import path from 'path';
 import fs from 'fs';
 import { resolveRoot } from '@/server/lib/fs/root';
+import { runShell } from '@/server/lib/fs/shell';
 import { fetchFileDiff, fetchGitCommits } from '@/server/lib/fs/git-log';
 import { fetchWorkingFileDiff } from '@/server/lib/fs/git-diff';
-
-const execAsync = util.promisify(exec);
 
 const MAX_GIT_DEPTH = 8;
 
@@ -15,11 +12,11 @@ async function getRepos(rootDir: string): Promise<string[]> {
   try {
     // Search deep enough to discover nested/child git repos inside a monorepo
     // workspace (e.g. projects/<name>/<sub>/.git) while pruning node_modules.
-    const { stdout } = await execAsync(
+    const result = await runShell(
       `find . -maxdepth ${MAX_GIT_DEPTH} -name node_modules -prune -o -name .git -type d -print`,
       { cwd: rootDir, timeout: 12000, maxBuffer: 1024 * 1024 }
     );
-    const discovered = stdout
+    const discovered = result.stdout
       .trim()
       .split('\n')
       .filter(Boolean)
@@ -122,20 +119,20 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   try {
     // Use --porcelain=v1 -uall so all individual edited/untracked files are listed
-    const { stdout: statusOut } = await execAsync('git status --porcelain=v1 -uall', { cwd: targetDir });
+    const statusOut = (await runShell('git status --porcelain=v1 -uall', { cwd: targetDir, maxBuffer: 1024 * 1024 })).stdout;
 
     let branch = 'main';
     let branches: string[] = ['main'];
     let remoteBranches: string[] = [];
     try {
-      const { stdout: branchOut } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: targetDir });
-      branch = branchOut.trim() || 'main';
+      const branchOut = await runShell('git rev-parse --abbrev-ref HEAD', { cwd: targetDir });
+      branch = branchOut.stdout.trim() || 'main';
 
-      const { stdout: localOut } = await execAsync('git branch --format="%(refname:short)"', { cwd: targetDir });
-      branches = localOut.trim().split('\n').filter(Boolean);
+      const localOut = await runShell('git branch --format="%(refname:short)"', { cwd: targetDir });
+      branches = localOut.stdout.trim().split('\n').filter(Boolean);
 
-      const { stdout: remoteOut } = await execAsync('git branch -r --format="%(refname:short)"', { cwd: targetDir });
-      remoteBranches = remoteOut.trim().split('\n').filter(Boolean).filter(b => b.includes('/') && !b.endsWith('/HEAD'));
+      const remoteOut = await runShell('git branch -r --format="%(refname:short)"', { cwd: targetDir });
+      remoteBranches = remoteOut.stdout.trim().split('\n').filter(Boolean).filter(b => b.includes('/') && !b.endsWith('/HEAD'));
       if (!branches.includes(branch)) {
         branches.unshift(branch);
       }
@@ -173,11 +170,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
     // `git rev-list --left-right --count HEAD...@{upstream}` prints "<ahead>\t<behind>".
     let syncCount = { ahead: 0, behind: 0 };
     try {
-      const { stdout: syncOut } = await execAsync(
+      const syncOut = await runShell(
         'git rev-list --left-right --count HEAD...@{upstream}',
         { cwd: targetDir, timeout: 8000 }
       );
-      const [ahead, behind] = syncOut.trim().split(/\s+/).map(Number);
+      const [ahead, behind] = syncOut.stdout.trim().split(/\s+/).map(Number);
       syncCount = { ahead: ahead || 0, behind: behind || 0 };
     } catch {
       // No upstream configured — nothing to sync against.
@@ -221,28 +218,28 @@ export async function action({ request }: ActionFunctionArgs) {
   try {
     if (actionType === 'commit') {
       const message = formData.get('message') as string;
-      await execAsync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { cwd: targetDir });
+      await expectOk(`git commit -m "${message.replace(/"/g, '\\"')}"`, targetDir);
     } else if (actionType === 'stage') {
       const file = formData.get('file') as string;
-      await execAsync(`git add "${file}"`, { cwd: targetDir });
+      await expectOk(`git add "${file}"`, targetDir);
     } else if (actionType === 'stage_all') {
-      await execAsync(`git add -A`, { cwd: targetDir });
+      await expectOk('git add -A', targetDir);
     } else if (actionType === 'unstage') {
       const file = formData.get('file') as string;
-      await execAsync(`git restore --staged "${file}"`, { cwd: targetDir });
+      await expectOk(`git restore --staged "${file}"`, targetDir);
     } else if (actionType === 'unstage_all') {
-      await execAsync(`git restore --staged .`, { cwd: targetDir });
+      await expectOk('git restore --staged .', targetDir);
     } else if (actionType === 'revert') {
       const file = formData.get('file') as string;
       const fullPath = path.join(targetDir, file);
       try {
-        const { stdout: checkOut } = await execAsync(`git status --porcelain -- "${file}"`, { cwd: targetDir });
-        if (checkOut.trim().startsWith('??')) {
+        const checkOut = await runShell(`git status --porcelain -- "${file}"`, { cwd: targetDir });
+        if (checkOut.stdout.trim().startsWith('??')) {
           if (fs.existsSync(fullPath)) {
             fs.rmSync(fullPath, { recursive: true, force: true });
           }
         } else {
-          await execAsync(`git restore -- "${file}"`, { cwd: targetDir });
+          await expectOk(`git restore -- "${file}"`, targetDir);
         }
       } catch {
         if (fs.existsSync(fullPath)) {
@@ -250,29 +247,25 @@ export async function action({ request }: ActionFunctionArgs) {
         }
       }
     } else if (actionType === 'revert_all') {
-      await execAsync(`git restore .`, { cwd: targetDir });
-      await execAsync(`git clean -fd`, { cwd: targetDir });
+      await expectOk('git restore .', targetDir);
+      await expectOk('git clean -fd', targetDir);
     } else if (actionType === 'checkout') {
       const branch = formData.get('branch') as string;
-      const isLocal = await execAsync(`git rev-parse --verify --quiet refs/heads/${branch}`, { cwd: targetDir })
-        .then(() => true)
-        .catch(() => false);
+      const isLocal = await refExists(`refs/heads/${branch}`, targetDir);
       if (isLocal) {
-        await execAsync(`git checkout "${branch}"`, { cwd: targetDir });
+        await expectOk(`git checkout "${branch}"`, targetDir);
       } else {
         const localName = branch.split('/').slice(1).join('/');
-        const localExists = await execAsync(`git rev-parse --verify --quiet refs/heads/${localName}`, { cwd: targetDir })
-          .then(() => true)
-          .catch(() => false);
+        const localExists = await refExists(`refs/heads/${localName}`, targetDir);
         if (localExists) {
-          await execAsync(`git checkout "${localName}"`, { cwd: targetDir });
+          await expectOk(`git checkout "${localName}"`, targetDir);
         } else {
-          await execAsync(`git checkout -b "${localName}" --track "${branch}"`, { cwd: targetDir });
+          await expectOk(`git checkout -b "${localName}" --track "${branch}"`, targetDir);
         }
       }
     } else if (actionType === 'create_branch') {
       const branch = formData.get('branch') as string;
-      await execAsync(`git checkout -b "${branch}"`, { cwd: targetDir });
+      await expectOk(`git checkout -b "${branch}"`, targetDir);
     } else if (actionType === 'history' || actionType === 'graph') {
       const limit = parseInt((formData.get('limit') as string) || '50', 10);
       const skip = parseInt((formData.get('skip') as string) || '0', 10);
@@ -298,31 +291,45 @@ export async function action({ request }: ActionFunctionArgs) {
       return json({ success: true, ...diffData });
     } else if (actionType === 'cherry_pick') {
       const hash = formData.get('hash') as string;
-      await execAsync(`git cherry-pick "${hash}"`, { cwd: targetDir });
+      await expectOk(`git cherry-pick "${hash}"`, targetDir);
     } else if (actionType === 'revert_commit') {
       const hash = formData.get('hash') as string;
-      await execAsync(`git revert --no-edit "${hash}"`, { cwd: targetDir });
+      await expectOk(`git revert --no-edit "${hash}"`, targetDir);
     } else if (actionType === 'reset_commit') {
       const hash = formData.get('hash') as string;
       const mode = (formData.get('mode') as string) || 'soft';
-      await execAsync(`git reset --${mode} "${hash}"`, { cwd: targetDir });
+      await expectOk(`git reset --${mode} "${hash}"`, targetDir);
     } else if (actionType === 'merge_commit') {
       const hash = formData.get('hash') as string;
-      await execAsync(`git merge "${hash}"`, { cwd: targetDir });
+      await expectOk(`git merge "${hash}"`, targetDir);
     } else if (actionType === 'rebase_commit') {
       const hash = formData.get('hash') as string;
-      await execAsync(`git rebase "${hash}"`, { cwd: targetDir });
+      await expectOk(`git rebase "${hash}"`, targetDir);
     } else if (actionType === 'push') {
-      await execAsync('git push', { cwd: targetDir, timeout: 120000 });
+      await expectOk('git push', targetDir, 120000);
     } else if (actionType === 'pull') {
-      await execAsync('git pull --ff-only', { cwd: targetDir, timeout: 120000 });
+      await expectOk('git pull --ff-only', targetDir, 120000);
     } else if (actionType === 'sync') {
-      await execAsync('git pull --ff-only', { cwd: targetDir, timeout: 120000 });
-      await execAsync('git push', { cwd: targetDir, timeout: 120000 });
+      await expectOk('git pull --ff-only', targetDir, 120000);
+      await expectOk('git push', targetDir, 120000);
     }
     return json({ success: true });
   } catch (error: any) {
     console.error('Git action error:', error);
     return json({ success: false, error: error.message || 'Operation failed' }, { status: 400 });
   }
+}
+
+/** Runs a git command and throws with its stderr when it exits non-zero. */
+async function expectOk(command: string, cwd: string, timeout?: number): Promise<void> {
+  const result = await runShell(command, { cwd, timeout, maxBuffer: 1024 * 1024 });
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr.trim() || result.stdout.trim() || `git exited with code ${result.exitCode}`);
+  }
+}
+
+/** True when the ref resolves; `--quiet` keeps stderr clean on a miss. */
+async function refExists(ref: string, cwd: string): Promise<boolean> {
+  const result = await runShell(`git rev-parse --verify --quiet ${ref}`, { cwd });
+  return result.exitCode === 0;
 }

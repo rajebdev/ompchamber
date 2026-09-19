@@ -1,11 +1,8 @@
-import { exec } from 'child_process';
-import util from 'util';
 import path from 'path';
 import fs from 'fs';
 import type { GitCommit } from '@/shared/types/git';
 import { SAMPLE_GIT_COMMITS } from '@/client/data/mock/git-commits';
-
-const execAsync = util.promisify(exec);
+import { runShell, shellOk } from '@/server/lib/fs/shell';
 
 export function parseGitLogOutput(stdout: string): GitCommit[] {
   const commits: GitCommit[] = [];
@@ -97,17 +94,18 @@ export async function fetchGitCommits(
   try {
     let total = 0;
     try {
-      const { stdout: countOut } = await execAsync('git rev-list --count HEAD', { cwd: targetDir, timeout: 5000 });
-      total = parseInt(countOut.trim(), 10) || 0;
+      const countOut = await runShell('git rev-list --count HEAD', { cwd: targetDir, timeout: 5000 });
+      if (shellOk(countOut)) total = parseInt(countOut.stdout.trim(), 10) || 0;
     } catch {
       total = 0;
     }
 
-    const { stdout } = await execAsync(
+    const result = await runShell(
       `git log -n ${limit} --skip=${skip} --numstat --date-order --pretty=format:"COMMIT_SPLIT|~|%H|~|%h|~|%an|~|%ad|~|%s|~|%D|~|%p" --date=format:"%b %d, %Y, %I:%M %p"`,
       { cwd: targetDir, timeout: 15000 }
     );
-    const commits = parseGitLogOutput(stdout);
+    if (!shellOk(result)) throw new Error(result.stderr || 'git log failed');
+    const commits = parseGitLogOutput(result.stdout);
     const hasMore = total > 0 ? skip + commits.length < total : commits.length === limit;
     return { commits, hasMore, total };
   } catch {
@@ -133,48 +131,28 @@ export async function fetchFileDiff(targetDir: string, hash: string, file: strin
   }
 
   // 1. Try standard git show with pretty format patch
-  try {
-    const { stdout } = await execAsync(`git show --pretty=format:"" --patch "${hash}" -- "${cleanFile}"`, {
-      cwd: targetDir,
-      timeout: 10000,
-    });
-    if (stdout && stdout.trim()) return stdout.trim();
-  } catch {}
+  const showPatch = await runShell(`git show --pretty=format:"" --patch "${hash}" -- "${cleanFile}"`, { cwd: targetDir, timeout: 10000 });
+  if (showPatch.stdout.trim()) return showPatch.stdout.trim();
 
   // 2. Try git diff-tree with root support
-  try {
-    const { stdout } = await execAsync(`git diff-tree -r -p --root "${hash}" -- "${cleanFile}"`, {
-      cwd: targetDir,
-      timeout: 10000,
-    });
-    if (stdout && stdout.trim()) return stdout.trim();
-  } catch {}
+  const diffTree = await runShell(`git diff-tree -r -p --root "${hash}" -- "${cleanFile}"`, { cwd: targetDir, timeout: 10000 });
+  if (diffTree.stdout.trim()) return diffTree.stdout.trim();
 
   // 3. If it is an added file or root commit, show file content directly from git blob
-  try {
-    const { stdout } = await execAsync(`git show "${hash}:${cleanFile}"`, {
-      cwd: targetDir,
-      timeout: 10000,
-    });
-    if (stdout !== undefined && stdout.length > 0) {
-      const lines = stdout.split('\n');
-      const diffLines = lines.map((l) => `+${l}`).join('\n');
-      return `@@ -0,0 +1,${lines.length} @@\n${diffLines}`;
-    }
-  } catch {}
+  const showBlob = await runShell(`git show "${hash}:${cleanFile}"`, { cwd: targetDir, timeout: 10000 });
+  if (showBlob.stdout.length > 0) {
+    const lines = showBlob.stdout.split('\n');
+    const diffLines = lines.map((l) => `+${l}`).join('\n');
+    return `@@ -0,0 +1,${lines.length} @@\n${diffLines}`;
+  }
 
   // 4. Try previous parent blob for deleted file
-  try {
-    const { stdout } = await execAsync(`git show "${hash}^:${cleanFile}"`, {
-      cwd: targetDir,
-      timeout: 10000,
-    });
-    if (stdout !== undefined && stdout.length > 0) {
-      const lines = stdout.split('\n');
-      const diffLines = lines.map((l) => `-${l}`).join('\n');
-      return `@@ -1,${lines.length} +0,0 @@\n${diffLines}`;
-    }
-  } catch {}
+  const showParent = await runShell(`git show "${hash}^:${cleanFile}"`, { cwd: targetDir, timeout: 10000 });
+  if (showParent.stdout.length > 0) {
+    const lines = showParent.stdout.split('\n');
+    const diffLines = lines.map((l) => `-${l}`).join('\n');
+    return `@@ -1,${lines.length} +0,0 @@\n${diffLines}`;
+  }
 
   // 5. Try reading directly from target filesystem if available
   try {
