@@ -21,7 +21,6 @@
 
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { isMap, parseDocument } from 'yaml';
 import { getAgentDir } from '@/server/lib/omp/core/paths';
 
 export type ApprovalValue = 'allow' | 'deny' | 'prompt';
@@ -85,40 +84,42 @@ export function parseApprovalRules(text: string): ApprovalFields | null {
 
 /**
  * Merge approval fields into config.yml tools.approval atomically. Only the
- * parsed fields are touched; unrelated keys and comments are preserved.
- * Throws on invalid YAML — callers should treat this as best-effort.
+ * parsed fields are touched; unrelated keys are preserved. Throws on invalid
+ * YAML — callers should treat this as best-effort.
  */
 export function writeToolsApproval(fields: ApprovalFields): void {
   if (Object.keys(fields).length === 0) return;
   const path = join(getAgentDir(), 'config.yml');
   const source = existsSync(path) ? readFileSync(path, 'utf8') : '';
-  const doc = parseDocument(source);
-  if (doc.errors.length > 0) throw new Error(`${path} is not valid YAML: ${doc.errors[0].message}`);
-  if (doc.contents === null) {
-    doc.set('tools', { approval: fields });
-  } else {
-    if (!isMap(doc.contents)) throw new Error(`${path} must contain a YAML mapping`);
-    const tools = doc.get('tools');
-    if (tools !== undefined && typeof tools !== 'object') {
-      throw new Error(`${path} tools section must be a mapping`);
+  const doc = asMapping(Bun.YAML.parse(source), path);
+  const tools = doc.tools;
+  if (tools !== undefined && !isRecord(tools)) {
+    throw new Error(`${path} tools section must be a mapping`);
+  }
+  if (isRecord(tools)) {
+    const approval = tools.approval;
+    if (approval !== undefined && !isRecord(approval)) {
+      throw new Error(`${path} tools.approval must be a mapping`);
     }
-    const toolsMap = isMap(tools) ? tools : undefined;
-    if (toolsMap) {
-      const approval = toolsMap.get('approval');
-      if (approval !== undefined && !isMap(approval)) {
-        throw new Error(`${path} tools.approval must be a mapping`);
-      }
-      const approvalMap = isMap(approval) ? approval : undefined;
-      if (approvalMap) {
-        for (const [key, value] of Object.entries(fields)) approvalMap.set(key, value);
-      } else {
-        toolsMap.set('approval', fields);
-      }
+    if (isRecord(approval)) {
+      Object.assign(approval, fields);
     } else {
-      doc.set('tools', { approval: fields });
+      tools.approval = fields;
     }
+  } else {
+    doc.tools = { approval: fields };
   }
   const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
-  writeFileSync(temp, doc.toString(), 'utf8');
+  writeFileSync(temp, Bun.YAML.stringify(doc, null, 2), 'utf8');
   renameSync(temp, path);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Parses a YAML file that must be a top-level mapping; throws otherwise. */
+function asMapping(parsed: unknown, path: string): Record<string, unknown> {
+  if (!isRecord(parsed)) throw new Error(`${path} must contain a YAML mapping`);
+  return parsed;
 }

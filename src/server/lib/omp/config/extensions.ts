@@ -11,7 +11,6 @@
 
 import { existsSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { isMap, parseDocument } from 'yaml';
 import { getAgentDir } from '@/server/lib/omp/core/paths';
 import { isRecord } from '@/server/lib/omp/config/mcp';
 
@@ -66,9 +65,7 @@ export function readDisabledExtensions(): Set<string> {
   const path = join(getAgentDir(), 'config.yml');
   if (!existsSync(path) || statSync(path).size >= 8 * 1024 * 1024) return new Set();
   try {
-    const doc = parseDocument(readFileSync(path, 'utf8'));
-    if (doc.errors.length > 0) return new Set();
-    const data = doc.toJS();
+    const data = Bun.YAML.parse(readFileSync(path, 'utf8'));
     if (!isRecord(data) || !Array.isArray(data.disabledExtensions)) return new Set();
     return new Set(data.disabledExtensions.filter((item): item is string => typeof item === 'string'));
   } catch {
@@ -80,18 +77,20 @@ export function readDisabledExtensions(): Set<string> {
 export function setExtensionDisabled(id: string, disabled: boolean): boolean {
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(id)) throw new Error('Invalid extension id');
   const path = join(getAgentDir(), 'config.yml');
-  const doc = parseDocument(existsSync(path) ? readFileSync(path, 'utf8') : '');
-  if (doc.errors.length > 0) throw new Error(`${path} is not valid YAML: ${doc.errors[0].message}`);
-  if (doc.contents !== null && !isMap(doc.contents)) {
-    throw new Error(`${path} must contain a YAML mapping`);
-  }
+  const doc = asMapping(Bun.YAML.parse(existsSync(path) ? readFileSync(path, 'utf8') : ''), path);
   const already = readDisabledExtensions().has(id);
   if (disabled === already) return false;
   const list = [...readDisabledExtensions()];
   const next = disabled ? [...list, id] : list.filter((item) => item !== id);
-  doc.set('disabledExtensions', next);
+  doc.disabledExtensions = next;
   const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
-  writeFileSync(temp, doc.toString(), 'utf8');
+  writeFileSync(temp, Bun.YAML.stringify(doc, null, 2), 'utf8');
   renameSync(temp, path);
   return true;
+}
+
+/** Parses a YAML file that must be a top-level mapping; throws otherwise. */
+function asMapping(parsed: unknown, path: string): Record<string, unknown> {
+  if (!isRecord(parsed)) throw new Error(`${path} must contain a YAML mapping`);
+  return parsed;
 }

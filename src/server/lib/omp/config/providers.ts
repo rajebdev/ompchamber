@@ -11,8 +11,11 @@
 
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { YAMLMap, YAMLSeq, parseDocument, type Document } from 'yaml';
 import { getAgentDir } from '@/server/lib/omp/core/paths';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 /** Path of the native OMP models config (~/.omp/agent/models.yml). */
 export function getModelsConfigPath(): string {
@@ -47,18 +50,16 @@ export function readNativeProviders(): NativeProviderInfo[] {
   const path = getModelsConfigPath();
   if (!existsSync(path)) return [];
   try {
-    const doc = parseDocument(readFileSync(path, 'utf8'));
-    if (doc.errors.length > 0) return [];
-    const data = doc.toJS();
-    if (typeof data !== 'object' || data === null || Array.isArray(data)) return [];
-    const providers = (data as Record<string, unknown>).providers;
+    const data = Bun.YAML.parse(readFileSync(path, 'utf8'));
+    if (!isRecord(data)) return [];
+    const providers = data.providers;
     if (typeof providers !== 'object' || providers === null || Array.isArray(providers)) return [];
     return Object.entries(providers as Record<string, unknown>).map(([slug, value]) => {
       const info: NativeProviderInfo = { slug, modelIds: [], models: [] };
-      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      if (isRecord(value)) {
         const record = value as Record<string, unknown>;
         if (typeof record.baseUrl === 'string') info.baseUrl = record.baseUrl;
-        if (typeof record.models === 'object' && record.models !== null && !Array.isArray(record.models)) {
+        if (isRecord(record.models)) {
           info.models = Object.entries(record.models as Record<string, unknown>).flatMap(([id, model]) => {
             if (typeof model !== 'object' || model === null || Array.isArray(model)) return [{ id }];
             const value = model as Record<string, unknown>;
@@ -129,7 +130,7 @@ export interface OmpProviderUpsertResult {
  * tracking. Existing provider fields (apiKey, baseUrl) and existing model
  * entries are never modified; only models whose id is not yet registered are
  * appended. Merges use an atomic temp-file write preserving unrelated keys
- * and comments (parseDocument round-trip). Provider creation requires an
+ * (full-document Bun.YAML round-trip). Provider creation requires an
  * apiKey — omp rejects models-cfg providers without one unless auth is "none"
  * or "oauth"; existing providers keep whatever credential they already have.
  */
@@ -138,24 +139,19 @@ export function upsertOmpProviderModels(
   input: OmpProviderUpsertInput,
 ): OmpProviderUpsertResult {
   const path = getModelsConfigPath();
-  const doc: Document = existsSync(path)
-    ? parseDocument(readFileSync(path, 'utf8'))
-    : parseDocument('providers: {}');
-  if (doc.errors.length > 0) {
-    return { written: false, addedModels: [], backfilledModels: [], skippedModels: [], reason: `${path} is not valid YAML` };
+  const doc: Record<string, unknown> = existsSync(path)
+    ? asMapping(Bun.YAML.parse(readFileSync(path, 'utf8')), path)
+    : {};
+  let providers: Record<string, unknown> | undefined = isRecord(doc.providers) ? doc.providers : undefined;
+  if (!providers) {
+    providers = {};
+    doc.providers = providers;
   }
 
-  let providersMap = doc.get('providers', true) as YAMLMap | undefined;
-  if (!providersMap || !(providersMap instanceof YAMLMap)) {
-    doc.set('providers', {});
-    providersMap = doc.get('providers', true) as YAMLMap;
-  }
-
-  const existingPair = providersMap.get(slug, true);
-  const existingPojo = existingPair?.toJSON?.() as Record<string, unknown> | undefined;
+  const existingPojo = isRecord(providers[slug]) ? (providers[slug] as Record<string, unknown>) : undefined;
   const existingModels = Array.isArray(existingPojo?.models) ? existingPojo.models : [];
   const knownIds = new Set<string>(
-    existingModels.map((m) => (typeof (m as { id?: unknown })?.id === 'string' ? (m as { id: string }).id : '')).filter(Boolean),
+    existingModels.map((m) => (isRecord(m) && typeof m.id === 'string' ? m.id : '')).filter(Boolean),
   );
 
   const incomingById = new Map(input.models.map((m) => [m.id, m]));
@@ -165,7 +161,7 @@ export function upsertOmpProviderModels(
   const backfillIds: string[] = existingPojo
     ? existingModels
       .filter((m) => {
-        const entry = m as Record<string, unknown>;
+        const entry = isRecord(m) ? m : {};
         const seed = incomingById.get(String(entry.id));
         if (!seed) return false;
         const missingContext = typeof entry.contextWindow !== 'number' || !entry.contextWindow;
@@ -177,7 +173,8 @@ export function upsertOmpProviderModels(
           || (typeof entry.input !== 'object' && seed.imageInput),
         );
       })
-      .map((m) => String((m as { id?: unknown }).id))
+      .map((m) => String((isRecord(m) ? m : {}).id ?? ''))
+      .filter(Boolean)
     : [];
   if (additions.length === 0 && backfillIds.length === 0) {
     return {
@@ -191,7 +188,7 @@ export function upsertOmpProviderModels(
 
   let targetApiValue: string | undefined;
 
-  if (!existingPair && !input.apiKey) {
+  if (!existingPojo && !input.apiKey) {
     return {
       written: false,
       addedModels: [],
@@ -201,26 +198,27 @@ export function upsertOmpProviderModels(
     };
   }
 
-  if (!existingPair) {
-    providersMap.set(slug, doc.createNode({
+  if (!existingPojo) {
+    providers[slug] = {
       baseUrl: input.baseUrl,
       apiKey: input.apiKey,
       // omp disables every custom provider when a models-carrying provider
       // lacks "api" (provider or model level) — always set one.
       api: input.api ?? 'openai-completions',
-      models: [],
-    }));
-  } else if (!existingPojo?.api) {
+      models: [] as unknown[],
+    };
+  } else if (!existingPojo.api) {
     // Existing provider without an api: adding models without one would make
     // the whole models.yml fail omp validation, so fill it.
     targetApiValue = input.api ?? 'openai-completions';
   }
 
-  const targetPair = providersMap.get(slug, true) as unknown as YAMLMap;
-  if (targetApiValue) targetPair.set('api', targetApiValue);
-  const targetModels = targetPair.get('models', true) as unknown as YAMLSeq;
+  const target = providers[slug] as Record<string, unknown>;
+  if (targetApiValue) target.api = targetApiValue;
+  if (!Array.isArray(target.models)) target.models = [];
+  const targetModels = target.models as Record<string, unknown>[];
   for (const model of additions) {
-    targetModels.add(doc.createNode({
+    targetModels.push({
       id: model.id,
       ...(model.name ? { name: model.name } : {}),
       ...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {}),
@@ -235,42 +233,42 @@ export function upsertOmpProviderModels(
           cacheWrite: model.cost.cacheWrite,
         },
       } : {}),
-    }));
+    });
   }
 
-  for (const entryNode of targetModels.items as YAMLMap[]) {
-    const entryId = entryNode.get('id');
-    if (typeof entryId !== 'string' || !backfillIds.includes(entryId)) continue;
+  for (const entry of targetModels) {
+    const entryId = typeof entry?.id === 'string' ? entry.id : '';
+    if (!entryId || !backfillIds.includes(entryId)) continue;
     const seed = incomingById.get(entryId);
     if (!seed) continue;
-    if (seed.name && !entryNode.get('name')) entryNode.set('name', seed.name);
-    if (seed.reasoning !== undefined && entryNode.get('reasoning') === undefined) {
-      entryNode.set('reasoning', seed.reasoning);
+    if (seed.name && !entry.name) entry.name = seed.name;
+    if (seed.reasoning !== undefined && entry.reasoning === undefined) {
+      entry.reasoning = seed.reasoning;
     }
-    const currentInput = entryNode.get('input');
+    const currentInput = entry.input;
     if (seed.imageInput && !Array.isArray(currentInput)) {
-      entryNode.set('input', doc.createNode(seed.imageInput ? ['text', 'image'] : ['text']));
+      entry.input = ['text', 'image'];
     } else if (seed.imageInput && Array.isArray(currentInput) && !(currentInput as unknown[]).includes('image')) {
-      entryNode.set('input', doc.createNode(['text', 'image']));
+      entry.input = ['text', 'image'];
     }
-    if (seed.contextWindow && seed.contextWindow > 0 && !entryNode.get('contextWindow')) {
-      entryNode.set('contextWindow', seed.contextWindow);
+    if (seed.contextWindow && seed.contextWindow > 0 && !entry.contextWindow) {
+      entry.contextWindow = seed.contextWindow;
     }
-    if (seed.maxTokens && seed.maxTokens > 0 && !entryNode.get('maxTokens')) {
-      entryNode.set('maxTokens', seed.maxTokens);
+    if (seed.maxTokens && seed.maxTokens > 0 && !entry.maxTokens) {
+      entry.maxTokens = seed.maxTokens;
     }
-    if (seed.cost && !entryNode.get('cost')) {
-      entryNode.set('cost', doc.createNode({
+    if (seed.cost && !entry.cost) {
+      entry.cost = {
         input: seed.cost.input,
         output: seed.cost.output,
         cacheRead: seed.cost.cacheRead,
         cacheWrite: seed.cost.cacheWrite,
-      }));
+      };
     }
   }
 
   const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
-  writeFileSync(temp, doc.toString(), 'utf8');
+  writeFileSync(temp, Bun.YAML.stringify(doc, null, 2), 'utf8');
   renameSync(temp, path);
 
   return {
@@ -279,4 +277,10 @@ export function upsertOmpProviderModels(
     backfilledModels: backfillIds,
     skippedModels: input.models.filter((m) => knownIds.has(m.id)).map((m) => m.id),
   };
+}
+
+/** Parses a YAML file that must be a top-level mapping; throws otherwise. */
+function asMapping(parsed: unknown, path: string): Record<string, unknown> {
+  if (!isRecord(parsed)) throw new Error(`${path} must contain a YAML mapping`);
+  return parsed;
 }

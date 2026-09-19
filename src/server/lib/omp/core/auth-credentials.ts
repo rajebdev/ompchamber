@@ -14,7 +14,6 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { Database } from 'bun:sqlite';
-import { parseDocument } from 'yaml';
 import { getAgentDir } from '@/server/lib/omp/core/paths';
 import { getModelsConfigPath } from '@/server/lib/omp/config/providers';
 
@@ -30,9 +29,7 @@ function readModelsYmlApiKey(slug: string): string | null {
   const path = getModelsConfigPath();
   if (!existsSync(path)) return null;
   try {
-    const doc = parseDocument(readFileSync(path, 'utf8'));
-    if (doc.errors.length > 0) return null;
-    const data = doc.toJS();
+    const data = Bun.YAML.parse(readFileSync(path, 'utf8'));
     if (!isRecord(data)) return null;
     const providers = data.providers;
     if (!isRecord(providers)) return null;
