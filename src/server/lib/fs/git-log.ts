@@ -1,5 +1,4 @@
 import path from 'path';
-import fs from 'fs';
 import type { GitCommit } from '@/shared/types/git';
 import { SAMPLE_GIT_COMMITS } from '@/client/data/mock/git-commits';
 import { runShell, shellOk } from '@/server/lib/fs/shell';
@@ -156,9 +155,9 @@ export async function fetchFileDiff(targetDir: string, hash: string, file: strin
 
   // 5. Try reading directly from target filesystem if available
   try {
-    const diskPath = path.join(targetDir, cleanFile);
-    if (fs.existsSync(diskPath) && !fs.statSync(diskPath).isDirectory()) {
-      const content = await Bun.file(diskPath).text();
+    const diskFile = Bun.file(path.join(targetDir, cleanFile));
+    if ((await diskFile.exists()) && !(await diskFile.stat()).isDirectory()) {
+      const content = await diskFile.text();
       const lines = content.split('\n');
       const diffLines = lines.map((l) => `+${l}`).join('\n');
       return `@@ -0,0 +1,${lines.length} @@\n${diffLines}`;

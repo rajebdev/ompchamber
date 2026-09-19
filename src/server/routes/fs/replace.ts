@@ -19,8 +19,8 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
-    const baseDir = await resolveRoot(formData.get('root') as string, getDefaultFsRoot(isMockMode()));
-    const targetDir = scopeToRepo(baseDir, formData.get('repo') as string);
+    const baseDir = await resolveRoot(formData.get('root') as string, await getDefaultFsRoot(isMockMode()));
+    const targetDir = await scopeToRepo(baseDir, formData.get('repo') as string);
     let filesToProcess: string[] = [];
 
     if (fileToReplace) {

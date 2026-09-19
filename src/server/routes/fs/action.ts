@@ -4,13 +4,12 @@ import path from 'path';
 import { isMockMode } from '@/server/mock.server';
 import { getDefaultFsRoot, resolveRoot } from '@/server/lib/fs/root';
 import { runShell } from '@/server/lib/fs/shell';
-
 export async function action({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
   const actionType = formData.get('actionType') as string;
   const filePath = formData.get('path') as string;
 
-  const rootDir = await resolveRoot(formData.get('root') as string, getDefaultFsRoot(isMockMode()));
+  const rootDir = await resolveRoot(formData.get('root') as string, await getDefaultFsRoot(isMockMode()));
   const repo = (formData.get('repo') as string) || '.';
   const scopedRoot = repo === '.' ? rootDir : path.join(rootDir, repo);
   if (scopedRoot !== rootDir && !scopedRoot.startsWith(rootDir + path.sep)) {
@@ -25,13 +24,11 @@ export async function action({ request }: ActionFunctionArgs) {
   try {
     if (actionType === 'save') {
       const content = (formData.get('content') as string) ?? '';
-      fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+      await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
       await Bun.write(fullPath, content);
       return json({ success: true });
     } else if (actionType === 'delete') {
-      if (fs.existsSync(fullPath)) {
-        fs.rmSync(fullPath, { recursive: true, force: true });
-      }
+      await fs.promises.rm(fullPath, { recursive: true, force: true });
       return json({ success: true });
     } else if (actionType === 'rename') {
       const newPath = formData.get('newPath') as string;
@@ -39,10 +36,11 @@ export async function action({ request }: ActionFunctionArgs) {
       if (fullNewPath !== rootDir && !fullNewPath.startsWith(rootDir + path.sep)) {
         return json({ error: 'Invalid new path' }, { status: 403 });
       }
-      fs.renameSync(fullPath, fullNewPath);
+      await fs.promises.rename(fullPath, fullNewPath);
       return json({ success: true });
     } else if (actionType === 'open_explorer') {
-      const dirToOpen = fs.statSync(fullPath).isDirectory() ? fullPath : path.dirname(fullPath);
+      const isDir = (await Bun.file(fullPath).stat().catch(() => null))?.isDirectory() ?? false;
+      const dirToOpen = isDir ? fullPath : path.dirname(fullPath);
       let command = '';
       if (process.platform === 'win32') {
         command = `start "" "${dirToOpen}"`;

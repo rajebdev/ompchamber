@@ -1,5 +1,4 @@
 import path from 'path';
-import fs from 'fs';
 import type { FileDiffData } from '@/shared/types/git';
 import { runShell, shellOk } from '@/server/lib/fs/shell';
 
@@ -36,12 +35,10 @@ export async function fetchWorkingFileDiff(
     }
 
     // Try reading current new content from disk if it exists
-    if (fs.existsSync(fullPath)) {
-      try {
-        newContent = await Bun.file(fullPath).text();
-      } catch {
-        newContent = '';
-      }
+    try {
+      newContent = await Bun.file(fullPath).text();
+    } catch {
+      newContent = '';
     }
 
     // Read old content from index or HEAD

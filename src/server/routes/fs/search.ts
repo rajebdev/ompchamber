@@ -70,8 +70,8 @@ export async function action({ request }: ActionFunctionArgs) {
 
   let targetDir: string;
   try {
-    const baseDir = await resolveRoot(formData.get('root') as string, getDefaultFsRoot(isMockMode()));
-    targetDir = scopeToRepo(baseDir, formData.get('repo') as string);
+    const baseDir = await resolveRoot(formData.get('root') as string, await getDefaultFsRoot(isMockMode()));
+    targetDir = await scopeToRepo(baseDir, formData.get('repo') as string);
   } catch (error: unknown) {
     console.error(error);
     return json({ error: String(error) }, { status: 500 });

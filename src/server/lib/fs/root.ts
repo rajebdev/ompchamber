@@ -12,7 +12,6 @@
  */
 
 import path from 'path';
-import fs from 'fs';
 import { getDb } from '@/server/db.server';
 
 const APP_ROOT = process.cwd();
@@ -21,10 +20,10 @@ const APP_ROOT = process.cwd();
  * Default browsing root when no session-bound project is active. Mock/demo
  * mode browses the bundled `examples` tree; real mode browses the app root.
  */
-export function getDefaultFsRoot(mock: boolean): string {
+export async function getDefaultFsRoot(mock: boolean): Promise<string> {
   if (mock) {
     const examplesDir = path.join(APP_ROOT, 'examples');
-    if (fs.existsSync(examplesDir)) return examplesDir;
+    if (await Bun.file(examplesDir).exists()) return examplesDir;
   }
   return APP_ROOT;
 }
@@ -47,7 +46,7 @@ export async function resolveRoot(
 
   // Fast path: the app root and anything beneath it are always allowed.
   if (resolved === APP_ROOT || resolved.startsWith(APP_ROOT + path.sep)) {
-    return fs.existsSync(resolved) ? resolved : fallback;
+    return (await Bun.file(resolved).exists()) ? resolved : fallback;
   }
 
   // Registered workspaces are user-opted project roots — allow exact matches.
@@ -57,7 +56,7 @@ export async function resolveRoot(
       'SELECT project_path FROM workspace_folders WHERE project_path IS NOT NULL AND project_path = ? LIMIT 1',
       [resolved]
     );
-    if (row && fs.existsSync(resolved)) return resolved;
+    if (row && (await Bun.file(resolved).exists())) return resolved;
   } catch {
     // Database unavailable — fall through to the safe fallback.
   }

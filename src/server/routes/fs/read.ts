@@ -111,7 +111,7 @@ function listEntries(dirPath: string, rootPath: string): any[] {
 export async function listDirectory({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const mock = isMockMode();
-  let baseDir = await resolveRoot(url.searchParams.get('root'), getDefaultFsRoot(mock));
+  let baseDir = await resolveRoot(url.searchParams.get('root'), await getDefaultFsRoot(mock));
 
   // Browse inside a nested git repo; emitted paths are repo-relative to match GitPanel.
   const repo = url.searchParams.get('repo');
@@ -189,7 +189,7 @@ function walk(dir: string, baseDir: string, out: ListFileEntry[]): void {
 export async function listFiles({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const mock = isMockMode();
-  const baseDir = await resolveRoot(url.searchParams.get('root'), getDefaultFsRoot(mock));
+  const baseDir = await resolveRoot(url.searchParams.get('root'), await getDefaultFsRoot(mock));
 
   try {
     const files: ListFileEntry[] = [];
@@ -210,7 +210,7 @@ export async function readFile({ request }: LoaderFunctionArgs) {
     return json({ error: 'Missing path' }, { status: 400 });
   }
 
-  let baseDir = await resolveRoot(url.searchParams.get('root'), getDefaultFsRoot(isMockMode()));
+  let baseDir = await resolveRoot(url.searchParams.get('root'), await getDefaultFsRoot(isMockMode()));
 
   // If repo is specified (e.g. nested git project), resolve inside the repo
   const repo = url.searchParams.get('repo');
@@ -229,15 +229,15 @@ export async function readFile({ request }: LoaderFunctionArgs) {
   }
 
   try {
-    if (!fs.existsSync(fullPath)) {
+    const file = Bun.file(fullPath);
+    if (!(await file.exists())) {
       return json({ error: 'File not found' }, { status: 404 });
     }
-    const stat = fs.statSync(fullPath);
-    if (stat.isDirectory()) {
+    if ((await file.stat()).isDirectory()) {
       return json({ error: 'Cannot read a directory' }, { status: 400 });
     }
 
-    const content = await Bun.file(fullPath).text();
+    const content = await file.text();
     return json({ content });
   } catch (error: any) {
     console.error(error);

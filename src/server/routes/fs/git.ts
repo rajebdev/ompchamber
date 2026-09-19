@@ -1,6 +1,6 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from '@/server/lib/remix-compat';
-import path from 'path';
 import fs from 'fs';
+import path from 'path';
 import { resolveRoot } from '@/server/lib/fs/root';
 import { runShell } from '@/server/lib/fs/shell';
 import { fetchFileDiff, fetchGitCommits } from '@/server/lib/fs/git-log';
@@ -232,19 +232,18 @@ export async function action({ request }: ActionFunctionArgs) {
     } else if (actionType === 'revert') {
       const file = formData.get('file') as string;
       const fullPath = path.join(targetDir, file);
+      const removeIfPresent = async () => {
+        await fs.promises.rm(fullPath, { recursive: true, force: true });
+      };
       try {
         const checkOut = await runShell(`git status --porcelain -- "${file}"`, { cwd: targetDir });
         if (checkOut.stdout.trim().startsWith('??')) {
-          if (fs.existsSync(fullPath)) {
-            fs.rmSync(fullPath, { recursive: true, force: true });
-          }
+          await removeIfPresent();
         } else {
           await expectOk(`git restore -- "${file}"`, targetDir);
         }
       } catch {
-        if (fs.existsSync(fullPath)) {
-          fs.rmSync(fullPath, { recursive: true, force: true });
-        }
+        await removeIfPresent();
       }
     } else if (actionType === 'revert_all') {
       await expectOk('git restore .', targetDir);

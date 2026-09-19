@@ -1,29 +1,34 @@
 import { type LoaderFunctionArgs } from '@/server/lib/remix-compat';
 import path from 'path';
-import fs from 'fs';
 import { resolveRoot } from '@/server/lib/fs/root';
 import { scopeToRepo } from '@/server/lib/fs/repo-scope';
+
+/** True when `dir` resolves to an existing directory (async stat probe). */
+async function isDirectory(dir: string): Promise<boolean> {
+  const stat = await Bun.file(dir).stat().catch(() => null);
+  return stat?.isDirectory() ?? false;
+}
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const command = (url.searchParams.get('cmd') || '').trim();
   const requestedCwd = (url.searchParams.get('cwd') || '').trim();
   const baseDir = await resolveRoot(url.searchParams.get('root'), process.cwd());
-  const rootDir = scopeToRepo(baseDir, url.searchParams.get('repo'));
+  const rootDir = await scopeToRepo(baseDir, url.searchParams.get('repo'));
   let currentDir = rootDir;
 
   if (requestedCwd) {
     const resolved = path.isAbsolute(requestedCwd)
       ? path.resolve(requestedCwd)
       : path.resolve(rootDir, requestedCwd);
-    if ((resolved === rootDir || resolved.startsWith(rootDir + path.sep)) && fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+    if ((resolved === rootDir || resolved.startsWith(rootDir + path.sep)) && (await isDirectory(resolved))) {
       currentDir = resolved;
     }
   }
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
-    start(controller) {
+    async start(controller) {
       const sendEvent = (event: string, data: any) => {
         try {
           controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
@@ -54,7 +59,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
           try { controller.close(); } catch {}
           return;
         }
-        if (!fs.existsSync(nextDir) || !fs.statSync(nextDir).isDirectory()) {
+        if (!(await isDirectory(nextDir))) {
           sendEvent('data', { text: `\x1b[31mcd: no such file or directory: ${target}\x1b[0m\r\n` });
           sendEvent('exit', { exitCode: 1, cwd: path.relative(rootDir, currentDir) || '.' });
           try { controller.close(); } catch {}
