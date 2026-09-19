@@ -9,7 +9,6 @@
  * repo's per-file size ceiling.
  */
 
-import { existsSync } from 'fs';
 import { homedir } from 'os';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 
@@ -153,14 +152,24 @@ export function toImageContents(value: unknown): Array<{ type: 'image'; data: st
   return images?.length ? images : undefined;
 }
 
+/** True when `path` exists (file, dir, or resolvable symlink). */
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await Bun.file(path).stat();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Pick a spawn cwd that actually exists. A session records the directory it
  * was created in, but that directory may have been deleted since: spawn()
  * would fail with ENOENT and `omp --cwd <missing>` throws in setProjectDir. */
-export function resolveSpawnCwd(recordedCwd?: string | null): string {
-  if (recordedCwd && existsSync(recordedCwd)) return recordedCwd;
+export async function resolveSpawnCwd(recordedCwd?: string | null): Promise<string> {
+  if (recordedCwd && (await pathExists(recordedCwd))) return recordedCwd;
   try {
     const serverCwd = process.cwd();
-    if (serverCwd && existsSync(serverCwd)) return serverCwd;
+    if (serverCwd && (await pathExists(serverCwd))) return serverCwd;
   } catch {
     // process.cwd() itself throws when the server's own cwd was removed.
   }

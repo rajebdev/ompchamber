@@ -67,7 +67,7 @@ export async function sendCommand({ params, request }: ActionFunctionArgs) {
     if ('response' in resolved) return resolved.response;
     const { filePath, recordedCwd } = resolved;
 
-    const cwd = resolveSpawnCwd(recordedCwd);
+    const cwd = await resolveSpawnCwd(recordedCwd);
     const spawnMode = explicitMode ?? await loadPersistedAccessMode();
     const { session } = await startRpcSession(sessionId, filePath, cwd, recordedCwd, spawnMode);
     const result = await session.send(body);

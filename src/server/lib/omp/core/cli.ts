@@ -34,24 +34,19 @@ export function invalidateOmpCliCache(): void {
 function probeOmpBin(): string | null {
   const override = Bun.env.OMP_WEB_OMP_BIN;
   if (override) return existsSync(override) ? override : null;
-  for (const dir of (Bun.env.PATH ?? '').split(delimiter)) {
-    if (!dir) continue;
-    const candidate = join(dir, BIN_NAME);
-    if (existsSync(candidate)) return candidate;
-  }
+
+  const onPath = Bun.which(BIN_NAME);
+  if (onPath) return onPath;
+
   // GUI-launched processes often miss homebrew/bun dirs in PATH; probe the
   // usual install locations before giving up.
-  const fallbackDirs = [
+  const fallbackPath = [
     '/opt/homebrew/bin',
     '/usr/local/bin',
     join(homedir(), '.bun', 'bin'),
     join(homedir(), '.local', 'bin'),
-  ];
-  for (const dir of fallbackDirs) {
-    const candidate = join(dir, BIN_NAME);
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
+  ].join(delimiter);
+  return Bun.which(BIN_NAME, { PATH: fallbackPath });
 }
 
 /** Resolve the omp binary: OMP_WEB_OMP_BIN override, then PATH lookup. Returns
