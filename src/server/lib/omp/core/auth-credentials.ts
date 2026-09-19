@@ -11,7 +11,6 @@
  * logs, or echoes them back over HTTP.
  */
 
-import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { Database } from 'bun:sqlite';
 import { getAgentDir } from '@/server/lib/omp/core/paths';
@@ -27,9 +26,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /** `providers.<slug>.apiKey` from models.yml, or null when absent/blank. */
 async function readModelsYmlApiKey(slug: string): Promise<string | null> {
   const path = await getModelsConfigPath();
-  if (!existsSync(path)) return null;
+  if (!(await Bun.file(path).exists())) return null;
   try {
-    const data = Bun.YAML.parse(readFileSync(path, 'utf8'));
+    const data = Bun.YAML.parse(await Bun.file(path).text());
     if (!isRecord(data)) return null;
     const providers = data.providers;
     if (!isRecord(providers)) return null;
@@ -58,7 +57,7 @@ function keyFromCredentialJson(data: string): string | null {
 /** A live, enabled api_key credential for `slug` from agent.db, or null. */
 async function readAgentDbApiKey(slug: string): Promise<string | null> {
   const dbPath = join(getAgentDir(), 'agent.db');
-  if (!existsSync(dbPath)) return null;
+  if (!(await Bun.file(dbPath).exists())) return null;
   let db: Database | null = null;
   try {
     db = new Database(dbPath, { readonly: true });

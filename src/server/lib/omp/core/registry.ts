@@ -18,7 +18,6 @@
  * OMPChamber only READS this file — it never writes the agent's registry.
  */
 
-import { existsSync, readFileSync } from 'fs';
 import { canonicalize, getProjectsRegistryPath } from '@/server/lib/omp/core/paths';
 import type { OmpProject } from '@/shared/types/omp/session';
 
@@ -88,10 +87,10 @@ export function parseProjectRegistry(raw: string): OmpProjectRegistryFile {
 }
 
 /** Load ~/.omp/agent/projects.json (missing/corrupt → empty registry). */
-export function loadProjectRegistry(registryPath: string = getProjectsRegistryPath()): OmpProjectRegistryFile {
-  if (!existsSync(registryPath)) return EMPTY_REGISTRY;
+export async function loadProjectRegistry(registryPath: string = getProjectsRegistryPath()): Promise<OmpProjectRegistryFile> {
+  if (!(await Bun.file(registryPath).exists())) return EMPTY_REGISTRY;
   try {
-    return parseProjectRegistry(readFileSync(registryPath, 'utf8'));
+    return parseProjectRegistry(await Bun.file(registryPath).text());
   } catch {
     return EMPTY_REGISTRY;
   }

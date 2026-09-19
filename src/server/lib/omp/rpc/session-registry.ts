@@ -12,7 +12,6 @@
  * usages happen inside functions, never at module init.
  */
 
-import { existsSync } from 'fs';
 import { RpcProcess } from '@/server/lib/omp/rpc/process';
 import { buildSessionSpawnArgs } from '@/server/lib/omp/rpc/constants';
 import { AgentSessionWrapper } from '@/server/lib/omp/rpc/manager';
@@ -124,7 +123,7 @@ export async function reconcileSpawnApprovalMode(session: AgentSessionWrapper, d
   // A brand-new session has no JSONL on disk yet; destroying it would 404 the
   // next request that tries to resolve its file.
   if (!session.sessionFile) return false;
-  if (!existsSync(session.sessionFile)) return false;
+  if (!(await Bun.file(session.sessionFile).exists())) return false;
   await session.destroyAndWait();
   return true;
 }
