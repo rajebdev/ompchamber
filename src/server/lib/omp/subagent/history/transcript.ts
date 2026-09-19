@@ -16,7 +16,7 @@
  * child path resolved from the parent session file + subagent id.
  */
 
-import { realpathSync, statSync } from 'fs';
+import { promises as fsp } from 'fs';
 import { dirname, join } from 'path';
 import { parseJsonlLenient } from '@/shared/lib/omp/session/jsonl';
 import { SUBAGENT_ID_MAX_LENGTH, SUBAGENT_ID_RE, siblingDirForSession } from '@/server/lib/omp/subagent/history/paths';
@@ -31,23 +31,23 @@ export const SUBAGENT_TRANSCRIPT_PAGE_BYTES = 256 * 1024;
  * inside the REAL artifacts dir and be a regular file. The id grammar is
  * validated by the caller, so no traversal form can reach the join.
  */
-function resolveTranscriptPath(sessionFilePath: string, subagentId: string): string | null {
+async function resolveTranscriptPath(sessionFilePath: string, subagentId: string): Promise<string | null> {
   let realDir: string;
   try {
-    realDir = realpathSync(siblingDirForSession(sessionFilePath));
+    realDir = await fsp.realpath(siblingDirForSession(sessionFilePath));
   } catch {
     return null;
   }
   const candidate = join(realDir, `${subagentId}.jsonl`);
   let realCandidate: string;
   try {
-    realCandidate = realpathSync(candidate);
+    realCandidate = await fsp.realpath(candidate);
   } catch {
     return null;
   }
   if (dirname(realCandidate) !== realDir) return null;
   try {
-    if (!statSync(realCandidate).isFile()) return null;
+    if (!(await Bun.file(realCandidate).stat()).isFile()) return null;
   } catch {
     return null;
   }
@@ -67,7 +67,7 @@ export async function readSubagentTranscriptPage(
   maxBytes: number = SUBAGENT_TRANSCRIPT_PAGE_BYTES,
 ): Promise<SubagentMessagesPage | null> {
   if (!SUBAGENT_ID_RE.test(subagentId) || subagentId.length > SUBAGENT_ID_MAX_LENGTH) return null;
-  const transcriptPath = resolveTranscriptPath(sessionFilePath, subagentId);
+  const transcriptPath = await resolveTranscriptPath(sessionFilePath, subagentId);
   if (!transcriptPath) return null;
 
   let size: number;

@@ -14,8 +14,8 @@
  * invalidation is needed).
  */
 
-import { existsSync, realpathSync } from 'fs';
-import { dirname } from 'path';
+import { promises as fsp } from 'fs';
+import { dirname, join } from 'path';
 
 declare global {
   var __ompChamberProjectCache: Map<string, { root: string; expiresAt: number }> | undefined;
@@ -23,11 +23,20 @@ declare global {
 
 const PROJECT_CACHE_TTL_MS = 60_000;
 
-function realPathOrSelf(filePath: string): string {
+async function realPathOrSelf(filePath: string): Promise<string> {
   try {
-    return realpathSync.native(filePath);
+    return await fsp.realpath(filePath);
   } catch {
     return filePath;
+  }
+}
+
+async function pathExists(target: string): Promise<boolean> {
+  try {
+    await Bun.file(target).stat();
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -76,8 +85,9 @@ export async function resolveProjectRoot(cwd: string): Promise<string> {
 
   let root: string;
   try {
-    if (!existsSync(cwd) || !existsSync(`${cwd}${process.platform === 'win32' ? '\\' : '/'}.git`)) {
-      root = realPathOrSelf(cwd);
+    const dotGit = join(cwd, '.git');
+    if (!(await pathExists(cwd)) || !(await pathExists(dotGit))) {
+      root = await realPathOrSelf(cwd);
     } else {
       const out = await git(cwd, [
         'rev-parse',
@@ -86,17 +96,17 @@ export async function resolveProjectRoot(cwd: string): Promise<string> {
         '--show-toplevel',
       ]);
       const [commonDirRaw, toplevelRaw] = out.split('\n').map((l) => l.trim());
-      const commonDir = realPathOrSelf(commonDirRaw || '');
-      const toplevel = realPathOrSelf(toplevelRaw || '');
-      const realCwd = realPathOrSelf(cwd);
+      const commonDir = await realPathOrSelf(commonDirRaw || '');
+      const toplevel = await realPathOrSelf(toplevelRaw || '');
+      const realCwd = await realPathOrSelf(cwd);
       const isTopLevel = samePath(toplevel, realCwd);
       // For a linked worktree, --git-common-dir differs from the toplevel's
       // .git: its parent is the MAIN repo root shared by all worktrees.
       const isWorktreeTopLevel = isTopLevel && !samePath(dirname(commonDir), dirname(toplevel));
-      root = isWorktreeTopLevel ? realPathOrSelf(dirname(commonDir)) : toplevel || realCwd;
+      root = isWorktreeTopLevel ? await realPathOrSelf(dirname(commonDir)) : toplevel || realCwd;
     }
   } catch {
-    root = realPathOrSelf(cwd);
+    root = await realPathOrSelf(cwd);
   }
 
   cache.set(cwd, { root, expiresAt: Date.now() + PROJECT_CACHE_TTL_MS });
