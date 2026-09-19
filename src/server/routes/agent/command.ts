@@ -22,11 +22,11 @@ function commandErrorResponse(error: unknown) {
 }
 
 /** Resolve the session file path (OMP UUID → .jsonl) and its recorded cwd. */
-function resolveSessionPathOr404(sessionId: string): { filePath: string; recordedCwd: string | null } | { response: Response } {
-  const filePath = findSessionFileById(sessionId);
+async function resolveSessionPathOr404(sessionId: string): Promise<{ filePath: string; recordedCwd: string | null } | { response: Response }> {
+  const filePath = await findSessionFileById(sessionId);
   if (!filePath) return { response: json({ error: 'Session not found' }, { status: 404 }) };
   let recordedCwd: string | null = null;
-  const header = readRawHeaderLine(filePath);
+  const header = await readRawHeaderLine(filePath);
   if (header && typeof header.cwd === 'string') recordedCwd = header.cwd;
   return { filePath, recordedCwd };
 }
@@ -63,7 +63,7 @@ export async function sendCommand({ params, request }: ActionFunctionArgs) {
       }
     }
 
-    const resolved = resolveSessionPathOr404(sessionId);
+    const resolved = await resolveSessionPathOr404(sessionId);
     if ('response' in resolved) return resolved.response;
     const { filePath, recordedCwd } = resolved;
 

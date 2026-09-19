@@ -47,7 +47,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       return json({ kind, rules: stored ?? MOCK_PRESETS[kind], path: null, exists: false, isMock: true });
     }
 
-    const file = readInstructionFile(kind);
+    const file = await readInstructionFile(kind);
     return json({ kind, rules: file.content, path: file.path, exists: file.exists, isMock: false });
   } catch (error) {
     return json(
@@ -90,7 +90,7 @@ export async function action({ request }: ActionFunctionArgs) {
       return json({ success: true, kind, rules, path: null, exists: rules.trim().length > 0, isMock: true, nativeSynced: false });
     }
 
-    const saved = saveInstructionFile(kind, rules);
+    const saved = await saveInstructionFile(kind, rules);
 
     // Best-effort, AGENTS.md only: recognizable approval directives in the
     // behavior rules also land in config.yml tools.approval. RULES.md holds
@@ -101,7 +101,7 @@ export async function action({ request }: ActionFunctionArgs) {
     const approval = kind === 'agents' ? parseApprovalRules(rules) : null;
     if (approval) {
       try {
-        writeToolsApproval(approval);
+        await writeToolsApproval(approval);
         nativeSynced = true;
       } catch (error) {
         nativeError = error instanceof Error ? error.message : String(error);

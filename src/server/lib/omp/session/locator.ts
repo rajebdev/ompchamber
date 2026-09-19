@@ -13,13 +13,13 @@ import { getSessionsDir } from '@/server/lib/omp/core/paths';
 import { listSessionFiles, scanSessionInfo } from '@/server/lib/omp/session/files';
 
 /** Find the absolute path of the .jsonl whose header id matches. */
-export function findSessionFileById(
+export async function findSessionFileById(
   sessionId: string,
   sessionsRoot: string = getSessionsDir(),
-): string | undefined {
-  const files = listSessionFiles(sessionsRoot);
+): Promise<string | undefined> {
+  const files = await listSessionFiles(sessionsRoot);
   for (const file of files) {
-    const info = scanSessionInfo(file);
+    const info = await scanSessionInfo(file);
     if (info?.id === sessionId) return file;
   }
   return undefined;

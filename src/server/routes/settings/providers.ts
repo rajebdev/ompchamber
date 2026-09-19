@@ -46,8 +46,8 @@ function respondWithProviders(providers: ProviderItem[], extra: Record<string, u
 async function setProviderEnabled(slug: string, enabled: boolean): Promise<Response> {
   const mock = isMockMode();
   if (!mock) {
-    if (enabled) enableNativeProvider(slug);
-    else disableNativeProvider(slug);
+    if (enabled) await enableNativeProvider(slug);
+    else await disableNativeProvider(slug);
   }
   // Must precede the merge: loadRpcProviderItems serves its 60s snapshot, so a
   // warm cache would rebuild the list against the OLD disabledProviders set.

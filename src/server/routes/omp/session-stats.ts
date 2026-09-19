@@ -19,7 +19,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   if (!sessionId) {
     return json({ error: 'sessionId is required' }, { status: 400 });
   }
-  const filePath = findSessionFileById(sessionId);
+  const filePath = await findSessionFileById(sessionId);
   if (!filePath) {
     return json({ error: 'Session not found' }, { status: 404 });
   }

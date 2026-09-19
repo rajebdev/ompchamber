@@ -25,9 +25,9 @@ export async function listSubagents({ params }: LoaderFunctionArgs) {
   }
 
   try {
-    const sessionFile = findSessionFileById(sessionId);
+    const sessionFile = await findSessionFileById(sessionId);
     if (!sessionFile) return json({ subagents: [] });
-    return json({ subagents: extractSubagentHistory(sessionFile) });
+    return json({ subagents: await extractSubagentHistory(sessionFile) });
   } catch (error) {
     return json(
       { error: error instanceof Error ? error.message : String(error) },
@@ -60,12 +60,12 @@ export async function readSubagentTranscript({ request, params }: LoaderFunction
   }
 
   try {
-    const sessionFile = findSessionFileById(sessionId);
+    const sessionFile = await findSessionFileById(sessionId);
     if (!sessionFile) return json({ page: null });
 
     // One history pass locates the entry (and proves a sibling transcript was
     // recorded); the page reader re-derives the confined child path.
-    const entry = extractSubagentHistory(sessionFile).find((candidate) => candidate.id === subagentId);
+    const entry = (await extractSubagentHistory(sessionFile)).find((candidate) => candidate.id === subagentId);
     if (!entry?.transcriptAvailable || !entry.sessionFile) return json({ page: null });
 
     const fromByteRaw = new URL(request.url).searchParams.get('fromByte');

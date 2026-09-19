@@ -10,7 +10,7 @@
  * read-only: chamber never mutates native agent files.
  */
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs';
+import fs from 'fs';
 import { join } from 'path';
 import { getAgentDir } from '@/server/lib/omp/core/paths';
 
@@ -55,10 +55,11 @@ function toMode(value: string | undefined): 'primary' | 'subagent' | 'all' {
   return value === 'primary' || value === 'subagent' || value === 'all' ? value : 'all';
 }
 
-function parseAgentFile(filePath: string, sourceRoot: 'user' | 'project'): DiscoveredAgent | undefined {
+async function parseAgentFile(filePath: string, sourceRoot: 'user' | 'project'): Promise<DiscoveredAgent | undefined> {
   try {
-    if (statSync(filePath).size > 512 * 1024) return undefined;
-    const text = readFileSync(filePath, 'utf8');
+    const file = Bun.file(filePath);
+    if ((await file.stat()).size > 512 * 1024) return undefined;
+    const text = await file.text();
     const { data, body } = parseFrontmatter(text);
     const base = filePath.split('/').pop()?.replace(/\.md$/, '') || filePath;
     const name = data.name || base;
@@ -83,15 +84,16 @@ function parseAgentFile(filePath: string, sourceRoot: 'user' | 'project'): Disco
   }
 }
 
-function scanAgentsDir(dir: string, sourceRoot: 'user' | 'project'): DiscoveredAgent[] {
-  if (!existsSync(dir)) return [];
+async function scanAgentsDir(dir: string, sourceRoot: 'user' | 'project'): Promise<DiscoveredAgent[]> {
+  if (!(await Bun.file(dir).exists())) return [];
   try {
-    return readdirSync(dir, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
-      .flatMap((entry) => {
-        const agent = parseAgentFile(join(dir, entry.name), sourceRoot);
-        return agent ? [agent] : [];
-      });
+    const found: DiscoveredAgent[] = [];
+    for (const entry of await fs.promises.readdir(dir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
+      const agent = await parseAgentFile(join(dir, entry.name), sourceRoot);
+      if (agent) found.push(agent);
+    }
+    return found;
   } catch {
     return [];
   }
@@ -101,14 +103,14 @@ function scanAgentsDir(dir: string, sourceRoot: 'user' | 'project'): DiscoveredA
  * Discover native agents from both disk roots. User agents win over project
  * agents with the same file base name. Never throws.
  */
-export function discoverNativeAgents(projectDir?: string): DiscoveredAgent[] {
+export async function discoverNativeAgents(projectDir?: string): Promise<DiscoveredAgent[]> {
   const userDir = join(getAgentDir(), 'agents');
   const byBase = new Map<string, DiscoveredAgent>();
-  for (const agent of scanAgentsDir(userDir, 'user')) {
+  for (const agent of await scanAgentsDir(userDir, 'user')) {
     byBase.set(agent.filePath.split('/').pop() ?? agent.id, agent);
   }
   if (projectDir) {
-    for (const agent of scanAgentsDir(projectDir, 'project')) {
+    for (const agent of await scanAgentsDir(projectDir, 'project')) {
       const base = agent.filePath.split('/').pop() ?? agent.id;
       if (!byBase.has(base)) byBase.set(base, agent);
     }
@@ -145,7 +147,7 @@ export interface AgentFileInput {
  * Project agents are intentionally not writable from the chamber — the agent
  * dir belongs to omp.
  */
-export function writeAgentDefinition(input: AgentFileInput): { path: string } {
+export async function writeAgentDefinition(input: AgentFileInput): Promise<{ path: string }> {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(input.fileName)) {
     throw new Error('Agent file name may contain letters, numbers, dots, dashes, and underscores');
   }
@@ -167,17 +169,17 @@ export function writeAgentDefinition(input: AgentFileInput): { path: string } {
   }
   lines.push('---');
   const content = `${lines.join('\n')}\n\n${input.systemPrompt.trim()}\n`;
-  mkdirSync(dir, { recursive: true });
+  await fs.promises.mkdir(dir, { recursive: true });
   const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
-  writeFileSync(temp, content, 'utf8');
-  renameSync(temp, path);
+  await Bun.write(temp, content);
+  await fs.promises.rename(temp, path);
   return { path };
 }
 
-export function deleteAgentDefinition(fileName: string): boolean {
+export async function deleteAgentDefinition(fileName: string): Promise<boolean> {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(fileName)) throw new Error('Invalid agent file name');
   const path = join(getAgentDir(), 'agents', `${fileName}.md`);
-  if (!existsSync(path)) return false;
-  unlinkSync(path);
+  if (!(await Bun.file(path).exists())) return false;
+  await fs.promises.unlink(path);
   return true;
 }

@@ -241,7 +241,7 @@ export async function action({ request }: ActionFunctionArgs) {
     let omp: { written: boolean; addedCount: number; backfilledCount: number; reason?: string } | undefined;
     if (persistToOmp && providerSlug && enriched.length > 0) {
       try {
-        const upsert = upsertOmpProviderModels(providerSlug, {
+        const upsert = await upsertOmpProviderModels(providerSlug, {
           baseUrl,
           apiKey,
           api: /anthropic\.com/i.test(baseUrl)

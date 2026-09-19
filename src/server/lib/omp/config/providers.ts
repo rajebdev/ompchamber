@@ -9,7 +9,7 @@
  * and omp-web/app/api/providers/enable/route.ts.
  */
 
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'fs';
+import fs from 'fs';
 import { join } from 'path';
 import { getAgentDir } from '@/server/lib/omp/core/paths';
 
@@ -18,9 +18,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** Path of the native OMP models config (~/.omp/agent/models.yml). */
-export function getModelsConfigPath(): string {
+export async function getModelsConfigPath(): Promise<string> {
   const yml = join(getAgentDir(), 'models.yml');
-  return existsSync(yml) ? yml : join(getAgentDir(), 'models.yaml');
+  return (await Bun.file(yml).exists()) ? yml : join(getAgentDir(), 'models.yaml');
 }
 
 export interface NativeProviderInfo {
@@ -46,11 +46,11 @@ export interface NativeModelInfo {
  * Read custom providers/models registered in models.yml. Returns [] when the
  * file is missing or has no providers — never throws for absent files.
  */
-export function readNativeProviders(): NativeProviderInfo[] {
-  const path = getModelsConfigPath();
-  if (!existsSync(path)) return [];
+export async function readNativeProviders(): Promise<NativeProviderInfo[]> {
+  const path = await getModelsConfigPath();
+  if (!(await Bun.file(path).exists())) return [];
   try {
-    const data = Bun.YAML.parse(readFileSync(path, 'utf8'));
+    const data = Bun.YAML.parse(await Bun.file(path).text());
     if (!isRecord(data)) return [];
     const providers = data.providers;
     if (typeof providers !== 'object' || providers === null || Array.isArray(providers)) return [];
@@ -134,13 +134,13 @@ export interface OmpProviderUpsertResult {
  * apiKey — omp rejects models-cfg providers without one unless auth is "none"
  * or "oauth"; existing providers keep whatever credential they already have.
  */
-export function upsertOmpProviderModels(
+export async function upsertOmpProviderModels(
   slug: string,
   input: OmpProviderUpsertInput,
-): OmpProviderUpsertResult {
-  const path = getModelsConfigPath();
-  const doc: Record<string, unknown> = existsSync(path)
-    ? asMapping(Bun.YAML.parse(readFileSync(path, 'utf8')), path)
+): Promise<OmpProviderUpsertResult> {
+  const path = await getModelsConfigPath();
+  const doc: Record<string, unknown> = (await Bun.file(path).exists())
+    ? asMapping(Bun.YAML.parse(await Bun.file(path).text()), path)
     : {};
   let providers: Record<string, unknown> | undefined = isRecord(doc.providers) ? doc.providers : undefined;
   if (!providers) {
@@ -268,8 +268,8 @@ export function upsertOmpProviderModels(
   }
 
   const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
-  writeFileSync(temp, Bun.YAML.stringify(doc, null, 2), 'utf8');
-  renameSync(temp, path);
+  await Bun.write(temp, Bun.YAML.stringify(doc, null, 2));
+  await fs.promises.rename(temp, path);
 
   return {
     written: true,

@@ -57,9 +57,7 @@ async function loadRpcProviderItems(): Promise<ProviderItem[]> {
           && typeof (model as OmpModel).provider === 'string'
         ))
       : [];
-    const disabled = (() => {
-      try { return readDisabledProviders(); } catch { return new Set<string>(); }
-    })();
+    const disabled = await readDisabledProviders().catch(() => new Set<string>());
 
     const items = loginProviders.map((provider) => {
       const providerModels = available.filter((model) => model.provider === provider.id);
@@ -228,11 +226,9 @@ function applyStoredOverrides(registry: ProviderItem[], stored: ProviderItem[]):
 
 /** Merge all three omp provider sources with app-local custom SQLite entries. */
 export async function mergeProviders(custom: ProviderItem[]): Promise<{ providers: ProviderItem[]; modelsConfigPath: string }> {
-  const disabled = (() => {
-    try { return readDisabledProviders(); } catch { return new Set<string>(); }
-  })();
+  const disabled = await readDisabledProviders().catch(() => new Set<string>());
   const authItems = await loadRpcProviderItems();
-  const native = readNativeProviders();
+  const native = await readNativeProviders();
   const nativeItems = native.map((info) => nativeProviderItem(
     info.slug,
     info.baseUrl,
@@ -252,6 +248,6 @@ export async function mergeProviders(custom: ProviderItem[]): Promise<{ provider
       ...registryItems,
       ...custom.filter((p) => !nativeSlugs.has(p.slug.toLowerCase())),
     ]),
-    modelsConfigPath: getModelsConfigPath(),
+    modelsConfigPath: await getModelsConfigPath(),
   };
 }

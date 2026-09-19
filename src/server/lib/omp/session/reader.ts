@@ -19,7 +19,6 @@
  * never mutate the agent's files.
  */
 
-import { existsSync } from 'fs';
 import { listAllSessionInfos, type OmpSessionInfo } from '@/server/lib/omp/session/files';
 import { loadProjectRegistry, mergeProjects } from '@/server/lib/omp/core/registry';
 import { resolveProjectRoot } from '@/server/lib/omp/core/worktree';
@@ -116,14 +115,14 @@ function discoveredProjectPaths(sessions: OmpSessionInfo[]): string[] {
 async function buildOmpSidebarData(): Promise<OmpSidebarData> {
   const agentDir = getAgentDir();
   const sessionsDir = getSessionsDir();
-  const available = existsSync(sessionsDir);
+  const available = await Bun.file(sessionsDir).exists();
 
-  const ompSessions = listAllSessionInfos(sessionsDir);
+  const ompSessions = await listAllSessionInfos(sessionsDir);
   const projectRootByCwd = await resolveRootsByCwd(
     [...new Set(ompSessions.map((s) => s.cwd).filter(Boolean))],
   );
 
-  const registry = loadProjectRegistry();
+  const registry = await loadProjectRegistry();
   const projects = mergeProjects(registry, discoveredProjectPaths(ompSessions));
   const sessions = ompSessions.map((info) => toOmpSession(info, projectRootByCwd));
 
@@ -145,7 +144,7 @@ async function buildOmpSidebarData(): Promise<OmpSidebarData> {
 /** Convenience: only the project list (cheap — no per-session git lookups). */
 export async function loadOmpProjects(): Promise<OmpProject[]> {
   const sessionsDir = getSessionsDir();
-  const ompSessions = existsSync(sessionsDir) ? listAllSessionInfos(sessionsDir) : [];
-  const registry = loadProjectRegistry();
+  const ompSessions = (await Bun.file(sessionsDir).exists()) ? await listAllSessionInfos(sessionsDir) : [];
+  const registry = await loadProjectRegistry();
   return mergeProjects(registry, discoveredProjectPaths(ompSessions));
 }

@@ -16,7 +16,8 @@
  * never exposed to the browser and are preserved when an edit omits them.
  */
 
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from 'fs';
+import fs from 'fs';
+import { closeSync, existsSync, openSync, statSync, unlinkSync, writeSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { getAgentDir } from '@/server/lib/omp/core/paths';
 
@@ -46,11 +47,12 @@ function serverEntries(config: McpFile): Array<{ name: string; config: McpServer
     .map(([name, server]) => ({ name, config: server }));
 }
 
-function readMcpFile(path: string): McpUserConfig {
-  if (!existsSync(path)) return { path, servers: [], disabledServers: [] };
+async function readMcpFile(path: string): Promise<McpUserConfig> {
+  if (!(await Bun.file(path).exists())) return { path, servers: [], disabledServers: [] };
   try {
-    if (statSync(path).size > MAX_MCP_CONFIG_BYTES) throw new Error('configuration is too large to inspect');
-    const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+    const file = Bun.file(path);
+    if ((await file.stat()).size > MAX_MCP_CONFIG_BYTES) throw new Error('configuration is too large to inspect');
+    const parsed: unknown = JSON.parse(await file.text());
     if (!isRecord(parsed)) throw new Error('configuration must contain a JSON object');
     if (parsed.mcpServers !== undefined && !isRecord(parsed.mcpServers)) throw new Error('mcpServers must be an object');
     return {
@@ -66,7 +68,7 @@ function readMcpFile(path: string): McpUserConfig {
 }
 
 /** Read ~/.omp/agent/mcp.json (user scope) without throwing. */
-export function readUserMcpConfig(path = join(getAgentDir(), 'mcp.json')): McpUserConfig {
+export async function readUserMcpConfig(path = join(getAgentDir(), 'mcp.json')): Promise<McpUserConfig> {
   return readMcpFile(path);
 }
 
@@ -78,7 +80,7 @@ export function resolveProjectMcpConfig(projectRoot: string): { root: string; pa
 }
 
 /** Read <projectRoot>/.omp/mcp.json (project scope) without throwing. */
-export function readProjectMcpConfig(projectRoot: string): McpUserConfig {
+export async function readProjectMcpConfig(projectRoot: string): Promise<McpUserConfig> {
   return readMcpFile(resolveProjectMcpConfig(projectRoot).path);
 }
 
@@ -96,11 +98,11 @@ function sleepSync(ms: number): void {
   Atomics.wait(new Int32Array(sab), 0, 0, ms);
 }
 
-export function withMcpConfigLock<T>(configPath: string, fn: () => T): T {
+export async function withMcpConfigLock<T>(configPath: string, fn: () => T | Promise<T>): Promise<T> {
   const lockPath = `${configPath}.lock`;
   // The config file may not exist yet (first write) — the lockfile needs its
   // parent dir to exist before exclusive-create can succeed.
-  mkdirSync(dirname(lockPath), { recursive: true });
+  await fs.promises.mkdir(dirname(lockPath), { recursive: true });
   const deadline = Date.now() + MCP_LOCK_TIMEOUT_MS;
   for (;;) {
     let fd: number | null = null;
@@ -129,7 +131,7 @@ export function withMcpConfigLock<T>(configPath: string, fn: () => T): T {
       closeSync(fd);
     }
     try {
-      return fn();
+      return await fn();
     } finally {
       try {
         unlinkSync(lockPath);
@@ -140,24 +142,24 @@ export function withMcpConfigLock<T>(configPath: string, fn: () => T): T {
   }
 }
 
-function readConfigFile(path: string): McpFile {
-  if (!existsSync(path)) return { mcpServers: {} };
-  const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+async function readConfigFile(path: string): Promise<McpFile> {
+  if (!(await Bun.file(path).exists())) return { mcpServers: {} };
+  const parsed: unknown = JSON.parse(await Bun.file(path).text());
   if (!isRecord(parsed)) throw new Error(`${path} must contain a JSON object`);
   if (parsed.mcpServers !== undefined && !isRecord(parsed.mcpServers)) throw new Error('mcpServers must be an object');
   return parsed as McpFile;
 }
 
-function writeConfigFile(path: string, config: McpFile): void {
-  mkdirSync(dirname(path), { recursive: true });
+async function writeConfigFile(path: string, config: McpFile): Promise<void> {
+  await fs.promises.mkdir(dirname(path), { recursive: true });
   const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
-  writeFileSync(temp, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
-  renameSync(temp, path);
+  await Bun.write(temp, `${JSON.stringify(config, null, 2)}\n`);
+  await fs.promises.rename(temp, path);
 }
 
-function writeServerAt(path: string, name: string, server: McpServer, previousName?: string): { path: string } {
-  return withMcpConfigLock(path, () => {
-    const config = readConfigFile(path);
+async function writeServerAt(path: string, name: string, server: McpServer, previousName?: string): Promise<{ path: string }> {
+  return withMcpConfigLock(path, async () => {
+    const config = await readConfigFile(path);
     const servers = { ...(config.mcpServers ?? {}) };
     // Capture the old entry before any rename: a rename must retain
     // credentials the browser intentionally redacts from its payload.
@@ -170,55 +172,55 @@ function writeServerAt(path: string, name: string, server: McpServer, previousNa
       ...(previous?.env !== undefined && server.env === undefined ? { env: previous.env } : {}),
       ...(previous?.headers !== undefined && server.headers === undefined ? { headers: previous.headers } : {}),
     };
-    writeConfigFile(path, { ...config, mcpServers: servers });
+    await writeConfigFile(path, { ...config, mcpServers: servers });
     return { path };
   });
 }
 
-function deleteServerAt(path: string, name: string): { path: string } {
-  if (!existsSync(path)) throw new Error('MCP server was not found');
-  return withMcpConfigLock(path, () => {
-    const config = readConfigFile(path);
+async function deleteServerAt(path: string, name: string): Promise<{ path: string }> {
+  if (!(await Bun.file(path).exists())) throw new Error('MCP server was not found');
+  return withMcpConfigLock(path, async () => {
+    const config = await readConfigFile(path);
     const servers = { ...(config.mcpServers ?? {}) };
     if (!(name in servers)) throw new Error('MCP server was not found');
     delete servers[name];
-    writeConfigFile(path, { ...config, mcpServers: servers });
+    await writeConfigFile(path, { ...config, mcpServers: servers });
     return { path };
   });
 }
 
 /** Atomic read-modify-write of one server entry in the user mcp.json. */
-export function writeUserMcpServer(
+export async function writeUserMcpServer(
   name: string,
   server: McpServer,
   path = join(getAgentDir(), 'mcp.json'),
   previousName?: string,
-): { path: string } {
+): Promise<{ path: string }> {
   if (!SERVER_NAME.test(name)) throw new Error('Invalid server name');
   if (!isRecord(server)) throw new Error('Server configuration must be an object');
   return writeServerAt(path, name, server, previousName);
 }
 
 /** Atomic removal of one server entry from the user mcp.json. */
-export function deleteUserMcpServer(name: string, path = join(getAgentDir(), 'mcp.json')): { path: string } {
+export async function deleteUserMcpServer(name: string, path = join(getAgentDir(), 'mcp.json')): Promise<{ path: string }> {
   if (!SERVER_NAME.test(name)) throw new Error('Invalid server name');
   return deleteServerAt(path, name);
 }
 
 /** Atomic read-modify-write of one server entry in a project's mcp.json. */
-export function writeProjectMcpServer(
+export async function writeProjectMcpServer(
   projectRoot: string,
   name: string,
   server: McpServer,
   previousName?: string,
-): { path: string } {
+): Promise<{ path: string }> {
   if (!SERVER_NAME.test(name)) throw new Error('Invalid server name');
   if (!isRecord(server)) throw new Error('Server configuration must be an object');
   return writeServerAt(resolveProjectMcpConfig(projectRoot).path, name, server, previousName);
 }
 
 /** Atomic removal of one server entry from a project's mcp.json. */
-export function deleteProjectMcpServer(projectRoot: string, name: string): { path: string } {
+export async function deleteProjectMcpServer(projectRoot: string, name: string): Promise<{ path: string }> {
   if (!SERVER_NAME.test(name)) throw new Error('Invalid server name');
   return deleteServerAt(resolveProjectMcpConfig(projectRoot).path, name);
 }

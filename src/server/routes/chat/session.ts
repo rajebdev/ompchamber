@@ -175,9 +175,9 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     // chat_sessions overlay is only for chamber-created sessions (mock or
     // synthetic ids).
     if (!mock) {
-      const filePath = findSessionFileById(sessionId);
+      const filePath = await findSessionFileById(sessionId);
       if (filePath) {
-        const messages = loadSessionMessages(filePath);
+        const messages = await loadSessionMessages(filePath);
         // Real omp JSONL only records image blocks — text/pdf attachments
         // never reach the file. The chamber's DB copy (written by the chat
         // timeline) carries the full attachment metadata, so merge it back
@@ -185,7 +185,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
         const db = await getDb();
         const overlay = await db.get('SELECT messages FROM chat_sessions WHERE session_id = ?', [sessionId]);
         const overlaid = mergeOmpAttachments(messages, overlay?.messages);
-        const loadedTitle = loadSessionTitle(filePath);
+        const loadedTitle = await loadSessionTitle(filePath);
         const rawFirstUser = overlaid.find((m) => m.role === 'user')?.content?.trim();
         const jsonlFirstUser = messages.find((m) => m.role === 'user')?.content?.trim();
         const titleIsPromptEcho = Boolean(
@@ -193,7 +193,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
           && (jsonlFirstUser.startsWith(loadedTitle) || loadedTitle.startsWith(jsonlFirstUser.slice(0, 60))),
         );
         // Match the sidebar's timestamped default instead of leaking a raw UUID.
-        const header = readRawHeaderLine(filePath);
+        const header = await readRawHeaderLine(filePath);
         const headerTimestamp = typeof header?.timestamp === 'string' ? header.timestamp : undefined;
         const title = (titleIsPromptEcho ? rawFirstUser?.slice(0, 60) : loadedTitle)
           || rawFirstUser?.slice(0, 120)
@@ -205,8 +205,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
             id: sessionId,
             title,
             messages: win.messages,
-            model: loadSessionModel(filePath),
-            thinkingLevel: loadSessionThinkingLevel(filePath),
+            model: await loadSessionModel(filePath),
+            thinkingLevel: await loadSessionThinkingLevel(filePath),
           },
           isMock: false,
           source: 'omp-jsonl',

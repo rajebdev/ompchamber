@@ -105,10 +105,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
   try {
     const realRangeData = {} as Record<Exclude<TimeRangeType, 'custom'>, TokenUsageMetricSet>;
     for (const range of PRESET_RANGES) {
-      realRangeData[range] = toMetricSet(aggregateUsage({ kind: 'preset', range }), cadence);
+      realRangeData[range] = toMetricSet(await aggregateUsage({ kind: 'preset', range }), cadence);
     }
 
-    const activeAggregate = aggregateUsage(window);
+    const activeAggregate = await aggregateUsage(window);
     const realBreakdown: Record<BreakdownTab, BreakdownRow[]> = {
       model: toBreakdownRows(activeAggregate, 'model'),
       day: toBreakdownRows(activeAggregate, 'day', cadence),

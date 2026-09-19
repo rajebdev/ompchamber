@@ -16,7 +16,7 @@
  * child path resolved from the parent session file + subagent id.
  */
 
-import { closeSync, openSync, readSync, realpathSync, statSync } from 'fs';
+import { realpathSync, statSync } from 'fs';
 import { dirname, join } from 'path';
 import { parseJsonlLenient } from '@/shared/lib/omp/session/jsonl';
 import { SUBAGENT_ID_MAX_LENGTH, SUBAGENT_ID_RE, siblingDirForSession } from '@/server/lib/omp/subagent/history/paths';
@@ -60,19 +60,19 @@ function resolveTranscriptPath(sessionFilePath: string, subagentId: string): str
  * missing. `reset` is set when `fromByte` sits past the file end (retruncated
  * transcript) — the caller must restart paging from the returned fromByte.
  */
-export function readSubagentTranscriptPage(
+export async function readSubagentTranscriptPage(
   sessionFilePath: string,
   subagentId: string,
   fromByte = 0,
   maxBytes: number = SUBAGENT_TRANSCRIPT_PAGE_BYTES,
-): SubagentMessagesPage | null {
+): Promise<SubagentMessagesPage | null> {
   if (!SUBAGENT_ID_RE.test(subagentId) || subagentId.length > SUBAGENT_ID_MAX_LENGTH) return null;
   const transcriptPath = resolveTranscriptPath(sessionFilePath, subagentId);
   if (!transcriptPath) return null;
 
   let size: number;
   try {
-    size = statSync(transcriptPath).size;
+    size = (await Bun.file(transcriptPath).stat()).size;
   } catch {
     return null;
   }
@@ -89,19 +89,12 @@ export function readSubagentTranscriptPage(
 
   let body = '';
   try {
-    const fd = openSync(transcriptPath, 'r');
-    try {
-      // Slice the BYTE buffer, not a decoded string: `startByte` is a UTF-8
-      // offset, while string indices are UTF-16 code units — slicing the string
-      // misaligns every later page once non-ASCII text precedes the offset.
-      const windowBytes = endByte - startByte;
-      if (windowBytes > 0) {
-        const buffer = Buffer.alloc(windowBytes);
-        const bytesRead = readSync(fd, buffer, 0, windowBytes, startByte);
-        body = buffer.subarray(0, bytesRead).toString('utf8');
-      }
-    } finally {
-      closeSync(fd);
+    // Slice by BYTE offsets, not string indices: startByte is a UTF-8 offset
+    // while string indices are UTF-16 code units — slicing the decoded string
+    // would misalign every later page once non-ASCII text precedes the offset.
+    const windowBytes = endByte - startByte;
+    if (windowBytes > 0) {
+      body = await Bun.file(transcriptPath).slice(startByte, endByte).text();
     }
   } catch {
     return {

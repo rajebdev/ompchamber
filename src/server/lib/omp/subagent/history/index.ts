@@ -19,7 +19,6 @@
  * `@/lib/omp/subagent/history/transcript`.
  */
 
-import { existsSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { parseJsonlLenient } from '@/shared/lib/omp/session/jsonl';
 import { isRecord } from '@/shared/lib/omp/session/parse-message-blocks';
@@ -34,14 +33,15 @@ import type { SubagentHistoryEntry } from '@/shared/types/omp/subagent';
 const MAX_HISTORY_SESSION_BYTES = 512 * 1024 * 1024;
 
 /** Read + lenient-parse every JSONL entry of a session file (bounded). */
-function loadSessionEntries(sessionFilePath: string): OmpMessageEntry[] {
+async function loadSessionEntries(sessionFilePath: string): Promise<OmpMessageEntry[]> {
+  const file = Bun.file(sessionFilePath);
   try {
-    if (statSync(sessionFilePath).size > MAX_HISTORY_SESSION_BYTES) return [];
+    if ((await file.stat()).size > MAX_HISTORY_SESSION_BYTES) return [];
   } catch {
     return [];
   }
   try {
-    return parseJsonlLenient<OmpMessageEntry>(readFileSync(sessionFilePath, 'utf8'));
+    return parseJsonlLenient<OmpMessageEntry>(await file.text());
   } catch {
     return [];
   }
@@ -75,8 +75,8 @@ function buildCallOrder(entries: OmpMessageEntry[]): Map<string, number> {
  * toolResults, merging `progress` (live-snapshot fields) with `results`
  * (settled per-subagent telemetry), then resolves sibling transcript files.
  */
-export function extractSubagentHistory(sessionFilePath: string): SubagentHistoryEntry[] {
-  const entries = loadSessionEntries(sessionFilePath);
+export async function extractSubagentHistory(sessionFilePath: string): Promise<SubagentHistoryEntry[]> {
+  const entries = await loadSessionEntries(sessionFilePath);
   if (entries.length === 0) return [];
 
   const callOrder = buildCallOrder(entries);
@@ -97,7 +97,7 @@ export function extractSubagentHistory(sessionFilePath: string): SubagentHistory
     // Guard against crafted ids probing outside the sibling dir (e.g. "../");
     // the path is derived from untrusted session content.
     const candidate = join(dir, `${entry.id}.jsonl`);
-    if (existsSync(candidate)) {
+    if (await Bun.file(candidate).exists()) {
       entry.sessionFile = candidate;
       entry.transcriptAvailable = true;
     }

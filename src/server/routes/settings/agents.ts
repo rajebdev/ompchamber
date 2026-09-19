@@ -4,7 +4,7 @@ import { getDb } from '@/server/db.server';
 import { DEFAULT_AGENTS_LIST } from '@/client/data/agent-data';
 import { isMockMode } from '@/server/mock.server';
 import type { AgentItem } from '@/shared/types';
-import { deleteAgentDefinition, discoverNativeAgents, writeAgentDefinition } from '@/server/lib/omp/config/agents';
+import { deleteAgentDefinition, discoverNativeAgents, writeAgentDefinition, type DiscoveredAgent } from '@/server/lib/omp/config/agents';
 
 const SETTINGS_KEY = 'omp_agents';
 
@@ -14,7 +14,7 @@ const SETTINGS_KEY = 'omp_agents';
  * lists them alongside app-local custom agents without offering edits that
  * would silently not persist.
  */
-function nativeToAgentItem(agent: ReturnType<typeof discoverNativeAgents>[number]): AgentItem & { sourceRoot: string } {
+function nativeToAgentItem(agent: DiscoveredAgent): AgentItem & { sourceRoot: string } {
   return {
     id: agent.id,
     name: agent.name,
@@ -32,8 +32,8 @@ function nativeToAgentItem(agent: ReturnType<typeof discoverNativeAgents>[number
 }
 
 /** Merge native omp agents (disk discovery) with app-local custom agents. */
-function mergeAgents(custom: AgentItem[]): Array<AgentItem & { sourceRoot?: string }> {
-  const native = discoverNativeAgents().map(nativeToAgentItem);
+async function mergeAgents(custom: AgentItem[]): Promise<Array<AgentItem & { sourceRoot?: string }>> {
+  const native = (await discoverNativeAgents()).map(nativeToAgentItem);
   const nativeNames = new Set(native.map((a) => a.name.toLowerCase()));
   return [...native, ...custom.filter((a) => !nativeNames.has(a.name.toLowerCase()))];
 }
@@ -63,7 +63,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
 
     if (includeNative && !mock) {
-      return json({ agents: mergeAgents(agents), isMock: mock });
+      return json({ agents: await mergeAgents(agents), isMock: mock });
     }
 
     return json({ agents, isMock: mock });
@@ -105,7 +105,7 @@ export async function action({ request }: ActionFunctionArgs) {
       // Native agent file write: { type: "write_native", fileName, ...definition }
       if (body.type === 'write_native') {
         if (isMockMode()) return json({ error: 'Native agent writes are unavailable in mock mode' }, { status: 400 });
-        const written = writeAgentDefinition({
+        const written = await writeAgentDefinition({
           fileName: String(body.fileName ?? ''),
           name: typeof body.name === 'string' ? body.name : undefined,
           description: typeof body.description === 'string' ? body.description : undefined,
@@ -117,15 +117,15 @@ export async function action({ request }: ActionFunctionArgs) {
           tools: Array.isArray(body.tools) ? body.tools.map(String) : undefined,
           systemPrompt: String(body.systemPrompt ?? ''),
         });
-        return json({ success: true, path: written.path, agents: mergeAgents([]) });
+        return json({ success: true, path: written.path, agents: await mergeAgents([]) });
       }
 
       // Native agent file delete: { type: "delete_native", fileName }
       if (body.type === 'delete_native') {
         if (isMockMode()) return json({ error: 'Native agent deletes are unavailable in mock mode' }, { status: 400 });
-        const removed = deleteAgentDefinition(String(body.fileName ?? ''));
+        const removed = await deleteAgentDefinition(String(body.fileName ?? ''));
         if (!removed) return json({ error: 'Native agent file not found' }, { status: 404 });
-        return json({ success: true, agents: mergeAgents([]) });
+        return json({ success: true, agents: await mergeAgents([]) });
       }
 
       let updatedAgents: AgentItem[] = [];

@@ -20,7 +20,6 @@
  *   - joins text blocks into msg.content
  */
 
-import { readFileSync, statSync } from 'fs';
 import { parseJsonlLenient } from '@/shared/lib/omp/session/jsonl';
 import { normalizeNoticePositions } from '@/shared/lib/chat/order';
 import { normalizeThinkingLevel } from '@/shared/lib/models/thinking-levels';
@@ -58,17 +57,17 @@ function skillUserMessageFromRecord(record: Record<string, unknown>): ChatMessag
  * Assistant messages carry thinking accordion + tool calls (with outputs
  * paired from their toolResult entries); tool plumbing rows are folded in.
  */
-export function loadSessionMessages(filePath: string): ChatMessageData[] {
+export async function loadSessionMessages(filePath: string): Promise<ChatMessageData[]> {
   try {
-    const stat = statSync(filePath);
-    if (stat.size > MAX_SESSION_LOAD_BYTES) return [];
+    const file = Bun.file(filePath);
+    if ((await file.stat()).size > MAX_SESSION_LOAD_BYTES) return [];
   } catch {
     return [];
   }
 
   let body: string;
   try {
-    body = readFileSync(filePath, 'utf8');
+    body = await Bun.file(filePath).text();
   } catch {
     return [];
   }
@@ -125,15 +124,15 @@ export function loadSessionMessages(filePath: string): ChatMessageData[] {
 }
 
 /** Derive the display title from the JSONL header/title slot (cheap read). */
-export function loadSessionTitle(filePath: string): string | undefined {
+export async function loadSessionTitle(filePath: string): Promise<string | undefined> {
   try {
-    const stat = statSync(filePath);
-    if (stat.size > 10 * 1024 * 1024) return undefined; // only need the head
+    const file = Bun.file(filePath);
+    if ((await file.stat()).size > 10 * 1024 * 1024) return undefined; // only need the head
   } catch {
     return undefined;
   }
   try {
-    const head = readFileSync(filePath, 'utf8').slice(0, 32 * 1024);
+    const head = (await Bun.file(filePath).text()).slice(0, 32 * 1024);
     const records = parseJsonlLenient<Record<string, unknown>>(head);
     const first = records[0];
     if (first?.type === 'title' && typeof first.title === 'string' && first.title.trim()) {
@@ -170,15 +169,15 @@ export function loadSessionTitle(filePath: string): string | undefined {
 /** Resolve the model last used by a session from its `model_change` entries
  *  (omp records `"provider/model-id"`). Returns undefined when the file has
  *  no model_change entry or the value is malformed. */
-export function loadSessionModel(filePath: string): { provider: string; modelId: string } | undefined {
+export async function loadSessionModel(filePath: string): Promise<{ provider: string; modelId: string } | undefined> {
   try {
-    const stat = statSync(filePath);
-    if (stat.size > MAX_SESSION_LOAD_BYTES) return undefined;
+    const file = Bun.file(filePath);
+    if ((await file.stat()).size > MAX_SESSION_LOAD_BYTES) return undefined;
   } catch {
     return undefined;
   }
   try {
-    const body = readFileSync(filePath, 'utf8');
+    const body = await Bun.file(filePath).text();
     const records = parseJsonlLenient<Record<string, unknown>>(body);
     let last: { provider: string; modelId: string } | undefined;
     for (const record of records) {
@@ -198,15 +197,15 @@ export function loadSessionModel(filePath: string): { provider: string; modelId:
 /** Resolve the thinking level last used by a session from its
  *  `thinking_level_change` entries (omp records the level string, e.g.
  *  "off" | "minimal" | "low" | "medium" | "high" | "max"). */
-export function loadSessionThinkingLevel(filePath: string): string | undefined {
+export async function loadSessionThinkingLevel(filePath: string): Promise<string | undefined> {
   try {
-    const stat = statSync(filePath);
-    if (stat.size > MAX_SESSION_LOAD_BYTES) return undefined;
+    const file = Bun.file(filePath);
+    if ((await file.stat()).size > MAX_SESSION_LOAD_BYTES) return undefined;
   } catch {
     return undefined;
   }
   try {
-    const body = readFileSync(filePath, 'utf8');
+    const body = await Bun.file(filePath).text();
     const records = parseJsonlLenient<Record<string, unknown>>(body);
     let last: string | undefined;
     for (const record of records) {

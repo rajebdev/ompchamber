@@ -235,7 +235,7 @@ export async function renameSession({ request, params }: ActionFunctionArgs) {
       }
     }
 
-    const filePath = findSessionFileById(sessionId);
+    const filePath = await findSessionFileById(sessionId);
     if (!filePath) {
       return json({ error: 'Session not found' }, { status: 404 });
     }

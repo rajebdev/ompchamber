@@ -19,7 +19,7 @@
  * composer's access control), not here.
  */
 
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'fs';
+import fs from 'fs';
 import { join } from 'path';
 import { getAgentDir } from '@/server/lib/omp/core/paths';
 
@@ -87,10 +87,10 @@ export function parseApprovalRules(text: string): ApprovalFields | null {
  * parsed fields are touched; unrelated keys are preserved. Throws on invalid
  * YAML — callers should treat this as best-effort.
  */
-export function writeToolsApproval(fields: ApprovalFields): void {
+export async function writeToolsApproval(fields: ApprovalFields): Promise<void> {
   if (Object.keys(fields).length === 0) return;
   const path = join(getAgentDir(), 'config.yml');
-  const source = existsSync(path) ? readFileSync(path, 'utf8') : '';
+  const source = (await Bun.file(path).exists()) ? await Bun.file(path).text() : '';
   const doc = asMapping(Bun.YAML.parse(source), path);
   const tools = doc.tools;
   if (tools !== undefined && !isRecord(tools)) {
@@ -110,8 +110,8 @@ export function writeToolsApproval(fields: ApprovalFields): void {
     doc.tools = { approval: fields };
   }
   const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
-  writeFileSync(temp, Bun.YAML.stringify(doc, null, 2), 'utf8');
-  renameSync(temp, path);
+  await Bun.write(temp, Bun.YAML.stringify(doc, null, 2));
+  await fs.promises.rename(temp, path);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

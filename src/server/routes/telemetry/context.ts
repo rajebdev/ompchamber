@@ -39,7 +39,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const db = await getDb();
     if (sessionId) {
       // JSONL-first: omp sessions live on disk, so the raw panel shows full entries.
-      const filePath = findSessionFileById(sessionId);
+      const filePath = await findSessionFileById(sessionId);
       if (filePath) {
         const telemetry = await computeRealSessionTelemetry(filePath, sessionId);
         return json({ telemetry: stripRawMessages(telemetry), isMock: false, source: 'omp-jsonl' });

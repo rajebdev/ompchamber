@@ -11,7 +11,7 @@
  * real mode so telemetry reflects actual omp activity instead of zeros.
  */
 
-import { readFileSync, readdirSync, statSync } from 'fs';
+import fs from 'fs';
 import { join } from 'path';
 import { getSessionsDir } from '@/server/lib/omp/core/paths';
 import { parseJsonlLenient } from '@/shared/lib/omp/session/jsonl';
@@ -117,7 +117,7 @@ function cacheKey(window: UsageWindow): string {
 }
 
 /** Aggregate all omp session files within a time window. Cached for 60s. */
-export function aggregateUsage(window: UsageWindow): UsageAggregate {
+export async function aggregateUsage(window: UsageWindow): Promise<UsageAggregate> {
   const key = cacheKey(window);
   const cached = cache.get(key);
   if (cached && Date.now() - cached.at < TTL_MS) return cached.data;
@@ -127,7 +127,7 @@ export function aggregateUsage(window: UsageWindow): UsageAggregate {
   const now = Date.now();
   let projectDirs: string[] = [];
   try {
-    projectDirs = readdirSync(sessionsRoot, { withFileTypes: true })
+    projectDirs = (await fs.promises.readdir(sessionsRoot, { withFileTypes: true }))
       .filter((d) => d.isDirectory() || d.isFile())
       .map((d) => d.name);
   } catch {
@@ -139,10 +139,10 @@ export function aggregateUsage(window: UsageWindow): UsageAggregate {
     const projectPath = join(sessionsRoot, project);
     let files: string[] = [];
     try {
-      if (statSync(projectPath).isFile()) {
+      if ((await Bun.file(projectPath).stat()).isFile()) {
         files = project.endsWith('.jsonl') ? [projectPath] : [];
       } else {
-        files = readdirSync(projectPath)
+        files = (await fs.promises.readdir(projectPath))
           .filter((f) => f.endsWith('.jsonl'))
           .map((f) => join(projectPath, f));
       }
@@ -153,8 +153,9 @@ export function aggregateUsage(window: UsageWindow): UsageAggregate {
     for (const file of files) {
       aggregate.scannedTranscripts++;
       try {
-        if (statSync(file).size > 64 * 1024 * 1024) continue;
-        const entries = parseJsonlLenient<UsageEntry>(readFileSync(file, 'utf8'));
+        const ufile = Bun.file(file);
+        if ((await ufile.stat()).size > 64 * 1024 * 1024) continue;
+        const entries = parseJsonlLenient<UsageEntry>(await ufile.text());
         for (const entry of entries) {
           if (entry.type !== 'message' || !entry.message?.usage) continue;
           const ts = entry.timestamp;

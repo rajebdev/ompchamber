@@ -53,12 +53,12 @@ function customForProject(custom: McpServerItem[], projectPath?: string): McpSer
 }
 
 /** Merge native user + project servers with app-local custom servers; native wins on name. */
-function mergeServers(custom: McpServerItem[], projectPath?: string): McpServerItem[] {
-  const user = readUserMcpConfig();
+async function mergeServers(custom: McpServerItem[], projectPath?: string): Promise<McpServerItem[]> {
+  const user = await readUserMcpConfig();
   const userItems: McpServerItem[] = user.servers.map((entry, index) =>
     nativeToServerItem(entry.name, entry.config, index, !user.disabledServers.includes(entry.name)),
   );
-  const project = projectPath ? readProjectMcpConfig(projectPath) : undefined;
+  const project = projectPath ? await readProjectMcpConfig(projectPath) : undefined;
   const projectItems: McpServerItem[] = projectPath && project
     ? project.servers.map((entry, index) =>
         nativeToServerItem(entry.name, entry.config, index, !project.disabledServers.includes(entry.name), {
@@ -140,13 +140,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
 
     if (includeNative && !mock) {
-      servers = mergeServers(servers, projectPath ?? undefined);
+      servers = await mergeServers(servers, projectPath ?? undefined);
     }
 
     return json({
       servers,
       isMock: mock,
-      nativePath: includeNative ? readUserMcpConfig().path : undefined,
+      nativePath: includeNative ? (await readUserMcpConfig()).path : undefined,
       projectPath: projectPath ?? undefined,
     });
   } catch (error: any) {
@@ -176,10 +176,10 @@ export async function action({ request }: ActionFunctionArgs) {
       // Native omp server deletion (id prefix omp-user-/omp-project-) hits mcp.json directly.
       if (id.startsWith(NATIVE_USER_PREFIX)) {
         const name = id.slice(NATIVE_USER_PREFIX.length);
-        try { deleteUserMcpServer(name); } catch {}
+        try { await deleteUserMcpServer(name); } catch {}
         custom = custom.filter((server) => server.name.toLowerCase() !== name.toLowerCase());
         await writeCustomServers(db, custom);
-        return json({ success: true, servers: mergeServers(custom, projectPath ?? undefined) });
+        return json({ success: true, servers: await mergeServers(custom, projectPath ?? undefined) });
       }
 
       if (id.startsWith(NATIVE_PROJECT_PREFIX)) {
@@ -187,10 +187,10 @@ export async function action({ request }: ActionFunctionArgs) {
         if (!projectPath) {
           return json({ error: 'projectPath is required for project-scoped servers' }, { status: 400 });
         }
-        try { deleteProjectMcpServer(projectPath, name); } catch {}
+        try { await deleteProjectMcpServer(projectPath, name); } catch {}
         custom = custom.filter((server) => server.name.toLowerCase() !== name.toLowerCase());
         await writeCustomServers(db, custom);
-        return json({ success: true, servers: mergeServers(custom, projectPath) });
+        return json({ success: true, servers: await mergeServers(custom, projectPath) });
       }
 
       // App-local row: remove it and any native entry it mirrors, so a deleted
@@ -200,15 +200,15 @@ export async function action({ request }: ActionFunctionArgs) {
           if (target.scope === 'this-project') {
             const mirrorPath = target.projectPath ?? projectPath;
             const targetProject = mirrorPath ? await validateProjectPath(mirrorPath) : null;
-            if (targetProject) deleteProjectMcpServer(targetProject, target.name);
+            if (targetProject) await deleteProjectMcpServer(targetProject, target.name);
           } else {
-            deleteUserMcpServer(target.name);
+            await deleteUserMcpServer(target.name);
           }
         } catch {}
       }
       custom = custom.filter((server) => server.id !== id);
       await writeCustomServers(db, custom);
-      return json({ success: true, servers: isMockMode() ? custom : mergeServers(custom, projectPath ?? undefined) });
+      return json({ success: true, servers: isMockMode() ? custom : await mergeServers(custom, projectPath ?? undefined) });
     }
 
     if (request.method === 'POST' || request.method === 'PUT') {
@@ -216,7 +216,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
       // Backward-compatible explicit user-scope write: { scope: "user", name, server }
       if (body.scope === 'user' && typeof body.name === 'string' && body.server) {
-        writeUserMcpServer(body.name, toNativeServer(body.server));
+        await writeUserMcpServer(body.name, toNativeServer(body.server));
         const custom = await readCustomServers(db);
         return json({ success: true, servers: mergeServers(custom) });
       }
@@ -251,9 +251,9 @@ export async function action({ request }: ActionFunctionArgs) {
           if (!projectPath) {
             return json({ error: 'A registered projectPath is required for project-scoped servers' }, { status: 400 });
           }
-          writeProjectMcpServer(projectPath, server.name, toNativeServer(server), previousNativeName(server.id, server.name));
+          await writeProjectMcpServer(projectPath, server.name, toNativeServer(server), previousNativeName(server.id, server.name));
         } else {
-          writeUserMcpServer(server.name, toNativeServer(server), undefined, previousNativeName(server.id, server.name));
+          await writeUserMcpServer(server.name, toNativeServer(server), undefined, previousNativeName(server.id, server.name));
         }
       }
 

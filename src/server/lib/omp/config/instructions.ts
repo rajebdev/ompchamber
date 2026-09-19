@@ -16,7 +16,7 @@
  * the agent dir follows PI_CODING_AGENT_DIR through getAgentDir().
  */
 
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'fs';
+import fs from 'fs';
 import { dirname, join } from 'path';
 import { getAgentDir } from '@/server/lib/omp/core/paths';
 import type { InstructionFileKind } from '@/shared/types';
@@ -48,13 +48,14 @@ export function getInstructionFilePath(kind: InstructionFileKind): string {
 }
 
 /** Reads one instruction file. A missing file is a state, not an error. */
-export function readInstructionFile(kind: InstructionFileKind): InstructionFile {
+export async function readInstructionFile(kind: InstructionFileKind): Promise<InstructionFile> {
   const path = getInstructionFilePath(kind);
-  if (!existsSync(path)) return { kind, path, content: '', exists: false };
-  const stat = statSync(path);
+  const file = Bun.file(path);
+  if (!(await file.exists())) return { kind, path, content: '', exists: false };
+  const stat = await file.stat();
   if (stat.isDirectory()) throw new Error(`${path} is a directory, not a file`);
   if (stat.size > MAX_INSTRUCTION_BYTES) throw new Error(`${path} is larger than ${MAX_INSTRUCTION_BYTES} bytes`);
-  return { kind, path, content: readFileSync(path, 'utf8'), exists: true };
+  return { kind, path, content: await file.text(), exists: true };
 }
 
 /**
@@ -64,19 +65,19 @@ export function readInstructionFile(kind: InstructionFileKind): InstructionFile 
  * absence is the honest state — and an empty AGENTS.md would still claim the
  * user context scope that another tool's file could otherwise fill.
  */
-export function saveInstructionFile(kind: InstructionFileKind, content: string): InstructionFile {
+export async function saveInstructionFile(kind: InstructionFileKind, content: string): Promise<InstructionFile> {
   const path = getInstructionFilePath(kind);
   if (!content.trim()) return clearInstructionFile(kind);
-  mkdirSync(dirname(path), { recursive: true });
+  await fs.promises.mkdir(dirname(path), { recursive: true });
   const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
-  writeFileSync(temp, content, 'utf8');
-  renameSync(temp, path);
+  await Bun.write(temp, content);
+  await fs.promises.rename(temp, path);
   return { kind, path, content, exists: true };
 }
 
 /** Removes one instruction file and reports the resulting empty state. */
-export function clearInstructionFile(kind: InstructionFileKind): InstructionFile {
+export async function clearInstructionFile(kind: InstructionFileKind): Promise<InstructionFile> {
   const path = getInstructionFilePath(kind);
-  if (existsSync(path)) unlinkSync(path);
+  await fs.promises.unlink(path).catch(() => {});
   return { kind, path, content: '', exists: false };
 }

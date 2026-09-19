@@ -9,7 +9,6 @@
  * jsonl file (v3 format — see docs in lib/omp/session).
  */
 
-import { readFileSync, statSync } from 'fs';
 import { parseJsonlLenient } from '@/shared/lib/omp/session/jsonl';
 
 interface OmpUsage {
@@ -46,10 +45,11 @@ export interface SessionStats {
 
 const MAX_SESSION_BYTES = 64 * 1024 * 1024;
 
-export function readSessionStats(filePath: string): SessionStats | undefined {
+export async function readSessionStats(filePath: string): Promise<SessionStats | undefined> {
   try {
-    if (statSync(filePath).size > MAX_SESSION_BYTES) return undefined;
-    const entries = parseJsonlLenient<StatEntry>(readFileSync(filePath, 'utf8'));
+    const file = Bun.file(filePath);
+    if ((await file.stat()).size > MAX_SESSION_BYTES) return undefined;
+    const entries = parseJsonlLenient<StatEntry>(await file.text());
     const stats: SessionStats = {
       models: [],
       thinkingLevels: [],

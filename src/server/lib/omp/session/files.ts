@@ -18,7 +18,7 @@
  * The lenient JSONL + header parsing lives in ./session-jsonl.ts.
  */
 
-import { closeSync, openSync, readFileSync, readSync, readdirSync, statSync, type Dirent } from 'fs';
+import fs from 'fs';
 import * as path from 'path';
 import { getSessionsDir } from '@/server/lib/omp/core/paths';
 import { countMessageMarkers, extractFirstDisplayMessageFromPrefix, extractTextFromContent, isRecord, parseJsonlLenient, parseSessionListHeader } from '@/shared/lib/omp/session/jsonl';
@@ -48,17 +48,12 @@ export interface OmpSessionInfo {
 
 const SESSION_LIST_PREFIX_BYTES = 4096;
 
-function readTextPrefix(filePath: string, prefixBytes: number): [string, number, Date] {
-  const stat = statSync(filePath);
-  const fd = openSync(filePath, 'r');
-  try {
-    const prefixLength = Math.min(prefixBytes, stat.size);
-    const prefixBuffer = Buffer.allocUnsafe(prefixLength);
-    const prefixRead = prefixLength > 0 ? readSync(fd, prefixBuffer, 0, prefixLength, 0) : 0;
-    return [prefixBuffer.subarray(0, prefixRead).toString('utf8'), stat.size, stat.mtime];
-  } finally {
-    closeSync(fd);
-  }
+async function readTextPrefix(filePath: string, prefixBytes: number): Promise<[string, number, Date]> {
+  const file = Bun.file(filePath);
+  const stat = await file.stat();
+  const prefixLength = Math.min(prefixBytes, stat.size);
+  const prefix = prefixLength > 0 ? await file.slice(0, prefixLength).text() : '';
+  return [prefix, stat.size, new Date(stat.mtimeMs)];
 }
 
 /**
@@ -67,9 +62,9 @@ function readTextPrefix(filePath: string, prefixBytes: number): [string, number,
  * prefix-derived lower bound. Missing/unreadable/header-less files yield
  * undefined instead of throwing.
  */
-export function scanSessionInfo(filePath: string): OmpSessionInfo | undefined {
+export async function scanSessionInfo(filePath: string): Promise<OmpSessionInfo | undefined> {
   try {
-    const [content, size, mtime] = readTextPrefix(filePath, SESSION_LIST_PREFIX_BYTES);
+    const [content, size, mtime] = await readTextPrefix(filePath, SESSION_LIST_PREFIX_BYTES);
     const entries = parseJsonlLenient<Record<string, unknown>>(content);
     const header = parseSessionListHeader(content, entries);
     if (!header) return undefined;
@@ -137,9 +132,9 @@ const MAX_SESSION_SCAN_CACHE_ENTRIES = 2048;
  * the cache invalidates for free on every add/remove. A directory that no
  * longer exists yields [] rather than throwing.
  */
-export function listSessionFiles(sessionsRoot: string = getSessionsDir()): string[] {
+export async function listSessionFiles(sessionsRoot: string = getSessionsDir()): Promise<string[]> {
   try {
-    statSync(sessionsRoot);
+    await Bun.file(sessionsRoot).stat();
   } catch {
     return [];
   }
@@ -150,10 +145,10 @@ export function listSessionFiles(sessionsRoot: string = getSessionsDir()): strin
   const cached = cache.get(sessionsRoot);
   if (cached) {
     let fresh = true;
-    for (const dirent of readdirSync(sessionsRoot, { withFileTypes: true })) {
+    for (const dirent of await fs.promises.readdir(sessionsRoot, { withFileTypes: true })) {
       if (!dirent.isDirectory()) continue;
       try {
-        const stat = statSync(path.join(sessionsRoot, dirent.name));
+        const stat = await Bun.file(path.join(sessionsRoot, dirent.name)).stat();
         if (cached.dirMtimes.get(dirent.name) !== stat.mtimeMs) {
           fresh = false;
           break;
@@ -168,9 +163,9 @@ export function listSessionFiles(sessionsRoot: string = getSessionsDir()): strin
 
   const files: string[] = [];
   const dirMtimes = new Map<string, number>();
-  let dirents: Dirent[] = [];
+  let dirents: fs.Dirent[] = [];
   try {
-    dirents = readdirSync(sessionsRoot, { withFileTypes: true });
+    dirents = await fs.promises.readdir(sessionsRoot, { withFileTypes: true });
   } catch {
     // Unreadable sessions root — treat as empty.
   }
@@ -178,13 +173,13 @@ export function listSessionFiles(sessionsRoot: string = getSessionsDir()): strin
     if (!dirent.isDirectory()) continue;
     const projectDir = path.join(sessionsRoot, dirent.name);
     try {
-      dirMtimes.set(dirent.name, statSync(projectDir).mtimeMs);
+      dirMtimes.set(dirent.name, (await Bun.file(projectDir).stat()).mtimeMs);
     } catch {
       continue;
     }
-    let entries: Dirent[] = [];
+    let entries: fs.Dirent[] = [];
     try {
-      entries = readdirSync(projectDir, { withFileTypes: true });
+      entries = await fs.promises.readdir(projectDir, { withFileTypes: true });
     } catch {
       continue;
     }
@@ -210,10 +205,10 @@ function getSessionScanCache(): Map<string, OmpSessionInfo> {
 /** scanSessionInfo memoized on (path, size, mtimeMs) — an unchanged file costs
  *  a single stat. Cache hits share one object; callers must treat results as
  *  immutable. */
-function scanSessionInfoCached(filePath: string): OmpSessionInfo | undefined {
+async function scanSessionInfoCached(filePath: string): Promise<OmpSessionInfo | undefined> {
   let stat: { size: number; mtimeMs: number };
   try {
-    stat = statSync(filePath);
+    stat = await Bun.file(filePath).stat();
   } catch {
     return undefined;
   }
@@ -229,7 +224,7 @@ function scanSessionInfoCached(filePath: string): OmpSessionInfo | undefined {
     }
     cache.delete(filePath);
   }
-  const info = scanSessionInfo(filePath);
+  const info = await scanSessionInfo(filePath);
   // Failed scans are not negatively cached: a transient read error must not
   // hide a session until its next mtime bump.
   if (info) {
@@ -248,11 +243,11 @@ function scanSessionInfoCached(filePath: string): OmpSessionInfo | undefined {
  * newest-modified first. Invalidates are automatic via mtime keys; callers
  * that mutate sessions may clear caches via clearSessionFileCaches().
  */
-export function listAllSessionInfos(sessionsRoot: string = getSessionsDir()): OmpSessionInfo[] {
-  const files = listSessionFiles(sessionsRoot);
+export async function listAllSessionInfos(sessionsRoot: string = getSessionsDir()): Promise<OmpSessionInfo[]> {
+  const files = await listSessionFiles(sessionsRoot);
   const sessions: OmpSessionInfo[] = [];
   for (const file of files) {
-    const info = scanSessionInfoCached(file);
+    const info = await scanSessionInfoCached(file);
     if (info) sessions.push(info);
   }
   sessions.sort((a, b) => b.modified.getTime() - a.modified.getTime());
@@ -267,9 +262,9 @@ export function clearSessionFileCaches(): void {
 }
 
 /** Exported for tests/spot-checks: read a raw JSONL session header directly. */
-export function readRawHeaderLine(filePath: string): Record<string, unknown> | undefined {
+export async function readRawHeaderLine(filePath: string): Promise<Record<string, unknown> | undefined> {
   try {
-    const head = readFileSync(filePath, 'utf8').slice(0, SESSION_TITLE_SLOT_BYTES + 4096);
+    const head = (await Bun.file(filePath).text()).slice(0, SESSION_TITLE_SLOT_BYTES + 4096);
     const lines = head.split('\n').filter(Boolean);
     for (const line of lines) {
       try {

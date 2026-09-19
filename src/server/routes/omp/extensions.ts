@@ -10,7 +10,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
   const url = new URL(request.url);
   const cwd = url.searchParams.get('cwd') ?? undefined;
-  return json({ extensions: discoverExtensions(cwd), isMock: false });
+  return json({ extensions: await discoverExtensions(cwd), isMock: false });
 }
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -25,7 +25,7 @@ export async function action({ request }: ActionFunctionArgs) {
     if (isMockMode()) {
       return json({ error: 'Extension toggles are unavailable in mock mode' }, { status: 400 });
     }
-    const changed = setExtensionDisabled(body.id, body.disabled);
+    const changed = await setExtensionDisabled(body.id, body.disabled);
     return json({ success: true, changed });
   } catch (error: any) {
     return json({ error: error.message }, { status: 500 });

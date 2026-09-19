@@ -25,8 +25,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** `providers.<slug>.apiKey` from models.yml, or null when absent/blank. */
-function readModelsYmlApiKey(slug: string): string | null {
-  const path = getModelsConfigPath();
+async function readModelsYmlApiKey(slug: string): Promise<string | null> {
+  const path = await getModelsConfigPath();
   if (!existsSync(path)) return null;
   try {
     const data = Bun.YAML.parse(readFileSync(path, 'utf8'));
@@ -85,7 +85,7 @@ async function readAgentDbApiKey(slug: string): Promise<string | null> {
  * not log or serialize it.
  */
 export async function readOmpProviderApiKey(slug: string): Promise<string | null> {
-  const fromYml = readModelsYmlApiKey(slug);
+  const fromYml = await readModelsYmlApiKey(slug);
   if (fromYml) return fromYml;
   return readAgentDbApiKey(slug);
 }

@@ -159,22 +159,22 @@ async function buildRealFolders(folderRows: FolderRow[], archivedIds: Set<string
 
   const data = await loadOmpSidebarData();
   const sessionsByRoot = groupSessionsByRoot(data.sessions);
-  const { existsSync, readdirSync } = await import('fs');
+  const fsp = await import('fs');
 
-  return folderRows.map((folder) => {
+  return Promise.all(folderRows.map(async (folder) => {
     const root = folder.project_path ?? '';
     const rootSessions: OmpSession[] = root ? sessionsByRoot.get(root) ?? [] : [];
-    const folderSessions = rootSessions.map((session: OmpSession) => {
+    const folderSessions = await Promise.all(rootSessions.map(async (session: OmpSession) => {
       let hasSub = false;
       if (session.path) {
         try {
           const siblingDir = siblingDirForSession(session.path);
-          if (existsSync(siblingDir)) {
-            const files = readdirSync(siblingDir);
+          if (await Bun.file(siblingDir).exists()) {
+            const files = await fsp.promises.readdir(siblingDir);
             hasSub = files.some((f) => f.endsWith('.jsonl'));
           }
           if (!hasSub) {
-            const subs = extractSubagentHistory(session.path);
+            const subs = await extractSubagentHistory(session.path);
             hasSub = subs.length > 0;
           }
         } catch {
@@ -191,7 +191,7 @@ async function buildRealFolders(folderRows: FolderRow[], archivedIds: Set<string
         is_archived: archivedIds.has(String(session.id)) ? 1 : 0,
         hasSubagents: hasSub,
       };
-    });
+    }));
     return {
       id: folder.id,
       name: folder.name,
@@ -206,5 +206,5 @@ async function buildRealFolders(folderRows: FolderRow[], archivedIds: Set<string
       hasMore: folderSessions.length > 7,
       totalSessions: folderSessions.length,
     };
-  });
+  }));
 }

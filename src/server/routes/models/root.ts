@@ -89,7 +89,7 @@ async function loadModels(): Promise<ModelsData> {
         }))
     : [];
 
-  const disabledProviders = readDisabledProviders();
+  const disabledProviders = await readDisabledProviders();
   const hiddenModelKeys = await readHiddenModelKeys();
   const nameMap: Record<string, string> = {};
   const thinkingLevels: Record<string, string[]> = {};

@@ -17,7 +17,7 @@
  * a fresh slot line inserted and the header's title fields updated.
  */
 
-import { closeSync, mkdtempSync, openSync, readFileSync, readSync, renameSync, rmSync, rmdirSync, statSync, writeFileSync, writeSync } from 'fs';
+import fs from 'fs';
 import * as path from 'path';
 import { SESSION_TITLE_SLOT_BYTES } from '@/server/lib/omp/session/files';
 
@@ -116,22 +116,14 @@ export function serializeTitleSlot(update: { title?: string; source?: 'auto' | '
 }
 
 /** Read only the fixed-size head window to detect a physical title slot. */
-export function readTitleSlot(filePath: string): SessionTitleSlot | undefined {
-  let fd: number;
+export async function readTitleSlot(filePath: string): Promise<SessionTitleSlot | undefined> {
   try {
-    fd = openSync(filePath, 'r');
-  } catch {
-    return undefined;
-  }
-  try {
-    const buffer = Buffer.allocUnsafe(SESSION_TITLE_SLOT_BYTES);
-    const bytesRead = readSync(fd, buffer, 0, buffer.length, 0);
-    const head = buffer.subarray(0, bytesRead).toString('utf8');
+    const head = await Bun.file(filePath).slice(0, SESSION_TITLE_SLOT_BYTES).text();
     const newlineIndex = head.indexOf('\n');
     if (newlineIndex < 0) return undefined;
     return parseTitleSlotLine(head.slice(0, newlineIndex));
-  } finally {
-    closeSync(fd);
+  } catch {
+    return undefined;
   }
 }
 
@@ -155,23 +147,25 @@ export function cleanSessionTitle(raw: string): string {
  * title_change audit entry — a bounded 256-byte write cannot corrupt a file a
  * live omp process may hold, and the display title is all callers need.
  */
-export function setSessionTitle(filePath: string, title: string, source: 'auto' | 'user'): boolean {
+export async function setSessionTitle(filePath: string, title: string, source: 'auto' | 'user'): Promise<boolean> {
   const cleaned = cleanSessionTitle(title);
   if (!cleaned) return false;
   const update = { title: cleaned, source, updatedAt: new Date().toISOString() };
 
-  if (readTitleSlot(filePath)) {
+  if (await readTitleSlot(filePath)) {
+    // In-place 256-byte slot overwrite via an r+ fd; writeSync is the only way
+    // to write at an offset — Bun's FileSink cannot seek.
     const slotLine = Buffer.from(serializeTitleSlot(update), 'utf8');
-    const fd = openSync(filePath, 'r+');
+    const fd = fs.openSync(filePath, 'r+');
     try {
       let offset = 0;
       while (offset < slotLine.length) {
-        const written = writeSync(fd, slotLine, offset, slotLine.length - offset, offset);
+        const written = fs.writeSync(fd, slotLine, offset, slotLine.length - offset, offset);
         if (written === 0) throw new Error('Short write while updating session title slot');
         offset += written;
       }
     } finally {
-      closeSync(fd);
+      fs.closeSync(fd);
     }
     return true;
   }
@@ -181,14 +175,14 @@ export function setSessionTitle(filePath: string, title: string, source: 'auto' 
   // should never risk OOMing the server, and legacy slot-less files are rare.
   let legacySize: number;
   try {
-    legacySize = statSync(filePath).size;
+    legacySize = (await Bun.file(filePath).stat()).size;
   } catch {
     return false;
   }
   if (legacySize > MAX_TITLE_REWRITE_BYTES) {
     return false;
   }
-  const content = readFileSync(filePath, 'utf8');
+  const content = await Bun.file(filePath).text();
   const lines = content.split('\n');
   const headerIndex = lines.findIndex((line) => line.trim().length > 0);
   if (headerIndex === -1) throw new Error('Cannot rename an empty session file');
@@ -204,7 +198,7 @@ export function setSessionTitle(filePath: string, title: string, source: 'auto' 
   lines[headerIndex] = JSON.stringify(header);
   const body = serializeTitleSlot(update) + lines.join('\n');
 
-  writeSessionFileAtomicSync(filePath, body, 'title');
+  await writeSessionFileAtomic(filePath, body);
   return true;
 }
 
@@ -214,18 +208,14 @@ export function setSessionTitle(filePath: string, title: string, source: 'auto' 
  * mid-write would permanently destroy the session; rename is atomic, leaving
  * either the old or the new file. Mirrors omp's own atomic session rewrite.
  */
-function writeSessionFileAtomicSync(filePath: string, body: string, tag = 'rewrite'): void {
+async function writeSessionFileAtomic(filePath: string, body: string): Promise<void> {
   const dir = path.dirname(filePath);
-  const tempDir = mkdtempSync(path.join(dir, `.omp-web-${tag}-`));
-  const tempPath = path.join(tempDir, path.basename(filePath));
+  const tempPath = path.join(dir, `${path.basename(filePath)}.tmp-${process.pid}-${Date.now()}`);
   try {
-    writeFileSync(tempPath, body, 'utf8');
-    renameSync(tempPath, filePath);
-  } finally {
-    try {
-      rmdirSync(tempDir);
-    } catch {
-      rmSync(tempDir, { recursive: true, force: true });
-    }
+    await Bun.write(tempPath, body);
+    await fs.promises.rename(tempPath, filePath);
+  } catch (writeError) {
+    await fs.promises.rm(tempPath, { force: true }).catch(() => undefined);
+    throw writeError;
   }
 }

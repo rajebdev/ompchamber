@@ -91,7 +91,7 @@ export async function action({ params, request }: ActionFunctionArgs) {
     : '';
   if (!entryId) return json({ error: 'entryId is required', code: 'entry_id_required' }, { status: 400 });
 
-  const filePath = findSessionFileById(sessionId);
+  const filePath = await findSessionFileById(sessionId);
   if (!filePath) return json({ error: 'Session not found' }, { status: 404 });
 
   // Tear down the live process first: it flushes pending writes on shutdown

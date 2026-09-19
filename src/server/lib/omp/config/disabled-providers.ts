@@ -10,7 +10,7 @@
  * in the file.
  */
 
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
+import fs from 'fs';
 import { dirname, join } from 'path';
 import { getAgentDir } from '@/server/lib/omp/core/paths';
 
@@ -29,18 +29,19 @@ function readDisabledProviderSlugs(data: Record<string, unknown>): string[] {
  * Re-enable a disabled provider by removing it from config.yml
  * disabledProviders. Returns false when it was not disabled in the first place.
  */
-export function enableNativeProvider(slug: string): boolean {
+export async function enableNativeProvider(slug: string): Promise<boolean> {
   const path = configPath();
-  if (!existsSync(path)) return false;
-  const doc = Bun.YAML.parse(readFileSync(path, 'utf8'));
+  const file = Bun.file(path);
+  if (!(await file.exists())) return false;
+  const doc = Bun.YAML.parse(await file.text());
   if (!isRecord(doc)) return false;
   const current = readDisabledProviderSlugs(doc);
   const next = current.filter((item) => item !== slug);
   if (next.length === current.length) return false;
   doc.disabledProviders = next;
   const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
-  writeFileSync(temp, Bun.YAML.stringify(doc, null, 2), 'utf8');
-  renameSync(temp, path);
+  await Bun.write(temp, Bun.YAML.stringify(doc, null, 2));
+  await fs.promises.rename(temp, path);
   return true;
 }
 
@@ -50,9 +51,10 @@ export function enableNativeProvider(slug: string): boolean {
  * later provider merge cannot resurrect it as connected. Creates config.yml
  * when absent; returns false when the provider was already disabled.
  */
-export function disableNativeProvider(slug: string): boolean {
+export async function disableNativeProvider(slug: string): Promise<boolean> {
   const path = configPath();
-  const source = existsSync(path) ? readFileSync(path, 'utf8') : '';
+  const file = Bun.file(path);
+  const source = (await file.exists()) ? await file.text() : '';
   const doc = Bun.YAML.parse(source);
   if (doc !== null && !isRecord(doc)) {
     throw new Error(`${path} must contain a YAML mapping`);
@@ -60,15 +62,15 @@ export function disableNativeProvider(slug: string): boolean {
   const disabled = isRecord(doc) ? readDisabledProviderSlugs(doc) : [];
   if (disabled.includes(slug)) return false;
 
-  mkdirSync(dirname(path), { recursive: true });
+  await fs.promises.mkdir(dirname(path), { recursive: true });
   const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
   if (isRecord(doc)) {
     doc.disabledProviders = [...disabled, slug];
-    writeFileSync(temp, Bun.YAML.stringify(doc, null, 2), 'utf8');
+    await Bun.write(temp, Bun.YAML.stringify(doc, null, 2));
   } else {
-    writeFileSync(temp, Bun.YAML.stringify({ disabledProviders: [slug] }, null, 2), 'utf8');
+    await Bun.write(temp, Bun.YAML.stringify({ disabledProviders: [slug] }, null, 2));
   }
-  renameSync(temp, path);
+  await fs.promises.rename(temp, path);
   return true;
 }
 
