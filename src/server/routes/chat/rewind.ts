@@ -1,6 +1,5 @@
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs } from '@/server/lib/remix-compat';
-import { readFileSync, renameSync, writeFileSync } from 'fs';
 import { getDb } from '@/server/db.server';
 import { findSessionFileById } from '@/server/lib/omp/session/locator';
 import { getRpcSession } from '@/server/lib/omp/rpc/session-registry';
@@ -104,7 +103,7 @@ export async function action({ params, request }: ActionFunctionArgs) {
   }
   clearSessionFileCaches();
 
-  const raw = readFileSync(filePath, 'utf8');
+  const raw = await Bun.file(filePath).text();
   const nextBody = truncateJsonl(raw, entryId);
   if (nextBody === null) {
     return json({ error: 'Entry not found or not a user turn in this session', code: 'entry_not_found' }, { status: 400 });
@@ -112,11 +111,11 @@ export async function action({ params, request }: ActionFunctionArgs) {
 
   // Backup then rewrite. `.bak` names are skipped by omp's session listing.
   const backupPath = `${filePath}.bak-${Date.now()}`;
-  renameSync(filePath, backupPath);
+  await Bun.write(backupPath, raw);
   try {
-    writeFileSync(filePath, nextBody, 'utf8');
+    await Bun.write(filePath, nextBody);
   } catch (error) {
-    renameSync(backupPath, filePath);
+    await Bun.write(filePath, raw);
     return json({ error: error instanceof Error ? error.message : 'Failed to rewrite session file' }, { status: 500 });
   }
 

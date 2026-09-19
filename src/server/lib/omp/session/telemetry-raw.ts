@@ -26,19 +26,19 @@ export interface RawMessagesPage {
  * window of the last `page * pageSize` matches and slices its tail, so
  * server memory stays O(page) regardless of session length.
  */
-export function computeRawMessagesPage(
+export async function computeRawMessagesPage(
   filePath: string,
   page: number,
   pageSize: number,
   role: RawMessageRole = 'all',
-): RawMessagesPage {
+): Promise<RawMessagesPage> {
   const windowSize = Math.max(1, page) * pageSize;
   const window: RawMessageItem[] = [];
   let total = 0;
   let filteredTotal = 0;
   let header: SessionEntry | undefined;
 
-  scanSessionEntries(filePath, (entry, index) => {
+  await scanSessionEntries(filePath, (entry, index) => {
     if (entry.type === 'session' && !header) {
       header = entry;
       return;

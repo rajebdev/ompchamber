@@ -10,12 +10,12 @@ import { scanSessionEntries } from '@/server/lib/omp/session/telemetry/scan';
  * unreadable/empty). `rawLimit` caps materialized raw items (0 = none): the
  * panel reads full pages from `computeRawMessagesPage` in ./telemetry-raw.ts.
  */
-export function computeRealSessionTelemetry(
+export async function computeRealSessionTelemetry(
   filePath: string,
   sessionId: string,
   fallbackTitle?: string,
   rawLimit = 0,
-): SessionContextTelemetry {
+): Promise<SessionContextTelemetry> {
   const defaultTitle = fallbackTitle || 'New Session';
 
   let header: SessionEntry | undefined;
@@ -47,7 +47,7 @@ export function computeRealSessionTelemetry(
   const rawMessages: RawMessageItem[] = [];
   let cwd = '';
 
-  scanSessionEntries(filePath, (entry, index) => {
+  await scanSessionEntries(filePath, (entry, index) => {
     // Modern session files start with a fixed-width title slot line, so the
     // header is never at index 0 when one exists. A filled slot (auto/user
     // rename) outranks the header's own title field.

@@ -4,7 +4,7 @@
  */
 
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, rmSync, writeFileSync } from 'fs';
+import fs from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 
@@ -13,18 +13,18 @@ import { findProjectRuntimeDir, isTcpPortLive } from '@/server/lib/browser/runti
 const tempRoots: string[] = [];
 const savedEnv: Record<string, string | undefined> = {};
 
-function makeRuntimeDir(name: string): string {
+async function makeRuntimeDir(name: string): Promise<string> {
   const dir = join(homedir(), Bun.env.PI_CONFIG_DIR!, 'run', 'daemons', name);
-  mkdirSync(join(dir, 'omp.browser.headless.profile'), { recursive: true });
-  writeFileSync(join(dir, 'scope.json'), JSON.stringify({ projectDir: '/tmp/fake-project' }));
+  await fs.promises.mkdir(join(dir, 'omp.browser.headless.profile'), { recursive: true });
+  await Bun.write(join(dir, 'scope.json'), JSON.stringify({ projectDir: '/tmp/fake-project' }));
   return dir;
 }
 
-function writeDevToolsActivePort(runtimeDir: string, port: number, wsPath: string): void {
-  writeFileSync(join(runtimeDir, 'omp.browser.headless.profile', 'DevToolsActivePort'), `${port}\n${wsPath}\n`);
+async function writeDevToolsActivePort(runtimeDir: string, port: number, wsPath: string): Promise<void> {
+  await Bun.write(join(runtimeDir, 'omp.browser.headless.profile', 'DevToolsActivePort'), `${port}\n${wsPath}\n`);
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   // getConfigRoot() = homedir()/getConfigDirName(), and os.homedir() is
   // snapshotted at process start — a runtime HOME change is invisible.
   // PI_CONFIG_DIR is a *relative name* joined onto homedir, so isolate via a
@@ -33,7 +33,7 @@ beforeEach(() => {
   savedEnv.XDG_STATE_HOME = Bun.env.XDG_STATE_HOME;
   const name = `.omp-browser-test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   tempRoots.push(join(homedir(), name));
-  mkdirSync(join(homedir(), name, 'run', 'daemons'), { recursive: true });
+  await fs.promises.mkdir(join(homedir(), name, 'run', 'daemons'), { recursive: true });
   Bun.env.PI_CONFIG_DIR = name;
   Bun.env.XDG_STATE_HOME = '';
 });
@@ -46,7 +46,7 @@ afterEach(() => {
 });
 
 afterAll(() => {
-  for (const root of tempRoots) rmSync(root, { recursive: true, force: true });
+  for (const root of tempRoots) fs.rmSync(root, { recursive: true, force: true });
 });
 
 describe('isTcpPortLive', () => {
@@ -70,10 +70,10 @@ describe('isTcpPortLive', () => {
 
 describe('findProjectRuntimeDir', () => {
   test('returns endpoint for a live daemon', async () => {
-    const runtimeDir = makeRuntimeDir('live');
+    const runtimeDir = await makeRuntimeDir('live');
     const server = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {}, close() {}, error() {} } });
     try {
-      writeDevToolsActivePort(runtimeDir, server.port, '/devtools/browser/live-id');
+      await writeDevToolsActivePort(runtimeDir, server.port, '/devtools/browser/live-id');
       const found = await findProjectRuntimeDir('/tmp/fake-project');
       expect(found).not.toBeNull();
       expect(found?.port).toBe(server.port);
@@ -85,19 +85,19 @@ describe('findProjectRuntimeDir', () => {
   });
 
   test('rejects a stale DevToolsActivePort whose port is dead', async () => {
-    const runtimeDir = makeRuntimeDir('stale');
+    const runtimeDir = await makeRuntimeDir('stale');
     const server = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {}, close() {}, error() {} } });
     const port = server.port;
     server.stop(true);
-    writeDevToolsActivePort(runtimeDir, port, '/devtools/browser/dead-id');
+    await writeDevToolsActivePort(runtimeDir, port, '/devtools/browser/dead-id');
     expect(await findProjectRuntimeDir('/tmp/fake-project')).toBeNull();
   });
 
   test('returns null for an unknown project', async () => {
-    makeRuntimeDir('other');
+    await makeRuntimeDir('other');
     const server = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {}, close() {}, error() {} } });
     try {
-      writeDevToolsActivePort(
+      await writeDevToolsActivePort(
         join(homedir(), Bun.env.PI_CONFIG_DIR!, 'run', 'daemons', 'other'),
         server.port,
         '/devtools/browser/other',

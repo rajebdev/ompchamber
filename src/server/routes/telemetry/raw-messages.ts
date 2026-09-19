@@ -50,7 +50,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     if (sessionId) {
       const filePath = findSessionFileById(sessionId);
       if (filePath) {
-        const result = computeRawMessagesPage(filePath, page, pageSize, role);
+        const result = await computeRawMessagesPage(filePath, page, pageSize, role);
         return json({ ...result, page, pageSize, isMock: false, source: 'omp-jsonl' });
       }
 

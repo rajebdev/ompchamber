@@ -11,7 +11,7 @@
 
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs } from '@/server/lib/remix-compat';
-import { existsSync, statSync } from 'fs';
+import { existsSync } from 'fs';
 import { join, resolve } from 'path';
 
 function hasGitCommand(): boolean {
@@ -33,8 +33,9 @@ export async function action({ request }: ActionFunctionArgs) {
       return json({ error: 'path is required' }, { status: 400 });
     }
     const target = resolve(body.path);
-    const exists = existsSync(target);
-    const isDirectory = exists ? statSync(target).isDirectory() : false;
+    const file = Bun.file(target);
+    const exists = await file.exists();
+    const isDirectory = exists ? (await file.stat()).isDirectory() : false;
     const gitInstalled = hasGitCommand();
     const gitRepo = isDirectory && gitInstalled ? (() => {
       try {

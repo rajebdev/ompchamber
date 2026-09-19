@@ -4,24 +4,22 @@
  */
 
 import { afterAll, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
-import { tmpdir } from 'os';
-import { join } from 'path';
+import fs from 'fs';
 
 import { computeRealSessionTelemetry } from '@/server/lib/omp/session/telemetry';
 
 const tempDirs: string[] = [];
 
-function writeSession(records: unknown[]): string {
-  const dir = mkdtempSync(join(tmpdir(), 'omp-telemetry-'));
+async function writeSession(records: unknown[]): Promise<string> {
+  const dir = await fs.promises.mkdtemp('omp-telemetry-');
   tempDirs.push(dir);
-  const file = join(dir, 'session.jsonl');
-  writeFileSync(file, records.map((record) => JSON.stringify(record)).join('\n'));
+  const file = `${dir}/session.jsonl`;
+  await Bun.write(file, records.map((record) => JSON.stringify(record)).join('\n'));
   return file;
 }
 
 afterAll(() => {
-  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+  for (const dir of tempDirs) fs.rmSync(dir, { recursive: true, force: true });
 });
 
 const header = {
@@ -56,8 +54,8 @@ function assistantMessage(id: string, message: Record<string, unknown>): Record<
 }
 
 describe('computeRealSessionTelemetry context anchor', () => {
-  test('uses the latest assistant anchor, never cumulative totalTokens', () => {
-    const file = writeSession([
+  test('uses the latest assistant anchor, never cumulative totalTokens', async () => {
+    const file = await writeSession([
       header,
       userMessage('u1', 'first turn'),
       assistantMessage('a1', {
@@ -71,13 +69,13 @@ describe('computeRealSessionTelemetry context anchor', () => {
       }),
     ]);
 
-    const telemetry = computeRealSessionTelemetry(file, 'ses_telemetry');
+    const telemetry = await computeRealSessionTelemetry(file, 'ses_telemetry');
     expect(telemetry.contextUsed).toBe(3000);
     expect(telemetry.contextPercent).toBe(0.3);
   });
 
-  test('subtracts historyRewriteTokensRemoved from the anchor snapshot', () => {
-    const file = writeSession([
+  test('subtracts historyRewriteTokensRemoved from the anchor snapshot', async () => {
+    const file = await writeSession([
       header,
       userMessage('u1', 'rewritten turn'),
       assistantMessage('a1', {
@@ -86,12 +84,12 @@ describe('computeRealSessionTelemetry context anchor', () => {
       }),
     ]);
 
-    const telemetry = computeRealSessionTelemetry(file, 'ses_telemetry');
+    const telemetry = await computeRealSessionTelemetry(file, 'ses_telemetry');
     expect(telemetry.contextUsed).toBe(3800);
   });
 
-  test('falls back to usage.contextTokens when no snapshot exists', () => {
-    const file = writeSession([
+  test('falls back to usage.contextTokens when no snapshot exists', async () => {
+    const file = await writeSession([
       header,
       userMessage('u1', 'context tokens'),
       assistantMessage('a1', {
@@ -99,12 +97,12 @@ describe('computeRealSessionTelemetry context anchor', () => {
       }),
     ]);
 
-    const telemetry = computeRealSessionTelemetry(file, 'ses_telemetry');
+    const telemetry = await computeRealSessionTelemetry(file, 'ses_telemetry');
     expect(telemetry.contextUsed).toBe(4000);
   });
 
-  test('falls back to input + cacheRead + cacheWrite when contextTokens is absent', () => {
-    const file = writeSession([
+  test('falls back to input + cacheRead + cacheWrite when contextTokens is absent', async () => {
+    const file = await writeSession([
       header,
       userMessage('u1', 'prompt sum'),
       assistantMessage('a1', {
@@ -112,12 +110,12 @@ describe('computeRealSessionTelemetry context anchor', () => {
       }),
     ]);
 
-    const telemetry = computeRealSessionTelemetry(file, 'ses_telemetry');
+    const telemetry = await computeRealSessionTelemetry(file, 'ses_telemetry');
     expect(telemetry.contextUsed).toBe(1750);
   });
 
-  test('sets distribution.otherTokens to cumulative cacheRead and keeps aggregate stats', () => {
-    const file = writeSession([
+  test('sets distribution.otherTokens to cumulative cacheRead and keeps aggregate stats', async () => {
+    const file = await writeSession([
       header,
       userMessage('u1', 'first turn'),
       assistantMessage('a1', {
@@ -145,7 +143,7 @@ describe('computeRealSessionTelemetry context anchor', () => {
       }),
     ]);
 
-    const telemetry = computeRealSessionTelemetry(file, 'ses_telemetry');
+    const telemetry = await computeRealSessionTelemetry(file, 'ses_telemetry');
     expect(telemetry.distribution.userTokens).toBe(3000);
     expect(telemetry.distribution.assistantTokens).toBe(300);
     expect(telemetry.distribution.toolTokens).toBe(50);

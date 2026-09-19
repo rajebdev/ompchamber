@@ -1,5 +1,4 @@
 import { Elysia } from 'elysia';
-import { existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { getDb } from '@/server/db.server';
 import { tryServeStatic } from '@/server/plugins/static';
@@ -15,12 +14,13 @@ let cachedMtimeMs = 0;
  * picks up a new asset manifest without restarting the server.
  */
 async function readTemplate(): Promise<string> {
-  if (!existsSync(CLIENT_INDEX)) {
+  const file = Bun.file(CLIENT_INDEX);
+  if (!(await file.exists())) {
     throw new Error(`Client build not found at ${CLIENT_INDEX}. Run \`bun run build\` first.`);
   }
-  const { mtimeMs } = statSync(CLIENT_INDEX);
+  const { mtimeMs } = await file.stat();
   if (cachedTemplate !== null && mtimeMs === cachedMtimeMs) return cachedTemplate;
-  cachedTemplate = await Bun.file(CLIENT_INDEX).text();
+  cachedTemplate = await file.text();
   cachedMtimeMs = mtimeMs;
   return cachedTemplate;
 }
@@ -80,7 +80,7 @@ export const ssrRoutes = new Elysia({ name: 'ssr' }).get('*', async ({ request }
   const devAsset = await tryProxyDevAsset(request, pathname);
   if (devAsset) return devAsset;
 
-  if (!existsSync(CLIENT_INDEX)) return missingBuildResponse();
+  if (!(await Bun.file(CLIENT_INDEX).exists())) return missingBuildResponse();
 
   const settings = await readSettings();
   const chamberSettings = (settings.omp_chamber_settings ?? {}) as { theme?: string };

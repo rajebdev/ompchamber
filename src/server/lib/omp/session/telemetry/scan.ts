@@ -1,15 +1,14 @@
-import { readFileSync } from 'fs';
 import { parseJsonlLenient } from '@/shared/lib/omp/session/jsonl';
 import type { SessionEntry } from '@/server/lib/omp/session/telemetry/types';
 
 /** Streaming JSONL pass for the telemetry builders; `visit` returns `false` to stop early. */
-export function scanSessionEntries(
+export async function scanSessionEntries(
   filePath: string,
   visit: (entry: SessionEntry, index: number) => boolean | void,
-): void {
+): Promise<void> {
   let body: string;
   try {
-    body = readFileSync(filePath, 'utf8');
+    body = await Bun.file(filePath).text();
   } catch {
     return;
   }
