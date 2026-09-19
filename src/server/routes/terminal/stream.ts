@@ -1,5 +1,4 @@
 import { type LoaderFunctionArgs } from '@/server/lib/remix-compat';
-import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { resolveRoot } from '@/server/lib/fs/root';
@@ -67,10 +66,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
         return;
       }
 
-      // Spawn process in pseudo-terminal mode with full ANSI color support
-      const proc = spawn(command, {
-        shell: true,
+      // Spawn via /bin/sh so shell syntax (pipes, &&) keeps working, with full
+      // ANSI color support for the xterm viewer.
+      const proc = Bun.spawn({
+        cmd: ['sh', '-c', command],
         cwd: currentDir,
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
         env: {
           ...Bun.env,
           FORCE_COLOR: '1',
@@ -84,21 +87,26 @@ export async function loader({ request }: LoaderFunctionArgs) {
         } catch {}
       });
 
-      proc.stdout?.on('data', (chunk: Buffer) => {
-        sendEvent('data', { text: chunk.toString() });
-      });
+      const decoder = new TextDecoder();
+      const pump = async (stream: ReadableStream<Uint8Array> | undefined) => {
+        if (!stream) return;
+        const reader = stream.getReader();
+        try {
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            sendEvent('data', { text: decoder.decode(value, { stream: true }) });
+          }
+        } catch {
+          // Stream died with the process; exit handling below reports it.
+        } finally {
+          reader.releaseLock();
+        }
+      };
+      const stdoutDone = pump(proc.stdout);
+      const stderrDone = pump(proc.stderr);
 
-      proc.stderr?.on('data', (chunk: Buffer) => {
-        sendEvent('data', { text: chunk.toString() });
-      });
-
-      proc.on('error', (err) => {
-        sendEvent('data', { text: `\x1b[31mExecution error: ${err.message}\x1b[0m\r\n` });
-        sendEvent('exit', { exitCode: 1, cwd: path.relative(rootDir, currentDir) || '.' });
-        try { controller.close(); } catch {}
-      });
-
-      proc.on('close', (code) => {
+      void Promise.all([stdoutDone, stderrDone, proc.exited]).then(([_, __, code]) => {
         sendEvent('exit', {
           exitCode: code ?? 0,
           cwd: path.relative(rootDir, currentDir) || '.',

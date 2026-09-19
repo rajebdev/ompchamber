@@ -12,9 +12,9 @@
  * deterministic result without ever spawning.
  */
 
-import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
-import { createInterface } from 'readline';
+import type { Subprocess } from 'bun';
 import { killProcessTree } from '@/server/lib/omp/rpc/kill-tree';
+import { readLines } from '@/server/lib/omp/rpc/lines';
 import { sanitizeProjectCommandEnvironment } from '@/server/lib/omp/rpc/process-helpers';
 import { isMockMode } from '@/server/mock.server';
 import type { McpServerItem } from '@/shared/types';
@@ -92,14 +92,14 @@ function mergeEnvVars(server: McpServerItem): NodeJS.ProcessEnv {
 
 /** Mirror `RpcProcess.dispose`: stdin EOF, then SIGTERM, then SIGKILL on the
  * whole process group; resolves once the child has exited so no orphan stays. */
-function disposeChild(child: ChildProcessWithoutNullStreams, spawnProcess: typeof spawn): Promise<void> {
+function disposeChild(child: Subprocess<"pipe", "pipe", "pipe">): Promise<void> {
   return new Promise((resolve) => {
     let settled = false;
     const termTimer = setTimeout(() => {
-      if (!settled) killProcessTree(child, spawnProcess, false, 'SIGTERM');
+      if (!settled) killProcessTree(child.pid, false, 'SIGTERM');
     }, GRACE_PERIOD_MS);
     const killTimer = setTimeout(() => {
-      if (!settled) killProcessTree(child, spawnProcess, true, 'SIGKILL');
+      if (!settled) killProcessTree(child.pid, true, 'SIGKILL');
     }, GRACE_PERIOD_MS * 2);
     termTimer.unref?.();
     killTimer.unref?.();
@@ -111,18 +111,17 @@ function disposeChild(child: ChildProcessWithoutNullStreams, spawnProcess: typeo
       resolve();
     };
     try {
-      child.stdin.end();
+      child.stdin?.end();
     } catch {
       // stdin may already be closed; the exit listener settles the promise.
     }
-    child.once('exit', settle);
-    child.once('error', settle);
+    void child.exited.then(settle);
     if (child.exitCode !== null || child.signalCode !== null) settle();
   });
 }
 
 function runHandshake(
-  child: ChildProcessWithoutNullStreams,
+  child: Subprocess<"pipe", "pipe", "pipe">,
   getStderrTail: () => string,
 ): Promise<HandshakeOutcome> {
   return new Promise<HandshakeOutcome>((resolve, reject) => {
@@ -151,12 +150,16 @@ function runHandshake(
     let init: { protocolVersion?: string; serverInfo?: { name?: string; version?: string } } | null = null;
 
     const send = (message: unknown) => {
-      if (child.stdin.destroyed || child.stdin.writableEnded) return;
-      child.stdin.write(`${JSON.stringify(message)}\n`);
+      const stdin = child.stdin;
+      if (!stdin) return;
+      try {
+        stdin.write(`${JSON.stringify(message)}\n`);
+      } catch {
+        // stdin may already be closed while the child is dying.
+      }
     };
 
-    const rl = createInterface({ input: child.stdout });
-    rl.on('line', (line) => {
+    void readLines(child.stdout, (line) => {
       const trimmed = line.trim();
       if (!trimmed) return;
       let parsed: unknown;
@@ -195,13 +198,10 @@ function runHandshake(
       }
     });
 
-    child.once('exit', (code, signal) => {
+    void child.exited.then((code) => {
       const tail = getStderrTail();
       const suffix = tail ? `: ${tail.slice(-500)}` : '';
-      fail(`Server exited before completing handshake (code ${code ?? 'null'}, signal ${signal ?? 'none'})${suffix}`);
-    });
-    child.once('error', (error) => {
-      fail(`Failed to start server: ${error.message}`);
+      fail(`Server exited before completing handshake (code ${code ?? 'null'}, signal ${child.signalCode ?? 'none'})${suffix}`);
     });
 
     send(initializeRequest());
@@ -215,19 +215,20 @@ async function runCommandTest(server: McpServerItem, cwd: string | undefined): P
     return { ok: false, transport: 'command', durationMs: 0, error: 'No command configured' };
   }
 
-  const child: ChildProcessWithoutNullStreams = spawn(commandArgs[0], commandArgs.slice(1), {
+  const child: Subprocess<"pipe", "pipe", "pipe"> = Bun.spawn({
+    cmd: commandArgs,
     cwd: cwd || process.cwd(),
     env: mergeEnvVars(server),
-    stdio: ['pipe', 'pipe', 'pipe'],
+    stdin: 'pipe',
+    stdout: 'pipe',
+    stderr: 'pipe',
     windowsHide: true,
     detached: process.platform !== 'win32',
   });
 
-  child.stdin.on('error', () => {});
-  child.stdout.on('error', () => {});
   let stderrTail = '';
-  child.stderr.on('data', (chunk: Buffer) => {
-    stderrTail = (stderrTail + chunk.toString('utf8')).slice(-STDERR_TAIL_LIMIT);
+  void readLines(child.stderr, (line) => {
+    stderrTail = (stderrTail + line + '\n').slice(-STDERR_TAIL_LIMIT);
   });
 
   try {
@@ -242,7 +243,7 @@ async function runCommandTest(server: McpServerItem, cwd: string | undefined): P
       error: error instanceof Error ? error.message : 'MCP handshake failed',
     };
   } finally {
-    await disposeChild(child, spawn);
+    await disposeChild(child);
   }
 }
 

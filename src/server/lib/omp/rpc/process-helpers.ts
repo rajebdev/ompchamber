@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { spawn } from 'child_process';
 import type { resolveOmpBin } from '@/server/lib/omp/core/cli';
 
 export interface RpcResponseFrame {
@@ -59,10 +58,9 @@ export interface RpcProcessOptions {
   onFrame?: (frame: RpcFrame) => void;
   /** Called once when the child exits, after pending commands are rejected. */
   onExit?: (info: { code: number | null; signal: NodeJS.Signals | null; stderrTail: string }) => void;
-  /** Injectable process boundary for deterministic transport tests. */
+  /** Injectable binary resolver for deterministic transport tests. */
   dependencies?: {
     resolveOmpBin?: typeof resolveOmpBin;
-    spawn?: typeof spawn;
   };
 }
 

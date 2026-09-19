@@ -14,11 +14,11 @@
  * Faithful port of omp-web/lib/omp/rpc-process.ts.
  */
 
-import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
-import { createInterface } from 'readline';
+import type { Subprocess } from 'bun';
 import { resolveOmpBin } from '@/server/lib/omp/core/cli';
 import { RpcFrameDecoder, encodeRpcFrames, type RpcFrameRecord, type RpcProtocolVersion } from '@/shared/lib/omp/rpc/frame';
 import { killProcessTree } from '@/server/lib/omp/rpc/kill-tree';
+import { readLines } from '@/server/lib/omp/rpc/lines';
 import { RpcCommandError, RpcCommandTimeoutError, STDERR_TAIL_LIMIT, sanitizeProjectCommandEnvironment, type PendingCommand, type RpcFrame, type RpcProcessOptions, type RpcResponseFrame } from '@/server/lib/omp/rpc/process-helpers';
 
 export { RpcCommandError, RpcCommandTimeoutError } from '@/server/lib/omp/rpc/process-helpers';
@@ -26,7 +26,7 @@ export type { RpcFrame, RpcProcessOptions, RpcResponseFrame } from '@/server/lib
 
 export class RpcProcess {
   readonly cwd: string;
-  private child: ChildProcessWithoutNullStreams;
+  private child!: Subprocess<"pipe", "pipe", "pipe">;
   private readonly pending = new Map<string, PendingCommand>();
   private readonly frameListeners = new Set<(frame: RpcFrame) => void>();
   private readyPromise: Promise<RpcFrame>;
@@ -36,7 +36,6 @@ export class RpcProcess {
   private exitInfo: { code: number | null; signal: NodeJS.Signals | null } | null = null;
   private protocolVersion: RpcProtocolVersion = 1;
   private nextChunkId = 1;
-  private readonly spawnProcess: typeof spawn;
   // Serializes physical stdin writes: a v2 logical frame can span multiple
   // `rpc_chunk` records (>1 MiB payloads), and two frames written concurrently
   // would interleave their chunk sequences on stdin, which RpcFrameDecoder
@@ -45,7 +44,6 @@ export class RpcProcess {
 
   constructor(options: RpcProcessOptions) {
     const resolveBin = options.dependencies?.resolveOmpBin ?? resolveOmpBin;
-    this.spawnProcess = options.dependencies?.spawn ?? spawn;
     const bin = resolveBin();
     if (!bin) {
       throw new Error('omp binary not found. Install oh-my-pi or set OMP_WEB_OMP_BIN.');
@@ -59,10 +57,13 @@ export class RpcProcess {
     const childEnv = sanitizeProjectCommandEnvironment({ ...Bun.env, ...options.env });
     if (options.env?.OMP_PROFILE === undefined) delete childEnv.OMP_PROFILE;
     if (options.env?.PI_PROFILE === undefined) delete childEnv.PI_PROFILE;
-    this.child = this.spawnProcess(bin, args, {
+    this.child = Bun.spawn({
+      cmd: [bin, ...args],
       cwd: options.cwd,
       env: childEnv,
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdin: 'pipe',
+      stdout: 'pipe',
+      stderr: 'pipe',
       windowsHide: true,
       // On POSIX, omp launches grandchildren (LSP servers, extension subprocesses). Run the
       // child in its own process group so dispose() can SIGTERM/SIGKILL the whole
@@ -70,12 +71,6 @@ export class RpcProcess {
       // Windows uses taskkill /t instead, so detaching would only create a console.
       detached: process.platform !== 'win32',
     });
-
-    // A write queued when the child dies fails both the write callback and an
-    // 'error' event on the pipe. Without a listener that event becomes an
-    // uncaughtException.
-    this.child.stdin.on('error', () => {});
-    this.child.stdout.on('error', () => {});
 
     let resolveReady: (frame: RpcFrame) => void;
     let rejectReady: (error: Error) => void;
@@ -88,8 +83,7 @@ export class RpcProcess {
     this.readyPromise.catch(() => {});
 
     const decoder = new RpcFrameDecoder();
-    const rl = createInterface({ input: this.child.stdout });
-    rl.on('line', (line) => {
+    void readLines(this.child.stdout, (line) => {
       const trimmed = line.trim();
       if (!trimmed) return;
       let parsed: unknown;
@@ -129,9 +123,11 @@ export class RpcProcess {
       }
     });
 
-    this.child.stderr.on('data', (chunk: Buffer) => {
-      this.stderrTail = (this.stderrTail + chunk.toString('utf8')).slice(-STDERR_TAIL_LIMIT);
-    });
+    void (async () => {
+      await readLines(this.child.stderr, (line) => {
+        this.stderrTail = (this.stderrTail + line + '\n').slice(-STDERR_TAIL_LIMIT);
+      });
+    })();
 
     const finalize = (code: number | null, signal: NodeJS.Signals | null) => {
       if (this.exited) return;
@@ -148,10 +144,8 @@ export class RpcProcess {
       this.pending.clear();
       options.onExit?.({ code, signal, stderrTail: this.stderrTail });
     };
-    this.child.on('exit', finalize);
-    this.child.on('error', (error) => {
-      this.stderrTail = (this.stderrTail + `\nspawn error: ${error.message}`).slice(-STDERR_TAIL_LIMIT);
-      finalize(null, null);
+    void this.child.exited.then((code) => {
+      finalize(code, this.child.signalCode);
     });
   }
 
@@ -161,12 +155,14 @@ export class RpcProcess {
 
   /** OS pid of the spawned omp process (undefined before spawn settles). Used
    * by the browser viewer to map this process to its owned browser targets. */
-  get pid(): number | undefined {
-    return this.child.pid;
-  }
-
   get exitDetails(): { code: number | null; signal: NodeJS.Signals | null; stderrTail: string } | null {
     return this.exitInfo ? { ...this.exitInfo, stderrTail: this.stderrTail } : null;
+  }
+
+  /** OS pid of the spawned omp process, undefined once it is gone. Used by the
+   * browser viewer to map this process to its owned browser targets. */
+  get pid(): number | undefined {
+    return this.child.pid ?? undefined;
   }
 
   /** Resolves with the `ready` frame; rejects if the process dies first or the
@@ -255,24 +251,23 @@ export class RpcProcess {
       return;
     }
     // Enqueue the entire encoded logical frame; the next frame's physical
-    // records only start after this frame's last write callback completes.
+    // records only start after this frame has been fully handed to the stdin
+    // sink, so two frames can never interleave their chunk sequences.
     this.writeQueue = this.writeQueue.then(
       () => new Promise<void>((resolve) => {
-        if (this.exited || this.child.stdin.destroyed) {
+        if (this.exited || !this.child.stdin) {
           callback(new Error('RPC process is not running'));
           resolve();
           return;
         }
-        let index = 0;
-        const writeNext = (error?: Error | null) => {
-          if (error || index === lines.length) {
-            callback(error ?? null);
-            resolve();
-            return;
-          }
-          this.child.stdin.write(lines[index++], writeNext);
-        };
-        writeNext();
+        try {
+          for (const line of lines) this.child.stdin.write(line);
+          callback(null);
+        } catch (error) {
+          callback(error instanceof Error ? error : new Error(String(error)));
+        } finally {
+          resolve();
+        }
       }),
     );
   }
@@ -305,18 +300,15 @@ export class RpcProcess {
    * unref'd so they never keep the event loop alive on their own. */
   async dispose(gracePeriodMs = 5_000): Promise<void> {
     if (this.exited) return;
-    const exited = new Promise<void>((resolve) => {
-      if (this.exited) return resolve();
-      this.child.once('exit', () => resolve());
-    });
+    const exited = this.child.exited.then(() => undefined);
     try {
       this.child.stdin.end();
     } catch {}
     const timer = setTimeout(() => {
-      if (!this.exited) killProcessTree(this.child, this.spawnProcess, false, 'SIGTERM');
+      if (!this.exited) killProcessTree(this.child.pid, false, 'SIGTERM');
     }, gracePeriodMs);
     const killTimer = setTimeout(() => {
-      if (!this.exited) killProcessTree(this.child, this.spawnProcess, true, 'SIGKILL');
+      if (!this.exited) killProcessTree(this.child.pid, true, 'SIGKILL');
     }, gracePeriodMs * 2);
     timer.unref?.();
     killTimer.unref?.();
