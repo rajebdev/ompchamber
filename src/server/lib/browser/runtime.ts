@@ -15,7 +15,7 @@
  * starts, mutates, or closes the browser.
  */
 
-import { readFile, readdir, realpath } from 'fs/promises';
+import { readdir, realpath } from 'fs/promises';
 import * as path from 'path';
 import { getConfigRoot } from '@/server/lib/omp/core/paths';
 
@@ -85,7 +85,7 @@ async function readDaemonEndpoint(
     const file = path.join(runtimeDir, `${daemonName}.profile`, DEVTOOLS_ACTIVE_PORT);
     let raw: string;
     try {
-      raw = await readFile(file, 'utf8');
+      raw = await Bun.file(file).text();
     } catch {
       continue;
     }
@@ -119,7 +119,7 @@ export async function findProjectRuntimeDir(cwd: string): Promise<ProjectRuntime
       const runtimeDir = path.join(root, entry);
       let scopeRaw: string;
       try {
-        scopeRaw = await readFile(path.join(runtimeDir, 'scope.json'), 'utf8');
+        scopeRaw = await Bun.file(path.join(runtimeDir, 'scope.json')).text();
       } catch {
         continue;
       }
@@ -148,7 +148,7 @@ export async function readOwnedTargetIds(
   pid: number,
 ): Promise<string[]> {
   try {
-    const raw = await readFile(path.join(runtimeDir, `${daemonName}.targets`, `${pid}.json`), 'utf8');
+    const raw = await Bun.file(path.join(runtimeDir, `${daemonName}.targets`, `${pid}.json`)).text();
     const parsed = JSON.parse(raw) as { pid?: unknown; targets?: unknown };
     // Guard against a recycled pid inheriting a dead process's registry file.
     if (parsed.pid !== pid) return [];

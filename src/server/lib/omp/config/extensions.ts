@@ -9,7 +9,7 @@
  * (`extension-module:<name>`, `skill:<name>`, `context-file:<level>:<basename>`).
  */
 
-import { existsSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { getAgentDir } from '@/server/lib/omp/core/paths';
 import { isRecord } from '@/server/lib/omp/config/mcp';
@@ -23,25 +23,23 @@ export interface DiscoveredExtension {
   disabled: boolean;
 }
 
+const EXTENSION_GLOB = new Bun.Glob('*.{ts,js,mjs,cjs}');
+const MAX_EXTENSION_BYTES = 2 * 1024 * 1024;
+
 function scanExtensionsDir(dir: string, sourceRoot: 'user' | 'project', disabled: Set<string>): DiscoveredExtension[] {
   if (!existsSync(dir)) return [];
   try {
-    return readdirSync(dir, { withFileTypes: true })
-      .filter((entry) => {
-        if (!entry.isFile()) return false;
-        return /\.(ts|js|mjs|cjs)$/.test(entry.name);
-      })
-      .flatMap((entry) => {
-        const filePath = join(dir, entry.name);
-        try {
-          if (statSync(filePath).size > 2 * 1024 * 1024) return [];
-        } catch {
-          return [];
-        }
-        const name = entry.name.replace(/\.(ts|js|mjs|cjs)$/, '');
-        const id = `extension-module:${name}`;
-        return [{ id, name, sourceRoot, filePath, disabled: disabled.has(id) }];
-      });
+    return [...EXTENSION_GLOB.scanSync({ cwd: dir, onlyFiles: true })].flatMap((relativePath) => {
+      const filePath = join(dir, relativePath);
+      try {
+        if (statSync(filePath).size > MAX_EXTENSION_BYTES) return [];
+      } catch {
+        return [];
+      }
+      const name = relativePath.replace(/\.(ts|js|mjs|cjs)$/, '');
+      const id = `extension-module:${name}`;
+      return [{ id, name, sourceRoot, filePath, disabled: disabled.has(id) }];
+    });
   } catch {
     return [];
   }

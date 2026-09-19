@@ -1,4 +1,4 @@
-import { createReadStream, existsSync, statSync } from 'fs';
+import { existsSync, statSync } from 'fs';
 import { extname, join, normalize, resolve, sep } from 'path';
 
 /**
@@ -54,7 +54,7 @@ function serveFile(filePath: string, cacheControl: string): Response | null {
   if (!stat.isFile()) return null;
 
   const type = MIME[extname(filePath).toLowerCase()] ?? 'application/octet-stream';
-  const stream = createReadStream(filePath) as unknown as ReadableStream;
+  const stream = Bun.file(filePath).stream();
   return new Response(stream, {
     headers: {
       'content-type': type,
