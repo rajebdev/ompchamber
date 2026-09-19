@@ -72,7 +72,7 @@ export async function readSubagentTranscript({ request, params }: LoaderFunction
     const parsed = fromByteRaw !== null ? Number(fromByteRaw) : null;
     const fromByte = parsed !== null && Number.isFinite(parsed) ? parsed : 0;
 
-    return json({ page: readSubagentTranscriptPage(sessionFile, subagentId, fromByte) });
+    return json({ page: await readSubagentTranscriptPage(sessionFile, subagentId, fromByte) });
   } catch (error) {
     return json(
       { error: error instanceof Error ? error.message : String(error) },
