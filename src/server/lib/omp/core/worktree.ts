@@ -14,12 +14,8 @@
  * invalidation is needed).
  */
 
-import { execFile } from 'child_process';
 import { existsSync, realpathSync } from 'fs';
 import { dirname } from 'path';
-import { promisify } from 'util';
-
-const execFileAsync = promisify(execFile);
 
 declare global {
   var __ompChamberProjectCache: Map<string, { root: string; expiresAt: number }> | undefined;
@@ -41,11 +37,17 @@ function getProjectCache(): Map<string, { root: string; expiresAt: number }> {
 }
 
 async function git(cwd: string, args: string[]): Promise<string> {
-  const { stdout } = await execFileAsync('git', ['-C', cwd, ...args], {
+  const proc = Bun.spawn({
+    cmd: ['git', '-C', cwd, ...args],
+    stdout: 'pipe',
+    stderr: 'pipe',
     timeout: 10_000,
     maxBuffer: 1024 * 1024,
     env: { ...Bun.env, LC_ALL: 'C' },
   });
+  const stdout = await new Response(proc.stdout).text();
+  const exitCode = await proc.exited;
+  if (exitCode !== 0) throw new Error(`git ${args[0]} failed with exit code ${exitCode}`);
   return stdout.trim();
 }
 

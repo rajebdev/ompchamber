@@ -6,11 +6,6 @@
  * published yet" instead of erroring out.
  */
 
-import { execFile } from 'child_process';
-import { promisify } from 'util';
-
-const execFileAsync = promisify(execFile);
-
 /** OMPChamber's own repository. */
 const REPO = 'rajebdev/ompchamber';
 
@@ -40,10 +35,16 @@ async function fetchViaApi(): Promise<GitHubRelease | null> {
 }
 
 async function fetchViaGh(): Promise<GitHubRelease | null> {
-  const { stdout } = await execFileAsync('gh', ['api', `repos/${REPO}/releases/latest`], {
+  const proc = Bun.spawn({
+    cmd: ['gh', 'api', `repos/${REPO}/releases/latest`],
+    stdout: 'pipe',
+    stderr: 'pipe',
     timeout: 15000,
     maxBuffer: 1024 * 1024,
   });
+  const stdout = await new Response(proc.stdout).text();
+  await proc.exited;
+  if (proc.exitCode !== 0) throw new Error(`gh api failed with exit code ${proc.exitCode}`);
   const data = JSON.parse(stdout) as Record<string, unknown>;
   return mapRelease(data);
 }

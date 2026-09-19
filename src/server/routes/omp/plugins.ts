@@ -1,6 +1,5 @@
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@/server/lib/remix-compat';
-import { execFile } from 'child_process';
 import { isMockMode } from '@/server/mock.server';
 
 /**
@@ -12,12 +11,23 @@ import { isMockMode } from '@/server/mock.server';
 const TIMEOUT_MS = 120_000;
 
 function runPlugin(args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile('omp', ['plugin', ...args], { timeout: TIMEOUT_MS, windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) reject(new Error(stderr?.trim() || error.message));
-      else resolve(stdout);
+  return (async () => {
+    const proc = Bun.spawn({
+      cmd: ['omp', 'plugin', ...args],
+      stdout: 'pipe',
+      stderr: 'pipe',
+      timeout: TIMEOUT_MS,
+      maxBuffer: 4 * 1024 * 1024,
+      windowsHide: true,
     });
-  });
+    const [stdout, stderr] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
+    const exitCode = await proc.exited;
+    if (exitCode !== 0) throw new Error(stderr.trim() || `omp plugin ${args[0]} exited with code ${exitCode}`);
+    return stdout;
+  })();
 }
 
 export async function loader({ request: _request }: LoaderFunctionArgs) {

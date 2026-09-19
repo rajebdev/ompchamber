@@ -9,7 +9,6 @@
  * Search failures degrade to an empty list so the catalog tab still renders.
  */
 
-import { execFile } from 'child_process';
 import { isMockMode } from '@/server/mock.server';
 import type { CatalogSkillItem } from '@/shared/types';
 
@@ -60,13 +59,22 @@ export function toCatalogSkills(results: CatalogSearchResult[], sourceId: string
   }));
 }
 
-function runBunxSkills(args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile('bunx', ['skills', ...args], { timeout: INSTALL_TIMEOUT_MS, windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error) reject(new Error(stderr?.trim() || error.message));
-      else resolve(stdout);
-    });
+async function runBunxSkills(args: string[]): Promise<string> {
+  const proc = Bun.spawn({
+    cmd: ['bunx', 'skills', ...args],
+    stdout: 'pipe',
+    stderr: 'pipe',
+    timeout: INSTALL_TIMEOUT_MS,
+    maxBuffer: 4 * 1024 * 1024,
+    windowsHide: true,
   });
+  const [stdout, stderr] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  const exitCode = await proc.exited;
+  if (exitCode !== 0) throw new Error(stderr.trim() || `bunx skills ${args[0]} exited with code ${exitCode}`);
+  return stdout;
 }
 
 /** Install a catalog skill into the omp agent skill root. */

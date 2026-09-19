@@ -10,7 +10,6 @@
  * RPC command; the CLI is fast (~0.3s) and authoritative.
  */
 
-import { execFile } from 'child_process';
 import { isMockMode } from '@/server/mock.server';
 
 export interface ConfigEntry {
@@ -24,15 +23,20 @@ const LIST_TIMEOUT_MS = 15_000;
 const WRITE_TIMEOUT_MS = 15_000;
 
 function runOmp(args: string[], timeoutMs: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile(BINARY, args, { timeout: timeoutMs, windowsHide: true, maxBuffer: 16 * 1024 * 1024 }, (error, stdout) => {
-      if (error) {
-        reject(new Error(`omp ${args[0]} failed: ${error.message}`));
-        return;
-      }
-      resolve(stdout);
+  return (async () => {
+    const proc = Bun.spawn({
+      cmd: [BINARY, ...args],
+      stdout: 'pipe',
+      stderr: 'pipe',
+      timeout: timeoutMs,
+      maxBuffer: 16 * 1024 * 1024,
+      windowsHide: true,
     });
-  });
+    const stdout = await new Response(proc.stdout).text();
+    const exitCode = await proc.exited;
+    if (exitCode !== 0) throw new Error(`omp ${args[0]} failed: exited with code ${exitCode}`);
+    return stdout;
+  })();
 }
 
 /** Full schema snapshot: key → {value?, type, description}. Empty in mock mode. */
