@@ -2,6 +2,8 @@
 // undefined), and the CLI only needs POSIX-style join/resolve/dirname on
 // absolute native paths.
 
+import { homedir } from 'node:os';
+
 /** Join path segments with the platform separator without duplicated separators. */
 export function joinPath(...segments) {
   let joined = '';
@@ -34,7 +36,13 @@ export function dirnameOf(value) {
   return value.slice(0, index);
 }
 
-/** Current user home directory (Bun.env.HOME; matches os.homedir on POSIX). */
+/**
+ * Current user home directory. Uses `os.homedir()` rather than `Bun.env.HOME`
+ * because the env var is absent when the CLI runs without a shell (cron,
+ * launchd, GUI launcher) — there it would yield '' and make every derived data
+ * path relative to the cwd, so `stop`/`status` would look in the wrong place.
+ * `os.homedir()` falls back to getpwuid on POSIX and USERPROFILE on Windows.
+ */
 export function homeDir() {
-  return Bun.env.HOME || '';
+  return homedir();
 }
