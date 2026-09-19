@@ -13,13 +13,12 @@ import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs } from '@/server/lib/remix-compat';
 import { existsSync, statSync } from 'fs';
 import { join, resolve } from 'path';
-import { execFileSync } from 'child_process';
 
 function hasGitCommand(): boolean {
   try {
-    execFileSync('git', ['--version'], { stdio: 'ignore' });
-    return true;
+    return Bun.spawnSync(['git', '--version']).success;
   } catch {
+    // Bun.spawnSync throws ENOENT when the binary is missing from PATH.
     return false;
   }
 }
@@ -39,8 +38,7 @@ export async function action({ request }: ActionFunctionArgs) {
     const gitInstalled = hasGitCommand();
     const gitRepo = isDirectory && gitInstalled ? (() => {
       try {
-        execFileSync('git', ['-C', target, 'rev-parse', '--is-inside-work-tree'], { stdio: 'ignore' });
-        return true;
+        return Bun.spawnSync(['git', '-C', target, 'rev-parse', '--is-inside-work-tree']).success;
       } catch {
         return false;
       }

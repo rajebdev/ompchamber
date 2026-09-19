@@ -14,7 +14,7 @@ const tempRoots: string[] = [];
 const savedEnv: Record<string, string | undefined> = {};
 
 function makeRuntimeDir(name: string): string {
-  const dir = join(homedir(), process.env.PI_CONFIG_DIR!, 'run', 'daemons', name);
+  const dir = join(homedir(), Bun.env.PI_CONFIG_DIR!, 'run', 'daemons', name);
   mkdirSync(join(dir, 'omp.browser.headless.profile'), { recursive: true });
   writeFileSync(join(dir, 'scope.json'), JSON.stringify({ projectDir: '/tmp/fake-project' }));
   return dir;
@@ -29,20 +29,20 @@ beforeEach(() => {
   // snapshotted at process start — a runtime HOME change is invisible.
   // PI_CONFIG_DIR is a *relative name* joined onto homedir, so isolate via a
   // uniquely named config dir inside the real home.
-  savedEnv.PI_CONFIG_DIR = process.env.PI_CONFIG_DIR;
-  savedEnv.XDG_STATE_HOME = process.env.XDG_STATE_HOME;
+  savedEnv.PI_CONFIG_DIR = Bun.env.PI_CONFIG_DIR;
+  savedEnv.XDG_STATE_HOME = Bun.env.XDG_STATE_HOME;
   const name = `.omp-browser-test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   tempRoots.push(join(homedir(), name));
   mkdirSync(join(homedir(), name, 'run', 'daemons'), { recursive: true });
-  process.env.PI_CONFIG_DIR = name;
-  process.env.XDG_STATE_HOME = '';
+  Bun.env.PI_CONFIG_DIR = name;
+  Bun.env.XDG_STATE_HOME = '';
 });
 
 afterEach(() => {
-  if (savedEnv.PI_CONFIG_DIR === undefined) delete process.env.PI_CONFIG_DIR;
-  else process.env.PI_CONFIG_DIR = savedEnv.PI_CONFIG_DIR;
-  if (savedEnv.XDG_STATE_HOME === undefined) delete process.env.XDG_STATE_HOME;
-  else process.env.XDG_STATE_HOME = savedEnv.XDG_STATE_HOME;
+  if (savedEnv.PI_CONFIG_DIR === undefined) delete Bun.env.PI_CONFIG_DIR;
+  else Bun.env.PI_CONFIG_DIR = savedEnv.PI_CONFIG_DIR;
+  if (savedEnv.XDG_STATE_HOME === undefined) delete Bun.env.XDG_STATE_HOME;
+  else Bun.env.XDG_STATE_HOME = savedEnv.XDG_STATE_HOME;
 });
 
 afterAll(() => {
@@ -98,7 +98,7 @@ describe('findProjectRuntimeDir', () => {
     const server = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {}, close() {}, error() {} } });
     try {
       writeDevToolsActivePort(
-        join(homedir(), process.env.PI_CONFIG_DIR!, 'run', 'daemons', 'other'),
+        join(homedir(), Bun.env.PI_CONFIG_DIR!, 'run', 'daemons', 'other'),
         server.port,
         '/devtools/browser/other',
       );
