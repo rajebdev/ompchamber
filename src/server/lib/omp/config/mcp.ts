@@ -17,9 +17,9 @@
  */
 
 import fs from 'fs';
-import { closeSync, existsSync, openSync, statSync, unlinkSync, writeSync } from 'fs';
+import { closeSync, openSync, statSync, unlinkSync, writeSync } from 'fs';
 import { dirname, join, resolve } from 'path';
-import { getAgentDir } from '@/server/lib/omp/core/paths';
+import { getAgentDir, pathExists } from '@/server/lib/omp/core/paths';
 
 const MAX_MCP_CONFIG_BYTES = 512 * 1024;
 const SERVER_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -73,15 +73,18 @@ export async function readUserMcpConfig(path = join(getAgentDir(), 'mcp.json')):
 }
 
 /** Resolve a project's config file: first existing candidate, else `.omp/mcp.json`. */
-export function resolveProjectMcpConfig(projectRoot: string): { root: string; path: string } {
+export async function resolveProjectMcpConfig(projectRoot: string): Promise<{ root: string; path: string }> {
   const root = resolve(projectRoot);
-  const existing = MCP_FILENAMES.map((filename) => join(root, filename)).find(existsSync);
-  return { root, path: existing ?? join(root, MCP_FILENAMES[0]) };
+  for (const filename of MCP_FILENAMES) {
+    const candidate = join(root, filename);
+    if (await pathExists(candidate)) return { root, path: candidate };
+  }
+  return { root, path: join(root, MCP_FILENAMES[0]) };
 }
 
 /** Read <projectRoot>/.omp/mcp.json (project scope) without throwing. */
 export async function readProjectMcpConfig(projectRoot: string): Promise<McpUserConfig> {
-  return readMcpFile(resolveProjectMcpConfig(projectRoot).path);
+  return readMcpFile((await resolveProjectMcpConfig(projectRoot)).path);
 }
 
 // Two writers (e.g. the dev server and the installed app) editing the same
@@ -216,13 +219,13 @@ export async function writeProjectMcpServer(
 ): Promise<{ path: string }> {
   if (!SERVER_NAME.test(name)) throw new Error('Invalid server name');
   if (!isRecord(server)) throw new Error('Server configuration must be an object');
-  return writeServerAt(resolveProjectMcpConfig(projectRoot).path, name, server, previousName);
+  return writeServerAt((await resolveProjectMcpConfig(projectRoot)).path, name, server, previousName);
 }
 
 /** Atomic removal of one server entry from a project's mcp.json. */
 export async function deleteProjectMcpServer(projectRoot: string, name: string): Promise<{ path: string }> {
   if (!SERVER_NAME.test(name)) throw new Error('Invalid server name');
-  return deleteServerAt(resolveProjectMcpConfig(projectRoot).path, name);
+  return deleteServerAt((await resolveProjectMcpConfig(projectRoot)).path, name);
 }
 
 /** Convert a native omp server config into the chamber McpServerItem shape.
