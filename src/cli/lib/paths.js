@@ -1,6 +1,5 @@
 import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import { joinPath, resolvePath, homeDir } from '@/cli/lib/path-utils.js';
 
 /**
  * Resolve the OMPChamber data directory.
@@ -11,9 +10,9 @@ import path from 'node:path';
 export function getDataDir() {
   const override = Bun.env.OMPCHAMBER_DATA_DIR;
   if (typeof override === 'string' && override.trim().length > 0) {
-    return path.resolve(override.trim());
+    return resolvePath(override.trim());
   }
-  return path.join(os.homedir(), '.ompchamber');
+  return joinPath(homeDir(), '.ompchamber');
 }
 
 /**
@@ -21,7 +20,7 @@ export function getDataDir() {
  * Created on demand with owner-only permissions.
  */
 export function getRunDir() {
-  const dir = path.join(getDataDir(), 'run');
+  const dir = joinPath(getDataDir(), 'run');
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   return dir;
 }
@@ -30,7 +29,7 @@ export function getRunDir() {
  * Directory holding per-instance log files.
  */
 export function getLogsDir() {
-  const dir = path.join(getDataDir(), 'logs');
+  const dir = joinPath(getDataDir(), 'logs');
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -39,14 +38,14 @@ export function getLogsDir() {
  * Registry file describing the running instance bound to `port`.
  */
 export function getRegistryPath(port) {
-  return path.join(getRunDir(), `${port}.json`);
+  return joinPath(getRunDir(), `${port}.json`);
 }
 
 /**
  * Log file for the running instance bound to `port`.
  */
 export function getLogFilePath(port) {
-  return path.join(getLogsDir(), `ompchamber-${port}.log`);
+  return joinPath(getLogsDir(), `ompchamber-${port}.log`);
 }
 
 /**

@@ -1,9 +1,8 @@
 // `ompchamber serve` — start the Remix dev or production server.
 
 import fs from 'node:fs';
-import path from 'node:path';
-import { spawn } from 'node:child_process';
 
+import { joinPath } from '@/cli/lib/path-utils.js';
 import {
   spawnDetachedServer,
   buildServeInvocation,
@@ -49,7 +48,7 @@ export async function run(options, ctx) {
   const pkgRoot = ctx?.pkgRoot ?? process.cwd();
 
   if (mode === 'prod') {
-    const serverEntry = path.join(pkgRoot, 'dist', 'client', 'index.html');
+    const serverEntry = joinPath(pkgRoot, 'dist', 'client', 'index.html');
     if (!fs.existsSync(serverEntry)) {
       fail(`Production build not found at ${serverEntry}.\nRun \`bun run build\` first, then retry with --prod.`);
     }
@@ -94,9 +93,16 @@ function runForeground({ pkgRoot, mode, port, host, quiet }) {
   if (!quiet) {
     log(`Running OMPChamber (${mode}) in the foreground on ${url} (Ctrl+C to stop)...`);
   }
-  const child = spawn(file, args, { cwd: pkgRoot, stdio: 'inherit', env });
+  const child = Bun.spawn({
+    cmd: [file, ...args],
+    cwd: pkgRoot,
+    stdin: 'inherit',
+    stdout: 'inherit',
+    stderr: 'inherit',
+    env,
+  });
   wireChildProcessLifecycle(child, process, 5000);
   return new Promise((resolve) => {
-    child.once('exit', resolve);
+    void child.exited.then(resolve);
   });
 }

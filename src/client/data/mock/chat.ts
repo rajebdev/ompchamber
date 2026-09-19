@@ -134,7 +134,7 @@ export function getSessionData(sessionId: string | null) {
           title: 'View File',
           target: 'examples/index.js',
           command: 'view_file examples/index.js',
-          output: `// examples/index.js\nimport { createServer } from 'http';\n\nconst port = process.env.PORT || 3000;\nconst server = createServer((req, res) => {\n  res.writeHead(200, { 'Content-Type': 'application/json' });\n  res.end(JSON.stringify({ status: 'healthy', runtime: 'bun' }));\n});\n\nserver.listen(port, () => {\n  console.log(\`Server running at http://localhost:\${port}/\`);\n});`,
+          output: `// examples/index.ts\nconst port = Number(Bun.env.PORT) || 3000;\n\nBun.serve({\n  port,\n  fetch() {\n    return Response.json({ status: 'healthy', runtime: 'bun' });\n  },\n});\n\nconsole.log(\`Server running at http://localhost:\${port}/\`);`,
           status: 'success',
           duration: '14ms'
         },

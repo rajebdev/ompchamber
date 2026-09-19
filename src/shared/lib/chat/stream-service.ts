@@ -167,7 +167,7 @@ export async function handleSimulatedStreaming(options: {
   await delay(450);
   if (isAborted()) return;
 
-  const readOutput = `// examples/index.js\nimport { createServer } from 'http';\n\nconst port = process.env.PORT || 3000;\nconst server = createServer((req, res) => {\n  res.writeHead(200, { 'Content-Type': 'application/json' });\n  res.end(JSON.stringify({ status: 'healthy', runtime: 'bun' }));\n});\n\nserver.listen(port, () => {\n  console.log(\`Server running at http://localhost:\${port}/\`);\n});`;
+  const readOutput = `// examples/index.ts\nconst port = Number(Bun.env.PORT) || 3000;\n\nBun.serve({\n  port,\n  fetch() {\n    return Response.json({ status: 'healthy', runtime: 'bun' });\n  },\n});\n\nconsole.log(\`Server running at http://localhost:\${port}/\`);`;
   
   sendEvent('tool_output_chunk', { id: readToolId, delta: readOutput });
   sendEvent('tool_end', {

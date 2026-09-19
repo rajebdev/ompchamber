@@ -1,11 +1,8 @@
 // `ompchamber logs` — print or follow the server log file.
 
-import fs from 'node:fs';
-
 import { findLiveInstance } from '@/cli/lib/runtime.js';
 import { getLogFilePath } from '@/cli/lib/paths.js';
 import { log, printJson, fail, isJson, isQuiet } from '@/cli/lib/output.js';
-
 const DEFAULT_LINES = 50;
 const FOLLOW_INTERVAL_MS = 300;
 
@@ -62,22 +59,16 @@ async function followFile(filePath, initialCount) {
 
       let size;
       try {
-        size = fs.statSync(filePath).size;
+        size = (await Bun.file(filePath).stat()).size;
       } catch {
         continue;
       }
       if (size < position) position = 0;
       if (size === position) continue;
 
-      const fd = fs.openSync(filePath, 'r');
-      try {
-        const buffer = Buffer.alloc(size - position);
-        fs.readSync(fd, buffer, 0, buffer.length, position);
-        position = size;
-        process.stdout.write(buffer.toString('utf8'));
-      } finally {
-        fs.closeSync(fd);
-      }
+      const chunk = await Bun.file(filePath).slice(position, size).text();
+      position = size;
+      process.stdout.write(chunk);
     }
   } finally {
     process.removeListener('SIGINT', stop);
@@ -92,7 +83,7 @@ export async function run(options) {
   const live = await findLiveInstance(requested);
   const logFile = live?.logFile ?? getLogFilePath(requested ?? resolvePort(options));
 
-  if (!fs.existsSync(logFile)) {
+  if (!(await Bun.file(logFile).exists())) {
     fail(`No log file found at ${logFile}.\nStart the server first with \`ompchamber serve\`.`);
   }
 

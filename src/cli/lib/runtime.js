@@ -1,14 +1,13 @@
 // Runtime helpers for the OMPChamber CLI: registry persistence, process
 // liveness, server entry resolution, health probing and detached spawning.
-// Only node: builtins plus the global fetch are used.
+// Bun-native file APIs are used wherever Bun ships them; node:fs remains for
+// sync directory/metadata ops and 0o600 file creation (Bun.write ignores mode).
 
 import fs from 'node:fs';
-import path from 'node:path';
-import os from 'node:os';
-import { spawn } from 'node:child_process';
 
 import { getLogFilePath, getRegistryPath, ensureDataDirs, getRunDir } from '@/cli/lib/paths.js';
 import { killChildTree, STOP_TIMEOUT_MS } from '@/cli/lib/process-lifecycle.js';
+import { joinPath, homeDir } from '@/cli/lib/path-utils.js';
 
 const HEALTH_INTERVAL_MS = 500;
 const HEALTH_TIMEOUT_MS = 30_000;
@@ -35,7 +34,7 @@ export async function listRegistries() {
     for (const file of fs.readdirSync(dir)) {
       if (!/^\d+\.json$/.test(file)) continue;
       try {
-        const parsed = await Bun.file(path.join(dir, file)).json();
+        const parsed = await Bun.file(joinPath(dir, file)).json();
         if (parsed && typeof parsed === 'object') entries.push(parsed);
       } catch {
         // Skip unreadable or corrupt registry files.
@@ -128,7 +127,7 @@ export function resolveBunBin() {
   if (/(^|[\\/])bun$/.test(execDir) && isBun(execDir)) return execDir;
 
   const candidates = [
-    path.join(os.homedir(), '.bun', 'bin', 'bun'),
+    joinPath(homeDir(), '.bun', 'bin', 'bun'),
     '/opt/homebrew/bin/bun',
     '/usr/local/bin/bun',
     '/usr/bin/bun',
@@ -151,11 +150,11 @@ export function resolveBunBin() {
  * the SSR shell either way.
  */
 export function buildServeInvocation({ pkgRoot, mode, port, host }) {
-  const entry = path.join(pkgRoot, 'src', 'server', 'index.ts');
+  const entry = joinPath(pkgRoot, 'src', 'server', 'index.ts');
   if (!fs.existsSync(entry)) {
     throw new Error(`Could not locate the server entry at ${entry}.`);
   }
-  if (mode === 'prod' && !fs.existsSync(path.join(pkgRoot, 'dist', 'client', 'index.html'))) {
+  if (mode === 'prod' && !fs.existsSync(joinPath(pkgRoot, 'dist', 'client', 'index.html'))) {
     throw new Error('No client build found. Run `bun run build` and retry.');
   }
   return {
@@ -182,10 +181,12 @@ export function spawnDetachedServer({ pkgRoot, mode, port, host }) {
 
   let child;
   try {
-    child = spawn(file, args, {
+    child = Bun.spawn({
+      cmd: [file, ...args],
       cwd: pkgRoot,
-      detached: true,
-      stdio: ['ignore', fd, fd],
+      stdin: 'ignore',
+      stdout: fd,
+      stderr: fd,
       env,
     });
     child.unref();

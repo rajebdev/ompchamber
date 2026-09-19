@@ -1,10 +1,9 @@
 #!/usr/bin/env bun
 
-import path from 'node:path';
-
 import packageJson from '@/../package.json';
 import { parseArgs, helpText } from '@/cli/lib/args.js';
 import { configure, error, fail } from '@/cli/lib/output.js';
+import { resolvePath } from '@/cli/lib/path-utils.js';
 
 const { version } = packageJson;
 
@@ -30,7 +29,7 @@ async function main() {
   }
 
   // src/cli/ompchamber.js -> package root is two levels up.
-  const pkgRoot = path.resolve(import.meta.dir, '..', '..');
+  const pkgRoot = resolvePath(import.meta.dir, '..', '..');
   const ctx = { cwd: process.cwd(), pkgRoot, version };
 
   const name = command ?? 'serve';

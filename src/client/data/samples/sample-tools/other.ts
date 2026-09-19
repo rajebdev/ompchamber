@@ -87,7 +87,7 @@ export const otherTools: ToolCallData[] = [
     title: 'view_file — app/mock.server.ts',
     target: 'app/mock.server.ts',
     output: `1: export function isMockMode(): boolean {
-2:   const envVal = (process.env.MOCK || "").trim().toLowerCase();
+2:   const envVal = (Bun.env.MOCK || "").trim().toLowerCase();
 3:   return envVal !== "false" && envVal !== "0";
 4: }`,
     status: 'success',
