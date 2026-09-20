@@ -3,29 +3,47 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { describe, expect, test } from 'bun:test';
+import { beforeAll, describe, expect, test } from 'bun:test';
 
+import { bootSyntax } from '@/shared/lib/code/highlighter';
 import { getLanguageFromPath, highlightCode } from '@/shared/lib/code/syntax-highlight';
 
-/** Prism emits `<span class="token keyword">…`; the escape-only fallback does not. */
-const TOKEN_RE = /class="token [a-z-]+"/;
+/** Shiki emits `<span class="shiki">…` with dual-theme CSS variables per token. */
+const SHIKI_RE = /<span class="shiki">/;
+const SHIKI_TOKEN_RE = /--shiki-light:/;
+
+beforeAll(async () => {
+  // The isomorphic highlighter only boots with `window` present; the Bun test
+  // runtime has none. Stub it, boot, then remove the stub so other test files
+  // see a pristine global.
+  Object.assign(globalThis, { window: globalThis });
+  await bootSyntax();
+  Reflect.deleteProperty(globalThis, 'window');
+});
 
 describe('highlightCode', () => {
-  // Regression guard: a missing grammar dependency (prism-php needs
-  // prism-markup-templating) made Prism.highlight throw, and highlightCode's
-  // try/catch silently returned escaped plain text for EVERY language. Asserting
-  // on emitted token spans fails loudly if that fallback is ever taken.
-  test('emits token markup rather than falling back to escaped text', () => {
+  // Regression guard: when the highlighter fails to boot, highlightCode falls
+  // back to escaped plain text. Asserting on emitted token spans fails loudly
+  // if that fallback is ever taken.
+  test('emits Shiki token markup rather than falling back to escaped text', () => {
     const html = highlightCode('const x: number = 42; // hi', 'typescript');
 
-    expect(html).toMatch(TOKEN_RE);
-    expect(html).toContain('token keyword');
+    expect(html).toMatch(SHIKI_RE);
+    expect(html).toMatch(SHIKI_TOKEN_RE);
   });
 
-  test('highlights php without tripping the markup-templating dependency', () => {
+  test('emits both light and dark theme variables per token', () => {
+    const html = highlightCode('const x = 1;', 'javascript');
+
+    expect(html).toContain('--shiki-light:');
+    expect(html).toContain('--shiki-dark:');
+    expect(html).not.toContain('color:');
+  });
+
+  test('highlights php', () => {
     const html = highlightCode('<?php echo "hi"; ?>', 'php');
 
-    expect(html).toMatch(TOKEN_RE);
+    expect(html).toMatch(SHIKI_TOKEN_RE);
   });
 
   test.each([
@@ -35,12 +53,12 @@ describe('highlightCode', () => {
     ['rust', 'fn main() { println!("x"); }'],
     ['sql', 'SELECT * FROM t WHERE a = 1'],
     ['json', '{"k": true, "n": 1}'],
-    ['markup', '<div class="a">x</div>'],
+    ['html', '<div class="a">x</div>'],
     ['yaml', 'key: value'],
     ['bash', 'echo "$HOME"'],
     ['css', '.a { color: red; }'],
   ])('tokenizes %s', (language, code) => {
-    expect(highlightCode(code, language)).toMatch(TOKEN_RE);
+    expect(highlightCode(code, language)).toMatch(SHIKI_TOKEN_RE);
   });
 
   test('returns empty string for empty input', () => {
@@ -48,14 +66,14 @@ describe('highlightCode', () => {
   });
 
   test('falls back to javascript for an unknown language', () => {
-    expect(highlightCode('const x = 1;', 'not-a-language')).toMatch(TOKEN_RE);
+    expect(highlightCode('const x = 1;', 'not-a-language')).toMatch(SHIKI_TOKEN_RE);
   });
 
   test('escapes angle brackets so highlighted output is injection-safe', () => {
-    const html = highlightCode('<script>alert(1)</script>', 'markup');
+    const html = highlightCode('<script>alert(1)</script>', 'html');
 
     expect(html).not.toContain('<script>');
-    expect(html).toContain('&lt;');
+    expect(html).toMatch(/&(lt|#x3C;)/);
   });
 });
 
@@ -71,9 +89,9 @@ describe('getLanguageFromPath', () => {
     ['a.sh', 'bash'],
     ['a.yaml', 'yaml'],
     ['a.yml', 'yaml'],
-    ['a.html', 'markup'],
-    ['a.svg', 'markup'],
-    ['a.xml', 'markup'],
+    ['a.html', 'html'],
+    ['a.svg', 'xml'],
+    ['a.xml', 'xml'],
     ['a.py', 'python'],
     ['a.go', 'go'],
     ['a.rs', 'rust'],
@@ -81,6 +99,9 @@ describe('getLanguageFromPath', () => {
     ['a.toml', 'toml'],
     ['a.java', 'java'],
     ['a.php', 'php'],
+    ['a.vue', 'vue'],
+    ['a.svelte', 'svelte'],
+    ['a.astro', 'astro'],
   ])('maps %s to %s', (path, expected) => {
     expect(getLanguageFromPath(path)).toBe(expected);
   });
@@ -120,7 +141,7 @@ describe('getLanguageFromPath', () => {
     ['a.scss', 'scss'],
     ['a.sass', 'sass'],
     ['a.styl', 'stylus'],
-    ['a.m', 'objectivec'],
+    ['a.m', 'objective-c'],
     ['a.gradle', 'groovy'],
   ])('maps trending %s to %s', (path, expected) => {
     expect(getLanguageFromPath(path)).toBe(expected);

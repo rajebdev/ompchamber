@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'preact';
 import { CodeEditor } from '@/client/components/common/code-editor';
 import { highlightCode } from '@/shared/lib/code/syntax-highlight';
+import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 
 const WRAP_ON = '!whitespace-pre-wrap !break-words';
 const WRAP_OFF = '!whitespace-pre !break-normal';
@@ -8,7 +9,7 @@ const WRAP_OFF = '!whitespace-pre !break-normal';
 interface CodeSurfaceProps {
   value: string;
   onValueChange: (value: string) => void;
-  /** Prism grammar key, already resolved from the file name. */
+  /** Shiki language id, already resolved from the file name. */
   language: string;
   wordWrap: boolean;
   /** Outer flex row that holds the gutter and the editor column. */
@@ -28,7 +29,7 @@ interface CodeSurfaceProps {
  * The line-number gutter + syntax-highlighted editing surface shared by the
  * desktop editor and the phone's full-screen editor. Callers own only the
  * layout classes (padding, font, zoom) that genuinely differ per layout; the
- * gutter, word-wrap behaviour and Prism highlighting live here so the two
+ * gutter, word-wrap behaviour and Shiki highlighting live here so the two
  * surfaces cannot drift.
  */
 export function CodeSurface({
@@ -46,6 +47,7 @@ export function CodeSurface({
   editorStyle,
 }: CodeSurfaceProps) {
   const wrapClass = wordWrap ? WRAP_ON : WRAP_OFF;
+  useSyntaxReady();
 
   return (
     <div className={rootClassName}>

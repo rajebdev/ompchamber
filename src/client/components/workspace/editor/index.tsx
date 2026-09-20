@@ -165,7 +165,7 @@ export function Editor({
                     fontFamily: '"Fira Code", "JetBrains Mono", "SF Mono", Consolas, monospace',
                   }}
                   gutterLineClassName="min-w-[1.5rem]"
-                  editorWrapperClassName="flex-1 min-w-max prism-code-surface"
+                  editorWrapperClassName="flex-1 min-w-max code-surface"
                   editorPadding={16}
                   editorClassName="font-mono focus:outline-none"
                   editorStyle={{

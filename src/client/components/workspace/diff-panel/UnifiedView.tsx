@@ -1,5 +1,7 @@
+import { useMemo } from 'preact/hooks';
 import type { DiffLine } from '@/shared/lib/fs/diff-parser';
-import { highlightCode } from '@/shared/lib/code/syntax-highlight';
+import { highlightLines } from '@/shared/lib/code/syntax-highlight';
+import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 
 interface UnifiedViewProps {
   lines: DiffLine[];
@@ -7,6 +9,25 @@ interface UnifiedViewProps {
 }
 
 export function UnifiedView({ lines, language }: UnifiedViewProps) {
+  const syntaxReady = useSyntaxReady();
+
+  const htmlByIndex = useMemo(() => {
+    const out = new Array<string>(lines.length).fill('');
+    let start = -1;
+    const flush = (end: number) => {
+      if (start < 0) return;
+      const html = highlightLines(lines.slice(start, end).map((l) => l.text).join('\n'), language);
+      for (let i = start; i < end; i++) out[i] = html[i - start] ?? '';
+      start = -1;
+    };
+    lines.forEach((line, idx) => {
+      if (line.type === 'meta') flush(idx);
+      else if (start < 0) start = idx;
+    });
+    flush(lines.length);
+    return out;
+  }, [lines, language, syntaxReady]);
+
   if (lines.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-ink/40 font-mono text-xs p-8">
@@ -16,7 +37,7 @@ export function UnifiedView({ lines, language }: UnifiedViewProps) {
   }
 
   return (
-    <div className="w-full h-full overflow-auto font-mono text-xs select-text bg-paper text-ink prism-code-surface">
+    <div className="w-full h-full overflow-auto font-mono text-xs select-text bg-paper text-ink code-surface">
       <table className="w-max min-w-full border-collapse">
         <tbody>
           {lines.map((line, idx) => {
@@ -80,8 +101,9 @@ export function UnifiedView({ lines, language }: UnifiedViewProps) {
                     {isAdd ? '+' : isDel ? '-' : ' '}
                   </span>
                   <span
+                    className="shiki"
                     dangerouslySetInnerHTML={{
-                      __html: line.text ? highlightCode(line.text, language) : '&nbsp;',
+                      __html: line.text ? htmlByIndex[idx] || '&nbsp;' : '&nbsp;',
                     }}
                   />
                 </td>

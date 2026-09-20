@@ -142,7 +142,7 @@ export function ToolCardShell({
       </button>
 
       {isExpanded && hasBody && (
-        <div className="border-t border-ink/8 bg-canvas/40 px-3 py-3 prism-code-surface">
+        <div className="border-t border-ink/8 bg-canvas/40 px-3 py-3 code-surface">
           {children}
         </div>
       )}

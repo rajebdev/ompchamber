@@ -8,8 +8,11 @@ import { useScrollbarFade, scrollbarFadeClass } from '@/client/hooks/ui/scrollba
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { useSearchStream } from '@/client/hooks/workspace/search-stream';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
+import { getLanguageFromPath, highlightCode } from '@/shared/lib/code/syntax-highlight';
+import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 
 export function SearchPanel({ className = '', enabled = true, rootPath }: { className?: string, enabled?: boolean, rootPath?: string }) {
+  useSyntaxReady();
   const [query, setQuery] = useSessionState<string>('search.query', '');
   const [replaceQuery, setReplaceQuery] = useSessionState<string>('search.replaceQuery', '');
 
@@ -237,7 +240,12 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
                   {fileResults.map((result: any, i: number) => (
                     <div key={i} className="flex hover:bg-ink/5 cursor-pointer rounded px-1 py-0.5">
                       <span className="text-ink/40 w-6 flex-shrink-0 text-right mr-2">{result.line}</span>
-                      <span className="truncate text-ink">{result.content.trim()}</span>
+                      <span
+                        className="truncate text-ink"
+                        dangerouslySetInnerHTML={{
+                          __html: highlightCode(result.content.trim(), getLanguageFromPath(file)),
+                        }}
+                      />
                     </div>
                   ))}
                 </div>

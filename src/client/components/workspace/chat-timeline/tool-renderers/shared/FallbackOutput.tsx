@@ -6,6 +6,7 @@ import { sanitizeHtml } from '@/shared/lib/markdown/sanitize';
 import { CopyButton } from '@/client/components/common/CopyButton';
 import { detectOutputFormat } from '@/shared/lib/chat/detect-format';
 import { highlightCode, tryParseJson } from '@/shared/lib/code/syntax-highlight';
+import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 import { JsonCodeBlock } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/JsonCodeBlock';
 import { MAX_OUTPUT_LINES, truncateTailLines } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/truncate';
 
@@ -30,9 +31,10 @@ export function FallbackOutput({ text }: FallbackOutputProps) {
   }, [format, jsonResult, text]);
 
   const isPlainText = format !== 'markdown' && format !== 'json' && format !== 'html';
+  const syntaxReady = useSyntaxReady();
   const highlightedText = useMemo(
     () => (isPlainText ? highlightCode(display.text, 'javascript') : ''),
-    [isPlainText, display]
+    [isPlainText, display, syntaxReady]
   );
 
   let body: ReactNode;

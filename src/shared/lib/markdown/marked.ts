@@ -21,11 +21,9 @@ import { Marked } from 'marked';
 import markedLinkifyIt from 'marked-linkify-it';
 import katex from 'katex';
 import remend from 'remend';
-import Prism from 'prismjs';
-import '@/shared/lib/code/prism-grammars';
-import 'prismjs/themes/prism.css';
+import { highlightCode } from '@/shared/lib/code/syntax-highlight';
 
-/** Escape HTML for safe interpolation inside Prism-highlighted output. */
+/** Escape HTML for safe interpolation inside highlighted output. */
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -33,17 +31,6 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
-}
-
-/** Highlight code with Prism when a language is known, else escape it. */
-function highlight(code: string, lang: string): string {
-  if (!code) return '';
-  const language = Prism.languages[lang] ? lang : 'javascript';
-  try {
-    return Prism.highlight(code, Prism.languages[language], language);
-  } catch {
-    return escapeHtml(code);
-  }
 }
 
 /** Render KaTeX to HTML. Errors are non-fatal: invalid math renders as red
@@ -103,7 +90,7 @@ function codeBlockRenderer(token: CodeToken): string {
   if (lang === 'mermaid') {
     return mermaidBlockRenderer(code);
   }
-  const highlighted = lang === 'text' ? escapeHtml(code) : highlight(code, lang);
+  const highlighted = lang === 'text' ? escapeHtml(code) : highlightCode(code, lang);
   return codeBlockShell(code, `<pre><code class="language-${lang}">${highlighted}</code></pre>`);
 }
 

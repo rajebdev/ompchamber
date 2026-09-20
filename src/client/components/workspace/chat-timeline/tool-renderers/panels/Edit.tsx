@@ -5,6 +5,7 @@ import { CopyButton } from '@/client/components/common/CopyButton';
 import { DiffView } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/DiffView';
 import { HashlinePatch } from '@/client/components/workspace/chat-timeline/tool-renderers/hashline-patch';
 import { getLanguageFromPath, highlightCode, isCodeLike } from '@/shared/lib/code/syntax-highlight';
+import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 import { MAX_OUTPUT_LINES, truncateTailLines } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/truncate';
 import { hashlinePatchFromArgs } from '@/shared/lib/omp/session/hashline-patch';
 import { formatBytes } from '@/shared/lib/format/number';
@@ -139,17 +140,18 @@ export function Edit({ tool }: { tool: ToolCallData }) {
 
   const truncatedOld = useMemo(() => (oldString ? truncateTailLines(oldString, MAX_OUTPUT_LINES) : null), [oldString]);
   const truncatedNew = useMemo(() => (newString ? truncateTailLines(newString, MAX_OUTPUT_LINES) : null), [newString]);
-  const highlightedOld = useMemo(() => (truncatedOld ? highlightCode(truncatedOld.text, lang) : ''), [truncatedOld, lang]);
-  const highlightedNew = useMemo(() => (truncatedNew ? highlightCode(truncatedNew.text, lang) : ''), [truncatedNew, lang]);
+  const syntaxReady = useSyntaxReady();
+  const highlightedOld = useMemo(() => (truncatedOld ? highlightCode(truncatedOld.text, lang) : ''), [truncatedOld, lang, syntaxReady]);
+  const highlightedNew = useMemo(() => (truncatedNew ? highlightCode(truncatedNew.text, lang) : ''), [truncatedNew, lang, syntaxReady]);
   const previewLineCount = useMemo(() => (newContent ? newContent.split('\n').length : 0), [newContent]);
   const highlightedPreview = useMemo(
     () => (newContent ? highlightCode(newContent.split('\n').slice(0, 80).join('\n'), lang) : ''),
-    [newContent, lang]
+    [newContent, lang, syntaxReady]
   );
   const truncatedOutput = useMemo(() => truncateTailLines(output, MAX_OUTPUT_LINES), [output]);
   const highlightedOutput = useMemo(
     () => (isCodeLike(output) ? highlightCode(truncatedOutput.text, lang) : ''),
-    [output, truncatedOutput, lang]
+    [output, truncatedOutput, lang, syntaxReady]
   );
 
   return (

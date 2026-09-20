@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'preact/hooks';
 import { AlertCircle, Bell, Bot, CheckCircle2, ChevronDown, Clock, Info, Layers } from 'lucide-preact';
 import { highlightCode, isCodeLike } from '@/shared/lib/code/syntax-highlight';
+import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 import { parseTaskNotice } from '@/shared/lib/chat/task-result-parser';
 import { TaskResultContent } from '@/client/components/workspace/chat-timeline/TaskResultContent';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
@@ -12,6 +13,7 @@ interface SystemNoticeProps {
 /** System notice collapsible — handles generic notices, structured <task-result> agent jobs, and <system-reminder> blocks. */
 export function SystemNotice({ notice }: SystemNoticeProps) {
   const [isOpen, setIsOpen] = useState(false);
+  useSyntaxReady();
 
   // 1. Check if notice contains a structured <task-result> block
   const taskNotice = useMemo(() => parseTaskNotice(notice), [notice]);

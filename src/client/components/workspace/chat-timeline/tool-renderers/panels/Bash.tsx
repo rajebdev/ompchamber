@@ -3,6 +3,7 @@ import { Check, Clock } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
 import { CopyButton } from '@/client/components/common/CopyButton';
 import { highlightCode, isCodeLike, tryParseJson } from '@/shared/lib/code/syntax-highlight';
+import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 import { JsonCodeBlock } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/JsonCodeBlock';
 import { MAX_OUTPUT_LINES, truncateTailLines } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/truncate';
 
@@ -65,10 +66,11 @@ export function Bash({ tool }: { tool: ToolCallData }) {
     () => (jsonResult.isValid && jsonResult.pretty ? truncateTailLines(jsonResult.pretty, MAX_OUTPUT_LINES) : null),
     [jsonResult]
   );
-  const highlightedCommand = useMemo(() => (command ? highlightCode(command, 'bash') : ''), [command]);
+  const syntaxReady = useSyntaxReady();
+  const highlightedCommand = useMemo(() => (command ? highlightCode(command, 'bash') : ''), [command, syntaxReady]);
   const highlightedOutput = useMemo(
     () => (outputIsCode ? highlightCode(truncatedOutput.text, outputLang) : ''),
-    [outputIsCode, truncatedOutput, outputLang]
+    [outputIsCode, truncatedOutput, outputLang, syntaxReady]
   );
 
   return (

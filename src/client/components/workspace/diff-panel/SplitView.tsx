@@ -1,5 +1,7 @@
+import { useMemo } from 'preact/hooks';
 import type { SplitDiffRow } from '@/shared/lib/fs/diff-parser';
-import { highlightCode } from '@/shared/lib/code/syntax-highlight';
+import { highlightLines } from '@/shared/lib/code/syntax-highlight';
+import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 
 interface SplitViewProps {
   rows: SplitDiffRow[];
@@ -7,6 +9,31 @@ interface SplitViewProps {
 }
 
 export function SplitView({ rows, language }: SplitViewProps) {
+  const syntaxReady = useSyntaxReady();
+
+  const htmlByIndex = useMemo(() => {
+    const left = new Array<string>(rows.length).fill('');
+    const right = new Array<string>(rows.length).fill('');
+    let start = -1;
+    const flush = (end: number) => {
+      if (start < 0) return;
+      const group = rows.slice(start, end);
+      const leftHtml = highlightLines(group.map((r) => r.left?.text ?? '').join('\n'), language);
+      const rightHtml = highlightLines(group.map((r) => r.right?.text ?? '').join('\n'), language);
+      for (let i = start; i < end; i++) {
+        left[i] = leftHtml[i - start] ?? '';
+        right[i] = rightHtml[i - start] ?? '';
+      }
+      start = -1;
+    };
+    rows.forEach((row, idx) => {
+      if (row.isMeta) flush(idx);
+      else if (start < 0) start = idx;
+    });
+    flush(rows.length);
+    return { left, right };
+  }, [rows, language, syntaxReady]);
+
   if (rows.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-ink/40 font-mono text-xs p-8">
@@ -16,7 +43,7 @@ export function SplitView({ rows, language }: SplitViewProps) {
   }
 
   return (
-    <div className="w-full h-full overflow-auto font-mono text-xs select-text bg-paper text-ink prism-code-surface">
+    <div className="w-full h-full overflow-auto font-mono text-xs select-text bg-paper text-ink code-surface">
       <div className="w-max min-w-full min-w-[700px]">
         <div className="grid grid-cols-2 sticky top-0 z-10 bg-canvas border-b border-ink/10 text-[11px] text-ink/70 font-sans select-none shadow-xs">
           <div className="px-3 py-1 font-medium border-r border-ink/10 flex items-center justify-between">
@@ -77,8 +104,9 @@ export function SplitView({ rows, language }: SplitViewProps) {
                           {isLeftDel ? '-' : ' '}
                         </span>
                         <span
+                          className="shiki"
                           dangerouslySetInnerHTML={{
-                            __html: left.text ? highlightCode(left.text, language) : '&nbsp;',
+                            __html: left.text ? htmlByIndex.left[idx] || '&nbsp;' : '&nbsp;',
                           }}
                         />
                       </>
@@ -116,8 +144,9 @@ export function SplitView({ rows, language }: SplitViewProps) {
                           {isRightAdd ? '+' : ' '}
                         </span>
                         <span
+                          className="shiki"
                           dangerouslySetInnerHTML={{
-                            __html: right.text ? highlightCode(right.text, language) : '&nbsp;',
+                            __html: right.text ? htmlByIndex.right[idx] || '&nbsp;' : '&nbsp;',
                           }}
                         />
                       </>

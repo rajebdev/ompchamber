@@ -19,6 +19,7 @@ import { renderMarkdown } from '@/shared/lib/markdown/marked';
 import { sanitizeHtml } from '@/shared/lib/markdown/sanitize';
 import { hydrateMermaidBlocks } from '@/shared/lib/markdown/mermaid';
 import { copyToClipboard } from '@/client/hooks/ui/clipboard';
+import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 
 const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
@@ -30,11 +31,13 @@ interface MarkdownRendererProps {
 export function MarkdownRenderer({ content, className = '' }: MarkdownRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const syntaxReady = useSyntaxReady();
+
   const html = useMemo(() => {
     if (!content) return '';
     const rendered = renderMarkdown(content);
     return sanitizeHtml(rendered);
-  }, [content]);
+  }, [content, syntaxReady]);
 
   const hasMermaid = html.includes('mermaid-block');
 

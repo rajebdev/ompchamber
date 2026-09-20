@@ -3,6 +3,7 @@ import { useMemo } from 'preact/hooks';
 import { Braces } from 'lucide-preact';
 import { CopyButton } from '@/client/components/common/CopyButton';
 import { highlightJson } from '@/shared/lib/code/syntax-highlight';
+import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 
 interface JsonCodeBlockProps {
   /** Formatted JSON string to render */
@@ -32,7 +33,8 @@ export function JsonCodeBlock({
 }: JsonCodeBlockProps) {
   const effectiveMaxHeight = maxHeightClass || (compact ? 'max-h-40' : 'max-h-56');
   const lines = useMemo(() => jsonString.split('\n'), [jsonString]);
-  const highlighted = useMemo(() => highlightJson(jsonString), [jsonString]);
+  const syntaxReady = useSyntaxReady();
+  const highlighted = useMemo(() => highlightJson(jsonString), [jsonString, syntaxReady]);
 
   return (
     <div className={`overflow-hidden ${compact ? 'rounded-md' : 'rounded-lg'} border border-ink/8 bg-paper ${className}`}>

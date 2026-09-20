@@ -8,7 +8,7 @@ import type { CSSProperties, TargetedKeyboardEvent } from 'preact';
  *
  * How it works: a transparent <textarea> sits on top of a syntax-highlighted
  * <pre>. Typing, selecting and copying hit the native textarea; the <pre>
- * below just mirrors the text with Prism markup.
+ * below just mirrors the text with Shiki markup.
  */
 
 const HISTORY_LIMIT = 100;
@@ -29,7 +29,7 @@ interface History {
 export interface CodeEditorProps {
   value: string;
   onValueChange: (value: string) => void;
-  /** Return the Prism-highlighted HTML for the given code. */
+  /** Return the Shiki-highlighted HTML for the given code. */
   highlight: (code: string) => string;
   padding?: number;
   /** Class applied to the inner <pre> holding the highlighted code. */
@@ -47,8 +47,12 @@ export interface CodeEditorProps {
 const BASE_TEXTAREA_CLASS = 'code-editor-native-textarea';
 
 const RESET_CSS = `
-.${BASE_TEXTAREA_CLASS}:empty {
-  -webkit-text-fill-color: inherit !important;
+.code-editor-native-textarea {
+  -webkit-text-fill-color: transparent;
+}
+.code-editor-native-textarea::placeholder {
+  -webkit-text-fill-color: var(--theme-ink);
+  opacity: 0.45;
 }
 `;
 

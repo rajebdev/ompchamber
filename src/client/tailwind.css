@@ -32,21 +32,6 @@
     --theme-warning: #c2410c;
     --theme-warning-hover: #9a3412;
 
-    --syntax-comment: #6a737d;
-    --syntax-punctuation: #24292e;
-    --syntax-keyword: #d73a49;
-    --syntax-string: #22863a;
-    --syntax-function: #6f42c1;
-    --syntax-number: #986801;
-    --syntax-tag: #e45649;
-    --syntax-attr: #986801;
-    --syntax-operator: #0184bc;
-    --syntax-regex: #0184bc;
-    --syntax-builtin: #c18401;
-    --syntax-deleted: #b31d28;
-    --syntax-inserted: #22863a;
-    --syntax-namespace: #6a737d;
-    
     --paper-bg: var(--theme-canvas);
     --paper-raised: var(--theme-paper);
     --paper-card: var(--theme-paper);
@@ -70,21 +55,6 @@
     --theme-info-hover: #075985;
     --theme-warning: #b54708;
     --theme-warning-hover: #93370d;
-
-    --syntax-comment: #6a737d;
-    --syntax-punctuation: #24292e;
-    --syntax-keyword: #d73a49;
-    --syntax-string: #22863a;
-    --syntax-function: #6f42c1;
-    --syntax-number: #986801;
-    --syntax-tag: #e45649;
-    --syntax-attr: #986801;
-    --syntax-operator: #0184bc;
-    --syntax-regex: #0184bc;
-    --syntax-builtin: #c18401;
-    --syntax-deleted: #b31d28;
-    --syntax-inserted: #22863a;
-    --syntax-namespace: #6a737d;
   }
 
   [data-theme="noir"] {
@@ -100,21 +70,6 @@
     --theme-info-hover: #8ec7ff;
     --theme-warning: #fb923c;
     --theme-warning-hover: #fdba74;
-
-    --syntax-comment: #5c6370;
-    --syntax-punctuation: #abb2bf;
-    --syntax-keyword: #c678dd;
-    --syntax-string: #98c379;
-    --syntax-function: #61afef;
-    --syntax-number: #d19a66;
-    --syntax-tag: #e06c75;
-    --syntax-attr: #d19a66;
-    --syntax-operator: #56b6c2;
-    --syntax-regex: #56b6c2;
-    --syntax-builtin: #e5c07b;
-    --syntax-deleted: #e06c75;
-    --syntax-inserted: #98c379;
-    --syntax-namespace: #abb2bf;
   }
 
   [data-theme="one-dark-pro-soft"] {
@@ -130,21 +85,6 @@
     --theme-info-hover: #8ec7ff;
     --theme-warning: #fb923c;
     --theme-warning-hover: #fdba74;
-
-    --syntax-comment: #5c6370;
-    --syntax-punctuation: #abb2bf;
-    --syntax-keyword: #c678dd;
-    --syntax-string: #98c379;
-    --syntax-function: #61afef;
-    --syntax-number: #d19a66;
-    --syntax-tag: #e06c75;
-    --syntax-attr: #d19a66;
-    --syntax-operator: #56b6c2;
-    --syntax-regex: #56b6c2;
-    --syntax-builtin: #e5c07b;
-    --syntax-deleted: #e06c75;
-    --syntax-inserted: #98c379;
-    --syntax-namespace: #abb2bf;
   }
 
   body {
@@ -336,91 +276,13 @@
 .prose-content .code-block pre { margin: 0; padding: 0.75rem; overflow-x: auto; line-height: var(--markdown-code-block-line-height); }
 .prose-content .code-block code { font-family: 'Fira Code', monospace; font-size: 0.75rem; line-height: var(--markdown-code-block-line-height); }
 .prose-content .code-block pre code { background: transparent; text-shadow: none; }
-/* Prism's default theme paints .token.operator/.entity/.url with a
- * half-white background (`hsla(0,0%,100%,.5)`) — a glaring white box on the
- * dark theme's code blocks. Neutralize it inside code blocks: transparent
- * background everywhere, and recolor operators to the ink color so they read
- * on both themes (default #9a6e3a is tuned for white backgrounds). */
-.prose-content .code-block .token.operator,
-.prose-content .code-block .token.entity,
-.prose-content .code-block .token.url,
-.prose-content .code-block .language-css .token.string,
-.prose-content .code-block .style .token.string,
-.prism-code-surface .token.operator,
-.prism-code-surface .token.entity,
-.prism-code-surface .token.url,
-.prism-code-surface .language-css .token.string,
-.prism-code-surface .style .token.string {
-  background: transparent;
-  color: color-mix(in srgb, var(--theme-ink) 78%, transparent);
-}
-[data-theme="one-dark-pro-soft"] code[class*="language-"],
-[data-theme="one-dark-pro-soft"] pre[class*="language-"] {
-  text-shadow: none;
-}
-:is(.prose-content .code-block, .prism-code-surface) .token.comment,
-:is(.prose-content .code-block, .prism-code-surface) .token.prolog,
-:is(.prose-content .code-block, .prism-code-surface) .token.doctype,
-:is(.prose-content .code-block, .prism-code-surface) .token.cdata {
-  color: var(--syntax-comment);
-}
-:is(.prose-content .code-block, .prism-code-surface) .token.punctuation {
-  color: var(--syntax-punctuation);
-}
-:is(.prose-content .code-block, .prism-code-surface) .token.namespace {
-  color: var(--syntax-namespace);
-  opacity: 1;
-}
-:is(.prose-content .code-block, .prism-code-surface) .token.property,
-:is(.prose-content .code-block, .prism-code-surface) .token.attr-name {
-  color: var(--syntax-attr);
-}
-:is(.prose-content .code-block, .prism-code-surface) .token.tag {
-  color: var(--syntax-tag);
-}
-:is(.prose-content .code-block, .prism-code-surface) .token.boolean,
-:is(.prose-content .code-block, .prism-code-surface) .token.number,
-:is(.prose-content .code-block, .prism-code-surface) .token.constant,
-:is(.prose-content .code-block, .prism-code-surface) .token.symbol {
-  color: var(--syntax-number);
-}
-:is(.prose-content .code-block, .prism-code-surface) .token.deleted {
-  color: var(--syntax-deleted);
-}
-:is(.prose-content .code-block, .prism-code-surface) .token.selector,
-:is(.prose-content .code-block, .prism-code-surface) .token.string,
-:is(.prose-content .code-block, .prism-code-surface) .token.char {
-  color: var(--syntax-string);
-}
-:is(.prose-content .code-block, .prism-code-surface) .token.builtin {
-  color: var(--syntax-builtin);
-}
-:is(.prose-content .code-block, .prism-code-surface) .token.inserted {
-  color: var(--syntax-inserted);
-}
-:is(.prose-content .code-block, .prism-code-surface) .token.operator,
-:is(.prose-content .code-block, .prism-code-surface) .token.entity,
-:is(.prose-content .code-block, .prism-code-surface) .token.url,
-:is(.prose-content .code-block, .prism-code-surface) .language-css .token.string,
-:is(.prose-content .code-block, .prism-code-surface) .style .token.string {
-  color: var(--syntax-operator);
-}
-:is(.prose-content .code-block, .prism-code-surface) .token.atrule,
-:is(.prose-content .code-block, .prism-code-surface) .token.attr-value,
-:is(.prose-content .code-block, .prism-code-surface) .token.keyword {
-  color: var(--syntax-keyword);
-  font-weight: 600;
-}
-:is(.prose-content .code-block, .prism-code-surface) .token.function,
-:is(.prose-content .code-block, .prism-code-surface) .token.class-name {
-  color: var(--syntax-function);
-  font-weight: 600;
-}
-:is(.prose-content .code-block, .prism-code-surface) .token.regex,
-:is(.prose-content .code-block, .prism-code-surface) .token.important,
-:is(.prose-content .code-block, .prism-code-surface) .token.variable {
-  color: var(--syntax-regex);
-}
+/* Shiki dual-theme tokens: the highlighter emits BOTH palettes (min-light for
+ * light themes, one-dark-pro for dark themes) as CSS variables on every token
+ * span and no inline `color`, so the active [data-theme] selects the palette.
+ * Switching themes recolors code blocks with zero JS and no re-highlight. */
+.shiki span { color: var(--shiki-light); }
+[data-theme="noir"] .shiki span,
+[data-theme="one-dark-pro-soft"] .shiki span { color: var(--shiki-dark); }
 .prose-content .katex-display { overflow-x: auto; overflow-y: hidden; }
 
 /* Streaming placeholder: remend turns a half-received [text](url into this

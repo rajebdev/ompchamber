@@ -2,24 +2,9 @@ import { useMemo } from 'preact/hooks';
 import { AlertCircle, Ban, Clock, Code2, Play } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
 import { CopyButton } from '@/client/components/common/CopyButton';
-import { highlightJson, tryParseJson } from '@/shared/lib/code/syntax-highlight';
+import { highlightCode, highlightJson, tryParseJson } from '@/shared/lib/code/syntax-highlight';
 import { MAX_OUTPUT_LINES, truncateTailLines } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/truncate';
-import Prism from 'prismjs';
-import 'prismjs/components/prism-javascript';
-import 'prismjs/components/prism-typescript';
-import 'prismjs/components/prism-json';
-
-function highlightJs(code: string): string {
-  if (!code) return '';
-  try {
-    return Prism.highlight(code, Prism.languages.javascript, 'javascript');
-  } catch {
-    return code
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-  }
-}
+import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 
 /** Panel khusus untuk tool `eval` — eksekusi kode script, browser eval, dsb. */
 export function Eval({ tool }: { tool: ToolCallData }) {
@@ -41,19 +26,27 @@ export function Eval({ tool }: { tool: ToolCallData }) {
   const isError = tool.status === 'error' || output.includes('ToolError:') || output.includes('Command exited with code');
   const isAborted = output.includes('Command aborted') || tool.status === 'aborted';
 
+  const syntaxReady = useSyntaxReady();
+
   const jsonResult = useMemo(
     () => (!isError && !isAborted ? tryParseJson(output) : { isValid: false }),
     [output, isError, isAborted]
   );
 
   const truncatedCode = useMemo(() => truncateTailLines(code, MAX_OUTPUT_LINES), [code]);
-  const highlightedCode = useMemo(() => highlightJs(truncatedCode.text), [truncatedCode]);
+  const highlightedCode = useMemo(
+    () => highlightCode(truncatedCode.text, 'javascript'),
+    [truncatedCode, syntaxReady]
+  );
   const truncatedOutput = useMemo(() => truncateTailLines(output, MAX_OUTPUT_LINES), [output]);
   const truncatedJson = useMemo(
     () => (jsonResult.isValid && jsonResult.pretty ? truncateTailLines(jsonResult.pretty, MAX_OUTPUT_LINES) : null),
     [jsonResult]
   );
-  const highlightedJson = useMemo(() => (truncatedJson ? highlightJson(truncatedJson.text) : ''), [truncatedJson]);
+  const highlightedJson = useMemo(
+    () => (truncatedJson ? highlightJson(truncatedJson.text) : ''),
+    [truncatedJson, syntaxReady]
+  );
 
   return (
     <div className="space-y-2">

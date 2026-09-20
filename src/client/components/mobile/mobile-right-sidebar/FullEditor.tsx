@@ -84,7 +84,7 @@ export function MobileFullEditor({ file, onClose, onFileSaved }: MobileFullEdito
             wordWrap={wordWrap}
             rootClassName="flex min-h-full bg-paper"
             gutterClassName="w-10 py-3 pr-2 select-none text-right text-[10px] text-ink/30 bg-canvas border-r border-ink/10 font-mono leading-[20px] flex-shrink-0"
-            editorWrapperClassName="flex-1 p-3 overflow-x-auto min-w-0 bg-paper text-ink prism-code-surface"
+            editorWrapperClassName="flex-1 p-3 overflow-x-auto min-w-0 bg-paper text-ink code-surface"
             editorClassName="focus:outline-none"
             editorStyle={{
               fontFamily: 'monospace',

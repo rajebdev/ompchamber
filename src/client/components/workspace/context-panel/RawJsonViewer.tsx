@@ -2,34 +2,15 @@ import { useCallback, useRef, useState } from 'preact/hooks';
 import type { UIEvent } from 'preact/compat';
 import type { TargetedMouseEvent } from 'preact';
 import { Check, Copy } from 'lucide-preact';
+import { highlightJson } from '@/shared/lib/code/syntax-highlight';
+import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 
 interface RawJsonViewerProps {
   data: Record<string, any>;
 }
 
-// Build syntax-highlighted HTML for the (inert) background layer.
-function highlightJson(text: string): string {
-  return text.replace(
-    /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,
-    (match) => {
-      let cls = 'text-amber-500 dark:text-amber-400'; // number default
-      if (/^"/.test(match)) {
-        if (/:$/.test(match)) {
-          cls = 'text-sky-600 dark:text-sky-300 font-medium'; // key
-        } else {
-          cls = 'text-emerald-600 dark:text-emerald-400'; // string value
-        }
-      } else if (/true|false/.test(match)) {
-        cls = 'text-purple-600 dark:text-purple-400 font-medium'; // boolean
-      } else if (/null/.test(match)) {
-        cls = 'text-rose-500 dark:text-rose-400'; // null
-      }
-      return `<span class="${cls}">${match}</span>`;
-    }
-  );
-}
-
 export function RawJsonViewer({ data }: RawJsonViewerProps) {
+  useSyntaxReady();
   const [copied, setCopied] = useState(false);
   const preRef = useRef<HTMLPreElement>(null);
   const overlayRef = useRef<HTMLPreElement>(null);

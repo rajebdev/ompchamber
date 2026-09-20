@@ -2,7 +2,8 @@ import { useMemo, useState } from 'preact/hooks';
 import { ChevronRight, FileSearch, FileText, FolderSearch } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
 import { CopyButton } from '@/client/components/common/CopyButton';
-import { getLanguageFromPath, highlightCode } from '@/shared/lib/code/syntax-highlight';
+import { getLanguageFromPath, highlightLines } from '@/shared/lib/code/syntax-highlight';
+import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 import { MAX_OUTPUT_LINES, truncateTailLines } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/truncate';
 
 interface MatchLine {
@@ -187,22 +188,17 @@ export function SearchTool({ tool }: { tool: ToolCallData }) {
       .filter((f): f is ParsedFileMatches => f !== null);
   }, [files, filterText]);
 
-  const highlightedLines = useMemo(() => {
-    const cache = new Map<string, string>();
-    for (const file of filteredFiles) {
-      const lang = getLanguageFromPath(file.path);
-      for (const line of file.lines) {
-        const key = `${lang}\u0000${line.text}`;
-        if (!cache.has(key)) {
-          cache.set(key, line.text ? highlightCode(line.text, lang) : '&nbsp;');
-        }
-      }
-    }
-    return cache;
-  }, [filteredFiles]);
+  const syntaxReady = useSyntaxReady();
 
-  const highlightLine = (path: string, text: string) =>
-    highlightedLines.get(`${getLanguageFromPath(path)}\u0000${text}`) ?? '&nbsp;';
+  const highlightedByFile = useMemo(() => {
+    return filteredFiles.map((file) => {
+      const lang = getLanguageFromPath(file.path);
+      return highlightLines(
+        file.lines.map((line) => line.text).join('\n'),
+        lang
+      );
+    });
+  }, [filteredFiles, syntaxReady]);
 
   if (!output && files.length === 0) {
     return (
@@ -299,8 +295,8 @@ export function SearchTool({ tool }: { tool: ToolCallData }) {
                         {line.lineNum}
                       </span>
                       <pre
-                        className="whitespace-pre font-mono"
-                        dangerouslySetInnerHTML={{ __html: highlightLine(file.path, line.text) }}
+                        className="shiki whitespace-pre font-mono"
+                        dangerouslySetInnerHTML={{ __html: highlightedByFile[fileIdx]?.[lineIdx] || '&nbsp;' }}
                       />
                     </div>
                   ))}

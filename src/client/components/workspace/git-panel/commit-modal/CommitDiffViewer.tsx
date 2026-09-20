@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'preact/hooks';
 import { ChevronDown, ChevronUp } from 'lucide-preact';
+import { getLanguageFromPath, highlightLines } from '@/shared/lib/code/syntax-highlight';
+import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 
 interface DiffLineItem {
   type: 'add' | 'del' | 'context' | 'meta';
@@ -11,10 +13,12 @@ interface DiffLineItem {
 interface CommitDiffViewerProps {
   diffText?: string;
   isLoading?: boolean;
+  filePath?: string;
 }
 
-export function CommitDiffViewer({ diffText, isLoading }: CommitDiffViewerProps) {
+export function CommitDiffViewer({ diffText, isLoading, filePath }: CommitDiffViewerProps) {
   const [expandedAll, setExpandedAll] = useState(false);
+  const syntaxReady = useSyntaxReady();
 
   const lines = useMemo(() => {
     if (!diffText) return [];
@@ -64,6 +68,24 @@ export function CommitDiffViewer({ diffText, isLoading }: CommitDiffViewerProps)
     }
     return parsed;
   }, [diffText]);
+
+  const language = getLanguageFromPath(filePath);
+  const htmlByIndex = useMemo(() => {
+    const out = new Array<string>(lines.length).fill('');
+    let start = -1;
+    const flush = (end: number) => {
+      if (start < 0) return;
+      const html = highlightLines(lines.slice(start, end).map((l) => l.text).join('\n'), language);
+      for (let i = start; i < end; i++) out[i] = html[i - start] ?? '';
+      start = -1;
+    };
+    lines.forEach((line, idx) => {
+      if (line.type === 'meta') flush(idx);
+      else if (start < 0) start = idx;
+    });
+    flush(lines.length);
+    return out;
+  }, [lines, language, syntaxReady]);
 
   if (isLoading) {
     return (
@@ -167,7 +189,11 @@ export function CommitDiffViewer({ diffText, isLoading }: CommitDiffViewerProps)
 
                 {/* Code text */}
                 <div className="flex-1 py-0.5 pr-3 whitespace-pre text-ink">
-                  {line.text || ' '}
+                  {line.text ? (
+                    <span className="shiki" dangerouslySetInnerHTML={{ __html: htmlByIndex[idx] }} />
+                  ) : (
+                    ' '
+                  )}
                 </div>
               </div>
             );

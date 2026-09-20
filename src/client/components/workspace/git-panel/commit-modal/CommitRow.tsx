@@ -164,6 +164,7 @@ export function CommitRow({
                       <CommitDiffViewer
                         diffText={activeDiff}
                         isLoading={isLoading}
+                        filePath={file.file}
                       />
                     </div>
                   )}

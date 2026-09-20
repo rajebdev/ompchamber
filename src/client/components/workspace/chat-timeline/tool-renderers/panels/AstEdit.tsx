@@ -1,5 +1,8 @@
+import { useMemo } from 'preact/hooks';
 import { ArrowRight, CheckCircle2, Clock, Wand2 } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
+import { getLanguageFromPath, highlightLines } from '@/shared/lib/code/syntax-highlight';
+import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 
 interface AstEditItem {
   file?: unknown;
@@ -46,6 +49,15 @@ export function AstEdit({ tool }: { tool: ToolCallData }) {
   const structuredItems: AstEditItem[] = Array.isArray(details.changes)
     ? details.changes
     : parseAstChanges(output);
+
+  const syntaxReady = useSyntaxReady();
+  const diffLang = getLanguageFromPath(paths[0]);
+  const diffHtml = useMemo(() => {
+    const contents = diffLines.map((line: string) =>
+      line.startsWith('+') || line.startsWith('-') || line.startsWith(' ') ? line.slice(1) : line
+    );
+    return highlightLines(contents.join('\n'), diffLang);
+  }, [diffLines, diffLang, syntaxReady]);
 
   // If Staged Proposal Mode (oh-my-pi xd://ast_edit)
   if (isStaged || ops.length > 0 || diffLines.length > 0) {
@@ -103,6 +115,7 @@ export function AstEdit({ tool }: { tool: ToolCallData }) {
               {diffLines.map((line: string, i: number) => {
                 const isDel = line.startsWith('-');
                 const isAdd = line.startsWith('+');
+                const html = diffHtml[i] || '';
                 return (
                   <div
                     key={i}
@@ -114,7 +127,12 @@ export function AstEdit({ tool }: { tool: ToolCallData }) {
                           : 'text-ink/70'
                     }`}
                   >
-                    {line}
+                    {(isDel || isAdd) && line[0]}
+                    {html ? (
+                      <span className="shiki" dangerouslySetInnerHTML={{ __html: html }} />
+                    ) : (
+                      (isDel || isAdd) ? line.slice(1) : line
+                    )}
                   </div>
                 );
               })}

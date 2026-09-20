@@ -4,12 +4,14 @@ import type { ParsedTaskNotice } from '@/shared/lib/chat/task-result-parser';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 import { CopyButton } from '@/client/components/common/CopyButton';
 import { highlightCode, isCodeLike } from '@/shared/lib/code/syntax-highlight';
+import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 
 interface TaskResultContentProps {
   task: ParsedTaskNotice;
 }
 
 export function TaskResultContent({ task }: TaskResultContentProps) {
+  useSyntaxReady();
   const structured = task.structuredOutput;
   const isRawCode = !task.formattedJson && isCodeLike(task.rawOutput);
 

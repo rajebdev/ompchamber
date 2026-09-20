@@ -1,8 +1,7 @@
-import Prism from 'prismjs';
-import '@/shared/lib/code/prism-grammars';
-import 'prismjs/themes/prism.css';
+import { escapeCode, getHighlighterSync } from '@/shared/lib/code/highlighter';
+import { SHIKI_THEMES } from '@/shared/lib/code/shiki-themes';
 
-/** Map file extension to Prism language key */
+/** Map file extension to Shiki language id */
 export function getLanguageFromPath(filePath?: string): string {
   if (!filePath) return 'javascript';
   const clean = filePath.split('?')[0].split('#')[0].replace(/:\d+(?:-\d+)?$/, '');
@@ -25,9 +24,9 @@ export function getLanguageFromPath(filePath?: string): string {
     case 'patch': return 'diff';
     case 'yaml':
     case 'yml': return 'yaml';
-    case 'html':
+    case 'html': return 'html';
     case 'svg':
-    case 'xml': return 'markup';
+    case 'xml': return 'xml';
     case 'py': return 'python';
     case 'go': return 'go';
     case 'rs': return 'rust';
@@ -48,7 +47,7 @@ export function getLanguageFromPath(filePath?: string): string {
     case 'scala': return 'scala';
     case 'lua': return 'lua';
     case 'pl': return 'perl';
-    case 'dockerfile': return 'docker';
+    case 'dockerfile': return 'dockerfile';
     case 'ini':
     case 'cfg':
     case 'conf': return 'ini';
@@ -88,10 +87,13 @@ export function getLanguageFromPath(filePath?: string): string {
     case 'scss': return 'scss';
     case 'sass': return 'sass';
     case 'styl': return 'stylus';
+    case 'vue': return 'vue';
+    case 'svelte': return 'svelte';
+    case 'astro': return 'astro';
     // `.m` is genuinely ambiguous (Objective-C vs MATLAB); map to Objective-C,
     // the common editor default.
     case 'mm':
-    case 'm': return 'objectivec';
+    case 'm': return 'objective-c';
     case 'groovy':
     case 'gvy':
     case 'gradle': return 'groovy';
@@ -125,14 +127,18 @@ export function isCodeLike(text: string): boolean {
 /** Syntax highlight code string safely with fallback */
 export function highlightCode(code: string, language = 'javascript'): string {
   if (!code) return '';
+  const hl = getHighlighterSync();
+  if (!hl) return escapeCode(code);
+  const lang = hl.getLoadedLanguages().includes(language) ? language : 'javascript';
   try {
-    const lang = Prism.languages[language] ? language : 'javascript';
-    return Prism.highlight(code, Prism.languages[lang], lang);
+    return `<span class="shiki">${hl.codeToHtml(code, {
+      lang,
+      themes: SHIKI_THEMES,
+      defaultColor: false,
+      structure: 'inline',
+    })}</span>`;
   } catch {
-    return code
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+    return escapeCode(code);
   }
 }
 
@@ -246,4 +252,39 @@ export function tryParseJson(input: unknown): JsonDetectionResult {
 /** Syntax highlight JSON string */
 export function highlightJson(code: string): string {
   return highlightCode(code, 'json');
+}
+
+/**
+ * Highlight code and return one HTML fragment per line, aligned 1:1 with
+ * `code.split('\n')`. Tokenizes the whole input at once so multi-line grammar
+ * state (block comments, template literals) survives, unlike per-line calls.
+ */
+export function highlightLines(code: string, language = 'javascript'): string[] {
+  const rawLines = code.split('\n');
+  if (!code) return rawLines;
+  const hl = getHighlighterSync();
+  if (!hl) return rawLines.map(escapeCode);
+  const lang = hl.getLoadedLanguages().includes(language) ? language : 'javascript';
+  try {
+    const { tokens } = hl.codeToTokens(code, {
+      lang,
+      themes: SHIKI_THEMES,
+      defaultColor: false,
+    });
+    if (tokens.length !== rawLines.length) return rawLines.map(escapeCode);
+    return tokens.map((lineTokens) =>
+      lineTokens
+        .map((tok) => {
+          const content = escapeCode(tok.content);
+          if (!tok.htmlStyle) return content;
+          const style = Object.entries(tok.htmlStyle)
+            .map(([key, value]) => `${key}:${value}`)
+            .join(';');
+          return style ? `<span style="${style}">${content}</span>` : content;
+        })
+        .join('')
+    );
+  } catch {
+    return rawLines.map(escapeCode);
+  }
 }

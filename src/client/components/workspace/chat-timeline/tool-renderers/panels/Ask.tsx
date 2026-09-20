@@ -2,7 +2,8 @@ import { useMemo } from 'preact/hooks';
 import { CheckCircle2, HelpCircle, XCircle } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
-import { tryParseJson } from '@/shared/lib/code/syntax-highlight';
+import { highlightCode, isCodeLike, tryParseJson } from '@/shared/lib/code/syntax-highlight';
+import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 import { JsonCodeBlock } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/JsonCodeBlock';
 import { CopyButton } from '@/client/components/common/CopyButton';
 
@@ -74,6 +75,12 @@ export function Ask({ tool }: { tool: ToolCallData }) {
   );
 
   const isMultilineText = typeof rawOutput === 'string' && rawOutput.includes('\n') && !selectedMatch;
+
+  const syntaxReady = useSyntaxReady();
+  const highlightedResponse = useMemo(
+    () => (typeof rawOutput === 'string' && isCodeLike(rawOutput) ? highlightCode(rawOutput, 'javascript') : ''),
+    [rawOutput, syntaxReady]
+  );
 
   return (
     <div className="space-y-2">
@@ -173,7 +180,11 @@ export function Ask({ tool }: { tool: ToolCallData }) {
               />
             </div>
             <pre className="max-h-32 overflow-y-auto p-2 font-mono text-[10.5px] leading-snug whitespace-pre-wrap break-words text-ink/85 select-text">
-              {rawOutput}
+              {highlightedResponse ? (
+                <span dangerouslySetInnerHTML={{ __html: highlightedResponse }} />
+              ) : (
+                rawOutput
+              )}
             </pre>
           </div>
         ) : (

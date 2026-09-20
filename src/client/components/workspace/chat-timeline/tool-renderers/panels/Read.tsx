@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import { FileCode, FileText, Folder, FolderOpen, Info, Loader2 } from 'lucide-preact';
 import { CopyButton } from '@/client/components/common/CopyButton';
 import { getLanguageFromPath, highlightCode } from '@/shared/lib/code/syntax-highlight';
+import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 import { parseDirListing, parseNumberedCode } from '@/shared/lib/code/parser';
 import type { ToolCallData } from '@/shared/types/chat';
 import { MAX_OUTPUT_LINES, truncateTailLines } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/truncate';
@@ -113,10 +114,11 @@ export function Read({ tool, targetFilePath, output }: ReadPanelProps) {
   const truncatedCode = useMemo(() => truncateTailLines(parsedCode.cleanCode, MAX_OUTPUT_LINES), [parsedCode.cleanCode]);
   const visibleLines = truncatedCode.skipped > 0 ? parsedCode.lines.slice(truncatedCode.skipped) : parsedCode.lines;
 
+  const syntaxReady = useSyntaxReady();
   const highlightedCode = useMemo(() => {
     if (!truncatedCode.text) return '';
     return highlightCode(truncatedCode.text, lang);
-  }, [truncatedCode, lang]);
+  }, [truncatedCode, lang, syntaxReady]);
 
   return (
     <div className="space-y-2">

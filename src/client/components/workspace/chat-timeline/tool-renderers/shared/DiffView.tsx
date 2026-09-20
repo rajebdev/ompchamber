@@ -1,4 +1,6 @@
 import { useMemo } from 'preact/hooks';
+import { getLanguageFromPath, highlightLines } from '@/shared/lib/code/syntax-highlight';
+import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 
 interface DiffLine {
   kind: 'add' | 'del' | 'meta' | 'context';
@@ -56,6 +58,17 @@ function parseUnifiedDiff(text: string): DiffFile[] {
 /** Split diff view untuk details.patch / details.diff dari toolResult. */
 export function DiffView({ text }: { text: string }) {
   const files = useMemo(() => parseUnifiedDiff(text), [text]);
+  const syntaxReady = useSyntaxReady();
+
+  const htmlByFile = useMemo(() => {
+    return files.map((file) => {
+      const lang = getLanguageFromPath(file.newPath || file.oldPath);
+      return highlightLines(
+        file.lines.map((line) => (line.kind === 'meta' ? '' : line.text)).join('\n'),
+        lang
+      );
+    });
+  }, [files, syntaxReady]);
   if (files.length === 0) {
     return (
       <pre className="max-h-48 overflow-auto whitespace-pre overflow-x-auto rounded-lg border border-ink/8 bg-paper p-3 font-mono text-[11px] leading-relaxed text-ink/80 select-text">
@@ -112,12 +125,20 @@ export function DiffView({ text }: { text: string }) {
                       ? 'text-ink/45'
                       : 'text-ink/70';
               const marker = line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : line.kind === 'meta' ? '@' : ' ';
+              const html = htmlByFile[fileIndex]?.[i] || '';
               return (
                 <div key={i} className={`flex px-2.5 ${bg}`}>
                   <span className={`w-4 shrink-0 select-none font-bold ${color}`}>{marker}</span>
-                  <span className={`min-w-0 flex-1 whitespace-pre-wrap break-all ${color}`}>
-                    {line.text || '\u00a0'}
-                  </span>
+                  {line.kind === 'meta' || !html ? (
+                    <span className={`min-w-0 flex-1 whitespace-pre-wrap break-all ${color}`}>
+                      {line.text || '\u00a0'}
+                    </span>
+                  ) : (
+                    <span
+                      className="shiki min-w-0 flex-1 whitespace-pre-wrap break-all"
+                      dangerouslySetInnerHTML={{ __html: html }}
+                    />
+                  )}
                 </div>
               );
             })}

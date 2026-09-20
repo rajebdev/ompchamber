@@ -72,7 +72,10 @@ export default defineConfig({
             chunks: 'all',
             enforce: true,
           },
-          prism: { test: /node_modules[\\/]prismjs/, name: 'prism-vendor', chunks: 'all', enforce: true },
+          // `chunks: 'initial'` is deliberate: the 58 `@shikijs/langs/*` dynamic
+          // imports must stay split as lazy async chunks. `chunks: 'all'` merges
+          // them into this file (~3.3 MB sync) and duplicates them in async/.
+          shiki: { test: /node_modules[\\/](shiki|@shikijs)/, name: 'shiki-vendor', chunks: 'initial', enforce: true },
         },
       },
     },
