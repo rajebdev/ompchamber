@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'preact/compat';
 import { Check, ChevronDown, Search } from 'lucide-preact';
 import { statusLabel, type ProviderEntry, type UsageProviderId } from '@/client/components/settings/categories/usage-settings/providers';
+import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 
 interface ProviderSelectProps {
   providers: ProviderEntry[];
@@ -54,19 +55,11 @@ export function ProviderSelect({ providers, value, onChange }: ProviderSelectPro
   };
 
   useEffect(() => {
-    const handleClickOutside = (event: globalThis.MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useEffect(() => {
     if (!open) return;
     optionRefs.current[activeIndex]?.scrollIntoView({ block: 'nearest' });
   }, [open, activeIndex]);
+
+  useOnClickOutside(rootRef, () => setOpen(false));
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const isSearchInput = event.target === inputRef.current;

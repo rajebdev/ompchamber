@@ -1,7 +1,7 @@
 import { json } from '@/server/lib/remix-compat';
 import type { LoaderFunctionArgs } from '@/server/lib/remix-compat';
 import { isMockMode } from '@/server/mock.server';
-import { findSessionFileById } from '@/server/lib/omp/session/locator';
+import { resolveSessionFileOr404 } from '@/server/lib/omp/session/locator';
 import { readSessionStats } from '@/server/lib/omp/session/stats';
 
 /**
@@ -19,10 +19,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
   if (!sessionId) {
     return json({ error: 'sessionId is required' }, { status: 400 });
   }
-  const filePath = await findSessionFileById(sessionId);
-  if (!filePath) {
-    return json({ error: 'Session not found' }, { status: 404 });
-  }
+  const resolved = await resolveSessionFileOr404(sessionId);
+  if ('response' in resolved) return resolved.response;
+  const { filePath } = resolved;
   const stats = readSessionStats(filePath);
   if (!stats) {
     return json({ error: 'Session could not be parsed' }, { status: 500 });

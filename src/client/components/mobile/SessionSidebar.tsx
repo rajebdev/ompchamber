@@ -1,20 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import type { SessionSortOption } from '@/shared/types';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { MobileSessionHeader } from '@/client/components/mobile/mobile-session-sidebar/Header';
 import { MobileSessionToolbar } from '@/client/components/mobile/mobile-session-sidebar/Toolbar';
 import { MobileSessionList } from '@/client/components/mobile/mobile-session-sidebar/List';
 import { MobileSessionFooter } from '@/client/components/mobile/mobile-session-sidebar/Footer';
-import { Toast } from '@/client/components/common/Toast';
-import { isValidSessionSortOption, sortFolders } from '@/shared/lib/workspace/sidebar-sort';
+import { ToastStack } from '@/client/components/common/ToastStack';
 import { AboutModal, NewWorkspaceModal, SchedulerModal } from '@/client/components/layout/session-sidebar/Modals';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 import { useScrollbarFade } from '@/client/hooks/ui/scrollbar-fade';
 import { useToasts } from '@/client/hooks/ui/toasts';
 import { useUpdates } from '@/client/hooks/ui/updates';
-import { buildSidebarSessionStatus, useSessionStatusAck } from '@/client/hooks/chat/omp/session-statuses';
-import { useStreamPoll } from '@/client/hooks/chat/omp/stream-poll';
-import { useSidebarRevalidation } from '@/client/hooks/chat/omp/revalidation-throttle';
-import { useSidebarData } from '@/client/hooks/chat/omp/session-list';
+import { useSessionSidebarController } from '@/client/hooks/chat/omp/session-sidebar-controller';
 import { MobileSessionListSkeleton } from '@/client/components/mobile/mobile-session-sidebar/Skeleton';
 
 interface MobileSessionSidebarProps {
@@ -36,8 +31,22 @@ export function MobileSessionSidebar({
   onDesktopToggle,
   appSettings = {}
 }: MobileSessionSidebarProps) {
-  const { folders, initializing, refresh, markSeen, hasSeen } = useSidebarData();
-  const [searchQuery, setSearchQuery] = useState('');
+  const {
+    folders,
+    initializing,
+    searchQuery,
+    setSearchQuery,
+    showArchived,
+    setShowArchived,
+    optionsOpen,
+    setOptionsOpen,
+    sortOption,
+    handleSortChange,
+    processedFolders,
+    sessionStatus,
+    handleSelectSession,
+  } = useSessionSidebarController(appSettings, { onSelectSession, onAfterSelect: onClose });
+
   const [expandedFolders, setExpandedFolders] = useState<Record<number, boolean>>({
     1: true,
     2: true,
@@ -48,74 +57,8 @@ export function MobileSessionSidebar({
   const [newWorkspaceOpen, setNewWorkspaceOpen] = useState(false);
   const [schedulerOpen, setSchedulerOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
-  const [showArchived, setShowArchived] = useState(false);
   const updates = useUpdates();
   const { toasts, pushToast, dismissToast } = useToasts();
-
-  useEffect(() => {
-    const handleWorkspaceUpdated = () => refresh();
-    window.addEventListener('omp:workspace-updated', handleWorkspaceUpdated);
-    return () => window.removeEventListener('omp:workspace-updated', handleWorkspaceUpdated);
-  }, [refresh]);
-
-  // Live session status — server-tracked via SQLite, riding the same list
-  // payload as the session list. Spinner while `stream`; a one-shot terminal
-  // badge (acknowledged server-side on open, dropped by the next refetch).
-  const sessionStatus = useMemo(() => buildSidebarSessionStatus(folders), [folders]);
-  // hasSeen: clicks already acked + optimistically stripped these badges, so
-  // the effect must not re-POST while the authoritative list is still stale.
-  useSessionStatusAck(sessionStatus, activeSessionId, refresh, hasSeen);
-  // Background sessions finishing while the user sits elsewhere: refetch
-  // on a cadence — but only while something is actually streaming.
-  useStreamPoll(sessionStatus, refresh);
-  // Spawn/title/stream events: throttle the per-frame dispatches so a busy
-  // run coalesces into one list fetch per second.
-  useSidebarRevalidation(refresh);
-
-  // Sorting state (matching desktop)
-  const [optionsOpen, setOptionsOpen] = useState(false);
-  // Seeded from the server (app_settings.omp_sidebar_sort) so the SSR HTML and
-  // the first client render agree — reading localStorage during render is what
-  // made the list re-sort right after hydration.
-  const [sortOption, setSortOption] = useState<SessionSortOption>(() =>
-    isValidSessionSortOption(appSettings.omp_sidebar_sort) ? appSettings.omp_sidebar_sort : 'A-Z',
-  );
-
-  const sortPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const persistSort = useCallback((opt: SessionSortOption) => {
-    if (sortPersistTimerRef.current) clearTimeout(sortPersistTimerRef.current);
-    sortPersistTimerRef.current = setTimeout(() => {
-      fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ omp_sidebar_sort: opt }),
-      }).catch(() => {});
-    }, 200);
-  }, []);
-
-  useEffect(() => () => {
-    if (sortPersistTimerRef.current) clearTimeout(sortPersistTimerRef.current);
-  }, []);
-
-  // One-time migration off localStorage, and only while the server holds no
-  // preference yet. Gating on that is what makes it one-time: an ungated adopt
-  // would let a stale localStorage entry on any client overwrite the value the
-  // server already owns, forever.
-  const hasServerSort = isValidSessionSortOption(appSettings.omp_sidebar_sort);
-  useEffect(() => {
-    if (hasServerSort) return;
-    const saved = localStorage.getItem('omp_sidebar_sort');
-    if (!isValidSessionSortOption(saved)) return;
-    setSortOption(saved);
-    persistSort(saved);
-  }, [hasServerSort, persistSort]);
-
-  const handleSortChange = (opt: SessionSortOption) => {
-    setSortOption(opt);
-    localStorage.setItem('omp_sidebar_sort', opt);
-    setOptionsOpen(false);
-    persistSort(opt);
-  };
 
   const optionsRef = useRef<HTMLDivElement>(null);
   useOnClickOutside(optionsRef, () => setOptionsOpen(false));
@@ -148,14 +91,6 @@ export function MobileSessionSidebar({
     setExpandedFolders(Object.fromEntries(folders.map(folder => [folder.id, folder.isExpanded])));
   }, [folders]);
 
-  const handleSelectSession = (id: number | string) => {
-    // One-shot terminal badge (check) clears on open: optimistic strip +
-    // server ack. Keep BEFORE closing the drawer so the click feels instant.
-    markSeen(id);
-    onSelectSession(id);
-    onClose();
-  };
-
   const handleNewSessionAndClose = () => {
     onNewSession();
     onClose();
@@ -165,23 +100,6 @@ export function MobileSessionSidebar({
     setShowArchived(!showArchived);
     setOptionsOpen(false);
   };
-
-  // Filter and sort folders/sessions
-  const processedFolders = useMemo(() => {
-    let result = folders.map(folder => {
-      if (!searchQuery.trim()) return folder;
-      const query = searchQuery.toLowerCase();
-      const matchesFolderName = folder.name.toLowerCase().includes(query);
-      const filteredSessions = (folder.sessions || []).filter(s =>
-        s.title.toLowerCase().includes(query)
-      );
-      if (matchesFolderName) return folder;
-      return { ...folder, sessions: filteredSessions };
-    }).filter(f => !searchQuery.trim() || f.sessions && f.sessions.length > 0);
-
-    // Ordering is shared with the desktop sidebar so the two cannot drift.
-    return sortFolders(result, sortOption);
-  }, [folders, searchQuery, sortOption]);
 
   return (
     <div className="flex flex-col h-full w-full bg-canvas text-ink relative select-none">
@@ -250,9 +168,7 @@ export function MobileSessionSidebar({
         onToast={pushToast}
       />
 
-      {toasts.map(t => (
-        <Toast key={t.id} toast={t} onDismiss={dismissToast} />
-      ))}
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
 
     </div>
   );

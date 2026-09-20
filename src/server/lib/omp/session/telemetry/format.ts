@@ -1,6 +1,9 @@
-import { isRecord } from '@/shared/lib/omp/session/jsonl';
+import { isRecord } from '@/shared/lib/util/guards';
 import type { RawMessageInfo, SessionContextTelemetry } from '@/shared/types/context';
-import { CONTEXT_LIMIT, type OmpMessage, type OmpUsage, type SessionEntry } from '@/server/lib/omp/session/telemetry/types';
+import type { OmpMessage, OmpMessageEntry, OmpUsage } from '@/shared/types/omp/session';
+
+/** Model context window assumed when a session records none. */
+export const CONTEXT_LIMIT = 1_000_000;
 
 /** Flatten an omp content value (string or block array) to plain text. */
 export function textOf(content: unknown): string {
@@ -62,7 +65,7 @@ export function contextAnchorTokens(msg: OmpMessage): number | undefined {
 }
 
 export function buildInfo(
-  entry: SessionEntry,
+  entry: OmpMessageEntry,
   msg: OmpMessage,
   cwd: string,
   index: number,

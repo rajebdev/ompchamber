@@ -13,7 +13,8 @@
  * stays "started" forever.
  */
 
-import { extractText, isRecord } from '@/shared/lib/omp/session/parse-message-blocks';
+import { extractText } from '@/shared/lib/omp/session/parse-message-blocks';
+import { isRecord } from '@/shared/lib/util/guards';
 import { resultStatus } from '@/shared/lib/omp/subagent/history/status';
 import { asNumber, asString } from '@/shared/lib/omp/subagent/result-details';
 import type { OmpMessageEntry } from '@/shared/lib/omp/session/messages-parse';

@@ -7,10 +7,11 @@ import { GitCommitBox } from '@/client/components/workspace/git-panel/CommitBox'
 import { GitBranchToolbar } from '@/client/components/workspace/git-panel/BranchToolbar';
 import { GitRepoHeader } from '@/client/components/workspace/git-panel/RepoHeader';
 import { GitChangesList } from '@/client/components/workspace/git-panel/ChangesList';
-import { Toast } from '@/client/components/common/Toast';
+import { ToastStack } from '@/client/components/common/ToastStack';
 import { useToasts } from '@/client/hooks/ui/toasts';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { usePanelRefresh, useFileMutationRefresh } from '@/client/hooks/workspace/panel-refresh';
+import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 
 interface GitPanelProps {
   className?: string;
@@ -147,21 +148,9 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
     }
   }, [actionFetcher.state, actionFetcher.data]);
 
-  useEffect(() => {
-    const handleClickOutside = (event: globalThis.MouseEvent) => {
-      if (optionsRef.current && !optionsRef.current.contains(event.target as Node)) {
-        setShowOptions(false);
-      }
-      if (repoRef.current && !repoRef.current.contains(event.target as Node)) {
-        setShowRepoMenu(false);
-      }
-      if (branchRef.current && !branchRef.current.contains(event.target as Node)) {
-        setShowBranchMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  useOnClickOutside(optionsRef, () => setShowOptions(false));
+  useOnClickOutside(repoRef, () => setShowRepoMenu(false));
+  useOnClickOutside(branchRef, () => setShowBranchMenu(false));
 
   const handleAction = (actionType: string, file?: string, additionalData?: any) => {
     if (actionType === 'revert') {
@@ -271,9 +260,7 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
         </>
       )}
 
-      {toasts.map(t => (
-        <Toast key={t.id} toast={t} onDismiss={dismissToast} />
-      ))}
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
 
       {/* Repo Switcher Header */}
       <GitRepoHeader 

@@ -1,12 +1,9 @@
 import { resolveDeepSeekApiKey } from '@/server/lib/usage/provider-key';
 import type { DeepSeekBalance, DeepSeekBalanceEntry, DeepSeekUsageReport } from '@/shared/types';
+import { isRecord } from '@/shared/lib/util/guards';
 
 const FETCH_TIMEOUT_MS = 10_000;
 const BALANCE_URL = 'https://api.deepseek.com/user/balance';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
 
 function toString(value: unknown): string {
   if (typeof value === 'string') return value;

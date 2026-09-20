@@ -1,4 +1,4 @@
-import type { ActionFunctionArgs, LoaderFunctionArgs } from '@/server/lib/remix-compat';
+import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from '@/server/lib/remix-compat';
 import { maybeCompress } from '@/server/plugins/compress';
 
 /**
@@ -51,11 +51,33 @@ export function bindingsFor(module: RouteModule, path: string, options: MountOpt
  * exists, the verb does not. Keeping that shape means a mistyped client call
  * reports the real problem instead of looking like a missing endpoint.
  */
-const methodNotAllowed: RouteHandler = () =>
+export const methodNotAllowed: RouteHandler = () =>
   new Response(JSON.stringify({ error: 'Method not allowed' }), {
     status: 405,
     headers: { 'content-type': 'application/json; charset=utf-8' },
   });
+
+/** Parse a JSON request body without throwing. Caller decides the status code. */
+export async function parseJsonBody<T = unknown>(
+  request: Request,
+): Promise<{ ok: true; body: T } | { ok: false; error: string }> {
+  try {
+    return { ok: true, body: (await request.json()) as T };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/** Extract a required route param; returns null when absent or empty. */
+export function requireParam(params: Record<string, string>, name: string): string | null {
+  const value = params[name];
+  return value ? value : null;
+}
+
+/** JSON error envelope with the given status (default 500). */
+export function errorResponse(error: unknown, status = 500): Response {
+  return json({ error: error instanceof Error ? error.message : String(error) }, { status });
+}
 
 async function toResponse(value: unknown): Promise<Response> {
   if (value instanceof Response) return value;

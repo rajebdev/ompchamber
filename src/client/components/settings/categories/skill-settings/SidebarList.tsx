@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
-import { Check, ChevronDown, ChevronRight, Folder, Plus } from 'lucide-preact';
+import { ChevronDown, ChevronRight, Plus } from 'lucide-preact';
 import type { SkillItem } from '@/shared/types';
+import { ProjectSelectorDropdown } from '@/client/components/settings/ProjectSelectorDropdown';
 
 interface SkillSidebarListProps {
   skills: SkillItem[];
@@ -12,12 +13,6 @@ interface SkillSidebarListProps {
   onSelectProject: (project: string) => void;
 }
 
-const PROJECT_OPTIONS = [
-  { id: 'ompchamber', label: 'ompchamber' },
-  { id: 'workspace-edge', label: 'workspace-edge' },
-  { id: 'global', label: 'Global (All Projects)' },
-];
-
 export function SkillSidebarList({
   skills,
   selectedSkillId,
@@ -27,7 +22,6 @@ export function SkillSidebarList({
   selectedProject,
   onSelectProject,
 }: SkillSidebarListProps) {
-  const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   const toggleGroup = (groupName: string) => {
@@ -57,48 +51,14 @@ export function SkillSidebarList({
   return (
     <div className="w-56 sm:w-64 border-r border-ink/10 h-full flex flex-col bg-paper/50 flex-shrink-0">
       {/* Project Selector Dropdown */}
-      <div className="p-2.5 border-b border-ink/10 relative">
-        <button
-          type="button"
-          onClick={() => setIsProjectDropdownOpen(!isProjectDropdownOpen)}
-          className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg border border-ink/20 hover:border-ink/40 bg-paper text-xs text-ink transition-colors cursor-pointer"
-        >
-          <div className="flex items-center gap-2 truncate">
-            <Folder size={14} className="text-ink/60 flex-shrink-0" />
-            <span className="truncate font-medium">
-              {PROJECT_OPTIONS.find((p) => p.id === selectedProject)?.label || selectedProject}
-            </span>
-          </div>
-          <ChevronDown size={14} className="text-ink/50 flex-shrink-0" />
-        </button>
-
-        {isProjectDropdownOpen && (
-          <>
-            <div
-              className="fixed inset-0 z-20"
-              onClick={() => setIsProjectDropdownOpen(false)}
-            />
-            <div className="absolute left-2.5 right-2.5 top-12 z-30 bg-paper border border-ink/15 rounded-lg shadow-lg py-1 animate-in fade-in zoom-in-95 duration-100">
-              {PROJECT_OPTIONS.map((proj) => (
-                <button
-                  key={proj.id}
-                  type="button"
-                  onClick={() => {
-                    onSelectProject(proj.id);
-                    setIsProjectDropdownOpen(false);
-                  }}
-                  className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-ink/5 transition-colors cursor-pointer ${
-                    selectedProject === proj.id ? 'text-ink font-semibold bg-ink/5' : 'text-ink/70'
-                  }`}
-                >
-                  <span className="truncate">{proj.label}</span>
-                  {selectedProject === proj.id && <Check size={12} className="text-ink flex-shrink-0" />}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
+      <ProjectSelectorDropdown
+        variant="compact"
+        selectedProject={selectedProject}
+        onChangeProject={onSelectProject}
+        getTriggerLabel={(options, value) =>
+          options.find((option) => option.id === value)?.label || value
+        }
+      />
 
       {/* Counter Header */}
       <div className="px-3.5 py-2.5 border-b border-ink/10 flex items-center justify-between">

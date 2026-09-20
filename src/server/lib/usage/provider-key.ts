@@ -1,5 +1,6 @@
 import { getDb } from '@/server/db.server';
 import { readOmpProviderApiKey } from '@/server/lib/omp/core/auth-credentials';
+import { isRecord } from '@/shared/lib/util/guards';
 
 const SETTINGS_KEY = 'omp_providers_config';
 const MASKED_KEY_PATTERN = /•{3,}/;
@@ -9,10 +10,6 @@ interface ProviderEntry {
   slug: string;
   baseUrl: string;
   apiKey: string;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 function toProviderEntry(value: unknown): ProviderEntry | null {

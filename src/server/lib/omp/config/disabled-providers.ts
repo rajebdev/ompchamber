@@ -10,13 +10,9 @@
  * in the file.
  */
 
-import fs from 'fs';
-import { dirname, join } from 'path';
-import { getAgentDir } from '@/server/lib/omp/core/paths';
-
-function configPath(): string {
-  return join(getAgentDir(), 'config.yml');
-}
+import { writeFileAtomic } from '@/server/lib/fs/atomic-write';
+import { getOmpConfigPath } from '@/server/lib/omp/config/yaml';
+import { isRecord } from '@/shared/lib/util/guards';
 
 function readDisabledProviderSlugs(data: Record<string, unknown>): string[] {
   const current = data.disabledProviders;
@@ -30,7 +26,7 @@ function readDisabledProviderSlugs(data: Record<string, unknown>): string[] {
  * disabledProviders. Returns false when it was not disabled in the first place.
  */
 export async function enableNativeProvider(slug: string): Promise<boolean> {
-  const path = configPath();
+  const path = getOmpConfigPath();
   const file = Bun.file(path);
   if (!(await file.exists())) return false;
   const doc = Bun.YAML.parse(await file.text());
@@ -39,9 +35,7 @@ export async function enableNativeProvider(slug: string): Promise<boolean> {
   const next = current.filter((item) => item !== slug);
   if (next.length === current.length) return false;
   doc.disabledProviders = next;
-  const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
-  await Bun.write(temp, Bun.YAML.stringify(doc, null, 2));
-  await fs.promises.rename(temp, path);
+  await writeFileAtomic(path, Bun.YAML.stringify(doc, null, 2));
   return true;
 }
 
@@ -52,7 +46,7 @@ export async function enableNativeProvider(slug: string): Promise<boolean> {
  * when absent; returns false when the provider was already disabled.
  */
 export async function disableNativeProvider(slug: string): Promise<boolean> {
-  const path = configPath();
+  const path = getOmpConfigPath();
   const file = Bun.file(path);
   const source = (await file.exists()) ? await file.text() : '';
   const doc = Bun.YAML.parse(source);
@@ -62,18 +56,13 @@ export async function disableNativeProvider(slug: string): Promise<boolean> {
   const disabled = isRecord(doc) ? readDisabledProviderSlugs(doc) : [];
   if (disabled.includes(slug)) return false;
 
-  await fs.promises.mkdir(dirname(path), { recursive: true });
-  const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
+  let content: string;
   if (isRecord(doc)) {
     doc.disabledProviders = [...disabled, slug];
-    await Bun.write(temp, Bun.YAML.stringify(doc, null, 2));
+    content = Bun.YAML.stringify(doc, null, 2);
   } else {
-    await Bun.write(temp, Bun.YAML.stringify({ disabledProviders: [slug] }, null, 2));
+    content = Bun.YAML.stringify({ disabledProviders: [slug] }, null, 2);
   }
-  await fs.promises.rename(temp, path);
+  await writeFileAtomic(path, content);
   return true;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

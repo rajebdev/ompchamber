@@ -1,6 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@/server/lib/remix-compat';
 import { isMockMode } from '@/server/mock.server';
 import { handleGeminiStreaming, handleSimulatedStreaming } from '@/shared/lib/chat/stream-service';
+import { createSseStream } from '@/server/lib/sse';
 
 export async function loader({ request }: LoaderFunctionArgs) {
   return handleStreamingRequest(request);
@@ -39,23 +40,19 @@ async function handleStreamingRequest(request: Request) {
     });
   }
 
-  const encoder = new TextEncoder();
-
-  const stream = new ReadableStream({
-    async start(controller) {
+  const stream = createSseStream({
+    headers: { 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' },
+    async onStart(handlers) {
       let isAborted = false;
       const abortListener = () => {
         isAborted = true;
       };
       request.signal.addEventListener('abort', abortListener);
 
-      const sendEvent = (event: string, data: any) => {
+      const sendEvent = (event: string, data: unknown): void => {
         if (isAborted) return;
-        try {
-          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
-        } catch {
-          isAborted = true;
-        }
+        handlers.send(event, data);
+        if (handlers.isClosed()) isAborted = true;
       };
 
       try {
@@ -105,19 +102,10 @@ async function handleStreamingRequest(request: Request) {
         }
       } finally {
         request.signal.removeEventListener('abort', abortListener);
-        try {
-          controller.close();
-        } catch {}
+        handlers.close();
       }
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache, no-transform',
-      'Connection': 'keep-alive',
-      'X-Accel-Buffering': 'no',
-    },
-  });
+  return stream.response;
 }

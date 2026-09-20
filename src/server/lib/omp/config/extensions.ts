@@ -9,10 +9,11 @@
  * (`extension-module:<name>`, `skill:<name>`, `context-file:<level>:<basename>`).
  */
 
-import fs from 'fs';
 import { join } from 'path';
 import { getAgentDir, pathExists } from '@/server/lib/omp/core/paths';
-import { isRecord } from '@/server/lib/omp/config/mcp';
+import { writeFileAtomic } from '@/server/lib/fs/atomic-write';
+import { asMapping, getOmpConfigPath } from '@/server/lib/omp/config/yaml';
+import { isRecord } from '@/shared/lib/util/guards';
 
 export interface DiscoveredExtension {
   id: string;
@@ -30,7 +31,7 @@ async function scanExtensionsDir(dir: string, sourceRoot: 'user' | 'project', di
   if (!(await pathExists(dir))) return [];
   try {
     const found: DiscoveredExtension[] = [];
-    for (const relativePath of EXTENSION_GLOB.scanSync({ cwd: dir, onlyFiles: true })) {
+    for (const relativePath of await Array.fromAsync(EXTENSION_GLOB.scan({ cwd: dir, onlyFiles: true }))) {
       const filePath = join(dir, relativePath);
       try {
         if ((await Bun.file(filePath).stat()).size > MAX_EXTENSION_BYTES) continue;
@@ -62,7 +63,7 @@ export async function discoverExtensions(projectDir?: string): Promise<Discovere
 }
 
 export async function readDisabledExtensions(): Promise<Set<string>> {
-  const path = join(getAgentDir(), 'config.yml');
+  const path = getOmpConfigPath();
   const file = Bun.file(path);
   if (!(await file.exists()) || (await file.stat()).size >= 8 * 1024 * 1024) return new Set();
   try {
@@ -77,21 +78,13 @@ export async function readDisabledExtensions(): Promise<Set<string>> {
 /** Toggle one extension id in config.yml disabledExtensions atomically. */
 export async function setExtensionDisabled(id: string, disabled: boolean): Promise<boolean> {
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(id)) throw new Error('Invalid extension id');
-  const path = join(getAgentDir(), 'config.yml');
+  const path = getOmpConfigPath();
   const doc = asMapping(Bun.YAML.parse((await Bun.file(path).exists()) ? await Bun.file(path).text() : ''), path);
   const already = (await readDisabledExtensions()).has(id);
   if (disabled === already) return false;
   const list = [...(await readDisabledExtensions())];
   const next = disabled ? [...list, id] : list.filter((item) => item !== id);
   doc.disabledExtensions = next;
-  const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
-  await Bun.write(temp, Bun.YAML.stringify(doc, null, 2));
-  await fs.promises.rename(temp, path);
+  await writeFileAtomic(path, Bun.YAML.stringify(doc, null, 2));
   return true;
-}
-
-/** Parses a YAML file that must be a top-level mapping; throws otherwise. */
-function asMapping(parsed: unknown, path: string): Record<string, unknown> {
-  if (!isRecord(parsed)) throw new Error(`${path} must contain a YAML mapping`);
-  return parsed;
 }

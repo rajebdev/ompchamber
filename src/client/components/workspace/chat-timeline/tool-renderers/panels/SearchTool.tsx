@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'preact/hooks';
-import { Check, ChevronRight, Copy, FileSearch, FileText, FolderSearch } from 'lucide-preact';
+import { ChevronRight, FileSearch, FileText, FolderSearch } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
-import { copyToClipboard } from '@/client/hooks/ui/clipboard';
+import { CopyButton } from '@/client/components/common/CopyButton';
 import { getLanguageFromPath, highlightCode } from '@/shared/lib/code/syntax-highlight';
 import { MAX_OUTPUT_LINES, truncateTailLines } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/truncate';
 
@@ -162,7 +162,6 @@ function parseGrepOutput(output: string): { files: ParsedFileMatches[]; totalMat
 
 /** Panel untuk tool pencarian file — grep/glob/ast_grep dengan visualisasi hierarkis & readable. */
 export function SearchTool({ tool }: { tool: ToolCallData }) {
-  const [copied, setCopied] = useState(false);
   const [filterText, setFilterText] = useState('');
   const details = (tool.details ?? {}) as Record<string, any>;
   const output = tool.output || (typeof details.displayContent === 'string' ? details.displayContent : '');
@@ -204,15 +203,6 @@ export function SearchTool({ tool }: { tool: ToolCallData }) {
 
   const highlightLine = (path: string, text: string) =>
     highlightedLines.get(`${getLanguageFromPath(path)}\u0000${text}`) ?? '&nbsp;';
-
-  const handleCopyAll = async () => {
-    if (!output) return;
-    const ok = await copyToClipboard(output);
-    if (ok) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
 
   if (!output && files.length === 0) {
     return (
@@ -259,14 +249,11 @@ export function SearchTool({ tool }: { tool: ToolCallData }) {
               className="h-6 w-28 rounded border border-ink/10 bg-canvas px-2 text-[10.5px] text-ink placeholder:text-ink/30 focus:border-ink/30 focus:outline-none"
             />
           )}
-          <button
-            type="button"
-            onClick={handleCopyAll}
+          <CopyButton
+            text={output}
             className="flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-ink/45 transition-colors hover:bg-ink/5 hover:text-ink"
-          >
-            {copied ? <Check size={10} className="text-success" /> : <Copy size={10} />}
-            {copied ? 'Copied' : 'Copy'}
-          </button>
+            label="Copy"
+          />
         </div>
       </div>
 

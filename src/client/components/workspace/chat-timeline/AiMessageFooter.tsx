@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { ReactNode } from 'preact/compat';
-import { Bot, Brain, Check, Clock3, Coins, Copy, Hourglass, MessageSquarePlus, MoreHorizontal, RotateCcw, X } from 'lucide-preact';
-import { copyToClipboard } from '@/client/hooks/ui/clipboard';
+import { Bot, Brain, Clock3, Coins, Hourglass, MessageSquarePlus, MoreHorizontal, RotateCcw, X } from 'lucide-preact';
+import { CopyButton } from '@/client/components/common/CopyButton';
 import { formatDuration } from '@/shared/lib/chat/duration';
 import { providerLabel } from '@/shared/lib/models/provider-label';
+import { formatCompactTokens } from '@/shared/lib/format/number';
 
 interface AiMessageFooterProps {
   provider?: string;
@@ -27,11 +28,6 @@ interface AiMessageFooterProps {
   isMobile?: boolean;
 }
 
-function formatTokens(n: number | undefined): string {
-  if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return '';
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${Math.round(n)}`;
-}
-
 export function AiMessageFooter({
   provider,
   providerNames,
@@ -46,16 +42,7 @@ export function AiMessageFooter({
   onNewChat,
   isMobile = false,
 }: AiMessageFooterProps) {
-  const [copied, setCopied] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-
-  const handleCopy = () => {
-    if (content) {
-      copyToClipboard(content);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
 
   const handleRetry = () => {
     setIsMenuOpen(false);
@@ -78,7 +65,7 @@ export function AiMessageFooter({
 
   const formattedDuration = formatDuration(durationMs ?? 0);
   const totalTok = usage?.totalTokens ?? ((usage?.input ?? 0) + (usage?.output ?? 0));
-  const tokensLabel = totalTok > 0 ? `${formatTokens(totalTok)} tok` : '';
+  const tokensLabel = totalTok > 0 ? `${formatCompactTokens(totalTok) ?? ''} tok` : '';
   const providerText = provider ? providerLabel(provider, providerNames) : '';
   const costLabel = usage?.cost?.total && usage.cost.total > 0
     ? `$${usage.cost.total < 0.01 ? usage.cost.total.toFixed(4) : usage.cost.total.toFixed(3)}`
@@ -201,10 +188,16 @@ export function AiMessageFooter({
               )}
 
               <div className="p-2">
-                <button type="button" onClick={() => { handleCopy(); setIsMenuOpen(false); }} className="flex min-h-12 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-ink transition-colors hover:bg-ink/5 cursor-pointer">
-                  {copied ? <Check size={20} className="shrink-0 text-success" /> : <Copy size={20} className="shrink-0 text-ink/55" />}
-                  <span>{copied ? 'Copied' : 'Copy answer'}</span>
-                </button>
+                <CopyButton
+                  text={content}
+                  className="flex min-h-12 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-ink transition-colors hover:bg-ink/5 cursor-pointer"
+                  iconSize={20}
+                  iconClassName="shrink-0 text-ink/55"
+                  copiedIconClassName="shrink-0 text-success"
+                  label="Copy answer"
+                  wrapLabel
+                  onClick={() => setIsMenuOpen(false)}
+                />
                 <button type="button" onClick={handleRetry} className="flex min-h-12 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-ink transition-colors hover:bg-ink/5 cursor-pointer">
                   <RotateCcw size={20} className="shrink-0 text-ink/55" />
                   <span>Retry response</span>
@@ -242,9 +235,12 @@ export function AiMessageFooter({
         <button type="button" className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" title="Re-run / Retry generation" onClick={handleRetry}>
           <RotateCcw size={12} />
         </button>
-        <button type="button" className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" title="Copy response" onClick={handleCopy}>
-          {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
-        </button>
+        <CopyButton
+          text={content}
+          className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer"
+          iconSize={12}
+          title="Copy response"
+        />
         <button type="button" className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" title="New Chat from here" onClick={handleNewChat}>
           <MessageSquarePlus size={12} />
         </button>

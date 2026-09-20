@@ -1,35 +1,11 @@
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@/server/lib/remix-compat';
-import { findSessionFileById } from '@/server/lib/omp/session/locator';
-import { readRawHeaderLine } from '@/server/lib/omp/session/files';
+import { resolveSessionPathOr404 } from '@/server/lib/omp/session/locator';
 import { WebRpcError, getRpcSession, resolveSpawnCwd, startRpcSession } from '@/server/lib/omp/rpc/manager';
 import { getSpawnApprovalMode, reconcileSpawnApprovalMode } from '@/server/lib/omp/rpc/session-registry';
 import { isApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { loadPersistedAccessMode } from '@/shared/lib/omp/config/access-mode.server';
-import { RpcCommandError, RpcCommandTimeoutError } from '@/server/lib/omp/rpc/process';
-
-function commandErrorResponse(error: unknown) {
-  if (error instanceof WebRpcError) {
-    return json({ error: error.message, code: error.code }, { status: 400 });
-  }
-  if (error instanceof RpcCommandTimeoutError) {
-    return json({ error: error.message, code: 'rpc_command_timeout' }, { status: 400 });
-  }
-  if (error instanceof RpcCommandError) {
-    return json({ error: error.message, code: error.code ?? 'rpc_command_failed' }, { status: 400 });
-  }
-  return json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
-}
-
-/** Resolve the session file path (OMP UUID → .jsonl) and its recorded cwd. */
-async function resolveSessionPathOr404(sessionId: string): Promise<{ filePath: string; recordedCwd: string | null } | { response: Response }> {
-  const filePath = await findSessionFileById(sessionId);
-  if (!filePath) return { response: json({ error: 'Session not found' }, { status: 404 }) };
-  let recordedCwd: string | null = null;
-  const header = await readRawHeaderLine(filePath);
-  if (header && typeof header.cwd === 'string') recordedCwd = header.cwd;
-  return { filePath, recordedCwd };
-}
+import { rpcErrorResponse } from '@/server/lib/omp/rpc/errors';
 
 // POST /api/agent/:sessionId — send a command to an existing session (or spawn
 // it lazily). Mirrors omp-web's /api/agent/[id].
@@ -73,7 +49,7 @@ export async function sendCommand({ params, request }: ActionFunctionArgs) {
     const result = await session.send(body);
     return json({ success: true, data: result });
   } catch (error) {
-    return commandErrorResponse(error);
+    return rpcErrorResponse(error);
   }
 }
 
@@ -100,6 +76,6 @@ export async function getAgentState({ params }: LoaderFunctionArgs) {
       throw error;
     }
   } catch (error) {
-    return commandErrorResponse(error);
+    return rpcErrorResponse(error);
   }
 }

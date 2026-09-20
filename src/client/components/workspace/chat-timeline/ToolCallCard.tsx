@@ -1,9 +1,8 @@
-import { useCallback, useMemo, useState } from 'preact/hooks';
+import { useCallback, useMemo } from 'preact/hooks';
 import { memo } from 'preact/compat';
-import type { TargetedMouseEvent } from 'preact';
-import { Boxes, Brain, BrainCircuit, Camera, Check, Code2, Copy, Cpu, FileCode, FileText, GitPullRequest, Globe, HelpCircle, ListTodo, Search, Server, Shield, Terminal, Wrench } from 'lucide-preact';
+import { Boxes, Brain, BrainCircuit, Camera, Check, Code2, Cpu, FileCode, FileText, GitPullRequest, Globe, HelpCircle, ListTodo, Search, Server, Shield, Terminal, Wrench } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
-import { copyToClipboard } from '@/client/hooks/ui/clipboard';
+import { CopyButton } from '@/client/components/common/CopyButton';
 import { ToolCardShell } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/ToolCardShell';
 import { DiffView } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/DiffView';
 import { ToolDetailsPanel, hasToolDetailsPanel, resolveTargetFile, resolveToolKey } from '@/client/components/workspace/chat-timeline/tool-renderers';
@@ -119,33 +118,21 @@ function diffTextOf(tool: ToolCallData): string | undefined {
   return undefined;
 }
 
+interface XdevDetails {
+  args?: { action?: string; file?: string; paths?: string[] };
+}
+
+/** `details.xdev` of an oh-my-pi virtual device call, if present. */
+function xdevOf(tool: ToolCallData): XdevDetails | undefined {
+  const xdev = tool.details?.xdev;
+  return xdev && typeof xdev === 'object' ? (xdev as XdevDetails) : undefined;
+}
+
 function SectionLabel({ children }: { children: string }) {
   return (
     <div className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-ink/40">
       {children}
     </div>
-  );
-}
-
-function CopyButton({ text, label }: { text: string; label: string }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = async (e: TargetedMouseEvent<HTMLElement>) => {
-    e.stopPropagation();
-    const success = await copyToClipboard(text);
-    if (success) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-  return (
-    <button
-      type="button"
-      onClick={handleCopy}
-      className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-ink/45 transition-colors hover:bg-ink/5 hover:text-ink"
-    >
-      {copied ? <Check size={10} className="text-success" /> : <Copy size={10} />}
-      {copied ? 'Copied' : label}
-    </button>
   );
 }
 
@@ -173,13 +160,13 @@ export const ToolCallCard = memo(function ToolCallCard({ tool, isOpen, onToggle,
 
   if (toolKey === 'lsp') {
     displayTitle = 'LSP';
-    const xdev = (tool.details as any)?.xdev;
+    const xdev = xdevOf(tool);
     if (xdev?.args?.action) {
       displaySubtitle = `${xdev.args.action}${xdev.args.file ? ` · ${xdev.args.file}` : ''}`;
     }
   } else if (toolKey === 'ast_edit') {
     displayTitle = 'AST Edit';
-    const xdev = (tool.details as any)?.xdev;
+    const xdev = xdevOf(tool);
     if (xdev?.args?.paths?.[0]) {
       displaySubtitle = xdev.args.paths[0];
     }
@@ -270,6 +257,8 @@ export const ToolCallCard = memo(function ToolCallCard({ tool, isOpen, onToggle,
             </div>
             <CopyButton
               text={inputJson?.isValid && inputJson.pretty ? inputJson.pretty : commandOrInput}
+              className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-ink/45 transition-colors hover:bg-ink/5 hover:text-ink"
+              onClick={(e) => e.stopPropagation()}
               label="Copy"
             />
           </div>

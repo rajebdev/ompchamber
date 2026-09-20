@@ -1,7 +1,8 @@
 
-import { useEffect, useRef } from 'preact/hooks';
+import { useRef } from 'preact/hooks';
 import { X } from 'lucide-preact';
 import type { ContextCostBreakdown } from '@/shared/types/context';
+import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 
 interface CostBreakdownPopoverProps {
   open: boolean;
@@ -22,14 +23,7 @@ export function CostBreakdownPopover({
 }: CostBreakdownPopoverProps) {
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const handle = (e: globalThis.MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
-  }, [open, onClose]);
+  useOnClickOutside(ref, onClose);
 
   if (!open) return null;
 

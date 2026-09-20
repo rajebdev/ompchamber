@@ -1,5 +1,6 @@
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@/server/lib/remix-compat';
+import { methodNotAllowed } from '@/server/lib/route-adapter';
 import { readModelRoles, writeModelRoles } from '@/server/lib/omp/config/roles';
 
 export async function loader(_args: LoaderFunctionArgs) {
@@ -10,9 +11,9 @@ export async function loader(_args: LoaderFunctionArgs) {
   }
 }
 
-export async function action({ request }: ActionFunctionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   if (request.method !== 'PUT') {
-    return json({ error: 'Method not allowed' }, { status: 405 });
+    return methodNotAllowed({ request, params });
   }
   try {
     const body = await request.json() as { roles?: unknown };

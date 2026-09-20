@@ -3,7 +3,7 @@ import { RefreshCw, Search } from 'lucide-preact';
 import { rehydrateTree, setChildrenAt } from '@/shared/lib/fs/file-tree';
 import { GitRepoDropdown } from '@/client/components/workspace/file-explorer/GitRepoDropdown';
 import { FileTreeItem } from '@/client/components/workspace/file-explorer/TreeItem';
-import { useScrollbarFade } from '@/client/hooks/ui/scrollbar-fade';
+import { useScrollbarFade, scrollbarFadeClass } from '@/client/hooks/ui/scrollbar-fade';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
 import { usePanelRefresh, useFileMutationRefresh } from '@/client/hooks/workspace/panel-refresh';
@@ -161,7 +161,7 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
         </div>
       </div>
 
-      <div className={`flex-1 scrollbar-overlay-container p-2 font-mono text-[11px] text-ink/80 ${isScrolling ? 'scrollbar-overlay-scrolling' : 'scrollbar-overlay'}`} onContextMenu={(e) => e.preventDefault()} onScroll={handleScroll}>
+      <div className={`flex-1 scrollbar-overlay-container p-2 font-mono text-[11px] text-ink/80 ${scrollbarFadeClass(isScrolling)}`} onContextMenu={(e) => e.preventDefault()} onScroll={handleScroll}>
         {isLoading && files.length === 0 ? (
           <div className="p-4 text-center text-ink/40">
             Loading files...

@@ -1,8 +1,8 @@
 import { formatNewSessionTitle } from '@/shared/lib/omp/session/default-title';
 import { contentProfile } from '@/shared/lib/omp/session/telemetry-blocks';
 import type { RawMessageItem, SessionContextTelemetry } from '@/shared/types/context';
-import { CONTEXT_LIMIT, type OmpUsage, type SessionEntry } from '@/server/lib/omp/session/telemetry/types';
-import { buildInfo, contextAnchorTokens, emptyTelemetry, formatCost, formatTs, textOf, tokensOf } from '@/server/lib/omp/session/telemetry/format';
+import type { OmpMessageEntry, OmpUsage } from '@/shared/types/omp/session';
+import { CONTEXT_LIMIT, buildInfo, contextAnchorTokens, emptyTelemetry, formatCost, formatTs, textOf, tokensOf } from '@/server/lib/omp/session/telemetry/format';
 import { scanSessionEntries } from '@/server/lib/omp/session/telemetry/scan';
 
 /**
@@ -18,7 +18,7 @@ export async function computeRealSessionTelemetry(
 ): Promise<SessionContextTelemetry> {
   const defaultTitle = fallbackTitle || 'New Session';
 
-  let header: SessionEntry | undefined;
+  let header: OmpMessageEntry | undefined;
   let userCount = 0;
   let assistantCount = 0;
   let userChars = 0;

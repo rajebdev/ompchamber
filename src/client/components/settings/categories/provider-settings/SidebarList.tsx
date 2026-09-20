@@ -1,8 +1,9 @@
 
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import { Check, ChevronDown, Folder, Plus } from 'lucide-preact';
 import type { ProviderItem } from '@/shared/types';
 import { ProviderIcon } from '@/client/components/settings/categories/provider-settings/Icons';
+import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 
 interface ProviderSidebarListProps {
   providers: ProviderItem[];
@@ -31,19 +32,7 @@ export function ProviderSidebarList({
   const [isProjectDropdownOpen, setIsProjectDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    function handleClickOutside(e: globalThis.MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setIsProjectDropdownOpen(false);
-      }
-    }
-    if (isProjectDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isProjectDropdownOpen]);
+  useOnClickOutside(dropdownRef, () => setIsProjectDropdownOpen(false));
 
   return (
     <div className="w-56 sm:w-64 border-r border-ink/10 h-full flex flex-col bg-paper/50 flex-shrink-0">

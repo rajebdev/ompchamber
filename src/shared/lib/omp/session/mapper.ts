@@ -15,6 +15,8 @@
 import type { ChatMessageData, ToolCallData } from '@/shared/types';
 import { extractText, extractUserImageAttachments, parseMessageBlocks, stripInlinedTextAttachments, toToolCallData } from '@/shared/lib/omp/session/parse-message-blocks';
 import { deriveTurnError } from '@/shared/lib/omp/session/turn-error';
+import { formatClock } from '@/shared/lib/format/time';
+import { toEpochMs } from '@/shared/lib/omp/session/timestamps';
 
 /** Extract plain text from omp content (string or [{type:'text',text},...]). */
 export function extractTextFromContent(content: unknown): string {
@@ -30,17 +32,6 @@ export function toolResultText(value: unknown): string {
     return extractText(content);
   }
   return '';
-}
-
-/** omp turn timestamps arrive as epoch-ms numbers on the live stream but as
- *  ISO strings in some JSONL entries — normalize both to epoch ms. */
-function toEpochMs(value: unknown): number | undefined {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const t = new Date(value).getTime();
-    return Number.isNaN(t) ? undefined : t;
-  }
-  return undefined;
 }
 
 /** Convert an omp AgentMessage (content blocks) into the chamber ChatMessageData shape.
@@ -72,7 +63,7 @@ export function toChatMessage(raw: Record<string, unknown>, streaming = true): C
   const id = typeof raw.id === 'string' ? raw.id : `msg-${raw.timestamp ?? Date.now()}-ai`;
   const role = raw.role === 'user' ? 'user' : 'ai';
   const timestamp = typeof raw.timestamp === 'number'
-    ? new Date(raw.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    ? formatClock(raw.timestamp)
     : undefined;
   const attribution = typeof raw.attribution === 'string' ? raw.attribution : undefined;
   const startedAt = toEpochMs(raw.timestamp) ?? toEpochMs(raw.startedAt);

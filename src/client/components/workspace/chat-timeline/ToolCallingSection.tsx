@@ -43,8 +43,8 @@ function normalizeToolData(action: ToolCallData | AgentActionData, index: number
     output: action.output,
     status: action.status || 'success',
     icon: action.icon,
-    diff: ('diff' in action ? (action as any).diff : undefined),
-    input: ('input' in action ? (action as any).input : undefined)
+    diff: 'diff' in action ? action.diff : undefined,
+    input: 'input' in action ? action.input : undefined
   };
 }
 

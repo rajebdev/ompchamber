@@ -13,11 +13,11 @@
  * (/api/folders/*, /api/sessions/:id/*) and refresh by re-loading this route.
  */
 
-import { json } from '@/server/lib/remix-compat';
+import { json, NO_STORE_HEADERS } from '@/server/lib/remix-compat';
 import type { LoaderFunctionArgs } from '@/server/lib/remix-compat';
 import { loadSidebarData } from '@/server/lib/omp/session/sidebar-data.server';
 
 export async function loader(_args: LoaderFunctionArgs) {
   const data = await loadSidebarData();
-  return json(data, { headers: { 'Cache-Control': 'no-store' } });
+  return json(data, { headers: NO_STORE_HEADERS });
 }

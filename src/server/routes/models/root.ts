@@ -4,6 +4,7 @@ import { getDb } from '@/server/db.server';
 import { INITIAL_MODELS_CATALOG } from '@/client/data/models/catalog';
 import { isMockMode } from '@/server/mock.server';
 import type { AIModelOption, ModelEntry, ModelsData } from '@/shared/types';
+import { readSettingsJson, writeSettingsJson } from '@/server/lib/db/settings-store';
 import { runUtilityCommand, type OmpModel } from '@/server/lib/omp/rpc/utility';
 import { readDisabledProviders } from '@/server/lib/omp/config/roles';
 import { invalidateModelsCaches } from '@/shared/lib/models/server-cache';
@@ -41,9 +42,7 @@ function hiddenModelKey(provider: string, modelId: string): string {
 async function readHiddenModelKeys(): Promise<Set<string>> {
   try {
     const db = await getDb();
-    const row = await db.get<{ value?: string }>('SELECT value FROM app_settings WHERE key = ?', [PROVIDERS_CONFIG_KEY]);
-    if (!row?.value) return new Set();
-    const parsed = JSON.parse(row.value);
+    const parsed = await readSettingsJson<unknown>(db, PROVIDERS_CONFIG_KEY, null);
     if (!Array.isArray(parsed)) return new Set();
     const hidden = new Set<string>();
     for (const provider of parsed) {
@@ -178,9 +177,7 @@ function readSelectedModelRef(value: unknown): { provider: string; modelId: stri
 async function loadPersistedModelOption(modelList: ModelEntry[]): Promise<AIModelOption | null> {
   try {
     const db = await getDb();
-    const row = await db.get<{ value?: string }>('SELECT value FROM app_settings WHERE key = ?', [SELECTED_MODEL_KEY]);
-    if (!row?.value) return null;
-    const selected = readSelectedModelRef(JSON.parse(row.value));
+    const selected = readSelectedModelRef(await readSettingsJson<unknown>(db, SELECTED_MODEL_KEY, null));
     if (!selected) return null;
     const match = modelList.find(m => m.id === selected.modelId && m.provider === selected.provider);
     if (!match) return null;
@@ -204,24 +201,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
   if (mock) {
     try {
       const db = await getDb();
-      const catalogRow = await db.get('SELECT value FROM app_settings WHERE key = ?', [MODELS_CATALOG_KEY]);
-      let models: AIModelOption[] = INITIAL_MODELS_CATALOG;
-      if (catalogRow && catalogRow.value) {
-        try {
-          const parsed = JSON.parse(catalogRow.value);
-          if (Array.isArray(parsed) && parsed.length > 0) models = parsed;
-        } catch {}
-      }
-      const selectedRow = await db.get('SELECT value FROM app_settings WHERE key = ?', [SELECTED_MODEL_KEY]);
+      const catalog = await readSettingsJson<unknown>(db, MODELS_CATALOG_KEY, null);
+      const models: AIModelOption[] = Array.isArray(catalog) && catalog.length > 0 ? catalog : INITIAL_MODELS_CATALOG;
+      const persisted = await readSettingsJson<AIModelOption | null>(db, SELECTED_MODEL_KEY, null);
       let selectedModel: AIModelOption = models[5] || models[0];
-      if (selectedRow && selectedRow.value) {
-        try {
-          const parsed = JSON.parse(selectedRow.value);
-          if (parsed && parsed.id && parsed.provider) {
-            const match = models.find(m => m.id === parsed.id && m.provider === parsed.provider);
-            selectedModel = match || parsed;
-          }
-        } catch {}
+      if (persisted && persisted.id && persisted.provider) {
+        const match = models.find(m => m.id === persisted.id && m.provider === persisted.provider);
+        selectedModel = match || persisted;
       }
       return json({ models, selectedModel, isMock: mock });
     } catch (error: any) {
@@ -252,14 +238,8 @@ export async function action({ request }: ActionFunctionArgs) {
     const db = await getDb();
     const body = await request.json();
 
-    const catalogRow = await db.get('SELECT value FROM app_settings WHERE key = ?', [MODELS_CATALOG_KEY]);
-    let models: AIModelOption[] = INITIAL_MODELS_CATALOG;
-    if (catalogRow?.value) {
-      try {
-        const parsed = JSON.parse(catalogRow.value);
-        if (Array.isArray(parsed)) models = parsed;
-      } catch {}
-    }
+    const catalog = await readSettingsJson<unknown>(db, MODELS_CATALOG_KEY, null);
+    let models: AIModelOption[] = Array.isArray(catalog) ? catalog : INITIAL_MODELS_CATALOG;
 
     const { actionType, modelId, provider, thinkingLevel, model, models: newModels } = body;
 
@@ -268,36 +248,24 @@ export async function action({ request }: ActionFunctionArgs) {
     // first provider's entry instead of the one the user acted on.
     if (actionType === 'toggleFavorite' && modelId && provider) {
       models = models.map(m => m.id === modelId && m.provider === provider ? { ...m, isFavorite: !m.isFavorite } : m);
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        MODELS_CATALOG_KEY,
-        JSON.stringify(models),
-      ]);
+      await writeSettingsJson(db, MODELS_CATALOG_KEY, models);
       return json({ success: true, models });
     }
 
     if (actionType === 'setThinking' && modelId && provider && thinkingLevel) {
       models = models.map(m => m.id === modelId && m.provider === provider ? { ...m, thinkingLevel } : m);
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        MODELS_CATALOG_KEY,
-        JSON.stringify(models),
-      ]);
+      await writeSettingsJson(db, MODELS_CATALOG_KEY, models);
       return json({ success: true, models });
     }
 
     if (actionType === 'toggleCmd' && modelId && provider) {
       models = models.map(m => m.id === modelId && m.provider === provider ? { ...m, isCmdAgent: !m.isCmdAgent } : m);
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        MODELS_CATALOG_KEY,
-        JSON.stringify(models),
-      ]);
+      await writeSettingsJson(db, MODELS_CATALOG_KEY, models);
       return json({ success: true, models });
     }
 
     if (actionType === 'selectModel' && model) {
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        SELECTED_MODEL_KEY,
-        JSON.stringify(model),
-      ]);
+      await writeSettingsJson(db, SELECTED_MODEL_KEY, model);
       const parsedModel = readSelectedModelRef(model);
       if (parsedModel) {
         invalidateModelsCache();
@@ -309,18 +277,12 @@ export async function action({ request }: ActionFunctionArgs) {
 
     if (actionType === 'addModel' && model) {
       models.push(model);
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        MODELS_CATALOG_KEY,
-        JSON.stringify(models),
-      ]);
+      await writeSettingsJson(db, MODELS_CATALOG_KEY, models);
       return json({ success: true, models });
     }
 
     if (actionType === 'saveAll' && Array.isArray(newModels)) {
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        MODELS_CATALOG_KEY,
-        JSON.stringify(newModels),
-      ]);
+      await writeSettingsJson(db, MODELS_CATALOG_KEY, newModels);
       return json({ success: true, models: newModels });
     }
 

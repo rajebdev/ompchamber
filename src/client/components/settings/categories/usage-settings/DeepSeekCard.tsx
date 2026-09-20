@@ -1,5 +1,5 @@
 import type { DeepSeekUsageReport } from '@/shared/types';
-import { StatCard } from '@/client/components/settings/categories/usage-settings/StatCard';
+import { StatCard } from '@/client/components/common/StatCard';
 import { formatAmount, formatNumber } from '@/client/components/settings/categories/usage-settings/format';
 
 interface DeepSeekCardProps {

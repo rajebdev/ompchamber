@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'preact/hooks';
+import { useChamberSettingsWriter } from '@/client/hooks/settings/use-chamber-setting';
 
 export function useTheme() {
+  const writeChamberSettings = useChamberSettingsWriter();
   const [theme, setThemeState] = useState<string>(() => {
     if (typeof document !== 'undefined') {
       return document.documentElement.dataset.theme || document.documentElement.getAttribute('data-theme') || 'paper';
@@ -50,12 +52,10 @@ export function useTheme() {
     };
 
     window.addEventListener('omp:theme-changed', handleCustomChange);
-    window.addEventListener('storage', updateTheme);
 
     return () => {
       observer.disconnect();
       window.removeEventListener('omp:theme-changed', handleCustomChange);
-      window.removeEventListener('storage', updateTheme);
     };
   }, []);
 
@@ -63,23 +63,10 @@ export function useTheme() {
     if (typeof document !== 'undefined') {
       document.documentElement.dataset.theme = newTheme;
       setThemeState(newTheme);
-
-      try {
-        const stored = localStorage.getItem('omp_chamber_settings');
-        const parsed = stored ? JSON.parse(stored) : {};
-        parsed.theme = newTheme;
-        localStorage.setItem('omp_chamber_settings', JSON.stringify(parsed));
-
-        fetch('/api/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ omp_chamber_settings: parsed }),
-        }).catch(() => {});
-      } catch {}
-
+      writeChamberSettings({ theme: newTheme });
       window.dispatchEvent(new CustomEvent('omp:theme-changed', { detail: newTheme }));
     }
-  }, []);
+  }, [writeChamberSettings]);
 
   const toggleTheme = useCallback(() => {
     setTheme(isDark ? 'paper' : 'one-dark-pro-soft');

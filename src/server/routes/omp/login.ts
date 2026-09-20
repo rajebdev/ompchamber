@@ -15,15 +15,17 @@
 
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs } from '@/server/lib/remix-compat';
+import { methodNotAllowed } from '@/server/lib/route-adapter';
 import { RpcProcess } from '@/server/lib/omp/rpc/process';
 import { isMockMode } from '@/server/mock.server';
+import { createSseStream } from '@/server/lib/sse';
 
 const READY_TIMEOUT_MS = 30_000;
 const LOGIN_TIMEOUT_MS = 300_000;
 
-export async function action({ request }: ActionFunctionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   if (request.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, { status: 405 });
+    return methodNotAllowed({ request, params });
   }
   const body = await request.json().catch(() => null);
 
@@ -45,21 +47,21 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   const providerId = body.providerId;
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    async start(controller) {
+
+  const stream = createSseStream({
+    async onStart(handlers) {
       let closed = false;
       let sink: ((frame: Record<string, unknown>) => void) | null = null;
+
       const cleanup = () => {
         if (closed) return;
         closed = true;
         globalThis.__ompChamberLoginResponseSink = undefined;
-        try { controller.close(); } catch { /* already closed */ }
+        handlers.close();
       };
       const send = (data: unknown) => {
         if (closed) return;
-        try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`)); }
-        catch { cleanup(); }
+        handlers.send('', data);
       };
 
       globalThis.__ompChamberLoginResponseSink = (frame) => sink?.(frame);
@@ -96,16 +98,12 @@ export async function action({ request }: ActionFunctionArgs) {
         request.signal?.removeEventListener('abort', onAbort);
         void proc.dispose();
       }
+
+      return cleanup;
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    },
-  });
+  return stream.response;
 }
 
 declare global {

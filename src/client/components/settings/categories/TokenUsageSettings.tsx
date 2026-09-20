@@ -5,6 +5,7 @@ import type { BreakdownTab, CadenceType, ChartMetric, ChartSeriesPoint, Settings
 import { TokenUsageMetricsGrid } from '@/client/components/settings/categories/token-usage-settings/MetricsGrid';
 import { TokenUsageBreakdown } from '@/client/components/settings/categories/token-usage-settings/Breakdown';
 import { UsageChart } from '@/client/components/settings/categories/token-usage-settings/Chart';
+import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 
 interface TokenUsageSettingsProps {
   settings: SettingsState;
@@ -30,15 +31,7 @@ export function TokenUsageSettings({ settings: _settings, onUpdate: _onUpdate }:
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    function handleClickOutside(event: globalThis.MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsDropdownOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  useOnClickOutside(dropdownRef, () => setIsDropdownOpen(false));
 
   const loadData = useCallback(() => {
     setIsRefreshing(true);

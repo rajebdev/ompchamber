@@ -10,7 +10,7 @@
  */
 
 import type { RawMessageItem } from '@/shared/types/context';
-import { buildInfo, formatTs, scanSessionEntries, textOf, tokensOf, type OmpMessage, type SessionEntry } from '@/server/lib/omp/session/telemetry';
+import { buildInfo, formatTs, scanSessionEntries, textOf, tokensOf, type OmpMessage, type OmpMessageEntry } from '@/server/lib/omp/session/telemetry';
 import { contentProfile } from '@/shared/lib/omp/session/telemetry-blocks';
 
 export type RawMessageRole = 'all' | 'assistant' | 'user';
@@ -36,7 +36,7 @@ export async function computeRawMessagesPage(
   const window: RawMessageItem[] = [];
   let total = 0;
   let filteredTotal = 0;
-  let header: SessionEntry | undefined;
+  let header: OmpMessageEntry | undefined;
 
   await scanSessionEntries(filePath, (entry, index) => {
     if (entry.type === 'session' && !header) {
@@ -70,7 +70,7 @@ export async function computeRawMessagesPage(
 }
 
 function buildRawItem(
-  entry: SessionEntry,
+  entry: OmpMessageEntry,
   msg: OmpMessage,
   cwd: string,
   index: number,

@@ -1,7 +1,7 @@
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs } from '@/server/lib/remix-compat';
 import { getDb } from '@/server/db.server';
-import { findSessionFileById } from '@/server/lib/omp/session/locator';
+import { resolveSessionFileOr404 } from '@/server/lib/omp/session/locator';
 import { getRpcSession } from '@/server/lib/omp/rpc/session-registry';
 import { clearSessionFileCaches } from '@/server/lib/omp/session/files';
 import { userTurnsRelate } from '@/shared/lib/chat/timeline/turns';
@@ -91,8 +91,9 @@ export async function action({ params, request }: ActionFunctionArgs) {
     : '';
   if (!entryId) return json({ error: 'entryId is required', code: 'entry_id_required' }, { status: 400 });
 
-  const filePath = await findSessionFileById(sessionId);
-  if (!filePath) return json({ error: 'Session not found' }, { status: 404 });
+  const resolved = await resolveSessionFileOr404(sessionId);
+  if ('response' in resolved) return resolved.response;
+  const { filePath } = resolved;
 
   // Tear down the live process first: it flushes pending writes on shutdown
   // and must not race the rewrite. Best-effort — the session may already be

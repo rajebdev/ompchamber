@@ -7,7 +7,7 @@ import { SAMPLE_TOOLS_SESSION_ID, getSampleToolsSession } from '@/client/data/sa
 import { SAMPLE_DIALOGUE_SESSION_ID, getSampleDialogueSession } from '@/client/data/samples/dialogue-session';
 import { SAMPLE_DEVICES_SESSION_ID, getSampleDevicesSession } from '@/client/data/samples/virtual-devices-session';
 import { loadOmpSidebarData } from '@/server/lib/omp/session/reader';
-import { projectPathKey } from '@/server/lib/omp/core/paths';
+import { pathExists, projectPathKey } from '@/server/lib/omp/core/paths';
 
 let dbPromise: Promise<DbClient> | null = null;
 
@@ -19,7 +19,7 @@ export function isWorkspaceSyncEnabled(): boolean {
   return raw !== 'false' && raw !== '0' && raw !== 'off' && raw !== 'no';
 }
 
-export function getDatabasePath(): string {
+export async function getDatabasePath(): Promise<string> {
   if (isMockMode()) {
     return path.join(process.cwd(), 'workspace.db');
   }
@@ -30,15 +30,15 @@ export function getDatabasePath(): string {
       ? path.join(os.homedir(), customPath.slice(1))
       : path.resolve(customPath);
     const dir = path.dirname(resolvedPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+    if (!(await pathExists(dir))) {
+      await fs.promises.mkdir(dir, { recursive: true });
     }
     return resolvedPath;
   }
 
   const defaultDir = path.join(os.homedir(), '.ompchamber');
-  if (!fs.existsSync(defaultDir)) {
-    fs.mkdirSync(defaultDir, { recursive: true });
+  if (!(await pathExists(defaultDir))) {
+    await fs.promises.mkdir(defaultDir, { recursive: true });
   }
   return path.join(defaultDir, 'db.sqlite');
 }
@@ -47,7 +47,7 @@ export async function getDb(): Promise<DbClient> {
   if (dbPromise) return dbPromise;
 
   dbPromise = (async () => {
-    const dbPath = getDatabasePath();
+    const dbPath = await getDatabasePath();
     const db = createDb(dbPath);
 
     await db.exec(`

@@ -4,6 +4,7 @@ import type { SessionContextTelemetry } from '@/shared/types/context';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 import { getLastOpenedAt } from '@/shared/lib/workspace/session-state/store';
 import { useSidebarData } from '@/client/hooks/chat/omp/session-list';
+import { formatCompactTokens } from '@/shared/lib/format/number';
 
 interface MobileHeaderProps {
   activeSessionTitle: string;
@@ -27,12 +28,6 @@ const MAX_RECENT_SESSIONS = 10;
 /** A session is "recent" only while the user opened it within this window
  *  (mirrors the session-state store's idle TTL). */
 const RECENT_OPEN_WINDOW_MS = 10 * 60 * 1000;
-
-function formatTokens(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
-  return String(value);
-}
 
 export function MobileHeader({
   activeSessionTitle,
@@ -225,7 +220,7 @@ export function MobileHeader({
                   <div className="flex justify-between">
                     <span className="text-ink/50">Context:</span>
                     <span>
-                      {formatTokens(telemetry.contextUsed)} / {formatTokens(telemetry.contextLimit)} ({telemetry.contextPercent}%)
+                      {formatCompactTokens(telemetry.contextUsed) ?? '0'} / {formatCompactTokens(telemetry.contextLimit) ?? '0'} ({telemetry.contextPercent}%)
                     </span>
                   </div>
                   <div className="flex justify-between">

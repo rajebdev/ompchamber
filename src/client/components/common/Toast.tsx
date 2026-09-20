@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
 import { AlertCircle, CheckCircle2, X } from 'lucide-preact';
 
@@ -21,16 +21,18 @@ interface ToastProps {
 export function Toast({ toast, onDismiss, duration: durationProp }: ToastProps) {
   const [visible, setVisible] = useState(false);
   const duration = durationProp ?? toast.duration ?? 4000;
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => setVisible(true));
     const timer = setTimeout(() => {
       setVisible(false);
-      setTimeout(() => onDismiss(toast.id), 200);
+      dismissTimerRef.current = setTimeout(() => onDismiss(toast.id), 200);
     }, duration);
     return () => {
       cancelAnimationFrame(raf);
       clearTimeout(timer);
+      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
     };
   }, [toast.id, duration, onDismiss]);
 
@@ -53,7 +55,7 @@ export function Toast({ toast, onDismiss, duration: durationProp }: ToastProps) 
           onClick={() => {
             toast.action?.onClick();
             setVisible(false);
-            setTimeout(() => onDismiss(toast.id), 200);
+            dismissTimerRef.current = setTimeout(() => onDismiss(toast.id), 200);
           }}
           className="flex-shrink-0 px-2 py-0.5 rounded bg-ink text-paper font-semibold hover:opacity-80 transition-opacity"
         >
@@ -64,7 +66,7 @@ export function Toast({ toast, onDismiss, duration: durationProp }: ToastProps) 
         type="button"
         onClick={() => {
           setVisible(false);
-          setTimeout(() => onDismiss(toast.id), 200);
+          dismissTimerRef.current = setTimeout(() => onDismiss(toast.id), 200);
         }}
         className="text-ink/40 hover:text-ink transition-colors flex-shrink-0"
         title="Dismiss"

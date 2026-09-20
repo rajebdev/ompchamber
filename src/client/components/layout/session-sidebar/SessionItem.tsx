@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
 import type { TargetedMouseEvent } from 'preact';
 import { Archive, ArchiveRestore, Check, ChevronDown, ChevronRight, Loader2, Pencil } from 'lucide-preact';
+import { useInlineRename } from '@/client/hooks/ui/inline-rename';
 
 export interface SessionItemProps {
   title: string;
@@ -30,33 +30,15 @@ export function SessionItem({
   onToggleExpand,
 }: SessionItemProps) {
   const showChevron = Boolean(expandable && hasSubagents && onToggleExpand);
-  const [isEditing, setIsEditing] = useState(false);
-  const [draft, setDraft] = useState(title);
-  const inputRef = useRef<HTMLInputElement>(null);
-  // Escape flips this so the ensuing blur is a no-op (no accidental commit).
-  const cancelRef = useRef(false);
-
-  useEffect(() => {
-    if (isEditing) inputRef.current?.select();
-  }, [isEditing]);
-
-  const startRename = () => {
-    cancelRef.current = false;
-    setDraft(title);
-    setIsEditing(true);
-  };
-
-  const commitRename = () => {
-    const trimmed = draft.trim();
-    setIsEditing(false);
-    if (!trimmed || trimmed === title) return;
-    onRename?.(trimmed);
-  };
-
-  const cancelRename = () => {
-    cancelRef.current = true;
-    setIsEditing(false);
-  };
+  const {
+    isEditing,
+    draft,
+    setDraft,
+    inputRef,
+    startRename,
+    handleKeyDown,
+    handleBlur,
+  } = useInlineRename(title, onRename);
 
   return (
     <div
@@ -117,22 +99,8 @@ export function SessionItem({
           value={draft}
           onChange={(e) => setDraft(e.currentTarget.value)}
           onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              commitRename();
-            } else if (e.key === 'Escape') {
-              e.preventDefault();
-              cancelRename();
-            }
-          }}
-          onBlur={() => {
-            if (cancelRef.current) {
-              cancelRef.current = false;
-              return;
-            }
-            commitRename();
-          }}
+          onKeyDown={handleKeyDown}
+          onBlur={handleBlur}
           className="flex-1 min-w-0 bg-paper border border-ink/25 rounded px-1 py-0.5 text-xs text-ink outline-none focus:border-ink/50"
         />
       ) : (

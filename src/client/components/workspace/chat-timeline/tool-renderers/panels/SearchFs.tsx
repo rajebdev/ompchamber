@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'preact/hooks';
-import { Check, Copy, File, Folder, FolderSearch } from 'lucide-preact';
+import { File, Folder, FolderSearch } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
-import { copyToClipboard } from '@/client/hooks/ui/clipboard';
+import { formatBytes } from '@/shared/lib/format/number';
+import { CopyButton } from '@/client/components/common/CopyButton';
 
 interface FsItem {
   path?: unknown;
@@ -21,16 +22,8 @@ function itemType(f: FsItem): 'file' | 'dir' | 'unknown' {
   return 'unknown';
 }
 
-function formatSize(n: unknown): string {
-  if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return '';
-  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-  if (n >= 1024) return `${Math.round(n / 1024)} KB`;
-  return `${Math.round(n)} B`;
-}
-
 /** Panel untuk tool `search_fs` (legacy) — hasil pencarian filesystem yang readable. */
 export function SearchFs({ tool }: { tool: ToolCallData }) {
-  const [copied, setCopied] = useState(false);
   const [filter, setFilter] = useState('');
   const details = tool.details ?? {};
   const rawItems: FsItem[] = Array.isArray(details.results) ? details.results : [];
@@ -64,16 +57,6 @@ export function SearchFs({ tool }: { tool: ToolCallData }) {
     return items.filter((it) => itemPath(it).toLowerCase().includes(lower));
   }, [items, filter]);
 
-  const handleCopy = async () => {
-    const text = items.map((it) => itemPath(it)).join('\n');
-    if (!text) return;
-    const ok = await copyToClipboard(text);
-    if (ok) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
   if (items.length === 0) {
     return (
       <div className="flex items-center gap-2 rounded-lg border border-dashed border-ink/15 px-3 py-2.5 text-[11.5px] text-ink/45">
@@ -104,14 +87,11 @@ export function SearchFs({ tool }: { tool: ToolCallData }) {
               className="h-6 w-24 rounded border border-ink/10 bg-canvas px-2 text-[10.5px] text-ink focus:outline-none"
             />
           )}
-          <button
-            type="button"
-            onClick={handleCopy}
+          <CopyButton
+            text={items.map((it) => itemPath(it)).join('\n')}
             className="flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-ink/45 transition-colors hover:bg-ink/5 hover:text-ink"
-          >
-            {copied ? <Check size={10} className="text-success" /> : <Copy size={10} />}
-            {copied ? 'Copied' : 'Copy'}
-          </button>
+            label="Copy"
+          />
         </div>
       </div>
 
@@ -120,7 +100,7 @@ export function SearchFs({ tool }: { tool: ToolCallData }) {
           const path = itemPath(item);
           if (!path) return null;
           const type = itemType(item);
-          const size = formatSize(item.size);
+          const size = typeof item.size === 'number' && item.size > 0 ? formatBytes(item.size) : '';
 
           return (
             <div

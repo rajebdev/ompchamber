@@ -1,6 +1,11 @@
-import { useEffect, useState } from 'preact/hooks';
-import { fetchModelsData, subscribeModelsUpdated } from '@/shared/lib/models/client';
+import type { ModelsResponse } from '@/shared/lib/models/client';
 import { providerNamesFromConnected } from '@/shared/lib/models/provider-label';
+import { useModelsCatalog } from '@/client/hooks/models/use-models-catalog';
+
+/** slug → display-name map from `connectedProviders` ({} when none connected). */
+export function selectProviderNames(data: ModelsResponse): Record<string, string> {
+  return providerNamesFromConnected(data.connectedProviders);
+}
 
 /**
  * Live provider-slug → display-name map from the shared /api/models catalog
@@ -9,28 +14,5 @@ import { providerNamesFromConnected } from '@/shared/lib/models/provider-label';
  * loading, in MOCK mode, or when the catalog has no `connectedProviders`.
  */
 export function useProviderNames(): Record<string, string> {
-  const [names, setNames] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    let active = true;
-
-    const syncNames = async () => {
-      try {
-        const data = await fetchModelsData();
-        if (!active) return;
-        setNames(providerNamesFromConnected(data.connectedProviders));
-      } catch {
-        if (active) setNames({});
-      }
-    };
-
-    syncNames();
-    const unsubscribe = subscribeModelsUpdated(syncNames);
-    return () => {
-      active = false;
-      unsubscribe();
-    };
-  }, []);
-
-  return names;
+  return useModelsCatalog(selectProviderNames) ?? {};
 }

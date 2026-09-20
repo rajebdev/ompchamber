@@ -9,6 +9,7 @@
 
 const CATALOG_URL = 'https://models.dev/api.json';
 const CATALOG_TTL_MS = 60 * 60 * 1000;
+const CATALOG_TIMEOUT_MS = 8_000;
 
 export interface CatalogModelInfo {
   name?: string;
@@ -21,22 +22,40 @@ export interface CatalogModelInfo {
 
 type ModelsDevCatalog = Record<string, { models?: Record<string, CatalogModelInfo> }>;
 
+export interface CatalogLoadOptions {
+  timeoutMs?: number;
+  /**
+   * When true, a failed fetch or malformed payload throws instead of
+   * degrading to cached/empty data — callers that surface an error envelope
+   * (pricing) opt in.
+   */
+  strict?: boolean;
+}
+
 declare global {
   // eslint-disable-next-line no-var
   var __ompChamberModelsDevCatalog: { data: ModelsDevCatalog; expiresAt: number } | undefined;
 }
 
-export async function loadModelsDevCatalog(): Promise<ModelsDevCatalog> {
+export async function loadModelsDevCatalog(options: CatalogLoadOptions = {}): Promise<ModelsDevCatalog> {
+  const { timeoutMs = CATALOG_TIMEOUT_MS, strict = false } = options;
   const cached = globalThis.__ompChamberModelsDevCatalog;
   if (cached && cached.expiresAt > Date.now()) return cached.data;
   try {
-    const response = await fetch(CATALOG_URL, { signal: AbortSignal.timeout(8_000) });
-    if (!response.ok) return cached?.data ?? {};
+    const response = await fetch(CATALOG_URL, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!response.ok) {
+      if (strict) throw new Error(`models.dev responded ${response.status}`);
+      return cached?.data ?? {};
+    }
     const data = await response.json() as ModelsDevCatalog;
-    if (!data || typeof data !== 'object') return cached?.data ?? {};
+    if (!data || typeof data !== 'object') {
+      if (strict) throw new Error('models.dev payload is not an object');
+      return cached?.data ?? {};
+    }
     globalThis.__ompChamberModelsDevCatalog = { data, expiresAt: Date.now() + CATALOG_TTL_MS };
     return data;
-  } catch {
+  } catch (error) {
+    if (strict) throw error;
     return cached?.data ?? {};
   }
 }

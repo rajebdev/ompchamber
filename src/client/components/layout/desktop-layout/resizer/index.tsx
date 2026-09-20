@@ -252,6 +252,11 @@ export function Separator(props: { className?: string; style?: CSSProperties; ch
   const group = useContext(GroupContext);
   const [dragging, setDragging] = useState(false);
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+
+  // A drag owns two window listeners; if the separator unmounts mid-drag (a
+  // layout switch) nothing else would ever remove them.
+  useEffect(() => () => dragCleanupRef.current?.(), []);
 
   if (!group) {
     throw new Error('<Separator> must be rendered inside a <Group>');
@@ -289,9 +294,11 @@ export function Separator(props: { className?: string; style?: CSSProperties; ch
       if (!b.isFiller) b.setSize(clamp(bStart - delta, b.minSize, b.maxSize));
     };
 
-    const onUp = () => {
+    const cleanup = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      dragCleanupRef.current = null;
       setDragging(false);
       const layout: Record<string, number> = {};
       for (const [pid, state] of panels.current) {
@@ -300,9 +307,12 @@ export function Separator(props: { className?: string; style?: CSSProperties; ch
       }
       onLayoutChanged.current?.(layout, { isUserInteraction: true });
     };
+    const onUp = () => cleanup();
 
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    dragCleanupRef.current = cleanup;
   };
 
   return (

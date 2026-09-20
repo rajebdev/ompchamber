@@ -21,7 +21,7 @@
 
 import { join } from 'path';
 import { parseJsonlLenient } from '@/shared/lib/omp/session/jsonl';
-import { isRecord } from '@/shared/lib/omp/session/parse-message-blocks';
+import { isRecord } from '@/shared/lib/util/guards';
 import { createFolder } from '@/server/lib/omp/subagent/history/fold';
 import { SUBAGENT_ID_RE, siblingDirForSession } from '@/server/lib/omp/subagent/history/paths';
 import { foldSettlements } from '@/shared/lib/omp/subagent/history/settlement';

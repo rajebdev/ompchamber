@@ -1,5 +1,6 @@
 import { json } from '@/server/lib/remix-compat';
 import type { LoaderFunctionArgs } from '@/server/lib/remix-compat';
+import { methodNotAllowed } from '@/server/lib/route-adapter';
 import { isMockMode } from '@/server/mock.server';
 import { buildKenariReport } from '@/server/lib/usage/kenari';
 import { buildDeepSeekReport } from '@/server/lib/usage/deepseek';
@@ -52,9 +53,9 @@ function mockUsageReport(): UsageReport {
  * `configured: false`, an upstream failure is a per-provider `error` (HTTP
  * 200), and only a genuinely unexpected internal failure returns 500.
  */
-export async function loader({ request }: LoaderFunctionArgs) {
+export async function loader({ request, params }: LoaderFunctionArgs) {
   if (request.method !== 'GET') {
-    return json({ error: 'Method not allowed' }, { status: 405 });
+    return methodNotAllowed({ request, params });
   }
   if (isMockMode()) {
     return json(mockUsageReport(), { headers: NO_STORE_HEADERS });

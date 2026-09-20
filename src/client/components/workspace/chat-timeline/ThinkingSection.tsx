@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { TargetedMouseEvent } from 'preact';
-import { BrainCircuit, Check, ChevronDown, Copy, Sparkles } from 'lucide-preact';
+import { BrainCircuit, ChevronDown, Sparkles } from 'lucide-preact';
 import type { ThinkingData } from '@/shared/types';
-import { copyToClipboard } from '@/client/hooks/ui/clipboard';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
+import { CopyButton } from '@/client/components/common/CopyButton';
 
 interface ThinkingSectionProps {
   thinking: ThinkingData | string;
@@ -18,7 +17,6 @@ export function ThinkingSection({
 }: ThinkingSectionProps) {
   const isGenerating = typeof thinking === 'object' ? Boolean(thinking.isGenerating) : false;
   const [isOpen, setIsOpen] = useState(defaultExpanded || isGenerating);
-  const [copied, setCopied] = useState(false);
   const thoughtBodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -39,15 +37,6 @@ export function ThinkingSection({
     const el = thoughtBodyRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [isOpen, cleanThought, isGenerating]);
-
-  const handleCopy = async (e: TargetedMouseEvent<HTMLElement>) => {
-    e.stopPropagation();
-    const success = await copyToClipboard(cleanThought);
-    if (success) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
 
   const toggleOpen = () => setIsOpen(prev => !prev);
 
@@ -99,15 +88,13 @@ export function ThinkingSection({
             <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-ink/40">
               Model Reasoning & Strategy
             </span>
-            <button
-              type="button"
-              onClick={handleCopy}
+            <CopyButton
+              text={cleanThought}
               className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-ink/45 transition-colors hover:bg-ink/5 hover:text-ink"
               title="Copy thinking"
-            >
-              {copied ? <Check size={10} className="text-success" /> : <Copy size={10} />}
-              <span>{copied ? 'Copied' : 'Copy'}</span>
-            </button>
+              wrapLabel
+              label="Copy"
+            />
           </div>
 
           {noticeText && (

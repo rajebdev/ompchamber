@@ -12,7 +12,8 @@
 
 import type { ChatMessageData, SubagentMessagesPage } from '@/shared/types';
 import { toChatMessage } from '@/shared/lib/omp/session/mapper';
-import { extractText, isRecord } from '@/shared/lib/omp/session/parse-message-blocks';
+import { extractText } from '@/shared/lib/omp/session/parse-message-blocks';
+import { isRecord } from '@/shared/lib/util/guards';
 
 /** Normalize one wire message: the RPC may hand back bare omp AgentMessages
  *  or JSONL entries wrapping them as `{ message: {...} }`. */

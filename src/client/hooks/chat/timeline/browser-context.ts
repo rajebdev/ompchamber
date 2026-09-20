@@ -11,7 +11,8 @@
 
 import { useEffect, useRef } from 'preact/hooks';
 import { BROWSER_INCLUDE_PAGE_EVENT } from '@/shared/lib/browser/page-context';
-import { isRecord, readString } from '@/shared/lib/browser/util';
+import { readString } from '@/shared/lib/browser/util';
+import { isRecord } from '@/shared/lib/util/guards';
 
 type DraftSetter = (value: string | ((prev: string) => string)) => void;
 

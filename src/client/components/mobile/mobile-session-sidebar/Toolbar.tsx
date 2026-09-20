@@ -1,6 +1,7 @@
 import type { RefObject } from 'preact/compat';
 import { Archive, ArrowUpDown, Calendar, Check, FolderPlus, Plus, Search, X } from 'lucide-preact';
 import type { SessionSortOption } from '@/shared/types';
+import { SortMenu } from '@/client/components/common/sort-menu';
 
 interface MobileSessionToolbarProps {
   searchQuery: string;
@@ -91,22 +92,7 @@ export function MobileSessionToolbar({
 
           {optionsOpen && (
             <div className="absolute right-0 top-full mt-2 w-52 bg-paper border border-ink/15 rounded-xl shadow-xl z-50 p-2 text-xs">
-              <div className="px-2 py-1 text-[10px] uppercase font-bold text-ink/40 font-mono">Sort Workspaces</div>
-              {(['A-Z', 'Z-A', 'LATEST_SESSION', 'LATEST_ADDED'] as const).map(opt => (
-                <button
-                  key={opt}
-                  type="button"
-                  onClick={() => onSortChange(opt)}
-                  className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between transition-colors ${
-                    sortOption === opt 
-                      ? 'bg-ink/10 font-semibold text-ink' 
-                      : 'hover:bg-ink/5 text-ink/80'
-                  }`}
-                >
-                  <span>{opt.replace('_', ' ')}</span>
-                  {sortOption === opt && <Check size={13} className="text-ink" />}
-                </button>
-              ))}
+              <SortMenu variant="mobile" sortOption={sortOption} onSortChange={onSortChange} />
 
               <div className="border-t border-ink/10 my-1.5"></div>
 

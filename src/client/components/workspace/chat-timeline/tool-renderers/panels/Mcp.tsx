@@ -2,7 +2,7 @@ import { useMemo } from 'preact/hooks';
 import { Boxes, Braces } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
 import { tryParseJson } from '@/shared/lib/code/syntax-highlight';
-import { isRecord } from '@/shared/lib/omp/session/parse-message-blocks';
+import { isRecord } from '@/shared/lib/util/guards';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 import { FallbackOutput } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/FallbackOutput';
 

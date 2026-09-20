@@ -1,6 +1,7 @@
 
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Check, ChevronDown, FolderGit2, RotateCcw, Search } from 'lucide-preact';
+import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 
 interface GitRepoDropdownProps {
   rootPath?: string;
@@ -59,15 +60,7 @@ export function GitRepoDropdown({ rootPath, activeRepo, onSelectRepo }: GitRepoD
     return () => clearInterval(id);
   }, [scanning, rootPath]);
 
-  useEffect(() => {
-    const handleClickOutside = (event: globalThis.MouseEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  useOnClickOutside(ref, () => setOpen(false));
 
   const filteredRepos = repos.filter(r => {
     if (!query.trim()) return true;

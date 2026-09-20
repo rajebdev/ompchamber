@@ -17,8 +17,9 @@
  */
 
 import fs from 'fs';
-import { dirname, join } from 'path';
+import { join } from 'path';
 import { getAgentDir } from '@/server/lib/omp/core/paths';
+import { writeFileAtomic } from '@/server/lib/fs/atomic-write';
 import type { InstructionFileKind } from '@/shared/types';
 
 /** Basenames omp recognises; the provider reads these exact names. */
@@ -68,10 +69,7 @@ export async function readInstructionFile(kind: InstructionFileKind): Promise<In
 export async function saveInstructionFile(kind: InstructionFileKind, content: string): Promise<InstructionFile> {
   const path = getInstructionFilePath(kind);
   if (!content.trim()) return clearInstructionFile(kind);
-  await fs.promises.mkdir(dirname(path), { recursive: true });
-  const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
-  await Bun.write(temp, content);
-  await fs.promises.rename(temp, path);
+  await writeFileAtomic(path, content);
   return { kind, path, content, exists: true };
 }
 

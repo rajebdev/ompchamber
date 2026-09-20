@@ -1,5 +1,11 @@
-import { useEffect, useState } from 'preact/hooks';
-import { fetchModelsData, subscribeModelsUpdated } from '@/shared/lib/models/client';
+import type { ModelsResponse } from '@/shared/lib/models/client';
+import { useModelsCatalog } from '@/client/hooks/models/use-models-catalog';
+
+/** id → display-name map from the catalog's `modelList`; undefined on an empty list. */
+export function selectModelNames(data: ModelsResponse): Record<string, string> | undefined {
+  if (!data.modelList?.length) return undefined;
+  return Object.fromEntries(data.modelList.map((m): [string, string] => [m.id, m.name || m.id]));
+}
 
 /**
  * Live id → display-name map from the shared /api/models catalog (same source
@@ -7,26 +13,5 @@ import { fetchModelsData, subscribeModelsUpdated } from '@/shared/lib/models/cli
  * "deepseek-v4-flash". Falls back to the raw id for unknown models.
  */
 export function useModelNames(): Record<string, string> {
-  const [names, setNames] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    let active = true;
-
-    const syncNames = async () => {
-      try {
-        const data = await fetchModelsData();
-        if (!active || !data.modelList?.length) return;
-        setNames(Object.fromEntries(data.modelList.map((m): [string, string] => [m.id, m.name || m.id])));
-      } catch {}
-    };
-
-    syncNames();
-    const unsubscribe = subscribeModelsUpdated(syncNames);
-    return () => {
-      active = false;
-      unsubscribe();
-    };
-  }, []);
-
-  return names;
+  return useModelsCatalog(selectModelNames) ?? {};
 }

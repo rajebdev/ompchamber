@@ -4,12 +4,13 @@
  */
 
 import { json, type LoaderFunctionArgs } from '@/server/lib/remix-compat';
+import { errorResponse } from '@/server/lib/route-adapter';
 import { homedir } from 'os';
 import { dirname, isAbsolute, join, resolve } from 'path';
 import fs from 'fs';
 import path from 'path';
 import { isMockMode } from '@/server/mock.server';
-import { getDefaultFsRoot, resolveRoot } from '@/server/lib/fs/root';
+import { getDefaultFsRoot, resolveRoot, resolveWithinRoot } from '@/server/lib/fs/root';
 
 /**
  * GET /api/fs/browse?path=<abs> — list subdirectories of a folder for the
@@ -120,18 +121,18 @@ export async function listDirectory({ request }: LoaderFunctionArgs) {
   // Browse inside a nested git repo; emitted paths are repo-relative to match GitPanel.
   const repo = url.searchParams.get('repo');
   if (repo && repo !== '.') {
-    const repoDir = path.resolve(baseDir, repo);
-    if (repoDir !== baseDir && !repoDir.startsWith(baseDir + path.sep)) {
+    const repoDir = resolveWithinRoot(baseDir, repo);
+    if (!repoDir) {
       return json({ error: 'Invalid repo path' }, { status: 403 });
     }
     baseDir = repoDir;
   }
 
   const targetPath = url.searchParams.get('path') || '.';
-  const fullPath = path.resolve(baseDir, targetPath);
+  const fullPath = resolveWithinRoot(baseDir, targetPath);
 
   // Security check to prevent traversing outside the scoped root
-  if (fullPath !== baseDir && !fullPath.startsWith(baseDir + path.sep)) {
+  if (!fullPath) {
     return json({ error: 'Invalid path' }, { status: 403 });
   }
 
@@ -219,16 +220,16 @@ export async function readFile({ request }: LoaderFunctionArgs) {
   // If repo is specified (e.g. nested git project), resolve inside the repo
   const repo = url.searchParams.get('repo');
   if (repo && repo !== '.') {
-    const repoDir = path.resolve(baseDir, repo);
-    if (repoDir === baseDir || repoDir.startsWith(baseDir + path.sep)) {
+    const repoDir = resolveWithinRoot(baseDir, repo);
+    if (repoDir) {
       baseDir = repoDir;
     }
   }
 
   const cleanPath = filePath.replace(/^\/+/, '');
-  const fullPath = path.resolve(baseDir, cleanPath);
+  const fullPath = resolveWithinRoot(baseDir, cleanPath);
 
-  if (fullPath !== baseDir && !fullPath.startsWith(baseDir + path.sep)) {
+  if (!fullPath) {
     return json({ error: 'Invalid path' }, { status: 403 });
   }
 
@@ -243,8 +244,7 @@ export async function readFile({ request }: LoaderFunctionArgs) {
 
     const content = await file.text();
     return json({ content });
-  } catch (error: any) {
-    console.error(error);
-    return json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    return errorResponse(error);
   }
 }

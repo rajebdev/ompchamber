@@ -11,21 +11,30 @@
 
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs } from '@/server/lib/remix-compat';
-import { existsSync } from 'fs';
+import { methodNotAllowed } from '@/server/lib/route-adapter';
 import { join, resolve } from 'path';
+import { pathExists } from '@/server/lib/omp/core/paths';
 
-function hasGitCommand(): boolean {
+async function hasGitCommand(): Promise<boolean> {
   try {
-    return Bun.spawnSync(['git', '--version']).success;
+    return (await Bun.spawn(['git', '--version']).exited) === 0;
   } catch {
-    // Bun.spawnSync throws ENOENT when the binary is missing from PATH.
+    // Bun.spawn throws ENOENT when the binary is missing from PATH.
     return false;
   }
 }
 
-export async function action({ request }: ActionFunctionArgs) {
+async function isInsideGitWorkTree(target: string): Promise<boolean> {
+  try {
+    return (await Bun.spawn(['git', '-C', target, 'rev-parse', '--is-inside-work-tree']).exited) === 0;
+  } catch {
+    return false;
+  }
+}
+
+export async function action({ request, params }: ActionFunctionArgs) {
   if (request.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, { status: 405 });
+    return methodNotAllowed({ request, params });
   }
   try {
     const body = await request.json();
@@ -36,14 +45,8 @@ export async function action({ request }: ActionFunctionArgs) {
     const file = Bun.file(target);
     const exists = await file.exists();
     const isDirectory = exists ? (await file.stat()).isDirectory() : false;
-    const gitInstalled = hasGitCommand();
-    const gitRepo = isDirectory && gitInstalled ? (() => {
-      try {
-        return Bun.spawnSync(['git', '-C', target, 'rev-parse', '--is-inside-work-tree']).success;
-      } catch {
-        return false;
-      }
-    })() : existsSync(join(target, '.git'));
+    const gitInstalled = await hasGitCommand();
+    const gitRepo = isDirectory && gitInstalled ? await isInsideGitWorkTree(target) : await pathExists(join(target, '.git'));
 
     return json({
       valid: isDirectory,

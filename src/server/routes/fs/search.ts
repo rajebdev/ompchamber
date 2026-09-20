@@ -3,6 +3,7 @@ import { ripgrep } from 'ripgrep';
 import { isMockMode } from '@/server/mock.server';
 import { getDefaultFsRoot, resolveRoot } from '@/server/lib/fs/root';
 import { scopeToRepo } from '@/server/lib/fs/repo-scope';
+import { createSseStream } from '@/server/lib/sse';
 
 export interface SearchMatch {
   file: string;
@@ -80,18 +81,10 @@ export async function action({ request }: ActionFunctionArgs) {
   // SSE frame per flushed batch so the panel paints results while rg is still
   // walking the tree. `--json` output is line-delimited, so newline buffering
   // suffices to slice match frames.
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      let closed = false;
-      const send = (event: string, data: unknown) => {
-        if (closed) return;
-        try {
-          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
-        } catch {
-          closed = true;
-        }
-      };
+  const stream = createSseStream({
+    headers: { 'Cache-Control': 'no-cache, no-transform' },
+    async onStart(handlers) {
+      const send = (event: string, data: unknown) => handlers.send(event, data);
 
       // WASI preopens map the guest "." onto the real target directory.
       const preopens = { '.': targetDir };
@@ -134,16 +127,9 @@ export async function action({ request }: ActionFunctionArgs) {
       }
 
       send('done', { count });
-      closed = true;
-      controller.close();
+      handlers.close();
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache, no-transform',
-      'Connection': 'keep-alive',
-    },
-  });
+  return stream.response;
 }

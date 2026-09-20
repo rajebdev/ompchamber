@@ -18,10 +18,7 @@
 
 import type { ToolCallData, ToolType } from '@/shared/types/chat';
 import { hashlineTargetPath } from '@/shared/lib/omp/session/hashline-patch';
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
+import { isRecord } from '@/shared/lib/util/guards';
 
 /** Extract plain text from omp content (string or [{type:'text',text},...]). */
 export function extractText(content: unknown): string {

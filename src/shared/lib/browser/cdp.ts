@@ -11,7 +11,8 @@
  * Playwright/Puppeteer — CDP is a stable wire protocol.
  */
 
-import { isRecord, readString } from '@/shared/lib/browser/util';
+import { readString } from '@/shared/lib/browser/util';
+import { isRecord } from '@/shared/lib/util/guards';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 

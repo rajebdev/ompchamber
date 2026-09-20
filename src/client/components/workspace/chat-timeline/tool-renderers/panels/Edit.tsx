@@ -1,18 +1,13 @@
-import { useMemo, useState } from 'preact/hooks';
-import { ArrowRight, Check, Copy, FileCode, FileEdit, FilePlus } from 'lucide-preact';
+import { useMemo } from 'preact/hooks';
+import { ArrowRight, FileCode, FileEdit, FilePlus } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
-import { copyToClipboard } from '@/client/hooks/ui/clipboard';
+import { CopyButton } from '@/client/components/common/CopyButton';
 import { DiffView } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/DiffView';
 import { HashlinePatch } from '@/client/components/workspace/chat-timeline/tool-renderers/hashline-patch';
 import { getLanguageFromPath, highlightCode, isCodeLike } from '@/shared/lib/code/syntax-highlight';
 import { MAX_OUTPUT_LINES, truncateTailLines } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/truncate';
 import { hashlinePatchFromArgs } from '@/shared/lib/omp/session/hashline-patch';
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
+import { formatBytes } from '@/shared/lib/format/number';
 
 /** Synthesize a standard unified diff from old_string and new_string */
 function createUnifiedDiff(oldStr: string, newStr: string, filePath = 'diff'): string {
@@ -67,7 +62,6 @@ function createUnifiedDiff(oldStr: string, newStr: string, filePath = 'diff'): s
 
 /** Panel khusus untuk operasi edit file (write, edit, edit_file, create_file). */
 export function Edit({ tool }: { tool: ToolCallData }) {
-  const [copied, setCopied] = useState(false);
   const isWrite = tool.type === 'write' || tool.name === 'write' || tool.type === 'create_file';
   const input = tool.input;
   const inputObj = typeof input === 'object' && input !== null ? (input as Record<string, any>) : undefined;
@@ -158,16 +152,6 @@ export function Edit({ tool }: { tool: ToolCallData }) {
     [output, truncatedOutput, lang]
   );
 
-  const handleCopy = async () => {
-    const textToCopy = hashline?.text || newContent || newString || output;
-    if (!textToCopy) return;
-    const ok = await copyToClipboard(textToCopy);
-    if (ok) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
   return (
     <div className="space-y-2.5">
       {/* Target Path Bar */}
@@ -185,14 +169,12 @@ export function Edit({ tool }: { tool: ToolCallData }) {
         </div>
 
         {(newContent || newString || hashline) && (
-          <button
-            type="button"
-            onClick={handleCopy}
+          <CopyButton
+            text={hashline?.text || newContent || newString || output}
             className="flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] text-ink/50 transition-colors hover:bg-ink/5 hover:text-ink"
-          >
-            {copied ? <Check size={11} className="text-success" /> : <Copy size={11} />}
-            {copied ? 'Copied' : 'Copy'}
-          </button>
+            iconSize={11}
+            label="Copy"
+          />
         )}
       </div>
 

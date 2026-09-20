@@ -1,12 +1,20 @@
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@/server/lib/remix-compat';
+import { methodNotAllowed } from '@/server/lib/route-adapter';
 import { getDb } from '@/server/db.server';
 import { DEFAULT_COMMANDS_LIST } from '@/client/data/settings/command';
 import { isMockMode } from '@/server/mock.server';
 import type { CommandItem } from '@/shared/types';
+import { createSettingsListStore } from '@/server/lib/db/settings-store';
 import { runUtilityCommand } from '@/server/lib/omp/rpc/utility';
 
-const SETTINGS_KEY = 'omp_commands_settings';
+const commandsStore = createSettingsListStore<CommandItem>({
+  key: 'omp_commands_settings',
+  mockDefaults: DEFAULT_COMMANDS_LIST,
+  idOf: (command) => command.id,
+  singular: 'command',
+  plural: 'commands',
+});
 
 /** Read live agent commands (skill/custom/extension/file sources) via RPC. */
 async function loadAgentCommands(): Promise<CommandItem[]> {
@@ -44,24 +52,8 @@ async function mergeCommands(custom: CommandItem[]): Promise<CommandItem[]> {
 export async function loader({ request: _request }: LoaderFunctionArgs) {
   try {
     const db = await getDb();
-    const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
     const mock = isMockMode();
-    let commands: CommandItem[] = mock ? DEFAULT_COMMANDS_LIST : [];
-
-    if (row && row.value) {
-      try {
-        const parsed = JSON.parse(row.value);
-        if (Array.isArray(parsed)) {
-          commands = parsed;
-        }
-      } catch {}
-    } else if (mock) {
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        SETTINGS_KEY,
-        JSON.stringify(DEFAULT_COMMANDS_LIST),
-      ]);
-    }
-
+    const commands = await commandsStore.read(db);
     const merged = mock ? commands : await mergeCommands(commands);
     return json({ commands: merged, isMock: mock });
   } catch (error: any) {
@@ -70,7 +62,7 @@ export async function loader({ request: _request }: LoaderFunctionArgs) {
   }
 }
 
-export async function action({ request }: ActionFunctionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   try {
     const db = await getDb();
 
@@ -79,51 +71,18 @@ export async function action({ request }: ActionFunctionArgs) {
       const id = url.searchParams.get('id');
       if (!id) return json({ error: 'id is required' }, { status: 400 });
 
-      const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-      let list: CommandItem[] = isMockMode() ? DEFAULT_COMMANDS_LIST : [];
-      if (row?.value) {
-        try { list = JSON.parse(row.value); } catch {}
-      }
-      list = list.filter(c => c.id !== id);
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        SETTINGS_KEY,
-        JSON.stringify(list),
-      ]);
+      const list = await commandsStore.remove(db, id);
       return json({ success: true, commands: list });
     }
 
     if (request.method === 'POST' || request.method === 'PUT') {
       const body = await request.json();
-      let updatedCommands: CommandItem[] = [];
-
-      if (Array.isArray(body)) {
-        updatedCommands = body;
-      } else if (Array.isArray(body.commands)) {
-        updatedCommands = body.commands;
-      } else if (body.command) {
-        const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-        let list: CommandItem[] = isMockMode() ? DEFAULT_COMMANDS_LIST : [];
-        if (row?.value) {
-          try { list = JSON.parse(row.value); } catch {}
-        }
-        const idx = list.findIndex(c => c.id === body.command.id);
-        if (idx >= 0) {
-          list[idx] = body.command;
-        } else {
-          list.push(body.command);
-        }
-        updatedCommands = list;
-      }
-
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        SETTINGS_KEY,
-        JSON.stringify(updatedCommands),
-      ]);
-
+      const updatedCommands = await commandsStore.upsert(db, body);
+      await commandsStore.write(db, updatedCommands);
       return json({ success: true, commands: updatedCommands });
     }
 
-    return json({ error: 'Method not allowed' }, { status: 405 });
+    return methodNotAllowed({ request, params });
   } catch (error: any) {
     return json({ error: error.message }, { status: 500 });
   }

@@ -26,7 +26,8 @@ import { CdpConnection } from '@/shared/lib/browser/cdp';
 import { acquireConnection, releaseConnection } from '@/shared/lib/browser/connection';
 import { OBSERVER_BINDING, installObserver, parseObserverPayload, type ObserverHandle } from '@/shared/lib/browser/observer';
 import { ownedPages, parsePageTargets, pickTargetId, readTargetInfoPatch, type PageTarget } from '@/shared/lib/browser/targets';
-import { isRecord, readNumber, readString } from '@/shared/lib/browser/util';
+import { readNumber, readString } from '@/shared/lib/browser/util';
+import { isRecord } from '@/shared/lib/util/guards';
 
 const POLL_INTERVAL_MS = 1_000;
 const SCREENCAST_PARAMS = {

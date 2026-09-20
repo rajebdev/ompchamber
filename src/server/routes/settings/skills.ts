@@ -1,14 +1,24 @@
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@/server/lib/remix-compat';
+import { methodNotAllowed } from '@/server/lib/route-adapter';
 import { getDb } from '@/server/db.server';
 import { DEFAULT_CATALOG_SKILLS, DEFAULT_CATALOG_SOURCES, DEFAULT_SKILLS } from '@/client/data/settings/skill';
 import { isMockMode } from '@/server/mock.server';
 import type { SkillItem } from '@/shared/types';
+import { createSettingsListStore, readSettingsJson, writeSettingsJson } from '@/server/lib/db/settings-store';
 import { discoverNativeSkills, setSkillModelInvocation, type DiscoveredSkill } from '@/server/lib/omp/config/skills';
 import { installCatalogSkill, searchSkillCatalog, toCatalogSkills } from '@/server/lib/omp/config/skills-catalog';
 
 const SKILLS_KEY = 'omp_skills';
 const SOURCES_KEY = 'omp_catalog_sources';
+
+const skillsStore = createSettingsListStore<SkillItem>({
+  key: SKILLS_KEY,
+  mockDefaults: DEFAULT_SKILLS,
+  idOf: (skill) => skill.id,
+  singular: 'skill',
+  plural: 'skills',
+});
 
 /**
  * Convert a natively discovered SKILL.md into the chamber SkillItem shape.
@@ -38,31 +48,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const db = await getDb();
     const url = new URL(request.url);
     const includeNative = url.searchParams.get('native') === '1' || !isMockMode();
-    const skillsRow = await db.get('SELECT value FROM app_settings WHERE key = ?', [SKILLS_KEY]);
-    const sourcesRow = await db.get('SELECT value FROM app_settings WHERE key = ?', [SOURCES_KEY]);
     const mock = isMockMode();
 
-    let skills: SkillItem[] = mock ? DEFAULT_SKILLS : [];
-    let catalogSources: typeof DEFAULT_CATALOG_SOURCES = DEFAULT_CATALOG_SOURCES;
-
-    if (skillsRow?.value) {
-      try {
-        const parsed = JSON.parse(skillsRow.value);
-        if (Array.isArray(parsed)) skills = parsed;
-      } catch {}
-    } else if (mock) {
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        SKILLS_KEY,
-        JSON.stringify(DEFAULT_SKILLS),
-      ]);
-    }
-
-    if (sourcesRow?.value) {
-      try {
-        const parsed = JSON.parse(sourcesRow.value);
-        if (Array.isArray(parsed) && parsed.length > 0) catalogSources = parsed;
-      } catch {}
-    }
+    const skills = await skillsStore.read(db);
+    const storedSources = await readSettingsJson<typeof DEFAULT_CATALOG_SOURCES>(db, SOURCES_KEY, DEFAULT_CATALOG_SOURCES);
+    const catalogSources = Array.isArray(storedSources) && storedSources.length > 0 ? storedSources : DEFAULT_CATALOG_SOURCES;
 
     const mergedSkills = includeNative && !mock ? await mergeSkills(skills) : skills;
 
@@ -95,7 +85,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 }
 
-export async function action({ request }: ActionFunctionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   try {
     const db = await getDb();
 
@@ -107,16 +97,7 @@ export async function action({ request }: ActionFunctionArgs) {
         return json({ error: 'Native omp skills are managed on disk' }, { status: 403 });
       }
 
-      const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SKILLS_KEY]);
-      let list: SkillItem[] = isMockMode() ? DEFAULT_SKILLS : [];
-      if (row?.value) {
-        try { list = JSON.parse(row.value); } catch {}
-      }
-      list = list.filter(s => s.id !== id);
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        SKILLS_KEY,
-        JSON.stringify(list),
-      ]);
+      const list = await skillsStore.remove(db, id);
       return json({ success: true, skills: list });
     }
 
@@ -136,26 +117,15 @@ export async function action({ request }: ActionFunctionArgs) {
       }
 
       if (body.type === 'add_source') {
-        const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SOURCES_KEY]);
-        let sources: typeof DEFAULT_CATALOG_SOURCES = DEFAULT_CATALOG_SOURCES;
-        if (row?.value) {
-          try { sources = JSON.parse(row.value); } catch {}
-        }
-        sources = [...sources, body.source];
-        await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-          SOURCES_KEY,
-          JSON.stringify(sources),
-        ]);
-        return json({ success: true, catalogSources: sources });
+        const sources = await readSettingsJson<typeof DEFAULT_CATALOG_SOURCES>(db, SOURCES_KEY, DEFAULT_CATALOG_SOURCES);
+        const updated = [...sources, body.source];
+        await writeSettingsJson(db, SOURCES_KEY, updated);
+        return json({ success: true, catalogSources: updated });
       }
 
       if (body.type === 'install_toggle') {
         const { skill, install } = body;
-        const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SKILLS_KEY]);
-        let skills: SkillItem[] = isMockMode() ? DEFAULT_SKILLS : [];
-        if (row?.value) {
-          try { skills = JSON.parse(row.value); } catch {}
-        }
+        let skills = await skillsStore.read(db);
 
         if (install) {
           // Catalog skill with a package tag installs via the real skills.sh CLI.
@@ -179,48 +149,26 @@ export async function action({ request }: ActionFunctionArgs) {
           skills = skills.filter(s => s.name !== skill.name);
         }
 
-        await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-          SKILLS_KEY,
-          JSON.stringify(skills),
-        ]);
+        await skillsStore.write(db, skills);
         return json({ success: true, skills: isMockMode() ? skills : await mergeSkills(skills) });
       }
 
-      let updatedSkills: SkillItem[] = [];
-      if (Array.isArray(body)) {
-        updatedSkills = body;
-      } else if (Array.isArray(body.skills)) {
-        updatedSkills = body.skills;
-      } else if (body.skill) {
-        // Catalog skill POST installs via the skills.sh CLI: the component
-        // echoes the package back in instructions (and may include repoTag).
+      // Catalog skill POST installs via the skills.sh CLI: the component
+      // echoes the package back in instructions (and may include repoTag).
+      if (body.skill) {
         const pkg = typeof body.skill.repoTag === 'string' && /^[\w.\-]+\/[\w.\-@:]+$/.test(body.skill.repoTag)
           ? body.skill.repoTag
           : (typeof body.skill.instructions === 'string' && /^[\w.\-]+\/[\w.\-@:]+$/.test(body.skill.instructions) ? body.skill.instructions : null);
         if (!isMockMode() && pkg) await installCatalogSkill(pkg);
-        const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SKILLS_KEY]);
-        let list: SkillItem[] = isMockMode() ? DEFAULT_SKILLS : [];
-        if (row?.value) {
-          try { list = JSON.parse(row.value); } catch {}
-        }
-        const idx = list.findIndex(s => s.id === body.skill.id);
-        if (idx >= 0) {
-          list[idx] = body.skill;
-        } else {
-          list.push(body.skill);
-        }
-        updatedSkills = list;
       }
 
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        SKILLS_KEY,
-        JSON.stringify(updatedSkills),
-      ]);
+      const updatedSkills = await skillsStore.upsert(db, body);
+      await skillsStore.write(db, updatedSkills);
 
       return json({ success: true, skills: isMockMode() ? updatedSkills : mergeSkills(updatedSkills) });
     }
 
-    return json({ error: 'Method not allowed' }, { status: 405 });
+    return methodNotAllowed({ request, params });
   } catch (error: any) {
     return json({ error: error.message }, { status: 500 });
   }

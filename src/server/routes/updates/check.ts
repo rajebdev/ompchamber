@@ -1,8 +1,6 @@
-import { json } from '@/server/lib/remix-compat';
+import { json, NO_STORE_HEADERS } from '@/server/lib/remix-compat';
 import { checkAllUpdates } from '@/server/lib/updates/check';
 import type { UpdateCheckResult, UpdateTargetInfo } from '@/shared/types/updates';
-
-const NO_STORE = { 'Cache-Control': 'no-store' } as const;
 
 function failureResult(message: string): UpdateCheckResult {
   const target = (): UpdateTargetInfo => ({
@@ -21,9 +19,9 @@ function failureResult(message: string): UpdateCheckResult {
  */
 export async function loader() {
   try {
-    return json(await checkAllUpdates(), { headers: NO_STORE });
+    return json(await checkAllUpdates(), { headers: NO_STORE_HEADERS });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to check for updates';
-    return json(failureResult(message), { headers: NO_STORE });
+    return json(failureResult(message), { headers: NO_STORE_HEADERS });
   }
 }

@@ -56,6 +56,19 @@ export const XTERM_THEME = XTERM_DARK_THEME;
 
 export const XTERM_FONT_FAMILY = "'Fira Code', Menlo, Monaco, 'Courier New', monospace";
 
+/** xterm's private render service, read only to size-check before fitting. */
+export interface XtermCore {
+  _core?: { _renderService?: { dimensions?: { css?: { cell?: { width?: number; height?: number } } } } };
+}
+
+/** Interop shape of the dynamically imported xterm modules: the class sits at
+ *  the root export on some builds and under `.default` on others. */
+export interface XtermModule<T> {
+  Terminal?: T;
+  FitAddon?: T;
+  default?: { Terminal?: T; FitAddon?: T } & T;
+}
+
 export function safePatchFitAddon(FitAddonClass: any) {
   try {
     const fitProto = FitAddonClass?.prototype;

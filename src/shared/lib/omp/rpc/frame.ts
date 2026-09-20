@@ -12,6 +12,8 @@
  * reassembled on the receiving side.
  */
 
+import { isRecord } from '@/shared/lib/util/guards';
+
 export const MAX_RPC_FRAME_BYTES = 1024 * 1024;
 export const MAX_RPC_REASSEMBLED_BYTES = 64 * 1024 * 1024;
 const RPC_CHUNK_PAYLOAD_BYTES = 256 * 1024;
@@ -26,10 +28,6 @@ interface PendingChunks {
   nextIndex: number;
   chunks: Uint8Array[];
   receivedBytes: number;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isSafeInteger(value: unknown): value is number {

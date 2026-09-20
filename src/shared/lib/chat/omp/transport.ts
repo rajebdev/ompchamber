@@ -12,6 +12,7 @@
  */
 
 import type { OmpAgentEvent, StreamTransport } from '@/shared/types';
+import { readChamberSetting } from '@/shared/lib/settings/client';
 
 export interface AgentStreamHandlers {
   /** Transport is attached; frames may arrive. */
@@ -41,25 +42,9 @@ export function agentEventsUrl(sessionId: string): string {
 }
 
 /**
- * Resolve the configured stream transport. localStorage wins over the
- * server-injected settings so flipping the Chat setting applies to the next
- * connection without waiting for a loader revalidation (same precedence as the
- * chat-sound setting).
+ * Resolve the configured stream transport from the chamber settings snapshot.
  */
 export function readStreamTransport(appSettings?: Record<string, any>): StreamTransport {
-  if (typeof window !== 'undefined') {
-    try {
-      const saved = window.localStorage.getItem('omp_chamber_settings');
-      if (saved) {
-        const parsed = JSON.parse(saved) as { streamTransport?: unknown };
-        if (parsed.streamTransport === 'sse' || parsed.streamTransport === 'websocket') {
-          return parsed.streamTransport;
-        }
-      }
-    } catch {
-      // Unreadable settings fall through to the injected copy.
-    }
-  }
-  const injected = appSettings?.omp_chamber_settings?.streamTransport ?? appSettings?.streamTransport;
-  return injected === 'sse' || injected === 'websocket' ? injected : DEFAULT_STREAM_TRANSPORT;
+  const configured = readChamberSetting<unknown>('streamTransport', appSettings);
+  return configured === 'sse' || configured === 'websocket' ? configured : DEFAULT_STREAM_TRANSPORT;
 }

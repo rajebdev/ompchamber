@@ -17,7 +17,8 @@
  */
 
 import { CdpConnection } from '@/shared/lib/browser/cdp';
-import { isRecord, readString } from '@/shared/lib/browser/util';
+import { readString } from '@/shared/lib/browser/util';
+import { isRecord } from '@/shared/lib/util/guards';
 import type { BrowserActionKind } from '@/shared/types';
 import type { BrowserActionDraft } from '@/shared/lib/browser/activity';
 
@@ -39,7 +40,7 @@ const OBSERVER_SOURCE = [
   '  window.__ompChamberObserver = true;',
   `  var BINDING = ${JSON.stringify(OBSERVER_BINDING)};`,
   '  function emit(kind, label) {',
-  '    try { if (typeof window[BINDING] === "function") window[BINDING](JSON.stringify({ kind: kind, label: label })); } catch (error) {}',
+  '    try { if (typeof window[BINDING] === "function") window[BINDING](JSON.stringify({ kind: kind, label: label })); } catch (error) { /* binding unavailable or page CSP blocked it — interaction reporting is best-effort */ }',
   '  }',
   '  function describe(element) {',
   '    if (!element || !element.tagName) return "elemen";',

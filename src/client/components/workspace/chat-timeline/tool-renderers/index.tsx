@@ -25,6 +25,7 @@ import { Read } from '@/client/components/workspace/chat-timeline/tool-renderers
 import { Edit } from '@/client/components/workspace/chat-timeline/tool-renderers/panels/Edit';
 import { Mcp } from '@/client/components/workspace/chat-timeline/tool-renderers/panels/Mcp';
 import { hashlineTargetPath } from '@/shared/lib/omp/session/hashline-patch';
+import { getToolInputPath } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/tool-input';
 
 /** File a tool call targets: explicit `target`, result details, its arguments
  *  (plain path keys or an omp hashline patch header), then the raw input. */
@@ -62,9 +63,7 @@ export function resolveToolKey(tool: ToolCallData): string {
   }
 
   const rawTarget = (tool.target || '').toLowerCase();
-  const inputPath = typeof tool.input === 'object' && tool.input !== null && typeof (tool.input as any).path === 'string'
-    ? ((tool.input as any).path as string).toLowerCase()
-    : '';
+  const inputPath = getToolInputPath(tool.input)?.toLowerCase() ?? '';
 
   const xdTarget = rawTarget.startsWith('xd://') ? rawTarget.slice(5) : inputPath.startsWith('xd://') ? inputPath.slice(5) : '';
   if (xdTarget) {

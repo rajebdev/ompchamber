@@ -1,10 +1,10 @@
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs } from '@/server/lib/remix-compat';
 import { getDb } from '@/server/db.server';
-import { WebRpcError, startNewRpcSession } from '@/server/lib/omp/rpc/manager';
+import { startNewRpcSession } from '@/server/lib/omp/rpc/manager';
 import { isApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { loadPersistedAccessMode } from '@/shared/lib/omp/config/access-mode.server';
-import { RpcCommandError, RpcCommandTimeoutError } from '@/server/lib/omp/rpc/process';
+import { rpcErrorResponse } from '@/server/lib/omp/rpc/errors';
 
 /** The model-dropdown persists its selection here (actionType 'selectModel');
  *  a spawn that arrives without an explicit provider/modelId falls back to it. */
@@ -22,19 +22,6 @@ async function loadPersistedModel(): Promise<{ provider: string; modelId: string
   } catch {
     return null;
   }
-}
-
-function newSessionErrorResponse(error: unknown) {
-  if (error instanceof WebRpcError) {
-    return json({ error: error.message, code: error.code }, { status: 400 });
-  }
-  if (error instanceof RpcCommandTimeoutError) {
-    return json({ error: error.message, code: 'rpc_command_timeout' }, { status: 400 });
-  }
-  if (error instanceof RpcCommandError) {
-    return json({ error: error.message, code: error.code ?? 'rpc_command_failed' }, { status: 400 });
-  }
-  return json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
 }
 
 // POST /api/agent/new — spawn a brand-new omp session and send the first
@@ -91,6 +78,6 @@ export async function action({ request }: ActionFunctionArgs) {
 
     return json({ error: `Unsupported command: ${type}` }, { status: 400 });
   } catch (error) {
-    return newSessionErrorResponse(error);
+    return rpcErrorResponse(error);
   }
 }

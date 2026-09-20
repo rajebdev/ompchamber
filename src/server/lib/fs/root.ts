@@ -17,6 +17,17 @@ import { pathExists } from '@/server/lib/omp/core/paths';
 
 const APP_ROOT = process.cwd();
 
+/** True when `target` is `root` itself or a path nested beneath it. */
+export function isWithinRoot(root: string, target: string): boolean {
+  return target === root || target.startsWith(root + path.sep);
+}
+
+/** Resolve `rel` under `root`; null when the result escapes the root. */
+export function resolveWithinRoot(root: string, rel: string): string | null {
+  const target = path.resolve(root, rel);
+  return isWithinRoot(root, target) ? target : null;
+}
+
 /**
  * Default browsing root when no session-bound project is active. Mock/demo
  * mode browses the bundled `examples` tree; real mode browses the app root.

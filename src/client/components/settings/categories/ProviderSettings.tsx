@@ -1,4 +1,4 @@
-import { Toast } from '@/client/components/common/Toast';
+import { ToastStack } from '@/client/components/common/ToastStack';
 import { useProviderSettings } from '@/client/hooks/settings/providers';
 import { ProviderSidebarList } from '@/client/components/settings/categories/provider-settings/SidebarList';
 import { ProviderHeader } from '@/client/components/settings/categories/provider-settings/Header';
@@ -95,9 +95,7 @@ export function ProviderSettings({
         )}
       </div>
 
-      {toasts.map(t => (
-        <Toast key={t.id} toast={t} onDismiss={dismissToast} />
-      ))}
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
 
       <AddProviderModal
         isOpen={isAddModalOpen}

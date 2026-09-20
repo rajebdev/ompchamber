@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useState } from 'preact/hooks';
 import type { FunctionComponent } from 'preact/compat';
 import type { AgentItem, SettingsState } from '@/shared/types';
 import { AgentSidebarList } from '@/client/components/settings/categories/agent-settings/SidebarList';
 import { AgentDetailPane } from '@/client/components/settings/categories/agent-settings/DetailPane';
-import { invalidateComposerCache } from '@/shared/lib/chat/composer/client';
+import { LoadingState } from '@/client/components/settings/LoadingState';
+import { useCrudList } from '@/client/hooks/settings/crud-list';
 
 interface AgentSettingsProps {
   settings: SettingsState;
@@ -11,89 +12,22 @@ interface AgentSettingsProps {
 }
 
 export const AgentSettings: FunctionComponent<AgentSettingsProps> = () => {
-  const [agents, setAgents] = useState<AgentItem[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-  const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [selectedProject, setSelectedProject] = useState('ompchamber');
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Load from API
-  useEffect(() => {
-    let active = true;
-    fetch('/api/settings/agents')
-      .then(res => res.json())
-      .then(data => {
-        if (!active) return;
-        const list = data?.agents || [];
-        setAgents(list);
-        if (list.length > 0) {
-          setSelectedAgentId(list[0].id);
-        }
-      })
-      .catch(err => console.error('Failed to load agents from API:', err))
-      .finally(() => {
-        if (active) setIsLoading(false);
-      });
-    return () => { active = false; };
-  }, []);
-
-  const handleAddNewAgent = () => {
-    setIsCreatingNew(true);
-    setSelectedAgentId(null);
-  };
-
-  const handleSelectAgent = (agentId: string) => {
-    setIsCreatingNew(false);
-    setSelectedAgentId(agentId);
-  };
-
-  const handleSaveAgent = (updated: AgentItem) => {
-    const targetAgent: AgentItem = isCreatingNew
-      ? { ...updated, id: `agent-${Date.now()}`, isBuiltIn: false }
-      : updated;
-
-    fetch('/api/settings/agents', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agent: targetAgent }),
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data?.agents) {
-          setAgents(data.agents);
-        } else {
-          setAgents(prev => {
-            const exists = prev.some(a => a.id === targetAgent.id);
-            return exists ? prev.map(a => a.id === targetAgent.id ? targetAgent : a) : [...prev, targetAgent];
-          });
-        }
-        setSelectedAgentId(targetAgent.id);
-        setIsCreatingNew(false);
-        invalidateComposerCache('agent');
-      })
-      .catch(err => console.error('Failed to save agent via API:', err));
-  };
-
-  const handleDeleteAgent = (agentId: string) => {
-    fetch(`/api/settings/agents?id=${encodeURIComponent(agentId)}`, { method: 'DELETE' })
-      .then(res => res.json())
-      .then(data => {
-        if (data?.error) return;
-        invalidateComposerCache('agent');
-        fetch('/api/settings/agents')
-          .then(r => r.json())
-          .then(d => {
-            const nextList = d?.agents || [];
-            setAgents(nextList);
-            if (selectedAgentId === agentId) {
-              setSelectedAgentId(nextList[0]?.id || null);
-            }
-          });
-      })
-      .catch(err => console.error('Failed to delete agent via API:', err));
-  };
-
-  const selectedAgent = agents.find((a) => a.id === selectedAgentId) || agents[0];
+  const { items: agents, selectedId, selected: selectedAgent, isCreatingNew, isLoading, select, startCreate, save, remove } =
+    useCrudList<AgentItem>({
+      endpoint: '/api/settings/agents',
+      listKey: 'agents',
+      bodyKey: 'agent',
+      messages: {
+        load: 'Failed to load agents from API:',
+        save: 'Failed to save agent via API:',
+        delete: 'Failed to delete agent via API:',
+      },
+      cacheKey: 'agent',
+      buildNew: (updated) => ({ ...updated, id: `agent-${Date.now()}`, isBuiltIn: false }),
+      buildUpdate: (updated) => updated,
+      isDeleteError: (data) => Boolean((data as { error?: string } | null)?.error),
+    });
 
   const emptyAgentTemplate: AgentItem = {
     id: `new-${Date.now()}`,
@@ -110,20 +44,16 @@ export const AgentSettings: FunctionComponent<AgentSettingsProps> = () => {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex h-full w-full items-center justify-center text-xs text-ink/40">
-        Loading agents from database...
-      </div>
-    );
+    return <LoadingState>Loading agents from database...</LoadingState>;
   }
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-paper">
       <AgentSidebarList
         agents={agents}
-        selectedAgentId={isCreatingNew ? null : selectedAgentId}
-        onSelectAgent={handleSelectAgent}
-        onAddNewAgent={handleAddNewAgent}
+        selectedAgentId={isCreatingNew ? null : selectedId}
+        onSelectAgent={select}
+        onAddNewAgent={startCreate}
         selectedProject={selectedProject}
         onChangeProject={setSelectedProject}
       />
@@ -133,15 +63,15 @@ export const AgentSettings: FunctionComponent<AgentSettingsProps> = () => {
           <AgentDetailPane
             agent={emptyAgentTemplate}
             isNew={true}
-            onSave={handleSaveAgent}
+            onSave={save}
           />
         ) : selectedAgent ? (
           <AgentDetailPane
             key={selectedAgent.id}
             agent={selectedAgent}
             isNew={false}
-            onSave={handleSaveAgent}
-            onDelete={handleDeleteAgent}
+            onSave={save}
+            onDelete={remove}
           />
         ) : (
           <div className="flex-1 flex items-center justify-center text-xs font-mono text-ink/40">

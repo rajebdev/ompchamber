@@ -16,22 +16,7 @@ import { join } from 'path';
 import { getSessionsDir } from '@/server/lib/omp/core/paths';
 import { parseJsonlLenient } from '@/shared/lib/omp/session/jsonl';
 import type { BreakdownRow, CadenceType, ChartSeriesPoint, TimeRangeType, TokenUsageMetricSet } from '@/shared/types';
-
-interface OmpUsage {
-  input?: number;
-  output?: number;
-  cacheRead?: number;
-  cacheWrite?: number;
-  totalTokens?: number;
-  reasoningTokens?: number;
-  cost?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; total?: number };
-}
-
-interface UsageEntry {
-  type?: string;
-  timestamp?: string;
-  message?: { usage?: OmpUsage; model?: string; provider?: string };
-}
+import type { OmpMessageEntry } from '@/shared/types/omp/session';
 
 export type UsageWindow =
   | { kind: 'preset'; range: Exclude<TimeRangeType, 'custom'> }
@@ -155,7 +140,7 @@ export async function aggregateUsage(window: UsageWindow): Promise<UsageAggregat
       try {
         const ufile = Bun.file(file);
         if ((await ufile.stat()).size > 64 * 1024 * 1024) continue;
-        const entries = parseJsonlLenient<UsageEntry>(await ufile.text());
+        const entries = parseJsonlLenient<OmpMessageEntry>(await ufile.text());
         for (const entry of entries) {
           if (entry.type !== 'message' || !entry.message?.usage) continue;
           const ts = entry.timestamp;

@@ -17,6 +17,8 @@ import { usePanelWidths } from '@/client/hooks/workspace/panel-widths';
 import { useSidebarData } from '@/client/hooks/chat/omp/session-list';
 import { DEFAULT_PANEL_WIDTHS, type EditorWidthMode } from '@/shared/lib/workspace/panel-widths';
 import { ResizeHandle } from '@/client/components/layout/desktop-layout/ResizeHandle';
+import { writeSetting } from '@/shared/lib/settings/client';
+import { useChamberEvent, useWindowEvent } from '@/client/hooks/ui/window-event';
 
 interface DesktopLayoutProps {
   sessionId: string | null;
@@ -82,11 +84,7 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
   );
 
   const saveSetting = (key: string, value: any) => {
-    fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [key]: value })
-    }).catch(console.error);
+    writeSetting(key, value);
   };
 
   // The sidebar shares a group with the workspace stack, so the stack absorbs
@@ -129,35 +127,26 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
   const streamStatus = useAgentStreamStatus();
 
   // Global keyboard shortcut for settings (Cmd/Ctrl + ,)
-  useEffect(() => {
-    const handleKeyDown = (e: globalThis.KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === ',') {
-        e.preventDefault();
-        setSettingsCategory('appearance');
-        setAutoOpenAddProvider(false);
-        setSettingsOpen(prev => !prev);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  useWindowEvent('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === ',') {
+      e.preventDefault();
+      setSettingsCategory('appearance');
+      setAutoOpenAddProvider(false);
+      setSettingsOpen(prev => !prev);
+    }
+  });
 
   // Global event listener for settings triggers
-  useEffect(() => {
-    const handleCustomOpenSettings = (e: Event) => {
-      const customEvent = e as CustomEvent<{ category?: SettingsCategoryId; autoOpenAdd?: boolean }>;
-      if (customEvent.detail?.category) {
-        setSettingsCategory(customEvent.detail.category);
-      } else {
-        setSettingsCategory('appearance');
-      }
-      setAutoOpenAddProvider(!!customEvent.detail?.autoOpenAdd);
-      setSettingsOpen(true);
-    };
-
-    window.addEventListener('omp:open-settings', handleCustomOpenSettings);
-    return () => window.removeEventListener('omp:open-settings', handleCustomOpenSettings);
-  }, []);
+  useChamberEvent('omp:open-settings', (e) => {
+    const customEvent = e as CustomEvent<{ category?: SettingsCategoryId; autoOpenAdd?: boolean }>;
+    if (customEvent.detail?.category) {
+      setSettingsCategory(customEvent.detail.category);
+    } else {
+      setSettingsCategory('appearance');
+    }
+    setAutoOpenAddProvider(!!customEvent.detail?.autoOpenAdd);
+    setSettingsOpen(true);
+  });
 
   const handleChangeRightPanel = (panel: RightPanelType) => {
     let nextShow = showRightPanel;
@@ -176,11 +165,8 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
     // The width is not set here: the restore effect re-applies whichever width
     // this view remembers, and a view that opens for the first time derives it
     // from its own defaultSize. Reopening the same view keeps its width.
-    fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ showRightPanel: nextShow, activeRightPanel: nextActive })
-    }).catch(console.error);
+    writeSetting('showRightPanel', nextShow);
+    writeSetting('activeRightPanel', nextActive);
   };
 
   const handleToggleLeftPanel = (show: boolean) => {

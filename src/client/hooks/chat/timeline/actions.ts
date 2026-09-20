@@ -240,7 +240,10 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
       if (aiIdx > 0 && prev[aiIdx - 1].role === 'user') {
         const userMsg = prev[aiIdx - 1];
         setTimeout(() => {
-          executeSend(userMsg.content, (userMsg.attachments as any) || []);
+          // Committed history attachments carry the persisted display fields
+          // only (no File); executeSend reads them defensively on replay.
+          const attachments = (Array.isArray(userMsg.attachments) ? userMsg.attachments : []) as Attachment[];
+          void executeSend(userMsg.content, attachments);
         }, 0);
         // Drop the user turn too — executeSend re-adds it optimistically; keeping
         // it here would render the same user message twice on every retry.

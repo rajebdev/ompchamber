@@ -1,7 +1,7 @@
 import type { TargetedMouseEvent } from 'preact';
-import { useMemo, useState } from 'preact/hooks';
+import { useMemo } from 'preact/hooks';
 import { memo } from 'preact/compat';
-import { AlertCircle, Bot, Check, Copy, Info, MessageSquarePlus, Undo2, User } from 'lucide-preact';
+import { AlertCircle, Bot, Info, MessageSquarePlus, Undo2, User } from 'lucide-preact';
 import type { ChatMessageData, ToolCallData } from '@/shared/types';
 import { ThinkingSection } from '@/client/components/workspace/chat-timeline/ThinkingSection';
 import { ToolCallingSection } from '@/client/components/workspace/chat-timeline/ToolCallingSection';
@@ -9,8 +9,9 @@ import { SystemNotice } from '@/client/components/workspace/chat-timeline/System
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 import { AttachmentChips } from '@/client/components/workspace/chat-timeline/AttachmentChips';
 import { AiMessageFooter } from '@/client/components/workspace/chat-timeline/AiMessageFooter';
-import { copyToClipboard } from '@/client/hooks/ui/clipboard';
+import { CopyButton } from '@/client/components/common/CopyButton';
 import { capitalizeFirstLetter } from '@/shared/lib/chat/capitalize';
+import { formatClock, parseTodayLabel } from '@/shared/lib/format/time';
 
 interface ChatMessageItemProps {
   msg: ChatMessageData | any;
@@ -57,8 +58,6 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   durationMs = null,
   isPrevAssistant = false,
 }: ChatMessageItemProps) {
-  const [copied, setCopied] = useState(false);
-
   const isUser = msg.role === 'user';
 
   /** Stable string references for MarkdownRenderer so its internal
@@ -75,32 +74,18 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   const formatFooterDate = (value?: string) => {
     const raw = value || msg.timestamp || msg.date;
     if (!raw) return '';
-    // Live-stream messages carry a preformatted "Today, 10:30 AM" label.
     if (raw.startsWith('Today,')) {
       return `Today, ${raw.slice('Today,'.length).trim()}`;
     }
     // Bare "10:30 AM" timestamp (live path) — resolve against today.
     if (/^\d{1,2}:\d{2}\s*(AM|PM)$/i.test(raw)) {
-      const parsed = new Date(`${new Date().toDateString()} ${raw}`);
-      if (!Number.isNaN(parsed.getTime())) {
-        return `Today, ${parsed.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}`;
-      }
+      const parsedMs = parseTodayLabel(`Today, ${raw}`);
+      if (parsedMs !== null) return `Today, ${formatClock(parsedMs)}`;
     }
     const date = new Date(raw);
     if (Number.isNaN(date.getTime())) return '';
     const day = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const time = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-    return `${day}, ${time}`;
-  };
-
-  const handleCopy = async () => {
-    if (msg.content) {
-      const success = await copyToClipboard(msg.content);
-      if (success) {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      }
-    }
+    return `${day}, ${formatClock(date)}`;
   };
 
   const handleNewChat = (e?: TargetedMouseEvent<HTMLElement>) => {
@@ -168,14 +153,12 @@ export const ChatMessageItem = memo(function ChatMessageItem({
             </button>
 
             {/* Copy Button */}
-            <button 
-              type="button"
-              className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" 
+            <CopyButton
+              text={msg.content}
+              className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer"
+              iconSize={12}
               title="Copy prompt"
-              onClick={handleCopy}
-            >
-              {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
-            </button>
+            />
 
             {/* New Chat Button */}
             <button 

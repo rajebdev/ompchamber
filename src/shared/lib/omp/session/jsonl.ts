@@ -12,9 +12,7 @@
  * parsing and raw-text string scans. Nothing here touches the filesystem.
  */
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
+import { isRecord } from '@/shared/lib/util/guards';
 
 /** JSON.stringify never emits raw newlines, so line splitting is a faithful
  *  lenient JSONL parse: malformed/truncated lines are skipped, not fatal. */
@@ -197,6 +195,3 @@ export function parseSessionListHeader(
   }
   return undefined;
 }
-
-/** Re-export for sibling modules that need structural guards. */
-export { isRecord };

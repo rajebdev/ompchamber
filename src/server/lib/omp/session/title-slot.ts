@@ -18,7 +18,7 @@
  */
 
 import fs from 'fs';
-import * as path from 'path';
+import { writeFileAtomic } from '@/server/lib/fs/atomic-write';
 import { SESSION_TITLE_SLOT_BYTES } from '@/server/lib/omp/session/files';
 
 /**
@@ -153,19 +153,19 @@ export async function setSessionTitle(filePath: string, title: string, source: '
   const update = { title: cleaned, source, updatedAt: new Date().toISOString() };
 
   if (await readTitleSlot(filePath)) {
-    // In-place 256-byte slot overwrite via an r+ fd; writeSync is the only way
-    // to write at an offset — Bun's FileSink cannot seek.
+    // In-place 256-byte slot overwrite via an r+ handle; a positioned write is
+    // the only way to write at an offset — Bun's FileSink cannot seek.
     const slotLine = Buffer.from(serializeTitleSlot(update), 'utf8');
-    const fd = fs.openSync(filePath, 'r+');
+    const handle = await fs.promises.open(filePath, 'r+');
     try {
       let offset = 0;
       while (offset < slotLine.length) {
-        const written = fs.writeSync(fd, slotLine, offset, slotLine.length - offset, offset);
-        if (written === 0) throw new Error('Short write while updating session title slot');
-        offset += written;
+        const { bytesWritten } = await handle.write(slotLine, offset, slotLine.length - offset, offset);
+        if (bytesWritten === 0) throw new Error('Short write while updating session title slot');
+        offset += bytesWritten;
       }
     } finally {
-      fs.closeSync(fd);
+      await handle.close();
     }
     return true;
   }
@@ -198,24 +198,6 @@ export async function setSessionTitle(filePath: string, title: string, source: '
   lines[headerIndex] = JSON.stringify(header);
   const body = serializeTitleSlot(update) + lines.join('\n');
 
-  await writeSessionFileAtomic(filePath, body);
+  await writeFileAtomic(filePath, body);
   return true;
-}
-
-/**
- * Replace a session file's contents through a temp file in the same directory
- * plus renameSync. writeFileSync truncates before writing, so a crash or ENOSPC
- * mid-write would permanently destroy the session; rename is atomic, leaving
- * either the old or the new file. Mirrors omp's own atomic session rewrite.
- */
-async function writeSessionFileAtomic(filePath: string, body: string): Promise<void> {
-  const dir = path.dirname(filePath);
-  const tempPath = path.join(dir, `${path.basename(filePath)}.tmp-${process.pid}-${Date.now()}`);
-  try {
-    await Bun.write(tempPath, body);
-    await fs.promises.rename(tempPath, filePath);
-  } catch (writeError) {
-    await fs.promises.rm(tempPath, { force: true }).catch(() => undefined);
-    throw writeError;
-  }
 }

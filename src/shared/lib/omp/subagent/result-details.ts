@@ -9,7 +9,7 @@
  * only concern of that module (and under the file-size ceiling).
  */
 
-import { isRecord } from '@/shared/lib/omp/session/parse-message-blocks';
+import { isRecord } from '@/shared/lib/util/guards';
 import type { SubagentAgentSource, SubagentHistoryResult } from '@/shared/types/omp/subagent';
 
 export function asString(value: unknown): string | undefined {

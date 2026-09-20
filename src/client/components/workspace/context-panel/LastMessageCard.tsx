@@ -1,4 +1,4 @@
-import { StatCard } from '@/client/components/workspace/context-panel/StatCard';
+import { StatCard } from '@/client/components/common/StatCard';
 
 interface LastMessageCardProps {
   input: number;
@@ -23,11 +23,11 @@ export function LastMessageCard({
         <span className="text-xs font-semibold text-ink/80">Last Assistant Message</span>
       </div>
       <div className="flex gap-2 flex-wrap">
-        <StatCard label="In" value={input.toLocaleString()} />
-        <StatCard label="Out" value={output.toLocaleString()} />
-        <StatCard label="Reason" value={reasoning.toLocaleString()} />
-        <StatCard label="Cache" value={`${cacheRead.toLocaleString()}/${cacheWrite.toLocaleString()}`} />
-        <StatCard label="Hit" value={`${cacheHitPercent.toFixed(1)}%`} />
+        <StatCard variant="compact" label="In" value={input.toLocaleString()} />
+        <StatCard variant="compact" label="Out" value={output.toLocaleString()} />
+        <StatCard variant="compact" label="Reason" value={reasoning.toLocaleString()} />
+        <StatCard variant="compact" label="Cache" value={`${cacheRead.toLocaleString()}/${cacheWrite.toLocaleString()}`} />
+        <StatCard variant="compact" label="Hit" value={`${cacheHitPercent.toFixed(1)}%`} />
       </div>
     </>
   );

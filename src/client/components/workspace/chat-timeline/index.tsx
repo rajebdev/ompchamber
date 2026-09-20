@@ -1,17 +1,13 @@
 import { useCallback, useMemo, useState } from 'preact/hooks';
 import { useSearchParams } from '@/client/lib/router/search-params';
-import { ArrowDown } from 'lucide-preact';
-import { ChatInput } from '@/client/components/workspace/chat-timeline/chat-input/index';
-import { MessageList } from '@/client/components/workspace/chat-timeline/MessageList';
 import { AskDialog } from '@/client/components/workspace/chat-timeline/tool-renderers/ask-dialog/Lazy';
-import { MinimapShortcuts } from '@/client/components/workspace/chat-timeline/MinimapShortcuts';
 import { EmptyWorkspacePrompt } from '@/client/components/workspace/chat-timeline/EmptyWorkspacePrompt';
-import { GeneratingIndicator } from '@/client/components/workspace/chat-timeline/GeneratingIndicator';
-import { LoadingOlderIndicator, SessionSkeleton } from '@/client/components/workspace/chat-timeline/SessionSkeleton';
-import { QueueList } from '@/client/components/workspace/chat-timeline/QueueList';
+import { SessionSkeleton } from '@/client/components/workspace/chat-timeline/SessionSkeleton';
 import { UndoConfirmModal } from '@/client/components/workspace/chat-timeline/UndoConfirmModal';
 import { NewChatModal } from '@/client/components/workspace/chat-timeline/NewChatModal';
 import { SubagentView } from '@/client/components/workspace/chat-timeline/SubagentView';
+import { TimelineBody } from '@/client/components/workspace/chat-timeline/TimelineBody';
+import { ComposerDock } from '@/client/components/workspace/chat-timeline/ComposerDock';
 import { useChatTimeline } from '@/client/hooks/chat/timeline';
 import { useSessionTitle } from '@/client/hooks/chat/timeline/session-title';
 import { useSubagentView } from '@/client/hooks/chat/timeline/subagent-view';
@@ -19,7 +15,7 @@ import { useUndoConfirmation } from '@/client/hooks/chat/timeline/undo-confirmat
 import { useModelNames } from '@/client/hooks/models/use-model-names';
 import { useProviderNames } from '@/client/hooks/models/use-provider-names';
 import { useToasts } from '@/client/hooks/ui/toasts';
-import { Toast } from '@/client/components/common/Toast';
+import { ToastStack } from '@/client/components/common/ToastStack';
 import { normalizeNoticePositions } from '@/shared/lib/chat/order';
 import { composerRootFor } from '@/shared/lib/workspace/active-project';
 import { useSidebarData } from '@/client/hooks/chat/omp/session-list';
@@ -193,107 +189,55 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
                 providerNames={providerNames}
               />
             ) : (
-              <>
-                {/* Minimap Shortcuts — desktop only: the rail needs side room a
-                    phone does not have. */}
-                {!isMobile && (
-                  <MinimapShortcuts userMessages={userMessages} onScrollTo={handleScrollTo} />
-                )}
-
-                {/* Timeline Body */}
-                <div
-                  ref={scrollRef}
-                  onScroll={handleScroll}
-                  className={`flex-1 scrollbar-overlay-container overscroll-contain scroll-smooth overflow-x-hidden ${
-                    isMobile ? 'px-3 py-3 pb-8' : 'p-4 pb-10'
-                  } ${
-                    isScrolling ? 'timeline-scrollbar-visible' : 'timeline-scrollbar-hidden'
-                  }`}
-                >
-                  <div ref={contentRef} className="mx-auto w-full max-w-[970px]">
-                    {(loadingOlder || hasMore || loadOlderError) && (
-                      <div className="pb-1">
-                        {loadingOlder
-                          ? <LoadingOlderIndicator />
-                          : (
-                            <button
-                              type="button"
-                              onClick={loadOlder}
-                              className={`block mx-auto px-3 py-1 rounded-full border text-[11px] font-mono transition-colors ${loadOlderError
-                                ? 'border-error/40 text-error hover:border-error'
-                                : 'border-ink/15 text-ink/50 hover:text-ink hover:border-ink/30'}`}
-                            >
-                              {loadOlderError ? 'Failed to load — retry' : 'Load earlier messages'}
-                            </button>
-                          )}
-                      </div>
-                    )}
-                    <MessageList
-                      messages={orderedMessages}
-                      isGenerating={isGenerating}
-                      provider={sessionProvider}
-                      providerNames={providerNames}
-                      modelName={sessionModelName}
-                      modelNames={modelNames}
-                      thinkingLevel={sessionData?.thinkingLevel}
-                      onUndo={handleRequestUndo}
-                      onRetry={handleRetry}
-                      onNewChat={handleNewChat}
-                      isMobile={isMobile}
-                    />
-                  </div>
-                </div>
-
-                {/* Scroll to bottom button */}
-                {showScrollBottom && (
-                  <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-20">
-                    <button
-                      onClick={() => jumpToBottom('smooth')}
-                      className="flex items-center justify-center w-8 h-8 rounded-full border border-ink/20 bg-paper text-ink/60 hover:text-ink hover:bg-ink/5 transition-all shadow-sm"
-                      title="Scroll to bottom"
-                    >
-                      <ArrowDown size={16} />
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-      
-      {/* Input Area Footer with Docked Generating Indicator (Seamless & Transparent) */}
-      {!activeSubagent && (
-        <div
-          className={`bg-transparent border-t-0 flex-shrink-0 space-y-2 ${isMobile ? 'px-3 pt-1' : 'p-4 pt-1'}`}
-          style={isMobile ? { paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' } : undefined}
-        >
-          <div className="mx-auto w-full max-w-[970px]">
-            {isGenerating && (
-              <GeneratingIndicator 
-                modelName={sessionModelName} 
-                generatingVerb={generatingVerb} 
+              <TimelineBody
+                isMobile={isMobile}
+                userMessages={userMessages}
+                onScrollTo={handleScrollTo}
+                scrollRef={scrollRef}
+                contentRef={contentRef}
+                handleScroll={handleScroll}
+                isScrolling={isScrolling}
+                loadingOlder={loadingOlder}
+                hasMore={hasMore}
+                loadOlderError={loadOlderError}
+                loadOlder={loadOlder}
+                messages={orderedMessages}
+                isGenerating={isGenerating}
                 provider={sessionProvider}
                 providerNames={providerNames}
+                modelName={sessionModelName}
+                modelNames={modelNames}
+                thinkingLevel={sessionData?.thinkingLevel}
+                onUndo={handleRequestUndo}
+                onRetry={handleRetry}
+                onNewChat={handleNewChat}
+                showScrollBottom={showScrollBottom}
+                jumpToBottom={jumpToBottom}
               />
             )}
-            <QueueList 
-              queue={messageQueue} 
-              setQueue={setMessageQueue} 
-              onEdit={handleEditQueueItem} 
-              onSendNow={handleSendNowQueueItem}
-            />
-            <QueueList
-              queue={steeringQueue}
-              setQueue={setSteeringQueue}
-              isSteering
-            />
-            <ChatInput
-              value={inputValue}
-              onChange={setInputValue}
+          </div>
+
+          {/* Input Area Footer with Docked Generating Indicator (Seamless & Transparent) */}
+          {!activeSubagent && (
+            <ComposerDock
+              isMobile={isMobile}
+              isGenerating={isGenerating}
+              modelName={sessionModelName}
+              generatingVerb={generatingVerb}
+              provider={sessionProvider}
+              providerNames={providerNames}
+              messageQueue={messageQueue}
+              setMessageQueue={setMessageQueue}
+              onEditQueueItem={handleEditQueueItem}
+              onSendNowQueueItem={handleSendNowQueueItem}
+              steeringQueue={steeringQueue}
+              setSteeringQueue={setSteeringQueue}
+              inputValue={inputValue}
+              setInputValue={setInputValue}
               rootPath={composerRoot}
               attachments={inputAttachments}
-              onAttachmentsChange={setInputAttachments}
+              setAttachments={setInputAttachments}
               onSend={handleSend}
-              isGenerating={isGenerating}
               onStop={handleStop}
               appSettings={appSettings}
               onThinkingLevelChange={handleThinkingLevelChange}
@@ -305,9 +249,7 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
               sessionThinkingLevel={sessionData?.thinkingLevel}
               variant={variant}
             />
-          </div>
-        </div>
-      )}
+          )}
         </>
       )}
 
@@ -342,9 +284,7 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
         />
       )}
 
-      {toasts.map(t => (
-        <Toast key={t.id} toast={t} onDismiss={dismissToast} />
-      ))}
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }

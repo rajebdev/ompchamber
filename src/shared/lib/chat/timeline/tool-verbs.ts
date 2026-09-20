@@ -20,7 +20,7 @@
  */
 
 import type { ToolCallData } from '@/shared/types';
-import { isRecord } from '@/shared/lib/omp/session/parse-message-blocks';
+import { isRecord } from '@/shared/lib/util/guards';
 import { DEVICE_VERBS, PHASE_VERBS, TOOL_ALIASES, TOOL_VERBS, asString, pick, subjectFor, truncate } from '@/shared/lib/chat/timeline/tool-phrases';
 
 export interface ToolActivity {

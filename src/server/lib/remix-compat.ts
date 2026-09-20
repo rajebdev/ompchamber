@@ -24,3 +24,6 @@ export function json(data: unknown, init: JsonInit = {}): Response {
   if (!headers.has('content-type')) headers.set('content-type', 'application/json; charset=utf-8');
   return new Response(JSON.stringify(data), { status: init.status ?? 200, headers });
 }
+
+/** Shared no-store response headers for endpoints that must never be cached. */
+export const NO_STORE_HEADERS: Record<string, string> = { 'cache-control': 'no-store' };

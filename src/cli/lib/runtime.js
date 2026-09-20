@@ -31,7 +31,7 @@ export async function listRegistries() {
   try {
     const dir = getRunDir();
     const entries = [];
-    for (const file of fs.readdirSync(dir)) {
+    for (const file of await fs.promises.readdir(dir)) {
       if (!/^\d+\.json$/.test(file)) continue;
       try {
         const parsed = await Bun.file(joinPath(dir, file)).json();
@@ -64,9 +64,9 @@ export function writeRegistry(entry) {
 /**
  * Remove a registry entry. Never throws.
  */
-export function removeRegistry(port) {
+export async function removeRegistry(port) {
   try {
-    fs.rmSync(getRegistryPath(port), { force: true });
+    await fs.promises.rm(getRegistryPath(port), { force: true });
   } catch {
     // Nothing to do: the registry is best-effort state.
   }
@@ -275,6 +275,6 @@ export async function stopInstance(entry, { timeoutMs = STOP_TIMEOUT_MS } = {}) 
     }
   }
 
-  if (port !== undefined && port !== null) removeRegistry(port);
+  if (port !== undefined && port !== null) await removeRegistry(port);
   return gone;
 }

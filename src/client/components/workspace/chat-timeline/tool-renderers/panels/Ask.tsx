@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'preact/hooks';
-import { Check, CheckCircle2, Copy, HelpCircle, XCircle } from 'lucide-preact';
+import { useMemo } from 'preact/hooks';
+import { CheckCircle2, HelpCircle, XCircle } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 import { tryParseJson } from '@/shared/lib/code/syntax-highlight';
 import { JsonCodeBlock } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/JsonCodeBlock';
-import { copyToClipboard } from '@/client/hooks/ui/clipboard';
+import { CopyButton } from '@/client/components/common/CopyButton';
 
 interface OptionItem {
   label: string;
@@ -74,16 +74,6 @@ export function Ask({ tool }: { tool: ToolCallData }) {
   );
 
   const isMultilineText = typeof rawOutput === 'string' && rawOutput.includes('\n') && !selectedMatch;
-  const [copiedText, setCopiedText] = useState(false);
-
-  const handleCopyText = async () => {
-    if (!rawOutput) return;
-    const ok = await copyToClipboard(rawOutput);
-    if (ok) {
-      setCopiedText(true);
-      setTimeout(() => setCopiedText(false), 2000);
-    }
-  };
 
   return (
     <div className="space-y-2">
@@ -175,15 +165,12 @@ export function Ask({ tool }: { tool: ToolCallData }) {
                   User Response
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={handleCopyText}
+              <CopyButton
+                text={rawOutput}
                 className="flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-ink/45 transition-colors hover:bg-ink/5 hover:text-ink shrink-0"
                 title="Copy response"
-              >
-                {copiedText ? <Check size={10} className="text-success" /> : <Copy size={10} />}
-                {copiedText ? 'Copied' : 'Copy'}
-              </button>
+                label="Copy"
+              />
             </div>
             <pre className="max-h-32 overflow-y-auto p-2 font-mono text-[10.5px] leading-snug whitespace-pre-wrap break-words text-ink/85 select-text">
               {rawOutput}

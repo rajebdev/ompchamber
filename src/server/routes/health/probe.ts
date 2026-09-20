@@ -1,8 +1,6 @@
-import { json } from '@/server/lib/remix-compat';
+import { json, NO_STORE_HEADERS } from '@/server/lib/remix-compat';
 import pkg from '@/../package.json';
 import { isMockMode } from '@/server/mock.server';
-
-const NO_STORE = { 'Cache-Control': 'no-store' } as const;
 
 const STARTED_AT = Date.now();
 const STARTED_ISO = new Date(STARTED_AT).toISOString();
@@ -24,6 +22,6 @@ export async function loader() {
       runtime: 'bun',
       bun: Bun.version,
     },
-    { headers: NO_STORE },
+    { headers: NO_STORE_HEADERS },
   );
 }

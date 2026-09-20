@@ -1,19 +1,10 @@
 import type { ChartMetric, ChartSeriesPoint } from '@/shared/types';
+import { formatCompactTokens, formatCost } from '@/shared/lib/format/number';
 
 interface UsageChartProps {
   cadence: string;
   metric: ChartMetric;
   series: ChartSeriesPoint[];
-}
-
-function formatTokens(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `${Math.round(value / 1_000)}K`;
-  return String(Math.round(value));
-}
-
-function formatCost(value: number): string {
-  return `$${value.toFixed(2)}`;
 }
 
 function buildPath(series: ChartSeriesPoint[], values: number[], max: number): string {
@@ -33,8 +24,8 @@ export function UsageChart({ cadence, metric, series }: UsageChartProps) {
   const values = series.map((p) => (metric === 'cost' ? p.cost : p.tokens));
   const max = values.length > 0 ? Math.max(...values) : 0;
   const path = buildPath(series, values, max);
-  const axisMax = metric === 'cost' ? formatCost(max) : formatTokens(max);
-  const axisMid = metric === 'cost' ? formatCost(max / 2) : formatTokens(max / 2);
+  const axisMax = metric === 'cost' ? formatCost(max) || '$0.00' : formatCompactTokens(max) ?? '0';
+  const axisMid = metric === 'cost' ? formatCost(max / 2) || '$0.00' : formatCompactTokens(max / 2) ?? '0';
   const first = series[0]?.label ?? '';
   const mid = series.length > 2 ? series[Math.floor(series.length / 2)]?.label ?? '' : '';
   const last = series.length > 1 ? series[series.length - 1]?.label ?? '' : '';

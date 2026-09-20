@@ -1,12 +1,20 @@
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@/server/lib/remix-compat';
+import { methodNotAllowed } from '@/server/lib/route-adapter';
 import { getDb } from '@/server/db.server';
 import { DEFAULT_AGENTS_LIST } from '@/client/data/agent-data';
 import { isMockMode } from '@/server/mock.server';
 import type { AgentItem } from '@/shared/types';
+import { createSettingsListStore } from '@/server/lib/db/settings-store';
 import { deleteAgentDefinition, discoverNativeAgents, writeAgentDefinition, type DiscoveredAgent } from '@/server/lib/omp/config/agents';
 
-const SETTINGS_KEY = 'omp_agents';
+const agentsStore = createSettingsListStore<AgentItem>({
+  key: 'omp_agents',
+  mockDefaults: DEFAULT_AGENTS_LIST,
+  idOf: (agent) => agent.id,
+  singular: 'agent',
+  plural: 'agents',
+});
 
 /**
  * Convert a natively discovered omp agent into the chamber AgentItem shape.
@@ -43,24 +51,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const db = await getDb();
     const url = new URL(request.url);
     const includeNative = url.searchParams.get('native') === '1' || !isMockMode();
-    const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
     const mock = isMockMode();
-    let agents: AgentItem[] = mock ? DEFAULT_AGENTS_LIST : [];
-
-    if (row && row.value) {
-      try {
-        const parsed = JSON.parse(row.value);
-        if (Array.isArray(parsed)) {
-          agents = parsed;
-        }
-      } catch {}
-    } else if (mock) {
-      // Seed to DB on initial access in mock mode
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        SETTINGS_KEY,
-        JSON.stringify(DEFAULT_AGENTS_LIST),
-      ]);
-    }
+    const agents = await agentsStore.read(db);
 
     if (includeNative && !mock) {
       return json({ agents: await mergeAgents(agents), isMock: mock });
@@ -72,7 +64,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 }
 
-export async function action({ request }: ActionFunctionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   try {
     const db = await getDb();
 
@@ -86,16 +78,7 @@ export async function action({ request }: ActionFunctionArgs) {
         return json({ error: 'Native omp agents are read-only in chamber' }, { status: 403 });
       }
 
-      const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-      let list: AgentItem[] = isMockMode() ? DEFAULT_AGENTS_LIST : [];
-      if (row?.value) {
-        try { list = JSON.parse(row.value); } catch {}
-      }
-      list = list.filter(a => a.id !== id);
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        SETTINGS_KEY,
-        JSON.stringify(list),
-      ]);
+      const list = await agentsStore.remove(db, id);
       return json({ success: true, agents: list });
     }
 
@@ -128,39 +111,17 @@ export async function action({ request }: ActionFunctionArgs) {
         return json({ success: true, agents: await mergeAgents([]) });
       }
 
-      let updatedAgents: AgentItem[] = [];
-
-      if (Array.isArray(body)) {
-        updatedAgents = body;
-      } else if (Array.isArray(body.agents)) {
-        updatedAgents = body.agents;
-      } else if (body.agent) {
-        if (typeof body.agent.id === 'string' && body.agent.id.startsWith('omp-')) {
-          return json({ error: 'Native omp agents are read-only in chamber' }, { status: 403 });
-        }
-        const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-        let list: AgentItem[] = isMockMode() ? DEFAULT_AGENTS_LIST : [];
-        if (row?.value) {
-          try { list = JSON.parse(row.value); } catch {}
-        }
-        const idx = list.findIndex(a => a.id === body.agent.id);
-        if (idx >= 0) {
-          list[idx] = body.agent;
-        } else {
-          list.push(body.agent);
-        }
-        updatedAgents = list;
+      if (!Array.isArray(body) && !Array.isArray(body.agents) && body.agent
+        && typeof body.agent.id === 'string' && body.agent.id.startsWith('omp-')) {
+        return json({ error: 'Native omp agents are read-only in chamber' }, { status: 403 });
       }
 
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        SETTINGS_KEY,
-        JSON.stringify(updatedAgents),
-      ]);
-
+      const updatedAgents = await agentsStore.upsert(db, body);
+      await agentsStore.write(db, updatedAgents);
       return json({ success: true, agents: updatedAgents });
     }
 
-    return json({ error: 'Method not allowed' }, { status: 405 });
+    return methodNotAllowed({ request, params });
   } catch (error: any) {
     return json({ error: error.message }, { status: 500 });
   }

@@ -9,13 +9,11 @@
  * and omp-web/app/api/providers/enable/route.ts.
  */
 
-import fs from 'fs';
 import { join } from 'path';
 import { getAgentDir } from '@/server/lib/omp/core/paths';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
+import { writeFileAtomic } from '@/server/lib/fs/atomic-write';
+import { asMapping } from '@/server/lib/omp/config/yaml';
+import { isRecord } from '@/shared/lib/util/guards';
 
 /** Path of the native OMP models config (~/.omp/agent/models.yml). */
 export async function getModelsConfigPath(): Promise<string> {
@@ -267,9 +265,7 @@ export async function upsertOmpProviderModels(
     }
   }
 
-  const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
-  await Bun.write(temp, Bun.YAML.stringify(doc, null, 2));
-  await fs.promises.rename(temp, path);
+  await writeFileAtomic(path, Bun.YAML.stringify(doc, null, 2));
 
   return {
     written: true,
@@ -277,10 +273,4 @@ export async function upsertOmpProviderModels(
     backfilledModels: backfillIds,
     skippedModels: input.models.filter((m) => knownIds.has(m.id)).map((m) => m.id),
   };
-}
-
-/** Parses a YAML file that must be a top-level mapping; throws otherwise. */
-function asMapping(parsed: unknown, path: string): Record<string, unknown> {
-  if (!isRecord(parsed)) throw new Error(`${path} must contain a YAML mapping`);
-  return parsed;
 }

@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import { Check, Copy, FileCode, FileText, Folder, FolderOpen, Info, Loader2 } from 'lucide-preact';
-import { copyToClipboard } from '@/client/hooks/ui/clipboard';
+import { FileCode, FileText, Folder, FolderOpen, Info, Loader2 } from 'lucide-preact';
+import { CopyButton } from '@/client/components/common/CopyButton';
 import { getLanguageFromPath, highlightCode } from '@/shared/lib/code/syntax-highlight';
 import { parseDirListing, parseNumberedCode } from '@/shared/lib/code/parser';
 import type { ToolCallData } from '@/shared/types/chat';
 import { MAX_OUTPUT_LINES, truncateTailLines } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/truncate';
+import { extractLineMeta } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/read-line-meta';
+import { getToolInputPath } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/tool-input';
 
 interface ReadPanelProps {
   tool?: ToolCallData;
@@ -12,103 +14,12 @@ interface ReadPanelProps {
   output: string;
 }
 
-function extractLineMeta(
-  tool?: ToolCallData,
-  targetFilePath?: string,
-  rawContent?: string
-): {
-  startLine?: number;
-  lineNumbers?: (number | string | null | undefined)[];
-} {
-  const details = (tool?.details ?? {}) as Record<string, any>;
-  const input = (tool?.input && typeof tool.input === 'object' ? tool.input : {}) as Record<string, any>;
-
-  // 1. Explicit lineNumbers array in details or displayContent
-  const displayContent = details.displayContent;
-  if (displayContent && Array.isArray(displayContent.lineNumbers) && displayContent.lineNumbers.length > 0) {
-    return {
-      startLine: typeof displayContent.startLine === 'number' ? displayContent.startLine : undefined,
-      lineNumbers: displayContent.lineNumbers,
-    };
-  }
-  if (Array.isArray(details.lineNumbers) && details.lineNumbers.length > 0) {
-    return {
-      startLine: typeof details.startLine === 'number' ? details.startLine : undefined,
-      lineNumbers: details.lineNumbers,
-    };
-  }
-
-  // 2. Explicit startLine in displayContent or details
-  if (typeof displayContent?.startLine === 'number' && displayContent.startLine > 0) {
-    return { startLine: displayContent.startLine };
-  }
-  if (typeof details.startLine === 'number' && details.startLine > 0) {
-    return { startLine: details.startLine };
-  }
-  if (typeof details.start_line === 'number' && details.start_line > 0) {
-    return { startLine: details.start_line };
-  }
-  if (typeof details.offset === 'number' && details.offset > 0) {
-    return { startLine: details.offset };
-  }
-
-  // 3. Truncation shownRange start
-  const shownRangeStart =
-    details.meta?.truncation?.shownRange?.start ??
-    details.truncation?.shownRange?.start ??
-    details.meta?.shownRange?.start ??
-    details.shownRange?.start;
-  if (typeof shownRangeStart === 'number' && shownRangeStart > 0) {
-    return { startLine: shownRangeStart };
-  }
-
-  // 4. Input startLine / offset / from
-  const inputStart = input.start_line ?? input.startLine ?? input.offset ?? input.StartLine ?? input.from;
-  if (typeof inputStart === 'number' && inputStart > 0) {
-    return { startLine: inputStart };
-  }
-  if (typeof inputStart === 'string' && /^\d+$/.test(inputStart.trim())) {
-    const parsed = parseInt(inputStart.trim(), 10);
-    if (parsed > 0) return { startLine: parsed };
-  }
-
-  // 5. Line range in target / input path / title: e.g. "app/types/chat.ts:55-100"
-  const pathCandidates = [
-    typeof input.path === 'string' ? input.path : '',
-    tool?.target || '',
-    tool?.title || '',
-    targetFilePath || '',
-  ];
-  for (const candidate of pathCandidates) {
-    const match = candidate.match(/:(\d+)(?:-\d+)?(?:\s|$)/);
-    if (match) {
-      const parsed = parseInt(match[1], 10);
-      if (parsed > 0) return { startLine: parsed };
-    }
-  }
-
-  // 6. Elision notice inside content: e.g. "[Showing lines 54-103 of 208...]"
-  if (rawContent) {
-    const match = rawContent.match(/\[(?:Showing\s+)?lines?\s+(\d+)(?:-\d+)?/i);
-    if (match) {
-      const parsed = parseInt(match[1], 10);
-      if (parsed > 0) return { startLine: parsed };
-    }
-  }
-
-  return {};
-}
-
 /** File & Directory content viewer untuk tool `read` / `view_file` / `read_file`. */
 export function Read({ tool, targetFilePath, output }: ReadPanelProps) {
   const [lazyContent, setLazyContent] = useState<string | null>(null);
   const [loadingFile, setLoadingFile] = useState(false);
-  const [copiedOutput, setCopiedOutput] = useState(false);
 
-  const inputPath =
-    typeof tool?.input === 'object' && tool?.input !== null && typeof (tool.input as any).path === 'string'
-      ? ((tool.input as any).path as string)
-      : undefined;
+  const inputPath = getToolInputPath(tool?.input);
   const filePath = targetFilePath || inputPath || tool?.target || '';
   const cleanFetchPath = filePath.split('?')[0].split('#')[0].replace(/:\d+(?:-\d+)?$/, '');
 
@@ -207,16 +118,6 @@ export function Read({ tool, targetFilePath, output }: ReadPanelProps) {
     return highlightCode(truncatedCode.text, lang);
   }, [truncatedCode, lang]);
 
-  const handleCopy = async () => {
-    const textToCopy = parsedCode.hasLineNumbers ? parsedCode.cleanCode : (rawContent || '');
-    if (!textToCopy) return;
-    const success = await copyToClipboard(textToCopy);
-    if (success) {
-      setCopiedOutput(true);
-      setTimeout(() => setCopiedOutput(false), 2000);
-    }
-  };
-
   return (
     <div className="space-y-2">
       {/* Header Info */}
@@ -234,14 +135,12 @@ export function Read({ tool, targetFilePath, output }: ReadPanelProps) {
         </div>
 
         {rawContent && (
-          <button
-            type="button"
-            onClick={handleCopy}
+          <CopyButton
+            text={parsedCode.hasLineNumbers ? parsedCode.cleanCode : (rawContent || '')}
             className="flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] text-ink/50 transition-colors hover:bg-ink/5 hover:text-ink"
-          >
-            {copiedOutput ? <Check size={11} className="text-success" /> : <Copy size={11} />}
-            {copiedOutput ? 'Copied' : 'Copy'}
-          </button>
+            iconSize={11}
+            label="Copy"
+          />
         )}
       </div>
 

@@ -13,6 +13,8 @@
 import fs from 'fs';
 import { join } from 'path';
 import { getAgentDir, pathExists } from '@/server/lib/omp/core/paths';
+import { writeFileAtomic } from '@/server/lib/fs/atomic-write';
+import { parseFrontmatter } from '@/server/lib/omp/config/yaml';
 
 const MAX_SKILL_MD_BYTES = 512 * 1024;
 
@@ -23,23 +25,6 @@ export interface DiscoveredSkill {
   /** Which disk root the skill was discovered from. */
   sourceRoot: 'user' | 'project';
   filePath: string;
-}
-
-function parseFrontmatter(text: string): { data: Record<string, string>; body: string } {
-  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
-  if (!match) return { data: {}, body: text };
-  const data: Record<string, string> = {};
-  for (const line of match[1].split(/\r?\n/)) {
-    const idx = line.indexOf(':');
-    if (idx <= 0) continue;
-    const key = line.slice(0, idx).trim();
-    let value = line.slice(idx + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-    if (key) data[key] = value;
-  }
-  return { data, body: text.slice(match[0].length) };
 }
 
 async function parseSkillMd(filePath: string, sourceRoot: 'user' | 'project'): Promise<DiscoveredSkill | undefined> {
@@ -125,9 +110,7 @@ export async function setSkillModelInvocation(filePath: string, disable: boolean
       next = `---\n${flag}\n---\n\n${text}`;
     }
     if (next === text) return false;
-    const temp = `${filePath}.tmp-${process.pid}-${Date.now()}`;
-    await Bun.write(temp, next);
-    await fs.promises.rename(temp, filePath);
+    await writeFileAtomic(filePath, next);
     return true;
   } catch {
     return false;

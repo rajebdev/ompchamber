@@ -18,6 +18,7 @@ import { readLines } from '@/server/lib/omp/rpc/lines';
 import { sanitizeProjectCommandEnvironment } from '@/server/lib/omp/rpc/process-helpers';
 import { isMockMode } from '@/server/mock.server';
 import type { McpServerItem } from '@/shared/types';
+import { isRecord } from '@/shared/lib/util/guards';
 
 export type McpTransport = 'command' | 'link';
 
@@ -44,10 +45,6 @@ interface HandshakeOutcome {
   protocolVersion?: string;
   serverInfo?: { name?: string; version?: string };
   toolCount?: number;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function parseServerInfo(value: unknown): { name?: string; version?: string } | undefined {

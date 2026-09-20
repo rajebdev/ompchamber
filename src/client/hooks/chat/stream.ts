@@ -1,4 +1,6 @@
 import type { ChatMessageData, ThinkingData, ToolCallData } from '@/shared/types';
+import { readSseStream } from '@/shared/lib/chat/read-sse';
+import { formatClock } from '@/shared/lib/format/time';
 
 export interface StreamChunkCallbacks {
   onInit?: (data: { id: string; role: 'ai' | 'assistant'; date?: string; timestamp?: string; model?: string }) => void;
@@ -34,8 +36,100 @@ export async function streamChatResponse(
   let currentAiMessage: ChatMessageData = {
     id: `msg-${Date.now()}-ai`,
     role: 'ai',
-    date: `Today, ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
+    date: `Today, ${formatClock()}`,
     content: '',
+  };
+  let doneFired = false;
+
+  const handleFrame = (eventType: string, eventDataRaw: string): boolean | void => {
+    try {
+      const parsedData = JSON.parse(eventDataRaw);
+
+      switch (eventType) {
+        case 'init':
+          currentAiMessage.id = parsedData.id || currentAiMessage.id;
+          currentAiMessage.date = parsedData.date || currentAiMessage.date;
+          callbacks.onInit?.(parsedData);
+          break;
+
+        case 'thinking_start':
+          currentAiMessage.thinking = {
+            thought: '',
+            isGenerating: true,
+          };
+          callbacks.onThinkingStart?.(parsedData);
+          break;
+
+        case 'thinking_chunk':
+          if (typeof currentAiMessage.thinking === 'object') {
+            currentAiMessage.thinking.thought = (currentAiMessage.thinking.thought || '') + parsedData.delta;
+          } else {
+            currentAiMessage.thinking = { thought: parsedData.delta, isGenerating: true };
+          }
+          callbacks.onThinkingChunk?.(parsedData);
+          break;
+
+        case 'thinking_end':
+          currentAiMessage.thinking = {
+            thought: parsedData.thought,
+            summary: parsedData.summary,
+            duration: parsedData.duration,
+            isGenerating: false,
+          };
+          callbacks.onThinkingEnd?.(parsedData);
+          break;
+
+        case 'tool_start':
+          currentAiMessage.toolCalls = [...(currentAiMessage.toolCalls || []), parsedData];
+          callbacks.onToolStart?.(parsedData);
+          break;
+
+        case 'tool_output_chunk':
+          currentAiMessage.toolCalls = (currentAiMessage.toolCalls || []).map(t =>
+            t.id === parsedData.id ? { ...t, output: (t.output || '') + parsedData.delta } : t
+          );
+          callbacks.onToolOutputChunk?.(parsedData);
+          break;
+
+        case 'tool_end':
+          currentAiMessage.toolCalls = (currentAiMessage.toolCalls || []).map(t =>
+            t.id === parsedData.id ? { ...t, ...parsedData } : t
+          );
+          callbacks.onToolEnd?.(parsedData);
+          break;
+
+        case 'content_start':
+          callbacks.onContentStart?.();
+          break;
+
+        case 'content_chunk':
+          currentAiMessage.content = (currentAiMessage.content || '') + parsedData.delta;
+          callbacks.onContentChunk?.(parsedData);
+          break;
+
+        case 'content_end':
+          callbacks.onContentEnd?.();
+          break;
+
+        case 'summary':
+          currentAiMessage.summary = parsedData.summary;
+          callbacks.onSummary?.(parsedData);
+          break;
+
+        case 'done':
+          if (parsedData.message) {
+            currentAiMessage = parsedData.message;
+          }
+          doneFired = true;
+          callbacks.onDone?.(parsedData);
+          return true;
+
+        case 'error':
+          throw new Error(parsedData.error || 'Stream error');
+      }
+    } catch (parseErr) {
+      console.warn('SSE chunk parse error:', parseErr);
+    }
   };
 
   try {
@@ -63,132 +157,10 @@ export async function streamChatResponse(
       throw new Error(`SSE stream connection failed: HTTP ${response.status}`);
     }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let buffer = '';
+    await readSseStream(response, handleFrame, signal);
 
-    while (true) {
-      if (signal?.aborted) {
-        try { reader.cancel(); } catch {}
-        return null;
-      }
-
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n\n');
-      buffer = lines.pop() || '';
-
-      for (const block of lines) {
-        const trimmed = block.trim();
-        if (!trimmed) continue;
-
-        let eventType = 'message';
-        let eventDataRaw = '';
-
-        const blockLines = trimmed.split('\n');
-        for (const line of blockLines) {
-          if (line.startsWith('event:')) {
-            eventType = line.replace(/^event:\s*/, '').trim();
-          } else if (line.startsWith('data:')) {
-            eventDataRaw = line.replace(/^data:\s*/, '').trim();
-          }
-        }
-
-        if (!eventDataRaw) continue;
-
-        try {
-          const parsedData = JSON.parse(eventDataRaw);
-
-          switch (eventType) {
-            case 'init':
-              currentAiMessage.id = parsedData.id || currentAiMessage.id;
-              currentAiMessage.date = parsedData.date || currentAiMessage.date;
-              callbacks.onInit?.(parsedData);
-              break;
-
-            case 'thinking_start':
-              currentAiMessage.thinking = {
-                thought: '',
-                isGenerating: true,
-              };
-              callbacks.onThinkingStart?.(parsedData);
-              break;
-
-            case 'thinking_chunk':
-              if (typeof currentAiMessage.thinking === 'object') {
-                currentAiMessage.thinking.thought = (currentAiMessage.thinking.thought || '') + parsedData.delta;
-              } else {
-                currentAiMessage.thinking = { thought: parsedData.delta, isGenerating: true };
-              }
-              callbacks.onThinkingChunk?.(parsedData);
-              break;
-
-            case 'thinking_end':
-              currentAiMessage.thinking = {
-                thought: parsedData.thought,
-                summary: parsedData.summary,
-                duration: parsedData.duration,
-                isGenerating: false,
-              };
-              callbacks.onThinkingEnd?.(parsedData);
-              break;
-
-            case 'tool_start':
-              currentAiMessage.toolCalls = [...(currentAiMessage.toolCalls || []), parsedData];
-              callbacks.onToolStart?.(parsedData);
-              break;
-
-            case 'tool_output_chunk':
-              currentAiMessage.toolCalls = (currentAiMessage.toolCalls || []).map(t =>
-                t.id === parsedData.id ? { ...t, output: (t.output || '') + parsedData.delta } : t
-              );
-              callbacks.onToolOutputChunk?.(parsedData);
-              break;
-
-            case 'tool_end':
-              currentAiMessage.toolCalls = (currentAiMessage.toolCalls || []).map(t =>
-                t.id === parsedData.id ? { ...t, ...parsedData } : t
-              );
-              callbacks.onToolEnd?.(parsedData);
-              break;
-
-            case 'content_start':
-              callbacks.onContentStart?.();
-              break;
-
-            case 'content_chunk':
-              currentAiMessage.content = (currentAiMessage.content || '') + parsedData.delta;
-              callbacks.onContentChunk?.(parsedData);
-              break;
-
-            case 'content_end':
-              callbacks.onContentEnd?.();
-              break;
-
-            case 'summary':
-              currentAiMessage.summary = parsedData.summary;
-              callbacks.onSummary?.(parsedData);
-              break;
-
-            case 'done':
-              if (parsedData.message) {
-                currentAiMessage = parsedData.message;
-              }
-              callbacks.onDone?.(parsedData);
-              return currentAiMessage;
-
-            case 'error':
-              throw new Error(parsedData.error || 'Stream error');
-          }
-        } catch (parseErr) {
-          console.warn('SSE chunk parse error:', parseErr);
-        }
-      }
-    }
-
-    callbacks.onDone?.({ message: currentAiMessage });
+    if (signal?.aborted) return null;
+    if (!doneFired) callbacks.onDone?.({ message: currentAiMessage });
     return currentAiMessage;
   } catch (err: any) {
     if (signal?.aborted) {
@@ -209,7 +181,7 @@ async function executeFallbackResponse(
   callbacks: StreamChunkCallbacks
 ): Promise<ChatMessageData> {
   const { sessionId, prompt, model, workspaceName } = options;
-  const timeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  const timeStr = formatClock();
 
   const fallbackMsg: ChatMessageData = {
     id: `msg-${Date.now()}-ai`,

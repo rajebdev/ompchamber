@@ -10,7 +10,7 @@
  * under the repo's per-file size ceiling.
  */
 
-import { isRecord } from '@/shared/lib/omp/session/jsonl';
+import { isRecord } from '@/shared/lib/util/guards';
 
 export const TYPE_ORDER = ['reasoning', 'text', 'bash', 'read', 'edit', 'search', 'web', 'tool'] as const;
 

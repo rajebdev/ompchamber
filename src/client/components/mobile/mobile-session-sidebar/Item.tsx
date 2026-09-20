@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
-import { ChevronDown, ChevronRight, GitBranch, MessageSquare, MoreHorizontal, Pin, PinOff, Trash2 } from 'lucide-preact';
-import { useFetcher } from '@/client/lib/router/fetcher';
+import { useRef, useState } from 'preact/hooks';
+import { ChevronDown, ChevronRight, GitBranch, MessageSquare, MoreHorizontal } from 'lucide-preact';
 import { MobileSessionRow } from '@/client/components/mobile/mobile-session-sidebar/SessionRow';
+import { WorkspaceOptionsMenu } from '@/client/components/common/workspace-options-menu';
+import { useShowMore } from '@/client/hooks/ui/show-more';
+import { useWorkspaceFolderActions } from '@/client/hooks/workspace/workspace-folder-actions';
 import { getProjectIcon } from '@/shared/lib/workspace/project-icon';
 import { relativeTimeAgo } from '@/shared/lib/workspace/relative-time';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 import { useSidebarData } from '@/client/hooks/chat/omp/session-list';
-import type { SessionItemData, WorkspaceFolderData } from '@/shared/types';
+import type { WorkspaceFolderData } from '@/shared/types';
 
 interface MobileSessionCategoryProps {
   folder: WorkspaceFolderData;
@@ -18,9 +20,6 @@ interface MobileSessionCategoryProps {
   sessionStatus?: Record<string, 'stream' | 'finish' | 'abort' | 'error'>;
 }
 
-const INITIAL_VISIBLE = 5;
-const VISIBLE_STEP = 7;
-
 export function MobileSessionCategory({
   folder,
   activeSessionId,
@@ -30,67 +29,33 @@ export function MobileSessionCategory({
   showArchived = false,
   sessionStatus = {}
 }: MobileSessionCategoryProps) {
-  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
-  const archiveFetcher = useFetcher();
+  const { visibleCount, showMore } = useShowMore();
   const { refresh } = useSidebarData();
   const [showMenu, setShowMenu] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const pinFetcher = useFetcher<{ success?: boolean }>();
-  const deleteFetcher = useFetcher<{ success?: boolean }>();
+  const {
+    confirmDelete,
+    requestDelete,
+    cancelDelete,
+    handlePin,
+    handleDelete,
+    handleArchive,
+    handleRename,
+  } = useWorkspaceFolderActions(folder, refresh);
 
   useOnClickOutside(menuRef, () => {
     setShowMenu(false);
-    setConfirmDelete(false);
+    cancelDelete();
   });
 
-  useEffect(() => {
-    if (pinFetcher.data?.success || deleteFetcher.data?.success) {
-      window.dispatchEvent(new CustomEvent('omp:workspace-updated'));
-    }
-  }, [deleteFetcher.data, pinFetcher.data]);
-
-  const handlePin = () => {
-    if (typeof folder.id !== 'number') return;
-    pinFetcher.submit(
-      { isPinned: String(!folder.isPinned) },
-      { method: 'POST', action: `/api/folders/${folder.id}/pin` },
-    );
+  const onPin = () => {
+    handlePin();
     setShowMenu(false);
-    refresh();
   };
 
-  const handleDelete = () => {
-    if (typeof folder.id !== 'number') return;
-    deleteFetcher.submit(
-      {},
-      { method: 'POST', action: `/api/folders/${folder.id}/delete` },
-    );
+  const onDelete = () => {
+    handleDelete();
     setShowMenu(false);
-    setConfirmDelete(false);
-    refresh();
-  };
-
-  const handleArchive = (session: SessionItemData) => {
-    const nextArchived = session.is_archived !== 1;
-    archiveFetcher.submit(
-      { archived: String(nextArchived) },
-      { method: 'POST', action: `/api/sessions/${session.id}/archive` }
-    );
-    refresh();
-  };
-
-  const handleRename = async (session: SessionItemData, name: string) => {
-    try {
-      const body = new FormData();
-      body.set('name', name);
-      const res = await fetch(`/api/sessions/${encodeURIComponent(String(session.id))}/rename`, { method: 'POST', body });
-      if (!res.ok) return;
-    } catch {
-      return;
-    }
-    window.dispatchEvent(new CustomEvent('omp:session-renamed', { detail: { sessionId: String(session.id), title: name } }));
-    refresh();
   };
 
   // Archived rows are filtered first; the badge reports the visible set so the
@@ -154,29 +119,15 @@ export function MobileSessionCategory({
             </button>
             {showMenu && (
               <div className="absolute right-0 top-full mt-1 w-48 bg-paper border border-ink/15 rounded-lg shadow-lg z-50 py-1 text-xs">
-                {confirmDelete ? (
-                  <>
-                    <div className="px-3 py-2 text-ink/80 font-medium">Delete workspace?</div>
-                    <button type="button" onClick={handleDelete} className="w-full text-left px-3 py-2 hover:bg-error/10 text-error flex items-center space-x-2">
-                      <Trash2 size={13} />
-                      <span>Yes, delete</span>
-                    </button>
-                    <button type="button" onClick={() => setConfirmDelete(false)} className="w-full text-left px-3 py-2 hover:bg-ink/5 text-ink/70">
-                      Cancel
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button type="button" onClick={handlePin} className="w-full text-left px-3 py-2 hover:bg-ink/5 text-ink/80 flex items-center space-x-2">
-                      {folder.isPinned ? <PinOff size={13} /> : <Pin size={13} />}
-                      <span>{folder.isPinned ? 'Unpin Workspace' : 'Pin Workspace'}</span>
-                    </button>
-                    <button type="button" onClick={() => setConfirmDelete(true)} className="w-full text-left px-3 py-2 hover:bg-error/10 text-error flex items-center space-x-2">
-                      <Trash2 size={13} />
-                      <span>Delete Workspace</span>
-                    </button>
-                  </>
-                )}
+                <WorkspaceOptionsMenu
+                  variant="mobile"
+                  isPinned={folder.isPinned}
+                  confirmDelete={confirmDelete}
+                  onPin={onPin}
+                  onDelete={onDelete}
+                  onRequestDelete={requestDelete}
+                  onCancelDelete={cancelDelete}
+                />
               </div>
             )}
           </div>
@@ -203,7 +154,7 @@ export function MobileSessionCategory({
           {filteredSessions.length > visibleCount && (
             <button
               type="button"
-              onClick={() => setVisibleCount(c => c + VISIBLE_STEP)}
+              onClick={showMore}
               className="w-full text-left px-3 py-2 text-xs text-ink/60 hover:text-ink flex items-center space-x-1.5"
             >
               <ChevronDown size={12} className="w-4 flex-shrink-0" />

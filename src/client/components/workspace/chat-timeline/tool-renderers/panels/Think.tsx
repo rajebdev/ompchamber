@@ -1,13 +1,10 @@
-import { useState } from 'preact/hooks';
-import { BrainCircuit, Check, Copy } from 'lucide-preact';
+import { BrainCircuit } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
-import { copyToClipboard } from '@/client/hooks/ui/clipboard';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
+import { CopyButton } from '@/client/components/common/CopyButton';
 
 /** Panel khusus untuk tool `think` — internal monologue & reasoning scratchpad. */
 export function Think({ tool }: { tool: ToolCallData }) {
-  const [copied, setCopied] = useState(false);
-
   const input = tool.input;
   const inputObj = typeof input === 'object' && input !== null ? (input as Record<string, any>) : undefined;
 
@@ -21,15 +18,6 @@ export function Think({ tool }: { tool: ToolCallData }) {
           : typeof input === 'string'
             ? input
             : tool.output || tool.detail || '';
-
-  const handleCopy = async () => {
-    if (!thoughtText) return;
-    const ok = await copyToClipboard(thoughtText);
-    if (ok) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
 
   if (!thoughtText) {
     return (
@@ -49,14 +37,11 @@ export function Think({ tool }: { tool: ToolCallData }) {
           </span>
         </div>
 
-        <button
-          type="button"
-          onClick={handleCopy}
+        <CopyButton
+          text={thoughtText}
           className="flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[9.5px] text-ink/45 transition-colors hover:bg-ink/5 hover:text-ink"
-        >
-          {copied ? <Check size={10} className="text-success" /> : <Copy size={10} />}
-          {copied ? 'Copied' : 'Copy'}
-        </button>
+          label="Copy"
+        />
       </div>
 
       <div className="max-h-64 overflow-y-auto p-3 text-[11.5px] leading-relaxed text-ink/80 select-text">

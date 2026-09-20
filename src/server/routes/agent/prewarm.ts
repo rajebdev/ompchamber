@@ -1,8 +1,9 @@
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs } from '@/server/lib/remix-compat';
-import { WebRpcError, prewarmRpcSession } from '@/server/lib/omp/rpc/manager';
+import { prewarmRpcSession } from '@/server/lib/omp/rpc/manager';
 import { isApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { loadPersistedAccessMode } from '@/shared/lib/omp/config/access-mode.server';
+import { rpcErrorResponse } from '@/server/lib/omp/rpc/errors';
 
 // POST /api/agent/prewarm — start an idle `omp --mode rpc-ui` process for the
 // given cwd ahead of the first prompt so adopting it on send skips the
@@ -21,9 +22,6 @@ export async function action({ request }: ActionFunctionArgs) {
     prewarmRpcSession(cwd, accessMode);
     return json({ success: true });
   } catch (error) {
-    if (error instanceof WebRpcError) {
-      return json({ error: error.message, code: error.code }, { status: 400 });
-    }
-    return json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
+    return rpcErrorResponse(error);
   }
 }

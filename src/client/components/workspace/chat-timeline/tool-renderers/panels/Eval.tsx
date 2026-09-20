@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'preact/hooks';
-import { AlertCircle, Ban, Check, Clock, Code2, Copy, Play } from 'lucide-preact';
+import { useMemo } from 'preact/hooks';
+import { AlertCircle, Ban, Clock, Code2, Play } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
-import { copyToClipboard } from '@/client/hooks/ui/clipboard';
+import { CopyButton } from '@/client/components/common/CopyButton';
 import { highlightJson, tryParseJson } from '@/shared/lib/code/syntax-highlight';
 import { MAX_OUTPUT_LINES, truncateTailLines } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/truncate';
 import Prism from 'prismjs';
@@ -23,9 +23,6 @@ function highlightJs(code: string): string {
 
 /** Panel khusus untuk tool `eval` — eksekusi kode script, browser eval, dsb. */
 export function Eval({ tool }: { tool: ToolCallData }) {
-  const [copiedCode, setCopiedCode] = useState(false);
-  const [copiedOut, setCopiedOut] = useState(false);
-
   const input = tool.input;
   const inputObj = typeof input === 'object' && input !== null ? (input as Record<string, any>) : undefined;
 
@@ -58,25 +55,6 @@ export function Eval({ tool }: { tool: ToolCallData }) {
   );
   const highlightedJson = useMemo(() => (truncatedJson ? highlightJson(truncatedJson.text) : ''), [truncatedJson]);
 
-  const handleCopyCode = async () => {
-    if (!code) return;
-    const ok = await copyToClipboard(code);
-    if (ok) {
-      setCopiedCode(true);
-      setTimeout(() => setCopiedCode(false), 2000);
-    }
-  };
-
-  const handleCopyOut = async () => {
-    const textToCopy = jsonResult.isValid && jsonResult.pretty ? jsonResult.pretty : output;
-    if (!textToCopy) return;
-    const ok = await copyToClipboard(textToCopy);
-    if (ok) {
-      setCopiedOut(true);
-      setTimeout(() => setCopiedOut(false), 2000);
-    }
-  };
-
   return (
     <div className="space-y-2">
       {/* Code Card */}
@@ -99,14 +77,11 @@ export function Eval({ tool }: { tool: ToolCallData }) {
               )}
             </div>
 
-            <button
-              type="button"
-              onClick={handleCopyCode}
+            <CopyButton
+              text={code}
               className="flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[9.5px] text-ink/45 transition-colors hover:bg-ink/5 hover:text-ink"
-            >
-              {copiedCode ? <Check size={10} className="text-success" /> : <Copy size={10} />}
-              {copiedCode ? 'Copied' : 'Copy'}
-            </button>
+              label="Copy"
+            />
           </div>
 
           {truncatedCode.skipped > 0 && (
@@ -185,14 +160,11 @@ export function Eval({ tool }: { tool: ToolCallData }) {
               )}
             </div>
 
-            <button
-              type="button"
-              onClick={handleCopyOut}
+            <CopyButton
+              text={jsonResult.isValid && jsonResult.pretty ? jsonResult.pretty : output}
               className="flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[9.5px] text-ink/45 transition-colors hover:bg-ink/5 hover:text-ink"
-            >
-              {copiedOut ? <Check size={10} className="text-success" /> : <Copy size={10} />}
-              {copiedOut ? 'Copied' : 'Copy'}
-            </button>
+              label="Copy"
+            />
           </div>
 
           {jsonResult.isValid && jsonResult.pretty ? (

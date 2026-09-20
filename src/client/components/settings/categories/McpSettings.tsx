@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useMemo, useState } from 'preact/hooks';
 import type { FunctionComponent } from 'preact/compat';
 import type { McpServerItem, SettingsState } from '@/shared/types';
 import { McpSidebarList } from '@/client/components/settings/categories/mcp-settings/SidebarList';
 import type { McpProjectOption } from '@/client/components/settings/categories/mcp-settings/SidebarList';
 import { McpDetailPane } from '@/client/components/settings/categories/mcp-settings/DetailPane';
 import { McpImportModal } from '@/client/components/settings/categories/mcp-settings/ImportModal';
+import { LoadingState } from '@/client/components/settings/LoadingState';
 import { useSidebarData } from '@/client/hooks/chat/omp/session-list';
+import { useCrudList } from '@/client/hooks/settings/crud-list';
 
 interface McpSettingsProps {
   settings: SettingsState;
@@ -23,92 +25,61 @@ export const McpSettings: FunctionComponent<McpSettingsProps> = () => {
     return [GLOBAL_PROJECT, ...bound];
   }, [folders]);
 
-  const [servers, setServers] = useState<McpServerItem[]>([]);
-  const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
-  const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    let active = true;
-    const query = selectedProject ? `?project=${encodeURIComponent(selectedProject)}` : '';
-    fetch(`/api/settings/mcp${query}`)
-      .then(res => res.json())
-      .then(data => {
-        if (!active) return;
-        const list: McpServerItem[] = Array.isArray(data?.servers) ? data.servers : [];
-        setServers(list);
-        setSelectedServerId(prev => (prev && list.some(s => s.id === prev) ? prev : list[0]?.id ?? null));
-      })
-      .catch(err => console.error('Failed to load MCP servers from API:', err))
-      .finally(() => {
-        if (active) setIsLoading(false);
-      });
-    return () => { active = false; };
-  }, [selectedProject]);
+  const query = selectedProject ? `?project=${encodeURIComponent(selectedProject)}` : '';
 
-  const handleAddNewServer = () => {
-    setIsCreatingNew(true);
-    setSelectedServerId(null);
-  };
-
-  const handleSelectServer = (serverId: string) => {
-    setIsCreatingNew(false);
-    setSelectedServerId(serverId);
-  };
-
-  const handleSaveServer = (updated: McpServerItem) => {
-    const targetServer: McpServerItem = isCreatingNew
-      ? { ...updated, id: `mcp-${Date.now()}` }
-      : updated;
-
-    fetch('/api/settings/mcp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(selectedProject ? { server: targetServer, projectPath: selectedProject } : { server: targetServer }),
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data?.error) {
-          console.error('Failed to save MCP server via API:', data.error);
-          return;
+  const { items: servers, selectedId, selected: selectedServer, isCreatingNew, isLoading, select, startCreate, save, remove } =
+    useCrudList<McpServerItem>({
+      endpoint: '/api/settings/mcp',
+      listKey: 'servers',
+      bodyKey: 'server',
+      query,
+      messages: {
+        load: 'Failed to load MCP servers from API:',
+        save: 'Failed to save MCP server via API:',
+        delete: 'Failed to delete MCP server via API:',
+      },
+      serverListOnly: true,
+      deleteFromResponse: true,
+      buildNew: (updated) => ({ ...updated, id: `mcp-${Date.now()}` }),
+      buildUpdate: (updated) => updated,
+      buildBody: (target) =>
+        selectedProject ? { server: target, projectPath: selectedProject } : { server: target },
+      buildDeleteQuery: (id) => {
+        const params = new URLSearchParams({ id });
+        if (selectedProject) params.set('projectPath', selectedProject);
+        return `?${params.toString()}`;
+      },
+      readList: (data) => (Array.isArray((data as { servers?: unknown } | null)?.servers) ? (data as { servers: McpServerItem[] }).servers : null),
+      resolveOnLoad: (prev, list) => (prev && list.some((s) => s.id === prev) ? prev : list[0]?.id ?? null),
+      resolveOnSave: (target, list) => {
+        if (!list) return undefined;
+        const saved = list.find((s) => s.name.toLowerCase() === target.name.toLowerCase());
+        return saved?.id ?? target.id;
+      },
+      isSaveError: (data) => {
+        const error = (data as { error?: string } | null)?.error;
+        if (error) {
+          console.error('Failed to save MCP server via API:', error);
+          return true;
         }
-        const list: McpServerItem[] | null = Array.isArray(data?.servers) ? data.servers : null;
-        if (list) {
-          setServers(list);
-          const saved = list.find(s => s.name.toLowerCase() === targetServer.name.toLowerCase());
-          setSelectedServerId(saved?.id ?? targetServer.id);
+        return false;
+      },
+      isDeleteError: (data) => {
+        const error = (data as { error?: string } | null)?.error;
+        if (error) {
+          console.error('Failed to delete MCP server via API:', error);
+          return true;
         }
-        setIsCreatingNew(false);
-      })
-      .catch(err => console.error('Failed to save MCP server via API:', err));
-  };
-
-  const handleDeleteServer = (serverId: string) => {
-    const params = new URLSearchParams({ id: serverId });
-    if (selectedProject) params.set('projectPath', selectedProject);
-    fetch(`/api/settings/mcp?${params.toString()}`, { method: 'DELETE' })
-      .then(res => res.json())
-      .then(data => {
-        if (data?.error) {
-          console.error('Failed to delete MCP server via API:', data.error);
-          return;
-        }
-        const list: McpServerItem[] = Array.isArray(data?.servers) ? data.servers : servers.filter(s => s.id !== serverId);
-        setServers(list);
-        if (selectedServerId === serverId) {
-          setSelectedServerId(list[0]?.id ?? null);
-        }
-      })
-      .catch(err => console.error('Failed to delete MCP server via API:', err));
-  };
+        return false;
+      },
+    });
 
   const handleImportServer = (imported: McpServerItem) => {
-    handleSaveServer(imported);
+    save(imported);
   };
-
-  const selectedServer = servers.find((s) => s.id === selectedServerId) || servers[0];
 
   const emptyServerTemplate: McpServerItem = {
     id: `new-${Date.now()}`,
@@ -122,11 +93,7 @@ export const McpSettings: FunctionComponent<McpSettingsProps> = () => {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex h-full w-full items-center justify-center text-xs text-ink/40">
-        Loading MCP servers from database...
-      </div>
-    );
+    return <LoadingState>Loading MCP servers from database...</LoadingState>;
   }
 
   return (
@@ -134,9 +101,9 @@ export const McpSettings: FunctionComponent<McpSettingsProps> = () => {
       <McpSidebarList
         servers={servers}
         projects={projects}
-        selectedServerId={isCreatingNew ? null : selectedServerId}
-        onSelectServer={handleSelectServer}
-        onAddNewServer={handleAddNewServer}
+        selectedServerId={isCreatingNew ? null : selectedId}
+        onSelectServer={select}
+        onAddNewServer={startCreate}
         selectedProject={selectedProject}
         onChangeProject={setSelectedProject}
       />
@@ -146,7 +113,7 @@ export const McpSettings: FunctionComponent<McpSettingsProps> = () => {
           <McpDetailPane
             server={emptyServerTemplate}
             isNew={true}
-            onSave={handleSaveServer}
+            onSave={save}
             onOpenImportModal={() => setIsImportModalOpen(true)}
           />
         ) : selectedServer ? (
@@ -154,8 +121,8 @@ export const McpSettings: FunctionComponent<McpSettingsProps> = () => {
             key={selectedServer.id}
             server={selectedServer}
             isNew={false}
-            onSave={handleSaveServer}
-            onDelete={handleDeleteServer}
+            onSave={save}
+            onDelete={remove}
             onOpenImportModal={() => setIsImportModalOpen(true)}
           />
         ) : (

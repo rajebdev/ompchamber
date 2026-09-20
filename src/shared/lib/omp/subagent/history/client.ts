@@ -9,7 +9,7 @@
  * mapping, and the compact row formatters.
  */
 
-import { isRecord } from '@/shared/lib/omp/session/parse-message-blocks';
+import { isRecord } from '@/shared/lib/util/guards';
 import type { SubagentHistoryEntry, SubagentInfo, SubagentProgress } from '@/shared/types/omp/subagent';
 
 /** Minimal wire guard — a malformed element must not become a roster row. */

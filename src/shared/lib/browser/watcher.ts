@@ -15,7 +15,8 @@
  */
 
 import { acquireConnection, releaseConnection } from '@/shared/lib/browser/connection';
-import { isRecord, readString } from '@/shared/lib/browser/util';
+import { readString } from '@/shared/lib/browser/util';
+import { isRecord } from '@/shared/lib/util/guards';
 
 export interface TargetWatcherHandle {
   close: () => void;

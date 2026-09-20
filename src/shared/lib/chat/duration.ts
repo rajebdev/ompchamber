@@ -9,6 +9,8 @@
  * user timestamp exists — until the last AI message of that run).
  */
 
+import { parseTodayLabel } from '@/shared/lib/format/time';
+
 type TimedMessage = {
   date?: string;
   timestamp?: string;
@@ -22,11 +24,8 @@ function parseMsgDate(msg: TimedMessage | undefined): number | null {
   if (!raw) return null;
   // Live-stream messages carry a preformatted "Today, 10:30 AM" label that
   // `new Date()` cannot parse — resolve it against the current day.
-  if (raw.startsWith('Today,')) {
-    const time = raw.slice('Today,'.length).trim();
-    const parsed = new Date(`${new Date().toDateString()} ${time}`);
-    return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
-  }
+  const todayMs = parseTodayLabel(raw);
+  if (todayMs !== null) return todayMs;
   const t = new Date(raw).getTime();
   return Number.isNaN(t) ? null : t;
 }

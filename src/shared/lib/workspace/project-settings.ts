@@ -1,5 +1,6 @@
 import type { DbClient } from '@/server/lib/db/client';
 import type { ProjectConfigItem } from '@/shared/types';
+import { isRecord } from '@/shared/lib/util/guards';
 
 export interface WorkspaceFolderRow {
   id: number;
@@ -37,10 +38,6 @@ export function projectConfigFromFolder(folder: WorkspaceFolderRow): ProjectConf
     isPinned: folder.is_pinned === 1,
     isExpanded: folder.is_expanded === 1,
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 function readBoolean(value: unknown): boolean | undefined {

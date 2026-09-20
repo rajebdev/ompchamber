@@ -1,4 +1,5 @@
 import { MobileSessionCategory } from '@/client/components/mobile/mobile-session-sidebar/Item';
+import { scrollbarFadeClass } from '@/client/hooks/ui/scrollbar-fade';
 import type { WorkspaceFolderData } from '@/shared/types';
 
 interface MobileSessionListProps {
@@ -27,7 +28,7 @@ export function MobileSessionList({
   return (
     <div 
       onScroll={onScroll}
-      className={`flex-1 scrollbar-overlay-container p-3 ${isScrolling ? 'scrollbar-overlay-scrolling' : 'scrollbar-overlay'}`}
+      className={`flex-1 scrollbar-overlay-container p-3 ${scrollbarFadeClass(isScrolling)}`}
     >
       {folders.length === 0 ? (
         <div className="text-center py-12 text-xs text-ink/50 italic">

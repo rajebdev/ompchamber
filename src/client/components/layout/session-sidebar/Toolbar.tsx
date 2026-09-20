@@ -1,5 +1,6 @@
 import { Archive, Calendar, FolderPlus, MoreHorizontal, PanelLeftClose, RefreshCw, Search, X } from 'lucide-preact';
 import type { SessionSortOption } from '@/shared/types';
+import { SortMenu } from '@/client/components/common/sort-menu';
 
 interface SessionSidebarToolbarProps {
   isSearchVisible: boolean;
@@ -82,35 +83,7 @@ export function SessionSidebarToolbar({
             />
             {optionsOpen && (
               <div className="absolute right-0 top-full mt-2 w-48 bg-paper border border-ink/10 rounded shadow-lg z-50 py-1" onMouseLeave={onCloseOptions}>
-                <div className="px-3 py-1 text-[10px] uppercase font-bold text-ink/40 tracking-wider">Sort Workspaces</div>
-                <div 
-                  className={`px-3 py-1.5 text-xs cursor-pointer flex items-center justify-between ${sortOption === 'A-Z' ? 'bg-ink/5 text-ink font-medium' : 'text-ink/70 hover:bg-ink/5 hover:text-ink'}`}
-                  onClick={() => onSortChange('A-Z')}
-                >
-                  <span>A-Z</span>
-                  {sortOption === 'A-Z' && <div className="w-1.5 h-1.5 rounded-full bg-ink"></div>}
-                </div>
-                <div 
-                  className={`px-3 py-1.5 text-xs cursor-pointer flex items-center justify-between ${sortOption === 'Z-A' ? 'bg-ink/5 text-ink font-medium' : 'text-ink/70 hover:bg-ink/5 hover:text-ink'}`}
-                  onClick={() => onSortChange('Z-A')}
-                >
-                  <span>Z-A</span>
-                  {sortOption === 'Z-A' && <div className="w-1.5 h-1.5 rounded-full bg-ink"></div>}
-                </div>
-                <div 
-                  className={`px-3 py-1.5 text-xs cursor-pointer flex items-center justify-between ${sortOption === 'LATEST_SESSION' ? 'bg-ink/5 text-ink font-medium' : 'text-ink/70 hover:bg-ink/5 hover:text-ink'}`}
-                  onClick={() => onSortChange('LATEST_SESSION')}
-                >
-                  <span>Latest Session</span>
-                  {sortOption === 'LATEST_SESSION' && <div className="w-1.5 h-1.5 rounded-full bg-ink"></div>}
-                </div>
-                <div 
-                  className={`px-3 py-1.5 text-xs cursor-pointer flex items-center justify-between ${sortOption === 'LATEST_ADDED' ? 'bg-ink/5 text-ink font-medium' : 'text-ink/70 hover:bg-ink/5 hover:text-ink'}`}
-                  onClick={() => onSortChange('LATEST_ADDED')}
-                >
-                  <span>Latest Added</span>
-                  {sortOption === 'LATEST_ADDED' && <div className="w-1.5 h-1.5 rounded-full bg-ink"></div>}
-                </div>
+                <SortMenu variant="desktop" sortOption={sortOption} onSortChange={onSortChange} />
               </div>
             )}
           </div>

@@ -35,7 +35,7 @@ export interface SettingsState {
   showUpdateNotifications: boolean;
   agentControlTool: boolean;
   ompChamberWebTool: boolean;
-  theme: 'paper' | 'contrast' | 'noir';
+  theme: 'paper' | 'contrast' | 'noir' | 'one-dark-pro-soft';
   fontSize: 'compact' | 'standard' | 'comfort';
   editorFont: string;
   streamResponses: boolean;

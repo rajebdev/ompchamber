@@ -1,4 +1,9 @@
 import { useCallback } from 'preact/hooks';
+import { readChamberSetting } from '@/shared/lib/settings/client';
+
+interface WebkitWindow extends Window {
+  webkitAudioContext?: typeof AudioContext;
+}
 
 /**
  * Web Audio API based notification sound synthesizer.
@@ -8,7 +13,7 @@ export function playNotificationSound() {
   if (typeof window === 'undefined') return;
 
   try {
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    const AudioCtx = window.AudioContext || (window as WebkitWindow).webkitAudioContext;
     if (!AudioCtx) return;
 
     const ctx = new AudioCtx();
@@ -73,31 +78,8 @@ export function playNotificationSound() {
 export function isChatSoundEnabled(appSettings?: Record<string, any>): boolean {
   if (typeof window === 'undefined') return true;
 
-  try {
-    // 1. Check local storage if available
-    const saved = localStorage.getItem('omp_chamber_settings');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.chatCompletionSound !== undefined) {
-        return Boolean(parsed.chatCompletionSound);
-      }
-      if (parsed.soundAlerts !== undefined) {
-        return Boolean(parsed.soundAlerts);
-      }
-    }
-
-    // 2. Check injected appSettings
-    if (appSettings?.omp_chamber_settings?.chatCompletionSound !== undefined) {
-      return Boolean(appSettings.omp_chamber_settings.chatCompletionSound);
-    }
-    if (appSettings?.omp_chamber_settings?.soundAlerts !== undefined) {
-      return Boolean(appSettings.omp_chamber_settings.soundAlerts);
-    }
-  } catch {
-    // ignore parsing errors
-  }
-
-  return true;
+  const value = readChamberSetting<boolean>(['chatCompletionSound', 'soundAlerts'], appSettings);
+  return value === undefined ? true : Boolean(value);
 }
 
 /**

@@ -1,7 +1,8 @@
 import { useState } from 'preact/hooks';
-import { AlignLeft, Check, Code, Copy, Eye, FileCode, FileText, Layers, Terminal } from 'lucide-preact';
+import { AlignLeft, Code, Eye, FileCode, FileText, Layers, Terminal } from 'lucide-preact';
 import type { ParsedTaskNotice } from '@/shared/lib/chat/task-result-parser';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
+import { CopyButton } from '@/client/components/common/CopyButton';
 import { highlightCode, isCodeLike } from '@/shared/lib/code/syntax-highlight';
 
 interface TaskResultContentProps {
@@ -9,21 +10,12 @@ interface TaskResultContentProps {
 }
 
 export function TaskResultContent({ task }: TaskResultContentProps) {
-  const [copied, setCopied] = useState(false);
   const structured = task.structuredOutput;
   const isRawCode = !task.formattedJson && isCodeLike(task.rawOutput);
 
   const [activeTab, setActiveTab] = useState<'formatted' | 'raw'>(
     structured || !isRawCode ? 'formatted' : 'raw'
   );
-
-  const handleCopy = () => {
-    const textToCopy = task.formattedJson || task.rawOutput;
-    if (!textToCopy) return;
-    navigator.clipboard.writeText(textToCopy);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
-  };
 
   return (
     <div className="space-y-3">
@@ -58,24 +50,16 @@ export function TaskResultContent({ task }: TaskResultContentProps) {
           </button>
         </div>
 
-        <button
-          type="button"
-          onClick={handleCopy}
+        <CopyButton
+          text={task.formattedJson || task.rawOutput}
           className="flex items-center gap-1 rounded-md px-2 py-1 text-[10.5px] font-medium text-ink/60 transition-colors hover:bg-ink/5 hover:text-ink"
+          iconSize={12}
           title="Copy payload"
-        >
-          {copied ? (
-            <>
-              <Check size={12} className="text-success" />
-              <span className="text-success">Copied</span>
-            </>
-          ) : (
-            <>
-              <Copy size={12} />
-              <span>Copy</span>
-            </>
-          )}
-        </button>
+          resetMs={1800}
+          wrapLabel
+          copiedLabelClassName="text-success"
+          label="Copy"
+        />
       </div>
 
       {/* Tab: Formatted Structured View or Rich Markdown */}

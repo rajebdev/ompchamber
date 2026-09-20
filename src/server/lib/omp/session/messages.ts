@@ -151,10 +151,12 @@ export async function loadSessionTitle(filePath: string): Promise<string | undef
       }
     }
     // Fallback: extract from first user message
-    const userMsg = records.find((r) => r?.type === 'message' && (r as any).message?.role === 'user');
+    const userMsg = records.find((r) => r?.type === 'message' && (r as Record<string, unknown>).message != null
+      && ((r as Record<string, unknown>).message as Record<string, unknown>).role === 'user');
     if (userMsg) {
-      const text = (userMsg as any).message?.content;
-      const str = typeof text === 'string' ? text : Array.isArray(text) ? text.map((c: any) => c.text || '').join('') : '';
+      const message = (userMsg as Record<string, unknown>).message as Record<string, unknown>;
+      const text = message.content;
+      const str = typeof text === 'string' ? text : Array.isArray(text) ? text.map((c) => (c as Record<string, unknown>).text || '').join('') : '';
       const lines = str.trim().split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#') && !l.startsWith('Complete assignment'));
       if (lines.length > 0) {
         return lines[0].slice(0, 60);

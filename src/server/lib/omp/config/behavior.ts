@@ -19,9 +19,9 @@
  * composer's access control), not here.
  */
 
-import fs from 'fs';
-import { join } from 'path';
-import { getAgentDir } from '@/server/lib/omp/core/paths';
+import { writeFileAtomic } from '@/server/lib/fs/atomic-write';
+import { asMapping, getOmpConfigPath } from '@/server/lib/omp/config/yaml';
+import { isRecord } from '@/shared/lib/util/guards';
 
 export type ApprovalValue = 'allow' | 'deny' | 'prompt';
 
@@ -89,7 +89,7 @@ export function parseApprovalRules(text: string): ApprovalFields | null {
  */
 export async function writeToolsApproval(fields: ApprovalFields): Promise<void> {
   if (Object.keys(fields).length === 0) return;
-  const path = join(getAgentDir(), 'config.yml');
+  const path = getOmpConfigPath();
   const source = (await Bun.file(path).exists()) ? await Bun.file(path).text() : '';
   const doc = asMapping(Bun.YAML.parse(source), path);
   const tools = doc.tools;
@@ -109,17 +109,5 @@ export async function writeToolsApproval(fields: ApprovalFields): Promise<void> 
   } else {
     doc.tools = { approval: fields };
   }
-  const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
-  await Bun.write(temp, Bun.YAML.stringify(doc, null, 2));
-  await fs.promises.rename(temp, path);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/** Parses a YAML file that must be a top-level mapping; throws otherwise. */
-function asMapping(parsed: unknown, path: string): Record<string, unknown> {
-  if (!isRecord(parsed)) throw new Error(`${path} must contain a YAML mapping`);
-  return parsed;
+  await writeFileAtomic(path, Bun.YAML.stringify(doc, null, 2));
 }

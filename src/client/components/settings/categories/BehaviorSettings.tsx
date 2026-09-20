@@ -2,6 +2,7 @@ import { useState } from 'preact/hooks';
 import type { FunctionComponent } from 'preact/compat';
 import type { InstructionFileKind } from '@/shared/types';
 import { BehaviorEditor } from '@/client/components/settings/categories/behavior-settings/Editor';
+import { LoadingState } from '@/client/components/settings/LoadingState';
 import { useInstructionFile } from '@/client/hooks/settings/instruction-file';
 
 /** The two native user instruction files, in the order omp loads them. */
@@ -52,9 +53,9 @@ export const BehaviorSettings: FunctionComponent = () => {
       )}
 
       {active.isLoading ? (
-        <div className="flex-1 flex items-center justify-center text-xs text-ink/40">
+        <LoadingState variant="fill">
           Loading {activeTab.label} from {active.filePath ?? 'the preset store'}...
-        </div>
+        </LoadingState>
       ) : (
         <BehaviorEditor
           key={activeKind}

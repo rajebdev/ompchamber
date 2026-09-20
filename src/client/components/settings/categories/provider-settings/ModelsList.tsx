@@ -2,11 +2,7 @@ import { useState } from 'preact/hooks';
 import { Eye, EyeOff, Image as ImageIcon, RefreshCw, Search, Settings2, SlidersHorizontal } from 'lucide-preact';
 import type { ProviderModel } from '@/shared/types';
 import { formatContextWindow } from '@/shared/lib/code/format';
-
-function formatPrice(value: number | undefined): string {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return '';
-  return `$${value < 1 ? value.toFixed(2) : value.toFixed(2)}`;
-}
+import { formatPrice } from '@/shared/lib/format/number';
 
 interface ProviderModelsListProps {
   models: ProviderModel[];

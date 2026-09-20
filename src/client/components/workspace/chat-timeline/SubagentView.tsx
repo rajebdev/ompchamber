@@ -5,6 +5,7 @@ import { SubagentStatusIcon } from '@/client/components/common/SubagentStatusIco
 import { ChatMessageItem } from '@/client/components/workspace/chat-timeline/MessageItem';
 import { useSubagentTranscript } from '@/client/hooks/chat/subagent';
 import { useModelNames } from '@/client/hooks/models/use-model-names';
+import { formatCompactTokens } from '@/shared/lib/format/number';
 
 interface SubagentViewProps {
   sessionId: string | null;
@@ -21,11 +22,6 @@ const STATUS_LABEL: Record<SubagentInfo['status'], string> = {
   failed: 'failed',
   aborted: 'aborted',
 };
-
-function formatTokens(n: number | undefined): string {
-  if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return '';
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}k tok` : `${Math.round(n)} tok`;
-}
 
 /** Read-only subagent transcript: compact banner, live-growing message list,
  *  and a notice row where the main timeline's composer would be. */
@@ -51,7 +47,8 @@ export function SubagentView({ sessionId, subagent, onBack, provider, providerNa
 
   const progress = status?.progress ?? subagent.progress;
   const modelName = progress?.resolvedModel ?? subagent.agent;
-  const meta = formatTokens(progress?.tokens);
+  const compactTokens = formatCompactTokens(progress?.tokens);
+  const meta = compactTokens ? `${compactTokens} tok` : '';
   const rawTask = status?.task ?? status?.assignment ?? status?.description
     ?? subagent.task ?? subagent.assignment ?? subagent.description;
   const task = rawTask ? rawTask.replace(/\$0(\.00*)?/g, '').trim() : undefined;

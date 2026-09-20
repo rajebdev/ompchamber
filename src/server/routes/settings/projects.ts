@@ -1,12 +1,10 @@
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@/server/lib/remix-compat';
+import { methodNotAllowed } from '@/server/lib/route-adapter';
 import { getDb } from '@/server/db.server';
 import { ACCENT_COLOR_OPTIONS, AVAILABLE_PROJECT_MODELS } from '@/client/data/settings/project';
 import { deleteWorkspaceFolder, parseFolderSettingsPatch, projectConfigFromFolder, updateWorkspaceFolder } from '@/shared/lib/workspace/project-settings';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
+import { isRecord } from '@/shared/lib/util/guards';
 
 function projectPatch(project: Record<string, unknown>) {
   return parseFolderSettingsPatch({
@@ -43,7 +41,7 @@ export async function loader({ request: _request }: LoaderFunctionArgs) {
   }
 }
 
-export async function action({ request }: ActionFunctionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   const db = await getDb();
 
   if (request.method === 'DELETE') {
@@ -57,7 +55,7 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   if (request.method !== 'POST' && request.method !== 'PUT' && request.method !== 'PATCH') {
-    return json({ error: 'Method not allowed' }, { status: 405 });
+    return methodNotAllowed({ request, params });
   }
 
   let body: unknown;

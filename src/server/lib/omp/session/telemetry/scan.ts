@@ -1,10 +1,10 @@
 import { parseJsonlLenient } from '@/shared/lib/omp/session/jsonl';
-import type { SessionEntry } from '@/server/lib/omp/session/telemetry/types';
+import type { OmpMessageEntry } from '@/shared/types/omp/session';
 
 /** Streaming JSONL pass for the telemetry builders; `visit` returns `false` to stop early. */
 export async function scanSessionEntries(
   filePath: string,
-  visit: (entry: SessionEntry, index: number) => boolean | void,
+  visit: (entry: OmpMessageEntry, index: number) => boolean | void,
 ): Promise<void> {
   let body: string;
   try {
@@ -12,7 +12,7 @@ export async function scanSessionEntries(
   } catch {
     return;
   }
-  const records = parseJsonlLenient<SessionEntry>(body);
+  const records = parseJsonlLenient<OmpMessageEntry>(body);
   for (let index = 0; index < records.length; index++) {
     const entry = records[index];
     if (!entry) continue;

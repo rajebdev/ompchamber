@@ -1,7 +1,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { ChatMessageData, SubagentInfo } from '@/shared/types';
-import { isRecord } from '@/shared/lib/omp/session/parse-message-blocks';
+import { isRecord } from '@/shared/lib/util/guards';
 import { parseSubagentLifecycle, parseSubagentProgress } from '@/shared/lib/omp/subagent/parse';
 import { convertMessages, mergeMessages, requestHistoryPage, requestSubagentPage } from '@/shared/lib/omp/subagent/transcript-client';
 

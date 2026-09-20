@@ -1,7 +1,9 @@
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@/server/lib/remix-compat';
+import { methodNotAllowed } from '@/server/lib/route-adapter';
 import { BREAKDOWN_DATA, MOCK_CHART_SERIES, MOCK_CUSTOM_RANGE_DATA, MOCK_RANGE_DATA, TIME_RANGES } from '@/client/data/mock/token-usage';
 import { isMockMode } from '@/server/mock.server';
+import { loadModelsDevCatalog } from '@/shared/lib/models/catalog';
 import { aggregateUsage, buildChartSeries, toBreakdownRows, toMetricSet, type UsageWindow } from '@/server/lib/omp/session/usage';
 import type { BreakdownRow, BreakdownTab, CadenceType, ChartSeriesPoint, TimeRangeType, TokenUsageMetricSet } from '@/shared/types';
 
@@ -41,12 +43,10 @@ function parseWindow(url: URL): UsageWindow {
 }
 
 /** Optional per-model rates from the models.dev catalog (input/output per
- * 1M tokens). Failures degrade to an empty map — pricing is supplementary. */
+ *  1M tokens). Failures degrade to an empty map — pricing is supplementary. */
 async function loadModelRates(modelNames: string[]): Promise<Record<string, { input?: number; output?: number }>> {
   try {
-    const response = await fetch('https://models.dev/api.json', { signal: AbortSignal.timeout(8_000) });
-    if (!response.ok) return {};
-    const catalog = await response.json() as Record<string, { models?: Record<string, { name?: string; cost?: { input?: number; output?: number } }> }>;
+    const catalog = await loadModelsDevCatalog();
     const rates: Record<string, { input?: number; output?: number }> = {};
     for (const name of modelNames) {
       const bare = name.split('/').pop()?.toLowerCase() ?? name.toLowerCase();
@@ -155,9 +155,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 }
 
-export async function action({ request }: ActionFunctionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   if (request.method === 'POST') {
     return json({ success: true, timestamp: new Date().toISOString() });
   }
-  return json({ error: 'Method not allowed' }, { status: 405 });
+  return methodNotAllowed({ request, params });
 }

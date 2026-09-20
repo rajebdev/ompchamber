@@ -1,0 +1,140 @@
+import { useState } from 'preact/hooks';
+import { Check, Copy, ExternalLink, MessageSquarePlus } from 'lucide-preact';
+import { BrowserViewportSelector } from '@/client/components/common/ViewportSelector';
+import { ZoomControls } from '@/client/components/workspace/browser-toolbar/ZoomControls';
+import type { ComponentChildren } from 'preact';
+import type { ViewportMode } from '@/shared/types';
+
+export const ICON_BUTTON =
+  'p-1.5 rounded hover:bg-ink/5 disabled:opacity-25 disabled:hover:bg-transparent text-ink/70 hover:text-ink transition-colors cursor-pointer disabled:cursor-not-allowed';
+
+export interface BrowserToolbarProps {
+  url: string;
+  /** Status dot class plus its label — the only per-panel difference. */
+  statusDotClass: string;
+  statusLabel: string;
+  viewportMode: ViewportMode;
+  zoomLevel: number;
+  onChangeViewport: (mode: ViewportMode) => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onResetZoom: () => void;
+  onSetZoom: (zoom: number) => void;
+  onIncludeInChat: () => void;
+  onOpenExternal: () => void;
+  /** Shown after the include/copy buttons — the agent panel's reconnect button. */
+  trailingControls?: ComponentChildren;
+  /** Open-external button label/title, differing between the two panels. */
+  openExternalLabel: string;
+  openExternalTitle: string;
+  /** The middle slot: read-only URL text, or the nav cluster + editable form. */
+  children: ComponentChildren;
+}
+
+/**
+ * Shared address bar for both browser panels. The two panels differ only in
+ * their status semantics, the middle slot (read-only URL vs editable form),
+ * and the agent panel's reconnect button; everything else — the include,
+ * copy, open-external buttons and the zoom cluster — lives here so the two
+ * toolbars cannot drift.
+ */
+export function BrowserToolbar({
+  url,
+  statusDotClass,
+  statusLabel,
+  viewportMode,
+  zoomLevel,
+  onChangeViewport,
+  onZoomIn,
+  onZoomOut,
+  onResetZoom,
+  onSetZoom,
+  onIncludeInChat,
+  onOpenExternal,
+  trailingControls,
+  openExternalLabel,
+  openExternalTitle,
+  children,
+}: BrowserToolbarProps) {
+  const [copied, setCopied] = useState(false);
+  const [included, setIncluded] = useState(false);
+
+  const handleCopy = () => {
+    if (!url) return;
+    navigator.clipboard
+      .writeText(url)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => {});
+  };
+
+  const handleInclude = () => {
+    onIncludeInChat();
+    setIncluded(true);
+    setTimeout(() => setIncluded(false), 2500);
+  };
+
+  return (
+    <div className="h-10 px-2.5 border-b border-ink/10 bg-paper flex items-center justify-between flex-shrink-0 select-none space-x-2">
+      <div className="flex items-center space-x-1.5 flex-shrink-0" title={statusLabel}>
+        <span className={`w-1.5 h-1.5 rounded-full ${statusDotClass}`} />
+        <span className="text-[10px] font-mono uppercase tracking-wide text-ink/60">{statusLabel}</span>
+      </div>
+
+      {children}
+
+      <div className="flex items-center space-x-1.5 flex-shrink-0">
+        <BrowserViewportSelector
+          viewportMode={viewportMode}
+          onChangeViewport={onChangeViewport}
+          zoomLevel={zoomLevel}
+          onSetZoom={onSetZoom}
+        />
+
+        <ZoomControls
+          zoomLevel={zoomLevel}
+          onZoomIn={onZoomIn}
+          onZoomOut={onZoomOut}
+          onResetZoom={onResetZoom}
+        />
+
+        <button
+          type="button"
+          onClick={handleInclude}
+          disabled={!url}
+          aria-label="Sertakan halaman ini di draft chat"
+          title={included ? 'Konteks halaman ditambahkan ke draft' : 'Sertakan halaman ini di draft chat'}
+          className={ICON_BUTTON}
+        >
+          {included ? <Check size={14} className="text-success" /> : <MessageSquarePlus size={14} />}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleCopy}
+          disabled={!url}
+          aria-label="Salin URL"
+          title={copied ? 'Copied URL!' : 'Copy URL'}
+          className={ICON_BUTTON}
+        >
+          {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
+        </button>
+
+        {trailingControls}
+
+        <button
+          type="button"
+          onClick={onOpenExternal}
+          disabled={!url}
+          aria-label={openExternalLabel}
+          title={openExternalTitle}
+          className={ICON_BUTTON}
+        >
+          <ExternalLink size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}

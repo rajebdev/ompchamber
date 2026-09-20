@@ -4,6 +4,7 @@ import type { ToolCallData } from '@/shared/types';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 import { tryParseJson } from '@/shared/lib/code/syntax-highlight';
 import { JsonCodeBlock } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/JsonCodeBlock';
+import { formatCompactTokens, formatCost } from '@/shared/lib/format/number';
 
 interface TaskRow {
   id?: unknown;
@@ -45,14 +46,12 @@ const STATUS_STYLES = {
   aborted: { icon: <Ban size={11} className="text-ink/35" />, label: 'aborted' },
 } as const;
 
-function formatToken(n: unknown): string {
-  if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return '';
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${Math.round(n)}`;
+function tokenLabel(n: unknown): string {
+  return typeof n === 'number' ? formatCompactTokens(n) ?? '' : '';
 }
 
-function formatCost(n: unknown): string {
-  if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return '';
-  return `$${n.toFixed(3)}`;
+function costLabel(n: unknown): string {
+  return typeof n === 'number' ? formatCost(n, 3) : '';
 }
 
 function formatMs(n: unknown): string {
@@ -110,8 +109,8 @@ export function TaskResult({ tool }: { tool: ToolCallData }) {
             </span>
             <span className="ml-auto font-mono text-[10px] text-ink/45">
               {rows.length} {rows.length > 1 ? 'agents' : 'agent'}
-              {totalTokens ? ` · ${formatToken(totalTokens)} tok` : ''}
-              {totalCost ? ` · ${formatCost(totalCost)}` : ''}
+              {totalTokens ? ` · ${tokenLabel(totalTokens)} tok` : ''}
+              {totalCost ? ` · ${costLabel(totalCost)}` : ''}
             </span>
           </div>
           <div className="divide-y divide-ink/6 px-2.5 py-1">
@@ -121,8 +120,8 @@ export function TaskResult({ tool }: { tool: ToolCallData }) {
               const name = typeof row.name === 'string' && row.name ? row.name : null;
               const agent = typeof row.agent === 'string' ? row.agent : 'scout';
               const right = [
-                formatToken(row.tokens),
-                formatCost(row.cost),
+                tokenLabel(row.tokens),
+                costLabel(row.cost),
                 status !== 'running' ? formatMs(row.durationMs) : '',
               ].filter(Boolean).join(' · ');
 

@@ -1,5 +1,6 @@
-import { Check, Cpu, Eye, ShieldCheck, SlidersHorizontal, Sparkles, Terminal, X } from 'lucide-preact';
+import { Check, Cpu, Eye, ShieldCheck, SlidersHorizontal, Sparkles, Terminal } from 'lucide-preact';
 import type { ProviderModel } from '@/shared/types';
+import { Modal } from '@/client/components/common/Modal';
 
 interface ModelCapabilitiesModalProps {
   isOpen: boolean;
@@ -48,72 +49,22 @@ export function ModelCapabilitiesModal({
   ];
 
   return (
-    <div
-      className="fixed inset-0 bg-ink/40 backdrop-blur-[2px] z-[60] flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-paper border border-ink/15 rounded-xl shadow-2xl w-full max-w-md overflow-hidden text-ink"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="px-5 py-4 border-b border-ink/10 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <SlidersHorizontal size={16} className="text-ink/70" />
-            <div>
-              <h3 className="text-sm font-semibold text-ink">
-                Model Capabilities & Tools
-              </h3>
-              <p className="text-[11px] text-ink/50 truncate max-w-[280px]">
-                {model.name}
-              </p>
-            </div>
+    <Modal
+      onClose={onClose}
+      header={
+        <div className="flex items-center gap-2">
+          <SlidersHorizontal size={16} className="text-ink/70" />
+          <div>
+            <h3 className="text-sm font-semibold text-ink">
+              Model Capabilities & Tools
+            </h3>
+            <p className="text-[11px] text-ink/50 truncate max-w-[280px]">
+              {model.name}
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1 rounded text-ink/40 hover:text-ink hover:bg-ink/5 transition-colors cursor-pointer"
-          >
-            <X size={16} />
-          </button>
         </div>
-
-        {/* Capabilities list */}
-        <div className="p-5 space-y-3">
-          {capabilities.map((cap) => {
-            const Icon = cap.icon;
-            return (
-              <div
-                key={cap.title}
-                className="flex items-start gap-3 p-2.5 rounded-lg bg-ink/5 border border-ink/10"
-              >
-                <div className="p-1.5 rounded bg-ink/10 text-ink mt-0.5">
-                  <Icon size={14} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-ink">{cap.title}</span>
-                    {cap.enabled ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] text-emerald-500 font-semibold uppercase tracking-wider">
-                        <Check size={11} strokeWidth={2.5} />
-                        Supported
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-ink/40 font-medium uppercase tracking-wider">
-                        Not supported
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-ink/60 mt-0.5 leading-relaxed">
-                    {cap.desc}
-                  </p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Footer */}
+      }
+      footer={
         <div className="px-5 py-3 border-t border-ink/10 flex justify-end">
           <button
             type="button"
@@ -123,7 +74,41 @@ export function ModelCapabilitiesModal({
             Close
           </button>
         </div>
+      }
+    >
+      <div className="p-5 space-y-3">
+        {capabilities.map((cap) => {
+          const Icon = cap.icon;
+          return (
+            <div
+              key={cap.title}
+              className="flex items-start gap-3 p-2.5 rounded-lg bg-ink/5 border border-ink/10"
+            >
+              <div className="p-1.5 rounded bg-ink/10 text-ink mt-0.5">
+                <Icon size={14} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-ink">{cap.title}</span>
+                  {cap.enabled ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] text-emerald-500 font-semibold uppercase tracking-wider">
+                      <Check size={11} strokeWidth={2.5} />
+                      Supported
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-ink/40 font-medium uppercase tracking-wider">
+                      Not supported
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-ink/60 mt-0.5 leading-relaxed">
+                  {cap.desc}
+                </p>
+              </div>
+            </div>
+          );
+        })}
       </div>
-    </div>
+    </Modal>
   );
 }

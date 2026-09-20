@@ -13,7 +13,7 @@
  * the authoritative call order and walks the session entries in order.
  */
 
-import { isRecord } from '@/shared/lib/omp/session/parse-message-blocks';
+import { isRecord } from '@/shared/lib/util/guards';
 import { SUBAGENT_ID_RE } from '@/server/lib/omp/subagent/history/paths';
 import { progressStatusToHistory, progressUpsertBlocked, resultStatus } from '@/shared/lib/omp/subagent/history/status';
 import { parseSubagentProgress } from '@/shared/lib/omp/subagent/parse';

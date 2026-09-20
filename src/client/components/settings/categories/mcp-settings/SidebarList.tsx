@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
 import type { FunctionComponent } from 'preact/compat';
-import { ChevronDown, Folder, Globe, Plus, Terminal } from 'lucide-preact';
+import { Globe, Plus, Terminal } from 'lucide-preact';
 import type { McpServerItem } from '@/shared/types';
+import { ProjectSelectorDropdown } from '@/client/components/settings/ProjectSelectorDropdown';
 
 export interface McpProjectOption {
   id: string;
@@ -28,66 +28,22 @@ export const McpSidebarList: FunctionComponent<McpSidebarListProps> = ({
   selectedProject,
   onChangeProject,
 }) => {
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClickOutside(e: globalThis.MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setIsDropdownOpen(false);
-      }
-    }
-    if (isDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isDropdownOpen]);
-
   const activeProjectName = projects.find((proj) => proj.path === selectedProject)?.name ?? 'Global (all projects)';
 
   return (
     <div className="w-56 sm:w-64 border-r border-ink/10 h-full flex flex-col bg-paper/50 flex-shrink-0 select-none">
-      {/* 1. Project Selector Dropdown */}
-      <div className="p-3 border-b border-ink/10 relative" ref={dropdownRef}>
-        <button
-          type="button"
-          onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-          className="w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg border border-ink/20 hover:border-ink/40 bg-paper text-ink text-xs font-medium transition-colors cursor-pointer shadow-2xs"
-        >
-          <div className="flex items-center gap-2 truncate">
-            <Folder size={14} className="text-ink/60 flex-shrink-0" />
-            <span className="truncate">{activeProjectName}</span>
-          </div>
-          <ChevronDown size={14} className="text-ink/50 flex-shrink-0" />
-        </button>
+      <ProjectSelectorDropdown
+        selectedProject={selectedProject}
+        onChangeProject={onChangeProject}
+        options={projects.map((project) => ({
+          id: project.id,
+          name: project.name,
+          label: project.name,
+          value: project.path,
+        }))}
+        getTriggerLabel={() => activeProjectName}
+      />
 
-        {isDropdownOpen && (
-          <div className="absolute top-12 left-3 right-3 bg-paper border border-ink/20 rounded-lg shadow-lg z-30 py-1 divide-y divide-ink/5 animate-in fade-in zoom-in-95 duration-100">
-            {projects.map((proj) => (
-              <button
-                key={proj.id}
-                type="button"
-                onClick={() => {
-                  onChangeProject(proj.path);
-                  setIsDropdownOpen(false);
-                }}
-                className={`w-full px-3 py-1.5 text-left text-xs flex items-center justify-between hover:bg-ink/5 transition-colors cursor-pointer ${
-                  selectedProject === proj.path ? 'font-semibold text-ink bg-ink/5' : 'text-ink/80'
-                }`}
-              >
-                <div className="flex items-center gap-2 truncate">
-                  <Folder size={13} className="text-ink/60" />
-                  <span className="truncate">{proj.name}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* 2. Counter & Plus button */}
       <div className="px-3.5 py-2.5 border-b border-ink/10 flex items-center justify-between">
         <span className="text-xs font-semibold text-ink">
           Total {servers.length}
@@ -102,7 +58,6 @@ export const McpSidebarList: FunctionComponent<McpSidebarListProps> = ({
         </button>
       </div>
 
-      {/* 3. Scrollable List */}
       <div className="flex-1 scrollbar-overlay-container scrollbar-overlay-static p-1.5 space-y-3 text-xs">
         <div>
           <div className="px-2.5 pt-1.5 pb-1 text-[10px] font-bold text-ink/50 uppercase tracking-wider flex items-center justify-between">

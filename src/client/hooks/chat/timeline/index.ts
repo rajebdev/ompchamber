@@ -15,6 +15,7 @@ import { readStreamTransport } from '@/shared/lib/chat/omp/transport';
 import { ACCESS_MODE_SETTING_KEY, normalizeApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
+import { writeSetting } from '@/shared/lib/settings/client';
 
 interface UseChatTimelineOptions {
   folders?: any[];
@@ -158,11 +159,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     // Persist the last selection; the server reads this key as the spawn-time
     // default. Fire-and-forget: the in-memory value is already authoritative
     // for this session's requests, which carry it explicitly.
-    fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ [ACCESS_MODE_SETTING_KEY]: mode }),
-    }).catch(() => {});
+    writeSetting(ACCESS_MODE_SETTING_KEY, mode);
   }, []);
 
   const persistMessages = useCallback((messagesToSave: any[]) => {

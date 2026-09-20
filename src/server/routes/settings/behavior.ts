@@ -1,5 +1,6 @@
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@/server/lib/remix-compat';
+import { methodNotAllowed } from '@/server/lib/route-adapter';
 import { getDb } from '@/server/db.server';
 import { DEFAULT_BEHAVIOR_RULES } from '@/client/data/settings/behavior';
 import { isMockMode } from '@/server/mock.server';
@@ -64,10 +65,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 }
 
-export async function action({ request }: ActionFunctionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   try {
     if (request.method !== 'POST' && request.method !== 'PUT') {
-      return json({ error: 'Method not allowed' }, { status: 405 });
+      return methodNotAllowed({ request, params });
     }
 
     const body = await request.json();

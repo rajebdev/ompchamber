@@ -1,10 +1,9 @@
 import type { ReactNode } from 'preact/compat';
-import type { TargetedMouseEvent } from 'preact';
-import { useMemo, useState } from 'preact/hooks';
-import { Check, Code, Copy } from 'lucide-preact';
+import { useMemo } from 'preact/hooks';
+import { Code } from 'lucide-preact';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 import { sanitizeHtml } from '@/shared/lib/markdown/sanitize';
-import { copyToClipboard } from '@/client/hooks/ui/clipboard';
+import { CopyButton } from '@/client/components/common/CopyButton';
 import { detectOutputFormat } from '@/shared/lib/chat/detect-format';
 import { highlightCode, tryParseJson } from '@/shared/lib/code/syntax-highlight';
 import { JsonCodeBlock } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/JsonCodeBlock';
@@ -18,7 +17,6 @@ interface FallbackOutputProps {
 /** Render output fallback generik dengan deteksi format otomatis:
  *  markdown → MarkdownRenderer; html → sanitize + inject; text → syntax highlight. */
 export function FallbackOutput({ text }: FallbackOutputProps) {
-  const [copied, setCopied] = useState(false);
   const format = useMemo(() => detectOutputFormat(text), [text]);
   const jsonResult = useMemo(() => (format === 'json' ? tryParseJson(text) : null), [format, text]);
   const displayLinesCount = useMemo(() => {
@@ -36,16 +34,6 @@ export function FallbackOutput({ text }: FallbackOutputProps) {
     () => (isPlainText ? highlightCode(display.text, 'javascript') : ''),
     [isPlainText, display]
   );
-
-  const handleCopy = async (e: TargetedMouseEvent<HTMLElement>) => {
-    e.stopPropagation();
-    const textToCopy = jsonResult?.isValid && jsonResult.pretty ? jsonResult.pretty : text;
-    const success = await copyToClipboard(textToCopy);
-    if (success) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
 
   let body: ReactNode;
   if (format === 'markdown') {
@@ -94,14 +82,12 @@ export function FallbackOutput({ text }: FallbackOutputProps) {
             </span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={handleCopy}
+        <CopyButton
+          text={jsonResult?.isValid && jsonResult.pretty ? jsonResult.pretty : text}
           className="flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-ink/45 transition-colors hover:bg-ink/5 hover:text-ink"
-        >
-          {copied ? <Check size={10} className="text-success" /> : <Copy size={10} />}
-          {copied ? 'Copied' : 'Copy'}
-        </button>
+          onClick={(e) => e.stopPropagation()}
+          label="Copy"
+        />
       </div>
       {display.skipped > 0 && (
         <div className="font-mono text-[10px] text-ink/45">… {display.skipped} earlier lines hidden</div>

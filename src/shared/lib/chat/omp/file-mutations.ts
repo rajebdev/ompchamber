@@ -13,7 +13,7 @@
  * their data does not ride the AI response.
  */
 
-import { isRecord } from '@/shared/lib/omp/session/parse-message-blocks';
+import { isRecord } from '@/shared/lib/util/guards';
 import { TOOL_ALIASES, asString } from '@/shared/lib/chat/timeline/tool-phrases';
 
 /** Window event the fold dispatches after a file-mutating tool completes. */

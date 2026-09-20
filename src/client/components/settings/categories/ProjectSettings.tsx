@@ -2,6 +2,8 @@ import { useEffect, useState } from 'preact/hooks';
 import type { AccentColorOption, ProjectConfigItem } from '@/shared/types';
 import { ProjectSidebarList } from '@/client/components/settings/categories/project-settings/SidebarList';
 import { ProjectDetailsForm } from '@/client/components/settings/categories/project-settings/DetailsForm';
+import { LoadingState } from '@/client/components/settings/LoadingState';
+import { useChamberEvent } from '@/client/hooks/ui/window-event';
 
 export function ProjectSettings() {
   const [projects, setProjects] = useState<ProjectConfigItem[]>([]);
@@ -126,35 +128,26 @@ export function ProjectSettings() {
     void persistProjectField(selectedProject, field, value);
   };
 
-  useEffect(() => {
-    const handleWorkspaceUpdated = () => {
-      void fetch('/api/settings/projects')
-        .then((response) => response.json())
-        .then((data) => {
-          if (Array.isArray(data?.projects)) {
-            setProjects(data.projects);
-            setSelectedProjectId((current) =>
-              data.projects.some((project: ProjectConfigItem) => project.id === current)
-                ? current
-                : data.projects[0]?.id || '',
-            );
-          }
-        })
-        .catch((error: unknown) => {
-          console.error('Failed to refresh projects:', error);
-        });
-    };
-
-    window.addEventListener('omp:workspace-updated', handleWorkspaceUpdated);
-    return () => window.removeEventListener('omp:workspace-updated', handleWorkspaceUpdated);
-  }, []);
+  useChamberEvent('omp:workspace-updated', () => {
+    void fetch('/api/settings/projects')
+      .then((response) => response.json())
+      .then((data) => {
+        if (Array.isArray(data?.projects)) {
+          setProjects(data.projects);
+          setSelectedProjectId((current) =>
+            data.projects.some((project: ProjectConfigItem) => project.id === current)
+              ? current
+              : data.projects[0]?.id || '',
+          );
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('Failed to refresh projects:', error);
+      });
+  });
 
   if (isLoading) {
-    return (
-      <div className="flex h-full w-full items-center justify-center text-xs text-ink/40">
-        Loading projects from database...
-      </div>
-    );
+    return <LoadingState>Loading projects from database...</LoadingState>;
   }
 
   return (

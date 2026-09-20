@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { FormEvent } from 'preact/compat';
 import { ChevronDown, ChevronRight } from 'lucide-preact';
 import { useFetcher } from '@/client/lib/router/fetcher';
@@ -6,6 +6,7 @@ import { FileIcon } from '@/client/components/common/file-icon';
 import { FileContextMenu, FileDeleteModal, FileHistoryModal, FileRenameModal } from '@/client/components/workspace/file-explorer/Modals';
 import { getGitStatusInfo, type FolderGitStatusInfo } from '@/shared/lib/fs/git-status';
 import type { GitChange } from '@/shared/types/git';
+import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 
 interface FileTreeItemProps {
   file: any;
@@ -39,6 +40,7 @@ export function FileTreeItem({
   const [mounted, setMounted] = useState(false);
 
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -70,13 +72,7 @@ export function FileTreeItem({
     }
   }, [isFolder, actualIsOpen, file.children, file.path, onLoadChildren]);
 
-  useEffect(() => {
-    if (contextMenu) {
-      const closeMenu = () => setContextMenu(null);
-      document.addEventListener('click', closeMenu);
-      return () => document.removeEventListener('click', closeMenu);
-    }
-  }, [contextMenu]);
+  useOnClickOutside(contextMenuRef, () => setContextMenu(null));
 
   useEffect(() => {
     if (actionFetcher.state === 'idle' && actionFetcher.data) {

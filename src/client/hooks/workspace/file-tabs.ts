@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { useSessionStateContext } from '@/client/hooks/workspace/session-state/context';
+import { useChamberEvent } from '@/client/hooks/ui/window-event';
 import type { OpenedFile } from '@/shared/types/fs';
 
 export function useFileTabs(
@@ -91,47 +92,38 @@ export function useFileTabs(
   }, [activeFileId, setOpenedFiles, setActiveFileId]);
 
   // Global listeners for omp:open-file and omp:open-diff
-  useEffect(() => {
-    const handleCustomOpenFile = (e: Event) => {
-      const customEvent = e as CustomEvent<{ path: string; name?: string; id?: number; content?: string }>;
-      if (!customEvent.detail || !customEvent.detail.path) return;
+  useChamberEvent('omp:open-file', (e) => {
+    const customEvent = e as CustomEvent<{ path: string; name?: string; id?: number; content?: string }>;
+    if (!customEvent.detail || !customEvent.detail.path) return;
 
-      const rawPath = customEvent.detail.path.replace(/^\/+/, '');
-      const name = customEvent.detail.name || rawPath.split('/').pop() || 'file';
-      let hash = 0;
-      for (let i = 0; i < rawPath.length; i++) {
-        hash = (hash << 5) - hash + rawPath.charCodeAt(i);
-        hash |= 0;
-      }
-      const id = customEvent.detail.id || Math.abs(hash) || Date.now();
+    const rawPath = customEvent.detail.path.replace(/^\/+/, '');
+    const name = customEvent.detail.name || rawPath.split('/').pop() || 'file';
+    let hash = 0;
+    for (let i = 0; i < rawPath.length; i++) {
+      hash = (hash << 5) - hash + rawPath.charCodeAt(i);
+      hash |= 0;
+    }
+    const id = customEvent.detail.id || Math.abs(hash) || Date.now();
 
-      handleOpenFile({
-        id,
-        name,
-        path: rawPath,
-        content: customEvent.detail.content,
-      });
-    };
+    handleOpenFile({
+      id,
+      name,
+      path: rawPath,
+      content: customEvent.detail.content,
+    });
+  });
 
-    const handleCustomOpenDiff = (e: Event) => {
-      const customEvent = e as CustomEvent<{
-        file: string;
-        staged?: boolean;
-        status?: string;
-        repo?: string;
-        root?: string;
-      }>;
-      if (!customEvent.detail || !customEvent.detail.file) return;
-      handleOpenDiff(customEvent.detail);
-    };
-
-    window.addEventListener('omp:open-file', handleCustomOpenFile);
-    window.addEventListener('omp:open-diff', handleCustomOpenDiff);
-    return () => {
-      window.removeEventListener('omp:open-file', handleCustomOpenFile);
-      window.removeEventListener('omp:open-diff', handleCustomOpenDiff);
-    };
-  }, [handleOpenFile, handleOpenDiff]);
+  useChamberEvent('omp:open-diff', (e) => {
+    const customEvent = e as CustomEvent<{
+      file: string;
+      staged?: boolean;
+      status?: string;
+      repo?: string;
+      root?: string;
+    }>;
+    if (!customEvent.detail || !customEvent.detail.file) return;
+    handleOpenDiff(customEvent.detail);
+  });
 
   return {
     openedFiles,

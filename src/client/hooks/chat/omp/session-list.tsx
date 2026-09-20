@@ -20,7 +20,7 @@ import type { ReactNode } from 'preact/compat';
 import { useFetcher } from '@/client/lib/router/fetcher';
 import { usePanelRefresh } from '@/client/hooks/workspace/panel-refresh';
 import type { WorkspaceFolderData } from '@/shared/types';
-import type { SidebarData } from '@/server/lib/omp/session/sidebar-data.server';
+import type { SessionListPayload } from '@/server/lib/omp/session/sidebar-data.server';
 
 /** Slow keep-alive cadence (ms) for external changes while nothing streams. */
 const SIDEBAR_IDLE_REFRESH_MS = 15000;
@@ -45,7 +45,7 @@ export interface SidebarDataHandle {
 const SidebarDataContext = createContext<SidebarDataHandle | null>(null);
 
 export function SidebarDataProvider({ children, initialFolders = [] }: { children: ReactNode; initialFolders?: WorkspaceFolderData[] }) {
-  const fetcher = useFetcher<SidebarData>();
+  const fetcher = useFetcher<SessionListPayload>();
   const [hasLoaded, setHasLoaded] = useState(false);
   const firstLoadRef = useRef(false);
   // Session ids whose badge the user has already dismissed on this mount.

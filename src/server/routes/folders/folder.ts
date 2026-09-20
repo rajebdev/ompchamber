@@ -1,11 +1,12 @@
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs } from '@/server/lib/remix-compat';
+import { methodNotAllowed } from '@/server/lib/route-adapter';
 import { getDb } from '@/server/db.server';
 import { deleteWorkspaceFolder, parseFolderSettingsPatch, updateWorkspaceFolder } from '@/shared/lib/workspace/project-settings';
 
 export async function pinFolder({ request, params }: ActionFunctionArgs) {
   if (request.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, { status: 405 });
+    return methodNotAllowed({ request, params });
   }
 
   const db = await getDb();
@@ -21,7 +22,7 @@ export async function pinFolder({ request, params }: ActionFunctionArgs) {
 
 export async function toggleFolder({ request, params }: ActionFunctionArgs) {
   if (request.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, { status: 405 });
+    return methodNotAllowed({ request, params });
   }
 
   const db = await getDb();
@@ -37,7 +38,7 @@ export async function toggleFolder({ request, params }: ActionFunctionArgs) {
 
 export async function deleteFolder({ request, params }: ActionFunctionArgs) {
   if (request.method !== 'POST' && request.method !== 'DELETE') {
-    return json({ error: 'Method not allowed' }, { status: 405 });
+    return methodNotAllowed({ request, params });
   }
 
   const db = await getDb();
@@ -51,7 +52,7 @@ export async function deleteFolder({ request, params }: ActionFunctionArgs) {
 
 export async function updateFolderSettings({ request, params }: ActionFunctionArgs) {
   if (request.method !== 'POST' && request.method !== 'PATCH') {
-    return json({ error: 'Method not allowed' }, { status: 405 });
+    return methodNotAllowed({ request, params });
   }
 
   const folderId = params.folderId;

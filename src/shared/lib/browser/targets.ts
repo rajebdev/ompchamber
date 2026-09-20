@@ -9,7 +9,8 @@
  * workers, and browser-internal targets are ignored.
  */
 
-import { isRecord, readString } from '@/shared/lib/browser/util';
+import { readString } from '@/shared/lib/browser/util';
+import { isRecord } from '@/shared/lib/util/guards';
 
 export interface PageTarget {
   targetId: string;

@@ -1,33 +1,17 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useState } from 'preact/hooks';
 import { Check, Download, ExternalLink, GitBranch, Plus, RefreshCw, Search, Star } from 'lucide-preact';
 import type { CatalogSkillItem, SkillCatalogSource, SkillItem } from '@/shared/types';
 import { AddSourceModal } from '@/client/components/settings/categories/skill-catalog/AddSourceModal';
 import { invalidateComposerCache } from '@/shared/lib/chat/composer/client';
+import { useSkillCatalog } from '@/client/hooks/settings/skill-catalog';
 
 export function SkillCatalogSettings() {
-  const [sources, setSources] = useState<SkillCatalogSource[]>([]);
-  const [catalogSkills, setCatalogSkills] = useState<CatalogSkillItem[]>([]);
-  const [userSkills, setUserSkills] = useState<SkillItem[]>([]);
+  const { sources, catalogSkills, userSkills, setSources, setUserSkills, reload } = useSkillCatalog();
   const [selectedSourceId, setSelectedSourceId] = useState<string>('anthropic');
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isAddSourceModalOpen, setIsAddSourceModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-  const loadData = () => {
-    fetch('/api/settings/skills')
-      .then(res => res.json())
-      .then(data => {
-        if (data?.catalogSources) setSources(data.catalogSources);
-        if (data?.catalogSkills) setCatalogSkills(data.catalogSkills);
-        if (data?.skills) setUserSkills(data.skills);
-      })
-      .catch(console.error);
-  };
-
-  useEffect(() => {
-    loadData();
-  }, []);
 
   const installedSkillIds = new Set(userSkills.map((s) => s?.name).filter(Boolean));
 
@@ -38,14 +22,8 @@ export function SkillCatalogSettings() {
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    fetch('/api/settings/skills')
-      .then(res => res.json())
-      .then(data => {
-        if (data?.catalogSources) setSources(data.catalogSources);
-        if (data?.catalogSkills) setCatalogSkills(data.catalogSkills);
-        if (data?.skills) setUserSkills(data.skills);
-        showToast('Catalog index synchronized');
-      })
+    reload()
+      .then(() => showToast('Catalog index synchronized'))
       .catch(console.error)
       .finally(() => setIsRefreshing(false));
   };

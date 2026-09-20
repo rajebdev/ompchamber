@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import type { GitChange } from '@/shared/types/git';
 import { buildGitStatusMaps } from '@/shared/lib/fs/git-status';
+import { useVisibilityRefresh } from '@/client/hooks/ui/visibility-refresh';
+import { useDocumentEvent, useWindowEvent } from '@/client/hooks/ui/window-event';
 
 export function useGitStatus(
   rootPath?: string,
@@ -41,35 +43,15 @@ export function useGitStatus(
   // actions (terminal commits, agent edits) that never bump `refreshKey`.
   // Ticks pause while the document is hidden and re-check on visibility —
   // a background tab cannot show the dot, so the poll would be wasted wakeups.
-  useEffect(() => {
-    if (!enabled || !pollMs) return;
-    let visible = typeof document === 'undefined' || document.visibilityState === 'visible';
-    const id = setInterval(() => {
-      if (visible) loadGitStatus();
-    }, pollMs);
-    const onVisibility = () => {
-      const next = document.visibilityState === 'visible';
-      if (next && !visible) loadGitStatus();
-      visible = next;
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      clearInterval(id);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, [enabled, pollMs, loadGitStatus]);
+  useVisibilityRefresh(loadGitStatus, { enabled, intervalMs: pollMs });
 
   // Re-check when the tab regains focus (covers most post-commit cases).
-  useEffect(() => {
-    if (!enabled) return;
-    const onFocus = () => loadGitStatus();
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onFocus);
-    return () => {
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onFocus);
-    };
-  }, [enabled, loadGitStatus]);
+  useWindowEvent('focus', () => {
+    if (enabled) loadGitStatus();
+  });
+  useDocumentEvent('visibilitychange', () => {
+    if (enabled) loadGitStatus();
+  });
 
   const { fileMap, folderMap } = useMemo(() => {
     return buildGitStatusMaps(changes);

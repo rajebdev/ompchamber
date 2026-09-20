@@ -1,5 +1,6 @@
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@/server/lib/remix-compat';
+import { methodNotAllowed } from '@/server/lib/route-adapter';
 import { getDb } from '@/server/db.server';
 import { withTransaction } from '@/shared/lib/db/transaction.server';
 import { isApprovalMode } from '@/shared/lib/omp/config/access-mode';
@@ -7,7 +8,7 @@ import { markStreamSeen } from '@/shared/lib/omp/session/stream-state.server';
 import { isMockMode } from '@/server/mock.server';
 import { getRpcSession } from '@/server/lib/omp/rpc/manager';
 import { clearSessionFileCaches } from '@/server/lib/omp/session/files';
-import { findSessionFileById } from '@/server/lib/omp/session/locator';
+import { resolveSessionFileOr404 } from '@/server/lib/omp/session/locator';
 import { setSessionTitle } from '@/server/lib/omp/session/title-slot';
 import type { QueuedMessage, QueuedMessageModel } from '@/shared/types/chat';
 
@@ -21,7 +22,7 @@ import type { QueuedMessage, QueuedMessageModel } from '@/shared/types/chat';
  */
 export async function archiveSession({ request, params }: ActionFunctionArgs) {
   if (request.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, { status: 405 });
+    return methodNotAllowed({ request, params });
   }
 
   const db = await getDb();
@@ -130,7 +131,7 @@ export async function putQueue({ request, params }: ActionFunctionArgs) {
   const { sessionId } = params;
   if (!sessionId) return json({ error: 'Session ID is required' }, { status: 400 });
   if (request.method !== 'PUT') {
-    return json({ error: 'Method not allowed' }, { status: 405 });
+    return methodNotAllowed({ request, params });
   }
 
   const body = (await request.json().catch(() => null)) as { queue?: unknown } | null;
@@ -185,7 +186,7 @@ const MAX_SESSION_NAME_LENGTH = 200;
  */
 export async function renameSession({ request, params }: ActionFunctionArgs) {
   if (request.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, { status: 405 });
+    return methodNotAllowed({ request, params });
   }
 
   const sessionId = params.sessionId;
@@ -235,12 +236,11 @@ export async function renameSession({ request, params }: ActionFunctionArgs) {
       }
     }
 
-    const filePath = await findSessionFileById(sessionId);
-    if (!filePath) {
-      return json({ error: 'Session not found' }, { status: 404 });
-    }
+    const resolved = await resolveSessionFileOr404(sessionId);
+    if ('response' in resolved) return resolved.response;
+    const { filePath } = resolved;
 
-    setSessionTitle(filePath, name, 'user');
+    await setSessionTitle(filePath, name, 'user');
     // The mtime-keyed scan cache cannot see an in-place 256-byte slot write.
     clearSessionFileCaches();
     return json({ success: true, sessionId, name });
@@ -291,7 +291,7 @@ export async function getSessionState({ params }: LoaderFunctionArgs) {
  */
 export async function putSessionState({ request, params }: ActionFunctionArgs) {
   if (request.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, { status: 405 });
+    return methodNotAllowed({ request, params });
   }
 
   const sessionId = params.sessionId;

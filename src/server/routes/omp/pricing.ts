@@ -1,30 +1,17 @@
 import { json } from '@/server/lib/remix-compat';
 import type { LoaderFunctionArgs } from '@/server/lib/remix-compat';
 import { isMockMode } from '@/server/mock.server';
+import { loadModelsDevCatalog } from '@/shared/lib/models/catalog';
 
 /**
- * Model pricing catalog from https://models.dev/api.json (1h in-memory cache),
- * the same source ompweb uses. Cost values are per million tokens. Query
- * `?provider=<id>` to filter, or `?id=<provider>/<model>` for one entry.
+ * Model pricing catalog from https://models.dev/api.json (shared 1h in-memory
+ * cache), the same source ompweb uses. Cost values are per million tokens.
+ * Query `?provider=<id>` to filter, or `?id=<provider>/<model>` for one entry.
+ *
+ * Pricing keeps a longer 20s fetch timeout than the default catalog loader and
+ * surfaces failures through its own error envelope, so it opts into both.
  */
-
-declare global {
-  // eslint-disable-next-line no-var
-  var __ompChamberPricingCache: { data: Record<string, unknown>; expiresAt: number } | undefined;
-}
-const CACHE_TTL_MS = 60 * 60 * 1000;
-
-async function loadCatalog(): Promise<Record<string, unknown>> {
-  const cached = globalThis.__ompChamberPricingCache;
-  if (cached && cached.expiresAt > Date.now()) return cached.data;
-  const response = await fetch('https://models.dev/api.json', { signal: AbortSignal.timeout(20_000) });
-  if (!response.ok) throw new Error(`models.dev responded ${response.status}`);
-  const data = await response.json() as unknown;
-  if (typeof data !== 'object' || data === null) throw new Error('models.dev payload is not an object');
-  const catalog = data as Record<string, unknown>;
-  globalThis.__ompChamberPricingCache = { data: catalog, expiresAt: Date.now() + CACHE_TTL_MS };
-  return catalog;
-}
+const PRICING_TIMEOUT_MS = 20_000;
 
 interface CatalogModel {
   id?: string;
@@ -39,7 +26,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return json({ providers: {}, isMock: true });
   }
   try {
-    const catalog = await loadCatalog();
+    const catalog = await loadModelsDevCatalog({
+      timeoutMs: PRICING_TIMEOUT_MS,
+      strict: true,
+    });
     const url = new URL(request.url);
     const providerFilter = url.searchParams.get('provider');
     const modelId = url.searchParams.get('id');

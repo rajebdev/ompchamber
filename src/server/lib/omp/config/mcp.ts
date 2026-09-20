@@ -17,9 +17,10 @@
  */
 
 import fs from 'fs';
-import { closeSync, openSync, statSync, unlinkSync, writeSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { getAgentDir, pathExists } from '@/server/lib/omp/core/paths';
+import { writeFileAtomic } from '@/server/lib/fs/atomic-write';
+import { isRecord } from '@/shared/lib/util/guards';
 
 const MAX_MCP_CONFIG_BYTES = 512 * 1024;
 const SERVER_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -35,10 +36,6 @@ export interface McpUserConfig {
   servers: Array<{ name: string; config: McpServer }>;
   disabledServers: string[];
   error?: string;
-}
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function serverEntries(config: McpFile): Array<{ name: string; config: McpServer }> {
@@ -98,11 +95,6 @@ const MCP_LOCK_TIMEOUT_MS = 3_000;
 const MCP_LOCK_STALE_MS = 10_000;
 const MCP_LOCK_RETRY_MS = 25;
 
-function sleepSync(ms: number): void {
-  const sab = new SharedArrayBuffer(4);
-  Atomics.wait(new Int32Array(sab), 0, 0, ms);
-}
-
 export async function withMcpConfigLock<T>(configPath: string, fn: () => T | Promise<T>): Promise<T> {
   const lockPath = `${configPath}.lock`;
   // The config file may not exist yet (first write) — the lockfile needs its
@@ -110,15 +102,15 @@ export async function withMcpConfigLock<T>(configPath: string, fn: () => T | Pro
   await fs.promises.mkdir(dirname(lockPath), { recursive: true });
   const deadline = Date.now() + MCP_LOCK_TIMEOUT_MS;
   for (;;) {
-    let fd: number | null = null;
+    let handle: fs.promises.FileHandle | null = null;
     try {
-      fd = openSync(lockPath, 'wx');
+      handle = await fs.promises.open(lockPath, 'wx');
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
       // Held by another process — break it if stale, otherwise wait and retry.
       try {
-        if (Date.now() - statSync(lockPath).mtimeMs > MCP_LOCK_STALE_MS) {
-          unlinkSync(lockPath);
+        if (Date.now() - (await fs.promises.stat(lockPath)).mtimeMs > MCP_LOCK_STALE_MS) {
+          await fs.promises.unlink(lockPath);
           continue;
         }
       } catch {
@@ -127,19 +119,19 @@ export async function withMcpConfigLock<T>(configPath: string, fn: () => T | Pro
       if (Date.now() >= deadline) {
         throw new Error(`Timed out waiting for ${lockPath} (another process holds the MCP config lock)`);
       }
-      sleepSync(MCP_LOCK_RETRY_MS);
+      await Bun.sleep(MCP_LOCK_RETRY_MS);
       continue;
     }
     try {
-      writeSync(fd, String(process.pid));
+      await handle.writeFile(String(process.pid));
     } finally {
-      closeSync(fd);
+      await handle.close();
     }
     try {
       return await fn();
     } finally {
       try {
-        unlinkSync(lockPath);
+        await fs.promises.unlink(lockPath);
       } catch {
         // Already removed (e.g. by cleanup) — the critical section is done.
       }
@@ -156,10 +148,7 @@ async function readConfigFile(path: string): Promise<McpFile> {
 }
 
 async function writeConfigFile(path: string, config: McpFile): Promise<void> {
-  await fs.promises.mkdir(dirname(path), { recursive: true });
-  const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
-  await Bun.write(temp, `${JSON.stringify(config, null, 2)}\n`);
-  await fs.promises.rename(temp, path);
+  await writeFileAtomic(path, `${JSON.stringify(config, null, 2)}\n`);
 }
 
 async function writeServerAt(path: string, name: string, server: McpServer, previousName?: string): Promise<{ path: string }> {

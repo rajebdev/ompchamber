@@ -22,14 +22,14 @@
  *   }
  */
 
-import { json } from '@/server/lib/remix-compat';
+import { json, NO_STORE_HEADERS } from '@/server/lib/remix-compat';
 import { loadOmpSidebarData } from '@/server/lib/omp/session/reader';
 
 export async function loader() {
   try {
     const data = await loadOmpSidebarData();
     return json(data, {
-      headers: { 'Cache-Control': 'no-store' },
+      headers: NO_STORE_HEADERS,
     });
   } catch (error) {
     return json(

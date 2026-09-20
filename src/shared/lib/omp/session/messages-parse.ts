@@ -12,32 +12,12 @@
  */
 
 import type { ToolCallData } from '@/shared/types/chat';
-import { extractText as coreExtractText, extractUserImageAttachments, isRecord, parseMessageBlocks, stripInlinedTextAttachments, toToolCallData } from '@/shared/lib/omp/session/parse-message-blocks';
+import type { OmpMessageEntry } from '@/shared/types/omp/session';
+import { extractText as coreExtractText, extractUserImageAttachments, parseMessageBlocks, stripInlinedTextAttachments, toToolCallData } from '@/shared/lib/omp/session/parse-message-blocks';
+import { isRecord } from '@/shared/lib/util/guards';
 
-export interface OmpMessageEntry {
-  type?: string;
-  customType?: string;
-  id?: string;
-  timestamp?: string;
-  parentId?: string | null;
-  content?: unknown;
-  details?: unknown;
-  message?: {
-    role?: string;
-    content?: unknown;
-    toolCallId?: string;
-    toolName?: string;
-    isError?: boolean;
-    details?: unknown;
-    stopReason?: string;
-    errorStatus?: number;
-    errorId?: number;
-    errorMessage?: string;
-    [key: string]: unknown;
-  };
-}
-
-export { isRecord, stripInlinedTextAttachments };
+export { stripInlinedTextAttachments };
+export type { OmpMessageEntry };
 
 /** Extract plain text from omp content (string or [{type:'text',text},...]). */
 export function extractText(content: unknown): string {

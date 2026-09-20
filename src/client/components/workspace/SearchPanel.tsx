@@ -4,9 +4,10 @@ import { CaseSensitive, Check, MoreHorizontal, Regex, Replace, ReplaceAll, Searc
 import { FileIcon } from '@/client/components/common/file-icon';
 import { useFetcher } from '@/client/lib/router/fetcher';
 import { GitRepoDropdown } from '@/client/components/workspace/file-explorer/GitRepoDropdown';
-import { useScrollbarFade } from '@/client/hooks/ui/scrollbar-fade';
+import { useScrollbarFade, scrollbarFadeClass } from '@/client/hooks/ui/scrollbar-fade';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { useSearchStream } from '@/client/hooks/workspace/search-stream';
+import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 
 export function SearchPanel({ className = '', enabled = true, rootPath }: { className?: string, enabled?: boolean, rootPath?: string }) {
   const [query, setQuery] = useSessionState<string>('search.query', '');
@@ -27,15 +28,7 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
   const replaceFetcher = useFetcher<{ success: boolean, results: any[] }>();
   const { results, isSearching, start: startSearch } = useSearchStream();
 
-  useEffect(() => {
-    const handleClickOutside = (event: globalThis.MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setShowMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  useOnClickOutside(menuRef, () => setShowMenu(false));
 
   const triggerSearch = () => {
     if (!enabled) return;
@@ -210,7 +203,7 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
         )}
       </div>
       
-      <div onScroll={handleScroll} className={`flex-1 scrollbar-overlay-container px-3 py-2 text-xs ${isScrolling ? 'scrollbar-overlay-scrolling' : 'scrollbar-overlay'}`}>
+      <div onScroll={handleScroll} className={`flex-1 scrollbar-overlay-container px-3 py-2 text-xs ${scrollbarFadeClass(isScrolling)}`}>
 
         {isLoading && results.length === 0 ? (
           <div className="text-ink/40 italic text-center py-4">Searching...</div>

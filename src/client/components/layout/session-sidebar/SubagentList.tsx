@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { useSearchParams } from '@/client/lib/router/search-params';
 import { SubagentStatusIcon } from '@/client/components/common/SubagentStatusIcon';
-import { isRecord } from '@/shared/lib/omp/session/parse-message-blocks';
+import { isRecord } from '@/shared/lib/util/guards';
 import { fetchSubagentHistory, historyEntryToSubagentInfo } from '@/shared/lib/omp/subagent/history/client';
 import { mergeSubagentRoster, parseSubagentLifecycle, parseSubagentProgress, parseSubagentRosterResponse } from '@/shared/lib/omp/subagent/parse';
 import type { SubagentInfo, SubagentProgress } from '@/shared/types';

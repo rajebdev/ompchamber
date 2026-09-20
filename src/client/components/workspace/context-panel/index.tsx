@@ -7,7 +7,7 @@ import { ContextStatsGrid } from '@/client/components/workspace/context-panel/St
 import { LastMessageCard } from '@/client/components/workspace/context-panel/LastMessageCard';
 import { TokenDistributionBar } from '@/client/components/workspace/context-panel/TokenDistributionBar';
 import { RawMessagesList } from '@/client/components/workspace/context-panel/RawMessagesList';
-import { useScrollbarFade } from '@/client/hooks/ui/scrollbar-fade';
+import { useScrollbarFade, scrollbarFadeClass } from '@/client/hooks/ui/scrollbar-fade';
 import { usePanelRefresh, useFileMutationRefresh } from '@/client/hooks/workspace/panel-refresh';
 
 interface ContextPanelProps {
@@ -98,7 +98,7 @@ export function ContextPanel({
       </div>
 
       {/* Scrollable Context Body */}
-      <div onScroll={handleScroll} className={`flex-1 scrollbar-overlay-container p-4 space-y-4 ${isScrolling ? 'scrollbar-overlay-scrolling' : 'scrollbar-overlay'}`}>
+      <div onScroll={handleScroll} className={`flex-1 scrollbar-overlay-container p-4 space-y-4 ${scrollbarFadeClass(isScrolling)}`}>
         {/* 1. Context Window Usage Progress Card */}
         <ContextWindowCard
           used={telemetry.contextUsed}

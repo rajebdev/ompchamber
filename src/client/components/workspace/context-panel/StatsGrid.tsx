@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import { Info } from 'lucide-preact';
 import type { ContextCostBreakdown } from '@/shared/types';
 import { CostBreakdownPopover } from '@/client/components/workspace/context-panel/CostBreakdownPopover';
-import { StatCard } from '@/client/components/workspace/context-panel/StatCard';
+import { StatCard } from '@/client/components/common/StatCard';
 
 interface ContextStatsGridProps {
   messagesCount: number;
@@ -29,10 +29,11 @@ export function ContextStatsGrid({
         <span className="text-xs font-semibold text-ink/80">Session Stats</span>
       </div>
       <div className="flex gap-2 flex-wrap">
-        <StatCard label="Messages" value={messagesCount} />
-        <StatCard label="User" value={userCount} />
-        <StatCard label="Assistant" value={assistantCount} />
+        <StatCard variant="compact" label="Messages" value={messagesCount} />
+        <StatCard variant="compact" label="User" value={userCount} />
+        <StatCard variant="compact" label="Assistant" value={assistantCount} />
         <StatCard
+          variant="compact"
           label="Cache Hit"
           value={cacheHitAverage !== undefined ? `${cacheHitAverage.toFixed(1)}%` : '—'}
         />

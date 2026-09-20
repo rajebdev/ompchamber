@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'preact/hooks';
 import { Check, ChevronLeft, X } from 'lucide-preact';
 import type { SettingsCategoryId, SettingsState } from '@/shared/types';
+import { mergeChamberSettings } from '@/shared/lib/settings/client';
+import { useChamberSettingsWriter } from '@/client/hooks/settings/use-chamber-setting';
+import { useChamberEvent } from '@/client/hooks/ui/window-event';
 import { SETTINGS_CATEGORIES, SettingsSidebar } from '@/client/components/settings/Sidebar';
 import { AppearanceSettings } from '@/client/components/settings/categories/AppearanceSettings';
 import { ChatSettings } from '@/client/components/settings/categories/ChatSettings';
@@ -67,25 +70,11 @@ export function SettingsModal({
   const [isReloading, setIsReloading] = useState(false);
   const [isMobileDrilled, setIsMobileDrilled] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const writeChamberSettings = useChamberSettingsWriter();
 
-  // Local persisted settings state
-  const [settings, setSettings] = useState<SettingsState>(() => {
-    // Try SQLite injected appSettings first
-    if (appSettings.omp_chamber_settings) {
-      return { ...DEFAULT_SETTINGS, ...appSettings.omp_chamber_settings };
-    }
-    
-    // Fallback to localStorage
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('omp_chamber_settings');
-        if (saved) return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
-      } catch (e) {
-        // fallback
-      }
-    }
-    return DEFAULT_SETTINGS;
-  });
+  const [settings, setSettings] = useState<SettingsState>(() =>
+    mergeChamberSettings(DEFAULT_SETTINGS, appSettings),
+  );
 
   useEffect(() => {
     if (isOpen) {
@@ -97,40 +86,23 @@ export function SettingsModal({
   }, [isOpen, initialCategory, autoOpenAddProvider]);
 
   // Global event listener for direct trigger
-  useEffect(() => {
-    const handleCustomOpenSettings = (e: Event) => {
-      const customEvent = e as CustomEvent<{ category?: SettingsCategoryId; autoOpenAdd?: boolean }>;
-      if (customEvent.detail?.category) {
-        setActiveCategory(customEvent.detail.category);
-      }
-      if (customEvent.detail?.autoOpenAdd) {
-        setAutoOpenAdd(true);
-      }
-    };
-
-    window.addEventListener('omp:open-settings', handleCustomOpenSettings);
-    return () => window.removeEventListener('omp:open-settings', handleCustomOpenSettings);
-  }, []);
+  useChamberEvent('omp:open-settings', (e) => {
+    const customEvent = e as CustomEvent<{ category?: SettingsCategoryId; autoOpenAdd?: boolean }>;
+    if (customEvent.detail?.category) {
+      setActiveCategory(customEvent.detail.category);
+    }
+    if (customEvent.detail?.autoOpenAdd) {
+      setAutoOpenAdd(true);
+    }
+  });
 
   const handleUpdateSettings = (updater: Partial<SettingsState> | ((prev: SettingsState) => SettingsState)) => {
     setSettings(prev => {
       const next = typeof updater === 'function' ? updater(prev) : { ...prev, ...updater };
-      
-      // Save to localStorage
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('omp_chamber_settings', JSON.stringify(next));
-        if (next.theme) {
-          document.documentElement.dataset.theme = next.theme;
-        }
+      if (typeof document !== 'undefined' && next.theme) {
+        document.documentElement.dataset.theme = next.theme;
       }
-      
-      // Save to SQLite
-      fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ omp_chamber_settings: next })
-      }).catch(console.error);
-      
+      writeChamberSettings(next);
       return next;
     });
     setToastMessage('Setting was saved');

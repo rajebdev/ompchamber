@@ -1,5 +1,6 @@
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@/server/lib/remix-compat';
+import { methodNotAllowed } from '@/server/lib/route-adapter';
 import { getDb } from '@/server/db.server';
 import { getSessionData } from '@/client/data/mock/chat';
 import { isMockMode } from '@/server/mock.server';
@@ -330,7 +331,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       });
     }
 
-    return json({ error: 'Method not allowed' }, { status: 405 });
+    return methodNotAllowed({ request, params });
   } catch (error: any) {
     console.error('Chat session action error:', error);
     return json({ error: error.message }, { status: 500 });

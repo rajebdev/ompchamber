@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { SearchResultItem } from '@/shared/types/fs';
+import { readSseStream } from '@/shared/lib/chat/read-sse';
 
 interface SearchStreamState {
   results: SearchResultItem[];
@@ -13,8 +14,8 @@ interface SearchStreamState {
  *
  * The POST body goes out as `application/x-www-form-urlencoded` (the same
  * encoding the old `useFetcher.submit` used) and the response is consumed
- * incrementally with `response.body.getReader()`. A new `start` call aborts
- * the previous run — matching the fetcher semantics the panel relied on.
+ * incrementally via the shared SSE reader. A new `start` call aborts the
+ * previous run — matching the fetcher semantics the panel relied on.
  */
 export function useSearchStream(): SearchStreamState & {
   start: (body: Record<string, string>) => Promise<void>;
@@ -48,34 +49,19 @@ export function useSearchStream(): SearchStreamState & {
         signal: controller.signal,
       });
 
-      const reader = response.body?.getReader();
-      if (!reader) return;
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-      const consumeFrame = (frame: string) => {
-        const eventLine = frame.split('\n').find(l => l.startsWith('event: '));
-        const dataLine = frame.split('\n').find(l => l.startsWith('data: '));
-        if (!eventLine || !dataLine) return;
-        try {
-          const data = JSON.parse(dataLine.slice('data: '.length));
-          if (eventLine.slice('event: '.length) === 'matches' && Array.isArray(data)) {
-            setResults(prev => [...prev, ...data]);
+      await readSseStream(
+        response,
+        (event, data) => {
+          if (event !== 'matches') return;
+          try {
+            const parsed = JSON.parse(data);
+            if (Array.isArray(parsed)) setResults(prev => [...prev, ...parsed]);
+          } catch {
+            // Malformed frame — skip; the next frame carries its own payload.
           }
-        } catch {
-          // Malformed frame — skip; the next frame carries its own payload.
-        }
-      };
-
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const frames = buffer.split('\n\n');
-        buffer = frames.pop() ?? '';
-        frames.forEach(consumeFrame);
-      }
-      if (buffer) consumeFrame(buffer);
+        },
+        controller.signal,
+      );
     } catch {
       // Aborted (superseded or unmounted) — leave partial results rendered.
     } finally {

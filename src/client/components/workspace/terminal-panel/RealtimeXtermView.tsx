@@ -11,6 +11,8 @@ import {
   safePatchFitAddon,
   safePatchRenderService,
   getTerminalSessionOutput,
+  type XtermCore,
+  type XtermModule,
 } from '@/client/data/theme/terminal';
 
 export interface RealtimeXtermHandle {
@@ -139,7 +141,7 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
         const el = containerRef.current;
         if (el.clientWidth <= 0 || el.clientHeight <= 0) return;
         try {
-          const core = (termInstance as any)._core;
+          const core = (termInstance as unknown as XtermCore)._core;
           const renderService = core?._renderService;
           if (!renderService) return;
           const dims = renderService.dimensions;
@@ -151,17 +153,17 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
       async function initXterm() {
         if (!containerRef.current || !isMounted) return;
 
-        const xtermModule = await import('@xterm/xterm');
-        const fitModule = await import('@xterm/addon-fit');
+        const xtermModule = (await import('@xterm/xterm')) as unknown as XtermModule<typeof Terminal>;
+        const fitModule = (await import('@xterm/addon-fit')) as unknown as XtermModule<typeof FitAddon>;
 
         const TerminalClass =
           xtermModule.Terminal ||
-          (xtermModule.default && (xtermModule.default as any).Terminal) ||
+          xtermModule.default?.Terminal ||
           xtermModule.default;
 
         const FitAddonClass =
           fitModule.FitAddon ||
-          (fitModule.default && (fitModule.default as any).FitAddon) ||
+          fitModule.default?.FitAddon ||
           fitModule.default;
 
         if (!TerminalClass || !FitAddonClass || !containerRef.current || !isMounted) return;

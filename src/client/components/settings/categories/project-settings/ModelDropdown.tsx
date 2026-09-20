@@ -1,6 +1,7 @@
 
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import { Check, ChevronDown, Info, Sparkles } from 'lucide-preact';
+import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 
 const FALLBACK_MODELS = [
   'Not selected',
@@ -28,19 +29,7 @@ export function ProjectModelDropdown({
   const [showTooltip, setShowTooltip] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    function handleClickOutside(event: globalThis.MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isOpen]);
+  useOnClickOutside(dropdownRef, () => setIsOpen(false));
 
   return (
     <div className="space-y-2.5">

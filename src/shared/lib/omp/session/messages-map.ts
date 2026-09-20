@@ -4,19 +4,10 @@
  */
 
 import type { ChatMessageData } from '@/shared/types/chat';
-import { extractText, extractUserImageAttachments, isRecord, parseAssistantContent, resultOutput, roleFor, stripInlinedTextAttachments, type OmpMessageEntry } from '@/shared/lib/omp/session/messages-parse';
+import { extractText, extractUserImageAttachments, parseAssistantContent, resultOutput, roleFor, stripInlinedTextAttachments, type OmpMessageEntry } from '@/shared/lib/omp/session/messages-parse';
+import { isRecord } from '@/shared/lib/util/guards';
 import { deriveTurnError } from '@/shared/lib/omp/session/turn-error';
-
-/** omp turn timestamps arrive as epoch-ms numbers inside the message but as
- *  ISO strings at the JSONL entry level — normalize both to epoch ms. */
-function toEpochMs(value: unknown): number | undefined {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const t = new Date(value).getTime();
-    return Number.isNaN(t) ? undefined : t;
-  }
-  return undefined;
-}
+import { toEpochMs } from '@/shared/lib/omp/session/timestamps';
 
 /** Map a raw omp JSONL entry of type "message" to the chamber shape. */
 export function toChatMessage(entry: OmpMessageEntry): ChatMessageData | null {
@@ -26,8 +17,8 @@ export function toChatMessage(entry: OmpMessageEntry): ChatMessageData | null {
   const content = msg.content;
   const attribution = typeof msg.attribution === 'string'
     ? msg.attribution
-    : typeof (entry as any).attribution === 'string'
-      ? (entry as any).attribution
+    : typeof entry.attribution === 'string'
+      ? entry.attribution
       : undefined;
 
   const base: ChatMessageData = {
@@ -60,13 +51,13 @@ export function toChatMessage(entry: OmpMessageEntry): ChatMessageData | null {
   const turnError = deriveTurnError(msg);
   const durationMs = typeof msg.duration === 'number'
     ? msg.duration
-    : typeof (entry as any).durationMs === 'number'
-      ? (entry as any).durationMs
+    : typeof entry.durationMs === 'number'
+      ? entry.durationMs
       : undefined;
   const model = typeof msg.model === 'string'
     ? msg.model
-    : typeof (entry as any).model === 'string'
-      ? (entry as any).model
+    : typeof entry.model === 'string'
+      ? entry.model
       : undefined;
   const provider = typeof msg.provider === 'string' ? msg.provider : undefined;
   const startedAt = typeof base.startedAt === 'number' ? base.startedAt : undefined;

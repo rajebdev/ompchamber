@@ -10,24 +10,7 @@
  */
 
 import { parseJsonlLenient } from '@/shared/lib/omp/session/jsonl';
-
-interface OmpUsage {
-  input?: number;
-  output?: number;
-  cacheRead?: number;
-  cacheWrite?: number;
-  totalTokens?: number;
-  reasoningTokens?: number;
-  cost?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; total?: number };
-}
-
-interface StatEntry {
-  type?: string;
-  timestamp?: string;
-  model?: string;
-  thinkingLevel?: string;
-  message?: { role?: string; model?: string; provider?: string; usage?: OmpUsage };
-}
+import type { OmpMessageEntry } from '@/shared/types/omp/session';
 
 export interface SessionStats {
   /** Model switch history (most settings tabs show only the latest). */
@@ -49,7 +32,7 @@ export async function readSessionStats(filePath: string): Promise<SessionStats |
   try {
     const file = Bun.file(filePath);
     if ((await file.stat()).size > MAX_SESSION_BYTES) return undefined;
-    const entries = parseJsonlLenient<StatEntry>(await file.text());
+    const entries = parseJsonlLenient<OmpMessageEntry>(await file.text());
     const stats: SessionStats = {
       models: [],
       thinkingLevels: [],

@@ -1,5 +1,5 @@
 import type { KenariUsageReport } from '@/shared/types';
-import { StatCard } from '@/client/components/settings/categories/usage-settings/StatCard';
+import { StatCard } from '@/client/components/common/StatCard';
 import { QuotaSection } from '@/client/components/settings/categories/usage-settings/QuotaSection';
 import { UsageTable } from '@/client/components/settings/categories/usage-settings/UsageTable';
 import { formatCompactTokens, formatNumber, formatRp } from '@/client/components/settings/categories/usage-settings/format';

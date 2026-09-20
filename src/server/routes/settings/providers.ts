@@ -1,31 +1,31 @@
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@/server/lib/remix-compat';
+import { methodNotAllowed } from '@/server/lib/route-adapter';
 import { getDb } from '@/server/db.server';
 import { DEFAULT_PROVIDERS_LIST, PRESET_NEW_PROVIDERS } from '@/client/data/settings/provider';
 import { isMockMode } from '@/server/mock.server';
 import type { ProviderItem } from '@/shared/types';
+import { createSettingsListStore } from '@/server/lib/db/settings-store';
 import { disableNativeProvider, enableNativeProvider } from '@/server/lib/omp/config/disabled-providers';
 import { PROVIDERS_SETTINGS_KEY as SETTINGS_KEY, deduplicateProviderItems, mergeProviders } from '@/server/lib/models/provider-registry.server';
 import { invalidateModelsCaches } from '@/shared/lib/models/server-cache';
 
+const providersStore = createSettingsListStore<ProviderItem>({
+  key: SETTINGS_KEY,
+  mockDefaults: DEFAULT_PROVIDERS_LIST,
+  idOf: (provider) => provider.id,
+  singular: 'provider',
+  plural: 'providers',
+});
+
 async function readStoredProviders(): Promise<ProviderItem[]> {
   const db = await getDb();
-  const row = await db.get<{ value?: string }>('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-  if (!row?.value) return [];
-  try {
-    const parsed = JSON.parse(row.value);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  return providersStore.readStored(db, { absent: [] });
 }
 
 async function writeStoredProviders(providers: ProviderItem[]): Promise<void> {
   const db = await getDb();
-  await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-    SETTINGS_KEY,
-    JSON.stringify(providers),
-  ]);
+  await providersStore.write(db, providers);
 }
 
 /**
@@ -69,25 +69,8 @@ async function setProviderEnabled(slug: string, enabled: boolean): Promise<Respo
 export async function loader({ request: _request }: LoaderFunctionArgs) {
   try {
     const db = await getDb();
-    const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
     const mock = isMockMode();
-    let providers: ProviderItem[] = mock ? DEFAULT_PROVIDERS_LIST : [];
-
-    if (row && row.value) {
-      try {
-        const parsed = JSON.parse(row.value);
-        if (Array.isArray(parsed)) {
-          providers = parsed;
-        }
-      } catch {}
-    } else if (mock) {
-      await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-        SETTINGS_KEY,
-        JSON.stringify(DEFAULT_PROVIDERS_LIST),
-      ]);
-    }
-
-    providers = deduplicateProviderItems(providers);
+    const providers = deduplicateProviderItems(await providersStore.read(db));
 
     if (!mock) {
       const merged = await mergeProviders(providers);
@@ -115,16 +98,16 @@ export async function loader({ request: _request }: LoaderFunctionArgs) {
   }
 }
 
-export async function action({ request }: ActionFunctionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   try {
+    const db = await getDb();
+
     if (request.method === 'DELETE') {
       const url = new URL(request.url);
       const id = url.searchParams.get('id');
       if (!id) return json({ error: 'id is required' }, { status: 400 });
 
-      const stored = await readStoredProviders();
-      const list = (stored.length > 0 ? stored : DEFAULT_PROVIDERS_LIST).filter(p => p.id !== id);
-      await writeStoredProviders(list);
+      const list = await providersStore.remove(db, id, { absent: DEFAULT_PROVIDERS_LIST, empty: DEFAULT_PROVIDERS_LIST });
       return respondWithProviders(list);
     }
 
@@ -138,29 +121,12 @@ export async function action({ request }: ActionFunctionArgs) {
         return await setProviderEnabled(body.enableProvider, true);
       }
 
-      let updatedProviders: ProviderItem[] = [];
-
-      if (Array.isArray(body)) {
-        updatedProviders = body;
-      } else if (Array.isArray(body.providers)) {
-        updatedProviders = body.providers;
-      } else if (body.provider) {
-        const stored = await readStoredProviders();
-        const list = stored.length > 0 ? stored : DEFAULT_PROVIDERS_LIST;
-        const idx = list.findIndex(p => p.id === body.provider.id);
-        if (idx >= 0) {
-          list[idx] = body.provider;
-        } else {
-          list.push(body.provider);
-        }
-        updatedProviders = list;
-      }
-
-      await writeStoredProviders(updatedProviders);
+      const updatedProviders = await providersStore.upsert(db, body, { absent: DEFAULT_PROVIDERS_LIST, empty: DEFAULT_PROVIDERS_LIST });
+      await providersStore.write(db, updatedProviders);
       return respondWithProviders(updatedProviders);
     }
 
-    return json({ error: 'Method not allowed' }, { status: 405 });
+    return methodNotAllowed({ request, params });
   } catch (error: any) {
     return json({ error: error.message }, { status: 500 });
   }

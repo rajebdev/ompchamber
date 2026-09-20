@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'preact/hooks';
-import { Check, Clock, Copy } from 'lucide-preact';
+import { useMemo } from 'preact/hooks';
+import { Check, Clock } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
-import { copyToClipboard } from '@/client/hooks/ui/clipboard';
+import { CopyButton } from '@/client/components/common/CopyButton';
 import { highlightCode, isCodeLike, tryParseJson } from '@/shared/lib/code/syntax-highlight';
 import { JsonCodeBlock } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/JsonCodeBlock';
 import { MAX_OUTPUT_LINES, truncateTailLines } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/truncate';
@@ -26,9 +26,6 @@ function parseWallTime(text: string): { cleanText: string; wallTime?: string } {
 
 /** Panel untuk tool `bash` / `terminal` — terminal styled console dengan log highlighting & stats. */
 export function Bash({ tool }: { tool: ToolCallData }) {
-  const [copiedCmd, setCopiedCmd] = useState(false);
-  const [copiedOut, setCopiedOut] = useState(false);
-
   const details = tool.details ?? {};
   const meta = details as BashMeta;
   const inputObj = typeof tool.input === 'object' && tool.input !== null ? (tool.input as Record<string, any>) : undefined;
@@ -74,25 +71,6 @@ export function Bash({ tool }: { tool: ToolCallData }) {
     [outputIsCode, truncatedOutput, outputLang]
   );
 
-  const handleCopyCmd = async () => {
-    if (!command) return;
-    const ok = await copyToClipboard(command);
-    if (ok) {
-      setCopiedCmd(true);
-      setTimeout(() => setCopiedCmd(false), 2000);
-    }
-  };
-
-  const handleCopyOut = async () => {
-    const textToCopy = jsonResult.isValid && jsonResult.pretty ? jsonResult.pretty : output;
-    if (!textToCopy) return;
-    const ok = await copyToClipboard(textToCopy);
-    if (ok) {
-      setCopiedOut(true);
-      setTimeout(() => setCopiedOut(false), 2000);
-    }
-  };
-
   return (
     <div className="space-y-2">
       {/* Terminal Command Window */}
@@ -129,15 +107,12 @@ export function Bash({ tool }: { tool: ToolCallData }) {
                   <span>{duration}</span>
                 </span>
               )}
-              <button
-                type="button"
-                onClick={handleCopyCmd}
+              <CopyButton
+                text={command}
                 className="flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[9.5px] text-ink/45 transition-colors hover:bg-ink/5 hover:text-ink"
                 title="Copy command"
-              >
-                {copiedCmd ? <Check size={10} className="text-success" /> : <Copy size={10} />}
-                {copiedCmd ? 'Copied' : 'Copy'}
-              </button>
+                label="Copy"
+              />
             </div>
           </div>
 
@@ -170,14 +145,11 @@ export function Bash({ tool }: { tool: ToolCallData }) {
                 <span className="font-mono text-[9.5px] text-ink/40">{jsonResult.linesCount} lines</span>
               )}
             </div>
-            <button
-              type="button"
-              onClick={handleCopyOut}
+            <CopyButton
+              text={jsonResult.isValid && jsonResult.pretty ? jsonResult.pretty : output}
               className="flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[9.5px] text-ink/45 transition-colors hover:bg-ink/5 hover:text-ink"
-            >
-              {copiedOut ? <Check size={10} className="text-success" /> : <Copy size={10} />}
-              {copiedOut ? 'Copied' : 'Copy'}
-            </button>
+              label="Copy"
+            />
           </div>
           {truncatedPretty && truncatedPretty.skipped > 0 && (
             <div className="border-b border-ink/6 bg-canvas/40 px-3 py-1 font-mono text-[9.5px] text-ink/45">
@@ -194,14 +166,11 @@ export function Bash({ tool }: { tool: ToolCallData }) {
         <div className="overflow-hidden rounded-lg border border-ink/8 bg-paper">
           <div className="flex items-center justify-between border-b border-ink/6 bg-canvas/30 px-3 py-1.5">
             <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-ink/40">Console Output</span>
-            <button
-              type="button"
-              onClick={handleCopyOut}
+            <CopyButton
+              text={jsonResult.isValid && jsonResult.pretty ? jsonResult.pretty : output}
               className="flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[9.5px] text-ink/45 transition-colors hover:bg-ink/5 hover:text-ink"
-            >
-              {copiedOut ? <Check size={10} className="text-success" /> : <Copy size={10} />}
-              {copiedOut ? 'Copied' : 'Copy'}
-            </button>
+              label="Copy"
+            />
           </div>
           {truncatedOutput.skipped > 0 && (
             <div className="border-b border-ink/6 bg-canvas/40 px-3 py-1 font-mono text-[9.5px] text-ink/45">

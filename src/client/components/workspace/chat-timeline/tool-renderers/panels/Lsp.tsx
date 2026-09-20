@@ -2,6 +2,7 @@ import { useMemo } from 'preact/hooks';
 import { AlertCircle, AlertTriangle, CheckCircle2, Cpu, Info, Server } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
 import { FallbackOutput } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/FallbackOutput';
+import { getToolInputAction } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/tool-input';
 
 interface Diagnostic {
   file?: unknown;
@@ -156,7 +157,7 @@ export function Lsp({ tool }: { tool: ToolCallData }) {
 
   const isCapabilities =
     details.xdev?.args?.action === 'capabilities' ||
-    (typeof tool.input === 'object' && (tool.input as any)?.action === 'capabilities') ||
+    getToolInputAction(tool.input) === 'capabilities' ||
     output.includes('capabilities:');
 
   const capabilities = useMemo(() => (isCapabilities ? parseCapabilities(output) : []), [isCapabilities, output]);

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { FILE_MUTATION_EVENT } from '@/shared/lib/chat/omp/file-mutations';
+import { useVisibilityRefresh } from '@/client/hooks/ui/visibility-refresh';
 
 /**
  * Cadence (ms) the data-bearing right panels re-read their source at. Panels
@@ -33,41 +34,7 @@ export function usePanelRefresh(
   enabled: boolean,
   intervalMs: number = PANEL_REFRESH_MS,
 ) {
-  const cbRef = useRef(callback);
-  cbRef.current = callback;
-
-  useEffect(() => {
-    if (!enabled) return;
-    let visible = typeof document === 'undefined' || document.visibilityState === 'visible';
-    let inFlight = false;
-
-    const tick = () => {
-      if (inFlight) return;
-      const result = cbRef.current();
-      if (!result || typeof (result as Promise<unknown>).then !== 'function') return;
-      inFlight = true;
-      const release = () => {
-        inFlight = false;
-      };
-      // Both arms release the lock. The callback owns its error surface (panels
-      // render their own failure state), so a rejection must not wedge the lock.
-      Promise.resolve(result).then(release, release);
-    };
-
-    const id = setInterval(() => {
-      if (visible) tick();
-    }, intervalMs);
-    const onVisibility = () => {
-      const next = document.visibilityState === 'visible';
-      if (next && !visible) tick();
-      visible = next;
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      clearInterval(id);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, [enabled, intervalMs]);
+  useVisibilityRefresh(callback, { enabled, intervalMs, guardInFlight: true });
 }
 
 /** Coalescing window (ms) for back-to-back mutation events; mirrors the

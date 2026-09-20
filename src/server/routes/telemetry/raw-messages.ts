@@ -1,10 +1,8 @@
 import { json } from '@/server/lib/remix-compat';
 import type { LoaderFunctionArgs } from '@/server/lib/remix-compat';
-import { getDb } from '@/server/db.server';
 import { isMockMode } from '@/server/mock.server';
-import { findSessionFileById } from '@/server/lib/omp/session/locator';
+import { loadSessionSource } from '@/server/lib/chat/session-store.server';
 import { computeSessionContextTelemetry } from '@/client/data/context-data';
-import { getSessionData } from '@/client/data/mock/chat';
 import { computeRawMessagesPage, type RawMessageRole } from '@/server/lib/omp/session/telemetry-raw';
 import type { RawMessageItem } from '@/shared/types';
 
@@ -34,39 +32,24 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const mock = isMockMode();
 
   try {
+    const source = await loadSessionSource(sessionId);
+
     if (mock) {
-      if (sessionId) {
-        const sessionMock = getSessionData(sessionId);
-        if (sessionMock && sessionMock.messages && sessionMock.messages.length > 0) {
-          const telemetry = computeSessionContextTelemetry(sessionId, sessionMock.title, sessionMock.messages);
-          return json(pagedFromList(telemetry.rawMessages, page, pageSize, role, telemetry.messagesCount));
-        }
+      if (source?.kind === 'messages') {
+        const telemetry = computeSessionContextTelemetry(sessionId, source.title, source.messages);
+        return json(pagedFromList(telemetry.rawMessages, page, pageSize, role, telemetry.messagesCount));
       }
       return json({ items: [], total: 0, filteredTotal: 0, page, pageSize, isMock: true });
     }
 
-    // Real DB Mode — JSONL first (omp sessions live on disk).
-    const db = await getDb();
-    if (sessionId) {
-      const filePath = await findSessionFileById(sessionId);
-      if (filePath) {
-        const result = await computeRawMessagesPage(filePath, page, pageSize, role);
-        return json({ ...result, page, pageSize, isMock: false, source: 'omp-jsonl' });
-      }
+    if (sessionId && source?.kind === 'jsonl') {
+      const result = await computeRawMessagesPage(source.filePath, page, pageSize, role);
+      return json({ ...result, page, pageSize, isMock: false, source: 'omp-jsonl' });
+    }
 
-      // Chat-created sessions have no JSONL on disk — fall back to the DB copy.
-      const existing = await db.get('SELECT * FROM chat_sessions WHERE session_id = ?', [sessionId]);
-      if (existing) {
-        let parsedMessages: unknown[] = [];
-        try {
-          const parsed: unknown = JSON.parse(existing.messages);
-          if (Array.isArray(parsed)) parsedMessages = parsed;
-        } catch {
-          parsedMessages = [];
-        }
-        const telemetry = computeSessionContextTelemetry(sessionId, existing.title || `Session ${sessionId}`, parsedMessages);
-        return json(pagedFromList(telemetry.rawMessages, page, pageSize, role, telemetry.messagesCount));
-      }
+    if (source?.kind === 'messages') {
+      const telemetry = computeSessionContextTelemetry(sessionId, source.title, source.messages);
+      return json(pagedFromList(telemetry.rawMessages, page, pageSize, role, telemetry.messagesCount));
     }
 
     return json({ items: [], total: 0, filteredTotal: 0, page, pageSize, isMock: false });

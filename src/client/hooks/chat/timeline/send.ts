@@ -21,6 +21,7 @@ import { translateAgentMentions, translateFileMentions } from '@/shared/lib/chat
 import { normalizeNoticePositions } from '@/shared/lib/chat/order';
 import { createMockStreamCallbacks } from '@/shared/lib/chat/timeline/stream-callbacks';
 import { PHASE_VERBS } from '@/shared/lib/chat/timeline/tool-phrases';
+import { formatClock } from '@/shared/lib/format/time';
 
 type TextFileAttachment = Parameters<typeof composeMessageWithTextAttachments>[1][number];
 
@@ -165,7 +166,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
     // send keeps the session's live picks. 'auto' thinking leaves omp alone.
     const modelOverride = options?.model ?? null;
     const effectiveAccessMode = modelOverride?.accessMode ?? accessModeRef.current;
-    const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    const time = formatClock();
     const userMsgId = `msg-${Date.now()}-user`;
     const aiPlaceholderId = `msg-${Date.now() + 1}-ai`;
 

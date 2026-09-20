@@ -3,12 +3,7 @@ import path from 'path';
 import { runShell } from '@/server/lib/fs/shell';
 import { resolveRoot } from '@/server/lib/fs/root';
 import { scopeToRepo } from '@/server/lib/fs/repo-scope';
-
-/** True when `dir` resolves to an existing directory (async stat probe). */
-async function isDirectory(dir: string): Promise<boolean> {
-  const stat = await Bun.file(dir).stat().catch(() => null);
-  return stat?.isDirectory() ?? false;
-}
+import { matchCdCommand, resolveCdTarget, resolveTerminalCwd } from '@/server/lib/fs/terminal-cwd';
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
@@ -65,18 +60,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
   const baseDir = await resolveRoot(requestedRoot, process.cwd());
   const rootDir = await scopeToRepo(baseDir, requestedRepo);
-  let currentDir = rootDir;
-
-  if (requestedCwd) {
-    const resolved = path.isAbsolute(requestedCwd)
-      ? path.resolve(requestedCwd)
-      : path.resolve(rootDir, requestedCwd);
-
-    // Keep within the scoped root for containment
-    if ((resolved === rootDir || resolved.startsWith(rootDir + path.sep)) && (await isDirectory(resolved))) {
-      currentDir = resolved;
-    }
-  }
+  const currentDir = await resolveTerminalCwd(rootDir, requestedCwd);
 
   if (!command) {
     return json({
@@ -89,10 +73,9 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   // Handle 'cd' commands directly to track directory state across calls
-  const cdMatch = command.match(/^cd(?:\s+(.*))?$/);
-  if (cdMatch) {
-    const target = (cdMatch[1] || '').trim();
-    if (!target || target === '~' || target === '/') {
+  const cdTarget = matchCdCommand(command);
+  if (cdTarget !== null) {
+    if (!cdTarget || cdTarget === '~' || cdTarget === '/') {
       return json({
         stdout: '',
         stderr: '',
@@ -102,34 +85,25 @@ export async function action({ request }: ActionFunctionArgs) {
       });
     }
 
-    const nextDir = path.resolve(currentDir, target);
-    if (!nextDir.startsWith(rootDir)) {
+    const cd = await resolveCdTarget(rootDir, currentDir, cdTarget);
+    if (!cd.ok) {
       return json({
         stdout: '',
-        stderr: `cd: permission denied: cannot navigate above workspace root`,
+        stderr: cd.reason === 'above-root'
+          ? `cd: permission denied: cannot navigate above workspace root`
+          : `cd: no such file or directory: ${cdTarget}`,
         exitCode: 1,
         durationMs: 1,
         cwd: path.relative(rootDir, currentDir) || '.',
       });
     }
 
-    if (!(await isDirectory(nextDir))) {
-      return json({
-        stdout: '',
-        stderr: `cd: no such file or directory: ${target}`,
-        exitCode: 1,
-        durationMs: 1,
-        cwd: path.relative(rootDir, currentDir) || '.',
-      });
-    }
-
-    const rel = path.relative(rootDir, nextDir) || '.';
     return json({
       stdout: '',
       stderr: '',
       exitCode: 0,
       durationMs: 1,
-      cwd: rel,
+      cwd: cd.cwd,
     });
   }
 

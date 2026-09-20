@@ -1,8 +1,7 @@
 import type { ReactNode } from 'preact/compat';
-import type { TargetedMouseEvent } from 'preact';
-import { useMemo, useState } from 'preact/hooks';
-import { Braces, Check, Copy } from 'lucide-preact';
-import { copyToClipboard } from '@/client/hooks/ui/clipboard';
+import { useMemo } from 'preact/hooks';
+import { Braces } from 'lucide-preact';
+import { CopyButton } from '@/client/components/common/CopyButton';
 import { highlightJson } from '@/shared/lib/code/syntax-highlight';
 
 interface JsonCodeBlockProps {
@@ -31,20 +30,9 @@ export function JsonCodeBlock({
   compact = false,
   icon,
 }: JsonCodeBlockProps) {
-  const [copied, setCopied] = useState(false);
-
   const effectiveMaxHeight = maxHeightClass || (compact ? 'max-h-40' : 'max-h-56');
   const lines = useMemo(() => jsonString.split('\n'), [jsonString]);
   const highlighted = useMemo(() => highlightJson(jsonString), [jsonString]);
-
-  const handleCopy = async (e: TargetedMouseEvent<HTMLElement>) => {
-    e.stopPropagation();
-    const ok = await copyToClipboard(jsonString);
-    if (ok) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
 
   return (
     <div className={`overflow-hidden ${compact ? 'rounded-md' : 'rounded-lg'} border border-ink/8 bg-paper ${className}`}>
@@ -63,15 +51,13 @@ export function JsonCodeBlock({
             </span>
           </div>
 
-          <button
-            type="button"
-            onClick={handleCopy}
+          <CopyButton
+            text={jsonString}
             className="flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-ink/45 transition-colors hover:bg-ink/5 hover:text-ink shrink-0"
             title="Copy JSON"
-          >
-            {copied ? <Check size={10} className="text-success" /> : <Copy size={10} />}
-            {copied ? 'Copied' : 'Copy'}
-          </button>
+            onClick={(e) => e.stopPropagation()}
+            label="Copy"
+          />
         </div>
       )}
 

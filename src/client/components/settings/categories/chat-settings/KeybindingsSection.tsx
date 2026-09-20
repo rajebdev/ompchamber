@@ -18,11 +18,13 @@ export function ChatKeybindingsSection({ settings, onUpdate }: ChatKeybindingsSe
     onUpdate((prev) => {
       const updates: Partial<SettingsState> = { [action]: newValue };
 
-      const otherActions: ('keybindingSend' | 'keybindingNewLine' | 'keybindingSteering')[] = [
-        'keybindingSend',
-        'keybindingNewLine',
-        'keybindingSteering',
-      ].filter((a) => a !== action) as any;
+      const otherActions = (
+        [
+          'keybindingSend',
+          'keybindingNewLine',
+          'keybindingSteering',
+        ] as const
+      ).filter((a) => a !== action);
 
       for (const other of otherActions) {
         if (prev[other] === newValue) {

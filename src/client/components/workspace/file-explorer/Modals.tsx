@@ -1,5 +1,5 @@
 import { createPortal } from 'preact/compat';
-import type { FormEvent } from 'preact/compat';
+import type { FormEvent, RefObject } from 'preact/compat';
 import { Copy, Edit2, ExternalLink, Eye, GitCompare, History, RefreshCw, Trash2, X } from 'lucide-preact';
 
 interface ContextMenuProps {
@@ -8,9 +8,10 @@ interface ContextMenuProps {
   isFolder: boolean;
   hasGitStatus?: boolean;
   onAction: (actionType: string) => void;
+  menuRef?: RefObject<HTMLDivElement>;
 }
 
-export function FileContextMenu({ x, y, isFolder, hasGitStatus, onAction }: ContextMenuProps) {
+export function FileContextMenu({ x, y, isFolder, hasGitStatus, onAction, menuRef }: ContextMenuProps) {
   const menuWidth = 190;
   const menuHeight = isFolder ? 220 : hasGitStatus ? 285 : 255;
   
@@ -24,6 +25,7 @@ export function FileContextMenu({ x, y, isFolder, hasGitStatus, onAction }: Cont
       onContextMenu={(e) => { e.preventDefault(); onAction('close'); }}
     >
       <div 
+        ref={menuRef}
         className="fixed z-50 bg-paper border border-ink/15 shadow-2xl rounded-lg py-1 min-w-[185px] text-xs text-ink font-sans"
         style={{ top: posY, left: posX }}
         onClick={e => e.stopPropagation()}

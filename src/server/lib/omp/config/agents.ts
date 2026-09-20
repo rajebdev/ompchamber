@@ -13,6 +13,8 @@
 import fs from 'fs';
 import { join } from 'path';
 import { getAgentDir, pathExists } from '@/server/lib/omp/core/paths';
+import { writeFileAtomic } from '@/server/lib/fs/atomic-write';
+import { parseFrontmatter } from '@/server/lib/omp/config/yaml';
 
 export interface DiscoveredAgent {
   id: string;
@@ -27,28 +29,6 @@ export interface DiscoveredAgent {
   /** Which disk root the agent was discovered from. */
   sourceRoot: 'user' | 'project';
   filePath: string;
-}
-
-/** Minimal YAML frontmatter (---\nkey: value\n---) parser for agent files. */
-function parseFrontmatter(text: string): { data: Record<string, string>; body: string } {
-  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
-  if (!match) return { data: {}, body: text };
-  const data: Record<string, string> = {};
-  for (const line of match[1].split(/\r?\n/)) {
-    // Only top-level keys belong to the frontmatter map; indented lines are
-    // nested block content (e.g. an `output:` JSON schema) and must not
-    // override top-level keys like `description`.
-    if (/^\s/.test(line)) continue;
-    const idx = line.indexOf(':');
-    if (idx <= 0) continue;
-    const key = line.slice(0, idx).trim();
-    let value = line.slice(idx + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-    if (key) data[key] = value;
-  }
-  return { data, body: text.slice(match[0].length) };
 }
 
 function toMode(value: string | undefined): 'primary' | 'subagent' | 'all' {
@@ -169,10 +149,7 @@ export async function writeAgentDefinition(input: AgentFileInput): Promise<{ pat
   }
   lines.push('---');
   const content = `${lines.join('\n')}\n\n${input.systemPrompt.trim()}\n`;
-  await fs.promises.mkdir(dir, { recursive: true });
-  const temp = `${path}.tmp-${process.pid}-${Date.now()}`;
-  await Bun.write(temp, content);
-  await fs.promises.rename(temp, path);
+  await writeFileAtomic(path, content);
   return { path };
 }
 

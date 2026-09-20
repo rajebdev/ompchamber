@@ -15,13 +15,10 @@ import { join } from 'path';
 import { Database } from 'bun:sqlite';
 import { getAgentDir } from '@/server/lib/omp/core/paths';
 import { getModelsConfigPath } from '@/server/lib/omp/config/providers';
+import { isRecord } from '@/shared/lib/util/guards';
 
 const AUTH_CREDENTIALS_TABLE = 'auth_credentials';
 const API_KEY_CREDENTIAL_TYPE = 'api_key';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
 
 /** `providers.<slug>.apiKey` from models.yml, or null when absent/blank. */
 async function readModelsYmlApiKey(slug: string): Promise<string | null> {

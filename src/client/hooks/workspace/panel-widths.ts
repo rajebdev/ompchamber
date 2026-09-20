@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { RefObject } from 'preact/compat';
 import { mergePanelWidths, normalizePanelWidths, type PanelWidths } from '@/shared/lib/workspace/panel-widths';
 import type { RightPanelType } from '@/shared/lib/workspace/right-panels';
+import { writeSetting } from '@/shared/lib/settings/client';
 
 /** A drag commits once, after the pointer is released; this only coalesces. */
 const PERSIST_DEBOUNCE_MS = 500;
@@ -34,11 +35,7 @@ export function usePanelWidths(
   const saveNow = useCallback(() => {
     clearTimeout(timerRef.current);
     timerRef.current = undefined;
-    fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ desktopLayoutSizes: widthsRef.current }),
-    }).catch(console.error);
+    writeSetting('desktopLayoutSizes', widthsRef.current);
   }, []);
 
   const commitWidths = useCallback(

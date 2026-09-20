@@ -1,4 +1,5 @@
 import { Category } from '@/client/components/layout/session-sidebar/CategoryItem';
+import { scrollbarFadeClass } from '@/client/hooks/ui/scrollbar-fade';
 
 interface SessionSidebarSessionListProps {
   folders: any[];
@@ -26,7 +27,7 @@ export function SessionSidebarSessionList({
   return (
     <div 
       onScroll={onScroll}
-      className={`flex-1 scrollbar-overlay-container p-2 space-y-4 ${isScrolling ? 'scrollbar-overlay-scrolling' : 'scrollbar-overlay'}`}
+      className={`flex-1 scrollbar-overlay-container p-2 space-y-4 ${scrollbarFadeClass(isScrolling)}`}
     >
       {folders.length === 0 ? (
         <div className="text-center py-8 text-xs text-ink/40">

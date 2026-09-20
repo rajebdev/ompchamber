@@ -25,12 +25,14 @@
 import type { LoaderFunctionArgs } from '@/server/lib/remix-compat';
 import { isMockMode } from '@/server/mock.server';
 import { extractEvalActions } from '@/shared/lib/browser/activity';
-import { isRecord } from '@/shared/lib/browser/util';
+
+import { isRecord } from '@/shared/lib/util/guards';
 import { getRpcSession } from '@/server/lib/omp/rpc/session-registry';
 import { findProjectRuntimeDir, readOwnedTargetIds } from '@/server/lib/browser/runtime';
 import { openScreencast, type ScreencastHandle } from '@/shared/lib/browser/viewer';
 import { type TargetWatcherHandle, watchOwnedTargets } from '@/shared/lib/browser/watcher';
 import type { BrowserPanelAction, BrowserViewFrame, BrowserViewState } from '@/shared/types';
+import { createSseStream } from '@/server/lib/sse';
 
 const POLL_INTERVAL_MS = 1_000;
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -40,13 +42,14 @@ const BROWSER_OFFLINE: BrowserViewState = { status: 'browser-offline', tabs: [] 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const sessionId = params.sessionId ?? '';
   const preferTargetId = new URL(request.url).searchParams.get('target') ?? undefined;
-  const encoder = new TextEncoder();
-  let streamCleanup: (() => void) | null = null;
 
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      let closed = false;
-      let cleaned = false;
+  let closed = false;
+
+  const stream = createSseStream({
+    heartbeatMs: HEARTBEAT_INTERVAL_MS,
+    signal: request.signal,
+    headers: { 'Cache-Control': 'no-cache, no-transform' },
+    onStart(handlers) {
       let lastStateKey = '';
       let viewer: ScreencastHandle | null = null;
       let viewerWsUrl: string | null = null;
@@ -54,7 +57,6 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       let watcherWsUrl: string | null = null;
       let tickInFlight = false;
       let pollTimer: ReturnType<typeof setInterval> | null = null;
-      let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
       let actionSeq = 0;
       let agentSource: unknown = null;
       let unsubscribeAgent: (() => void) | null = null;
@@ -79,8 +81,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       };
 
       const cleanup = (): void => {
-        if (cleaned) return;
-        cleaned = true;
+        if (closed) return;
         closed = true;
         detachViewer();
         dropWatcher();
@@ -88,44 +89,27 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
         unsubscribeAgent = null;
         agentSource = null;
         if (pollTimer !== null) clearInterval(pollTimer);
-        if (heartbeatTimer !== null) clearInterval(heartbeatTimer);
         pollTimer = null;
-        heartbeatTimer = null;
-        request.signal?.removeEventListener('abort', cleanup);
-        try {
-          controller.close();
-        } catch {
-          // Controller already closed.
-        }
-      };
-      streamCleanup = cleanup;
-
-      const send = (event: string, data: unknown): void => {
-        if (closed) return;
-        try {
-          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
-        } catch {
-          cleanup();
-        }
+        handlers.close();
       };
 
       const emitState = (state: BrowserViewState): void => {
         const key = JSON.stringify(state);
         if (key === lastStateKey) return;
         lastStateKey = key;
-        send('state', state);
+        handlers.send('state', state);
       };
 
       const emitAction = (action: { kind: BrowserPanelAction['kind']; label: string }): void => {
         actionSeq += 1;
         const payload: BrowserPanelAction = { id: `act-${actionSeq}`, kind: action.kind, label: action.label };
-        send('action', payload);
+        handlers.send('action', payload);
       };
 
       const emitFrame = (frame: BrowserViewFrame): void => {
         // Backpressure: keep at most a couple of pending frames; drop the rest.
-        if (controller.desiredSize !== null && controller.desiredSize < 0) return;
-        send('frame', frame);
+        if (handlers.isBackpressured()) return;
+        handlers.send('frame', frame);
       };
 
       const tick = async (): Promise<void> => {
@@ -222,37 +206,14 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
         }
       };
 
-      // Heartbeat every 30s to prevent server/proxy timeout.
-      heartbeatTimer = setInterval(() => {
-        if (closed) return;
-        try {
-          controller.enqueue(encoder.encode(':\n\n'));
-        } catch {
-          cleanup();
-        }
-      }, HEARTBEAT_INTERVAL_MS);
-
-      request.signal?.addEventListener('abort', cleanup);
-      if (request.signal?.aborted) {
-        cleanup();
-        return;
-      }
-
       pollTimer = setInterval(() => {
         void tick();
       }, POLL_INTERVAL_MS);
       void tick();
-    },
-    cancel() {
-      streamCleanup?.();
+
+      return cleanup;
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-    },
-  });
+  return stream.response;
 }

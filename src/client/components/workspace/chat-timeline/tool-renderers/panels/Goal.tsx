@@ -2,7 +2,7 @@ import { AlertTriangle, CheckCircle2, CircleDot, FileText, Flag, Hand, Target } 
 import type { ToolCallData } from '@/shared/types';
 import { FallbackOutput } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/FallbackOutput';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
-import { isRecord } from '@/shared/lib/omp/session/parse-message-blocks';
+import { isRecord } from '@/shared/lib/util/guards';
 
 interface GoalItem {
   title?: unknown;

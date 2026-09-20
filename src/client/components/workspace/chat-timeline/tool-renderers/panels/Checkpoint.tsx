@@ -1,6 +1,7 @@
 import { Camera, RotateCcw } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
 import { FallbackOutput } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/FallbackOutput';
+import { formatTimestamp } from '@/shared/lib/format/time';
 
 interface SnapshotInfo {
   id?: unknown;
@@ -9,14 +10,6 @@ interface SnapshotInfo {
   branch?: unknown;
   message?: unknown;
   description?: unknown;
-}
-
-function formatTimestamp(value: unknown): string {
-  if (typeof value === 'number') {
-    const d = new Date(value);
-    return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString();
-  }
-  return typeof value === 'string' ? value : '';
 }
 
 /** Info snapshot untuk tool `checkpoint` / `rewind` — details atau output. */

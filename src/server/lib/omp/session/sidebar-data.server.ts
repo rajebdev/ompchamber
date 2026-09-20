@@ -29,7 +29,7 @@ import type { SessionItemData, SessionSortOption, WorkspaceFolderData } from '@/
 import type { OmpSession } from '@/shared/types/omp/session';
 
 /** What `GET /api/sessions/list` returns and sidebars consume. */
-export interface SidebarData {
+export interface SessionListPayload {
   folders: WorkspaceFolderData[];
   isMock: boolean;
 }
@@ -58,7 +58,7 @@ interface MockSessionRow extends SessionItemData {
   folder_id: number;
 }
 
-export async function loadSidebarData(): Promise<SidebarData> {
+export async function loadSidebarData(): Promise<SessionListPayload> {
   const mock = isMockMode();
   const db = await getDb();
   const folderRows = (await db.all('SELECT * FROM workspace_folders ORDER BY id ASC')) as FolderRow[];

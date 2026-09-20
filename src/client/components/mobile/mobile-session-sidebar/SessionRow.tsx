@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
 import { Archive, ArchiveRestore, Check, Loader2, Pencil } from 'lucide-preact';
 import type { SessionItemData } from '@/shared/types';
+import { useInlineRename } from '@/client/hooks/ui/inline-rename';
 
 export interface MobileSessionRowProps {
   session: SessionItemData;
@@ -24,33 +24,15 @@ export function MobileSessionRow({
   onArchive,
   onRename,
 }: MobileSessionRowProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [draft, setDraft] = useState(session.title);
-  const inputRef = useRef<HTMLInputElement>(null);
-  // Escape flips this so the ensuing blur is a no-op (no accidental commit).
-  const cancelRef = useRef(false);
-
-  useEffect(() => {
-    if (isEditing) inputRef.current?.select();
-  }, [isEditing]);
-
-  const startRename = () => {
-    cancelRef.current = false;
-    setDraft(session.title);
-    setIsEditing(true);
-  };
-
-  const commitRename = () => {
-    const trimmed = draft.trim();
-    setIsEditing(false);
-    if (!trimmed || trimmed === session.title) return;
-    onRename?.(trimmed);
-  };
-
-  const cancelRename = () => {
-    cancelRef.current = true;
-    setIsEditing(false);
-  };
+  const {
+    isEditing,
+    draft,
+    setDraft,
+    inputRef,
+    startRename,
+    handleKeyDown,
+    handleBlur,
+  } = useInlineRename(session.title, onRename);
 
   if (isEditing) {
     return (
@@ -60,22 +42,8 @@ export function MobileSessionRow({
           autoFocus
           value={draft}
           onChange={(e) => setDraft(e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              commitRename();
-            } else if (e.key === 'Escape') {
-              e.preventDefault();
-              cancelRename();
-            }
-          }}
-          onBlur={() => {
-            if (cancelRef.current) {
-              cancelRef.current = false;
-              return;
-            }
-            commitRename();
-          }}
+          onKeyDown={handleKeyDown}
+          onBlur={handleBlur}
           className="flex-1 min-w-0 mx-2 my-1.5 bg-paper border border-ink/25 rounded px-2 py-1 text-xs text-ink outline-none focus:border-ink/50"
         />
       </div>

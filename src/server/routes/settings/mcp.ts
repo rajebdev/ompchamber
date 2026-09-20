@@ -1,33 +1,32 @@
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@/server/lib/remix-compat';
+import { methodNotAllowed } from '@/server/lib/route-adapter';
 import type { DbClient } from '@/server/lib/db/client';
 import { getDb } from '@/server/db.server';
 import { DEFAULT_MCP_SERVERS } from '@/client/data/settings/mcp';
 import { isMockMode } from '@/server/mock.server';
+import { createSettingsListStore } from '@/server/lib/db/settings-store';
 import { resolveRoot } from '@/server/lib/fs/root';
 import type { McpServerItem } from '@/shared/types';
 import { deleteProjectMcpServer, deleteUserMcpServer, nativeToServerItem, readProjectMcpConfig, readUserMcpConfig, redactEnvVars, writeProjectMcpServer, writeUserMcpServer } from '@/server/lib/omp/config/mcp';
 
-const SETTINGS_KEY = 'omp_mcp_servers';
+const mcpStore = createSettingsListStore<McpServerItem>({
+  key: 'omp_mcp_servers',
+  mockDefaults: DEFAULT_MCP_SERVERS,
+  idOf: (server) => server.id,
+  singular: 'server',
+  plural: 'servers',
+});
+
 const NATIVE_USER_PREFIX = 'omp-user-';
 const NATIVE_PROJECT_PREFIX = 'omp-project-';
 
 async function readCustomServers(db: DbClient): Promise<McpServerItem[]> {
-  const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-  if (row?.value) {
-    try {
-      const parsed = JSON.parse(row.value);
-      if (Array.isArray(parsed)) return parsed as McpServerItem[];
-    } catch {}
-  }
-  return isMockMode() ? DEFAULT_MCP_SERVERS : [];
+  return mcpStore.readStored(db, { absent: isMockMode() ? DEFAULT_MCP_SERVERS : [] });
 }
 
 async function writeCustomServers(db: DbClient, servers: McpServerItem[]): Promise<void> {
-  await db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
-    SETTINGS_KEY,
-    JSON.stringify(servers),
-  ]);
+  await mcpStore.write(db, servers);
 }
 
 /** Resolve a client-supplied path to a registered workspace project root. */
@@ -127,17 +126,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       return json({ error: 'Project is not a registered workspace folder' }, { status: 400 });
     }
 
-    let servers: McpServerItem[] = mock ? DEFAULT_MCP_SERVERS : [];
-    const row = await db.get('SELECT value FROM app_settings WHERE key = ?', [SETTINGS_KEY]);
-
-    if (row && row.value) {
-      try {
-        const parsed = JSON.parse(row.value);
-        if (Array.isArray(parsed)) servers = parsed;
-      } catch {}
-    } else if (mock) {
-      await writeCustomServers(db, DEFAULT_MCP_SERVERS);
-    }
+    let servers = await mcpStore.read(db);
 
     if (includeNative && !mock) {
       servers = await mergeServers(servers, projectPath ?? undefined);
@@ -155,7 +144,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 }
 
-export async function action({ request }: ActionFunctionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   try {
     const db = await getDb();
 
@@ -259,16 +248,13 @@ export async function action({ request }: ActionFunctionArgs) {
 
       // Upsert the DB row so ids/enabled stay stable across scope changes.
       const storedServer: McpServerItem = projectPath ? { ...server, projectPath } : server;
-      const custom = await readCustomServers(db);
-      const index = custom.findIndex((entry) => entry.id === storedServer.id);
-      if (index >= 0) custom[index] = storedServer;
-      else custom.push(storedServer);
+      const custom = await mcpStore.upsertItem(db, storedServer, { absent: mock ? DEFAULT_MCP_SERVERS : [] });
       await writeCustomServers(db, custom);
 
       return json({ success: true, servers: mock ? custom : mergeServers(custom, projectPath ?? undefined) });
     }
 
-    return json({ error: 'Method not allowed' }, { status: 405 });
+    return methodNotAllowed({ request, params });
   } catch (error: any) {
     return json({ error: error.message }, { status: 500 });
   }

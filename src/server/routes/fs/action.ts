@@ -1,8 +1,9 @@
 import { json, type ActionFunctionArgs } from '@/server/lib/remix-compat';
+import { errorResponse } from '@/server/lib/route-adapter';
 import fs from 'fs';
 import path from 'path';
 import { isMockMode } from '@/server/mock.server';
-import { getDefaultFsRoot, resolveRoot } from '@/server/lib/fs/root';
+import { getDefaultFsRoot, resolveRoot, resolveWithinRoot } from '@/server/lib/fs/root';
 import { runShell } from '@/server/lib/fs/shell';
 export async function action({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
@@ -11,13 +12,13 @@ export async function action({ request }: ActionFunctionArgs) {
 
   const rootDir = await resolveRoot(formData.get('root') as string, await getDefaultFsRoot(isMockMode()));
   const repo = (formData.get('repo') as string) || '.';
-  const scopedRoot = repo === '.' ? rootDir : path.join(rootDir, repo);
-  if (scopedRoot !== rootDir && !scopedRoot.startsWith(rootDir + path.sep)) {
+  const scopedRoot = repo === '.' ? rootDir : resolveWithinRoot(rootDir, repo);
+  if (!scopedRoot) {
     return json({ error: 'Invalid repo path' }, { status: 403 });
   }
-  const fullPath = path.resolve(scopedRoot, filePath);
+  const fullPath = resolveWithinRoot(scopedRoot, filePath);
 
-  if (fullPath !== scopedRoot && !fullPath.startsWith(scopedRoot + path.sep)) {
+  if (!fullPath) {
     return json({ error: 'Invalid path' }, { status: 403 });
   }
 
@@ -77,8 +78,7 @@ export async function action({ request }: ActionFunctionArgs) {
     }
     
     return json({ error: 'Unknown action' }, { status: 400 });
-  } catch (error: any) {
-    console.error(error);
-    return json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    return errorResponse(error);
   }
 }

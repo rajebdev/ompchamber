@@ -24,7 +24,7 @@ export function AppearanceSettings({ settings, onUpdate }: AppearanceSettingsPro
           {themes.map(theme => (
             <button
               key={theme.id}
-              onClick={() => onUpdate({ theme: theme.id as any })}
+              onClick={() => onUpdate({ theme: theme.id })}
               className={`flex items-start space-x-3 p-3 rounded-lg border text-left transition-all ${
                 settings.theme === theme.id 
                   ? 'border-ink bg-ink/5 ring-1 ring-ink/20' 
