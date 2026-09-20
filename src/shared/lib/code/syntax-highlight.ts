@@ -1,36 +1,5 @@
 import Prism from 'prismjs';
-import 'prismjs/components/prism-clike';
-import 'prismjs/components/prism-markup';
-import 'prismjs/components/prism-javascript';
-import 'prismjs/components/prism-typescript';
-import 'prismjs/components/prism-css';
-import 'prismjs/components/prism-json';
-import 'prismjs/components/prism-markdown';
-import 'prismjs/components/prism-bash';
-import 'prismjs/components/prism-diff';
-import 'prismjs/components/prism-yaml';
-import 'prismjs/components/prism-python';
-import 'prismjs/components/prism-go';
-import 'prismjs/components/prism-rust';
-import 'prismjs/components/prism-sql';
-import 'prismjs/components/prism-toml';
-import 'prismjs/components/prism-java';
-import 'prismjs/components/prism-c';
-import 'prismjs/components/prism-cpp';
-import 'prismjs/components/prism-csharp';
-import 'prismjs/components/prism-ruby';
-import 'prismjs/components/prism-markup-templating';
-import 'prismjs/components/prism-php';
-import 'prismjs/components/prism-kotlin';
-import 'prismjs/components/prism-swift';
-import 'prismjs/components/prism-scala';
-import 'prismjs/components/prism-lua';
-import 'prismjs/components/prism-perl';
-import 'prismjs/components/prism-docker';
-import 'prismjs/components/prism-ini';
-import 'prismjs/components/prism-properties';
-import 'prismjs/components/prism-jsx';
-import 'prismjs/components/prism-tsx';
+import '@/shared/lib/code/prism-grammars';
 import 'prismjs/themes/prism.css';
 
 /** Map file extension to Prism language key */
@@ -85,6 +54,47 @@ export function getLanguageFromPath(filePath?: string): string {
     case 'conf': return 'ini';
     case 'properties': return 'properties';
     case 'env': return 'bash';
+    case 'zig': return 'zig';
+    case 'ex':
+    case 'exs': return 'elixir';
+    case 'dart': return 'dart';
+    case 'ml':
+    case 'mli': return 'ocaml';
+    case 'hs': return 'haskell';
+    case 'nix': return 'nix';
+    case 'tf':
+    case 'tfvars':
+    case 'hcl': return 'hcl';
+    case 'graphql':
+    case 'gql': return 'graphql';
+    case 'sol': return 'solidity';
+    case 'r': return 'r';
+    case 'jl': return 'julia';
+    case 'erl': return 'erlang';
+    case 'clj':
+    case 'cljs':
+    case 'cljc':
+    case 'edn': return 'clojure';
+    case 'scm':
+    case 'ss': return 'scheme';
+    case 'rkt': return 'racket';
+    case 'proto': return 'protobuf';
+    case 'makefile':
+    case 'mk': return 'makefile';
+    case 'ps1':
+    case 'psm1': return 'powershell';
+    case 'json5': return 'json5';
+    case 'less': return 'less';
+    case 'scss': return 'scss';
+    case 'sass': return 'sass';
+    case 'styl': return 'stylus';
+    // `.m` is genuinely ambiguous (Objective-C vs MATLAB); map to Objective-C,
+    // the common editor default.
+    case 'mm':
+    case 'm': return 'objectivec';
+    case 'groovy':
+    case 'gvy':
+    case 'gradle': return 'groovy';
     default: return 'javascript';
   }
 }

@@ -95,6 +95,38 @@ describe('getLanguageFromPath', () => {
 
   test('defaults to javascript when the path is missing', () => {
     expect(getLanguageFromPath()).toBe('javascript');
-    expect(getLanguageFromPath('Makefile')).toBe('javascript');
+  });
+
+  test.each([
+    ['a.zig', 'zig'],
+    ['a.ex', 'elixir'],
+    ['a.dart', 'dart'],
+    ['a.ml', 'ocaml'],
+    ['a.hs', 'haskell'],
+    ['a.nix', 'nix'],
+    ['a.tf', 'hcl'],
+    ['a.graphql', 'graphql'],
+    ['a.sol', 'solidity'],
+    ['a.r', 'r'],
+    ['a.jl', 'julia'],
+    ['a.erl', 'erlang'],
+    ['a.cljs', 'clojure'],
+    ['a.scm', 'scheme'],
+    ['a.rkt', 'racket'],
+    ['a.proto', 'protobuf'],
+    ['a.ps1', 'powershell'],
+    ['a.json5', 'json5'],
+    ['a.less', 'less'],
+    ['a.scss', 'scss'],
+    ['a.sass', 'sass'],
+    ['a.styl', 'stylus'],
+    ['a.m', 'objectivec'],
+    ['a.gradle', 'groovy'],
+  ])('maps trending %s to %s', (path, expected) => {
+    expect(getLanguageFromPath(path)).toBe(expected);
+  });
+
+  test('maps a bare Makefile via the lowercased last segment', () => {
+    expect(getLanguageFromPath('Makefile')).toBe('makefile');
   });
 });

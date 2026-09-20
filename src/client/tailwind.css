@@ -32,20 +32,20 @@
     --theme-warning: #c2410c;
     --theme-warning-hover: #9a3412;
 
-    --syntax-comment: color-mix(in srgb, var(--theme-ink) 45%, transparent);
-    --syntax-punctuation: color-mix(in srgb, var(--theme-ink) 72%, transparent);
-    --syntax-keyword: color-mix(in srgb, var(--theme-ink) 92%, transparent);
-    --syntax-string: color-mix(in srgb, var(--theme-ink) 76%, transparent);
-    --syntax-function: color-mix(in srgb, var(--theme-ink) 100%, transparent);
-    --syntax-number: color-mix(in srgb, var(--theme-ink) 82%, transparent);
-    --syntax-tag: color-mix(in srgb, var(--theme-ink) 92%, transparent);
-    --syntax-attr: color-mix(in srgb, var(--theme-ink) 80%, transparent);
-    --syntax-operator: color-mix(in srgb, var(--theme-ink) 78%, transparent);
-    --syntax-regex: color-mix(in srgb, var(--theme-ink) 86%, transparent);
-    --syntax-builtin: color-mix(in srgb, var(--theme-ink) 84%, transparent);
-    --syntax-deleted: color-mix(in srgb, var(--theme-ink) 88%, transparent);
-    --syntax-inserted: color-mix(in srgb, var(--theme-ink) 84%, transparent);
-    --syntax-namespace: color-mix(in srgb, var(--theme-ink) 68%, transparent);
+    --syntax-comment: #6a737d;
+    --syntax-punctuation: #24292e;
+    --syntax-keyword: #d73a49;
+    --syntax-string: #032f62;
+    --syntax-function: #6f42c1;
+    --syntax-number: #005cc5;
+    --syntax-tag: #22863a;
+    --syntax-attr: #6f42c1;
+    --syntax-operator: #d73a49;
+    --syntax-regex: #032f62;
+    --syntax-builtin: #e36209;
+    --syntax-deleted: #b31d28;
+    --syntax-inserted: #22863a;
+    --syntax-namespace: #6a737d;
     
     --paper-bg: var(--theme-canvas);
     --paper-raised: var(--theme-paper);
@@ -55,6 +55,66 @@
     --ink-muted: color-mix(in srgb, var(--theme-ink) 42%, transparent);
     --ink-hairline: color-mix(in srgb, var(--theme-ink) 14%, transparent);
     --signal-red: var(--theme-error);
+  }
+
+  [data-theme="contrast"] {
+    --theme-paper: #ffffff;
+    --theme-canvas: #f4f4f4;
+    --theme-ink: #111111;
+    --theme-error: #b42318;
+    --theme-success: #067647;
+    --theme-success-bg: #ecfdf3;
+    --theme-success-border: #abefc6;
+    --theme-meta: #4338ca;
+    --theme-info: #0369a1;
+    --theme-info-hover: #075985;
+    --theme-warning: #b54708;
+    --theme-warning-hover: #93370d;
+
+    --syntax-comment: #6a737d;
+    --syntax-punctuation: #24292e;
+    --syntax-keyword: #d73a49;
+    --syntax-string: #032f62;
+    --syntax-function: #6f42c1;
+    --syntax-number: #005cc5;
+    --syntax-tag: #22863a;
+    --syntax-attr: #6f42c1;
+    --syntax-operator: #d73a49;
+    --syntax-regex: #032f62;
+    --syntax-builtin: #e36209;
+    --syntax-deleted: #b31d28;
+    --syntax-inserted: #22863a;
+    --syntax-namespace: #6a737d;
+  }
+
+  [data-theme="noir"] {
+    --theme-paper: #282c34;
+    --theme-canvas: #21252b;
+    --theme-ink: #abb2bf;
+    --theme-error: #e06c75;
+    --theme-success: #34d399;
+    --theme-success-bg: rgba(5, 150, 105, 0.15);
+    --theme-success-border: rgba(16, 185, 129, 0.2);
+    --theme-meta: #818cf8;
+    --theme-info: #61afef;
+    --theme-info-hover: #8ec7ff;
+    --theme-warning: #fb923c;
+    --theme-warning-hover: #fdba74;
+
+    --syntax-comment: #5c6370;
+    --syntax-punctuation: #abb2bf;
+    --syntax-keyword: #c678dd;
+    --syntax-string: #98c379;
+    --syntax-function: #61afef;
+    --syntax-number: #d19a66;
+    --syntax-tag: #e06c75;
+    --syntax-attr: #d19a66;
+    --syntax-operator: #56b6c2;
+    --syntax-regex: #56b6c2;
+    --syntax-builtin: #e5c07b;
+    --syntax-deleted: #e06c75;
+    --syntax-inserted: #98c379;
+    --syntax-namespace: #abb2bf;
   }
 
   [data-theme="one-dark-pro-soft"] {

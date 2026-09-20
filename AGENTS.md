@@ -101,7 +101,7 @@ Bun implements `node:*` builtins natively — they do **not** shell out to a Nod
 - Use the CSS variable system defined in `src/client/tailwind.css` (`var(--theme-ink)`, `var(--theme-paper)`, etc.) and standard Tailwind classes mapped to them (`bg-paper`, `text-ink`, `border-ink/20`).
 - The application supports multiple themes (e.g., E-Ink Paper Monochrome, One Dark Pro Soft). **DO NOT** hardcode raw hex colors like `#141310` or `#faf8f3` in component files.
 - Semantic states are expressed purely through these theme variables.
-- The only allowable chroma (outside of dark theme) is the signal red variable `var(--theme-error)` (`text-error`, `bg-error`) reserved for failures and error messages.
+- The only allowable chroma (outside of dark theme) is the signal red variable `var(--theme-error)` (`text-error`, `bg-error`) reserved for failures and error messages. The `--syntax-*` token colors are an explicit, user-approved exception for IDE-style syntax highlighting; define them in `src/client/tailwind.css` and keep them scoped to `.token.*` / code surfaces, never general UI chrome.
 
 ---
 
