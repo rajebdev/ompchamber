@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import { getLanguage } from '@/shared/lib/code/editor-utils';
+import { getLanguageFromPath } from '@/shared/lib/code/syntax-highlight';
 
 export type FileEditorSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -291,7 +291,7 @@ export function useFileEditor(
     saveStatus,
     copied,
     isDirty,
-    language: target ? getLanguage(target.name) : 'javascript',
+    language: target ? getLanguageFromPath(target.name) : 'javascript',
     saveNow,
     copy,
     download,

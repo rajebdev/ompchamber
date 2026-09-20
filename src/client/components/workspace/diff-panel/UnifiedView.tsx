@@ -1,10 +1,12 @@
 import type { DiffLine } from '@/shared/lib/fs/diff-parser';
+import { highlightCode } from '@/shared/lib/code/syntax-highlight';
 
 interface UnifiedViewProps {
   lines: DiffLine[];
+  language: string;
 }
 
-export function UnifiedView({ lines }: UnifiedViewProps) {
+export function UnifiedView({ lines, language }: UnifiedViewProps) {
   if (lines.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-ink/40 font-mono text-xs p-8">
@@ -14,7 +16,7 @@ export function UnifiedView({ lines }: UnifiedViewProps) {
   }
 
   return (
-    <div className="w-full h-full overflow-auto font-mono text-xs select-text bg-paper text-ink">
+    <div className="w-full h-full overflow-auto font-mono text-xs select-text bg-paper text-ink prism-code-surface">
       <table className="w-max min-w-full border-collapse">
         <tbody>
           {lines.map((line, idx) => {
@@ -77,7 +79,11 @@ export function UnifiedView({ lines }: UnifiedViewProps) {
                   >
                     {isAdd ? '+' : isDel ? '-' : ' '}
                   </span>
-                  <span>{line.text}</span>
+                  <span
+                    dangerouslySetInnerHTML={{
+                      __html: line.text ? highlightCode(line.text, language) : '&nbsp;',
+                    }}
+                  />
                 </td>
               </tr>
             );

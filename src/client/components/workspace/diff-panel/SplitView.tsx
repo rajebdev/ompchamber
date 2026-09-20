@@ -1,10 +1,12 @@
 import type { SplitDiffRow } from '@/shared/lib/fs/diff-parser';
+import { highlightCode } from '@/shared/lib/code/syntax-highlight';
 
 interface SplitViewProps {
   rows: SplitDiffRow[];
+  language: string;
 }
 
-export function SplitView({ rows }: SplitViewProps) {
+export function SplitView({ rows, language }: SplitViewProps) {
   if (rows.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-ink/40 font-mono text-xs p-8">
@@ -14,7 +16,7 @@ export function SplitView({ rows }: SplitViewProps) {
   }
 
   return (
-    <div className="w-full h-full overflow-auto font-mono text-xs select-text bg-paper text-ink">
+    <div className="w-full h-full overflow-auto font-mono text-xs select-text bg-paper text-ink prism-code-surface">
       <div className="w-max min-w-full min-w-[700px]">
         <div className="grid grid-cols-2 sticky top-0 z-10 bg-canvas border-b border-ink/10 text-[11px] text-ink/70 font-sans select-none shadow-xs">
           <div className="px-3 py-1 font-medium border-r border-ink/10 flex items-center justify-between">
@@ -74,7 +76,11 @@ export function SplitView({ rows }: SplitViewProps) {
                         <span className={`inline-block w-4 text-center select-none font-bold ${isLeftDel ? 'text-error' : 'opacity-0'}`}>
                           {isLeftDel ? '-' : ' '}
                         </span>
-                        <span>{left.text}</span>
+                        <span
+                          dangerouslySetInnerHTML={{
+                            __html: left.text ? highlightCode(left.text, language) : '&nbsp;',
+                          }}
+                        />
                       </>
                     ) : (
                       <span className="opacity-0">&nbsp;</span>
@@ -109,7 +115,11 @@ export function SplitView({ rows }: SplitViewProps) {
                         <span className={`inline-block w-4 text-center select-none font-bold ${isRightAdd ? 'text-success' : 'opacity-0'}`}>
                           {isRightAdd ? '+' : ' '}
                         </span>
-                        <span>{right.text}</span>
+                        <span
+                          dangerouslySetInnerHTML={{
+                            __html: right.text ? highlightCode(right.text, language) : '&nbsp;',
+                          }}
+                        />
                       </>
                     ) : (
                       <span className="opacity-0">&nbsp;</span>

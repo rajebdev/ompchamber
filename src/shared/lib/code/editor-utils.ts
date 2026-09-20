@@ -14,11 +14,3 @@ export function getDefaultContent(name: string) {
   }
   return `Content for ${name}`;
 }
-
-export function getLanguage(name: string) {
-  if (name.endsWith('.tsx') || name.endsWith('.ts')) return 'tsx';
-  if (name.endsWith('.json')) return 'json';
-  if (name.endsWith('.css')) return 'css';
-  if (name.endsWith('.md')) return 'markdown';
-  return 'javascript';
-}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'preact/hooks';
 import { useFetcher } from '@/client/lib/router/fetcher';
 import { useSessionUiState } from '@/client/hooks/workspace/session-state';
 import { parseUnifiedDiff } from '@/shared/lib/fs/diff-parser';
+import { getLanguageFromPath } from '@/shared/lib/code/syntax-highlight';
 import { DiffToolbar } from '@/client/components/workspace/diff-panel/Toolbar';
 import { UnifiedView } from '@/client/components/workspace/diff-panel/UnifiedView';
 import { SplitView } from '@/client/components/workspace/diff-panel/SplitView';
@@ -81,6 +82,7 @@ export function DiffPanel({
   }, [fetchDiff]);
 
   const parsed = parseUnifiedDiff(rawDiff, ignoreWhitespace);
+  const language = getLanguageFromPath(filePath);
 
   const handleToggleViewMode = () => {
     setViewMode(viewMode === 'unified' ? 'split' : 'unified');
@@ -173,9 +175,9 @@ export function DiffPanel({
             </button>
           </div>
         ) : viewMode === 'split' ? (
-          <SplitView rows={parsed.splitRows} />
+          <SplitView rows={parsed.splitRows} language={language} />
         ) : (
-          <UnifiedView lines={parsed.lines} />
+          <UnifiedView lines={parsed.lines} language={language} />
         )}
       </div>
 

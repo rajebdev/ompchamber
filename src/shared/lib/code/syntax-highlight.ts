@@ -1,14 +1,36 @@
 import Prism from 'prismjs';
+import 'prismjs/components/prism-clike';
+import 'prismjs/components/prism-markup';
 import 'prismjs/components/prism-javascript';
 import 'prismjs/components/prism-typescript';
-import 'prismjs/components/prism-jsx';
-import 'prismjs/components/prism-tsx';
 import 'prismjs/components/prism-css';
 import 'prismjs/components/prism-json';
 import 'prismjs/components/prism-markdown';
 import 'prismjs/components/prism-bash';
 import 'prismjs/components/prism-diff';
 import 'prismjs/components/prism-yaml';
+import 'prismjs/components/prism-python';
+import 'prismjs/components/prism-go';
+import 'prismjs/components/prism-rust';
+import 'prismjs/components/prism-sql';
+import 'prismjs/components/prism-toml';
+import 'prismjs/components/prism-java';
+import 'prismjs/components/prism-c';
+import 'prismjs/components/prism-cpp';
+import 'prismjs/components/prism-csharp';
+import 'prismjs/components/prism-ruby';
+import 'prismjs/components/prism-markup-templating';
+import 'prismjs/components/prism-php';
+import 'prismjs/components/prism-kotlin';
+import 'prismjs/components/prism-swift';
+import 'prismjs/components/prism-scala';
+import 'prismjs/components/prism-lua';
+import 'prismjs/components/prism-perl';
+import 'prismjs/components/prism-docker';
+import 'prismjs/components/prism-ini';
+import 'prismjs/components/prism-properties';
+import 'prismjs/components/prism-jsx';
+import 'prismjs/components/prism-tsx';
 import 'prismjs/themes/prism.css';
 
 /** Map file extension to Prism language key */
@@ -37,6 +59,32 @@ export function getLanguageFromPath(filePath?: string): string {
     case 'html':
     case 'svg':
     case 'xml': return 'markup';
+    case 'py': return 'python';
+    case 'go': return 'go';
+    case 'rs': return 'rust';
+    case 'sql': return 'sql';
+    case 'toml': return 'toml';
+    case 'java': return 'java';
+    case 'c':
+    case 'h': return 'c';
+    case 'cpp':
+    case 'cc':
+    case 'hpp': return 'cpp';
+    case 'cs': return 'csharp';
+    case 'rb': return 'ruby';
+    case 'php': return 'php';
+    case 'kt':
+    case 'kts': return 'kotlin';
+    case 'swift': return 'swift';
+    case 'scala': return 'scala';
+    case 'lua': return 'lua';
+    case 'pl': return 'perl';
+    case 'dockerfile': return 'docker';
+    case 'ini':
+    case 'cfg':
+    case 'conf': return 'ini';
+    case 'properties': return 'properties';
+    case 'env': return 'bash';
     default: return 'javascript';
   }
 }
