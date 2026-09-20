@@ -72,7 +72,9 @@ export async function readUserMcpConfig(path = join(getAgentDir(), 'mcp.json')):
   return readMcpFile(path);
 }
 
-/** Resolve a project's config file: first existing candidate, else `.omp/mcp.json`. */
+/** Resolve a project's config file: first existing candidate, else `.omp/mcp.json`.
+ *  Probes through `pathExists`, not `Bun.file(p).exists()` — a candidate can
+ *  exist as a directory, which the latter reports false for. */
 export async function resolveProjectMcpConfig(projectRoot: string): Promise<{ root: string; path: string }> {
   const root = resolve(projectRoot);
   for (const filename of MCP_FILENAMES) {

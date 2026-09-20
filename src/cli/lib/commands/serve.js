@@ -47,6 +47,9 @@ export async function run(options, ctx) {
 
   if (mode === 'prod') {
     const serverEntry = joinPath(pkgRoot, 'dist', 'client', 'index.html');
+    // Bun.file().exists() is file-only (false for directories) — correct here,
+    // where the target is always a regular file. For directory guards use
+    // pathExists() in src/server/lib/omp/core/paths.ts.
     if (!(await Bun.file(serverEntry).exists())) {
       fail(`Production build not found at ${serverEntry}.\nRun \`bun run build\` first, then retry with --prod.`);
     }

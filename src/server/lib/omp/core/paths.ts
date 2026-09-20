@@ -88,10 +88,16 @@ export function canonicalize(value: string): string {
 
 /**
  * True when a path exists — directory, file, or resolvable symlink. Use this
- * instead of `Bun.file(p).exists()`: that method answers for regular files
- * only and reports false for a directory that exists, so a directory guard
- * silently empties every scan behind it. `stat()` follows symlinks like
- * `existsSync` and throws for missing or dangling paths.
+ * instead of `Bun.file(p).exists()`: that method answers for regular files and
+ * FIFOs only and reports false for a directory that exists, so a directory
+ * guard silently empties every scan behind it. That asymmetry is documented
+ * (BunFile.exists: "returns true for regular files and FIFOs, false for
+ * directories") and tracked as open bug oven-sh/bun#21537, unfixed as of
+ * Bun 1.4.2 — so this is the standing behaviour to code against, not a
+ * regression to wait out.
+ *
+ * `stat()` follows symlinks like `existsSync` and throws for missing or
+ * dangling paths.
  */
 export async function pathExists(target: string): Promise<boolean> {
   try {
