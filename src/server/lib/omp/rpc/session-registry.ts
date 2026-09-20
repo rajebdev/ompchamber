@@ -107,10 +107,23 @@ export function notifyRunningChange({ refreshSessionList = false }: { refreshSes
 // The approval mode each wrapper's omp child was actually spawned with. omp has
 // no RPC setter for it, so a live wrapper is stale once the desired mode
 // differs and must be respawned with the new --approval-mode flag.
-const spawnApprovalModes = new WeakMap<AgentSessionWrapper, ApprovalMode>();
+// Lives on globalThis (like the registry itself) so a `bun --hot` soft reload —
+// which re-evaluates modules but keeps globalThis — does not forget the mode a
+// surviving wrapper was spawned with; a forgotten mode would make
+// reconcileSpawnApprovalMode destroy and respawn an idle non-default session
+// with the wrong flag on its first post-reload command.
+declare global {
+  // eslint-disable-next-line no-var
+  var __ompSpawnApprovalModes: WeakMap<AgentSessionWrapper, ApprovalMode> | undefined;
+}
+
+function getSpawnApprovalModes(): WeakMap<AgentSessionWrapper, ApprovalMode> {
+  if (!globalThis.__ompSpawnApprovalModes) globalThis.__ompSpawnApprovalModes = new WeakMap();
+  return globalThis.__ompSpawnApprovalModes;
+}
 
 export function getSpawnApprovalMode(session: AgentSessionWrapper): ApprovalMode {
-  return spawnApprovalModes.get(session) ?? DEFAULT_APPROVAL_MODE;
+  return getSpawnApprovalModes().get(session) ?? DEFAULT_APPROVAL_MODE;
 }
 
 /** Destroy an idle session whose spawned approval mode differs from `desired`
@@ -159,7 +172,7 @@ export async function startRpcSession(
       onExit: ({ stderrTail }) => holder.wrapper?.handleProcessExit(stderrTail),
     });
     const created = new AgentSessionWrapper(proc, cwd, recordedCwd);
-    spawnApprovalModes.set(created, approvalMode ?? DEFAULT_APPROVAL_MODE);
+    getSpawnApprovalModes().set(created, approvalMode ?? DEFAULT_APPROVAL_MODE);
     holder.wrapper = created;
     created.start();
     try {
@@ -223,7 +236,7 @@ export function prewarmRpcSession(cwd: string, approvalMode?: ApprovalMode): voi
     onExit: ({ stderrTail }) => holder.wrapper?.handleProcessExit(stderrTail),
   });
   const wrapper = new AgentSessionWrapper(proc, cwd);
-  spawnApprovalModes.set(wrapper, mode);
+  getSpawnApprovalModes().set(wrapper, mode);
   holder.wrapper = wrapper;
   wrapper.start();
   const ready = wrapper
