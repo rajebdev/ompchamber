@@ -9,8 +9,8 @@
   "scripts": {
     "dev:server": "bun run --watch src/server/index.ts",
     "dev:client": "rsbuild build --watch",
-    "dev": "NODE_ENV=development bun --watch src/server/index.ts & rsbuild dev; wait",
-    "dev:lan": "HOST=0.0.0.0 NODE_ENV=development bun --watch src/server/index.ts & rsbuild dev; wait",
+    "dev": "NODE_ENV=development bun run dev:server & bun run dev:client; wait",
+    "dev:lan": "HOST=0.0.0.0 NODE_ENV=development bun run dev:server & bun run dev:client; wait",
     "build": "rsbuild build",
     "start": "NODE_ENV=production bun run src/server/index.ts",
     "typecheck": "tsc",
