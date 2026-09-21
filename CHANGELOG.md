@@ -5,6 +5,19 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- GitHub Actions publish pipeline (`.github/workflows/publish.yml`): publishing a GitHub release
+  installs, typechecks, builds `dist/client`, verifies the release tag against the `package.json`
+  version and runs `bun publish` against npm.
+
+### Changed
+
+- `package.json` is publishable: `private` removed, and `files` limits the tarball to `src`,
+  `dist/client` and `tsconfig.json`.
+
 ## [0.2.0] — 2026-09-21
 
 The stack rewrite release: **Remix + React 19 + Vite → Elysia + Preact + Rsbuild on Bun**, plus the

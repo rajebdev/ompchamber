@@ -72,27 +72,29 @@ ompchamber logs -f -n 200            # follow the server log
 
 ## Install
 
-OMPChamber is not published to npm — install from source:
+OMPChamber is published to npm. It needs a Bun runtime, not Node:
 
 > **Bun only** — the server imports `bun:sqlite` and `Bun.YAML`, both of which Node cannot load.
-> `bun` 1.4 or newer is required; `npm`, `npx`, `yarn` and `pnpm` are never used here.
+> `bun` 1.4 or newer is required.
 
 ```bash
-# clone and install
+bun add -g ompchamber     # puts the `ompchamber` command on your PATH
+ompchamber serve --prod   # start the server on :3000
+```
+
+The published tarball carries the source, the CLI and the prebuilt client bundle, so there is no
+build step after install — `serve` runs immediately. `npm install -g ompchamber` works too, because
+the `ompchamber` bin is a Bun script: Bun still has to be on `PATH`.
+
+### From source
+
+```bash
 git clone https://github.com/rajebdev/ompchamber.git
 cd ompchamber
 bun install
+bun run build                        # dist/client — the only build artifact
 
-# build the client bundle (dist/client — the only build artifact)
-bun run build
-
-# run the production server
 bun run start                        # NODE_ENV=production bun run src/server/index.ts
-```
-
-Put the `ompchamber` command on your `PATH` with `bun link`, or run the CLI directly:
-
-```bash
 bun link                             # then: ompchamber status
 bun run src/cli/ompchamber.js status
 ```
@@ -195,10 +197,30 @@ bun run build                                                 # production bundl
 bun test                                                      # bun test
 ```
 
+## Releasing
+
+Publishing is driven by **GitHub releases**, never by a push
+([`.github/workflows/publish.yml`](.github/workflows/publish.yml)):
+
+```bash
+bun pm version minor -m "chore(release): v%s"   # bump + commit + tag v0.3.0
+git push origin main --tags
+# then publish the release on GitHub → the workflow publishes to npm
+```
+
+The workflow checks out the released tag, installs, typechecks, builds `dist/client`, fails when the
+tag and the `package.json` version disagree, then runs `bun publish`. Two things to set up once:
+
+- Repo secret **`NPM_TOKEN`** — a granular npm access token with read/write on `ompchamber`.
+- GitHub environment **`npm`** — created on the first run; add required reviewers there to gate a
+  publish behind an approval.
+
+A failed publish is retried from **Actions → Publish → Run workflow**, which leaves the release
+itself untouched.
+
 ## License
 
-No license file is included. The source is public, but all rights are reserved by the author — no
-license is granted for redistribution or reuse. `package.json` sets `"private": true`, which only
-blocks accidental `npm publish`.
+No license file is included. The source is public on GitHub and published to npm, but all rights are
+reserved by the author — no license is granted for redistribution or reuse.
 
 See [CHANGELOG.md](CHANGELOG.md) for the release history.

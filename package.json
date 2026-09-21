@@ -1,6 +1,5 @@
 {
   "name": "ompchamber",
-  "private": true,
   "version": "0.2.0",
   "description": "Developer web console and diagnostic chamber for AI Oh-My-Pi — Elysia + Preact on Bun.",
   "type": "module",
@@ -10,6 +9,28 @@
   "bin": {
     "ompchamber": "./src/cli/ompchamber.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rajebdev/ompchamber.git"
+  },
+  "homepage": "https://github.com/rajebdev/ompchamber#readme",
+  "bugs": {
+    "url": "https://github.com/rajebdev/ompchamber/issues"
+  },
+  "keywords": [
+    "omp",
+    "oh-my-pi",
+    "agent",
+    "console",
+    "elysia",
+    "preact",
+    "bun"
+  ],
+  "files": [
+    "src",
+    "dist/client",
+    "tsconfig.json"
+  ],
   "scripts": {
     "dev:server": "bun run --hot src/server/index.ts",
     "dev:client": "rsbuild build --watch",

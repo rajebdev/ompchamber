@@ -1,0 +1,107 @@
+name: Publish
+
+# Publishing is driven by GitHub releases, never by a push:
+# `v0.3.0` tag + release published -> the exact tag is built and published to npm.
+# `workflow_dispatch` re-runs a failed publish without recreating the release.
+#
+# Required repo secret: NPM_TOKEN — a granular access token with
+# "Read and write" permission on the ompchamber package (or an automation token).
+# Bun reads it from NPM_CONFIG_TOKEN, so the token never lands in a file.
+#
+# The published tarball is the runnable app, not a bundle: `src/**` (Bun executes
+# the TypeScript directly), `dist/client` (the bundle the SSR shell reads) and
+# `tsconfig.json` (Bun resolves the `@/` alias from the package's own tsconfig).
+# See the `files` field in package.json. `dist/` is gitignored, so the build step
+# below is what puts it in the tarball.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to publish (defaults to the release tag)
+        required: false
+        type: string
+
+# Never cancel a publish mid-flight; the per-ref group keeps one release per tag
+# at a time.
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    # Add required reviewers to this environment to gate a publish behind an
+    # approval. It is created automatically on first run.
+    environment: npm
+    steps:
+      - name: Checkout the released tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag || github.sha }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.x
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Fail fast: an unset token would otherwise surface as a bare 401 after
+      # the whole build.
+      - name: Check the npm token is configured
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          test -n "$NPM_TOKEN" || {
+            echo "::error::NPM_TOKEN is not set. Add a granular npm access token with read/write on ompchamber (Settings -> Secrets and variables -> Actions)."
+            exit 1
+          }
+
+      # A release whose tag and package.json version disagree would publish the
+      # wrong version number to npm; fail before anything is built.
+      - name: Verify the tag matches package.json
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          version=$(bun -e 'console.log((await Bun.file("package.json").json()).version)')
+          tag="${RELEASE_TAG:-v$version}"
+          if [ "$tag" != "v$version" ]; then
+            echo "::error::Tag $tag does not match package.json version v$version"
+            exit 1
+          fi
+          echo "Publishing ompchamber $version from tag $tag"
+
+      - name: Typecheck
+        run: bun run lint
+
+      - name: Build the client bundle
+        # NODE_ENV=production takes the production branch of rsbuild.config.ts
+        # (source maps off) — the bundle `serve --prod` is meant to serve.
+        env:
+          NODE_ENV: production
+        run: bun run build
+
+      # The server answers 503 without dist/client, and the tarball would ship
+      # without it too — catch it here rather than in a user's terminal.
+      - name: Verify the publish payload
+        run: |
+          test -f dist/client/index.html || {
+            echo "::error::dist/client/index.html is missing after the build"
+            exit 1
+          }
+          bun publish --dry-run --quiet
+
+      - name: Publish to npm
+        env:
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # Add `--access public` here if the package is ever renamed to a scope
+        # (`@user/ompchamber`): scoped packages default to restricted.
+        run: bun publish
