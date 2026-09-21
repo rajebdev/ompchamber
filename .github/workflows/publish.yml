@@ -95,14 +95,18 @@ jobs:
         run: bun run build
 
       # The server answers 503 without dist/client, and the tarball would ship
-      # without it too — catch it here rather than in a user's terminal.
+      # without it too — fail here rather than in a user's terminal.
+      # `bun pm pack` needs no registry credentials (unlike `bun publish
+      # --dry-run`), so this guard runs before the token is used at all, and it
+      # asserts the file is inside the tarball, not merely on disk.
       - name: Verify the publish payload
         run: |
-          test -f dist/client/index.html || {
-            echo "::error::dist/client/index.html is missing after the build"
+          bun pm pack --dry-run > /tmp/pack.txt
+          grep -q 'dist/client/index.html' /tmp/pack.txt || {
+            echo "::error::dist/client/index.html is missing from the tarball"
             exit 1
           }
-          bun publish --dry-run --quiet
+          tail -3 /tmp/pack.txt
 
       - name: Publish to npm
         env:
