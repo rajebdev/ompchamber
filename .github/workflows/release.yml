@@ -1,0 +1,129 @@
+name: Release
+
+# A push to `main` cuts a release from the Conventional Commits it carries:
+# semantic-release reads the commits since the last `v*` tag, decides the next
+# version from them, writes that version into package.json and CHANGELOG.md,
+# commits those two files, then creates the tag and the GitHub Release.
+#
+# Publishing to npm is not this workflow's job, and it cannot be chained through
+# the usual `release: published` event either: GitHub creates no workflow run for
+# an event raised by GITHUB_TOKEN (only `workflow_dispatch` and
+# `repository_dispatch` are exempt — see "Triggering a workflow" in the Actions
+# docs). So this workflow dispatches publish.yml itself once a release exists,
+# which keeps the npm side in one place: the `npm` environment's approval gate,
+# the production build, and the tarball verification all stay in publish.yml.
+#
+# Rehearsing a release locally is not `--dry-run`: that flag still runs every
+# `prepare` hook — which is where @semantic-release/git commits AND pushes — and
+# semantic-release takes `repositoryUrl` from package.json's `repository` field in
+# preference to the git remote, so rewriting `origin` contains nothing. To rehearse,
+# drop the `@semantic-release/github` entry from release.config.mjs first (that
+# plugin publishes a real release even in dry-run mode), then point the run at a
+# throwaway repository whose URL parses — a bare filesystem path fails with
+# "Invalid URL" from the notes generator:
+#   git init --bare /tmp/sr-origin.git && git push /tmp/sr-origin.git main --tags
+#   node node_modules/semantic-release/bin/semantic-release.js \
+#     --repository-url file:///tmp/sr-origin.git
+# The rehearsal writes the changelog with that scratch URL's links, so read it for
+# structure, not for URLs.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One release at a time, never cancelled: an interrupted run leaves a tag whose
+# release commit never landed.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Cut the release
+    runs-on: ubuntu-latest
+    outputs:
+      released: ${{ steps.release.outputs.released }}
+      tag: ${{ steps.release.outputs.tag }}
+    # `contents` creates the tag, the release and the release commit.
+    # `issues`/`pull-requests` are for the plugin's success hook, which comments
+    # on any issue a released commit references — without them the run would fail
+    # after the release already exists.
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # The version is derived from the commits since the last tag, so a
+          # shallow clone would see no history and cut no release.
+          fetch-depth: 0
+          # Keep the token in the checkout's git config: @semantic-release/git
+          # pushes the release commit with it.
+          persist-credentials: true
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.x
+
+      # semantic-release runs under Node, not Bun: it (and @semantic-release/npm,
+      # which shells out to `npm version`) declares engines `^22.14 || >=24.10`,
+      # and the changelog/git plugins need >= 24.15.
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Never tag a red main. publish.yml re-runs both gates against the
+      # tarball, but by then the tag and the release are already published.
+      - name: Typecheck
+        run: bun run lint
+
+      - name: Test
+        run: bun test
+
+      - name: Release
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # semantic-release writes no outputs, so the tag it cut is read back
+          # off the repository. `bumpStrict` in release.config.mjs means a push
+          # of chores/tests alone bumps nothing and ends here.
+          before="$(git describe --tags --abbrev=0 2>/dev/null || echo none)"
+          node node_modules/semantic-release/bin/semantic-release.js
+          after="$(git describe --tags --abbrev=0)"
+          if [ "$before" = "$after" ]; then
+            echo "No release: nothing since $before asks for a version bump."
+            echo "released=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "released=true" >> "$GITHUB_OUTPUT"
+            echo "tag=$after" >> "$GITHUB_OUTPUT"
+          fi
+
+  publish:
+    name: Publish the release
+    needs: release
+    if: needs.release.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    # `actions: write` is what `gh workflow run` needs. `workflow_dispatch` is
+    # the one event GITHUB_TOKEN is allowed to raise, which is why the npm side
+    # is dispatched rather than triggered off the release.
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch publish.yml for ${{ needs.release.outputs.tag }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release.outputs.tag }}
+        # Fire and report, never wait: publish.yml waits on the `npm`
+        # environment, which may require review, and a reviewer should not be
+        # holding this run open. Its own run is separate and re-runnable:
+        #   gh workflow run publish.yml -f tag=vX.Y.Z
+        run: gh workflow run publish.yml --ref main -f tag="$TAG"

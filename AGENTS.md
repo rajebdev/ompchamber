@@ -105,9 +105,9 @@ Bun implements `node:*` builtins natively — they do **not** shell out to a Nod
 
 ### Changelog Policy (Release-Only)
 - **NEVER edit `CHANGELOG.md` during normal work** — not for a feature, a fix, a refactor, a typo, or a version-less "unreleased" note. A task ends at code plus the gates in rule 8; the changelog is not part of it.
-- `CHANGELOG.md` is written **only when cutting a release**, in a change whose sole job is that release: a new `## [x.y.z] — YYYY-MM-DD` section placed **above** the previous release (newest first), carrying the `[Keep a Changelog](https://keepachangelog.com/en/1.1.0/)` categories that apply (`### Added`, `### Changed`, `### Fixed`, `### Removed`), plus its `[x.y.z]:` compare link at the file's tail.
-- Never add to or reword an already-published version section — release notes describe what shipped, not what a later change adjusted.
-- Write entries as released behavior: name the files/functions that carry it and why it changed, never a restatement of the diff.
+- `CHANGELOG.md` is written **only when cutting a release**, and releases are cut by `.github/workflows/release.yml` on every push to `main` — so since `0.6.0` the file is written **by the pipeline, never by hand**: `release.config.mjs` derives each `## [x.y.z] — YYYY-MM-DD` section from the Conventional Commits since the last tag, above the previous release (newest first), carrying the `[Keep a Changelog](https://keepachangelog.com/en/1.1.0/)` categories that apply (`### Added`, `### Changed`, `### Fixed`, `### Removed`). The section order, the header and the leading `### BREAKING CHANGES` group are that config's `commitTypes` and `writerOpts`; a new category means editing both.
+- New sections link their compare range **inline** (`## [0.6.0](…/compare/v0.5.0...v0.6.0) — …`) and their bullets are commit subjects, not the hand-written prose the sections before `0.6.0` use, so the `[x.y.z]:` reference block at the file's tail stops at the last hand-written release. Never add to, reword or reformat a section that already shipped — it describes what shipped, not what a later change adjusted.
+- Write entries as released behavior: a bullet **is** the commit subject, so the subject carries the changelog — name the behavior that changed, never a restatement of the diff. A type marked `hidden` in `release.config.mjs` (`chore`, `style`, `test`, `build`, `ci`) appears nowhere and, because the analyzer runs `bumpStrict`, cannot cut a version on its own.
 
 ---
 
