@@ -67,8 +67,8 @@ ompchamber logs -f -n 200            # follow the server log
 - **Full omp settings surface** — OMP Engine config keys, providers, agents, behavior
   (`AGENTS.md` / `RULES.md`), slash commands, MCP servers with live connection tests, skills and
   the skills catalog, token usage and notifications.
-- **Two data modes** — `MOCK=true` ships demo datasets for previews; `MOCK=false` runs purely on
-  the real SQLite database and real workspace files.
+- **Two data modes** — `MOCK=false` (the default, also when unset) runs purely on the real SQLite
+  database and real workspace files; `MOCK=true` opts into demo datasets for previews.
 - **Self-update** — `ompchamber update` installs the latest GitHub release (bun global or git
   checkout) and restarts a running instance; **About → Updates** does the same from the console.
 
@@ -159,7 +159,7 @@ Environment variables, read from `.env` (see [`.env.example`](.env.example)):
 |---|---|---|
 | `PORT` | `3000` | Server port |
 | `HOST` | `localhost` | Server bind address |
-| `MOCK` | `true` | `true` = demo datasets, `false` = real SQLite + workspace only |
+| `MOCK` | `false` | `true` = demo datasets, `false` = real SQLite + workspace only |
 | `SYNC_WORKSPACE` | `true` | Keep the workspace index in sync with disk |
 | `OMPCHAMBER_DATA_DIR` | `~/.ompchamber` | CLI registry, logs and database root |
 | `OMPCHAMBER_PORT` / `OMPCHAMBER_HOST` | — | Defaults for the CLI when no flag is passed |

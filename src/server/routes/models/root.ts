@@ -274,7 +274,11 @@ export async function action({ request }: ActionFunctionArgs) {
     const body = await request.json();
 
     const catalog = await readSettingsJson<unknown>(db, MODELS_CATALOG_KEY, null);
-    let models: AIModelOption[] = Array.isArray(catalog) ? catalog : INITIAL_MODELS_CATALOG;
+    // The shipped demo catalog is MOCK-only: a real install starts from an empty
+    // list, so a demo model can never be persisted into its stored catalog.
+    let models: AIModelOption[] = Array.isArray(catalog)
+      ? catalog
+      : (isMockMode() ? INITIAL_MODELS_CATALOG : []);
 
     const { actionType, modelId, provider, thinkingLevel, model, models: newModels } = body;
 

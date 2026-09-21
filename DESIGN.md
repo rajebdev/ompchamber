@@ -65,6 +65,6 @@ Never use green, blue, or yellow. Semantic states are expressed purely in ink:
 
 ## 7. Data Layer Architecture (Mock vs Real Mode)
 
-- **Environment-Controlled Toggle (`MOCK=true` / `MOCK=false`)**:
+- **Environment-Controlled Toggle (`MOCK=true` / `MOCK=false`)** — unset defaults to real data:
   - **`MOCK=true`**: Provides sample simulation states (token graphs, chat monologue traces, preset agent configs, demo workspace sessions) for standalone previews and diagnostic demonstrations.
-  - **`MOCK=false`**: Connects directly to real SQLite tables and workspace files with zero synthetic demo sessions or fake commit data.
+  - **`MOCK=false` (default)**: Connects directly to real SQLite tables and workspace files with zero synthetic demo sessions or fake commit data.

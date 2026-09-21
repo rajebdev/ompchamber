@@ -88,7 +88,7 @@ export const otherTools: ToolCallData[] = [
     target: 'app/mock.server.ts',
     output: `1: export function isMockMode(): boolean {
 2:   const envVal = (Bun.env.MOCK || "").trim().toLowerCase();
-3:   return envVal !== "false" && envVal !== "0";
+3:   return envVal === "true" || envVal === "1" || envVal === "on" || envVal === "yes";
 4: }`,
     status: 'success',
     duration: '14ms',
