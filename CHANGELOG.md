@@ -5,15 +5,19 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] — 2026-09-21
 
-### Fixed
+### Added
 
-- Ordering: nothing reorders messages any more — neither the API nor the UI. `GET
-  /api/chat/:sessionId` returns the session's messages in **file order**, and the timeline renders that
-  array as-is, so a notice row appears exactly where omp wrote it. The server-side notice/turn swap,
-  the five scattered display-side copies (`session-load` fetch + older-page prepend, rollback
-  refetch, optimistic send, live stream folding) and `src/shared/lib/chat/order.ts` are gone.
+- Files panel: entries git refuses to track now render dimmed — the icon at 40% opacity and the name at
+  `text-ink/40` against the panel's `text-ink/80`, with a `<path> — git-ignored` tooltip; a live
+  git-status colour still wins when both apply. `collectIgnoredPaths()`
+  (`src/server/lib/fs/git-ignore.ts`) runs one `git check-ignore --stdin -z` **per directory listing**,
+  never per entry, so local (`.gitignore`, `.git/info/exclude`) and global (`core.excludesFile`)
+  rules are covered alike: paths travel NUL-separated over stdin, stdout is drained while stdin is
+  written, and a non-zero exit (no match, not a repository, git absent) yields an empty set instead of
+  an error. `listEntries` emits the verdict as `FsNode.ignored`, which the search filter and expanded
+  children preserve.
 
 ### Changed
 
@@ -30,6 +34,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `src/shared/lib/chat/timeline/run-footer.ts`; `MessageItem` no longer renders a footer and drops its
   footer-only props (`provider`, `providerNames`, `modelName`, `modelNames`, `thinkingLevel`,
   `footerVisible`, `durationMs`, `isMobile`, `onRetry`).
+- Chat: the session sidebar refreshes on the run's **first completed assistant turn** instead of waiting
+  for `agent_end` or the 8 s stream poll, so a session's real title and `updated_at` stop lagging a
+  whole turn behind. A completed turn is the first point where the refresh can return anything new —
+  omp writes the session JSONL (auto-title at line 1) at `message_end`, whereas a token-level signal
+  would fire earlier and re-scan the same file — and the role check excludes `notice` rows, which
+  include the `system-reminder` frames the live stream stamps on non-user rows. The per-run guard in
+  `src/shared/lib/chat/omp/omp-callbacks.ts` is re-armed at `agent_start` and on stream reattach, so
+  later assistant segments cannot keep resetting the throttle window.
+- Client bundle: the three heaviest assets are no longer on paths most pages never touch. Mermaid 12
+  made `elk` the default `layout`, so **ELK (1.48 MB raw / 434 kB gzip) is gone** — `layout: 'dagre'`
+  is pinned in `mermaid.ts` (verified byte-identical across 20 diagram types) and `elkjs` is aliased
+  to a stub that throws, because a diagram that explicitly asks for ELK should fail loudly rather than
+  silently render with a different layout. **Shiki** stopped calling `loadAllLanguages()` at boot:
+  `highlighter-lazy.ts` owns the policy — a grammar is fetched the first time a caller asks for that
+  language, callers keep rendering synchronously on the plain-text fallback, and `onLanguageReady` /
+  `useSyntaxReady` re-render them when the chunk lands. **KaTeX** left the critical path the way mermaid
+  already had: `marked.ts` emits a `.math-pending` placeholder carrying the TeX source and `katex.ts`
+  swaps in real markup after the async chunk arrives, with both DOMPurify traps handled (a bare
+  root-level `<span>` is dropped, and `data-math*` must be allowlisted or hydration has nothing to
+  read). KaTeX fonts are regenerated woff2-only and Fira Code is a latin-only face set, taking 1.8 MB
+  of font files to 388 KB. Measured: initial payload 496 kB → 374 kB gzip, cold-boot chunk requests
+  58+ → 20.
+- Client bundle: the settings modal and the mobile layout are lazily loaded, since at most one of the
+  two trees is ever used and the settings tree only appears behind a click — initial payload 374.4 kB
+  → 252.6 kB gzip (-32.5%). `settings/LazyModal.tsx` is now the modal's single import path and its
+  `isOpen` gate is load-bearing rather than cosmetic: `lazy()` starts fetching as soon as it renders,
+  even when the wrapped component would render `null`, so without the gate the 68 modules plus the
+  162 kB `omp-schema.json` would be requested at boot. `App.tsx` imports `MobileLayoutWrapper` lazily
+  too, because `initialIsMobile` is known before the first render; the runtime "Switch to Mobile View"
+  toggle still loads the chunk on demand, and `fallback={null}` is indistinguishable from the
+  pre-hydration frame since `body` already paints `--theme-canvas`.
+
+### Fixed
+
+- Ordering: nothing reorders messages any more — neither the API nor the UI. `GET
+  /api/chat/:sessionId` returns the session's messages in **file order**, and the timeline renders that
+  array as-is, so a notice row appears exactly where omp wrote it. The server-side notice/turn swap,
+  the five scattered display-side copies (`session-load` fetch + older-page prepend, rollback
+  refetch, optimistic send, live stream folding) and `src/shared/lib/chat/order.ts` are gone.
+- Chat: a `notice` row that kept the turn's own text is an **assistant answer**, not a card — omp
+  sometimes writes the reply into `notice`, and the timeline rendered it as a collapsed System Notice
+  with the answer hidden while the JSONL mapper deleted the tags that text quoted. One classifier
+  (`src/shared/lib/chat/timeline/notice-row.ts`) now decides for the whole timeline: a notice row
+  carrying the turn's metadata (model, provider, usage, `durationMs`, `startedAt`, `completedAt`,
+  `thinking`, `toolCalls`) renders as content, with `thinkingLevel` excluded on purpose because the
+  live stream stamps it on every non-user frame. The JSONL mapper and `messages-map.ts` likewise turn
+  only a text block that **is** a reminder envelope into a notice, so prose quoting the tag stays
+  content — and such a row owns its run footer and Copy action like any other AI row, so the turn's
+  own usage finally surfaces.
+- RPC: a command timeout no longer counts as proof the omp child has wedged. omp runs RPC handlers one
+  at a time, so the `get_state` (5 s) and prompt-ack (30 s) caps also fired while a turn sat queued
+  behind the child's own work, and the reset destroyed the live turn and every subagent under it. A
+  timed-out command against a busy session now answers `session_busy` and leaves the child alone; only
+  an idle, unresponsive session is reset, and `GET /api/agent/:id` answers a busy session from local
+  flags so the attach probe cannot queue a `get_state` behind the running turn. Liveness also learned
+  about subagents: `subagent-liveness` folds `subagent_lifecycle` / `progress` / `event` frames into a
+  roster (identity is `id` with an index alias for id-less frames, and stale entries are pruned) and
+  `AgentSessionWrapper#isBusy()` gates the idle reaper and `reconcileSpawnApprovalMode` on it, where
+  `isRunning()` alone knew nothing about a subagent outliving its parent turn. With the automatic reset
+  no longer covering a busy session, **Stop** escalates to an explicit `force_reset` after 10 s without
+  a clean stop, and the client reattaches instead of auto-resending a prompt whose ack timed out — it
+  may already have been accepted.
 
 ## [0.3.0] — 2026-09-21
 
@@ -148,5 +214,7 @@ Initial public snapshot on the Remix + React + Vite stack.
 - SQLite-backed settings, and the `MOCK=true` / `MOCK=false` demo-versus-real data modes.
 - `ompchamber` CLI: `serve`, `stop`, `restart`, `status`, `logs`.
 
+[0.4.0]: https://github.com/rajebdev/ompchamber/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/rajebdev/ompchamber/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/rajebdev/ompchamber/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/rajebdev/ompchamber/releases/tag/v0.1.0
