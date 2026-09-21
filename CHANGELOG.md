@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Chat: tool output is now rendered as **markdown** wherever it is shown as a block (`FallbackOutput` and
+  the `edit`/`write` card's Execution Output). An XML wrapper that opens the output — omp's
+  `<system-reminder …>…</system-reminder>` — is peeled first, its attributes (`reason`, `rule`, `path`)
+  become the block's header row, and content markdown would reflow (a log, a JSON body, an HTML dump) is
+  fenced so it stays verbatim instead of collapsing into a single paragraph. A tool card whose result
+  carried a reminder also flags it in the header: bell + red **Reminder** left of the status badge.
 - Chat: the AI run footer (provider · model · date · duration · tokens · actions) is now the run's own
   boundary row instead of living inside the last answer bubble. It renders after every row the run owns
   — including notice rows omp wrote at its tail — so it is always immediately before the next user

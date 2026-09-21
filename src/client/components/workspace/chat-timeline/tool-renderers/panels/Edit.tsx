@@ -4,9 +4,12 @@ import type { ToolCallData } from '@/shared/types';
 import { CopyButton } from '@/client/components/common/CopyButton';
 import { DiffView } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/DiffView';
 import { HashlinePatch } from '@/client/components/workspace/chat-timeline/tool-renderers/hashline-patch';
-import { getLanguageFromPath, highlightCode, isCodeLike } from '@/shared/lib/code/syntax-highlight';
+import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
+import { EnvelopeHeader } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/EnvelopeHeader';
+import { getLanguageFromPath, highlightCode } from '@/shared/lib/code/syntax-highlight';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 import { MAX_OUTPUT_LINES, truncateTailLines } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/truncate';
+import { outputMarkdown, readToolOutput } from '@/shared/lib/chat/tool-output';
 import { hashlinePatchFromArgs } from '@/shared/lib/omp/session/hashline-patch';
 import { formatBytes } from '@/shared/lib/format/number';
 
@@ -148,10 +151,11 @@ export function Edit({ tool }: { tool: ToolCallData }) {
     () => (newContent ? highlightCode(newContent.split('\n').slice(0, 80).join('\n'), lang) : ''),
     [newContent, lang, syntaxReady]
   );
-  const truncatedOutput = useMemo(() => truncateTailLines(output, MAX_OUTPUT_LINES), [output]);
-  const highlightedOutput = useMemo(
-    () => (isCodeLike(output) ? highlightCode(truncatedOutput.text, lang) : ''),
-    [output, truncatedOutput, lang, syntaxReady]
+  const outputText = useMemo(() => readToolOutput(output), [output]);
+  const truncatedOutput = useMemo(() => truncateTailLines(outputText.content, MAX_OUTPUT_LINES), [outputText]);
+  const outputBody = useMemo(
+    () => outputMarkdown(truncatedOutput.text, outputText.format),
+    [truncatedOutput, outputText.format]
   );
 
   return (
@@ -261,26 +265,18 @@ export function Edit({ tool }: { tool: ToolCallData }) {
         </div>
       )}
 
-      {/* Execution Result Notification */}
+      {/* Execution Result Notification — envelope XML dilepas, isinya markdown */}
       {output && (
-        <div className="rounded-lg border border-ink/8 bg-paper p-2.5 text-[11px] font-mono select-text">
+        <div className="rounded-lg border border-ink/8 bg-paper p-2.5 select-text">
           <div className="flex items-center gap-1.5 mb-1.5 text-[9.5px] font-semibold uppercase tracking-wider text-ink/40">
             <ArrowRight size={11} className="text-success" />
             <span>Execution Output</span>
           </div>
-          {isCodeLike(output) ? (
-            <>
-              {truncatedOutput.skipped > 0 && (
-                <div className="mb-1 font-mono text-[9.5px] text-ink/45">… {truncatedOutput.skipped} earlier lines hidden</div>
-              )}
-              <pre
-                className="max-h-56 overflow-auto rounded bg-canvas/40 p-2 text-ink/85 whitespace-pre leading-relaxed scrollbar-overlay-container scrollbar-overlay-static"
-                dangerouslySetInnerHTML={{ __html: highlightedOutput }}
-              />
-            </>
-          ) : (
-            <div className="text-ink/75 leading-relaxed whitespace-pre-wrap">{truncatedOutput.text}</div>
+          {outputText.envelope && <EnvelopeHeader envelope={outputText.envelope} />}
+          {truncatedOutput.skipped > 0 && (
+            <div className="mb-1 font-mono text-[9.5px] text-ink/45">… {truncatedOutput.skipped} earlier lines hidden</div>
           )}
+          <MarkdownRenderer content={outputBody} className="text-[11.5px] text-ink/85" />
         </div>
       )}
     </div>

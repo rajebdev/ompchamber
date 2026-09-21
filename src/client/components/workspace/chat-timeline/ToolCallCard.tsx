@@ -1,7 +1,9 @@
 import { useCallback, useMemo } from 'preact/hooks';
 import { memo } from 'preact/compat';
-import { Boxes, Brain, BrainCircuit, Camera, Check, Code2, Cpu, FileCode, FileText, GitPullRequest, Globe, HelpCircle, ListTodo, Search, Server, Shield, Terminal, Wrench } from 'lucide-preact';
+import { Bell, Boxes, Brain, BrainCircuit, Camera, Check, Code2, Cpu, FileCode, FileText, GitPullRequest, Globe, HelpCircle, ListTodo, Search, Server, Shield, Terminal, Wrench } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
+import { stripAnsiCodes } from '@/shared/lib/code/ansi';
+import { isReminderTag, unwrapXmlEnvelope } from '@/shared/lib/chat/xml-envelope';
 import { CopyButton } from '@/client/components/common/CopyButton';
 import { ToolCardShell } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/ToolCardShell';
 import { DiffView } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/DiffView';
@@ -154,6 +156,13 @@ export const ToolCallCard = memo(function ToolCallCard({ tool, isOpen, onToggle,
     [hasPanel, commandOrInput]
   );
 
+  // A reminder envelope in the result is the runtime interrupting the call, not
+  // its outcome — the header flags it next to the status badge.
+  const isReminder = useMemo(() => {
+    const envelope = unwrapXmlEnvelope(stripAnsiCodes(outputText));
+    return Boolean(envelope && isReminderTag(envelope.tag));
+  }, [outputText]);
+
   // Clean title & subtitle extraction
   let displayTitle = '';
   let displaySubtitle: string | undefined;
@@ -226,9 +235,18 @@ export const ToolCallCard = memo(function ToolCallCard({ tool, isOpen, onToggle,
         ? targetFilePath
         : displaySubtitle || (tool.detail && !targetFilePath ? tool.detail : undefined);
 
-  const meta = tool.duration || tool.time ? (
-    <span className="font-mono text-[10px] text-ink/40">{tool.duration || tool.time}</span>
-  ) : null;
+  const duration = tool.duration || tool.time;
+  const meta =
+    duration || isReminder ? (
+      <span className="flex items-center gap-2">
+        {duration ? <span className="font-mono text-[10px] text-ink/40">{duration}</span> : null}
+        {isReminder && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-error/10 px-2 py-0.5 text-[10px] font-semibold text-error">
+            <Bell size={10} /> Reminder
+          </span>
+        )}
+      </span>
+    ) : null;
 
   return (
     <ToolCardShell
