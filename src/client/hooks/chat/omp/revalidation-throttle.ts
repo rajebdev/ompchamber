@@ -7,11 +7,12 @@
  * Throttled revalidation for the session sidebars.
  *
  * `omp:session-updated` arrives in bursts while a run is active (agent start,
- * JSONL write, spawn adoption, agent end) — and the chat timeline's metadata
- * retry loop can emit one every 250ms until the session file carries the user
- * turn. Each dispatch would otherwise trigger a full loader revalidation, and
- * with two sidebars mounted (desktop + mobile layouts keep theirs alive) a busy
- * run could revalidate several times per second.
+ * first completed assistant turn, JSONL write, spawn adoption, agent end) — and
+ * the chat timeline's metadata retry loop can emit one every 250ms until the
+ * session file carries the user turn. Each dispatch would otherwise trigger a
+ * full loader revalidation, and with two sidebars mounted (desktop + mobile
+ * layouts keep theirs alive) a busy run could revalidate several times per
+ * second.
  *
  * Implemented as a LEADING + TRAILING throttle, not a trailing debounce:
  *

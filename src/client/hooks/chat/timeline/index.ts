@@ -99,6 +99,10 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   // responding (agent_start = first chunk) — the omp JSONL now carries the
   // user turn, so the sidebar item + real title appear immediately.
   const metaRefreshedRef = useRef<string | null>(null);
+  // Per-run guard for the "first assistant answer landed" sidebar signal
+  // (omp-callbacks onMessageEnd): the sidebar refreshes once per run on the
+  // completed first assistant turn, not on every assistant segment.
+  const firstAssistantRef = useRef(false);
   // Optimistic user bubble awaiting omp's echo (reconciled by the callbacks).
   const optimisticUserIdRef = useRef<string | null>(null);
   // Raw composer text for steer/follow-up echoes (those paths have no bubble).
@@ -193,6 +197,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     adoptedSessionIdRef,
     sessionIdRef,
     metaRefreshedRef,
+    firstAssistantRef,
     refreshSessionMeta,
     setLocalMessages,
     aiPlaceholderIdRef,
