@@ -21,7 +21,6 @@ import type { Dispatch, RefObject, SetStateAction } from 'preact/compat';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 
 import type { ChatMessageData } from '@/shared/types';
-import { normalizeNoticePositions } from '@/shared/lib/chat/order';
 import { SESSION_META_RETRY_SCHEDULE_MS } from '@/shared/lib/workspace/refresh-cadence';
 
 export interface SessionDataShape {
@@ -210,9 +209,9 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
               if (isGeneratingRef.current) {
                 const fetchedIds = fetched.map((m: ChatMessageData) => m.id);
                 const liveTail = localMessagesRef.current.filter(m => !fetchedIds.includes(m.id));
-                setLocalMessages(normalizeNoticePositions([...fetched, ...liveTail]));
+                setLocalMessages([...fetched, ...liveTail]);
               } else {
-                setLocalMessages(normalizeNoticePositions(fetched));
+                setLocalMessages(fetched);
               }
             } else if (!sessionId.startsWith('new-') && !optimisticOwnsTail) {
               setLocalMessages([]);
@@ -284,7 +283,7 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
         setLocalMessages(prev => {
           // Drop overlap guard: the server window is index-based, so the
           // fetched slice is strictly older than everything already mounted.
-          return [...normalizeNoticePositions(older), ...prev];
+          return [...older, ...prev];
         });
         // Bump the prepend tick so the layout effect below re-runs for THIS
         // commit — it previously depended only on stable identities and ran

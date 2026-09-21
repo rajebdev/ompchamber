@@ -16,7 +16,6 @@ import type { Dispatch, SetStateAction } from 'preact/compat';
 import type { Attachment, ChatMessageData, OmpAgentHandle, QueuedMessageModel } from '@/shared/types';
 import type { QueuedMessage } from '@/client/components/workspace/chat-timeline/QueueList';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
-import { normalizeNoticePositions } from '@/shared/lib/chat/order';
 
 export interface ChatTimelineActionsDeps {
   inputValue: string;
@@ -211,7 +210,7 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
       if (!res.ok) return false;
       const next = await fetch(`/api/chat/${encodeURIComponent(sessionId)}`).then(r => r.json()).catch(() => null);
       const messages: ChatMessageData[] = next?.session?.messages ?? [];
-      if (messages.length > 0) setLocalMessages(normalizeNoticePositions(messages));
+      if (messages.length > 0) setLocalMessages(messages);
       return true;
     }
 

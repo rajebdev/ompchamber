@@ -14,7 +14,6 @@
 
 import type { Dispatch, SetStateAction } from 'preact/compat';
 import type { ChatMessageData, ExtensionUiDialogRequest, IncomingExtensionUiRequest, OmpAgentCallbacks } from '@/shared/types';
-import { normalizeNoticePositions } from '@/shared/lib/chat/order';
 import { triggerChatCompletionSound } from '@/client/hooks/ui/notification-sound';
 import { createRafBatch } from '@/shared/lib/chat/timeline/stream-raf';
 import { PHASE_VERBS } from '@/shared/lib/chat/timeline/tool-phrases';
@@ -153,16 +152,17 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
       // full-content frame; scroll runs once per rendered frame.
       messageBatch.queue(prev => {
         const placeholderId = aiPlaceholderIdRef.current;
-        // Notice rows (e.g. background job done, system alerts) belong chronologically
-        // right before the next AI response, NEVER backwards before the initiating user message.
+        // Notice rows (e.g. background job done, system alerts) are appended in
+        // arrival order — the timeline renders state as-is, so omp's own write
+        // order is what the user sees.
         if (msg.notice) {
           if (prev.some(m => m.id === msg.id)) return prev;
           // If an active AI placeholder is generating at the tail, insert notice immediately before it
           if (placeholderId && prev.some(m => m.id === placeholderId)) {
             const pIdx = prev.findIndex(m => m.id === placeholderId);
-            return normalizeNoticePositions([...prev.slice(0, pIdx), msg, ...prev.slice(pIdx)]);
+            return [...prev.slice(0, pIdx), msg, ...prev.slice(pIdx)];
           }
-          return normalizeNoticePositions([...prev, msg]);
+          return [...prev, msg];
         }
         // User turns from the stream (steering abort_and_prompt, queue
         // follow-up deliveries) carry no optimistic bubble — append them

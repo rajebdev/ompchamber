@@ -18,7 +18,6 @@ import { streamChatResponse } from '@/client/hooks/chat/stream';
 import { composeMessageWithTextAttachments, isTextAttachmentFile } from '@/shared/lib/chat/attachments';
 import { loadAgentNames } from '@/shared/lib/chat/composer/client';
 import { translateAgentMentions, translateFileMentions } from '@/shared/lib/chat/composer/translate';
-import { normalizeNoticePositions } from '@/shared/lib/chat/order';
 import { createMockStreamCallbacks } from '@/shared/lib/chat/timeline/stream-callbacks';
 import { PHASE_VERBS } from '@/shared/lib/chat/timeline/tool-phrases';
 import { formatClock } from '@/shared/lib/format/time';
@@ -213,7 +212,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
     };
 
     setLocalMessages(prev => {
-      const next = normalizeNoticePositions([...prev, newUserMsg, initialAiMsg]);
+      const next = [...prev, newUserMsg, initialAiMsg];
       persistMessages(next.filter(m => m.id !== aiPlaceholderId));
       return next;
     });
