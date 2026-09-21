@@ -103,11 +103,23 @@ export function sanitizeHtml(html: string): string {
   if (typeof window === 'undefined' || !window.document) return html;
 
   const hasSvgIcon = /<svg[^>]*>/.test(html);
-  const config = hasKatex(html) || hasSvgIcon
+  const hasMathPlaceholder = html.includes('math-pending');
+  const config = hasKatex(html) || hasSvgIcon || hasMathPlaceholder
     ? {
         USE_PROFILES: { html: true, mathMl: true } as const,
         ADD_TAGS: [...KATEX_MATHML_TAGS, ...(hasSvgIcon ? COPY_ICON_TAGS : [])],
-        ADD_ATTR: ['aria-hidden', 'aria-label', 'encoding', 'nonce', ...(hasSvgIcon ? COPY_ICON_ATTRS : [])],
+        ADD_ATTR: [
+          'aria-hidden',
+          'aria-label',
+          'encoding',
+          'nonce',
+          // Math placeholders carry the TeX source and display flag for the
+          // lazy KaTeX pass; DOMPurify strips unknown data-* attributes unless
+          // they are listed here.
+          'data-math',
+          'data-math-display',
+          ...(hasSvgIcon ? COPY_ICON_ATTRS : []),
+        ],
       }
     : { USE_PROFILES: { html: true } as const };
 
@@ -134,5 +146,39 @@ export function sanitizeMermaidSvg(svg: string): string {
     return DOMPurify.sanitize(svg, buildMermaidConfig(hasUri));
   } catch {
     return svg;
+  }
+}
+
+/**
+ * Sanitize a KaTeX-rendered HTML fragment before it is injected via innerHTML.
+ *
+ * `sanitizeHtml` already allows the MathML profile when the *parsed markdown*
+ * contains KaTeX classes, but lazy math rendering injects after that pass, so
+ * the generated fragment is sanitized separately.
+ *
+ * `class` MUST be allowed: KaTeX's visual layout is entirely class-driven
+ * (`.katex`, `.katex-mathml`, `.katex-html`), and DOMPurify drops attributes it
+ * has not been told about. Without it the wrapper spans are stripped and only
+ * bare MathML survives, which renders unstyled.
+ */
+export function sanitizeKatexHtml(html: string): string {
+  if (!html) return html;
+  if (typeof window === 'undefined' || !window.document) return html;
+
+  // DOMPurify drops a bare root-level <span>, which would strip KaTeX's outer
+  // `.katex` wrapper — the element every layout rule in katex.css hangs off.
+  // Wrapping the fragment keeps the parser from discarding it; the wrapper is
+  // removed again afterwards so only the KaTeX markup is injected.
+  const wrapped = `<div data-katex-wrap>${html}</div>`;
+  try {
+    const clean = DOMPurify.sanitize(wrapped, {
+      USE_PROFILES: { html: true, mathMl: true },
+      ADD_ATTR: ['class', 'aria-hidden', 'encoding', 'style', 'data-katex-wrap'],
+    } as Config);
+    const host = document.createElement('div');
+    host.innerHTML = clean;
+    return host.querySelector('[data-katex-wrap]')?.innerHTML ?? clean;
+  } catch {
+    return html;
   }
 }

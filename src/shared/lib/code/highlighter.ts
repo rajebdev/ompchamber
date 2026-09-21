@@ -4,23 +4,18 @@
  */
 
 import { createHighlighterCore } from 'shiki/core';
-import type { HighlighterCore, LanguageRegistration } from 'shiki/core';
+import type { HighlighterCore } from 'shiki/core';
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
 import oneLight from '@shikijs/themes/one-light';
 import oneDarkPro from '@shikijs/themes/one-dark-pro';
 
-import { EAGER_LANGS, LANG_LOADERS } from '@/shared/lib/code/shiki-langs';
-import { SHIKI_LIGHT } from '@/shared/lib/code/shiki-themes';
-
-/** Shape of a `@shikijs/langs/*` module (the registration array sits on `.default`). */
-type LangModule = { default: LanguageRegistration[] };
-
-/**
- * The transpile cost of the first highlight for a grammar is ~700 ms, so warming
- * all 58 would stall readiness. Cap the warmup: if the eager set is not done in
- * this budget the rest load lazily on first use instead of blocking boot.
- */
-const WARMUP_BUDGET_MS = 1500;
+import {
+  ensureLanguage,
+  ensureLanguages,
+  isLanguageReady,
+  onLanguageReady as _onLanguageReady,
+} from '@/shared/lib/code/highlighter-lazy';
+import { EAGER_LANGS } from '@/shared/lib/code/shiki-langs';
 
 let instance: HighlighterCore | null = null;
 let ready = false;
@@ -29,10 +24,6 @@ const listeners = new Set<() => void>();
 /** HTML-escape `&`, `<`, `>` so plain fallback output stays injection-safe. */
 export function escapeCode(code: string): string {
   return code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function notify(): void {
@@ -47,38 +38,6 @@ function notify(): void {
   }
 }
 
-/**
- * Register every grammar so `getLoadedLanguages()` covers the full registry
- * from the first paint-after-ready. Registration is a parallel chunk fetch
- * (fast); the expensive per-grammar transpile stays in `warmup` below.
- */
-async function loadAllLanguages(highlighter: HighlighterCore): Promise<void> {
-  await Promise.allSettled(
-    Object.keys(LANG_LOADERS).map(async (id) => {
-      const loader = LANG_LOADERS[id];
-      if (!loader) return;
-      try {
-        await highlighter.loadLanguage(loader as () => Promise<LangModule>);
-      } catch {
-        // Grammar unavailable under the JS engine — per-call fallback covers it.
-      }
-    }),
-  );
-}
-
-/** Pre-transpile the eager grammars; each failure is independent and ignored. */
-async function warmup(highlighter: HighlighterCore): Promise<void> {
-  await Promise.all(
-    EAGER_LANGS.map(async (id) => {
-      try {
-        highlighter.codeToHtml('x', { lang: id, theme: SHIKI_LIGHT });
-      } catch {
-        // Grammar unavailable under the JS engine — falls back to plain text.
-      }
-    }),
-  );
-}
-
 async function boot(): Promise<HighlighterCore | null> {
   if (typeof window === 'undefined') return null;
   try {
@@ -88,10 +47,12 @@ async function boot(): Promise<HighlighterCore | null> {
       engine: createJavaScriptRegexEngine({ forgiving: true }),
     });
     instance = highlighter;
-    await loadAllLanguages(highlighter);
-    await Promise.race([warmup(highlighter), delay(WARMUP_BUDGET_MS)]);
     ready = true;
     notify();
+    // Grammars arrive on demand (`ensureLanguage`); the eager set is only a
+    // head start for the languages a chat session hits immediately, and boot
+    // does not wait on it.
+    void ensureLanguages(highlighter, EAGER_LANGS);
     return highlighter;
   } catch (error) {
     console.error('[shiki] highlighter boot failed', error);
@@ -129,7 +90,25 @@ export function onSyntaxReady(fn: () => void): () => void {
   };
 }
 
-/** The highlighter, or `null` before warmup completes. */
+/** The highlighter, or `null` before boot completes. */
 export function getHighlighterSync(): HighlighterCore | null {
   return ready ? instance : null;
 }
+
+/**
+ * Request the grammar for `language`, if the highlighter is booted. Returns
+ * whether the grammar is usable synchronously *right now* — callers that get
+ * `false` must render the plain-text fallback and re-run once
+ * `onLanguageReady`/`onSyntaxReady` fires.
+ *
+ * This is the only path that pulls a grammar chunk off the network, so it is
+ * deliberately pull-based: a language nobody renders is never fetched.
+ */
+export function requestLanguage(language: string): boolean {
+  if (!instance) return false;
+  void ensureLanguage(instance, language);
+  return isLanguageReady(language);
+}
+
+/** Fires whenever a grammar lands, so pending highlights can retry. */
+export const onLanguageReady = _onLanguageReady;

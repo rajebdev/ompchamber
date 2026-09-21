@@ -63,6 +63,12 @@ async function loadMermaid(themeKey: ThemeKey): Promise<MermaidModule['default']
           startOnLoad: false,
           securityLevel: 'strict',
           theme: themeKey,
+          // Mermaid 12 defaults the global layout to `elk`, which is what pulled
+          // the ~1.4 MB elkjs bundle into the client build for every diagram.
+          // `dagre` ships inside mermaid's own core chunk and renders all the
+          // diagram types this app sees, so pin it here and alias `elkjs` to a
+          // stub in the build (`src/client/stubs/elkjs.ts`).
+          layout: 'dagre',
           flowchart: { useMaxWidth: false, wrappingWidth: 100000 },
           sequence: { useMaxWidth: false },
         });

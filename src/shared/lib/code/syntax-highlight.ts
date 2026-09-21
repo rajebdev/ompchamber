@@ -1,4 +1,6 @@
-import { escapeCode, getHighlighterSync } from '@/shared/lib/code/highlighter';
+import type { HighlighterCore } from 'shiki/core';
+
+import { escapeCode, getHighlighterSync, requestLanguage } from '@/shared/lib/code/highlighter';
 import { SHIKI_THEMES } from '@/shared/lib/code/shiki-themes';
 
 /** Map file extension to Shiki language id */
@@ -124,12 +126,24 @@ export function isCodeLike(text: string): boolean {
   return codePatterns.some((pattern) => pattern.test(trimmed));
 }
 
+/**
+ * Pick a language that can be tokenized *synchronously* right now. A grammar
+ * that has not arrived yet is requested here (fire-and-forget) and the caller
+ * falls back to javascript for this pass — `onLanguageReady` re-runs the
+ * highlight once it lands. `getLoadedLanguages()` stays the authority for
+ * embedded/alias names that `LANG_LOADERS` does not list by id.
+ */
+function resolveReadyLang(hl: HighlighterCore, language: string): string {
+  if (requestLanguage(language) || hl.getLoadedLanguages().includes(language)) return language;
+  return 'javascript';
+}
+
 /** Syntax highlight code string safely with fallback */
 export function highlightCode(code: string, language = 'javascript'): string {
   if (!code) return '';
   const hl = getHighlighterSync();
   if (!hl) return escapeCode(code);
-  const lang = hl.getLoadedLanguages().includes(language) ? language : 'javascript';
+  const lang = resolveReadyLang(hl, language);
   try {
     return `<span class="shiki">${hl.codeToHtml(code, {
       lang,
@@ -264,7 +278,7 @@ export function highlightLines(code: string, language = 'javascript'): string[] 
   if (!code) return rawLines;
   const hl = getHighlighterSync();
   if (!hl) return rawLines.map(escapeCode);
-  const lang = hl.getLoadedLanguages().includes(language) ? language : 'javascript';
+  const lang = resolveReadyLang(hl, language);
   try {
     const { tokens } = hl.codeToTokens(code, {
       lang,

@@ -1,0 +1,51 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
+ * GENERATED — do not edit by hand. Run `bun run scripts/katex-fonts-woff2.mjs`
+ * after upgrading @fontsource/fira-code.
+ *
+ * Fira Code, latin subset, woff2-only, weights 400/500/600/700 — the faces
+ * `main.tsx` imports. Replaces `@fontsource/fira-code/{400,500,600,700}.css`,
+ * which pulled 7 subsets (cyrillic, cyrillic-ext, greek, greek-ext, latin,
+ * latin-ext, symbols2) x 4 weights x 2 formats = 56 files. This console is
+ * English-only, so the other six subsets were dead weight, and the woff
+ * fallback is never fetched by a browser that supports woff2.
+ *
+ * `font-display: swap` and the family/style/weight declarations match upstream,
+ * so text metrics are unchanged.
+ */
+
+@font-face {
+  font-family: 'Fira Code';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/fira-code/files/fira-code-latin-400-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Fira Code';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url('@fontsource/fira-code/files/fira-code-latin-500-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Fira Code';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url('@fontsource/fira-code/files/fira-code-latin-600-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Fira Code';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url('@fontsource/fira-code/files/fira-code-latin-700-normal.woff2') format('woff2');
+}

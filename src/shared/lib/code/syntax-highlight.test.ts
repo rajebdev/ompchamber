@@ -5,12 +5,36 @@
 
 import { beforeAll, describe, expect, test } from 'bun:test';
 
-import { bootSyntax } from '@/shared/lib/code/highlighter';
+import { bootSyntax, onLanguageReady, requestLanguage } from '@/shared/lib/code/highlighter';
 import { getLanguageFromPath, highlightCode } from '@/shared/lib/code/syntax-highlight';
 
 /** Shiki emits `<span class="shiki">…` with dual-theme CSS variables per token. */
 const SHIKI_RE = /<span class="shiki">/;
 const SHIKI_TOKEN_RE = /--shiki-light:/;
+
+/**
+ * Every language these tests highlight. Grammars are fetched on demand, so the
+ * suite asks for them up front and waits for the last one to land instead of
+ * relying on a boot-time warmup that no longer exists.
+ */
+const HIGHLIGHT_LANGS = [
+  'typescript',
+  'tsx',
+  'javascript',
+  'jsx',
+  'json',
+  'markdown',
+  'css',
+  'bash',
+  'yaml',
+  'diff',
+  'python',
+  'go',
+  'rust',
+  'sql',
+  'html',
+  'php',
+];
 
 beforeAll(async () => {
   // The isomorphic highlighter only boots with `window` present; the Bun test
@@ -19,6 +43,17 @@ beforeAll(async () => {
   Object.assign(globalThis, { window: globalThis });
   await bootSyntax();
   Reflect.deleteProperty(globalThis, 'window');
+
+  await new Promise<void>((resolve) => {
+    const settle = () => {
+      if (HIGHLIGHT_LANGS.every((lang) => requestLanguage(lang))) {
+        off();
+        resolve();
+      }
+    };
+    const off = onLanguageReady(settle);
+    settle();
+  });
 });
 
 describe('highlightCode', () => {

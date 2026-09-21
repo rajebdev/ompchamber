@@ -19,9 +19,9 @@
 
 import { Marked } from 'marked';
 import markedLinkifyIt from 'marked-linkify-it';
-import katex from 'katex';
 import remend from 'remend';
 import { highlightCode } from '@/shared/lib/code/syntax-highlight';
+import { MATH_PENDING_CLASS } from '@/shared/lib/markdown/katex';
 
 /** Escape HTML for safe interpolation inside highlighted output. */
 function escapeHtml(value: string): string {
@@ -33,15 +33,24 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#039;');
 }
 
-/** Render KaTeX to HTML. Errors are non-fatal: invalid math renders as red
- *  source (throwOnError:false), so a stale LaTeX half during streaming never
- *  breaks the whole message. */
-function renderKatex(tex: string, displayMode: boolean): string {
-  try {
-    return katex.renderToString(tex, { throwOnError: false, displayMode });
-  } catch {
-    return displayMode ? `<p>${tex}</p>` : tex;
-  }
+/**
+ * Emit a math placeholder instead of rendering KaTeX inline.
+ *
+ * `katex` is ~522 kB of JS worth loading only when a message contains math, so
+ * it is not imported here. The placeholder carries the TeX source and the
+ * display flag; `katex.ts` swaps it for real markup once the library lands
+ * (see `hydrateMathBlocks`). Both attributes are HTML-escaped, and escaping
+ * `&` first keeps the entity encoding intact through the attribute round-trip.
+ */
+function renderMathPlaceholder(tex: string, displayMode: boolean): string {
+  const escaped = escapeHtml(tex);
+  const display = displayMode ? ' data-math-display="1"' : '';
+  const span = `<span class="${MATH_PENDING_CLASS}" data-math="${escaped}"${display}></span>`;
+  // Block math must stay inside a block element: DOMPurify drops a bare
+  // `<span>` that sits at the top level of the fragment, which silently deleted
+  // every `$$…$$` formula. KaTeX's own output is inline-level too, so the old
+  // synchronous renderer relied on the same wrapper being present.
+  return displayMode ? `<p>${span}</p>` : span;
 }
 
 interface TokenLike {
@@ -130,7 +139,7 @@ marked.use({
           : undefined;
       },
       renderer(token: TokenLike) {
-        return renderKatex(token.text ?? '', false);
+        return renderMathPlaceholder(token.text ?? '', false);
       },
     },
     // \[ ... \] block math
@@ -147,7 +156,7 @@ marked.use({
           : undefined;
       },
       renderer(token: TokenLike) {
-        return renderKatex(token.text ?? '', true);
+        return renderMathPlaceholder(token.text ?? '', true);
       },
     },
     // $$ ... $$ display math (block-level, must be its own line)
@@ -164,7 +173,7 @@ marked.use({
           : undefined;
       },
       renderer(token: TokenLike) {
-        return renderKatex(token.text ?? '', true);
+        return renderMathPlaceholder(token.text ?? '', true);
       },
     },
     // $ ... $ inline math, per remark-math flanking rules: the opening $ must
@@ -186,7 +195,7 @@ marked.use({
           : undefined;
       },
       renderer(token: TokenLike) {
-        return renderKatex(token.text ?? '', false);
+        return renderMathPlaceholder(token.text ?? '', false);
       },
     },
   ],

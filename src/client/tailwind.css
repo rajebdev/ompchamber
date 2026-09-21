@@ -285,6 +285,16 @@
 [data-theme="one-dark-pro-soft"] .shiki span { color: var(--shiki-dark); }
 .prose-content .katex-display { overflow-x: auto; overflow-y: hidden; }
 
+/* Math placeholder: `marked.ts` emits a `.math-pending` span and KaTeX is
+ * fetched on demand (~522 kB async chunk), so the span is empty for one frame.
+ * Reserve display-math height so the message does not jump when the formula
+ * lands, and keep invalid/queued source faintly visible rather than blank. */
+.prose-content .math-pending::before {
+  content: '…';
+  opacity: 0.35;
+}
+.prose-content p:has(> .math-pending[data-math-display='1']) { min-height: 2.5rem; }
+
 /* Streaming placeholder: remend turns a half-received [text](url into this
  * span; it becomes a real link once the URL arrives in a later frame. */
 .prose-content .md-incomplete-link {

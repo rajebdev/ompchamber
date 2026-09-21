@@ -4,11 +4,8 @@ import { bootSyntax } from '@/shared/lib/code/highlighter';
 import { primeChamberSettings } from '@/shared/lib/settings/client';
 
 import '@/client/tailwind.css';
-import 'katex/dist/katex.min.css';
-import '@fontsource/fira-code/400.css';
-import '@fontsource/fira-code/500.css';
-import '@fontsource/fira-code/600.css';
-import '@fontsource/fira-code/700.css';
+import '@/shared/lib/markdown/katex-fonts.css';
+import '@/shared/lib/markdown/fira-code-fonts.css';
 
 const root = document.getElementById('app');
 const bootstrap = window.__OMP_BOOTSTRAP__;

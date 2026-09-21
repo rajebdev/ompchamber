@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { defineConfig } from '@rsbuild/core';
 import { pluginPreact } from '@rsbuild/plugin-preact';
 
@@ -16,6 +17,21 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': './src',
+    },
+  },
+
+  tools: {
+    rspack: {
+      resolve: {
+        // `mermaid.ts` pins `layout: 'dagre'`, so the only code path that reaches
+        // elkjs (mermaid's `runElkLayoutCore`) is never entered. Aliasing the
+        // package out drops the client build's single largest asset (~1.4 MB raw,
+        // 434 kB gzip); the stub throws if a diagram explicitly asks for ELK.
+        alias: {
+          'elkjs/lib/elk.bundled.js$': path.resolve(__dirname, 'src/client/stubs/elkjs.ts'),
+          'elkjs$': path.resolve(__dirname, 'src/client/stubs/elkjs.ts'),
+        },
+      },
     },
   },
 
@@ -65,7 +81,11 @@ export default defineConfig({
       strategy: 'custom',
       splitChunks: {
         cacheGroups: {
-          katex: { test: /node_modules[\\/]katex/, name: 'katex-vendor', chunks: 'all', enforce: true },
+          // `chunks: 'async'` (not 'all'): katex is imported lazily by
+          // `lib/markdown/katex.ts`, so it must stay out of the initial bundle.
+          // 'all' would hoist it into a synchronous chunk and every page load
+          // would pay ~522 kB for math most messages never contain.
+          katex: { test: /node_modules[\\/]katex/, name: 'katex-vendor', chunks: 'async', enforce: true },
           markdown: {
             test: /node_modules[\\/](remend|marked)/,
             name: 'markdown-vendor',

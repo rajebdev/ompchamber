@@ -16,6 +16,7 @@
 import type { TargetedMouseEvent } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'preact/hooks';
 import { renderMarkdown } from '@/shared/lib/markdown/marked';
+import { hydrateMathBlocks, MATH_PENDING_CLASS, preloadKatex } from '@/shared/lib/markdown/katex';
 import { sanitizeHtml } from '@/shared/lib/markdown/sanitize';
 import { hydrateMermaidBlocks } from '@/shared/lib/markdown/mermaid';
 import { copyToClipboard } from '@/client/hooks/ui/clipboard';
@@ -36,10 +37,45 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
   const html = useMemo(() => {
     if (!content) return '';
     const rendered = renderMarkdown(content);
+    // If the message contains math, start fetching KaTeX during parse rather
+    // than waiting for the post-mount hydration effect — the request overlaps
+    // sanitization and the rest of the render instead of following it.
+    if (rendered.includes(MATH_PENDING_CLASS)) preloadKatex();
     return sanitizeHtml(rendered);
   }, [content, syntaxReady]);
 
   const hasMermaid = html.includes('mermaid-block');
+  const hasMath = html.includes(MATH_PENDING_CLASS);
+
+  // KaTeX is ~522 kB of JS fetched only when a message contains math; the
+  // placeholders emitted by `marked.ts` are swapped for real markup here.
+  useEffect(() => {
+    if (!hasMath || typeof window === 'undefined') return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    let cancelled = false;
+    const hydrate = async () => {
+      if (!container.isConnected) return;
+      await hydrateMathBlocks(container);
+      if (cancelled) return;
+    };
+    void hydrate();
+    // Same reason as the mermaid observer: a timeline re-render can replace the
+    // container's innerHTML with an identical string without this effect
+    // re-running, stranding new placeholders. hydrate() only writes inside the
+    // placeholder elements, so it never re-triggers this observer.
+    const observer = new MutationObserver(() => {
+      const current = containerRef.current;
+      if (current?.isConnected) void hydrateMathBlocks(current);
+    });
+    observer.observe(container, { childList: true });
+
+    return () => {
+      cancelled = true;
+      observer.disconnect();
+    };
+  }, [hasMath, html]);
 
   useIsomorphicLayoutEffect(() => {
     if (!hasMermaid || typeof window === 'undefined') return;
