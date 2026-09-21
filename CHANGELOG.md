@@ -5,6 +5,20 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0](https://github.com/rajebdev/ompchamber/compare/v0.5.0...v0.6.0) — 2026-09-21
+
+### Added
+
+* **server:** guard ports and register every running instance ([5358864](https://github.com/rajebdev/ompchamber/commit/5358864d5c52e6fff12c95310b7d7402ceb45759))
+
+### Fixed
+
+* **editor:** keep content after autosave and align gutter with wrapped rows ([3f82fbe](https://github.com/rajebdev/ompchamber/commit/3f82fbeb00eeb4a5ae3c3956ac6c3c92361e86fb))
+* **layout:** enforce panel floors, per-view defaults and sane widths ([49349e6](https://github.com/rajebdev/ompchamber/commit/49349e6df4d5f205d6a735598a61d0c115558cf2))
+* **markdown:** stop mermaid leaking its syntax-error banner into the body ([1dd19e9](https://github.com/rajebdev/ompchamber/commit/1dd19e9c305b512abb803ceead977cc1eca2f540))
+* **mobile:** keep the header session picker inside the viewport ([ac19515](https://github.com/rajebdev/ompchamber/commit/ac1951519b0cf88b02a48bd5a0bf18df138a1d51))
+* **server:** serve public assets from the build output too ([5c694b8](https://github.com/rajebdev/ompchamber/commit/5c694b832650119d33826ef6832fe4960866eb42))
+
 ## [0.5.0] — 2026-09-21
 
 MOCK flips to real data by default, a missing `omp` binary refuses startup instead of degrading into
