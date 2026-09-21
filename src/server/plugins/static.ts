@@ -68,14 +68,38 @@ async function serveFile(filePath: string, cacheControl: string): Promise<Respon
   });
 }
 
+/** Roots searched for a non-`/static/` asset, in preference order. */
+const PUBLIC_ROOTS = [PUBLIC_ROOT, CLIENT_ROOT] as const;
+
+/**
+ * The first readable copy of `pathname` under `roots`, or null.
+ *
+ * Non-`/static/` paths are the public assets (`icon.svg`, the web manifest, the
+ * service worker, the touch icons). They exist twice: `public/` in a checkout
+ * and `dist/client/` in the build — and only the latter ships, because
+ * `package.json#files` lists `src`, `dist/client` and `tsconfig.json`. Serving
+ * `public/` alone therefore 404s every one of them into the SSR shell when the
+ * chamber runs from an installed package. The source folder is tried first so a
+ * dev edit lands without a rebuild; the build output is the fallback. HTML is
+ * excluded so `/index.html` keeps going through the SSR route that injects the
+ * theme and bootstrap, and the cache stays short because these filenames carry
+ * no content hash.
+ */
+export async function servePublicAsset(pathname: string, roots: readonly string[]): Promise<Response | null> {
+  for (const root of roots) {
+    const filePath = resolveWithin(root, pathname);
+    if (!filePath || filePath.endsWith('.html')) continue;
+    const response = await serveFile(filePath, SHORT);
+    if (response) return response;
+  }
+  return null;
+}
+
 /** A file for `pathname`, or null when the request should reach the app. */
 export async function tryServeStatic(pathname: string): Promise<Response | null> {
   if (pathname.startsWith('/static/')) {
     const filePath = resolveWithin(CLIENT_ROOT, pathname);
     return filePath ? serveFile(filePath, ASSET_CACHE) : null;
   }
-
-  const publicPath = resolveWithin(PUBLIC_ROOT, pathname);
-  if (!publicPath) return null;
-  return serveFile(publicPath, SHORT);
+  return servePublicAsset(pathname, PUBLIC_ROOTS);
 }
