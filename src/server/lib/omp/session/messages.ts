@@ -21,7 +21,6 @@
  */
 
 import { parseJsonlLenient } from '@/shared/lib/omp/session/jsonl';
-import { normalizeNoticePositions } from '@/shared/lib/chat/order';
 import { normalizeThinkingLevel } from '@/shared/lib/models/thinking-levels';
 import type { ChatMessageData } from '@/shared/types/chat';
 import { collectToolOutputs, noticeFromCustomMessage, toChatMessage, type SequenceState } from '@/shared/lib/omp/session/messages-map';
@@ -53,9 +52,11 @@ function skillUserMessageFromRecord(record: Record<string, unknown>): ChatMessag
 }
 
 /**
- * Load a session file and return the chat timeline in chronological order.
- * Assistant messages carry thinking accordion + tool calls (with outputs
- * paired from their toolResult entries); tool plumbing rows are folded in.
+ * Load a session file and return the chat timeline in **file order** — the
+ * order omp wrote the entries, which is the session's chronology. The API
+ * response is a faithful projection of the JSONL: nothing here reorders rows,
+ * and no display-side reordering is applied anywhere either (a notice row
+ * renders exactly where omp wrote it).
  */
 export async function loadSessionMessages(filePath: string): Promise<ChatMessageData[]> {
   try {
@@ -120,7 +121,7 @@ export async function loadSessionMessages(filePath: string): Promise<ChatMessage
     }
     state.messages.push(mapped);
   }
-  return normalizeNoticePositions(state.messages);
+  return state.messages;
 }
 
 /** Derive the display title from the JSONL header/title slot (cheap read). */
