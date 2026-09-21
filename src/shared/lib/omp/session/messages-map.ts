@@ -42,7 +42,7 @@ export function toChatMessage(entry: OmpMessageEntry): ChatMessageData | null {
     const toolName = typeof msg.toolName === 'string' ? msg.toolName : undefined;
     const toolCallId = typeof msg.toolCallId === 'string' ? msg.toolCallId : undefined;
     if (toolCallId) return null; // consumed by the paired tool call in pass 2
-    if (!text && !toolName) return null;
+    if (!text.trim() && !toolName) return null;
     return { ...base, role: 'assistant', systemNote: toolName ? `[${toolName}] ${text}` : text };
   }
 

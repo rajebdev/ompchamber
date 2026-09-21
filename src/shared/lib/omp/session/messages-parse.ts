@@ -41,7 +41,8 @@ export function resultOutput(message: OmpMessageEntry['message']): string {
     if (!isRecord(block) || block.type !== 'text') continue;
     if (typeof block.text === 'string') parts.push(block.text);
   }
-  return parts.join('\n').trim();
+  // Deliberately untrimmed: whitespace is real output; call sites check emptiness.
+  return parts.join('\n');
 }
 
 export interface ParsedAssistantTurn {
