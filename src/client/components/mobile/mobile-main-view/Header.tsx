@@ -152,8 +152,24 @@ export function MobileHeader({
             <ChevronDown size={13} className="text-ink/50 flex-shrink-0" />
           </button>
 
+          {/* Pinned to the viewport, not to the trigger: the trigger sits
+              ~155px from the left edge, so a 288px panel anchored at its
+              `left-0` ran off the right edge of a phone screen. Fixed with
+              both insets keeps it inside the safe area at any width. */}
           {showSessionPicker && (
-            <div className="absolute top-full left-0 mt-1.5 w-72 max-w-[calc(100vw-1.5rem)] bg-paper border border-ink/15 rounded-xl shadow-lg z-50 p-2 text-xs">
+            <div
+              className="fixed z-50 bg-paper border border-ink/15 rounded-xl shadow-lg p-2 text-xs"
+              style={{
+                top: 'calc(3.5rem + env(safe-area-inset-top, 0px) + 0.375rem)',
+                left: 'max(0.75rem, env(safe-area-inset-left, 0px))',
+                right: 'max(0.75rem, env(safe-area-inset-right, 0px))',
+                maxWidth: '18rem',
+                // A landscape phone is only ~390px tall; without this the list
+                // ran past the bottom edge the same way it ran past the right.
+                maxHeight: 'calc(100dvh - 3.5rem - env(safe-area-inset-top, 0px) - 1.125rem)',
+                overflowY: 'auto',
+              }}
+            >
               <button
                 type="button"
                 onClick={() => { onNewSession(); setShowSessionPicker(false); }}
