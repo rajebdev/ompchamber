@@ -6,6 +6,9 @@ export interface FsNode {
   modified?: number;
   children?: FsNode[];
   forceExpanded?: boolean;
+  /** Matches a git ignore rule (repo `.gitignore`, `.git/info/exclude`, or the
+   *  global `core.excludesFile`) — rendered faded in the Files panel. */
+  ignored?: boolean;
 }
 
 export interface OpenedFile {

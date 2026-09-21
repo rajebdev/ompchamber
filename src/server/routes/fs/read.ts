@@ -11,6 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import { isMockMode } from '@/server/mock.server';
 import { getDefaultFsRoot, resolveRoot, resolveWithinRoot } from '@/server/lib/fs/root';
+import { collectIgnoredPaths } from '@/server/lib/fs/git-ignore';
 
 /**
  * GET /api/fs/browse?path=<abs> — list subdirectories of a folder for the
@@ -92,19 +93,26 @@ const NOISE_DIRS: Record<string, true> = { node_modules: true, '.git': true, dis
 // fetch them on demand — directories are NOT recursed here (keeps the initial
 // payload tiny for deep workspaces). Hidden (dot-prefixed) entries are part of
 // the listing: lazy children keep `.github`, `.config`, `.env`, … cheap.
+// Entries git would refuse to track carry `ignored: true` so the panel can dim
+// them; that is one `git check-ignore` per listing, never one per entry.
 async function listEntries(dirPath: string, rootPath: string): Promise<any[]> {
-  const entries = (await fs.promises.readdir(dirPath))
-    .filter(child => !NOISE_DIRS[child]);
+  const listed = (await fs.promises.readdir(dirPath))
+    .filter(child => !NOISE_DIRS[child])
+    .map(child => {
+      const full = path.join(dirPath, child);
+      return { child, full, rel: path.relative(rootPath, full) };
+    });
 
-  const mapped = await Promise.all(entries.map(async child => {
-    const full = path.join(dirPath, child);
+  const ignored = await collectIgnoredPaths(rootPath, listed.map(entry => entry.rel));
+
+  const mapped = await Promise.all(listed.map(async ({ child, full, rel }) => {
     try {
       const st = await Bun.file(full).stat();
-      const rel = path.relative(rootPath, full);
+      const isIgnored = ignored.has(rel);
       if (st.isDirectory()) {
-        return { id: rel, name: child, type: 'folder', path: rel, children: null, is_expanded: 0 };
+        return { id: rel, name: child, type: 'folder', path: rel, children: null, is_expanded: 0, ignored: isIgnored };
       }
-      return { id: rel, name: child, type: 'file', path: rel };
+      return { id: rel, name: child, type: 'file', path: rel, ignored: isIgnored };
     } catch {
       return null; // unreadable entry / broken symlink — skip
     }

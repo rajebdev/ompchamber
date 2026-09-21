@@ -53,6 +53,9 @@ export function FileTreeItem({
   const gitStatusInfo = gitChange ? getGitStatusInfo(gitChange.status, gitChange.staged) : null;
   const folderStatus = isFolder ? (gitFolderMap?.get(normalizedPath) || gitFolderMap?.get(file.path)) : null;
   const hasGitStatus = Boolean(gitStatusInfo);
+  // Git-ignored entries (local .gitignore or the global excludes file) are still
+  // listed but rendered faded, the way an editor dims untracked noise.
+  const isIgnored = file.ignored === true;
 
   const isExpanded = expandedPaths ? expandedPaths.has(file.path) : isOpen;
   const actualIsOpen = file.forceExpanded !== undefined ? file.forceExpanded : isExpanded;
@@ -194,8 +197,11 @@ export function FileTreeItem({
           <span className="w-3 flex-shrink-0"></span>
         )}
 
-        <FileIcon name={file.name} isFolder={isFolder} isOpen={actualIsOpen} size={12} className="flex-shrink-0" />
-        <span className={`truncate min-w-0 flex-1 ${gitStatusInfo ? gitStatusInfo.colorClass : folderStatus ? folderStatus.colorClass : ''}`}>
+        <FileIcon name={file.name} isFolder={isFolder} isOpen={actualIsOpen} size={12} className={`flex-shrink-0${isIgnored ? ' opacity-40' : ''}`} />
+        <span
+          className={`truncate min-w-0 flex-1 ${gitStatusInfo ? gitStatusInfo.colorClass : folderStatus ? folderStatus.colorClass : isIgnored ? 'text-ink/40' : ''}`}
+          title={isIgnored ? `${file.path} — git-ignored` : undefined}
+        >
           {file.name}
         </span>
 
