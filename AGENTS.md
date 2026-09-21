@@ -103,6 +103,12 @@ Bun implements `node:*` builtins natively — they do **not** shell out to a Nod
 - Semantic states are expressed purely through these theme variables.
 - The only allowable chroma (outside of dark theme) is the signal red variable `var(--theme-error)` (`text-error`, `bg-error`) reserved for failures and error messages. Syntax highlighting is an explicit, user-approved exception: it is provided by Shiki with the dual-theme pair `one-light` (light themes) + `one-dark-pro` (dark themes). Token colors arrive as `--shiki-light` / `--shiki-dark` CSS variables on `.shiki` spans — consume them in `src/client/tailwind.css` under `[data-theme]`, never hardcode token hex, and never reintroduce `--syntax-*` variables or `.token.*` classes.
 
+### Changelog Policy (Release-Only)
+- **NEVER edit `CHANGELOG.md` during normal work** — not for a feature, a fix, a refactor, a typo, or a version-less "unreleased" note. A task ends at code plus the gates in rule 8; the changelog is not part of it.
+- `CHANGELOG.md` is written **only when cutting a release**, in a change whose sole job is that release: a new `## [x.y.z] — YYYY-MM-DD` section placed **above** the previous release (newest first), carrying the `[Keep a Changelog](https://keepachangelog.com/en/1.1.0/)` categories that apply (`### Added`, `### Changed`, `### Fixed`, `### Removed`), plus its `[x.y.z]:` compare link at the file's tail.
+- Never add to or reword an already-published version section — release notes describe what shipped, not what a later change adjusted.
+- Write entries as released behavior: name the files/functions that carry it and why it changed, never a restatement of the diff.
+
 ---
 
 ## Codebase Architecture & File Organization Rules
