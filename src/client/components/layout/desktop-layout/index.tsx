@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { useSearchParams } from '@/client/lib/router/search-params';
 import { Group, Panel, type PanelImperativeHandle } from '@/client/components/layout/desktop-layout/resizer';
 import { SessionSidebar } from '@/client/components/layout/session-sidebar/index';
-import { type RightPanelType } from '@/shared/lib/workspace/right-panels';
+import { DEFAULT_RIGHT_PANEL_WIDTHS, type RightPanelType } from '@/shared/lib/workspace/right-panels';
 import { SettingsModal } from '@/client/components/settings/LazyModal';
 import { PanelLeft } from 'lucide-preact';
 import type { SettingsCategoryId } from '@/shared/types';
@@ -15,7 +15,7 @@ import { WorkspacePanels } from '@/client/components/layout/desktop-layout/Works
 import { useAgentStreamStatus } from '@/client/hooks/chat/omp/status';
 import { usePanelWidths } from '@/client/hooks/workspace/panel-widths';
 import { useSidebarData } from '@/client/hooks/chat/omp/session-list';
-import { DEFAULT_PANEL_WIDTHS, type EditorWidthMode } from '@/shared/lib/workspace/panel-widths';
+import { DEFAULT_PANEL_WIDTHS, MAX_LEFT_PANEL_WIDTH, MIN_LEFT_PANEL_WIDTH, type EditorWidthMode } from '@/shared/lib/workspace/panel-widths';
 import { ResizeHandle } from '@/client/components/layout/desktop-layout/ResizeHandle';
 import { writeSetting } from '@/shared/lib/settings/client';
 import { useChamberEvent, useWindowEvent } from '@/client/hooks/ui/window-event';
@@ -99,21 +99,23 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
   }, [showLeftPanel, widthsRef]);
 
   // The right panel survives activity-bar view switches (only CSS hides the
-  // outgoing view), so a mounted panel never re-reads its defaultSize. The
-  // width the incoming view remembers must be pushed on imperatively; a
-  // toggle-on remount already derives from defaultSize, making this a no-op.
+  // outgoing view), so a mounted panel never re-reads its defaultSize. A view
+  // that has been resized gets that width pushed here; one that never has gets
+  // the width it is supposed to open at, which the element would otherwise
+  // have taken from the view it was mounted under.
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      applyWidth(rightPanelRef, widthsRef.current?.right?.[activeRightPanel]);
+      applyWidth(rightPanelRef, widthsRef.current?.right?.[activeRightPanel] ?? DEFAULT_RIGHT_PANEL_WIDTHS[activeRightPanel]);
     });
     return () => cancelAnimationFrame(frame);
   }, [showRightPanel, activeRightPanel, widthsRef]);
 
   // Same story for the editor across a source↔diff tab switch: the panel
-  // stays mounted, so the width its tab kind remembers is re-applied here.
+  // stays mounted, so the width its tab kind remembers — or opens at, for a
+  // diff, which is wider than a source view — is re-applied here.
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      applyWidth(editorPanelRef, widthsRef.current?.[editorWidthMode]);
+      applyWidth(editorPanelRef, widthsRef.current?.[editorWidthMode] ?? DEFAULT_PANEL_WIDTHS[editorWidthMode]);
     });
     return () => cancelAnimationFrame(frame);
   }, [showEditor, editorWidthMode, widthsRef]);
@@ -215,7 +217,7 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
         >
           {showLeftPanel && (
             <>
-              <Panel panelRef={leftPanelRef} id="left-panel" defaultSize={panelWidths.left ?? DEFAULT_PANEL_WIDTHS.left} minSize={200} maxSize={600} collapsible>
+              <Panel panelRef={leftPanelRef} id="left-panel" defaultSize={panelWidths.left ?? DEFAULT_PANEL_WIDTHS.left} minSize={MIN_LEFT_PANEL_WIDTH} maxSize={MAX_LEFT_PANEL_WIDTH} collapsible>
                 <SessionSidebar className="w-full h-full" onClose={() => handleToggleLeftPanel(false)} appSettings={appSettings} />
               </Panel>
               <ResizeHandle />

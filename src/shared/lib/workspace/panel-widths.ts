@@ -2,9 +2,11 @@
  * Per-panel width state for the desktop layout.
  *
  * Every resizable surface remembers its OWN width: the session sidebar, the
- * chat column, the editor panel (source and diff tabs separately, since a diff
- * wants room a file view does not) and each right-panel view. Collapsing those
- * into one slot per group is what made switching a panel look like a reset.
+ * editor panel (source and diff tabs separately, since a diff wants room a
+ * file view does not) and each right-panel view (see `right-panels.ts`).
+ * Collapsing those into one slot per group is what made switching a panel look
+ * like a reset. The chat column is the group's filler — flexbox sizes it — so
+ * it has no remembered width, only a floor it may not be pushed below.
  *
  * Sizes are pixels — the unit the panel constraints are written in — and are
  * persisted as `app_settings.desktopLayoutSizes`.
@@ -17,8 +19,6 @@ export type EditorWidthMode = 'editor' | 'diff';
 export interface PanelWidths {
   /** Session sidebar. */
   left?: number;
-  /** Chat timeline column, the inner stack's first panel. */
-  chat?: number;
   /** Editor panel while a source file tab is active. */
   editor?: number;
   /** Editor panel while a diff tab is active. */
@@ -28,12 +28,25 @@ export interface PanelWidths {
 }
 
 /** Fallbacks for panels that have never been resized. */
-export const DEFAULT_PANEL_WIDTHS: Record<EditorWidthMode | 'left' | 'chat', number> = {
+export const DEFAULT_PANEL_WIDTHS: Record<EditorWidthMode | 'left', number> = {
   left: 268,
-  chat: 540,
-  editor: 536,
-  diff: 536,
+  editor: 600,
+  // Side-by-side diffs need both halves readable at once: `SplitView` states a
+  // 700px floor of its own, so anything below it scrolls sideways on open.
+  diff: 720,
 };
+
+/**
+ * Panel floors and ceilings. The sidebar ceiling and the chat floor are a pair:
+ * `MIN_CHAT_PANEL_WIDTH` is what stops the workspace stack from eating the
+ * conversation, and it is also why the sidebar cannot open past 520 and still
+ * leave the editor (300) and a browser view (320) room on a 1440px display.
+ */
+export const MIN_LEFT_PANEL_WIDTH = 200;
+export const MAX_LEFT_PANEL_WIDTH = 520;
+export const MIN_CHAT_PANEL_WIDTH = 420;
+export const MIN_EDITOR_PANEL_WIDTH = 300;
+export const MAX_EDITOR_PANEL_WIDTH = 1200;
 
 function pixelWidth(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.round(value) : undefined;
@@ -50,7 +63,7 @@ export function normalizePanelWidths(raw: unknown, legacyView: RightPanelType): 
   const source = raw as Record<string, unknown>;
 
   const widths: PanelWidths = {};
-  for (const key of ['left', 'chat', 'editor', 'diff'] as const) {
+  for (const key of ['left', 'editor', 'diff'] as const) {
     const value = pixelWidth(source[key]);
     if (value !== undefined) widths[key] = value;
   }

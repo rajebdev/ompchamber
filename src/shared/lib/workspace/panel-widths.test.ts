@@ -11,7 +11,6 @@ describe('normalizePanelWidths', () => {
   test('keeps every panel slot from a current blob', () => {
     const raw = {
       left: 342,
-      chat: 700,
       editor: 620,
       diff: 900,
       right: { files: 300, browser: 804 },
@@ -29,8 +28,10 @@ describe('normalizePanelWidths', () => {
   });
 
   test('drops unusable entries instead of trusting the blob', () => {
+    // `chat` is an obsolete slot — the chat column is the filler now — and a
+    // blob written before that must not resurrect it.
     const widths = normalizePanelWidths(
-      { left: -10, chat: '700', editor: 620.4, diff: null, right: { files: 0, bogus: 300, git: 260 } },
+      { left: -10, chat: 700, editor: 620.4, diff: null, right: { files: 0, bogus: 300, git: 260 } },
       'files',
     );
 
@@ -47,7 +48,6 @@ describe('mergePanelWidths', () => {
   test('merging one view keeps every other remembered width', () => {
     const stored = {
       left: 342,
-      chat: 700,
       editor: 620,
       diff: 900,
       right: { files: 300, git: 260 },
@@ -63,10 +63,10 @@ describe('mergePanelWidths', () => {
 
   test('a resized panel replaces only its own slot', () => {
     const merged = mergePanelWidths(
-      { chat: 700, editor: 620, diff: 900, right: { files: 300 } },
+      { left: 300, editor: 620, diff: 900, right: { files: 300 } },
       { editor: 480 },
     );
 
-    expect(merged).toEqual({ chat: 700, editor: 480, diff: 900, right: { files: 300 } });
+    expect(merged).toEqual({ left: 300, editor: 480, diff: 900, right: { files: 300 } });
   });
 });

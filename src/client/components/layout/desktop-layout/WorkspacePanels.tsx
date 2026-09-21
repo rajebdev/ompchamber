@@ -7,7 +7,7 @@ import { getDesktopPanelView } from '@/client/components/common/lazy-panels';
 import { RightActivityBar } from '@/client/components/layout/RightActivityBar';
 import { ResizeHandle } from '@/client/components/layout/desktop-layout/ResizeHandle';
 import { DEFAULT_RIGHT_PANEL_WIDTHS, MAX_RIGHT_PANEL_WIDTH, MIN_RIGHT_PANEL_WIDTHS, RIGHT_PANEL_TYPES, type RightPanelType } from '@/shared/lib/workspace/right-panels';
-import { DEFAULT_PANEL_WIDTHS, type EditorWidthMode, type PanelWidths } from '@/shared/lib/workspace/panel-widths';
+import { DEFAULT_PANEL_WIDTHS, MAX_EDITOR_PANEL_WIDTH, MIN_CHAT_PANEL_WIDTH, MIN_EDITOR_PANEL_WIDTH, type EditorWidthMode, type PanelWidths } from '@/shared/lib/workspace/panel-widths';
 
 const Editor = lazy(() => import('@/client/components/workspace/editor/index').then((m) => ({ default: m.Editor })));
 
@@ -113,14 +113,14 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
           onPanelWidths(readPanelWidths());
         }}
       >
-        <Panel id="center-panel" filler minSize="540px">
+        <Panel id="center-panel" filler minSize={MIN_CHAT_PANEL_WIDTH}>
           <ChatTimeline className="w-full h-full" appSettings={appSettings} onSessionTitle={onSessionTitle} />
         </Panel>
 
         {showEditor && (
           <>
             <ResizeHandle />
-            <Panel panelRef={editorPanelRef} id="editor-panel" defaultSize={panelWidths[editorWidthMode] ?? DEFAULT_PANEL_WIDTHS[editorWidthMode]} minSize={300}>
+            <Panel panelRef={editorPanelRef} id="editor-panel" defaultSize={panelWidths[editorWidthMode] ?? DEFAULT_PANEL_WIDTHS[editorWidthMode]} minSize={MIN_EDITOR_PANEL_WIDTH} maxSize={MAX_EDITOR_PANEL_WIDTH}>
               <PanelSuspense>
                 <Editor
                   className="w-full h-full"

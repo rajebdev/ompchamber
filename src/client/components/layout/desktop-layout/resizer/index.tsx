@@ -2,17 +2,24 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { useRef as useRefBase } from 'preact/hooks';
 import type { ComponentChildren, RefObject } from 'preact';
 import type { CSSProperties, TargetedPointerEvent } from 'preact';
+import { clamp, toPx, transfer } from '@/client/components/layout/desktop-layout/resizer/utils';
 
 /**
  * Hand-rolled resizable panel group (the Preact-native replacement for
  * react-resizable-panels in this app's two horizontal layouts).
  *
- * Model: every Panel is a flex child sized by `flex: 0 0 auto` plus a px
+ * Model: every Panel is a flex child sized by `flex: 0 1 auto` plus a px
  * width/height held in state; exactly one panel per group is the FILLER
  * (`filler` prop) and takes `flex: 1 1 0`, absorbing the remaining space. A
  * Separator drag transfers pixels between the two panels adjacent to it,
  * clamped by both neighbors' min/max constraints, and commits once per drag
  * through `onLayoutChanged(_, { isUserInteraction: true })`.
+ *
+ * The filler's `minSize` is a real CSS floor, which is what makes a shrinking
+ * window push the resizable panels toward their own floors instead of
+ * collapsing the filler to nothing (a zero flex basis absorbs no negative free
+ * space). Once every panel sits at its floor the row is narrower than its
+ * container and the surplus is clipped — the layout has no panel to give up.
  *
  * The imperative API mirrors what this app used from the old library:
  * `panelRef.resize(px)`, `panelRef.getSize() -> { inPixels }`, and the
@@ -58,31 +65,6 @@ interface GroupContextValue {
 }
 
 const GroupContext = createContext<GroupContextValue | null>(null);
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
-}
-
-function toPx(value: number | string | undefined, fallback: number): number {
-  if (typeof value === 'number') return value;
-  if (typeof value === 'string') return parseFloat(value) || fallback;
-  return fallback;
-}
-
-/**
- * Pixels transferred between the dragged pair. Positive delta moves the
- * separator right/down: A grows, B shrinks. The applied delta is clamped so
- * neither panel crosses its own min/max.
- */
-function transfer(
-  a: { size: number; min: number; max: number },
-  b: { size: number; min: number; max: number },
-  delta: number,
-): number {
-  const lower = Math.max(a.min - a.size, b.min - b.size);
-  const upper = Math.min(a.max - a.size, b.size - b.min);
-  return clamp(delta, lower, upper);
-}
 
 export function Group(props: {
   orientation: GroupOrientation;
@@ -219,7 +201,15 @@ export function Panel(props: {
   }, [panelRef, minPx, maxPx]);
 
   const baseStyle: CSSProperties = filler
-    ? { flex: '1 1 0%', minWidth: 0, minHeight: 0, overflow: 'hidden', position: 'relative' }
+    ? {
+        flex: '1 1 0%',
+        // The filler keeps its floor on the group's axis (and none across it,
+        // where it is sized by the container): see the group model note above.
+        minWidth: orientation === 'horizontal' ? minPx : 0,
+        minHeight: orientation === 'horizontal' ? 0 : minPx,
+        overflow: 'hidden',
+        position: 'relative',
+      }
     : {
         flex: '0 1 auto',
         width: orientation === 'horizontal' ? sizePx ?? undefined : undefined,
@@ -280,8 +270,11 @@ export function Separator(props: { className?: string; style?: CSSProperties; ch
     const startPos = orientation === 'horizontal' ? e.clientX : e.clientY;
     const measure = (el: HTMLElement) =>
       orientation === 'horizontal' ? el.getBoundingClientRect().width : el.getBoundingClientRect().height;
-    const aStart = a.getSize() ?? measure(previous);
-    const bStart = b.getSize() ?? measure(next);
+    // Measure, never ask the panel: a window narrow enough for flexbox to
+    // shrink a panel below its specified width would otherwise start the drag
+    // from a size the panel does not have on screen.
+    const aStart = measure(previous);
+    const bStart = measure(next);
 
     const onMove = (ev: PointerEvent) => {
       const pos = orientation === 'horizontal' ? ev.clientX : ev.clientY;
