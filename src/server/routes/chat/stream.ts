@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@/server/lib/remix-compat';
 import { isMockMode } from '@/server/mock.server';
-import { handleGeminiStreaming, handleSimulatedStreaming } from '@/shared/lib/chat/stream-service';
+import { handleSimulatedStreaming } from '@/shared/lib/chat/stream-service';
 import { createSseStream } from '@/server/lib/sse';
 
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -31,7 +31,7 @@ async function handleStreamingRequest(request: Request) {
   }
 
   // Real mode routes through the omp agent RPC bridge (POST /api/agent/:id +
-  // SSE /api/agent/:id/events). This Gemini/simulated stream is the MOCK-only
+  // SSE /api/agent/:id/events). This simulated stream is the MOCK-only
   // path — refuse it in real mode so the two never conflict.
   if (!isMockMode()) {
     return new Response(JSON.stringify({ error: 'Streaming is handled by the omp agent bridge in real mode' }), {
@@ -68,34 +68,17 @@ async function handleStreamingRequest(request: Request) {
           model: modelName,
         });
 
-        const apiKey = Bun.env.GEMINI_API_KEY;
-        const mock = isMockMode();
-
-        // If real Gemini API is available and not forced mock mode
-        if (apiKey && !mock) {
-          await handleGeminiStreaming({
-            apiKey,
-            prompt,
-            modelName,
-            sessionId,
-            messageId,
-            timeStr,
-            sendEvent,
-            isAborted: () => isAborted,
-          });
-        } else {
-          // Fallback / simulated intelligent streaming for OMPChamber
-          await handleSimulatedStreaming({
-            prompt,
-            modelName,
-            workspaceName,
-            sessionId,
-            messageId,
-            timeStr,
-            sendEvent,
-            isAborted: () => isAborted,
-          });
-        }
+        // Simulated intelligent streaming — the MOCK-only path for OMPChamber.
+        await handleSimulatedStreaming({
+          prompt,
+          modelName,
+          workspaceName,
+          sessionId,
+          messageId,
+          timeStr,
+          sendEvent,
+          isAborted: () => isAborted,
+        });
       } catch (err: any) {
         if (!isAborted) {
           sendEvent('error', { error: err?.message || 'Streaming execution error' });

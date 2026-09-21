@@ -311,7 +311,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
       }
     }
 
-    // Mock / chamber-created session: existing Gemini/simulated SSE path.
+    // Mock / chamber-created session: existing simulated SSE path.
     // Cancel any previous stream
     optimisticUserIdRef.current = null;
     if (abortControllerRef.current) {

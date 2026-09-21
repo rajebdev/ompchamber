@@ -1,5 +1,4 @@
 import { getDb } from '@/server/db.server';
-import { GoogleGenAI } from '@google/genai';
 import type { ChatMessageData, ToolCallData } from '@/shared/types';
 
 // Helper to delay execution for realistic stream simulation
@@ -33,81 +32,6 @@ async function persistAiMessage(sessionId: string, aiMessage: ChatMessageData) {
   } catch (err) {
     console.error('Failed to persist streamed message:', err);
   }
-}
-
-// Handler for real Gemini API streaming
-export async function handleGeminiStreaming(options: {
-  apiKey: string;
-  prompt: string;
-  modelName: string;
-  sessionId: string;
-  messageId: string;
-  timeStr: string;
-  sendEvent: StreamSendEvent;
-  isAborted: () => boolean;
-}) {
-  const { apiKey, prompt, sessionId, messageId, timeStr, sendEvent, isAborted } = options;
-  const ai = new GoogleGenAI({
-    apiKey,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      },
-    },
-  });
-
-  sendEvent('thinking_start', { title: 'Deep Reasoning' });
-  const thoughtText = `Deconstructing prompt: "${prompt}".\nAnalyzing project context, evaluating edge dependencies, and generating validated response.`;
-  
-  // Stream thinking chunk
-  sendEvent('thinking_chunk', { delta: thoughtText });
-  sendEvent('thinking_end', {
-    thought: thoughtText,
-    summary: 'Analyze context and stream response',
-    duration: '0.8s',
-  });
-
-  sendEvent('content_start', {});
-
-  const responseStream = await ai.models.generateContentStream({
-    model: 'gemini-3.8-flash',
-    contents: prompt || 'Hello',
-    config: {
-      systemInstruction: 'You are OMPChamber AI Assistant, integrated with Oh-My-Pi, remisJS, and Bun runtime environments. Provide concise, clean, markdown-formatted responses.',
-    },
-  });
-
-  let fullContent = '';
-  for await (const chunk of responseStream) {
-    if (isAborted()) break;
-    const textChunk = chunk.text || '';
-    if (textChunk) {
-      fullContent += textChunk;
-      sendEvent('content_chunk', { delta: textChunk });
-    }
-  }
-
-  sendEvent('content_end', {});
-
-  const summary = 'Generation completed successfully via Gemini API.';
-  sendEvent('summary', { summary });
-
-  const finalMessage: ChatMessageData = {
-    id: messageId,
-    role: 'ai',
-    date: `Today, ${timeStr}`,
-    timestamp: timeStr,
-    thinking: {
-      duration: '0.8s',
-      thought: thoughtText,
-      summary: 'Analyze context and stream response',
-    },
-    content: fullContent,
-    summary,
-  };
-
-  sendEvent('done', { message: finalMessage });
-  await persistAiMessage(sessionId, finalMessage);
 }
 
 // Handler for domain-aware simulated streaming with tool executions & chunked tokens

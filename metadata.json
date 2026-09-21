@@ -1,6 +1,5 @@
 {
   "name": "OMPChamber",
   "description": "A light e-ink paper developer dashboard and AI Oh-My-Pi web view chamber for CI/CD deployments.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "requestFramePermissions": []
 }

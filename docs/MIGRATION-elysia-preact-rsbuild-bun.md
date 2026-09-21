@@ -172,7 +172,7 @@ ompchamber/
 │   │   │   │   ├── index.ts           #   /api/chat (list + upsert)
 │   │   │   │   ├── session.ts         #   /api/chat/:sessionId (GET/POST/PUT/DELETE)
 │   │   │   │   ├── rewind.ts          #   /api/chat/:sessionId/rewind
-│   │   │   │   └── stream.ts          #   /api/chat/stream  (MOCK-only Gemini SSE)
+│   │   │   │   └── stream.ts          #   /api/chat/stream  (MOCK-only simulated SSE)
 │   │   │   ├── sessions/
 │   │   │   │   ├── index.ts           #   /api/sessions/list
 │   │   │   │   ├── folder.ts          #   /api/sessions/:folderId
@@ -355,7 +355,7 @@ export const agentRoutes = new Elysia({ prefix: '/api/agent' })
 | `marked` / `marked-linkify-it` / `remend` / `katex` / `prismjs` | — | ✅ Framework-agnostic | **Keep.** |
 | `mermaid` | 12.0 | ✅ Framework-agnostic (dynamic import) | **Keep.** |
 | `@xterm/xterm` + `addon-fit` | 6.0 / 0.11 | ✅ Framework-agnostic | **Keep.** |
-| `@google/genai` | 2.21 | ✅ Server-side only (mock streaming path) | **Keep.** |
+| `@google/genai` | 2.21 | — | **Removed** (Gemini stream path deleted; MOCK streaming is fully simulated). |
 | `yaml` | 2.9 | ✅ | **Keep.** |
 | `@fontsource/fira-code` | 5.3 | ✅ | **Keep.** |
 
@@ -705,7 +705,7 @@ Five routes return `text/event-stream`, spread across three domain folders:
 | Route | Module | Purpose |
 |---|---|---|
 | `api/agent/$sessionId.events.ts` | `agent/events.ts` | agent event stream (fallback transport) |
-| `api/chat/stream.ts` | `chat/stream.ts` | MOCK-only Gemini/simulated streaming |
+| `api/chat/stream.ts` | `chat/stream.ts` | MOCK-only simulated streaming |
 | `api/terminal/stream.ts` | `terminal/stream.ts` | shell command output |
 | `api/browser/$sessionId.stream.ts` | `browser/stream.ts` | CDP screencast frames |
 | `api/omp/login.ts` | `omp/login.ts` | omp login flow output |
