@@ -41,7 +41,7 @@ jobs:
     # the secret's, not a deployment target). Environment scope rather than a
     # repo secret keeps the token readable only by jobs that declare it, and is
     # where required reviewers can be added to gate a publish.
-    environment: NPM_TOKEN
+    environment: npm
     steps:
       - name: Checkout the released tag
         uses: actions/checkout@v7
