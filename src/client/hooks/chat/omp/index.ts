@@ -3,6 +3,7 @@ import type { ChatMessageData, OmpAgentCallbacks, OmpAgentHandle, OmpAgentState,
 import type { ExtensionUiDialogRequest } from '@/shared/types/omp/agent';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { type ToolResultRecord, useOmpAgentStream } from '@/client/hooks/chat/omp/stream';
+import { stopAgentSession } from '@/shared/lib/chat/omp/abort';
 
 /**
  * Live omp agent bridge for the chamber chat (real mode, MOCK=false). Mirrors
@@ -72,12 +73,14 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
       .then(res => (res.ok ? res.json() : null))
       .then((data: {
         running?: boolean;
+        /** Set when the server answered from local flags, not a get_state RPC. */
+        busy?: boolean;
         state?: { isStreaming?: boolean; isPromptRunning?: boolean };
         pendingUiRequests?: ExtensionUiDialogRequest[];
       } | null) => {
         if (cancelled || !data?.running) return;
         const probe = data.state;
-        if (probe && (probe.isStreaming || probe.isPromptRunning)) {
+        if (data.busy || probe?.isStreaming || probe?.isPromptRunning) {
           connect(sessionId);
           callbacksRef.current.onResumeStream?.();
         }
@@ -132,6 +135,8 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
       });
       const body = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
       if (!res.ok || body.error) {
+        // `session_busy`: the ack timed out behind a still-running turn, so the
+        // prompt may already be accepted — never resend it automatically.
         setState((prev) => ({ ...prev, isGenerating: false, error: body.error ?? `HTTP ${res.status}` }));
         return false;
       }
@@ -209,15 +214,9 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     // A user stop supersedes an in-flight interrupt-and-reply: clearing the
     // guard lets the aborted turn's agent_end reach onAgentEnd (no stuck spinner).
     interruptPendingRef.current = false;
-    try {
-      await fetch(`/api/agent/${encodeURIComponent(sid)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'abort' }),
-      });
-    } catch {
-      // Abort is best-effort; the event stream surfaces the terminal state.
-    }
+    // Self-escalating: a child that does not stop within the helper's grace
+    // period is reset instead, so a wedged session cannot hang the button.
+    await stopAgentSession(sid);
     setState((prev) => ({ ...prev, isGenerating: false }));
   }, []);
 

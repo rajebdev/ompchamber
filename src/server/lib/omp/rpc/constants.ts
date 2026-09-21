@@ -70,12 +70,22 @@ export interface WebSessionState {
 }
 
 export const IDLE_DESTROY_MS = 10 * 60 * 1000;
+// Longest a subagent may go without a frame before the wrapper stops counting
+// it as live work. A terminal frame lost to a protocol hiccup would otherwise
+// pin the session's omp process (and its whole process group) open forever; the
+// price of the window is at most one idle omp process.
+export const SUBAGENT_STALE_MS = 30 * 60 * 1000;
 export const READY_TIMEOUT_MS = 120_000;
 export const GET_STATE_TIMEOUT_MS = 5_000;
 export const PROMPT_ACK_TIMEOUT_MS = 30_000;
 export const NON_TERMINAL_CONTINUATION_GRACE_MS = 2_000;
 export const AWAITING_AGENT_START_TIMEOUT_MS = 10_000;
 export const RESTARTING_MESSAGE = 'This session is restarting — retry in a moment.';
+// A command timeout is not proof an omp child is wedged: omp runs RPC handlers
+// one at a time, so a slow `get_state`/`prompt` ack can simply be queued behind
+// the running turn. That session keeps its process — only a session that is
+// idle AND unresponsive is reset.
+export const SESSION_BUSY_MESSAGE = 'The OMP session is busy with the running turn; retry once it settles.';
 
 export class WebRpcError extends Error {
   readonly code: string;

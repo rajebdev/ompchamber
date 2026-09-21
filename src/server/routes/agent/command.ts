@@ -1,7 +1,7 @@
 import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@/server/lib/remix-compat';
 import { resolveSessionPathOr404 } from '@/server/lib/omp/session/locator';
-import { WebRpcError, getRpcSession, resolveSpawnCwd, startRpcSession } from '@/server/lib/omp/rpc/manager';
+import { WebRpcError, getRpcSession, resolveSpawnCwd, startRpcSession, type AgentSessionWrapper } from '@/server/lib/omp/rpc/manager';
 import { getSpawnApprovalMode, reconcileSpawnApprovalMode } from '@/server/lib/omp/rpc/session-registry';
 import { isApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { loadPersistedAccessMode } from '@/shared/lib/omp/config/access-mode.server';
@@ -53,29 +53,47 @@ export async function sendCommand({ params, request }: ActionFunctionArgs) {
   }
 }
 
+/** RPC-free view of a busy session. `state` carries only the two flags the
+ *  attach probe reads; the full snapshot resumes once the turn settles. */
+function busySessionPayload(session: AgentSessionWrapper) {
+  return {
+    running: true,
+    busy: true,
+    state: { isStreaming: session.streaming, isPromptRunning: session.promptRunning },
+    pendingUiRequests: session.getPendingUiDialogs(),
+  };
+}
+
 // GET /api/agent/:sessionId — current agent state (running set + live state).
 export async function getAgentState({ params }: LoaderFunctionArgs) {
   const { sessionId } = params;
   if (!sessionId) return json({ error: 'session id is required' }, { status: 400 });
 
+  const session = getRpcSession(sessionId);
+  if (!session || !session.isAlive()) {
+    return json({ running: false });
+  }
+
+  // A busy session answers from local flags: its `get_state` would queue behind
+  // the running turn (omp runs RPC handlers one at a time), and a timeout there
+  // is no reason to reset a session that is demonstrably working — subagents
+  // included. These flags are all the client needs to reattach its stream.
+  if (session.isBusy()) return json(busySessionPayload(session));
+
   try {
-    const session = getRpcSession(sessionId);
-    if (!session || !session.isAlive()) {
-      return json({ running: false });
-    }
-    try {
-      const state = await session.send({ type: 'get_state' });
-      // Dialogs omp is still blocked on: a client that reloaded mid-ask has no
-      // other way to learn the request id it must answer, and omp never
-      // re-emits the frame.
-      return json({ running: true, state, pendingUiRequests: session.getPendingUiDialogs() });
-    } catch (error) {
-      if (error instanceof WebRpcError && error.code === 'session_unresponsive') {
-        return json({ running: false, recovered: true });
-      }
-      throw error;
-    }
+    const state = await session.send({ type: 'get_state' });
+    // Dialogs omp is still blocked on: a client that reloaded mid-ask has no
+    // other way to learn the request id it must answer, and omp never
+    // re-emits the frame.
+    return json({ running: true, state, pendingUiRequests: session.getPendingUiDialogs() });
   } catch (error) {
+    if (error instanceof WebRpcError && error.code === 'session_unresponsive') {
+      return json({ running: false, recovered: true });
+    }
+    // A turn started between the check above and the RPC: report busy, not dead.
+    if (error instanceof WebRpcError && error.code === 'session_busy') {
+      return json(busySessionPayload(session));
+    }
     return rpcErrorResponse(error);
   }
 }

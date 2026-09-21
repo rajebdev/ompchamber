@@ -131,8 +131,9 @@ export function getSpawnApprovalMode(session: AgentSessionWrapper): ApprovalMode
  *  Returns true when the session was destroyed (caller MUST respawn). */
 export async function reconcileSpawnApprovalMode(session: AgentSessionWrapper, desired: ApprovalMode): Promise<boolean> {
   if (getSpawnApprovalMode(session) === desired) return false;
-  // Never kill an in-flight run — the caller would lose the active turn.
-  if (session.isRunning()) return false;
+  // Never kill in-flight work — the caller would lose the active turn, and a
+  // live subagent outlives that turn.
+  if (session.isBusy()) return false;
   // A brand-new session has no JSONL on disk yet; destroying it would 404 the
   // next request that tries to resolve its file.
   if (!session.sessionFile) return false;

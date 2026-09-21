@@ -10,7 +10,7 @@
  */
 
 import { RpcCommandTimeoutError, type RpcProcess } from '@/server/lib/omp/rpc/process';
-import { AWAITING_AGENT_START_TIMEOUT_MS, GET_STATE_TIMEOUT_MS, IMAGE_BEARING_COMMANDS, PASSTHROUGH_COMMANDS, PROMPT_ACK_TIMEOUT_MS, RESTARTING_MESSAGE, WebRpcError, toImageContents, type AgentEvent, type RpcSessionState, validateAgentImages } from '@/server/lib/omp/rpc/constants';
+import { AWAITING_AGENT_START_TIMEOUT_MS, GET_STATE_TIMEOUT_MS, IMAGE_BEARING_COMMANDS, PASSTHROUGH_COMMANDS, PROMPT_ACK_TIMEOUT_MS, RESTARTING_MESSAGE, SESSION_BUSY_MESSAGE, WebRpcError, toImageContents, type AgentEvent, type RpcSessionState, validateAgentImages } from '@/server/lib/omp/rpc/constants';
 import { clearSessionFileCaches } from '@/server/lib/omp/session/files';
 import { notifyRunningChange } from '@/server/lib/omp/rpc/session-registry';
 import { markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
@@ -21,6 +21,10 @@ export interface SessionCommandHost extends WebStateHost {
   restarting: boolean;
   proc: RpcProcess;
   isAlive(): boolean;
+  /** Anything a reset would destroy: the running turn, a compaction, a shell
+   *  command, or live subagents. A timed-out command against a busy session is
+   *  queued behind that work, not evidence the child is wedged. */
+  isBusy(): boolean;
   /** Real omp session id (empty before the first get_state). */
   sessionId: string;
   emit(event: AgentEvent): void;
@@ -29,6 +33,20 @@ export interface SessionCommandHost extends WebStateHost {
   resolvePendingUiDialog(id: string): void;
   withFinalRunningNotification<T>(operation: () => Promise<T>): Promise<T>;
   destroyAndWait(): Promise<void>;
+}
+
+/** Decide a command timeout's consequence. omp runs RPC handlers one at a
+ *  time, so a late `get_state`/`prompt` ack is usually queued behind the
+ *  running turn (or behind a subagent's spawn): resetting that child would
+ *  throw away a live turn and every subagent it owns. Only a session that is
+ *  demonstrably idle AND unresponsive is reclaimed.
+ *
+ *  Never throws `session_unresponsive` for a busy session, and never suggests a
+ *  retry of a command whose acceptance is unknown. */
+async function settleCommandTimeout(host: SessionCommandHost): Promise<never> {
+  if (host.isBusy()) throw new WebRpcError(SESSION_BUSY_MESSAGE, 'session_busy');
+  await host.destroyAndWait();
+  throw new WebRpcError('The OMP session stopped responding and was reset.', 'session_unresponsive');
 }
 
 export async function dispatchSessionCommand(host: SessionCommandHost, command: Record<string, unknown>): Promise<unknown> {
@@ -78,10 +96,10 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
         host.awaitingAgentStart = false;
         host.awaitingAgentStartDeadline = 0;
         notifyRunningChange();
-        if (error instanceof RpcCommandTimeoutError) {
-          await host.destroyAndWait();
-          throw new WebRpcError('The OMP session stopped responding and was reset.', 'session_unresponsive');
-        }
+        // The ack may simply be queued behind a running turn: omp accepts the
+        // prompt before the turn it starts. No reset, and the client must not
+        // resend — a duplicate prompt would run twice.
+        if (error instanceof RpcCommandTimeoutError) await settleCommandTimeout(host);
         throw error;
       } finally {
         if (!streamingBehavior) {
@@ -102,15 +120,20 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
       });
       return null;
 
+    // Escape hatch behind the Stop button: `abort` resolves only once the turn
+    // actually stops, so a session wedged on a subagent never answers it. The
+    // caller (shared/lib/chat/omp/abort.ts) escalates to this after a grace
+    // period and accepts losing the in-flight work.
+    case 'force_reset':
+      await host.destroyAndWait();
+      return null;
+
     case 'get_state': {
       try {
         const state = await host.proc.sendCommand<RpcSessionState>({ type: 'get_state' }, GET_STATE_TIMEOUT_MS);
         return buildWebState(host, state);
       } catch (error) {
-        if (error instanceof RpcCommandTimeoutError) {
-          await host.destroyAndWait();
-          throw new WebRpcError('The OMP session stopped responding and was reset.', 'session_unresponsive');
-        }
+        if (error instanceof RpcCommandTimeoutError) await settleCommandTimeout(host);
         throw error;
       }
     }

@@ -20,8 +20,9 @@ import { PendingUiDialogs } from '@/server/lib/omp/rpc/pending-ui-dialogs';
 import { clearSessionFileCaches } from '@/server/lib/omp/session/files';
 import { notifyRunningChange } from '@/server/lib/omp/rpc/session-registry';
 import { dispatchSessionCommand } from '@/server/lib/omp/rpc/session-commands';
+import { SubagentLiveness } from '@/server/lib/omp/rpc/subagent-liveness';
 import { markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
-import { GET_STATE_TIMEOUT_MS, IDLE_DESTROY_MS, NON_TERMINAL_CONTINUATION_GRACE_MS, READY_TIMEOUT_MS, type AgentEvent, type EventListener, type RpcSessionState } from '@/server/lib/omp/rpc/constants';
+import { GET_STATE_TIMEOUT_MS, IDLE_DESTROY_MS, NON_TERMINAL_CONTINUATION_GRACE_MS, READY_TIMEOUT_MS, SUBAGENT_STALE_MS, type AgentEvent, type EventListener, type RpcSessionState } from '@/server/lib/omp/rpc/constants';
 
 export type {
   AgentEvent,
@@ -30,6 +31,13 @@ export type {
   WebSessionState,
 } from '@/server/lib/omp/rpc/constants';
 export { WebRpcError, resolveSpawnCwd } from '@/server/lib/omp/rpc/constants';
+
+/** Overrides for the wrapper's own timers. Production always uses the
+ *  constant; tests shrink the window so the lifecycle rules stay fast. */
+export interface AgentSessionWrapperOptions {
+  /** Idle window before an unused process is reclaimed. */
+  idleDestroyMs?: number;
+}
 
 export class AgentSessionWrapper {
   private listeners: EventListener[] = [];
@@ -55,14 +63,20 @@ export class AgentSessionWrapper {
   // `extension_ui_request`, so a client that reloads mid-dialog can only learn
   // the id it must answer from here.
   private readonly pendingUiDialogs = new PendingUiDialogs();
+  // Live subagents, folded from the frames omp streams after the subscription
+  // set in initialize(). No other flag on this wrapper can see them, and an
+  // idle reclaim or a spawn-mode reconcile must never kill a running subagent.
+  private readonly subagents = new SubagentLiveness();
+  readonly idleDestroyMs: number;
   proc: RpcProcess;
   readonly cwd: string;
   private readonly recordedCwd: string | null;
 
-  constructor(proc: RpcProcess, cwd: string, recordedCwd?: string | null) {
+  constructor(proc: RpcProcess, cwd: string, recordedCwd?: string | null, options: AgentSessionWrapperOptions = {}) {
     this.proc = proc;
     this.cwd = cwd;
     this.recordedCwd = recordedCwd ?? null;
+    this.idleDestroyMs = options.idleDestroyMs ?? IDLE_DESTROY_MS;
   }
 
   get sessionId(): string {
@@ -85,6 +99,13 @@ export class AgentSessionWrapper {
 
   isRunning(): boolean {
     return this.isAlive() && (this.promptRunning || this.streaming || this.compacting || this.bashRunning);
+  }
+
+  /** Anything in flight that a process reset would destroy: the current turn,
+   *  a compaction, a shell command, or live subagents — which outlive the turn
+   *  that spawned them, so no other flag here can see them. */
+  isBusy(): boolean {
+    return this.isRunning() || this.subagents.liveCount(Date.now(), SUBAGENT_STALE_MS) > 0;
   }
 
   start(): void {
@@ -188,6 +209,13 @@ export class AgentSessionWrapper {
       case 'extension_ui_request':
         this.pendingUiDialogs.track(event);
         break;
+      // Subagent frames carry no turn state, but they are the only proof that
+      // work is still running once the parent turn has ended.
+      case 'subagent_lifecycle':
+      case 'subagent_progress':
+      case 'subagent_event':
+        this.subagents.observe(event, Date.now());
+        break;
       case 'response': {
         if (event.success === false && event.command === 'prompt') {
           this.promptRunning = false;
@@ -226,12 +254,12 @@ export class AgentSessionWrapper {
     this.lastIdleReset = now;
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
-      if (this.isRunning()) {
+      if (this.isBusy()) {
         this.resetIdleTimer(true);
         return;
       }
       this.destroy();
-    }, IDLE_DESTROY_MS);
+    }, this.idleDestroyMs);
   }
 
   onEvent(listener: EventListener): () => void {
