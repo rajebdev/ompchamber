@@ -3,12 +3,15 @@ import type { AIModelOption } from '@/shared/types';
 import { ModelDropdownHeader } from '@/client/components/workspace/model-dropdown/Header';
 import { ModelDropdownSection } from '@/client/components/workspace/model-dropdown/Section';
 import { ModelDropdownFooter } from '@/client/components/workspace/model-dropdown/Footer';
+import { ModelDropdownSkeleton } from '@/client/components/workspace/model-dropdown/Skeleton';
 import { ModelSpecsTooltip } from '@/client/components/workspace/model-dropdown/SpecsTooltip';
 
 interface ModelDropdownPanelProps {
   search: string;
   onSearchChange: (value: string) => void;
   onAddProvider: () => void;
+  /** First `/api/models` fetch still in flight — render placeholder rows. */
+  isLoading: boolean;
   filteredModels: AIModelOption[];
   favoriteModels: AIModelOption[];
   recentModels: AIModelOption[];
@@ -32,6 +35,7 @@ export function ModelDropdownPanel({
   search,
   onSearchChange,
   onAddProvider,
+  isLoading,
   filteredModels,
   favoriteModels,
   recentModels,
@@ -62,9 +66,15 @@ export function ModelDropdownPanel({
           className="flex-1 scrollbar-overlay-container scrollbar-overlay-static p-1.5 space-y-2 max-h-80"
           onMouseLeave={onMouseLeave}
         >
-          {filteredModels.length === 0 ? (
+          {isLoading ? (
+            <ModelDropdownSkeleton />
+          ) : filteredModels.length === 0 ? (
             <div className="px-3 py-6 text-center text-ink/40 italic">
-              No models found matching &quot;{search}&quot;
+              {search ? (
+                <>No models found matching &quot;{search}&quot;</>
+              ) : (
+                <>No models available. Enable a provider in Settings → Providers.</>
+              )}
             </div>
           ) : (
             <>

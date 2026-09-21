@@ -1,11 +1,12 @@
 import type { TargetedMouseEvent } from 'preact';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useMemo, useRef, useState } from 'preact/hooks';
 import { ChevronDown, Sparkles } from 'lucide-preact';
 import type { AIModelOption } from '@/shared/types';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
-import { INITIAL_MODELS_CATALOG } from '@/client/data/models/catalog';
-import { fetchModelsData, invalidateModelsCache, subscribeModelsUpdated } from '@/shared/lib/models/client';
+import { invalidateModelsCache } from '@/shared/lib/models/client';
 import { ModelDropdownPanel } from '@/client/components/workspace/model-dropdown/Panel';
+import { useModelCatalog } from '@/client/components/workspace/model-dropdown/use-catalog';
+import { buildPickerGroups } from '@/client/components/workspace/model-dropdown/groups';
 import { modelKey } from '@/shared/lib/models/identity';
 
 interface ModelDropdownProps {
@@ -25,13 +26,10 @@ export function ModelDropdown({
 }: ModelDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [models, setModels] = useState<AIModelOption[]>(INITIAL_MODELS_CATALOG);
-  const [selectedModel, setSelectedModel] = useState<AIModelOption>(
-    externalSelectedModel || INITIAL_MODELS_CATALOG[5] || INITIAL_MODELS_CATALOG[0]
-  );
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
   const [hoveredModel, setHoveredModel] = useState<AIModelOption | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const { models, isLoading, setModels, selectedModel, setSelectedModel } = useModelCatalog(externalSelectedModel);
 
   const containerRef = useRef<HTMLDivElement>(null);
   useOnClickOutside(containerRef, () => {
@@ -40,73 +38,19 @@ export function ModelDropdown({
     setFocusedIndex(-1);
   });
 
-  // Read the latest external selection without re-triggering the models fetch.
-  // Re-fetching on every thinking change would reset the pill to its default.
-  const externalSelectedRef = useRef(externalSelectedModel);
-  externalSelectedRef.current = externalSelectedModel;
+  const {
+    filtered: filteredModels,
+    favorites: favoriteModels,
+    recent: recentModels,
+    byProvider: providerGroups,
+    visibleFlatList,
+    index: modelIndex,
+  } = useMemo(
+    () => buildPickerGroups(models, search, collapsedSections),
+    [models, search, collapsedSections],
+  );
 
-  const loadModelsFromApi = useCallback(async () => {
-    try {
-      const data = await fetchModelsData();
-      if (Array.isArray(data.modelList) && data.modelList.length > 0) {
-          const realModels: AIModelOption[] = data.modelList.map((m: { id: string; name: string; provider: string; contextWindow?: number; thinkingLevels?: string[]; cost?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number } }) => {
-            const ladder = Array.isArray(m.thinkingLevels) ? m.thinkingLevels : [];
-            return {
-              id: m.id,
-              name: m.name,
-              provider: m.provider,
-              contextWindow: m.contextWindow,
-              thinkingLevel: ladder[0] ?? 'off',
-              thinkingLevels: ladder,
-              capabilities: ladder.length > 1 ? ['Tool calling', 'Reasoning'] : ['Tool calling'],
-              cost: m.cost ? {
-                input: m.cost.input !== undefined ? `$${m.cost.input}` : '—',
-                output: m.cost.output !== undefined ? `$${m.cost.output}` : '—',
-                cacheRead: m.cost.cacheRead !== undefined ? `$${m.cost.cacheRead}` : undefined,
-                cacheWrite: m.cost.cacheWrite !== undefined ? `$${m.cost.cacheWrite}` : undefined,
-              } : undefined,
-            };
-          });
-          // Keep a thinking level the user already picked, but only when it is
-          // still a real level of this model's ladder (legacy mock values like
-          // 'Default'/'High' must not be preserved).
-          setModels(prev => realModels.map(rm => {
-            const existing = prev.find(p => p.id === rm.id && p.provider === rm.provider);
-            return existing?.thinkingLevel && rm.thinkingLevels?.includes(existing.thinkingLevel)
-              ? { ...rm, thinkingLevel: existing.thinkingLevel }
-              : rm;
-          }));
-          const defaultModel = data.defaultModel;
-          if (defaultModel && !externalSelectedRef.current) {
-            const match = realModels.find(m => m.id === defaultModel.modelId && m.provider === defaultModel.provider);
-            if (match) setSelectedModel(match);
-          }
-        } else if (Array.isArray(data.models) && data.models.length > 0) {
-          setModels(data.models);
-        }
-        if (data.selectedModel && !externalSelectedRef.current) {
-          setSelectedModel(data.selectedModel);
-        }
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    loadModelsFromApi();
-    return subscribeModelsUpdated(loadModelsFromApi);
-  }, [loadModelsFromApi]);
-
-  useEffect(() => {
-    if (!externalSelectedModel) return;
-    setSelectedModel(externalSelectedModel);
-    // The pill in each row reads `models[i].thinkingLevel`, so a thinking
-    // change made in the composer (which flows back via this prop) must also
-    // update the matching list entry — not just the selectedModel state.
-    setModels(prev => prev.map(m =>
-      m.id === externalSelectedModel.id && m.provider === externalSelectedModel.provider
-        ? { ...m, thinkingLevel: externalSelectedModel.thinkingLevel }
-        : m
-    ));
-  }, [externalSelectedModel]);
+  const selectedModelKey = modelKey(selectedModel);
 
   const handleAddProviderClick = () => {
     setIsOpen(false);
@@ -125,52 +69,6 @@ export function ModelDropdown({
   const toggleSection = (section: string) => {
     setCollapsedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
-
-  const filteredModels = useMemo(() => {
-    if (!search.trim()) return models;
-    const q = search.toLowerCase();
-    return models.filter(m => 
-      m.name.toLowerCase().includes(q) ||
-      m.provider.toLowerCase().includes(q) ||
-      String(m.contextWindow ?? '').toLowerCase().includes(q) ||
-      m.capabilities?.some(c => c.toLowerCase().includes(q))
-    );
-  }, [models, search]);
-
-  const favoriteModels = useMemo(() => filteredModels.filter(m => m.isFavorite), [filteredModels]);
-  const recentModels = useMemo(() => filteredModels.filter(m => m.isRecent && !m.isFavorite), [filteredModels]);
-
-  const providerGroups = useMemo(() => {
-    const groups: Record<string, AIModelOption[]> = {};
-    filteredModels.forEach(m => {
-      const provider = m.provider.toUpperCase();
-      if (!groups[provider]) groups[provider] = [];
-      groups[provider].push(m);
-    });
-    return groups;
-  }, [filteredModels]);
-
-  const visibleFlatList = useMemo(() => {
-    const list: AIModelOption[] = [];
-    if (!collapsedSections['favorites']) list.push(...favoriteModels);
-    if (!collapsedSections['recent']) list.push(...recentModels);
-    Object.entries(providerGroups).forEach(([provider, groupModels]) => {
-      if (!collapsedSections[provider]) list.push(...groupModels);
-    });
-    return list;
-  }, [collapsedSections, favoriteModels, recentModels, providerGroups]);
-
-  // Hover/keyboard focus addresses rows through this map. Keying it on the id
-  // alone collapsed the providers that serve the same model id onto one index,
-  // so hovering one provider's row highlighted every other provider's too.
-  const modelIndex = useMemo(() => {
-    const byKey: Record<string, number> = {};
-    visibleFlatList.forEach((m, i) => {
-      byKey[modelKey(m)] = i;
-    });
-    return byKey;
-  }, [visibleFlatList]);
-  const selectedModelKey = modelKey(selectedModel);
 
   const handleToggleFavorite = async (model: AIModelOption, e: TargetedMouseEvent<HTMLElement>) => {
     e.stopPropagation();
@@ -197,9 +95,10 @@ export function ModelDropdown({
     // Only the active model's preset may reach the live session — cycling
     // another provider's row (or a non-selected model) must not push its
     // thinking level onto this session.
-    if (selectedModelKey === key) {
-      setSelectedModel(prev => ({ ...prev, thinkingLevel: nextThinking }));
-      onSelectModel?.({ ...selectedModel, thinkingLevel: nextThinking });
+    if (selectedModelKey === key && selectedModel) {
+      const nextSelected = { ...selectedModel, thinkingLevel: nextThinking };
+      setSelectedModel(nextSelected);
+      onSelectModel?.(nextSelected);
       onThinkingLevelChange?.(nextThinking);
     }
   };
@@ -209,8 +108,8 @@ export function ModelDropdown({
     const key = modelKey(model);
 
     setModels(prev => prev.map(m => modelKey(m) === key ? { ...m, isCmdAgent: nextCmd } : m));
-    if (selectedModelKey === key) {
-      setSelectedModel(prev => ({ ...prev, isCmdAgent: nextCmd }));
+    if (selectedModelKey === key && selectedModel) {
+      setSelectedModel({ ...selectedModel, isCmdAgent: nextCmd });
     }
     try {
       await fetch('/api/models', {
@@ -282,22 +181,35 @@ export function ModelDropdown({
           setFocusedIndex(-1);
         }}
         className="flex items-center space-x-1.5 hover:bg-ink/5 px-2 py-1 rounded transition-colors text-xs text-ink/80 font-medium cursor-pointer min-w-0 max-w-full"
-        title={`${selectedModel.provider} • ${selectedModel.name}`}
+        title={selectedModel ? `${selectedModel.provider} • ${selectedModel.name}` : 'Select a model'}
       >
-        <span className="text-ink/60 flex-shrink-0">
-          {selectedModel.isCmdAgent ? (
-            <span className="font-mono text-[10px] font-bold text-ink/70">⌘</span>
-          ) : selectedModel.provider.toLowerCase() === 'deepseek' ? (
-            <span>🐋</span>
-          ) : (
-            <Sparkles size={12} className="text-ink/60" />
-          )}
-        </span>
-        <span className="flex items-center space-x-1 min-w-0 max-w-[280px]">
-          <span className="text-ink/50 font-normal truncate">{selectedModel.provider}</span>
-          <span className="text-ink/30 flex-shrink-0">•</span>
-          <span className="truncate">{selectedModel.name}</span>
-        </span>
+        {selectedModel ? (
+          <>
+            <span className="text-ink/60 flex-shrink-0">
+              {selectedModel.isCmdAgent ? (
+                <span className="font-mono text-[10px] font-bold text-ink/70">⌘</span>
+              ) : selectedModel.provider.toLowerCase() === 'deepseek' ? (
+                <span>🐋</span>
+              ) : (
+                <Sparkles size={12} className="text-ink/60" />
+              )}
+            </span>
+            <span className="flex items-center space-x-1 min-w-0 max-w-[280px]">
+              <span className="text-ink/50 font-normal truncate">{selectedModel.provider}</span>
+              <span className="text-ink/30 flex-shrink-0">•</span>
+              <span className="truncate">{selectedModel.name}</span>
+            </span>
+          </>
+        ) : (
+          /* No selection yet: the list is still loading or the registry came
+             back empty. Show a pulse placeholder rather than a made-up model. */
+          <>
+            <span className="text-ink/60 flex-shrink-0">
+              <Sparkles size={12} className="text-ink/60" />
+            </span>
+            <span className="h-3 w-28 rounded animate-pulse bg-ink/10" />
+          </>
+        )}
         <ChevronDown size={12} className="text-ink/40 flex-shrink-0" />
       </button>
 
@@ -307,6 +219,7 @@ export function ModelDropdown({
           search={search}
           onSearchChange={setSearch}
           onAddProvider={handleAddProviderClick}
+          isLoading={isLoading}
           filteredModels={filteredModels}
           favoriteModels={favoriteModels}
           recentModels={recentModels}

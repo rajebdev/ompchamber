@@ -16,6 +16,6 @@
  * `modelKey` is the single composite identity every lookup/map/React key must
  * agree on, so the pieces cannot drift apart.
  */
-export function modelKey(model: { provider: string; id: string }): string {
-  return `${model.provider}:${model.id}`;
+export function modelKey(model: { provider: string; id: string } | null | undefined): string {
+  return model ? `${model.provider}:${model.id}` : '';
 }

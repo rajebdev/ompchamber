@@ -5,7 +5,6 @@ import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { ComposerToolbar } from '@/client/components/workspace/chat-timeline/chat-input/Toolbar';
 import { ComposerTextarea } from '@/client/components/common/ComposerTextarea';
 import { AttachmentToolbar } from '@/client/components/workspace/chat-timeline/chat-input/AttachmentToolbar';
-import { INITIAL_MODELS_CATALOG } from '@/client/data/models/catalog';
 import { selectableThinkingLevels } from '@/shared/lib/models/thinking-levels';
 import { fetchModelsData, subscribeModelsUpdated } from '@/shared/lib/models/client';
 
@@ -74,20 +73,20 @@ export function ChatInput({
     }
   };
 
-  // Selected Model State
-  const [selectedModel, setSelectedModel] = useState<AIModelOption>(
-    INITIAL_MODELS_CATALOG[5] || INITIAL_MODELS_CATALOG[0]
-  );
+  // Selected Model State — starts null and is filled from `/api/models` (session
+  // pick → persisted pick → registry default). Seeding a demo catalog entry here
+  // showed a fabricated provider in the composer before the real list arrived.
+  const [selectedModel, setSelectedModel] = useState<AIModelOption | null>(null);
   const [currentThinking, setCurrentThinking] = useState('auto');
   // Live mirror for the send path's queue snapshot (see composerModelRef).
   useEffect(() => {
-    if (!selectedModel.id) return;
+    if (!selectedModel?.id) return;
     composerModelRef.current = {
       provider: selectedModel.provider,
       modelId: selectedModel.id,
       thinkingLevel: selectedModel.thinkingLevel ?? 'auto',
     };
-  }, [selectedModel.provider, selectedModel.id, selectedModel.thinkingLevel, composerModelRef]);
+  }, [selectedModel?.provider, selectedModel?.id, selectedModel?.thinkingLevel, composerModelRef]);
   // Mirrors sessionThinkingLevel for the async model-sync effects below,
   // which may resolve after the session-level effect and must not erase it.
   const sessionThinkingLevelRef = useRef<string | null>(null);
@@ -128,7 +127,7 @@ export function ChatInput({
             provider: match.provider,
             contextWindow: match.contextWindow,
             thinkingLevels: match.thinkingLevels,
-            thinkingLevel: resolveSessionLevel(match.thinkingLevels, prev.thinkingLevel ?? match.thinkingLevels?.[0] ?? 'off'),
+            thinkingLevel: resolveSessionLevel(match.thinkingLevels, prev?.thinkingLevel ?? match.thinkingLevels?.[0] ?? 'off'),
           }));
         }
       })
@@ -143,6 +142,7 @@ export function ChatInput({
   useEffect(() => {
     if (!sessionThinkingLevel) return;
     setSelectedModel(prev => {
+      if (!prev) return prev;
       const selectable = selectableThinkingLevels(prev.thinkingLevels ?? []);
       // The session level is authoritative (omp recorded it for this model).
       // Only reject it when the ladder is KNOWN and explicitly excludes it;
@@ -174,7 +174,7 @@ export function ChatInput({
                 name: match.name,
                 provider: match.provider,
                 thinkingLevels: match.thinkingLevels,
-                thinkingLevel: resolveSessionLevel(match.thinkingLevels, prev.thinkingLevel ?? match.thinkingLevels?.[0] ?? 'off'),
+                thinkingLevel: resolveSessionLevel(match.thinkingLevels, prev?.thinkingLevel ?? match.thinkingLevels?.[0] ?? 'off'),
               }));
             }
             return;
@@ -189,7 +189,7 @@ export function ChatInput({
                 name: match.name,
                 provider: match.provider,
                 thinkingLevels: match.thinkingLevels,
-                thinkingLevel: resolveSessionLevel(match.thinkingLevels, prev.thinkingLevel ?? match.thinkingLevels?.[0] ?? 'off'),
+                thinkingLevel: resolveSessionLevel(match.thinkingLevels, prev?.thinkingLevel ?? match.thinkingLevels?.[0] ?? 'off'),
               }));
               return;
             }
@@ -204,7 +204,7 @@ export function ChatInput({
                 name: match.name,
                 provider: match.provider,
                 thinkingLevels: match.thinkingLevels,
-                thinkingLevel: resolveSessionLevel(match.thinkingLevels, prev.thinkingLevel ?? match.thinkingLevels?.[0] ?? 'off'),
+                thinkingLevel: resolveSessionLevel(match.thinkingLevels, prev?.thinkingLevel ?? match.thinkingLevels?.[0] ?? 'off'),
               }));
             }
           }
@@ -212,7 +212,7 @@ export function ChatInput({
           const selected = data.selectedModel;
           setSelectedModel(prev => ({
             ...selected,
-            thinkingLevel: resolveSessionLevel(selected.thinkingLevels, prev.thinkingLevel ?? selected.thinkingLevel ?? 'off'),
+            thinkingLevel: resolveSessionLevel(selected.thinkingLevels, prev?.thinkingLevel ?? selected.thinkingLevel ?? 'off'),
           }));
         }
       } catch {}
@@ -228,22 +228,22 @@ export function ChatInput({
 
   // Thinking Dropdown State - Reactive with selectedModel
   const thinkingLevels = useMemo(() => {
-    return selectableThinkingLevels(selectedModel.thinkingLevels);
+    return selectableThinkingLevels(selectedModel?.thinkingLevels);
   }, [selectedModel]);
 
   const handleSelectThinking = (level: string) => {
     setCurrentThinking(level);
-    setSelectedModel(prev => ({ ...prev, thinkingLevel: level }));
+    setSelectedModel(prev => (prev ? { ...prev, thinkingLevel: level } : prev));
     onThinkingLevelChange?.(level);
   };
 
   // Re-sync the thinking dropdown label when the model dropdown's thinking
   // pill cycles the level (it updates `selectedModel.thinkingLevel`).
   useEffect(() => {
-    if (selectedModel.thinkingLevel) {
+    if (selectedModel?.thinkingLevel) {
       setCurrentThinking(selectedModel.thinkingLevel);
     }
-  }, [selectedModel.thinkingLevel]);
+  }, [selectedModel?.thinkingLevel]);
 
   const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
     const clipboard = e.clipboardData;

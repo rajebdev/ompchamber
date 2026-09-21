@@ -7,7 +7,8 @@ import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 
 export interface ComposerToolbarProps {
   isMobile: boolean;
-  selectedModel: AIModelOption;
+  /** Null until `/api/models` resolves — the dropdown renders its own placeholder. */
+  selectedModel: AIModelOption | null;
   onSelectModel: (model: AIModelOption) => void;
   thinkingLevels: string[];
   currentThinking: string;
@@ -53,7 +54,7 @@ export function ComposerToolbar({
     <div className={`flex items-center justify-between border-t border-ink/5 bg-canvas/50 rounded-b-md ${isMobile ? 'px-2 py-2' : 'px-3 py-2'}`}>
       <div className={`flex items-center min-w-0 ${isMobile ? 'space-x-1' : 'space-x-2'}`}>
         <ModelDropdown
-          selectedModel={selectedModel}
+          selectedModel={selectedModel ?? undefined}
           onSelectModel={onSelectModel}
           onThinkingLevelChange={onThinkingLevelChange}
           className={isMobile ? 'min-w-0 max-w-[58%]' : undefined}
