@@ -27,6 +27,25 @@ export function parseTodayLabel(raw: string): number | null {
 }
 
 /**
+ * Timeline stamp for a message row / run footer: `"Today, 10:30 AM"` for the
+ * live path, `"Sep 9, 04:43 AM"` for historical rows, empty when unparseable.
+ */
+export function formatMessageStamp(msg?: { date?: string; timestamp?: string }): string {
+  const raw = msg?.timestamp || msg?.date;
+  if (!raw) return '';
+  if (raw.startsWith('Today,')) return `Today, ${raw.slice('Today,'.length).trim()}`;
+  // Bare "10:30 AM" timestamp (live path) — resolve against today.
+  if (/^\d{1,2}:\d{2}\s*(AM|PM)$/i.test(raw)) {
+    const parsedMs = parseTodayLabel(`Today, ${raw}`);
+    if (parsedMs !== null) return `Today, ${formatClock(parsedMs)}`;
+  }
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return '';
+  const day = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `${day}, ${formatClock(date)}`;
+}
+
+/**
  * Best-effort tool-detail timestamp: epoch-ms renders as the runtime's default
  * locale time, a string passes through, anything else renders empty.
  */

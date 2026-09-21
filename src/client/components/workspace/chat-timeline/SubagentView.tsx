@@ -1,10 +1,13 @@
-import { useEffect, useRef } from 'preact/hooks';
+import { Fragment } from 'preact';
+import { useEffect, useMemo, useRef } from 'preact/hooks';
 import { ArrowLeft, Bot, Loader2, Lock } from 'lucide-preact';
 import type { SubagentInfo } from '@/shared/types';
 import { SubagentStatusIcon } from '@/client/components/common/SubagentStatusIcon';
 import { ChatMessageItem } from '@/client/components/workspace/chat-timeline/MessageItem';
+import { RunFooter } from '@/client/components/workspace/chat-timeline/RunFooter';
 import { useSubagentTranscript } from '@/client/hooks/chat/subagent';
 import { useModelNames } from '@/client/hooks/models/use-model-names';
+import { previousNonNoticeIndex, resolveRunFooters, streamingRowIndex } from '@/shared/lib/chat/timeline/run-footer';
 import { formatCompactTokens } from '@/shared/lib/format/number';
 
 interface SubagentViewProps {
@@ -42,6 +45,17 @@ export function SubagentView({ sessionId, subagent, onBack, provider, providerNa
     });
     return () => cancelAnimationFrame(frame);
   }, [messages.length, isRunning]);
+
+  // Boundary footers: a run's footer renders after its last row, so trailing
+  // notice rows never separate it from the next user message.
+  const { streamingIdx, footers, prevNonNoticeIdx } = useMemo(
+    () => ({
+      streamingIdx: streamingRowIndex(messages),
+      footers: resolveRunFooters(messages, isRunning),
+      prevNonNoticeIdx: previousNonNoticeIndex(messages),
+    }),
+    [messages, isRunning],
+  );
 
   if (!subagent || !isActive) return null;
 
@@ -104,30 +118,31 @@ export function SubagentView({ sessionId, subagent, onBack, provider, providerNa
             </div>
           ) : (
             messages.map((msg, idx) => {
-              let lastAiIdx = messages.length - 1;
-              while (lastAiIdx >= 0 && messages[lastAiIdx].notice) lastAiIdx--;
-              const isLoading = isRunning && idx === lastAiIdx && msg.role !== 'user' && !msg.notice;
-              const nextReal = messages.slice(idx + 1).find((m) => !m.notice);
-              const isLastAi = msg.role !== 'user' && !msg.notice && (!nextReal || nextReal.role === 'user');
-              let prevRealIdx = idx - 1;
-              while (prevRealIdx >= 0 && messages[prevRealIdx].notice) prevRealIdx--;
+              const isLoading = isRunning && idx === streamingIdx && msg.role === 'ai';
+              const prevRealIdx = prevNonNoticeIdx[idx];
               const prevReal = prevRealIdx >= 0 ? messages[prevRealIdx] : null;
               const isPrevAssistant = Boolean(msg.role !== 'user' && prevReal && prevReal.role !== 'user');
+              const footer = footers[idx];
 
               return (
-                <ChatMessageItem
-                  key={msg.id}
-                  msg={msg}
-                  provider={msg.provider || provider}
-                  providerNames={providerNames}
-                  modelName={msg.model || modelName}
-                  modelNames={modelNames}
-                  isStreaming={isLoading}
-                  footerVisible={isLastAi}
-                  durationMs={msg.durationMs ?? null}
-                  isPrevAssistant={isPrevAssistant}
-                  className={msg.notice ? 'mt-3 mb-1' : isPrevAssistant ? 'mt-1' : 'mt-3'}
-                />
+                <Fragment key={msg.id}>
+                  <ChatMessageItem
+                    msg={msg}
+                    isStreaming={isLoading}
+                    isPrevAssistant={isPrevAssistant}
+                    className={msg.notice ? 'mt-3 mb-1' : isPrevAssistant ? 'mt-1' : 'mt-3'}
+                  />
+                  {footer && (
+                    <RunFooter
+                      msg={footer.msg}
+                      provider={provider}
+                      providerNames={providerNames}
+                      modelName={modelName}
+                      modelNames={modelNames}
+                      durationMs={footer.durationMs}
+                    />
+                  )}
+                </Fragment>
               );
             })
           )}

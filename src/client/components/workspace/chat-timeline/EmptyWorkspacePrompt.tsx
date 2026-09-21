@@ -1,11 +1,14 @@
 import type { SetStateAction } from 'preact/compat';
+import { Fragment } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Check, ChevronDown, Folder } from 'lucide-preact';
 import type { Attachment, ChatMessageData } from '@/shared/types';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 import { ChatInput } from '@/client/components/workspace/chat-timeline/chat-input/index';
 import { ChatMessageItem } from '@/client/components/workspace/chat-timeline/MessageItem';
+import { RunFooter } from '@/client/components/workspace/chat-timeline/RunFooter';
 import { GeneratingIndicator } from '@/client/components/workspace/chat-timeline/GeneratingIndicator';
+import { resolveRunFooters, streamingRowIndex } from '@/shared/lib/chat/timeline/run-footer';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 
 interface EmptyWorkspacePromptProps {
@@ -77,6 +80,16 @@ export function EmptyWorkspacePrompt({
   const selectedFolder = useMemo(() => {
     return folders?.find(f => f.id === selectedFolderId);
   }, [folders, selectedFolderId]);
+
+  // Run footers are boundary rows: emitted after the run's last row, so a
+  // trailing notice never separates the footer from the next user message.
+  const { streamingIdx, footers } = useMemo(
+    () => ({
+      streamingIdx: streamingRowIndex(messages),
+      footers: resolveRunFooters(messages, isGenerating),
+    }),
+    [messages, isGenerating],
+  );
 
   useEffect(() => {
     if (timelineRef.current) {
@@ -156,28 +169,28 @@ export function EmptyWorkspacePrompt({
             <div className="mx-auto w-full max-w-[970px]">
               {messages.map((msg, idx) => {
                 const prev = messages[idx - 1];
-                let lastAiIdx = messages.length - 1;
-                while (lastAiIdx >= 0 && messages[lastAiIdx].notice) lastAiIdx--;
-                const isLoading = isGenerating && idx === lastAiIdx && msg.role === 'ai';
+                const isLoading = isGenerating && idx === streamingIdx && msg.role === 'ai';
                 const isAiFragment = msg.role !== 'user' && prev && prev.role !== 'user';
-                // Notice rows are transparent for footer purposes — the last
-                // real AI message of a run still owns the footer (mirror
-                // ChatTimeline) and the notice itself never gets one.
-                const nextReal = messages.slice(idx + 1).find(m => !m.notice);
-                const isLastAi = msg.role !== 'user' && !msg.notice && (!nextReal || nextReal.role === 'user');
+                const footer = footers[idx];
                 return (
-                  <ChatMessageItem
-                    key={msg.id}
-                    msg={msg}
-                    provider={provider}
-                    providerNames={providerNames}
-                    modelName={modelName}
-                    modelNames={modelNames}
-                    thinkingLevel={sessionThinkingLevel ?? undefined}
-                    isStreaming={isLoading}
-                    footerVisible={isLastAi}
-                    className={isAiFragment ? 'mt-1' : 'mt-8'}
-                  />
+                  <Fragment key={msg.id}>
+                    <ChatMessageItem
+                      msg={msg}
+                      isStreaming={isLoading}
+                      className={isAiFragment ? 'mt-1' : 'mt-8'}
+                    />
+                    {footer && (
+                      <RunFooter
+                        msg={footer.msg}
+                        provider={provider}
+                        providerNames={providerNames}
+                        modelName={modelName}
+                        modelNames={modelNames}
+                        thinkingLevel={sessionThinkingLevel ?? undefined}
+                        durationMs={footer.durationMs}
+                      />
+                    )}
+                  </Fragment>
                 );
               })}
             </div>

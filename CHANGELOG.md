@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the five scattered display-side copies (`session-load` fetch + older-page prepend, rollback
   refetch, optimistic send, live stream folding) and `src/shared/lib/chat/order.ts` are gone.
 
+### Changed
+
+- Chat: the AI run footer (provider · model · date · duration · tokens · actions) is now the run's own
+  boundary row instead of living inside the last answer bubble. It renders after every row the run owns
+  — including notice rows omp wrote at its tail — so it is always immediately before the next user
+  message, and a notice-only stretch never gets one. Placement is resolved once per timeline in
+  `src/shared/lib/chat/timeline/run-footer.ts`; `MessageItem` no longer renders a footer and drops its
+  footer-only props (`provider`, `providerNames`, `modelName`, `modelNames`, `thinkingLevel`,
+  `footerVisible`, `durationMs`, `isMobile`, `onRetry`).
+
 ## [0.3.0] — 2026-09-21
 
 ### Added

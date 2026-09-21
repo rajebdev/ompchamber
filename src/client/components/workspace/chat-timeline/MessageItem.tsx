@@ -8,54 +8,28 @@ import { ToolCallingSection } from '@/client/components/workspace/chat-timeline/
 import { SystemNotice } from '@/client/components/workspace/chat-timeline/SystemNotice';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 import { AttachmentChips } from '@/client/components/workspace/chat-timeline/AttachmentChips';
-import { AiMessageFooter } from '@/client/components/workspace/chat-timeline/AiMessageFooter';
 import { CopyButton } from '@/client/components/common/CopyButton';
 import { capitalizeFirstLetter } from '@/shared/lib/chat/capitalize';
-import { formatClock, parseTodayLabel } from '@/shared/lib/format/time';
+import { formatMessageStamp } from '@/shared/lib/format/time';
 
 interface ChatMessageItemProps {
   msg: ChatMessageData | any;
-  provider?: string;
-  providerNames?: Record<string, string>;
-  modelName?: string;
-  /** id → display-name map from the model catalog; resolves per-message ids. */
-  modelNames?: Record<string, string>;
-  /** Session thinking level shown in the AI footer. */
-  thinkingLevel?: string;
   isStreaming?: boolean;
-  onRetry?: (msgId: string) => void;
   onUndo?: (msgId: string, content?: string) => void;
   onNewChat?: (content: string) => void;
-  /** Render the AI metadata/toolbar footer. Only the last AI message of a
-   *  response run should show it so multi-part JSONL responses do not repeat
-   *  the footer per message. */
-  footerVisible?: boolean;
-  /** Mobile uses a compact provider/model footer with a bottom-sheet menu. */
-  isMobile?: boolean;
 
   /** Extra classes on the root wrapper (e.g. spacing between messages). */
   className?: string;
-  /** Elapsed ms of the whole AI response run — shown as ⏳ duration. */
-  durationMs?: number | null;
   /** Whether the message immediately preceding this one was also an assistant message. */
   isPrevAssistant?: boolean;
 }
 
 export const ChatMessageItem = memo(function ChatMessageItem({
   msg,
-  provider,
-  providerNames,
-  modelName, 
-  modelNames,
-  thinkingLevel,
   isStreaming = false,
-  onRetry, 
-  onUndo, 
+  onUndo,
   onNewChat,
-  footerVisible = true,
-  isMobile = false,
   className = '',
-  durationMs = null,
   isPrevAssistant = false,
 }: ChatMessageItemProps) {
   const isUser = msg.role === 'user';
@@ -70,23 +44,6 @@ export const ChatMessageItem = memo(function ChatMessageItem({
    *  placeholders ("." / "..." etc.) — chunked assistant turns often carry a
    *  lone dot while the real payload lives in tool calls / thinking. */
   const hasRenderableContent = typeof msg.content === 'string' && /[A-Za-z0-9]/.test(msg.content);
-
-  const formatFooterDate = (value?: string) => {
-    const raw = value || msg.timestamp || msg.date;
-    if (!raw) return '';
-    if (raw.startsWith('Today,')) {
-      return `Today, ${raw.slice('Today,'.length).trim()}`;
-    }
-    // Bare "10:30 AM" timestamp (live path) — resolve against today.
-    if (/^\d{1,2}:\d{2}\s*(AM|PM)$/i.test(raw)) {
-      const parsedMs = parseTodayLabel(`Today, ${raw}`);
-      if (parsedMs !== null) return `Today, ${formatClock(parsedMs)}`;
-    }
-    const date = new Date(raw);
-    if (Number.isNaN(date.getTime())) return '';
-    const day = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    return `${day}, ${formatClock(date)}`;
-  };
 
   const handleNewChat = (e?: TargetedMouseEvent<HTMLElement>) => {
     if (e) e.preventDefault();
@@ -138,7 +95,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
             ) : (
               <User size={11} className="text-ink/70 shrink-0" />
             )}
-            {formatFooterDate() && <span>{formatFooterDate()}</span>}
+            {formatMessageStamp(msg) && <span>{formatMessageStamp(msg)}</span>}
           </div>
           
           <div className="flex items-center space-x-1">
@@ -298,24 +255,6 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           </div>
         )}
       </div>
-      
-      {/* Bottom AI Metadata & Actions Toolbar (Only shown once completed) */}
-      {!isStreaming && footerVisible && (
-        <AiMessageFooter
-          provider={msg.provider || provider}
-          providerNames={providerNames}
-          currentModel={(msg.model ? (modelNames?.[msg.model] ?? msg.model) : '') || modelName || ''}
-          thinkingLevel={msg.thinkingLevel ?? thinkingLevel}
-          dateStr={formatFooterDate()}
-          durationMs={durationMs ?? msg.durationMs}
-          usage={msg.usage}
-          content={msg.content}
-          msgId={msg.id}
-          onRetry={onRetry}
-          onNewChat={onNewChat}
-          isMobile={isMobile}
-        />
-      )}
     </div>
   );
 });
