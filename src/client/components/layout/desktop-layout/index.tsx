@@ -4,7 +4,7 @@ import { useSearchParams } from '@/client/lib/router/search-params';
 import { Group, Panel, type PanelImperativeHandle } from '@/client/components/layout/desktop-layout/resizer';
 import { SessionSidebar } from '@/client/components/layout/session-sidebar/index';
 import { type RightPanelType } from '@/shared/lib/workspace/right-panels';
-import { SettingsModal } from '@/client/components/settings/Modal';
+import { SettingsModal } from '@/client/components/settings/LazyModal';
 import { PanelLeft } from 'lucide-preact';
 import type { SettingsCategoryId } from '@/shared/types';
 import { activeProjectForSession } from '@/shared/lib/workspace/active-project';

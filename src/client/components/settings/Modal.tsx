@@ -21,7 +21,7 @@ import { TokenUsageSettings } from '@/client/components/settings/categories/Toke
 import { UsageSettings } from '@/client/components/settings/categories/UsageSettings';
 import { NotificationSettings } from '@/client/components/settings/categories/NotificationSettings';
 
-interface SettingsModalProps {
+export interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialCategory?: SettingsCategoryId;

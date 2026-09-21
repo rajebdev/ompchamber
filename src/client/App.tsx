@@ -4,11 +4,26 @@
  */
 
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { Suspense, lazy } from 'preact/compat';
 import { useSearchParams } from '@/client/lib/router/search-params';
 import { DesktopLayout } from '@/client/components/layout/desktop-layout/index';
-import { MobileLayoutWrapper } from '@/client/components/mobile/LayoutWrapper';
 import { SessionStateProvider } from '@/client/components/common/session-state-provider';
 import { SidebarDataProvider } from '@/client/hooks/chat/omp/session-list';
+
+/**
+ * The mobile and desktop layouts are mutually exclusive screen trees — exactly
+ * one is mounted per load, and `initialIsMobile` is known before the first
+ * render because the server injects it. Keeping the mobile tree out of the
+ * initial bundle is therefore pure win for the desktop (the common case for a
+ * developer console): its subtree moves to this async chunk and is fetched only
+ * when a phone boots, or when the user switches layout by hand at runtime.
+ *
+ * `fallback={null}` is safe rather than a blank flash: `body` already paints
+ * `--theme-canvas`, so the pre-hydration frame and the fallback look identical.
+ */
+const MobileLayoutWrapper = lazy(() =>
+  import('@/client/components/mobile/LayoutWrapper').then((m) => ({ default: m.MobileLayoutWrapper }))
+);
 
 export interface AppProps {
   /** Server-detected mobile verdict, so the first paint needs no UA check. */
@@ -72,10 +87,12 @@ export function App({ initialIsMobile = false, appSettings = {} }: AppProps) {
     return (
       <SessionStateProvider sessionId={sessionId}>
         <SidebarDataProvider>
-          <MobileLayoutWrapper
-            onDesktopToggle={handleSwitchToDesktop}
-            appSettings={appSettings}
-          />
+          <Suspense fallback={null}>
+            <MobileLayoutWrapper
+              onDesktopToggle={handleSwitchToDesktop}
+              appSettings={appSettings}
+            />
+          </Suspense>
         </SidebarDataProvider>
       </SessionStateProvider>
     );

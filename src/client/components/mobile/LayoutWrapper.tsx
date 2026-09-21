@@ -7,7 +7,7 @@ import { MobileSessionSidebar } from '@/client/components/mobile/SessionSidebar'
 import { MobileRightSidebar } from '@/client/components/mobile/RightSidebar';
 import { MobileFullEditor } from '@/client/components/mobile/mobile-right-sidebar/FullEditor';
 import { MobileFullDiff } from '@/client/components/mobile/mobile-right-sidebar/FullDiff';
-import { SettingsModal } from '@/client/components/settings/Modal';
+import { SettingsModal } from '@/client/components/settings/LazyModal';
 import { activeProjectForSession } from '@/shared/lib/workspace/active-project';
 import { spawnCwdForNewSession, triggerSessionPrewarm } from '@/shared/lib/omp/session/prewarm';
 import { useSidebarData } from '@/client/hooks/chat/omp/session-list';

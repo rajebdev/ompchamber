@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { Clock, Columns, FolderOpen, Home, Maximize2, Plus, Send, Settings2, Terminal, X } from 'lucide-preact';
-import { SettingsModal } from '@/client/components/settings/Modal';
+import { SettingsModal } from '@/client/components/settings/LazyModal';
 import { FolderPicker } from '@/client/components/common/FolderPicker';
 
 export { SettingsModal };
