@@ -82,6 +82,9 @@ jobs:
       - name: Typecheck
         run: bun run lint
 
+      - name: Test
+        run: bun test
+
       - name: Build the client bundle
         # NODE_ENV=production takes the production branch of rsbuild.config.ts
         # (source maps off) — the bundle `serve --prod` is meant to serve.
