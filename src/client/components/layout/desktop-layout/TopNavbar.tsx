@@ -1,5 +1,6 @@
 import { LayoutTemplate, MoreHorizontal, PanelRight, PanelRightClose, Smartphone } from 'lucide-preact';
 import { PWAInstallButton } from '@/client/components/common/PWAInstallButton';
+import { StreamStatusDot } from '@/client/components/common/StreamStatusDot';
 import type { AgentStreamStatus } from '@/shared/lib/chat/omp/status';
 
 interface TopNavbarProps {
@@ -24,9 +25,6 @@ export function TopNavbar({
   onToggleEditor,
   onToggleRightPanel,
 }: TopNavbarProps) {
-  const showStreamDot = streamStatus?.transport === 'websocket';
-  const streamConnected = Boolean(streamStatus?.connected);
-  const streamLabel = streamConnected ? 'WebSocket connected' : 'WebSocket disconnected';
   return (
     <header 
       className="h-12 flex-shrink-0 border-b border-ink/10 bg-paper flex items-center justify-between pr-4 z-20 titlebar-drag-region select-none"
@@ -61,14 +59,7 @@ export function TopNavbar({
 
       <div className="flex items-center space-x-3 titlebar-no-drag">
         <div className="flex items-center space-x-1">
-          {showStreamDot && (
-            <span
-              role="status"
-              aria-label={streamLabel}
-              title={streamLabel}
-              className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${streamConnected ? 'bg-success' : 'bg-error'}`}
-            />
-          )}
+          <StreamStatusDot status={streamStatus} />
           {onSwitchToMobile && (
             <button
               type="button"

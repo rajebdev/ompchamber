@@ -4,6 +4,8 @@ import type { SessionContextTelemetry } from '@/shared/types/context';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 import { getLastOpenedAt } from '@/shared/lib/workspace/session-state/store';
 import { useSidebarData } from '@/client/hooks/chat/omp/session-list';
+import { useAgentStreamStatus } from '@/client/hooks/chat/omp/status';
+import { StreamStatusDot } from '@/client/components/common/StreamStatusDot';
 import { formatCompactTokens } from '@/shared/lib/format/number';
 
 interface MobileHeaderProps {
@@ -38,6 +40,7 @@ export function MobileHeader({
   onSelectSession,
 }: MobileHeaderProps) {
   const { folders } = useSidebarData();
+  const streamStatus = useAgentStreamStatus();
   const [showSessionPicker, setShowSessionPicker] = useState(false);
   const [showTelemetry, setShowTelemetry] = useState(false);
   const [telemetry, setTelemetry] = useState<SessionContextTelemetry | null>(null);
@@ -189,8 +192,10 @@ export function MobileHeader({
         </div>
       </div>
 
-      {/* Right: context telemetry & right panel toggle */}
+      {/* Right: stream status, context telemetry & right panel toggle */}
       <div className="flex items-center space-x-1 text-ink">
+        <StreamStatusDot status={streamStatus} showLabel />
+
         <div className="relative flex items-center" ref={telemetryRef}>
           <button
             type="button"
