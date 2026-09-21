@@ -79,6 +79,10 @@ OMPChamber is published to npm. It needs a Bun runtime, not Node:
 > **Bun only** — the server imports `bun:sqlite` and `Bun.YAML`, both of which Node cannot load.
 > `bun` 1.4 or newer is required.
 
+> **omp required** — every live capability (agent sessions, omp config, session state, updates)
+> shells out to the `omp` binary, so `serve` refuses to start when it cannot be resolved on `PATH`
+> (or via `OMPCHAMBER_OMP_BIN`). `MOCK=true` is the only mode that runs without a real omp install.
+
 ```bash
 bun add -g ompchamber     # puts the `ompchamber` command on your PATH
 ompchamber serve --prod   # start the server on :3000
@@ -167,7 +171,7 @@ Environment variables, read from `.env` (see [`.env.example`](.env.example)):
 | `OMPCHAMBER_DEV_SERVER` | `http://localhost:3100` | Rsbuild asset origin used in dev |
 | `OMPCHAMBER_BUN` | — | Explicit Bun binary for the CLI to spawn |
 | `PI_CONFIG_DIR` / `PI_CODING_AGENT_DIR` | `~/.omp` | Oh-My-Pi config root overrides |
-| `OMP_WEB_OMP_BIN` | — | Explicit `omp` binary path |
+| `OMPCHAMBER_OMP_BIN` | — | Explicit `omp` binary path |
 | `SKILLS_API_URL` | `https://skills.sh` | Skills catalog source |
 | `GITHUB_TOKEN` / `GH_TOKEN` | — | Raise the GitHub API rate limit for update checks |
 

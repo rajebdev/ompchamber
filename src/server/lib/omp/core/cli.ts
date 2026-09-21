@@ -20,6 +20,7 @@ let cachedBin: string | null = null;
 let binMissAt = 0;
 
 const BIN_NAME = process.platform === 'win32' ? 'omp.exe' : 'omp';
+
 // Only successes are cached for the process lifetime. omp may be installed (or
 // PATH repaired) while the server runs; a permanently cached "not found" would
 // keep the UI reporting a missing binary until restart.
@@ -32,7 +33,7 @@ export function invalidateOmpCliCache(): void {
 }
 
 function probeOmpBin(): string | null {
-  const override = Bun.env.OMP_WEB_OMP_BIN;
+  const override = Bun.env.OMPCHAMBER_OMP_BIN;
   if (override) return existsSync(override) ? override : null;
 
   const onPath = Bun.which(BIN_NAME);
@@ -49,7 +50,7 @@ function probeOmpBin(): string | null {
   return Bun.which(BIN_NAME, { PATH: fallbackPath });
 }
 
-/** Resolve the omp binary: OMP_WEB_OMP_BIN override, then PATH lookup. Returns
+/** Resolve the omp binary: OMPCHAMBER_OMP_BIN override, then PATH lookup. Returns
  * null when omp is not installed. A hit is cached for the process lifetime; a
  * miss is re-probed after MISS_TTL_MS. */
 export function resolveOmpBin(): string | null {

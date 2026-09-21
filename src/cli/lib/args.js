@@ -216,6 +216,7 @@ ENVIRONMENT:
   OMPCHAMBER_DATA_DIR     Override the data directory (default: ~/.ompchamber)
   OMPCHAMBER_PORT         Default web server port
   OMPCHAMBER_HOST         Default bind address
+  OMPCHAMBER_OMP_BIN      Path to the omp binary (required; falls back to PATH)
   GITHUB_TOKEN            Raise the GitHub API rate limit for update checks
 
 EXAMPLES:

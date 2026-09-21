@@ -10,6 +10,7 @@ import {
 } from '@/cli/lib/runtime.js';
 import { log, ok, warn, fail, printJson, isJson, isQuiet } from '@/cli/lib/output.js';
 import { wireChildProcessLifecycle } from '@/cli/lib/process-lifecycle.js';
+import { ompStartupError } from '@/server/lib/omp/core/startup';
 
 const DEFAULT_PORT = 3000;
 const DEFAULT_HOST = '127.0.0.1';
@@ -44,6 +45,12 @@ export async function run(options, ctx) {
   const json = isJson();
   const quiet = isQuiet();
   const pkgRoot = ctx?.pkgRoot ?? process.cwd();
+
+  // The same gate the server entry applies, run here first so a missing omp
+  // binary fails immediately — with no detached child spawned, no log file to
+  // read and no registry entry left pointing at a process that already exited.
+  const ompError = ompStartupError();
+  if (ompError) fail(ompError);
 
   if (mode === 'prod') {
     const serverEntry = joinPath(pkgRoot, 'dist', 'client', 'index.html');

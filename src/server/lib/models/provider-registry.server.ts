@@ -23,10 +23,52 @@ export const PROVIDERS_SETTINGS_KEY = 'omp_providers_config';
 
 const RPC_CACHE_TTL_MS = 60_000;
 
-interface LoginProvider {
+/** Minimal shape of a get_login_providers entry, as the chamber reads it. */
+export interface DetectedLoginProvider {
   id: string;
   name: string;
   authenticated: boolean;
+}
+
+function isDetectedLoginProvider(provider: unknown): provider is DetectedLoginProvider {
+  return (
+    typeof provider === 'object' && provider !== null
+    && typeof (provider as { id?: unknown }).id === 'string'
+    && typeof (provider as { name?: unknown }).name === 'string'
+    && typeof (provider as { authenticated?: unknown }).authenticated === 'boolean'
+  );
+}
+
+function isOmpModel(model: unknown): model is OmpModel {
+  return (
+    typeof model === 'object' && model !== null
+    && typeof (model as OmpModel).id === 'string'
+    && typeof (model as OmpModel).provider === 'string'
+  );
+}
+
+export interface OmpRegistrySnapshot {
+  /** Login providers omp reports (authenticated or not). */
+  providers: DetectedLoginProvider[];
+  /** Every model omp currently serves. */
+  models: OmpModel[];
+}
+
+/**
+ * Raw omp registry probe — the two commands that define "detected" for the
+ * chamber: the login providers omp knows and the models they serve. Parsed here
+ * once so the provider settings page and the startup banner count the same set.
+ * Throws when the utility RPC is unreachable; each caller degrades its own way.
+ */
+export async function fetchOmpRegistrySnapshot(): Promise<OmpRegistrySnapshot> {
+  const [loginResponse, modelsResponse] = await Promise.all([
+    runUtilityCommand<{ providers?: unknown }>({ type: 'get_login_providers' }, 30_000),
+    runUtilityCommand<{ models?: unknown }>({ type: 'get_available_models' }, 60_000),
+  ]);
+  return {
+    providers: Array.isArray(loginResponse.providers) ? loginResponse.providers.filter(isDetectedLoginProvider) : [],
+    models: Array.isArray(modelsResponse.models) ? modelsResponse.models.filter(isOmpModel) : [],
+  };
 }
 
 /**
@@ -38,25 +80,7 @@ async function loadRpcProviderItems(): Promise<ProviderItem[]> {
   const cached = globalThis.__ompChamberProvidersRpcCache;
   if (cached && cached.expiresAt > Date.now()) return cached.data;
   try {
-    const [loginResponse, modelsResponse] = await Promise.all([
-      runUtilityCommand<{ providers?: unknown }>({ type: 'get_login_providers' }, 30_000),
-      runUtilityCommand<{ models?: unknown }>({ type: 'get_available_models' }, 60_000),
-    ]);
-    const loginProviders = Array.isArray(loginResponse.providers)
-      ? loginResponse.providers.filter((provider): provider is LoginProvider => (
-          typeof provider === 'object' && provider !== null
-          && typeof (provider as { id?: unknown }).id === 'string'
-          && typeof (provider as { name?: unknown }).name === 'string'
-          && typeof (provider as { authenticated?: unknown }).authenticated === 'boolean'
-        ))
-      : [];
-    const available = Array.isArray(modelsResponse.models)
-      ? modelsResponse.models.filter((model): model is OmpModel => (
-          typeof model === 'object' && model !== null
-          && typeof (model as OmpModel).id === 'string'
-          && typeof (model as OmpModel).provider === 'string'
-        ))
-      : [];
+    const { providers: loginProviders, models: available } = await fetchOmpRegistrySnapshot();
     const disabled = await readDisabledProviders().catch(() => new Set<string>());
 
     const items = loginProviders.map((provider) => {
