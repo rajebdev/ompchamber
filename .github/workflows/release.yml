@@ -121,6 +121,11 @@ jobs:
       - name: Dispatch publish.yml for ${{ needs.release.outputs.tag }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # This job never checks out, so there is no `.git` for gh to read the
+          # repository out of and it dies on `failed to run git: fatal: not a git
+          # repository` before reaching the API at all. GH_REPO is what gh would
+          # otherwise infer from the working directory.
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.release.outputs.tag }}
         # Fire and report, never wait: publish.yml waits on the `npm`
         # environment, which may require review, and a reviewer should not be
