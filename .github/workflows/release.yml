@@ -13,6 +13,16 @@ name: Release
 # which keeps the npm side in one place: the `npm` environment's approval gate,
 # the production build, and the tarball verification all stay in publish.yml.
 #
+# `push` is the only trigger, which means a commit message can silently switch this
+# workflow off: GitHub skips the run entirely when the message carries a skip
+# marker — `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]`
+# — and it scans the whole message, not just the subject. The first release of this
+# pipeline was swallowed that way: a commit body quoted the release commit's
+# subject, marker included, so the push created no run at all and the release had to
+# be triggered by hand. Only the bot's release commit is meant to carry a marker,
+# and only so that it does not re-trigger this workflow; never write one into a
+# message you push to `main` yourself.
+#
 # Rehearsing a release locally is not `--dry-run`: that flag still runs every
 # `prepare` hook — which is where @semantic-release/git commits AND pushes — and
 # semantic-release takes `repositoryUrl` from package.json's `repository` field in
