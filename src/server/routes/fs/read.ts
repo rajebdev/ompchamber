@@ -80,13 +80,21 @@ export async function browseDirectories({ request }: LoaderFunctionArgs) {
   });
 }
 
+/**
+ * Names never listed in the Files panel: dependency/build output and the git
+ * object database. Skipped for being noise, not for being hidden — every other
+ * entry is listed, dot-prefixed files and folders included.
+ */
+const NOISE_DIRS: Record<string, true> = { node_modules: true, '.git': true, dist: true, build: true };
+
 // Lazy listing: return only the immediate children of a directory. Folders are
 // emitted with `children: null` meaning "not loaded yet" so the client can
 // fetch them on demand — directories are NOT recursed here (keeps the initial
-// payload tiny for deep workspaces).
+// payload tiny for deep workspaces). Hidden (dot-prefixed) entries are part of
+// the listing: lazy children keep `.github`, `.config`, `.env`, … cheap.
 async function listEntries(dirPath: string, rootPath: string): Promise<any[]> {
   const entries = (await fs.promises.readdir(dirPath))
-    .filter(child => !child.startsWith('.') && child !== 'node_modules' && child !== '.git' && child !== 'dist' && child !== 'build');
+    .filter(child => !NOISE_DIRS[child]);
 
   const mapped = await Promise.all(entries.map(async child => {
     const full = path.join(dirPath, child);
