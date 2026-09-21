@@ -15,6 +15,7 @@
 import type { Dispatch, SetStateAction } from 'preact/compat';
 import type { ChatMessageData, ExtensionUiDialogRequest, IncomingExtensionUiRequest, OmpAgentCallbacks } from '@/shared/types';
 import { triggerChatCompletionSound } from '@/client/hooks/ui/notification-sound';
+import { isNoticeRow } from '@/shared/lib/chat/notice-row';
 import { createRafBatch } from '@/shared/lib/chat/timeline/stream-raf';
 import { PHASE_VERBS } from '@/shared/lib/chat/timeline/tool-phrases';
 
@@ -147,7 +148,7 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
     onMessageUpdate: (msg) => {
       // React may invoke state updaters more than once (eager-state bailout),
       // so this ref mutation must stay OUTSIDE the updater to keep it pure.
-      if (msg.role !== 'user' && !msg.notice) optimisticUserIdRef.current = null;
+      if (msg.role !== 'user' && !isNoticeRow(msg)) optimisticUserIdRef.current = null;
       // Queue for the next frame, collapsing same-message bursts to the newest
       // full-content frame; scroll runs once per rendered frame.
       messageBatch.queue(prev => {
@@ -155,7 +156,7 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
         // Notice rows (e.g. background job done, system alerts) are appended in
         // arrival order — the timeline renders state as-is, so omp's own write
         // order is what the user sees.
-        if (msg.notice) {
+        if (isNoticeRow(msg)) {
           if (prev.some(m => m.id === msg.id)) return prev;
           // If an active AI placeholder is generating at the tail, insert notice immediately before it
           if (placeholderId && prev.some(m => m.id === placeholderId)) {
@@ -225,7 +226,7 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
       // Role is 'ai' here: toChatMessage collapses every non-user omp role to
       // 'ai'. Notice rows (developer/system/custom) also carry 'ai', so they are
       // excluded — a system-reminder row is not an answer.
-      if (msg.role === 'ai' && !msg.notice && !firstAssistantRef.current) {
+      if (msg.role === 'ai' && !isNoticeRow(msg) && !firstAssistantRef.current) {
         firstAssistantRef.current = true;
         const sid = adoptedSessionIdRef.current ?? sessionIdRef.current;
         // Guarded: the fold also runs headless under `bun test` (no window).

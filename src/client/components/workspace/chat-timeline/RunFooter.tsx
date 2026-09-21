@@ -1,5 +1,6 @@
 import type { ChatMessageData } from '@/shared/types';
 import { AiMessageFooter } from '@/client/components/workspace/chat-timeline/AiMessageFooter';
+import { messageAnswerText } from '@/shared/lib/chat/notice-row';
 import { formatMessageStamp } from '@/shared/lib/format/time';
 
 interface RunFooterProps {
@@ -48,7 +49,7 @@ export function RunFooter({
         dateStr={formatMessageStamp(msg)}
         durationMs={durationMs ?? msg.durationMs}
         usage={msg.usage}
-        content={msg.content}
+        content={messageAnswerText(msg)}
         msgId={msg.id}
         onRetry={onRetry}
         onNewChat={onNewChat}

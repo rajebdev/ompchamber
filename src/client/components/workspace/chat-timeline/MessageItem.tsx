@@ -10,6 +10,7 @@ import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 import { AttachmentChips } from '@/client/components/workspace/chat-timeline/AttachmentChips';
 import { CopyButton } from '@/client/components/common/CopyButton';
 import { capitalizeFirstLetter } from '@/shared/lib/chat/capitalize';
+import { isNoticeRow, messageAnswerText } from '@/shared/lib/chat/notice-row';
 import { formatMessageStamp } from '@/shared/lib/format/time';
 
 interface ChatMessageItemProps {
@@ -34,16 +35,22 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 }: ChatMessageItemProps) {
   const isUser = msg.role === 'user';
 
+  /** A notice row renders as a card. When omp diverted the turn's answer into
+   *  `notice` instead, the row is an answer (it kept the turn's own metadata)
+   *  and the notice text is the response — see chat/notice-row.ts. */
+  const isNotice = isNoticeRow(msg);
+  const effectiveContent = isNotice ? msg.content : messageAnswerText(msg);
+
   /** Stable string references for MarkdownRenderer so its internal
    *  useMemo([content]) holds across parent re-renders (streaming frames
    *  replace the timeline array identity every frame). */
-  const userContent = useMemo(() => (typeof msg.content === 'string' ? msg.content.trim() : msg.content), [msg.content]);
-  const assistantContent = useMemo(() => (typeof msg.content === 'string' ? capitalizeFirstLetter(msg.content) : msg.content), [msg.content]);
+  const userContent = useMemo(() => (typeof effectiveContent === 'string' ? effectiveContent.trim() : effectiveContent), [effectiveContent]);
+  const assistantContent = useMemo(() => (typeof effectiveContent === 'string' ? capitalizeFirstLetter(effectiveContent) : effectiveContent), [effectiveContent]);
 
   /** Content is not worth rendering when it is empty or only punctuation
    *  placeholders ("." / "..." etc.) — chunked assistant turns often carry a
    *  lone dot while the real payload lives in tool calls / thinking. */
-  const hasRenderableContent = typeof msg.content === 'string' && /[A-Za-z0-9]/.test(msg.content);
+  const hasRenderableContent = typeof effectiveContent === 'string' && /[A-Za-z0-9]/.test(effectiveContent);
 
   const handleNewChat = (e?: TargetedMouseEvent<HTMLElement>) => {
     if (e) e.preventDefault();
@@ -154,8 +161,8 @@ export const ChatMessageItem = memo(function ChatMessageItem({
       {/* Main AI Response Container */}
       <div className="w-full space-y-2.5 font-sans leading-relaxed">
         
-        {/* System Notice Alert */}
-        {msg.notice && <SystemNotice notice={msg.notice} />}
+        {/* System Notice Alert (a notice carrying the answer renders as content below) */}
+        {isNotice && <SystemNotice notice={msg.notice} />}
 
         {/* Thinking / Reasoning Accordion */}
         {thinkingData && (

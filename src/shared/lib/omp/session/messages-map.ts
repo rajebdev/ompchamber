@@ -6,6 +6,7 @@
 import type { ChatMessageData } from '@/shared/types/chat';
 import { extractText, extractUserImageAttachments, parseAssistantContent, resultOutput, roleFor, stripInlinedTextAttachments, type OmpMessageEntry } from '@/shared/lib/omp/session/messages-parse';
 import { isRecord } from '@/shared/lib/util/guards';
+import { reminderPartIndex } from '@/shared/lib/chat/notice-row';
 import { deriveTurnError } from '@/shared/lib/omp/session/turn-error';
 import { toEpochMs } from '@/shared/lib/omp/session/timestamps';
 
@@ -74,19 +75,18 @@ export function toChatMessage(entry: OmpMessageEntry): ChatMessageData | null {
     durationMs,
     usage,
   };
-  // Live-path parity (mapper.toChatMessage): an assistant turn whose text is a
-  // <system-reminder> block renders as a SystemNotice alert, never as raw
+  // Live-path parity (mapper.toChatMessage): a text block that IS a
+  // <system-reminder> envelope renders as a SystemNotice alert, never as raw
   // content — otherwise the reminder leaks into the timeline as markdown.
-  if (parsed.textParts.some((t) => /<\/?system-reminder[^>]*>/i.test(t))) {
-    const notice = parsed.textParts.join('\n').replace(/<\/?system-reminder[^>]*>/gi, '').trim();
-    if (notice) {
-      message.notice = notice;
-      message.content = '';
-    } else if (!parsed.thinking && parsed.toolCalls.length === 0 && !turnError) {
-      return null;
-    } else {
-      message.content = '';
-    }
+  // Only a wrapper counts: prose that merely quotes the tag is content, and
+  // moving it into `notice` would hide the answer and delete the quoted tags.
+  const reminderIdx = reminderPartIndex(parsed.textParts);
+  if (reminderIdx !== undefined) {
+    message.notice = parsed.textParts[reminderIdx].trim();
+    message.content = parsed.textParts
+      .filter((_, index) => index !== reminderIdx)
+      .join('\n')
+      .trim();
   }
   if (turnError) message.error = turnError;
   if (parsed.thinking) message.thinking = { thought: parsed.thinking, isGenerating: false };

@@ -4,6 +4,7 @@ import { memo } from 'preact/compat';
 
 import { ChatMessageItem } from '@/client/components/workspace/chat-timeline/MessageItem';
 import { RunFooter } from '@/client/components/workspace/chat-timeline/RunFooter';
+import { isNoticeRow } from '@/shared/lib/chat/notice-row';
 import { previousNonNoticeIndex, resolveRunFooters, streamingRowIndex } from '@/shared/lib/chat/timeline/run-footer';
 import type { ChatMessageData } from '@/shared/types';
 
@@ -65,7 +66,7 @@ export const MessageList = memo(function MessageList({
       {messages.map((msg, idx) => {
         const prev = messages[idx - 1];
         const isLoading = isGenerating && idx === streamingIdx && msg.role === 'ai';
-        const isAiFragment = msg.role !== 'user' && prev && prev.role !== 'user' && !prev?.notice;
+        const isAiFragment = msg.role !== 'user' && prev && prev.role !== 'user' && !isNoticeRow(prev);
         const prevRealIdx = prevNonNoticeIdx[idx];
         const prevReal = prevRealIdx >= 0 ? messages[prevRealIdx] : null;
         const isPrevAssistant = Boolean(msg.role !== 'user' && prevReal && prevReal.role !== 'user');
@@ -78,7 +79,7 @@ export const MessageList = memo(function MessageList({
               onUndo={onUndo}
               onNewChat={onNewChat}
               isPrevAssistant={isPrevAssistant}
-              className={msg.notice ? 'mt-3 mb-1' : isAiFragment ? 'mt-1' : 'mt-3'}
+              className={isNoticeRow(msg) ? 'mt-3 mb-1' : isAiFragment ? 'mt-1' : 'mt-3'}
             />
             {footer && (
               <RunFooter

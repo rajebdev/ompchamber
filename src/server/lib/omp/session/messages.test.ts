@@ -8,6 +8,7 @@ import fs from 'fs';
 import { join } from 'path';
 
 import { loadSessionMessages } from '@/server/lib/omp/session/messages';
+import { isNoticeRow } from '@/shared/lib/chat/notice-row';
 
 const tempDirs: string[] = [];
 
@@ -68,5 +69,44 @@ describe('loadSessionMessages ordering', () => {
     ]);
 
     expect((await loadSessionMessages(file)).map((m) => m.id)).toEqual(['u1', 'a1', 'n1', 'u2', 'a2']);
+  });
+});
+
+describe('loadSessionMessages reminder classification', () => {
+  const blocks = (id: string, texts: string[], second: number) => ({
+    type: 'message',
+    id,
+    timestamp: at(second),
+    message: { role: 'assistant', content: texts.map((text) => ({ type: 'text', text })), usage: { input: 1, output: 2 } },
+  });
+
+  test('prose that quotes the tag stays the answer', async () => {
+    const prose = 'Chip shows the peeled tag (`system-reminder`).\n\nExample: <system-reminder>…</system-reminder> then free text.';
+    const file = await writeSession([blocks('a1', [prose], 0)]);
+
+    const [message] = await loadSessionMessages(file);
+
+    expect(message.notice).toBeUndefined();
+    expect(message.content).toBe(prose);
+    expect(isNoticeRow(message)).toBe(false);
+  });
+
+  test('a text block that IS the reminder envelope becomes a notice', async () => {
+    const file = await writeSession([blocks('a1', ['<system-reminder>\n10 todo items still open.\n</system-reminder>'], 0)]);
+
+    const [message] = await loadSessionMessages(file);
+
+    expect(message.content).toBe('');
+    expect(message.notice).toBe('<system-reminder>\n10 todo items still open.\n</system-reminder>');
+    expect(isNoticeRow(message)).toBe(true);
+  });
+
+  test('an envelope and prose in one turn split between notice and content', async () => {
+    const file = await writeSession([blocks('a1', ['Jawaban akhir.', '<system-reminder>2 items open</system-reminder>'], 0)]);
+
+    const [message] = await loadSessionMessages(file);
+
+    expect(message.content).toBe('Jawaban akhir.');
+    expect(message.notice).toBe('<system-reminder>2 items open</system-reminder>');
   });
 });

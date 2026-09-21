@@ -59,6 +59,15 @@ describe('resolveRunFooters', () => {
   test('gives a notice-only stretch no footer', () => {
     expect(owners([user('u1'), notice('n1'), user('u2')])).toEqual([null, null, null]);
   });
+
+  test('a notice carrying the answer is an ordinary AI row and owns the run', () => {
+    const diverted = { ...notice('n1'), model: 'deepseek-v4', usage: { totalTokens: 150_640 } };
+    const messages = [user('u1'), ai('a1'), diverted, user('u2')];
+
+    expect(owners(messages)).toEqual([null, null, 'n1', null]);
+    // While the run is still generating, the diverted answer streams — not the row before it.
+    expect(streamingRowIndex([user('u1'), ai('a1'), diverted])).toBe(2);
+  });
 });
 
 describe('streamingRowIndex', () => {

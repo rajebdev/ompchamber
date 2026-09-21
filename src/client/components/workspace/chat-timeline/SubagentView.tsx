@@ -7,6 +7,7 @@ import { ChatMessageItem } from '@/client/components/workspace/chat-timeline/Mes
 import { RunFooter } from '@/client/components/workspace/chat-timeline/RunFooter';
 import { useSubagentTranscript } from '@/client/hooks/chat/subagent';
 import { useModelNames } from '@/client/hooks/models/use-model-names';
+import { isNoticeRow } from '@/shared/lib/chat/notice-row';
 import { previousNonNoticeIndex, resolveRunFooters, streamingRowIndex } from '@/shared/lib/chat/timeline/run-footer';
 import { formatCompactTokens } from '@/shared/lib/format/number';
 
@@ -130,7 +131,7 @@ export function SubagentView({ sessionId, subagent, onBack, provider, providerNa
                     msg={msg}
                     isStreaming={isLoading}
                     isPrevAssistant={isPrevAssistant}
-                    className={msg.notice ? 'mt-3 mb-1' : isPrevAssistant ? 'mt-1' : 'mt-3'}
+                    className={isNoticeRow(msg) ? 'mt-3 mb-1' : isPrevAssistant ? 'mt-1' : 'mt-3'}
                   />
                   {footer && (
                     <RunFooter

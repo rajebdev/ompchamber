@@ -10,9 +10,13 @@
  * therefore immediately before the next user message. Nothing here reorders
  * rows: the timeline renders file order and the footer is an extra row placed
  * after the run's last one.
+ *
+ * "Notice row" means a real notice card: a row whose `notice` carries the
+ * answer instead is an ordinary AI row and owns its run (chat/notice-row.ts).
  */
 
 import { responseRunDurationMs } from '@/shared/lib/chat/duration';
+import { isNoticeRow } from '@/shared/lib/chat/notice-row';
 import type { ChatMessageData } from '@/shared/types';
 
 export interface RunFooterSlot {
@@ -31,7 +35,7 @@ export interface RunFooterSlot {
  */
 export function streamingRowIndex(messages: ChatMessageData[]): number {
   let index = messages.length - 1;
-  while (index >= 0 && messages[index].notice) index--;
+  while (index >= 0 && isNoticeRow(messages[index])) index--;
   return index;
 }
 
@@ -45,7 +49,7 @@ export function previousNonNoticeIndex(messages: ChatMessageData[]): number[] {
   let prevIdx = -1;
   for (let i = 0; i < messages.length; i++) {
     indexes[i] = prevIdx;
-    if (!messages[i].notice) prevIdx = i;
+    if (!isNoticeRow(messages[i])) prevIdx = i;
   }
   return indexes;
 }
@@ -72,7 +76,7 @@ export function resolveRunFooters(
       ownerIndex = -1;
       continue;
     }
-    if (!msg.notice) ownerIndex = i;
+    if (!isNoticeRow(msg)) ownerIndex = i;
 
     const endsRun = i === count - 1 || messages[i + 1]?.role === 'user';
     if (!endsRun || ownerIndex < 0) continue;

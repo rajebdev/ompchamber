@@ -125,7 +125,9 @@ export interface ChatMessageData {
   /** Short human intent for tool calls (omp arguments.i) shown before the tools. */
   intent?: string;
   /** System notice surfaced by omp (e.g. ultrathink-notice) — rendered as an
-   *  alert row, not as assistant content. */
+   *  alert row, not as assistant content. A row that ALSO carries the turn's
+   *  own metadata (model/provider/usage/…) is an assistant answer omp diverted
+   *  into this field and renders as text — see chat/notice-row.ts. */
   notice?: string;
   toolCalls?: ToolCallData[];
   actions?: (AgentActionData | ToolCallData)[];

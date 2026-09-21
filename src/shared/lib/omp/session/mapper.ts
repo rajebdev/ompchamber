@@ -14,6 +14,7 @@
 
 import type { ChatMessageData, ToolCallData } from '@/shared/types';
 import { extractText, extractUserImageAttachments, parseMessageBlocks, stripInlinedTextAttachments, toToolCallData } from '@/shared/lib/omp/session/parse-message-blocks';
+import { reminderPartIndex } from '@/shared/lib/chat/notice-row';
 import { deriveTurnError } from '@/shared/lib/omp/session/turn-error';
 import { formatClock } from '@/shared/lib/format/time';
 import { toEpochMs } from '@/shared/lib/omp/session/timestamps';
@@ -72,9 +73,16 @@ export function toChatMessage(raw: Record<string, unknown>, streaming = true): C
     ?? (startedAt !== undefined && durationMs !== undefined ? startedAt + durationMs : undefined);
   const provider = typeof raw.provider === 'string' ? raw.provider : undefined;
 
-  if (raw.role === 'developer' || raw.role === 'system' || parsed.textParts.some((t) => /<\/?system-reminder[^>]*>/i.test(t))) {
-    const rawText = parsed.textParts.join('\n').trim();
-    const notice = rawText.replace(/<\/?system-reminder[^>]*>/g, '').trim();
+  const reminderIdx = reminderPartIndex(parsed.textParts);
+  if (raw.role === 'developer' || raw.role === 'system' || reminderIdx !== undefined) {
+    // A reminder envelope keeps its wrapper — `SystemNotice` reads that tag to
+    // label the card and strips it before markdown, and the JSONL path stores
+    // it the same way so a live row and its reloaded twin are identical.
+    // Developer/system turns are notices by role and have no wrapper to keep.
+    const source = reminderIdx !== undefined ? parsed.textParts[reminderIdx] : parsed.textParts.join('\n');
+    const notice = reminderIdx !== undefined
+      ? source.trim()
+      : source.replace(/<\/?system-reminder[^>]*>/g, '').trim();
     if (!notice) return null;
     return {
       id,
