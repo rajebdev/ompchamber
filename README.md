@@ -14,7 +14,7 @@
   <a href="https://elysiajs.com"><img alt="Server: Elysia 1.4" src="https://img.shields.io/badge/server-Elysia%201.4-6f42c1"></a>
   <a href="https://preactjs.com"><img alt="UI: Preact 10" src="https://img.shields.io/badge/UI-Preact%2010-673ab7?logo=preact&logoColor=white"></a>
   <a href="https://rsbuild.dev"><img alt="Build: Rsbuild 2" src="https://img.shields.io/badge/build-Rsbuild%202-eab308"></a>
-  <a href="package.json"><img alt="Version: 0.2.0" src="https://img.shields.io/badge/version-0.2.0-3f3f46"></a>
+  <a href="package.json"><img alt="Version: 0.3.0" src="https://img.shields.io/badge/version-0.3.0-3f3f46"></a>
 </p>
 
 <p align="center">
