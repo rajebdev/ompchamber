@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ompchamber update` — self-update from GitHub releases, with `--check`, `--force` and
+  `--no-restart`. The install is replaced in place: `bun add -g ompchamber@<version>` for a bun
+  global install, or fetch + `--ff-only` merge to the release tag + `bun install` + client rebuild
+  for a git checkout. A running instance is restarted on its recorded port and mode afterwards; an
+  uncommitted work tree is never merged over.
+- Install-method detection (`bun-global` / `git` / package-manager / unmanaged) shared by the CLI
+  and the console, so an install that cannot replace itself reports the exact command to run.
+- The console's **About → Updates** button now performs a real OMPChamber update instead of
+  reporting it as manual, and the update check reads the version from disk so a completed update
+  stops showing as available before the server restarts.
+- `GITHUB_TOKEN` / `GH_TOKEN` is honoured for release lookups, raising the unauthenticated GitHub
+  API rate limit (60/hour per IP).
 - GitHub Actions publish pipeline (`.github/workflows/publish.yml`): publishing a GitHub release
   installs, typechecks, builds `dist/client`, verifies the release tag against the `package.json`
   version and runs `bun publish` against npm.

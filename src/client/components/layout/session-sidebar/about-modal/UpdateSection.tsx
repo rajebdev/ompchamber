@@ -68,11 +68,9 @@ export function UpdateSection({ updates, onToast }: UpdateSectionProps) {
     }
 
     if (target === 'ompchamber') {
-      if (result.manual || result.success) {
-        onToast(result.message, 'success');
-      } else {
-        onToast(result.message, 'error');
-      }
+      // `manual` means the environment cannot self-update and the message is
+      // the command to run — action required, not a success.
+      onToast(result.message, result.success ? 'success' : 'error');
       return;
     }
 

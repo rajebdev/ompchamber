@@ -186,7 +186,7 @@ Bun implements `node:*` builtins natively — they do **not** shell out to a Nod
   - **Hooks (`src/client/hooks/<domain>/`)**: Custom Preact hooks.
   - **Data (`src/client/data/<domain>/`)**: Mock or static datasets.
   - **Types (`src/shared/types/<domain>/`)**: Domain interfaces and types.
-  - **CLI (`src/cli/`)**: The `ompchamber` command-line entry (`ompchamber.js`) and its `lib/` (arg parsing, process lifecycle, registry, serve/stop/restart/status/logs). These stay `.js` (plain ESM, no build step) and run under Bun via the `#!/usr/bin/env bun` shebang. `pkgRoot` is resolved two levels up from `src/cli/ompchamber.js`; keep that depth if the file ever moves.
+  - **CLI (`src/cli/`)**: The `ompchamber` command-line entry (`ompchamber.js`) and its `lib/` (arg parsing, process lifecycle, registry, serve/update/stop/restart/status/logs). These stay `.js` (plain ESM, no build step) and run under Bun via the `#!/usr/bin/env bun` shebang. `pkgRoot` is resolved two levels up from `src/cli/ompchamber.js`; keep that depth if the file ever moves.
 
 ### 7. Domain Types Architecture
 - Domain data models and shared TypeScript interfaces must be organized cleanly under `src/shared/types/`:

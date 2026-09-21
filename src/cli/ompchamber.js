@@ -7,7 +7,7 @@ import { resolvePath } from '@/cli/lib/path-utils.js';
 
 const { version } = packageJson;
 
-const COMMANDS = ['serve', 'stop', 'restart', 'status', 'logs'];
+const COMMANDS = ['serve', 'update', 'stop', 'restart', 'status', 'logs'];
 
 async function main() {
   const { command, positionals, options, unknown } = parseArgs(process.argv.slice(2));

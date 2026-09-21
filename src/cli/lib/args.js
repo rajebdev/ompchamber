@@ -12,11 +12,20 @@ const BOOLEAN_LONG = new Set([
   'no-daemon',
   'all',
   'follow',
+  'check',
+  'force',
+  'no-restart',
   'json',
   'quiet',
   'help',
   'version',
 ]);
+
+// Flags that set another option to a non-`true` value.
+const NEGATED_LONG = {
+  'no-daemon': { key: 'foreground', value: true },
+  'no-restart': { key: 'restart', value: false },
+};
 
 const VALUE_LONG = new Set(['port', 'host', 'hostname', 'lines']);
 
@@ -24,6 +33,7 @@ const SHORT_TO_LONG = {
   p: 'port',
   n: 'lines',
   f: 'follow',
+  c: 'check',
   q: 'quiet',
   h: 'help',
   v: 'version',
@@ -63,6 +73,9 @@ export function parseArgs(argv) {
     foreground: false,
     all: false,
     follow: false,
+    check: false,
+    force: false,
+    restart: true,
     lines: null,
     json: false,
     quiet: false,
@@ -88,12 +101,13 @@ export function parseArgs(argv) {
       options.host = typeof value === 'string' ? value : null;
       return nextIndex;
     }
+    const negated = NEGATED_LONG[name];
+    if (negated) {
+      options[negated.key] = negated.value;
+      return index;
+    }
     if (BOOLEAN_LONG.has(name)) {
-      if (name === 'no-daemon') {
-        options.foreground = true;
-      } else {
-        options[name] = true;
-      }
+      options[name] = true;
       return index;
     }
     unknown.push(`--${name}`);
@@ -153,11 +167,7 @@ export function parseArgs(argv) {
       continue;
     }
 
-    if (longName === 'no-daemon') {
-      options.foreground = true;
-    } else {
-      options[longName] = true;
-    }
+    options[longName] = true;
   }
 
   const command = nonFlags.length > 0 ? nonFlags[0] : null;
@@ -177,6 +187,7 @@ USAGE:
 
 COMMANDS:
   serve          Start the OMPChamber web server (default when no command is given)
+  update         Update OMPChamber to the latest GitHub release
   stop           Stop the running OMPChamber instance
   restart        Stop and then start the server again
   status         Show the status of the running instance
@@ -191,6 +202,9 @@ OPTIONS:
   --foreground            Run the server in the foreground (no daemon)
   --no-daemon             Alias for --foreground
   --all                   Apply the command to every running instance
+  -c, --check             Report whether a newer release exists without installing it
+  --force                 Reinstall even when already up to date
+  --no-restart            Do not restart a running instance after updating
   -f, --follow            Follow log output as it is written
   -n, --lines <count>     Number of log lines to print
   --json                  Emit machine-readable JSON output
@@ -202,12 +216,15 @@ ENVIRONMENT:
   OMPCHAMBER_DATA_DIR     Override the data directory (default: ~/.ompchamber)
   OMPCHAMBER_PORT         Default web server port
   OMPCHAMBER_HOST         Default bind address
+  GITHUB_TOKEN            Raise the GitHub API rate limit for update checks
 
 EXAMPLES:
   ompchamber                       # Start the server on the default port
   ompchamber serve --port 8080     # Start on port 8080
   ompchamber serve --lan           # Start and expose the server on the LAN
   ompchamber serve --prod          # Serve the production build
+  ompchamber update --check        # Is a newer release available?
+  ompchamber update                # Update, then restart a running instance
   ompchamber stop                  # Stop the running instance
   ompchamber restart               # Restart the server
   ompchamber status                # Show whether the server is running

@@ -4,29 +4,27 @@
  * reject, so the endpoint always returns a complete UpdateCheckResult.
  */
 
-import packageJson from '@/../package.json';
-import { fetchLatestRelease } from '@/server/lib/updates/github';
+import { resolveOmpChamberVersion } from '@/server/lib/updates/install';
 import { checkOmpUpdate } from '@/server/lib/updates/omp';
-import { isNewer, normalizeVersion } from '@/shared/lib/updates/semver';
 import type { UpdateCheckResult, UpdateTargetInfo } from '@/shared/types/updates';
 
 async function checkOmpChamber(): Promise<UpdateTargetInfo> {
-  const current = packageJson.version;
   try {
-    const release = await fetchLatestRelease();
-    const latest = release ? normalizeVersion(release.tag) : null;
+    // Reads the version on disk, so a completed update stops showing as
+    // available even before the server is restarted.
+    const info = await resolveOmpChamberVersion();
     return {
-      current,
-      latest,
-      updateAvailable: !!latest && isNewer(latest, current),
+      current: info.current,
+      latest: info.latest,
+      updateAvailable: info.updateAvailable,
       installed: true,
-      error: release ? null : 'No releases published yet',
-      releaseName: release?.name ?? null,
-      releaseUrl: release?.url ?? null,
+      error: info.error,
+      releaseName: info.release?.name ?? null,
+      releaseUrl: info.release?.url ?? null,
     };
   } catch (err) {
     return {
-      current,
+      current: null,
       latest: null,
       updateAvailable: false,
       installed: true,

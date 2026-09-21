@@ -26,8 +26,15 @@ function mapRelease(data: Record<string, unknown>): GitHubRelease {
 }
 
 async function fetchViaApi(): Promise<GitHubRelease | null> {
+  // An unauthenticated IP is limited to 60 API calls an hour; `gh` is the
+  // fallback once that runs out.
+  const token = Bun.env.GITHUB_TOKEN ?? Bun.env.GH_TOKEN;
   const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
-    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'ompchamber' },
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'ompchamber',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
   });
   if (!res.ok) return null;
   const data = (await res.json()) as Record<string, unknown>;

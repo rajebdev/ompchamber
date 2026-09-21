@@ -1,10 +1,15 @@
 /**
- * Applies a requested update. oh-my-pi is updated for real via the omp
- * binary; OMPChamber is still a manual, not-yet-implemented action.
+ * Applies a requested update. oh-my-pi is updated through the omp binary;
+ * OMPChamber through the shared self-update engine, which replaces the running
+ * install in place (bun global install, or git fast-forward + rebuild).
  */
 
+import { updateOmpChamber } from '@/server/lib/updates/install';
 import { applyOmpUpdate } from '@/server/lib/updates/omp';
 import type { UpdateApplyResult, UpdateTarget } from '@/shared/types/updates';
+
+/** A server cannot replace its own process, so the user restarts it. */
+const RESTART_NOTE = ' Restart the server (`ompchamber restart`) to apply it.';
 
 export async function applyUpdate(target: UpdateTarget): Promise<UpdateApplyResult> {
   if (target === 'omp') {
@@ -22,11 +27,13 @@ export async function applyUpdate(target: UpdateTarget): Promise<UpdateApplyResu
   }
 
   if (target === 'ompchamber') {
+    const result = await updateOmpChamber();
     return {
-      success: false,
+      success: result.success,
       target: 'ompchamber',
-      manual: true,
-      message: 'Automatic OMPChamber update is not available yet. Pull the latest release manually and restart.',
+      manual: result.manual,
+      message: `${result.message}${result.updated ? RESTART_NOTE : ''}`,
+      output: result.output || undefined,
     };
   }
 

@@ -69,6 +69,8 @@ ompchamber logs -f -n 200            # follow the server log
   the skills catalog, token usage and notifications.
 - **Two data modes** — `MOCK=true` ships demo datasets for previews; `MOCK=false` runs purely on
   the real SQLite database and real workspace files.
+- **Self-update** — `ompchamber update` installs the latest GitHub release (bun global or git
+  checkout) and restarts a running instance; **About → Updates** does the same from the console.
 
 ## Install
 
@@ -102,6 +104,26 @@ bun run src/cli/ompchamber.js status
 > **Serve before you build?** Without `dist/client` the server answers `503` and prints the exact
 > command to run — it never fails with a bare `500`.
 
+### Updating
+
+`ompchamber update` resolves the newest GitHub release, compares it with the version in
+`package.json` and replaces the install in place:
+
+```bash
+ompchamber update --check        # report only: current version, latest release
+ompchamber update                # install it, then restart a running instance
+ompchamber update --force        # reinstall even when already up to date
+```
+
+How the install is replaced depends on how it was made. A **bun global** install is refreshed with
+`bun add -g ompchamber@<version>`. A **git checkout** of this repository is fast-forwarded to the
+release tag and rebuilt (`bun install`, `bun run build`). Uncommitted work is never merged over:
+the update refuses and asks you to commit or stash first. An install owned by another package
+manager is not touched — the command prints the exact command to run instead.
+
+The same check runs from the console — **About → Updates** — and its Update button performs the
+same install, then asks you to restart the server, because a running server cannot replace itself.
+
 ## CLI
 
 `ompchamber [COMMAND] [OPTIONS]` — `serve` is the default command.
@@ -109,6 +131,7 @@ bun run src/cli/ompchamber.js status
 | Command | Purpose |
 |---|---|
 | `serve` | Start the web server (daemon by default) |
+| `update` | Install the latest GitHub release, then restart a running instance |
 | `stop` | Stop the running instance |
 | `restart` | Stop, then start again |
 | `status` | Report whether an instance is running |
@@ -122,6 +145,9 @@ bun run src/cli/ompchamber.js status
 | `--prod` | Serve the production build instead of the dev server |
 | `--foreground` | Run in the foreground (no daemon) |
 | `--all` | Apply the command to every running instance |
+| `-c, --check` | Report whether a newer release exists without installing it |
+| `--force` | Reinstall even when already up to date |
+| `--no-restart` | Do not restart a running instance after updating |
 | `-f, --follow` / `-n, --lines <count>` | Tail the log, optionally from a line count |
 | `--json` / `-q, --quiet` | Machine-readable output / suppress non-essential output |
 
@@ -143,6 +169,7 @@ Environment variables, read from `.env` (see [`.env.example`](.env.example)):
 | `PI_CONFIG_DIR` / `PI_CODING_AGENT_DIR` | `~/.omp` | Oh-My-Pi config root overrides |
 | `OMP_WEB_OMP_BIN` | — | Explicit `omp` binary path |
 | `SKILLS_API_URL` | `https://skills.sh` | Skills catalog source |
+| `GITHUB_TOKEN` / `GH_TOKEN` | — | Raise the GitHub API rate limit for update checks |
 
 Runtime state, sessions and settings live in SQLite (`~/.ompchamber/db.sqlite`), which is the
 single source of truth for persisted settings.
