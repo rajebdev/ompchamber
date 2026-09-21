@@ -6,7 +6,7 @@ import { ChatTimeline } from '@/client/components/workspace/chat-timeline/index'
 import { getDesktopPanelView } from '@/client/components/common/lazy-panels';
 import { RightActivityBar } from '@/client/components/layout/RightActivityBar';
 import { ResizeHandle } from '@/client/components/layout/desktop-layout/ResizeHandle';
-import { DEFAULT_RIGHT_PANEL_WIDTHS, MAX_RIGHT_PANEL_WIDTH, MIN_RIGHT_PANEL_WIDTHS, type RightPanelType } from '@/shared/lib/workspace/right-panels';
+import { DEFAULT_RIGHT_PANEL_WIDTHS, MAX_RIGHT_PANEL_WIDTH, MIN_RIGHT_PANEL_WIDTHS, RIGHT_PANEL_TYPES, type RightPanelType } from '@/shared/lib/workspace/right-panels';
 import { DEFAULT_PANEL_WIDTHS, type EditorWidthMode, type PanelWidths } from '@/shared/lib/workspace/panel-widths';
 
 const Editor = lazy(() => import('@/client/components/workspace/editor/index').then((m) => ({ default: m.Editor })));
@@ -82,8 +82,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
   // and no panel re-fetches its data just because the user looked away.
   const viewScope = useMemo(() => ({}), []);
   const rightViews = useMemo(
-    () => (['files', 'search', 'git', 'terminal', 'context', 'user-browser', 'browser', 'usage'] as const)
-      .map((view) => ({ view, Comp: getDesktopPanelView(viewScope, view) })),
+    () => RIGHT_PANEL_TYPES.map((view) => ({ view, Comp: getDesktopPanelView(viewScope, view) })),
     [viewScope],
   );
 

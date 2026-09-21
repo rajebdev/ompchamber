@@ -165,7 +165,10 @@ export function Editor({
                     fontFamily: '"Fira Code", "JetBrains Mono", "SF Mono", Consolas, monospace',
                   }}
                   gutterLineClassName="min-w-[1.5rem]"
-                  editorWrapperClassName="flex-1 min-w-max code-surface"
+                  // `min-w-max` keeps a long line intact and lets the panel
+                  // scroll sideways; while wrapping it would instead widen the
+                  // column past the panel, so the toggle had no effect at all.
+                  editorWrapperClassName={`flex-1 code-surface ${wordWrap ? 'min-w-0' : 'min-w-max'}`}
                   editorPadding={16}
                   editorClassName="font-mono focus:outline-none"
                   editorStyle={{

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { CSSProperties, TargetedKeyboardEvent } from 'preact';
+import type { CSSProperties, Ref, TargetedKeyboardEvent } from 'preact';
 
 /**
  * Preact hand-roll of the textarea-over-<pre> highlighting editor
@@ -38,6 +38,8 @@ export interface CodeEditorProps {
   textareaClassName?: string;
   /** Layout styles for the whole editor; typography must match both layers. */
   style?: CSSProperties;
+  /** The `<pre>` layer that actually wraps the code — gutter alignment measures it. */
+  preRef?: Ref<HTMLPreElement>;
   className?: string;
   placeholder?: string;
   readOnly?: boolean;
@@ -73,6 +75,7 @@ export function CodeEditor({
   preClassName,
   textareaClassName,
   style,
+  preRef,
   className,
   placeholder,
   readOnly,
@@ -314,6 +317,7 @@ export function CodeEditor({
   return (
     <div className={className} style={{ position: 'relative', textAlign: 'left', boxSizing: 'border-box', padding: 0, overflow: 'hidden', ...style }}>
       <pre
+        ref={preRef}
         className={preClassName}
         aria-hidden="true"
         style={{ ...layerStyle, ...contentStyle, position: 'relative', pointerEvents: 'none' }}

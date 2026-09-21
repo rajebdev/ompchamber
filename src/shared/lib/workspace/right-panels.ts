@@ -4,14 +4,16 @@
  *
  * The list lives here rather than in the activity bar component so the layout
  * can key one remembered width per view (`panel-widths.ts`) and validate a
- * stored blob without importing UI.
+ * stored blob without importing UI. It is also the single source of the views'
+ * *order*: the desktop activity bar, the desktop panel stack and the phone's
+ * tab bar all render from it, so the two layouts cannot drift apart.
  */
 export const RIGHT_PANEL_TYPES = [
+  'context',
   'files',
   'search',
   'git',
   'terminal',
-  'context',
   'user-browser',
   'browser',
   'usage',

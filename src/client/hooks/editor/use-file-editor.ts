@@ -40,9 +40,11 @@ export interface UseFileEditorResult {
   saveNow: () => void;
   copy: () => void;
   download: () => void;
-  /** Forget cached content for the active file and read it again. */
-  reload: () => void;
-  /** Forget all cached content (e.g. a workspace refresh). */
+  /**
+   * Re-read every cached file from disk (e.g. a workspace refresh). Content
+   * already on screen stays until the fresh bytes land, and a file with
+   * unsaved edits is left alone.
+   */
   reset: () => void;
   /** Drop cached content for files no longer open. */
   retain: (ids: Array<number | string>) => void;
@@ -77,6 +79,8 @@ export function useFileEditor(
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<FileEditorSaveStatus>('idle');
   const [copied, setCopied] = useState(false);
+  /** Bumped by `reset()` to re-run the read effect for the active file. */
+  const [revision, setRevision] = useState(0);
 
   const key = target ? targetKey(target) : '';
   const content = target ? (contents[key] ?? target.content ?? '') : '';
@@ -86,6 +90,14 @@ export function useFileEditor(
   // duplicate fetch while the first one is still in flight.
   const loadedRef = useRef<Set<string>>(new Set());
   const pendingRef = useRef<{ timer: number; file: FileEditorTarget; content: string } | null>(null);
+
+  // Live mirrors of the content maps: a read response resolves long after it
+  // was requested, and it has to know whether the buffer it read is still the
+  // one on screen.
+  const contentsRef = useRef(contents);
+  contentsRef.current = contents;
+  const baselinesRef = useRef(baselines);
+  baselinesRef.current = baselines;
 
   const remember = useCallback((fileKey: string, text: string) => {
     setContents((prev) => ({ ...prev, [fileKey]: text }));
@@ -145,8 +157,11 @@ export function useFileEditor(
       return;
     }
 
+    // Only a key with nothing on screen yet shows the loading state: a
+    // re-read (refreshKey / reset) must not flash a spinner over live content.
+    const firstLoad = contentsRef.current[fileKey] === undefined;
     let cancelled = false;
-    setIsLoading(true);
+    if (firstLoad) setIsLoading(true);
     setLoadError(null);
     const params = new URLSearchParams({ path: target.path });
     if (target.root) params.set('root', target.root);
@@ -164,10 +179,20 @@ export function useFileEditor(
       })
       .then((text) => {
         if (cancelled) return;
+        // These bytes were read before the response arrived, so anything typed
+        // since is newer. Applying them would replace those keystrokes (and,
+        // once a refresh is triggered by a save, wipe the editor back to an
+        // empty buffer) — instead let the queued write own the key.
+        const typed = contentsRef.current[fileKey];
+        if (typed !== undefined && typed !== baselinesRef.current[fileKey]) return;
+        const queued = pendingRef.current;
+        if (queued && targetKey(queued.file) === fileKey) return;
         remember(fileKey, text ?? (fallback ? fallback(target.name) : ''));
       })
       .catch((err: unknown) => {
         if (cancelled) return;
+        // A failed re-read keeps what is on screen; only a first load reports.
+        if (!firstLoad) return;
         if (reportLoadError) {
           remember(fileKey, '');
           setLoadError(err instanceof Error ? err.message : 'Failed to read file');
@@ -182,7 +207,7 @@ export function useFileEditor(
     return () => {
       cancelled = true;
     };
-  }, [key, target, fallback, reportLoadError, remember]);
+  }, [key, target, fallback, reportLoadError, remember, revision]);
 
   useEffect(() => {
     if (saveStatus !== 'saved') return;
@@ -239,21 +264,13 @@ export function useFileEditor(
     URL.revokeObjectURL(url);
   }, [target, contents, downloadMimeType]);
 
-  const reload = useCallback(() => {
-    if (!key) return;
-    loadedRef.current.delete(key);
-    setContents((prev) => {
-      if (prev[key] === undefined) return prev;
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-  }, [key]);
-
   const reset = useCallback(() => {
+    // Invalidate every key, then let the read effect refetch the active one.
+    // Content is deliberately NOT cleared: it stays on screen until the fresh
+    // bytes land, so a refresh can never blank the editor (or drop the file
+    // that is open) while the request is in flight.
     loadedRef.current.clear();
-    setContents({});
-    setBaselines({});
+    setRevision((prev) => prev + 1);
   }, []);
 
   const retain = useCallback((ids: Array<number | string>) => {
@@ -295,7 +312,6 @@ export function useFileEditor(
     saveNow,
     copy,
     download,
-    reload,
     reset,
     retain,
   };
