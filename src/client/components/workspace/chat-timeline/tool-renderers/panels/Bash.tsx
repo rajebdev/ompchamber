@@ -2,6 +2,7 @@ import { useMemo } from 'preact/hooks';
 import { Check, Clock } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
 import { CopyButton } from '@/client/components/common/CopyButton';
+import { stripAnsiCodes } from '@/shared/lib/code/ansi';
 import { highlightCode, isCodeLike, tryParseJson } from '@/shared/lib/code/syntax-highlight';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 import { JsonCodeBlock } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/JsonCodeBlock';
@@ -56,11 +57,16 @@ export function Bash({ tool }: { tool: ToolCallData }) {
     [output, isSilent, tool.isError]
   );
 
-  const truncatedOutput = useMemo(() => truncateTailLines(output, MAX_OUTPUT_LINES), [output]);
-  const outputIsCode = useMemo(() => isCodeLike(output), [output]);
+  const strippedOutput = useMemo(() => stripAnsiCodes(output), [output]);
+  const truncatedOutput = useMemo(() => truncateTailLines(strippedOutput, MAX_OUTPUT_LINES), [strippedOutput]);
+  const copyText = useMemo(
+    () => (jsonResult.isValid && jsonResult.pretty ? jsonResult.pretty : strippedOutput),
+    [jsonResult, strippedOutput]
+  );
+  const outputIsCode = useMemo(() => isCodeLike(strippedOutput), [strippedOutput]);
   const outputLang = useMemo(
-    () => (output.trim().startsWith('{') || output.trim().startsWith('[') ? 'json' : 'javascript'),
-    [output]
+    () => (strippedOutput.trim().startsWith('{') || strippedOutput.trim().startsWith('[') ? 'json' : 'javascript'),
+    [strippedOutput]
   );
   const truncatedPretty = useMemo(
     () => (jsonResult.isValid && jsonResult.pretty ? truncateTailLines(jsonResult.pretty, MAX_OUTPUT_LINES) : null),
@@ -169,7 +175,7 @@ export function Bash({ tool }: { tool: ToolCallData }) {
           <div className="flex items-center justify-between border-b border-ink/6 bg-canvas/30 px-3 py-1.5">
             <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-ink/40">Console Output</span>
             <CopyButton
-              text={jsonResult.isValid && jsonResult.pretty ? jsonResult.pretty : output}
+              text={copyText}
               className="flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[9.5px] text-ink/45 transition-colors hover:bg-ink/5 hover:text-ink"
               label="Copy"
             />

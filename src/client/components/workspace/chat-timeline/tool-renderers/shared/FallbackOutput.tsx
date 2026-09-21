@@ -4,6 +4,7 @@ import { Code } from 'lucide-preact';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 import { sanitizeHtml } from '@/shared/lib/markdown/sanitize';
 import { CopyButton } from '@/client/components/common/CopyButton';
+import { stripAnsiCodes } from '@/shared/lib/code/ansi';
 import { detectOutputFormat } from '@/shared/lib/chat/detect-format';
 import { highlightCode, tryParseJson } from '@/shared/lib/code/syntax-highlight';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
@@ -18,23 +19,28 @@ interface FallbackOutputProps {
 /** Render output fallback generik dengan deteksi format otomatis:
  *  markdown → MarkdownRenderer; html → sanitize + inject; text → syntax highlight. */
 export function FallbackOutput({ text }: FallbackOutputProps) {
-  const format = useMemo(() => detectOutputFormat(text), [text]);
-  const jsonResult = useMemo(() => (format === 'json' ? tryParseJson(text) : null), [format, text]);
+  const stripped = useMemo(() => stripAnsiCodes(text), [text]);
+  const format = useMemo(() => detectOutputFormat(stripped), [stripped]);
+  const jsonResult = useMemo(() => (format === 'json' ? tryParseJson(stripped) : null), [format, stripped]);
   const displayLinesCount = useMemo(() => {
     if (jsonResult?.isValid && jsonResult.linesCount) return jsonResult.linesCount;
-    return text.split(/\r?\n/).length;
-  }, [jsonResult, text]);
+    return stripped.split(/\r?\n/).length;
+  }, [jsonResult, stripped]);
 
   const display = useMemo(() => {
-    const source = format === 'json' && jsonResult?.isValid && jsonResult.pretty ? jsonResult.pretty : text;
+    const source = format === 'json' && jsonResult?.isValid && jsonResult.pretty ? jsonResult.pretty : stripped;
     return truncateTailLines(source, MAX_OUTPUT_LINES);
-  }, [format, jsonResult, text]);
+  }, [format, jsonResult, stripped]);
 
   const isPlainText = format !== 'markdown' && format !== 'json' && format !== 'html';
   const syntaxReady = useSyntaxReady();
   const highlightedText = useMemo(
     () => (isPlainText ? highlightCode(display.text, 'javascript') : ''),
     [isPlainText, display, syntaxReady]
+  );
+  const copyText = useMemo(
+    () => (jsonResult?.isValid && jsonResult.pretty ? jsonResult.pretty : stripped),
+    [jsonResult, stripped]
   );
 
   let body: ReactNode;
@@ -85,7 +91,7 @@ export function FallbackOutput({ text }: FallbackOutputProps) {
           )}
         </div>
         <CopyButton
-          text={jsonResult?.isValid && jsonResult.pretty ? jsonResult.pretty : text}
+          text={copyText}
           className="flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-ink/45 transition-colors hover:bg-ink/5 hover:text-ink"
           onClick={(e) => e.stopPropagation()}
           label="Copy"
