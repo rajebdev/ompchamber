@@ -1,6 +1,10 @@
-// `ompchamber restart` — stop the live instance (if any), then serve again.
+// `ompchamber restart` — stop live instances, then serve again.
+//
+// Scoping matches `status` and `stop`: without `--port` every live instance is
+// restarted on its own recorded port/host/mode, and `--port <port>` restricts
+// the restart to that one. With nothing running, the command is simply `serve`.
 
-import { findLiveInstance, stopInstance } from '@/cli/lib/runtime.js';
+import { findLiveInstance, listLiveInstances, stopInstance } from '@/cli/lib/runtime.js';
 import { STOP_TIMEOUT_MS } from '@/cli/lib/process-lifecycle.js';
 import { log, isJson, isQuiet } from '@/cli/lib/output.js';
 import { run as runServe } from '@/cli/lib/commands/serve.js';
@@ -15,14 +19,31 @@ function explicitPort(options) {
 export async function run(options, ctx) {
   const json = isJson();
   const quiet = isQuiet();
-  const live = await findLiveInstance(explicitPort(options));
+  const requested = explicitPort(options);
 
-  if (live) {
-    if (!json && !quiet) {
-      log(`Stopping OMPChamber on port ${live.port} (pid ${live.pid})...`);
-    }
+  const targets = requested !== null
+    ? [await findLiveInstance(requested)].filter(Boolean)
+    : await listLiveInstances();
+
+  if (targets.length === 0) return runServe(options, ctx);
+
+  for (const live of targets) {
+    if (!json && !quiet) log(`Stopping OMPChamber on port ${live.port} (pid ${live.pid})...`);
     await stopInstance(live, { timeoutMs: STOP_TIMEOUT_MS });
-  }
 
-  return runServe(options, ctx);
+    // Reuse the recorded port/host/mode so an instance started on a non-default
+    // port, or bound to the LAN, comes back the way it was found.
+    await runServe(
+      {
+        ...options,
+        port: live.port,
+        host: live.host,
+        lan: live.host === '0.0.0.0',
+        prod: live.mode === 'prod',
+        foreground: false,
+        all: false,
+      },
+      ctx,
+    );
+  }
 }

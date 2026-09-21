@@ -21,6 +21,14 @@ export async function loader() {
       mock: isMockMode(),
       runtime: 'bun',
       bun: Bun.version,
+      // Identity of the listener itself, read by the CLI and by a starting
+      // server deciding whether this port belongs to OMPChamber: `mode` and
+      // `launchMode` are what `status` prints, and the pair with `pid` is what
+      // separates a dev server from a stale published build.
+      mode: Bun.env.NODE_ENV === 'production' ? 'prod' : 'dev',
+      launchMode: Bun.env.OMPCHAMBER_LAUNCH_MODE ?? 'direct',
+      port: Number(Bun.env.PORT) || 3000,
+      host: Bun.env.HOST || 'localhost',
     },
     { headers: NO_STORE_HEADERS },
   );

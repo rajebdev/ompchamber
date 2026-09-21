@@ -6,8 +6,8 @@ import {
   buildServeInvocation,
   waitForHealth,
   findLiveInstance,
-  probeHost,
 } from '@/cli/lib/runtime.js';
+import { probeHost } from '@/server/lib/lifecycle/probe';
 import { log, ok, warn, fail, printJson, isJson, isQuiet } from '@/cli/lib/output.js';
 import { wireChildProcessLifecycle } from '@/cli/lib/process-lifecycle.js';
 import { ompStartupError } from '@/server/lib/omp/core/startup';
@@ -64,14 +64,22 @@ export async function run(options, ctx) {
 
   const existing = await findLiveInstance(port);
   if (existing) {
-    fail(`An OMPChamber instance is already running on port ${port} (pid ${existing.pid}).\nUse \`ompchamber restart\` or a different \`--port\`.`);
+    // Refused here as well as in the server (lib/lifecycle/port-guard) so the
+    // CLI reports it immediately instead of spawning a child that exits during
+    // the health wait. Nothing is stopped: freeing a port is `ompchamber stop`.
+    fail(
+      `Port ${port} is already served by OMPChamber (pid ${existing.pid}, ${existing.mode}).`
+      + '\n  Nothing was stopped — a starting instance never stops another one.'
+      + `\n  Stop it first:  ompchamber stop --port ${port}`
+      + `\n  Or start on another port:  ompchamber serve --port <port>`,
+    );
   }
 
   if (options?.foreground) {
     return runForeground({ pkgRoot, mode, port, host, quiet });
   }
 
-  const { entry } = spawnDetachedServer({ pkgRoot, mode, port, host });
+  const { entry } = spawnDetachedServer({ pkgRoot, mode, port, host, launchMode: 'daemon' });
 
   if (!quiet && !json) {
     log(`Starting OMPChamber (${mode}) on ${entry.url} (pid ${entry.pid})...`);
@@ -96,7 +104,7 @@ export async function run(options, ctx) {
 }
 
 function runForeground({ pkgRoot, mode, port, host, quiet }) {
-  const { file, args, env } = buildServeInvocation({ pkgRoot, mode, port, host });
+  const { file, args, env } = buildServeInvocation({ pkgRoot, mode, port, host, launchMode: 'foreground' });
   const url = `http://${probeHost(host)}:${port}`;
   if (!quiet) {
     log(`Running OMPChamber (${mode}) in the foreground on ${url} (Ctrl+C to stop)...`);

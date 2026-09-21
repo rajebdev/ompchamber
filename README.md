@@ -155,6 +155,47 @@ same install, then asks you to restart the server, because a running server cann
 | `-f, --follow` / `-n, --lines <count>` | Tail the log, optionally from a line count |
 | `--json` / `-q, --quiet` | Machine-readable output / suppress non-essential output |
 
+### Ports and multiple instances
+
+One port is served by exactly one process, and `bun run dev`, `ompchamber serve` and the production
+server all default to `3000`. **A starting instance never stops another one** — not a CLI server
+and not a dev run. If the port is taken by OMPChamber, the newcomer reports who holds it and exits
+non-zero so you can pick another port and re-run:
+
+```bash
+ompchamber serve --port 3001        # CLI flag
+OMPCHAMBER_PORT=3001 ompchamber serve
+PORT=3001 bun run dev              # or: PORT=3001 bun run start
+```
+
+- Nothing is ever signalled to free a port. `ompchamber stop --port 3000` is the deliberate way to
+  free one, and it is per port.
+- A process that is **not** OMPChamber is never signalled either: the server exits with an error
+  naming the port and the `lsof -nP -iTCP:<port> -sTCP:LISTEN` command to identify it.
+- The refusal exists because a second bind would *succeed*: Elysia's Bun adapter hardcodes
+  `reusePort: true`, so two servers would share a port and only the first-bound socket would receive
+  connections — the newcomer would look healthy while the browser kept talking to the old build.
+- `bun run dev` hot reload is unaffected: `--hot` re-evaluates the server entry *inside the running
+  process*, and a port held by that same process is recognized as its own, so Bun swaps the handler
+  on the next `listen`. Saving a file neither trips the guard nor resets the reported uptime.
+
+Running several ports at once is supported. `status`, `stop`, `restart` and `logs` act on **every**
+live instance by default, and `--port <port>` narrows them to one:
+
+```bash
+ompchamber status                  # every instance: port, pid, mode, launch mode, health, log
+ompchamber status --port 3001      # just that one
+ompchamber logs -n 200             # one header per instance, sources included
+ompchamber logs --port 3001 -f     # follow one instance's log
+ompchamber stop                    # stop them all (--all is the explicit spelling)
+ompchamber stop --port 3001        # stop just that one
+```
+
+The server writes `~/.ompchamber/run/<port>.json` (`pid`, `host`, `mode`, `launchMode`,
+`startedAt`) once it owns the port, which is why `status`/`stop`/`logs` also see servers started by
+`bun run dev` or `--foreground` — not just daemon-spawned ones. Records left by a killed server are
+pruned as soon as their PID stops answering, so a recycled PID is never reported as an instance.
+
 ## Configuration
 
 Environment variables, read from `.env` (see [`.env.example`](.env.example)):
@@ -189,7 +230,7 @@ src/
 │  └─ tailwind.css  theme tokens (--theme-ink, --theme-paper, …)
 ├─ server/    Bun-only — Elysia routes, SQLite, omp RPC bridge, fs/git/terminal
 │  ├─ routes/       one plugin per domain, mounted in routes/index.ts
-│  ├─ lib/          omp session/subagent/config, updates, browser runtime
+│  ├─ lib/          omp session/subagent/config, updates, browser runtime, port lifecycle
 │  └─ plugins/      SSR shell, static assets, compression, dev assets
 ├─ shared/    Imported by both — types, chat timeline folding, pure helpers
 └─ cli/       ompchamber command (plain ESM, runs under Bun)
@@ -218,6 +259,10 @@ bun run dev:client     # client only (rsbuild build --watch)
 There is no HMR: the server reloads on save, the client bundle rebuilds, refresh the page.
 `dist/client/index.html` is the shell for both dev and prod, so run `dev:client` at least once
 after a clean checkout.
+
+Dev and prod share the default port `3000`: a second starter on an occupied port refuses and exits
+with the port options to re-run ([Ports and multiple instances](#ports-and-multiple-instances));
+nothing is stopped for you.
 
 Verification gates, all mandatory:
 

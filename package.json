@@ -32,12 +32,12 @@
     "tsconfig.json"
   ],
   "scripts": {
-    "dev:server": "bun run --hot src/server/index.ts",
+    "dev:server": "NODE_ENV=development bun run --hot src/server/index.ts --ompchamber-server",
     "dev:client": "rsbuild build --watch",
-    "dev": "NODE_ENV=development bun run dev:server & bun run dev:client; wait",
-    "dev:lan": "HOST=0.0.0.0 NODE_ENV=development bun run dev:server & bun run dev:client; wait",
+    "dev": "bun run dev:server & bun run dev:client; wait",
+    "dev:lan": "HOST=0.0.0.0 bun run dev:server & bun run dev:client; wait",
     "build": "rsbuild build",
-    "start": "NODE_ENV=production bun run src/server/index.ts",
+    "start": "NODE_ENV=production bun run src/server/index.ts --ompchamber-server",
     "typecheck": "tsc",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",

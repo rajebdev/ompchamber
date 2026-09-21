@@ -188,20 +188,20 @@ USAGE:
 COMMANDS:
   serve          Start the OMPChamber web server (default when no command is given)
   update         Update OMPChamber to the latest GitHub release
-  stop           Stop the running OMPChamber instance
-  restart        Stop and then start the server again
-  status         Show the status of the running instance
-  logs           Print or follow the server log output
+  stop           Stop running OMPChamber instances (every one, or --port <port>)
+  restart        Stop and then start again (every instance, or --port <port>)
+  status         Show running instances (every one, or --port <port>)
+  logs           Print or follow server logs (every instance, or --port <port>)
 
 OPTIONS:
-  -p, --port <port>       Web server port (default: 3000)
+  -p, --port <port>       Web server port (default: 3000); scopes status/stop/restart/logs
   --host <address>        Bind address (default: 127.0.0.1)
   --hostname <address>    Alias for --host
   --lan                   Bind to 0.0.0.0 for LAN access
   --prod                  Run the production build instead of the dev server
   --foreground            Run the server in the foreground (no daemon)
   --no-daemon             Alias for --foreground
-  --all                   Apply the command to every running instance
+  --all                   Explicit form of the default for stop/restart (every instance)
   -c, --check             Report whether a newer release exists without installing it
   --force                 Reinstall even when already up to date
   --no-restart            Do not restart a running instance after updating

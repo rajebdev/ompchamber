@@ -1,6 +1,6 @@
 // `ompchamber stop` — stop one or every live OMPChamber instance.
 
-import { listRegistries, findLiveInstance, isProcessAlive, stopInstance } from '@/cli/lib/runtime.js';
+import { listLiveInstances, findLiveInstance, stopInstance } from '@/cli/lib/runtime.js';
 import { STOP_TIMEOUT_MS } from '@/cli/lib/process-lifecycle.js';
 import { ok, warn, printJson, isJson } from '@/cli/lib/output.js';
 
@@ -27,13 +27,18 @@ function explicitPort(options) {
 
 export async function run(options) {
   const json = isJson();
+  const requested = explicitPort(options);
 
+  // No `--port` means every live instance: a CLI server, a dev run and a
+  // production server are three processes, and `stop` without a port is the
+  // command that clears all of them. `--all` is the explicit spelling of the
+  // same default, kept because it reads well in scripts.
   let targets;
-  if (options?.all) {
-    targets = (await listRegistries()).filter((entry) => entry && isProcessAlive(Number(entry.pid)));
-  } else {
-    const live = await findLiveInstance(explicitPort(options));
+  if (requested !== null) {
+    const live = await findLiveInstance(requested);
     targets = live ? [live] : [];
+  } else {
+    targets = await listLiveInstances();
   }
 
   if (targets.length === 0) {
@@ -41,9 +46,9 @@ export async function run(options) {
       printJson({ stopped: [] });
       return;
     }
-    warn(options?.all
+    warn(requested === null
       ? 'No running OMPChamber instances found.'
-      : `No running OMPChamber instance on port ${explicitPort(options) ?? resolvePort(options)}.`);
+      : `No running OMPChamber instance on port ${requested}.`);
     return;
   }
 

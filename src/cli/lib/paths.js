@@ -1,29 +1,16 @@
 import fs from 'node:fs';
-import { joinPath, resolvePath, homeDir } from '@/cli/lib/path-utils.js';
+import { getDataDir, getRunDir } from '@/server/lib/lifecycle/paths';
+import { joinPath } from '@/cli/lib/path-utils.js';
 
 /**
- * Resolve the OMPChamber data directory.
+ * CLI-side paths.
  *
- * Matches the convention used by app/db.server.ts so the CLI and the web
- * console always agree on where state lives.
+ * The data directory and the per-port run directory are owned by
+ * `src/server/lib/lifecycle/paths` — the server writes its instance record
+ * there, and the CLI must read the same file. Only the log location is
+ * CLI-specific: the CLI redirects the daemon's stdout into it, so the server
+ * never needs to know where the logs live.
  */
-export function getDataDir() {
-  const override = Bun.env.OMPCHAMBER_DATA_DIR;
-  if (typeof override === 'string' && override.trim().length > 0) {
-    return resolvePath(override.trim());
-  }
-  return joinPath(homeDir(), '.ompchamber');
-}
-
-/**
- * Directory holding per-instance registry files (`<port>.json`).
- * Created on demand with owner-only permissions.
- */
-export function getRunDir() {
-  const dir = joinPath(getDataDir(), 'run');
-  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  return dir;
-}
 
 /**
  * Directory holding per-instance log files.
@@ -32,13 +19,6 @@ export function getLogsDir() {
   const dir = joinPath(getDataDir(), 'logs');
   fs.mkdirSync(dir, { recursive: true });
   return dir;
-}
-
-/**
- * Registry file describing the running instance bound to `port`.
- */
-export function getRegistryPath(port) {
-  return joinPath(getRunDir(), `${port}.json`);
 }
 
 /**

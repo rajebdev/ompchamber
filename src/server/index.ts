@@ -1,9 +1,12 @@
 import { Elysia } from 'elysia';
+import pkg from '@/../package.json';
 import { apiRoutes } from '@/server/routes';
 import { ssrRoutes } from '@/server/plugins/ssr';
 import { getDatabasePath } from '@/server/db.server';
 import { fetchOmpRegistrySnapshot } from '@/server/lib/models/provider-registry.server';
 import { ompStartupError, ompStartupLogLines } from '@/server/lib/omp/core/startup';
+import { readInstanceRecord, removeInstanceRecord, writeInstanceRecord } from '@/server/lib/lifecycle/instance';
+import { acquirePortLock, claimPort, PortInUseError } from '@/server/lib/lifecycle/port-guard';
 import { isMockMode } from '@/server/mock.server';
 
 // Refuse to run without a resolvable omp binary — before the listener opens and
@@ -24,10 +27,57 @@ console.log(`[ompchamber] db:             ${await getDatabasePath()}`);
 
 const port = Number(Bun.env.PORT) || 3000;
 const host = Bun.env.HOST || 'localhost';
+const mode = Bun.env.NODE_ENV === 'production' ? 'prod' : 'dev';
+const launchMode = Bun.env.OMPCHAMBER_LAUNCH_MODE === 'daemon' || Bun.env.OMPCHAMBER_LAUNCH_MODE === 'foreground'
+  ? Bun.env.OMPCHAMBER_LAUNCH_MODE
+  : 'direct';
+
+const lock = await acquirePortLock(port);
+if (!lock) {
+  console.error(`[ompchamber] another OMPChamber instance is starting on port ${port} right now — retry in a moment.`);
+  process.exit(1);
+}
 
 const app = new Elysia().use(apiRoutes).use(ssrRoutes);
 
-await app.listen({ port, hostname: host });
+try {
+  await claimPort({
+    port,
+    host,
+    listen: async () => {
+      // `reusePort: false` is load-bearing: Elysia's Bun adapter hardcodes
+      // `reusePort: true`, which lets a second server bind a port already in
+      // use and then sit invisible while the first-bound socket takes every
+      // connection.
+      await app.listen({ port, hostname: host, reusePort: false });
+    },
+  });
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(error instanceof PortInUseError ? `[ompchamber] ${message}` : `[ompchamber] could not listen on ${host}:${port} — ${message}`);
+  process.exit(1);
+} finally {
+  lock.release();
+}
+
+// The record is written by the process that owns the port, so `status`, `stop`
+// and the next `serve` see dev, foreground and daemon servers alike. A hot
+// reload re-runs this entry in the same process: keeping the first `startedAt`
+// for a PID that already recorded this port is what makes `status` report real
+// uptime instead of resetting it on every save.
+const previousRecord = readInstanceRecord(port);
+if (!writeInstanceRecord({
+  pid: process.pid,
+  port,
+  host,
+  mode,
+  launchMode,
+  startedAt: previousRecord?.pid === process.pid ? previousRecord.startedAt : new Date().toISOString(),
+  version: pkg.version,
+})) {
+  console.log('[ompchamber] instance record not written (data directory not writable) — `ompchamber status` will fall back to probing this port');
+}
+process.on('exit', () => removeInstanceRecord(port));
 
 // The listener is already accepting requests here, so the probe only postpones
 // this last banner line, never startup. Printing it after the probe keeps the

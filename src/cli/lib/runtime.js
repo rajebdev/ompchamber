@@ -1,111 +1,95 @@
-// Runtime helpers for the OMPChamber CLI: registry persistence, process
-// liveness, server entry resolution, health probing and detached spawning.
-// Bun-native file APIs are used wherever Bun ships them; node:fs remains for
-// sync directory/metadata ops and 0o600 file creation (Bun.write ignores mode).
+// Runtime helpers for the OMPChamber CLI: instance discovery, process identity,
+// server entry resolution, health probing and detached spawning.
+//
+// The instance record is written by the server that owns the port (see
+// src/server/lib/lifecycle/instance.ts), not by the CLI that spawned it, so a
+// server started by `bun run dev` or by `--foreground` is as discoverable as a
+// detached one. Discovery combines that record with a live `/api/health` probe:
+// the probe covers servers started outside the CLI, the record covers servers
+// that are alive but deaf (starting up, hung).
 
 import fs from 'node:fs';
 
-import { getLogFilePath, getRegistryPath, ensureDataDirs, getRunDir } from '@/cli/lib/paths.js';
+import { ensureDataDirs, getLogFilePath } from '@/cli/lib/paths.js';
 import { killChildTree, STOP_TIMEOUT_MS } from '@/cli/lib/process-lifecycle.js';
+import { getProcessState, isProcessAlive } from '@/server/lib/lifecycle/identity';
+import { listInstanceRecords, readInstanceRecord, removeInstanceRecord } from '@/server/lib/lifecycle/instance';
+import { fetchHealth, probeHost } from '@/server/lib/lifecycle/probe';
 import { joinPath, homeDir } from '@/cli/lib/path-utils.js';
 
 const HEALTH_INTERVAL_MS = 500;
 const HEALTH_TIMEOUT_MS = 30_000;
 
 /**
- * Read and parse the registry entry for `port`. Returns null on any error.
+ * CLI shape of a live instance, so records and probed servers print the same.
  */
-export async function readRegistry(port) {
-  try {
-    const parsed = await Bun.file(getRegistryPath(port)).json();
-    return parsed && typeof parsed === 'object' ? parsed : null;
-  } catch {
-    return null;
-  }
+function toLiveInstance({ pid, port, host, mode, launchMode, startedAt, source }) {
+  const resolvedHost = host || 'localhost';
+  return {
+    pid,
+    port,
+    host: resolvedHost,
+    mode: mode ?? 'unknown',
+    launchMode: launchMode ?? 'unknown',
+    startedAt,
+    source: source ?? 'registry',
+    logFile: getLogFilePath(port),
+    url: `http://${probeHost(resolvedHost)}:${port}`,
+  };
 }
 
 /**
- * Read every `<port>.json` registry entry in the run directory.
+ * A recorded PID counts as the instance only while it is alive *and* still
+ * identifiable: a recycled PID must not resurrect a dead instance. `unknown`
+ * (identity unreadable on this platform) is accepted so Windows keeps working.
  */
-export async function listRegistries() {
-  try {
-    const dir = getRunDir();
-    const entries = [];
-    for (const file of await fs.promises.readdir(dir)) {
-      if (!/^\d+\.json$/.test(file)) continue;
-      try {
-        const parsed = await Bun.file(joinPath(dir, file)).json();
-        if (parsed && typeof parsed === 'object') entries.push(parsed);
-      } catch {
-        // Skip unreadable or corrupt registry files.
-      }
-    }
-    return entries;
-  } catch {
-    return [];
-  }
+function isRecordLive(record) {
+  if (!record) return false;
+  return isProcessAlive(record.pid) && getProcessState(record.pid) !== 'mismatched';
 }
 
 /**
- * Atomically write a registry entry (tmp file + rename) with owner-only perms.
+ * Every recorded instance whose process is still alive. Records left behind by
+ * a killed server (SIGKILL skips its cleanup handler) are pruned here, so a
+ * recycled PID can never be reported as a running instance.
  */
-export function writeRegistry(entry) {
-  if (!entry || entry.port === undefined || entry.port === null) {
-    throw new Error('writeRegistry requires an entry with a port');
+export async function listLiveInstances() {
+  const live = [];
+  for (const record of listInstanceRecords()) {
+    if (isRecordLive(record)) live.push(toLiveInstance(record));
+    else removeInstanceRecord(record.port);
   }
-  ensureDataDirs();
-  const target = getRegistryPath(entry.port);
-  const tmp = `${target}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(entry, null, 2), { mode: 0o600 });
-  fs.renameSync(tmp, target);
-  return target;
+  // Directory order is filesystem-dependent; a port-ordered report is stable
+  // across runs and keeps multi-instance output readable.
+  live.sort((a, b) => a.port - b.port);
+  return live;
 }
 
 /**
- * Remove a registry entry. Never throws.
- */
-export async function removeRegistry(port) {
-  try {
-    await fs.promises.rm(getRegistryPath(port), { force: true });
-  } catch {
-    // Nothing to do: the registry is best-effort state.
-  }
-}
-
-/**
- * Liveness-only check for a PID. Never throws.
- */
-export function isProcessAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Registry entry whose recorded PID is alive. With no port, returns the first
- * live instance; otherwise null.
+ * The live instance on `port`, or the first live instance when no port is
+ * given. Falls back to a health probe for servers that never wrote a record.
  */
 export async function findLiveInstance(port) {
   if (port === null || port === undefined) {
-    const all = await listRegistries();
-    return all.find((entry) => entry && isProcessAlive(Number(entry.pid))) ?? null;
+    const [live] = await listLiveInstances();
+    return live ?? null;
   }
-  const entry = await readRegistry(port);
-  if (entry && isProcessAlive(Number(entry.pid))) return entry;
-  return null;
-}
 
-/**
- * Map a bind host to an address that is actually reachable for probing.
- */
-export function probeHost(host) {
-  if (host === '0.0.0.0' || host === '::' || host === '' || host === null || host === undefined) {
-    return '127.0.0.1';
-  }
-  return host;
+  const record = readInstanceRecord(port);
+  if (isRecordLive(record)) return toLiveInstance(record);
+  if (record) removeInstanceRecord(port);
+
+  const health = await fetchHealth(port, record?.host);
+  if (!health || typeof health.pid !== 'number' || !isProcessAlive(health.pid)) return null;
+  return toLiveInstance({
+    pid: health.pid,
+    port,
+    host: health.host ?? record?.host,
+    mode: health.mode,
+    launchMode: health.launchMode ?? record?.launchMode,
+    startedAt: health.startedAt,
+    source: 'probe',
+  });
 }
 
 function isBun(candidate) {
@@ -147,9 +131,12 @@ export function resolveBunBin() {
  *
  * Bun executes the TypeScript entry directly in both modes, so dev and prod
  * differ only by NODE_ENV — the client bundle in `dist/client` is required by
- * the SSR shell either way.
+ * the SSR shell either way. `--ompchamber-server` is an identity marker: it
+ * makes this process recognizable in `ps` output, which is how a starting
+ * server decides whether a busy port belongs to OMPChamber before signalling
+ * anything.
  */
-export function buildServeInvocation({ pkgRoot, mode, port, host }) {
+export function buildServeInvocation({ pkgRoot, mode, port, host, launchMode = 'daemon' }) {
   const entry = joinPath(pkgRoot, 'src', 'server', 'index.ts');
   if (!fs.existsSync(entry)) {
     throw new Error(`Could not locate the server entry at ${entry}.`);
@@ -159,25 +146,30 @@ export function buildServeInvocation({ pkgRoot, mode, port, host }) {
   }
   return {
     file: resolveBunBin(),
-    args: [entry],
+    args: [entry, '--ompchamber-server'],
     env: {
       ...Bun.env,
       NODE_ENV: mode === 'prod' ? 'production' : 'development',
       PORT: String(port),
       HOST: host,
+      OMPCHAMBER_LAUNCH_MODE: launchMode,
     },
   };
 }
 
 /**
  * Spawn a detached server, stream its output to the per-port log file and
- * persist the registry entry.
+ * return the CLI-facing entry description.
+ *
+ * The instance record is *not* written here: the server writes it once it
+ * actually owns the port, so a spawn that fails (port lost to something else)
+ * cannot leave a record pointing at a process that never served.
  */
-export function spawnDetachedServer({ pkgRoot, mode, port, host }) {
+export function spawnDetachedServer({ pkgRoot, mode, port, host, launchMode = 'daemon' }) {
   ensureDataDirs();
   const logFile = getLogFilePath(port);
   const fd = fs.openSync(logFile, 'a');
-  const { file, args, env } = buildServeInvocation({ pkgRoot, mode, port, host });
+  const { file, args, env } = buildServeInvocation({ pkgRoot, mode, port, host, launchMode });
 
   let child;
   try {
@@ -194,17 +186,19 @@ export function spawnDetachedServer({ pkgRoot, mode, port, host }) {
     fs.closeSync(fd);
   }
 
-  const entry = {
-    pid: child.pid,
-    port,
-    host,
-    mode,
-    startedAt: new Date().toISOString(),
-    logFile,
-    url: `http://${probeHost(host)}:${port}`,
+  return {
+    child,
+    entry: {
+      pid: child.pid,
+      port,
+      host,
+      mode,
+      launchMode,
+      startedAt: new Date().toISOString(),
+      logFile,
+      url: `http://${probeHost(host)}:${port}`,
+    },
   };
-  writeRegistry(entry);
-  return { child, entry };
 }
 
 function sleep(ms) {
@@ -239,7 +233,7 @@ export async function waitForHealth(port, host, timeoutMs = HEALTH_TIMEOUT_MS) {
 
 function waitForProcessExit(pid, timeoutMs) {
   if (!isProcessAlive(pid)) return Promise.resolve(true);
-  const deadline = Date.now() + Math.max(0, timeoutMs);
+  const deadline = Date.now() + timeoutMs;
   return new Promise((resolve) => {
     const tick = () => {
       if (!isProcessAlive(pid)) {
@@ -257,24 +251,40 @@ function waitForProcessExit(pid, timeoutMs) {
 }
 
 /**
- * SIGTERM the detached process group, escalate to SIGKILL after the timeout,
- * then remove the registry entry. Resolves true once the PID is gone.
+ * SIGTERM the process, escalate to SIGKILL after the timeout, then drop the
+ * instance record. Resolves true once the PID is gone.
+ *
+ * Identity is re-checked before signalling: an entry discovered by probe was
+ * confirmed by the server itself, but a record-only entry whose PID has since
+ * been recycled belongs to a stranger and is never signalled — the stale record
+ * is simply removed.
  */
 export async function stopInstance(entry, { timeoutMs = STOP_TIMEOUT_MS } = {}) {
   const port = entry?.port;
   const pid = Number(entry?.pid);
-  let gone = true;
+  const dropRecord = async () => {
+    if (port !== undefined && port !== null) removeInstanceRecord(port);
+  };
 
-  if (Number.isInteger(pid) && pid > 0 && isProcessAlive(pid)) {
-    const target = { pid, kill: (signal) => process.kill(pid, signal) };
-    killChildTree(target, false);
-    gone = await waitForProcessExit(pid, timeoutMs);
-    if (!gone) {
-      killChildTree(target, true);
-      gone = await waitForProcessExit(pid, timeoutMs);
-    }
+  if (!Number.isInteger(pid) || pid <= 0 || !isProcessAlive(pid)) {
+    await dropRecord();
+    return true;
   }
 
-  if (port !== undefined && port !== null) await removeRegistry(port);
+  const confirmedByProbe = entry?.source === 'probe' || entry?.source === 'registry+probe';
+  if (!confirmedByProbe && getProcessState(pid) !== 'matched') {
+    await dropRecord();
+    return true;
+  }
+
+  const target = { pid, kill: (signal) => process.kill(pid, signal) };
+  killChildTree(target, false);
+  let gone = await waitForProcessExit(pid, timeoutMs);
+  if (!gone) {
+    killChildTree(target, true);
+    gone = await waitForProcessExit(pid, timeoutMs);
+  }
+
+  await dropRecord();
   return gone;
 }

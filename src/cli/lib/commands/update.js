@@ -6,7 +6,7 @@
 // build.
 
 import { color, configure, error, log, ok, warn, printJson, isJson, isQuiet } from '@/cli/lib/output.js';
-import { listRegistries, findLiveInstance, isProcessAlive, stopInstance } from '@/cli/lib/runtime.js';
+import { listLiveInstances, findLiveInstance, stopInstance } from '@/cli/lib/runtime.js';
 import { STOP_TIMEOUT_MS } from '@/cli/lib/process-lifecycle.js';
 import { run as runServe } from '@/cli/lib/commands/serve.js';
 import { resolveInstallContext, resolveOmpChamberVersion, updateOmpChamber } from '@/server/lib/updates/install';
@@ -17,10 +17,7 @@ import { resolveInstallContext, resolveOmpChamberVersion, updateOmpChamber } fro
  * non-default port comes back on that same port.
  */
 async function liveInstances(options) {
-  if (options?.all) {
-    const entries = await listRegistries();
-    return entries.filter((entry) => entry && isProcessAlive(Number(entry.pid)));
-  }
+  if (options?.all) return await listLiveInstances();
   const live = await findLiveInstance(null);
   return live ? [live] : [];
 }
