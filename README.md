@@ -235,11 +235,14 @@ git push origin main --tags
 # then publish the release on GitHub → the workflow publishes to npm
 ```
 
-The workflow checks out the released tag, installs, typechecks, builds `dist/client`, fails when the
-tag and the `package.json` version disagree, then runs `bun publish`. Two things to set up once:
+The workflow checks out the released tag, installs, verifies the tag against the `package.json`
+version, typechecks, runs `bun test`, builds `dist/client`, packs a dry run, then runs `bun publish`.
+One thing to set up once:
 
-- Repo secret **`NPM_TOKEN`** — a granular npm access token with read/write on `ompchamber`.
-- GitHub environment **`npm`** — created on the first run; add required reviewers there to gate a
+- GitHub environment **`NPM_TOKEN`** with a secret of the same name — a granular npm access token
+  with read/write on `ompchamber`, 2FA bypass enabled, and the `publish and stage` action (a
+  stage-only token is rejected: Bun has no `npm stage publish`). The job declares that environment,
+  so the token is readable only by the publish workflow; add required reviewers there to gate a
   publish behind an approval.
 
 A failed publish is retried from **Actions → Publish → Run workflow**, which leaves the release

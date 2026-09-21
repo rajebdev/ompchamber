@@ -37,9 +37,11 @@ jobs:
   publish:
     name: Publish to npm
     runs-on: ubuntu-latest
-    # Add required reviewers to this environment to gate a publish behind an
-    # approval. It is created automatically on first run.
-    environment: npm
+    # The npm token lives as an environment secret on `NPM_TOKEN` (the name is
+    # the secret's, not a deployment target). Environment scope rather than a
+    # repo secret keeps the token readable only by jobs that declare it, and is
+    # where required reviewers can be added to gate a publish.
+    environment: NPM_TOKEN
     steps:
       - name: Checkout the released tag
         uses: actions/checkout@v7
