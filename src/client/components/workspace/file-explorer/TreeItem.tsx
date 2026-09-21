@@ -5,12 +5,16 @@ import { useFetcher } from '@/client/lib/router/fetcher';
 import { FileIcon } from '@/client/components/common/file-icon';
 import { FileContextMenu, FileDeleteModal, FileHistoryModal, FileRenameModal } from '@/client/components/workspace/file-explorer/Modals';
 import { getGitStatusInfo, type FolderGitStatusInfo } from '@/shared/lib/fs/git-status';
+import { toAbsolutePath } from '@/shared/lib/fs/paths';
+import { copyToClipboard } from '@/client/hooks/ui/clipboard';
 import type { GitChange } from '@/shared/types/git';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 
 interface FileTreeItemProps {
   file: any;
   rootPath?: string;
+  /** Absolute base dir of the listing (server-reported `root`), anchors Copy Path. */
+  basePath?: string;
   repo?: string;
   onLoadChildren?: (path: string) => Promise<void>;
   onOpenFile?: (file: any) => void;
@@ -24,6 +28,7 @@ interface FileTreeItemProps {
 export function FileTreeItem({
   file,
   rootPath,
+  basePath,
   repo,
   onLoadChildren,
   onOpenFile,
@@ -151,9 +156,9 @@ export function FileTreeItem({
       fd.append('path', file.path);
       submitAction(fd);
     } else if (actionType === 'copy_path') {
-      navigator.clipboard.writeText('/app/applet/examples/' + file.path);
+      void copyToClipboard(toAbsolutePath(basePath, file.path));
     } else if (actionType === 'copy_relative') {
-      navigator.clipboard.writeText(file.path);
+      void copyToClipboard(file.path);
     } else if (actionType === 'history') {
       setShowHistoryModal(true);
       const fd = new FormData();
@@ -236,6 +241,7 @@ export function FileTreeItem({
               key={child.id}
               file={child}
               rootPath={rootPath}
+              basePath={basePath}
               repo={repo}
               onLoadChildren={onLoadChildren}
               onOpenFile={onOpenFile}

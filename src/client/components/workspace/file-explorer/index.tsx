@@ -10,6 +10,10 @@ import { usePanelRefresh, useFileMutationRefresh } from '@/client/hooks/workspac
 
 export function FileExplorer({ className = '', enabled = true, rootPath, onOpenFile, refreshKey = 0, onRefresh }: { className?: string, enabled?: boolean, rootPath?: string, onOpenFile?: (file: any) => void, refreshKey?: number, onRefresh?: () => void }) {
   const [tree, setTree] = useState<any[]>([]);
+  // Absolute base dir reported by `/api/fs/dir` for the current listing — the
+  // workspace root, or the selected nested repo. Copy Path anchors on it
+  // because the client's `rootPath` may be rejected/unset.
+  const [listingRoot, setListingRoot] = useState('');
   const [searchQuery, setSearchQuery] = useSessionState<string>('files.searchQuery', '');
   const [isLoading, setIsLoading] = useState(false);
   const [storedExpandedPaths, setStoredExpandedPaths, expandedPathsReady] = useSessionState<string[]>('files.expandedPaths', []);
@@ -43,6 +47,7 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
     fetch(listUrl())
       .then(r => r.json())
       .then(data => {
+        if (typeof data.root === 'string') setListingRoot(data.root);
         if (Array.isArray(data.files)) {
           setTree(rehydrateTree(data.files, childrenCacheRef.current, expandedPaths));
         }
@@ -176,6 +181,7 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
               key={file.id}
               file={file}
               rootPath={rootPath}
+              basePath={listingRoot}
               repo={activeRepo}
               onLoadChildren={loadChildren}
               onOpenFile={onOpenFile}
