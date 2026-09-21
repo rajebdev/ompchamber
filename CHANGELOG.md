@@ -5,6 +5,78 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-09-21
+
+MOCK flips to real data by default, a missing `omp` binary refuses startup instead of degrading into
+a dashboard whose every action fails, and the MOCK chat transport drops its Gemini dependency.
+
+### Added
+
+- Startup gate: OMPChamber is a console for a **live** omp install — every agent session, config
+  read/write, session-state query and update shells out to the `omp` CLI — so the binary is now a
+  startup precondition rather than a degraded mode. `src/server/lib/omp/core/startup.ts` (new) holds
+  `ompStartupError()` (the actionable refusal) and `ompStartupLogLines()` (the executable plus the
+  `~/.omp` tree the process reads); `src/server/index.ts` runs the gate before the listener opens and
+  before `getDb()` — the database is opened lazily, so a refused start never touches it — and
+  `ompchamber serve` applies the same gate before spawning, so a failure leaves no detached child, no
+  log file and no registry entry pointing at a process that already exited. `MOCK=true` is exempt:
+  demo mode exists to run without a real install.
+- Startup banner: the resolved paths every session/agent diagnostic traces back to — data mode, omp
+  binary, config dir, agent dir, SQLite file, then the provider and model counts omp reports, with
+  `listening` last. The registry probe is a live RPC round-trip (a cold utility process takes
+  seconds), so it runs **after** the listener accepts requests: startup is never delayed, only the
+  final banner line is, and the shared utility process is left warm for the first `/api/models` call.
+  The provider count is the number of providers that actually serve a model — omp's login catalog
+  lists 75 sign-in offers, 73 of them without credentials, and counting those would report a provider
+  set the chamber cannot use — i.e. the same set `GET /api/models` groups by.
+- `fetchOmpRegistrySnapshot()` (`src/server/lib/models/provider-registry.server.ts`) extracts the two
+  RPC parses so the provider settings page and the startup banner read one implementation, guarded by
+  `DetectedLoginProvider` instead of a structural assumption about the response.
+
+### Changed
+
+- **Breaking:** `OMP_WEB_OMP_BIN` is renamed **`OMPCHAMBER_OMP_BIN`**, matching the other host
+  variables (`OMPCHAMBER_PORT`, `OMPCHAMBER_HOST`, `OMPCHAMBER_BUN`). The old name is no longer read,
+  so an explicit binary path must move to the new variable or fall back to a `PATH` lookup.
+  `README.md` and `ompchamber --help` document the requirement and the variable.
+- `MOCK` now defaults to **real data**: `isMockMode()` (`src/server/mock.server.ts`) is true only for
+  an explicit `true` / `1` / `on` / `yes`, and unset or unrecognized values run against real
+  resources. The chamber is a diagnostic console for a live omp install, so demo presets are opted
+  into rather than inherited by omission; `getMockModeInfo().rawEnv` reports `false (default)`.
+  `.env.example`, `README.md` and `DESIGN.md` document the default, and
+  `src/client/data/models/catalog.ts` now states its MOCK-only contract: `POST /api/models` in real
+  mode starts from an empty catalog instead of seeding the shipped demo rows, so a demo model can
+  never be persisted into a real install's stored catalog.
+- MOCK chat streaming no longer calls a real Gemini endpoint — `onStart` always runs the simulated
+  handler, so the demo transport has no network dependency and no API key to configure. The
+  `!isMockMode()` 400 guard on `POST /api/chat/stream` is unchanged: real mode still has no streaming
+  endpoint.
+
+### Fixed
+
+- Files panel: **Copy Path** copied a hard-coded template prefix —
+  `'/app/applet/examples/' + file.path` — so every entry produced a path that resolves nowhere outside
+  the original applet sandbox. The listing's absolute base was already in the payload (`/api/fs/dir`
+  answers `root: baseDir`, the resolved workspace root or the selected `repo=` directory) and the
+  client now keeps it in `listingRoot`, threading it down through `FileTreeItem`'s own child recursion
+  as `basePath` so the base travels with the tree instead of being re-derived per node.
+  `toAbsolutePath()` (`src/shared/lib/fs/paths.ts`, new) joins base and relative path with the base's
+  own separator, strips only `/` and `./` prefixes — a dot-file name such as `.env` survives — and
+  falls back to the relative path when no base is known, so a rejected listing degrades instead of
+  inventing a root; anchoring on the server-resolved base also means a `~`-relative or
+  allow-list-rejected client `rootPath` cannot yield a wrong absolute path. Both copy actions now go
+  through `copyToClipboard()`, whose textarea fallback keeps copying working on an insecure origin
+  where `navigator.clipboard` is undefined. Copy Relative Path is unchanged.
+
+### Removed
+
+- `@google/genai` — the SDK, its `GEMINI_API_KEY` env read and the dead handler that used them.
+  `handleGeminiStreaming()` is deleted from `src/shared/lib/chat/stream-service.ts`, the real-Gemini
+  branch from `src/server/routes/chat/stream.ts`, the key block from `.env.example`, and
+  `MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API` from `metadata.json`. Provider model names in the catalogs
+  and the generic `?key=` model-list probe in `routes/settings/provider-models.ts` are unrelated and
+  untouched.
+
 ## [0.4.0] — 2026-09-21
 
 ### Added
@@ -214,6 +286,7 @@ Initial public snapshot on the Remix + React + Vite stack.
 - SQLite-backed settings, and the `MOCK=true` / `MOCK=false` demo-versus-real data modes.
 - `ompchamber` CLI: `serve`, `stop`, `restart`, `status`, `logs`.
 
+[0.5.0]: https://github.com/rajebdev/ompchamber/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/rajebdev/ompchamber/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/rajebdev/ompchamber/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/rajebdev/ompchamber/compare/v0.1.0...v0.2.0

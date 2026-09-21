@@ -14,7 +14,7 @@
   <a href="https://elysiajs.com"><img alt="Server: Elysia 1.4" src="https://img.shields.io/badge/server-Elysia%201.4-6f42c1"></a>
   <a href="https://preactjs.com"><img alt="UI: Preact 10" src="https://img.shields.io/badge/UI-Preact%2010-673ab7?logo=preact&logoColor=white"></a>
   <a href="https://rsbuild.dev"><img alt="Build: Rsbuild 2" src="https://img.shields.io/badge/build-Rsbuild%202-eab308"></a>
-  <a href="package.json"><img alt="Version: 0.4.0" src="https://img.shields.io/badge/version-0.4.0-3f3f46"></a>
+  <a href="package.json"><img alt="Version: 0.5.0" src="https://img.shields.io/badge/version-0.5.0-3f3f46"></a>
 </p>
 
 <p align="center">
@@ -234,7 +234,7 @@ Publishing is driven by **GitHub releases**, never by a push
 ([`.github/workflows/publish.yml`](.github/workflows/publish.yml)):
 
 ```bash
-bun pm version minor -m "chore(release): v%s"   # bump + commit + tag v0.4.0
+bun pm version minor -m "chore(release): v%s"   # bump + commit + tag v0.5.0
 git push origin main --tags
 # then publish the release on GitHub → the workflow publishes to npm
 ```
