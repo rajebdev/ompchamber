@@ -21,6 +21,7 @@
 
 import { Elysia, t } from 'elysia';
 import { createEventCoalescer, type EventCoalescer } from '@/server/lib/sse';
+import { STREAM_HEARTBEAT_MS } from '@/shared/lib/workspace/refresh-cadence';
 
 /** Coalesce `message_update` frames once this many bytes sit unsent. */
 const HIGH_WATER_BYTES = 256 * 1024;
@@ -28,8 +29,6 @@ const HIGH_WATER_BYTES = 256 * 1024;
 /** Longest a coalesced frame may wait before it is flushed anyway, so a burst
  *  that ends while the socket is still busy never strands the newest update. */
 const FLUSH_DELAY_MS = 50;
-
-const HEARTBEAT_MS = 30_000;
 
 interface AgentEventSession {
   isAlive?: () => boolean;
@@ -136,7 +135,7 @@ export const agentWsRoutes = new Elysia({ prefix: '/api/agent' }).ws('/:sessionI
       } catch {
         teardown();
       }
-    }, HEARTBEAT_MS);
+    }, STREAM_HEARTBEAT_MS);
 
     state.unsubscribe = session.onEvent((event) => state.coalescer?.push('', event));
     state.coalescer.push('', { type: 'connected', sessionId });

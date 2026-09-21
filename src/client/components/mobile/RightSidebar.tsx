@@ -3,6 +3,7 @@ import { Suspense } from 'preact/compat';
 import { BarChart3, Bot, Files, GitBranch, Globe, Layers, Search, Terminal, X } from 'lucide-preact';
 import { LazyBrowserPanel, LazyContextPanel, LazyFileExplorer, LazyGitPanel, LazySearchPanel, LazyTerminalPanel, LazyUsagePanel, LazyUserBrowserPanel } from '@/client/components/common/lazy-panels';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
+import { GIT_STATUS_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
 
 interface MobileRightSidebarProps {
   enabled?: boolean;
@@ -28,7 +29,7 @@ export function MobileRightSidebar({
   // Same source the desktop activity bar uses, so the "uncommitted changes"
   // dot means the same thing on both layouts. Polls only while this drawer is
   // the mounted screen — the poll itself is visibility-gated by the hook.
-  const { changes } = useGitStatus(rootPath, '.', refreshKey, enabled, 15000);
+  const { changes } = useGitStatus(rootPath, '.', refreshKey, enabled, GIT_STATUS_POLL_MS);
   const hasGitChanges = changes.length > 0;
 
   return (

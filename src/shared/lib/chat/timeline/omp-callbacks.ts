@@ -107,12 +107,9 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
       if (sid) {
         // Sidebar signal on EVERY run start — the metaRefreshedRef guard below
         // is once-per-session (title refresh), but the sidebar must revalidate
-        // each time to pick up the server's `stream` status row.
+        // each time to pick up the server's `stream` status row. The sidebar's
+        // revalidation throttle is leading-edge, so the spinner does not lag.
         window.dispatchEvent(new CustomEvent('omp:session-updated', { detail: { sessionId: sid } }));
-        // Immediate (unthrottled) start signal: the throttled event above lands
-        // ~1s later, so the sidebar's spinner would lag the run. The provider
-        // refreshes the list directly on this one.
-        window.dispatchEvent(new CustomEvent('omp:session-stream-start', { detail: { sessionId: sid } }));
         if (metaRefreshedRef.current !== sid) {
           metaRefreshedRef.current = sid;
           setTimeout(() => refreshSessionMeta(sid), 100);

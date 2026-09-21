@@ -33,9 +33,7 @@ import { openScreencast, type ScreencastHandle } from '@/shared/lib/browser/view
 import { type TargetWatcherHandle, watchOwnedTargets } from '@/shared/lib/browser/watcher';
 import type { BrowserPanelAction, BrowserViewFrame, BrowserViewState } from '@/shared/types';
 import { createSseStream } from '@/server/lib/sse';
-
-const POLL_INTERVAL_MS = 1_000;
-const HEARTBEAT_INTERVAL_MS = 30_000;
+import { BROWSER_POLL_MS, STREAM_HEARTBEAT_MS } from '@/shared/lib/workspace/refresh-cadence';
 
 const BROWSER_OFFLINE: BrowserViewState = { status: 'browser-offline', tabs: [] };
 
@@ -46,7 +44,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   let closed = false;
 
   const stream = createSseStream({
-    heartbeatMs: HEARTBEAT_INTERVAL_MS,
+    heartbeatMs: STREAM_HEARTBEAT_MS,
     signal: request.signal,
     headers: { 'Cache-Control': 'no-cache, no-transform' },
     onStart(handlers) {
@@ -208,7 +206,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
       pollTimer = setInterval(() => {
         void tick();
-      }, POLL_INTERVAL_MS);
+      }, BROWSER_POLL_MS);
       void tick();
 
       return cleanup;

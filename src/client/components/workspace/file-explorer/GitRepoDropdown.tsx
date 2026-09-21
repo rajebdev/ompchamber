@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Check, ChevronDown, FolderGit2, RotateCcw, Search } from 'lucide-preact';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
+import { REPO_DISCOVERY_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
 
 interface GitRepoDropdownProps {
   rootPath?: string;
@@ -56,7 +57,7 @@ export function GitRepoDropdown({ rootPath, activeRepo, onSelectRepo }: GitRepoD
         setRepos(data.repos);
         setScanning(false);
       }
-    }, 1500);
+    }, REPO_DISCOVERY_POLL_MS);
     return () => clearInterval(id);
   }, [scanning, rootPath]);
 

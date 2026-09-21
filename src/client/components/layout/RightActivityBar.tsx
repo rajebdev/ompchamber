@@ -1,5 +1,6 @@
 import { BarChart3, Bot, Files, GitBranch, Globe, Layers, Search, Terminal } from 'lucide-preact';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
+import { GIT_STATUS_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
 import type { RightPanelType } from '@/shared/lib/workspace/right-panels';
 
 interface RightActivityBarProps {
@@ -12,7 +13,7 @@ interface RightActivityBarProps {
 }
 
 export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen, hasActiveContext, activeProjectPath, refreshKey }: RightActivityBarProps) {
-  const { changes } = useGitStatus(activeProjectPath ?? undefined, '.', refreshKey, hasActiveContext, 15000);
+  const { changes } = useGitStatus(activeProjectPath ?? undefined, '.', refreshKey, hasActiveContext, GIT_STATUS_POLL_MS);
   const hasGitChanges = changes.length > 0;
   const getBtnClass = (panel: RightPanelType) => {
     const base = "relative w-full h-10 flex items-center justify-center transition-colors border-l-2";

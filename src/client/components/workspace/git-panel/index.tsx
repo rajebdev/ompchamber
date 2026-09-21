@@ -11,6 +11,7 @@ import { ToastStack } from '@/client/components/common/ToastStack';
 import { useToasts } from '@/client/hooks/ui/toasts';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { usePanelRefresh, useFileMutationRefresh } from '@/client/hooks/workspace/panel-refresh';
+import { REPO_DISCOVERY_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 
 interface GitPanelProps {
@@ -122,7 +123,7 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
         setRescanningRepos(false);
         loadRepo(storedActiveRepo);
       }
-    }, 1500);
+    }, REPO_DISCOVERY_POLL_MS);
     return () => clearInterval(id);
   }, [pollingRepos, rootPath, storedActiveRepo]);
 

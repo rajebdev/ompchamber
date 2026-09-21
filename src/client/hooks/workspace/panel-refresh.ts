@@ -1,13 +1,10 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { FILE_MUTATION_EVENT } from '@/shared/lib/chat/omp/file-mutations';
 import { useVisibilityRefresh } from '@/client/hooks/ui/visibility-refresh';
-
-/**
- * Cadence (ms) the data-bearing right panels re-read their source at. Panels
- * are mounted only while active, so polling only ever runs for the open panel
- * (chat is exempt — it is live via the agent stream, not polling).
- */
-export const PANEL_REFRESH_MS = 2000;
+import {
+  FILE_MUTATION_THROTTLE_MS,
+  PANEL_REFRESH_MS,
+} from '@/shared/lib/workspace/refresh-cadence';
 
 /**
  * Re-invokes `callback` every `intervalMs` while `enabled`. The latest
@@ -20,7 +17,7 @@ export const PANEL_REFRESH_MS = 2000;
  * A tick is skipped while the previous invocation is still running. Some
  * panels do genuinely slow work — a `grep -r` over a multi-GB workspace can
  * take tens of seconds — and the panel's fetcher aborts its previous request
- * whenever a new one starts, so an unguarded 2s tick would cancel every search
+ * whenever a new one starts, so an unguarded tick would cancel every search
  * before it could finish and the panel would sit on "Searching..." forever.
  *
  * Polling also pauses while the document is hidden (background tab, mobile
@@ -37,15 +34,11 @@ export function usePanelRefresh(
   useVisibilityRefresh(callback, { enabled, intervalMs, guardInFlight: true });
 }
 
-/** Coalescing window (ms) for back-to-back mutation events; mirrors the
- *  sidebar's `useSidebarRevalidation` trailing throttle. */
-const FILE_MUTATION_THROTTLE_MS = 500;
-
 /**
  * Event-driven companion to `usePanelRefresh`: re-invokes `callback` shortly
  * after `omp:files-mutated` fires — the chat fold dispatches it when a
  * file-mutating tool (edit / write / ast_edit / bash) completes. Panels keep
- * their poll as the belt; this just removes the up-to-2s staleness after an
+ * their poll as the belt; this just removes the up-to-5s staleness after an
  * AI edit. Same in-flight guard and visibility pause as the poll. Throttled
  * because a bash that touches many files still ends once, but a burst of
  * quick tool calls should collapse to one re-read.

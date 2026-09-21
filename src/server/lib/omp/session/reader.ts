@@ -23,6 +23,7 @@ import { listAllSessionInfos, type OmpSessionInfo } from '@/server/lib/omp/sessi
 import { loadProjectRegistry, mergeProjects } from '@/server/lib/omp/core/registry';
 import { resolveProjectRoot } from '@/server/lib/omp/core/worktree';
 import { getAgentDir, getSessionsDir, pathExists } from '@/server/lib/omp/core/paths';
+import { SIDEBAR_DATA_TTL_MS } from '@/shared/lib/workspace/refresh-cadence';
 import type { OmpProject, OmpSession, OmpSidebarData } from '@/shared/types/omp/session';
 
 const CONCURRENCY = 6;
@@ -37,13 +38,12 @@ declare global {
 }
 
 /**
- * Per-process SWR cache for the sidebar dataset. The loader revalidates on
+ * Per-process TTL cache for the sidebar dataset. The loader revalidates on
  * every stream event; deduplicating concurrent requests and re-serving a
- * snapshot for up to 5s turns a burst of revalidations into one disk scan
- * (4 KiB prefix per session file) instead of one scan each.
+ * snapshot for a few seconds turns a burst of revalidations into one disk scan
+ * (4 KiB prefix per session file) instead of one scan each. The TTL sits just
+ * under the fastest sidebar poll so a poll misses deterministically.
  */
-const SIDEBAR_DATA_SWR_MS = 5000;
-
 export async function loadOmpSidebarData(): Promise<OmpSidebarData> {
   let slot = globalThis.__ompChamberSidebarDataCache;
   if (!slot) {
@@ -136,7 +136,7 @@ async function buildOmpSidebarData(): Promise<OmpSidebarData> {
   const slot = globalThis.__ompChamberSidebarDataCache;
   if (slot) {
     slot.data = data;
-    slot.expiresAt = Date.now() + SIDEBAR_DATA_SWR_MS;
+    slot.expiresAt = Date.now() + SIDEBAR_DATA_TTL_MS;
   }
   return data;
 }

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { GitChange } from '@/shared/types/git';
 import { buildGitStatusMaps } from '@/shared/lib/fs/git-status';
 import { useVisibilityRefresh } from '@/client/hooks/ui/visibility-refresh';
-import { useDocumentEvent, useWindowEvent } from '@/client/hooks/ui/window-event';
+import { useChamberEvent, useDocumentEvent, useWindowEvent } from '@/client/hooks/ui/window-event';
+import { GIT_STATUS_EVENT_THROTTLE_MS } from '@/shared/lib/workspace/refresh-cadence';
 
 export function useGitStatus(
   rootPath?: string,
@@ -52,6 +53,27 @@ export function useGitStatus(
   useDocumentEvent('visibilitychange', () => {
     if (enabled) loadGitStatus();
   });
+
+  // An agent run rewrites the working tree, and a workspace binding change
+  // re-roots it — both are worth a re-read without waiting out the poll.
+  // Coalesced through one trailing timer: a run emits `omp:session-updated`
+  // more than once and every instance of this hook listens, so firing per event
+  // would spawn several `git status` processes for a single run.
+  const eventTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const scheduleEventRefresh = useCallback(() => {
+    if (!enabled || eventTimerRef.current !== undefined) return;
+    eventTimerRef.current = setTimeout(() => {
+      eventTimerRef.current = undefined;
+      loadGitStatus();
+    }, GIT_STATUS_EVENT_THROTTLE_MS);
+  }, [enabled, loadGitStatus]);
+
+  useEffect(() => () => {
+    if (eventTimerRef.current !== undefined) clearTimeout(eventTimerRef.current);
+  }, []);
+
+  useChamberEvent('omp:session-updated', scheduleEventRefresh);
+  useChamberEvent('omp:workspace-updated', scheduleEventRefresh);
 
   const { fileMap, folderMap } = useMemo(() => {
     return buildGitStatusMaps(changes);

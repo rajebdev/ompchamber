@@ -28,8 +28,8 @@ import { OBSERVER_BINDING, installObserver, parseObserverPayload, type ObserverH
 import { ownedPages, parsePageTargets, pickTargetId, readTargetInfoPatch, type PageTarget } from '@/shared/lib/browser/targets';
 import { readNumber, readString } from '@/shared/lib/browser/util';
 import { isRecord } from '@/shared/lib/util/guards';
+import { BROWSER_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
 
-const POLL_INTERVAL_MS = 1_000;
 const SCREENCAST_PARAMS = {
   format: 'jpeg',
   quality: 60,
@@ -108,7 +108,7 @@ class ScreencastSession {
     if (this._closed) return;
     this.pollTimer = setInterval(() => {
       void this.tick();
-    }, POLL_INTERVAL_MS);
+    }, BROWSER_POLL_MS);
   }
 
   close(): void {

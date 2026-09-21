@@ -22,6 +22,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preac
 
 import type { ChatMessageData } from '@/shared/types';
 import { normalizeNoticePositions } from '@/shared/lib/chat/order';
+import { SESSION_META_RETRY_SCHEDULE_MS } from '@/shared/lib/workspace/refresh-cadence';
 
 export interface SessionDataShape {
   id?: string;
@@ -96,34 +97,31 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
 
   /** Re-fetch the session's title/metadata after the omp JSONL has been
    *  written (spawn or agent end) so the navbar and context panel show the
-   *  real session title instead of the default. Retries (fast) until the JSONL
-   *  actually carries messages (omp writes the user turn on agent start), so
-   *  the sidebar refresh lands as soon as the first chunk arrives. */
+   *  real session title instead of the default. Retries on a front-loaded
+   *  backoff until the JSONL actually carries messages (omp writes the user
+   *  turn on agent start). */
   const refreshSessionMeta = useCallback((sid: string) => {
     // The URL lags the adopted id right after a fresh spawn, so accept either.
     const isActive = () => sessionIdRef.current === sid || adoptedSessionIdRef.current === sid;
     if (!isActive()) return;
-    let attempts = 0;
+    let attempt = 0;
     const tryFetch = () => {
       if (!isActive()) return;
-      attempts += 1;
       fetch(`/api/chat/${encodeURIComponent(sid)}`)
         .then(res => res.json())
         .then(data => {
           if (!data?.session || !isActive()) return;
           applySessionData(data.session);
-          // Signal the sidebar on every poll until the JSONL carries the user
-          // turn, then keep polling (20s) until it does. A just-spawned omp
-          // process often writes its JSONL slightly AFTER agent_start, so the
-          // first fetches see zero messages: dispatching only in the
-          // messages>0 branch stranded the refresh when the revalidation ran
-          // early — the sidebar kept the pending "New Session - timestamp"
-          // row until some later event happened to fire.
-          window.dispatchEvent(new CustomEvent('omp:session-updated', { detail: { sessionId: sid } }));
-          if ((data.session.messages?.length ?? 0) > 0) return;
-          if (attempts < 40) {
-            setTimeout(tryFetch, 500);
+          // Signal the sidebar only on a settled read: the early attempts of a
+          // fresh spawn see zero messages, and dispatching on those would reset
+          // the sidebar's throttle window for the whole spawn.
+          if ((data.session.messages?.length ?? 0) > 0) {
+            window.dispatchEvent(new CustomEvent('omp:session-updated', { detail: { sessionId: sid } }));
+            return;
           }
+          const delay = SESSION_META_RETRY_SCHEDULE_MS[attempt];
+          attempt += 1;
+          if (delay !== undefined) setTimeout(tryFetch, delay);
         })
         .catch(() => {});
     };

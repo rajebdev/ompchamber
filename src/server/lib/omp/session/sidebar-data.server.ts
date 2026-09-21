@@ -20,11 +20,9 @@ import { getDb } from '@/server/db.server';
 import { isMockMode } from '@/server/mock.server';
 import { isValidSessionSortOption, sortFolders } from '@/shared/lib/workspace/sidebar-sort';
 import { loadOmpSidebarData } from '@/server/lib/omp/session/reader';
+import { sessionHasSubagents } from '@/server/lib/omp/session/subagent-presence';
 import { healStaleStreamStatuses, loadStreamStatuses } from '@/shared/lib/omp/session/stream-state.server';
 import { getRunningRpcSessionIds } from '@/server/lib/omp/rpc/session-registry';
-import { siblingDirForSession } from '@/server/lib/omp/subagent/history/paths';
-import { extractSubagentHistory } from '@/server/lib/omp/subagent/history';
-import { pathExists } from '@/server/lib/omp/core/paths';
 import type { SessionItemData, SessionSortOption, WorkspaceFolderData } from '@/shared/types';
 import type { OmpSession } from '@/shared/types/omp/session';
 
@@ -160,28 +158,14 @@ async function buildRealFolders(folderRows: FolderRow[], archivedIds: Set<string
 
   const data = await loadOmpSidebarData();
   const sessionsByRoot = groupSessionsByRoot(data.sessions);
-  const fsp = await import('fs');
 
   return Promise.all(folderRows.map(async (folder) => {
     const root = folder.project_path ?? '';
     const rootSessions: OmpSession[] = root ? sessionsByRoot.get(root) ?? [] : [];
     const folderSessions = await Promise.all(rootSessions.map(async (session: OmpSession) => {
-      let hasSub = false;
-      if (session.path) {
-        try {
-          const siblingDir = siblingDirForSession(session.path);
-          if (await pathExists(siblingDir)) {
-            const files = await fsp.promises.readdir(siblingDir);
-            hasSub = files.some((f) => f.endsWith('.jsonl'));
-          }
-          if (!hasSub) {
-            const subs = await extractSubagentHistory(session.path);
-            hasSub = subs.length > 0;
-          }
-        } catch {
-          hasSub = false;
-        }
-      }
+      const hasSub = session.path
+        ? await sessionHasSubagents(session.path, session.modified)
+        : false;
       return {
         id: session.id,
         folder_id: folder.id,

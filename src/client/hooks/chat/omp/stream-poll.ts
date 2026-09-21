@@ -16,10 +16,8 @@
  */
 
 import { useEffect, useRef } from 'preact/hooks';
+import { SIDEBAR_STREAM_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
 import type { SessionStreamStatus } from '@/client/hooks/chat/omp/session-statuses';
-
-/** Poll cadence while any session is streaming (ms). */
-const STREAM_POLL_MS = 5000;
 
 export function useStreamPoll(
   sessionStatus: Record<string, SessionStreamStatus>,
@@ -33,7 +31,7 @@ export function useStreamPoll(
   useEffect(() => {
     const id = setInterval(() => {
       if (hasStreamingRef.current) revalidateRef.current();
-    }, STREAM_POLL_MS);
+    }, SIDEBAR_STREAM_POLL_MS);
     return () => clearInterval(id);
   }, []);
 }

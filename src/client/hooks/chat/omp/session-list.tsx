@@ -9,9 +9,10 @@
  * consumer (desktop sidebar, mobile sidebar, chat timeline, layout headers)
  * shares one in-flight request and one `folders` snapshot.
  *
- * Refresh contract: the throttled stream-event hook, the 5s stream poll, the
- * status-ack hook, and per-item mutations all call `refresh()` — a plain
- * `fetcher.load` that no longer revalidates the whole document route.
+ * Refresh contract: the leading+trailing throttled stream-event hook, the
+ * stream poll, the status-ack hook, and per-item mutations all call
+ * `refresh()` — a plain `fetcher.load` that no longer revalidates the whole
+ * document route.
  */
 
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'preact/hooks';
@@ -19,11 +20,9 @@ import { createContext } from 'preact/compat';
 import type { ReactNode } from 'preact/compat';
 import { useFetcher } from '@/client/lib/router/fetcher';
 import { usePanelRefresh } from '@/client/hooks/workspace/panel-refresh';
+import { SIDEBAR_IDLE_REFRESH_MS } from '@/shared/lib/workspace/refresh-cadence';
 import type { WorkspaceFolderData } from '@/shared/types';
 import type { SessionListPayload } from '@/server/lib/omp/session/sidebar-data.server';
-
-/** Slow keep-alive cadence (ms) for external changes while nothing streams. */
-const SIDEBAR_IDLE_REFRESH_MS = 15000;
 
 export interface SidebarDataHandle {
   folders: WorkspaceFolderData[];
@@ -80,16 +79,15 @@ export function SidebarDataProvider({ children, initialFolders = [] }: { childre
   // never surfaced until the user interacted. A slow poll closes that gap;
   // the idle-check above keeps it from piling onto a load the event path
   // just started.
-  usePanelRefresh(refresh, true, SIDEBAR_IDLE_REFRESH_MS);
-
-  // Immediate refresh when an AI response starts (agent_start): the throttled
-  // `omp:session-updated` path lands ~1s later, so the session's `stream`
-  // status row (spinner) would lag the run. One fetch per run start; the
-  // in-flight guard inside `refresh` dedups against the throttled path.
-  useEffect(() => {
-    window.addEventListener('omp:session-stream-start', refresh);
-    return () => window.removeEventListener('omp:session-stream-start', refresh);
-  }, [refresh]);
+  //
+  // Gated off while anything streams: `useStreamPoll` already covers that
+  // state on a tighter cadence, so the idle tick would be pure overlap.
+  const hasStreaming = Boolean(
+    fetcher.data?.folders?.some((folder) =>
+      folder.sessions?.some((session) => session.streamStatus === 'stream'),
+    ),
+  );
+  usePanelRefresh(refresh, !hasStreaming, SIDEBAR_IDLE_REFRESH_MS);
 
   const markSeen = useCallback((sessionId: number | string) => {
     const key = String(sessionId);
