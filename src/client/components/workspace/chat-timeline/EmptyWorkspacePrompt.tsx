@@ -22,8 +22,9 @@ interface EmptyWorkspacePromptProps {
   appSettings?: Record<string, any>;
   /** Messages of the pending session: rendered above the input so the
    *  optimistic user bubble shows immediately on send (before the omp spawn
-   *  completes and the real session timeline takes over). */
-  localMessages?: ChatMessageData[];
+   *  completes and the real session timeline takes over). Rendered in array
+   *  order — no display-side reordering. */
+  messages?: ChatMessageData[];
   provider?: string;
   providerNames?: Record<string, string>;
   modelName?: string;
@@ -52,7 +53,7 @@ export function EmptyWorkspacePrompt({
   onSend,
   isGenerating,
   appSettings = {},
-  localMessages = [],
+  messages = [],
   provider,
   providerNames,
   modelName,
@@ -81,7 +82,7 @@ export function EmptyWorkspacePrompt({
     if (timelineRef.current) {
       timelineRef.current.scrollTop = timelineRef.current.scrollHeight;
     }
-  }, [localMessages.length]);
+  }, [messages.length]);
 
   return (
     <div className={`flex flex-col h-full bg-canvas ${variant === 'mobile' ? 'px-3 py-4' : 'p-8'} ${className}`}
@@ -89,13 +90,13 @@ export function EmptyWorkspacePrompt({
     >
       <div
         className={`mx-auto w-full max-w-[970px] flex flex-col min-h-0 space-y-3 ${
-          localMessages.length > 0 ? 'flex-1' : 'my-auto justify-center'
+          messages.length > 0 ? 'flex-1' : 'my-auto justify-center'
         }`}
       >
         {/* Workspace Selection Seamless Dropdown (No border, transparent
             background). Hidden once a chat has been sent — the session now has
             a target workspace, so the composer is the only focus. */}
-        {localMessages.length === 0 && (
+        {messages.length === 0 && (
           <div className="relative shrink-0" ref={workspaceRef}>
           <button 
             type="button"
@@ -147,22 +148,22 @@ export function EmptyWorkspacePrompt({
             on send, then the real session (UUID) takes over the ChatTimeline.
             Only shown when there are messages so the empty composer stays
             centered next to the workspace picker. */}
-        {localMessages.length > 0 && (
+        {messages.length > 0 && (
           <div
             ref={timelineRef}
             className="flex-1 min-h-0 overflow-y-auto scroll-smooth overscroll-contain"
           >
             <div className="mx-auto w-full max-w-[970px]">
-              {localMessages.map((msg, idx) => {
-                const prev = localMessages[idx - 1];
-                let lastAiIdx = localMessages.length - 1;
-                while (lastAiIdx >= 0 && localMessages[lastAiIdx].notice) lastAiIdx--;
+              {messages.map((msg, idx) => {
+                const prev = messages[idx - 1];
+                let lastAiIdx = messages.length - 1;
+                while (lastAiIdx >= 0 && messages[lastAiIdx].notice) lastAiIdx--;
                 const isLoading = isGenerating && idx === lastAiIdx && msg.role === 'ai';
                 const isAiFragment = msg.role !== 'user' && prev && prev.role !== 'user';
                 // Notice rows are transparent for footer purposes — the last
                 // real AI message of a run still owns the footer (mirror
                 // ChatTimeline) and the notice itself never gets one.
-                const nextReal = localMessages.slice(idx + 1).find(m => !m.notice);
+                const nextReal = messages.slice(idx + 1).find(m => !m.notice);
                 const isLastAi = msg.role !== 'user' && !msg.notice && (!nextReal || nextReal.role === 'user');
                 return (
                   <ChatMessageItem

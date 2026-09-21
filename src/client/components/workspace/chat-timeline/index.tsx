@@ -16,7 +16,6 @@ import { useModelNames } from '@/client/hooks/models/use-model-names';
 import { useProviderNames } from '@/client/hooks/models/use-provider-names';
 import { useToasts } from '@/client/hooks/ui/toasts';
 import { ToastStack } from '@/client/components/common/ToastStack';
-import { normalizeNoticePositions } from '@/shared/lib/chat/order';
 import { composerRootFor } from '@/shared/lib/workspace/active-project';
 import { useSidebarData } from '@/client/hooks/chat/omp/session-list';
 
@@ -125,8 +124,6 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
     ? (modelNames[sessionData.model.modelId] ?? sessionData.model.modelId)
     : sessionData?.model;
 
-  const orderedMessages = useMemo(() => normalizeNoticePositions(localMessages), [localMessages]);
-
   // A pending "new-…" session has no messages yet, so the workspace picker
   // must stay available until the first chat is sent (which spawns the real
   // omp session). Never lock the user into a folder before sending.
@@ -137,7 +134,7 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
   // covers the whole chat timeline (body + composer) so a session switch shows
   // one coherent placeholder instead of a half-drawn view. Skipped while an
   // optimistic send owns the tail (fresh spawn adoption must keep its bubbles).
-  const showFullSkeleton = !isPendingSession && sessionLoading && orderedMessages.length === 0;
+  const showFullSkeleton = !isPendingSession && sessionLoading && localMessages.length === 0;
 
   if (!sessionId || isPendingSession) {
     return (
@@ -154,7 +151,7 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
         onSend={handleSend}
         isGenerating={isGenerating}
         appSettings={appSettings}
-        localMessages={localMessages}
+        messages={localMessages}
         provider={sessionProvider}
         providerNames={providerNames}
         modelName={sessionModelName}
@@ -201,7 +198,7 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
                 hasMore={hasMore}
                 loadOlderError={loadOlderError}
                 loadOlder={loadOlder}
-                messages={orderedMessages}
+                messages={localMessages}
                 isGenerating={isGenerating}
                 provider={sessionProvider}
                 providerNames={providerNames}

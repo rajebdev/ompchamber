@@ -240,7 +240,7 @@ ompchamber/
 │   │   └── lib/                       #   ported from the 107 client-safe app/lib files
 │   ├── shared/                        # types + pure helpers used by BOTH sides
 │   │   ├── types/                     #   moved from app/types/**
-│   │   └── lib/                       #   e.g. chat/order.ts, workspace/panel-widths.ts
+│   │   └── lib/                       #   e.g. chat/title-case.ts, workspace/panel-widths.ts
 │   ├── ssr/
 │   │   └── entry-server.tsx           #   renderToString(<App/>) + theme injection
 │   └── cli/                           #   moved from bin/**

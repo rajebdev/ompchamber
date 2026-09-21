@@ -143,7 +143,7 @@ Bun implements `node:*` builtins natively — they do **not** shell out to a Nod
   - `import { ChatTimeline } from '@/client/components/workspace/chat-timeline';` (folder entry)
   - `import { Header } from '@/client/components/workspace/model-dropdown/Header';`
   - `import { useChatTimeline } from '@/client/hooks/chat/timeline';`
-  - `import { normalizeNoticePositions } from '@/shared/lib/chat/order';`
+  - `import { toTitleCase } from '@/shared/lib/chat/title-case';`
 - The only intentional barrel is `src/shared/types/index.ts` (the central type barrel).
 
 ### 4. Absolute Imports via `@/` Alias (No Relative Imports)
