@@ -5,6 +5,16 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Ordering: nothing reorders messages any more — neither the API nor the UI. `GET
+  /api/chat/:sessionId` returns the session's messages in **file order**, and the timeline renders that
+  array as-is, so a notice row appears exactly where omp wrote it. The server-side notice/turn swap,
+  the five scattered display-side copies (`session-load` fetch + older-page prepend, rollback
+  refetch, optimistic send, live stream folding) and `src/shared/lib/chat/order.ts` are gone.
+
 ## [0.3.0] — 2026-09-21
 
 ### Added
