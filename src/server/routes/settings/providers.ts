@@ -57,7 +57,11 @@ async function setProviderEnabled(slug: string, enabled: boolean): Promise<Respo
     const target = slug.trim().toLowerCase();
     const updated = stored.map((provider) => (
       provider.slug.trim().toLowerCase() === target
-        ? { ...provider, status: enabled ? ('connected' as const) : ('disconnected' as const) }
+        ? {
+            ...provider,
+            status: enabled ? ('connected' as const) : ('disconnected' as const),
+            disabled: !enabled,
+          }
         : provider
     ));
     await writeStoredProviders(updated);

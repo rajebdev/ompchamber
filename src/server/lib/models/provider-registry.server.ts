@@ -61,12 +61,14 @@ async function loadRpcProviderItems(): Promise<ProviderItem[]> {
 
     const items = loginProviders.map((provider) => {
       const providerModels = available.filter((model) => model.provider === provider.id);
+      const isDisabled = disabled.has(provider.id);
       return {
         id: `omp-auth-${provider.id}`,
         name: provider.name,
         slug: provider.id,
         icon: 'plug',
-        status: (provider.authenticated && !disabled.has(provider.id) ? 'connected' : 'disconnected') as ProviderItem['status'],
+        status: (provider.authenticated && !isDisabled ? 'connected' : 'disconnected') as ProviderItem['status'],
+        disabled: isDisabled,
         configuredIn: 'omp auth credentials',
         models: providerModels.map((model) => ({
           id: model.id,
@@ -98,6 +100,7 @@ function disabledProviderItem(slug: string): ProviderItem {
     slug,
     icon: 'plug',
     status: 'disconnected',
+    disabled: true,
     configuredIn: 'omp disabledProviders',
     models: [],
   };
@@ -118,7 +121,7 @@ function nativeProviderItem(
     reasoning?: boolean;
     imageInput?: boolean;
   }>,
-  status: ProviderItem['status'] = 'connected',
+  isDisabled = false,
 ): ProviderItem {
   const models = nativeModels.map((model) => ({
     id: model.id,
@@ -137,7 +140,8 @@ function nativeProviderItem(
     name: slug,
     slug,
     icon: 'plug',
-    status,
+    status: isDisabled ? 'disconnected' : 'connected',
+    disabled: isDisabled,
     configuredIn: baseUrl ? `models.yml · ${baseUrl}` : 'models.yml',
     models: removeLegacyKenariModels({ name: slug, slug, baseUrl }, models),
   };
@@ -162,15 +166,23 @@ function mergeProviderItems(existing: ProviderItem, incoming: ProviderItem): Pro
     knownModelIds.add(model.id);
     return true;
   });
+  // Disable is a union, not a winner-takes-all: the two sources see different
+  // halves of config.yml (auth sees login providers, native sees models.yml), so
+  // a flag set on either side must survive the merge — otherwise the provider
+  // re-enters the chat picker on the next reload.
+  const disabled = primary.disabled === true || secondary.disabled === true;
 
   return {
     ...primary,
     name: primary.name === primary.slug && secondary.name !== secondary.slug
       ? secondary.name
       : primary.name,
-    status: primary.status === 'connected' || secondary.status === 'connected'
-      ? 'connected'
-      : primary.status,
+    status: disabled
+      ? 'disconnected'
+      : primary.status === 'connected' || secondary.status === 'connected'
+        ? 'connected'
+        : primary.status,
+    disabled,
     baseUrl: primary.baseUrl || secondary.baseUrl,
     apiKey: primary.apiKey || secondary.apiKey,
     configuredIn: primary.apiKey || primary.baseUrl ? primary.configuredIn : secondary.configuredIn,
@@ -198,6 +210,10 @@ export function deduplicateProviderItems(items: ProviderItem[]): ProviderItem[] 
  * own per-model choices (visibility, sampling config) exist only in SQLite —
  * without this, every reload rebuilds the list with isVisible: true and the
  * eye toggles silently reset.
+ *
+ * `disabled` is deliberately NOT pulled from the overlay: it is native state
+ * (config.yml disabledProviders), and letting a stale SQLite row clear it would
+ * put a provider the user disabled back into the chat picker.
  */
 function applyStoredOverrides(registry: ProviderItem[], stored: ProviderItem[]): ProviderItem[] {
   if (stored.length === 0) return registry;
@@ -233,7 +249,7 @@ export async function mergeProviders(custom: ProviderItem[]): Promise<{ provider
     info.slug,
     info.baseUrl,
     info.models,
-    disabled.has(info.slug) ? 'disconnected' : 'connected',
+    disabled.has(info.slug),
   ));
   const disabledItems = [...disabled]
     .filter((slug) => !nativeItems.some((n) => n.slug === slug) && !authItems.some((a) => a.slug === slug))

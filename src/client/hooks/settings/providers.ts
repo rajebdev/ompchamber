@@ -58,8 +58,13 @@ export function useProviderSettings({
     return () => { active = false; };
   }, []);
 
+  // The sidebar lists connected providers plus every provider the user disabled:
+  // a disabled provider reports `disconnected`, so filtering on status alone
+  // would make the switch that hid it unreachable.
   const connectedProviders = useMemo(
-    () => providers.filter((provider) => provider.status === 'connected'),
+    () => providers.filter(
+      (provider) => provider.status === 'connected' || provider.disabled === true,
+    ),
     [providers],
   );
   const availablePresetProviders = useMemo(
@@ -218,6 +223,25 @@ export function useProviderSettings({
     )));
   };
 
+  /**
+   * Disable/enable from omp's own config.yml `disabledProviders`. This is the
+   * coarse switch that removes the provider — and every model it serves — from
+   * the chat picker; the per-model eye toggle is the fine-grained one.
+   */
+  const handleToggleProviderDisabled = async () => {
+    if (!selectedProvider) return;
+    const target = selectedProvider;
+    const disabling = target.disabled !== true;
+    const merged = await toggleProviderEnabled(target.slug, !disabling);
+    if (!merged) return;
+    pushToast(
+      disabling
+        ? `${target.name} disabled — it no longer appears in the model list.`
+        : `${target.name} enabled — its models are offered again.`,
+      'success',
+    );
+  };
+
   const handleHideAll = () => updateSelectedModels(
     (models) => models.map((m) => ({ ...m, isVisible: false })),
   );
@@ -262,6 +286,7 @@ export function useProviderSettings({
     handleFetchModelsFromList,
     handleOmpAuthSuccess,
     handleToggleDisconnect,
+    handleToggleProviderDisabled,
     handleHideAll,
     handleShowAll,
     handleToggleModelVisibility,

@@ -21,6 +21,12 @@ export interface ProviderItem {
   slug: string;
   icon: string;
   status: 'connected' | 'disconnected' | 'connecting';
+  /**
+   * Present in omp's own config.yml `disabledProviders`. A disabled provider is
+   * excluded from the chat model picker entirely — independent of `status`, which
+   * only says whether credentials resolve.
+   */
+  disabled?: boolean;
   configuredIn: string; // e.g. "auth credentials", "api key", "environment"
   apiKey?: string;
   baseUrl?: string;

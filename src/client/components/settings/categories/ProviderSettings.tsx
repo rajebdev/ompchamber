@@ -45,6 +45,7 @@ export function ProviderSettings({
     handleFetchModelsFromList,
     handleOmpAuthSuccess,
     handleToggleDisconnect,
+    handleToggleProviderDisabled,
     handleHideAll,
     handleShowAll,
     handleToggleModelVisibility,
@@ -74,6 +75,7 @@ export function ProviderSettings({
                 else setIsReconnectModalOpen(true);
               }}
               onToggleDisconnect={handleToggleDisconnect}
+              onToggleDisabled={handleToggleProviderDisabled}
             />
 
             <ProviderModelsList

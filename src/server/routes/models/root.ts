@@ -3,7 +3,7 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from '@/server/lib/remix-
 import { getDb } from '@/server/db.server';
 import { INITIAL_MODELS_CATALOG } from '@/client/data/models/catalog';
 import { isMockMode } from '@/server/mock.server';
-import type { AIModelOption, ModelEntry, ModelsData } from '@/shared/types';
+import type { AIModelOption, ModelEntry, ModelsData, ProviderItem } from '@/shared/types';
 import { readSettingsJson, writeSettingsJson } from '@/server/lib/db/settings-store';
 import { runUtilityCommand, type OmpModel } from '@/server/lib/omp/rpc/utility';
 import { readDisabledProviders } from '@/server/lib/omp/config/roles';
@@ -35,6 +35,26 @@ function supportsFastMode(model: OmpModel): boolean {
   return model.provider === 'anthropic' || model.provider === 'openai' || model.provider === 'google';
 }
 
+/**
+ * Disabled providers recorded in the chamber's own provider overlay. Used only
+ * by the MOCK path of `/api/models`, which has no config.yml `disabledProviders`
+ * to read — real mode gets the same answer natively.
+ */
+async function readStoredProvidersForModels(): Promise<ProviderItem[]> {
+  try {
+    const db = await getDb();
+    const parsed = await readSettingsJson<unknown>(db, PROVIDERS_CONFIG_KEY, null);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((provider): provider is ProviderItem => (
+      typeof provider === 'object' && provider !== null
+      && typeof (provider as ProviderItem).slug === 'string'
+      && (provider as ProviderItem).disabled === true
+    ));
+  } catch {
+    return [];
+  }
+}
+
 function hiddenModelKey(provider: string, modelId: string): string {
   return `${provider.trim().toLowerCase()}:${modelId}`;
 }
@@ -59,6 +79,12 @@ async function readHiddenModelKeys(): Promise<Set<string>> {
   }
 }
 
+/**
+ * A model is offered only when its provider is neither disabled in omp's
+ * config.yml (`disabledProviders`) nor carrying a per-model hide in the
+ * chamber overlay. Disabling the provider is the coarse switch — Settings →
+ * Providers flips it so the whole provider leaves the chat picker.
+ */
 function filterSelectableModels(
   available: OmpModel[],
   disabledProviders: Set<string>,
@@ -202,19 +228,28 @@ export async function loader({ request }: LoaderFunctionArgs) {
     try {
       const db = await getDb();
       const catalog = await readSettingsJson<unknown>(db, MODELS_CATALOG_KEY, null);
-      const models: AIModelOption[] = Array.isArray(catalog) && catalog.length > 0 ? catalog : INITIAL_MODELS_CATALOG;
+      const stored: AIModelOption[] = Array.isArray(catalog) && catalog.length > 0 ? catalog : INITIAL_MODELS_CATALOG;
+      // Demo mode has no config.yml to read, so the disable flag lives on the
+      // stored provider overlay. Filtering here keeps the model picker honest
+      // in MOCK=true too — the settings page must be able to prove the switch.
+      const disabledSlugs = new Set(
+        (await readStoredProvidersForModels()).map((provider) => provider.slug.trim().toLowerCase()),
+      );
+      const models = stored.filter((model) => !disabledSlugs.has(model.provider.trim().toLowerCase()));
       const persisted = await readSettingsJson<AIModelOption | null>(db, SELECTED_MODEL_KEY, null);
-      let selectedModel: AIModelOption = models[5] || models[0];
+      // Every provider disabled ⇒ empty list and no selection; the composer must
+      // see that honestly instead of holding on to a hidden provider's model.
+      let selectedModel: AIModelOption | null = models[5] || models[0] || null;
       if (persisted && persisted.id && persisted.provider) {
         const match = models.find(m => m.id === persisted.id && m.provider === persisted.provider);
-        selectedModel = match || persisted;
+        if (match) selectedModel = match;
       }
       return json({ models, selectedModel, isMock: mock });
     } catch (error: any) {
       return json({
         error: error.message,
         models: INITIAL_MODELS_CATALOG,
-        selectedModel: INITIAL_MODELS_CATALOG[5] || INITIAL_MODELS_CATALOG[0],
+        selectedModel: INITIAL_MODELS_CATALOG[5] || INITIAL_MODELS_CATALOG[0] || null,
         isMock: mock,
       }, { status: 500 });
     }
