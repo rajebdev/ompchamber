@@ -69,6 +69,14 @@ async function loadMermaid(themeKey: ThemeKey): Promise<MermaidModule['default']
           // diagram types this app sees, so pin it here and alias `elkjs` to a
           // stub in the build (`src/client/stubs/elkjs.ts`).
           layout: 'dagre',
+          // On a parse/draw failure mermaid draws its own "Syntax error in text /
+          // mermaid version 12.x" diagram into a temp `<div id="d<render-id>">`
+          // appended to `document.body`, and throws BEFORE removing it — so every
+          // failed render leaks a full-size error SVG into the page (the stray
+          // bottom banner). `suppressErrorRendering` makes that path drop the temp
+          // elements first; `renderBlock`'s catch already degrades the block to
+          // its raw source, which is the only fallback we want.
+          suppressErrorRendering: true,
           flowchart: { useMaxWidth: false, wrappingWidth: 100000 },
           sequence: { useMaxWidth: false },
         });
