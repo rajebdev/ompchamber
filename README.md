@@ -72,7 +72,7 @@ ompchamber logs -f -n 200            # follow the server log
 
 ## Install
 
-OMPChamber is a private repository — there is no npm package. Install from source:
+OMPChamber is not published to npm — install from source:
 
 > **Bun only** — the server imports `bun:sqlite` and `Bun.YAML`, both of which Node cannot load.
 > `bun` 1.4 or newer is required; `npm`, `npx`, `yarn` and `pnpm` are never used here.
@@ -197,5 +197,8 @@ bun test                                                      # bun test
 
 ## License
 
-Private, proprietary repository (`"private": true`). No license is granted for redistribution or
-reuse. See [CHANGELOG.md](CHANGELOG.md) for the release history.
+No license file is included. The source is public, but all rights are reserved by the author — no
+license is granted for redistribution or reuse. `package.json` sets `"private": true`, which only
+blocks accidental `npm publish`.
+
+See [CHANGELOG.md](CHANGELOG.md) for the release history.
