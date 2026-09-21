@@ -131,9 +131,12 @@ export function MobileHeader({
           <Menu size={20} strokeWidth={2} />
         </button>
 
-        <span className="font-bold text-sm tracking-tight flex items-center flex-shrink-0">
+        <span className="relative font-bold text-sm tracking-tight flex items-center flex-shrink-0">
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-500 font-extrabold text-[15px] tracking-tighter">OMP</span>
           <span className="ml-[1px] text-ink">Chamber</span>
+          <span className="absolute -top-0.5 -right-1.5 flex">
+            <StreamStatusDot status={streamStatus} />
+          </span>
         </span>
 
         <span className="text-ink/25 font-light text-xs flex-shrink-0 select-none">/</span>
@@ -192,10 +195,8 @@ export function MobileHeader({
         </div>
       </div>
 
-      {/* Right: stream status, context telemetry & right panel toggle */}
+      {/* Right: context telemetry & right panel toggle */}
       <div className="flex items-center space-x-1 text-ink">
-        <StreamStatusDot status={streamStatus} showLabel />
-
         <div className="relative flex items-center" ref={telemetryRef}>
           <button
             type="button"
