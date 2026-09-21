@@ -263,8 +263,12 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
       triggerChatCompletionSound(appSettings);
       setTimeout(() => scrollToBottom('smooth'), 50);
       // The omp JSONL has the final title/messages now — refresh session
-      // metadata so navbar/context panel show the real title.
-      const sid = sessionIdRef.current;
+      // metadata so navbar/context panel show the real title. A fresh spawn
+      // ("new-…" → UUID) may not have re-rendered the URL yet, so prefer the
+      // adopted id like onAgentStart/onModelChanged do — otherwise this
+      // fetches the pending id, finds no session, and never dispatches
+      // `omp:session-updated` (sidebar keeps the placeholder).
+      const sid = adoptedSessionIdRef.current ?? sessionIdRef.current;
       if (sid) refreshSessionMeta(sid);
     },
     onModelChanged: () => {
