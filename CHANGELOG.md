@@ -5,6 +5,21 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0](https://github.com/rajebdev/ompchamber/compare/v0.6.0...v0.7.0) — 2026-09-22
+
+### Added
+
+* **session:** mark the live stream status at prompt dispatch, not agent_start ([c148bc5](https://github.com/rajebdev/ompchamber/commit/c148bc5631cfcd2a034e05d650ee2a3ff0ea352a))
+* **update:** restart the updated instance and leave servers started from source alone ([a25f8ca](https://github.com/rajebdev/ompchamber/commit/a25f8ca56727d59e8de606641e7cc5daee85dc9f))
+
+### Changed
+
+* **readme:** document the automatic restart and the source-run exception ([0ea1135](https://github.com/rajebdev/ompchamber/commit/0ea11350f56692cf8d6d30fd36d8759ba358eee2))
+
+### Fixed
+
+* **lifecycle:** record the launch mode from argv, never from the environment ([9697514](https://github.com/rajebdev/ompchamber/commit/9697514c3a32135308178e0025fb2a47d675bb43))
+
 ## [0.6.0](https://github.com/rajebdev/ompchamber/compare/v0.5.0...v0.6.0) — 2026-09-21
 
 ### Added
