@@ -18,10 +18,11 @@
  */
 
 import type { Dispatch, RefObject, SetStateAction } from 'preact/compat';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 
 import type { ChatMessageData } from '@/shared/types';
 import { SESSION_META_RETRY_SCHEDULE_MS } from '@/shared/lib/workspace/refresh-cadence';
+import { useSessionPagination } from '@/client/hooks/chat/timeline/session-pagination';
 
 export interface SessionDataShape {
   id?: string;
@@ -29,6 +30,12 @@ export interface SessionDataShape {
   model?: string | { provider: string; modelId: string };
   thinkingLevel?: string;
   messages?: any[];
+}
+
+/** Session identity a spawn established before omp's JSONL is readable. */
+export interface SessionSeed {
+  model?: { provider: string; modelId: string } | null;
+  thinkingLevel?: string | null;
 }
 
 export interface UseSessionLoadDeps {
@@ -59,24 +66,7 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
   const { sessionId, setLocalMessages, setGenerating, isGeneratingRef, aiPlaceholderIdRef, localMessagesRef, optimisticUserIdRef, cancelStreamingCoalescer, metaRefreshedRef, scrollRef } = deps;
 
   const [sessionData, setSessionData] = useState<SessionDataShape | null>(null);
-  // History pagination state: the first fetch receives the newest window only;
-  // scrolling to the top pages further back via ?before=oldestIndex.
-  const [hasMore, setHasMore] = useState(false);
-  const [oldestIndex, setOldestIndex] = useState(0);
-  const [loadingOlder, setLoadingOlder] = useState(false);
-  // Sticky failure flag for the "Load earlier messages" affordance: a failed
-  // page fetch must keep the button visible (retryable) instead of silently
-  // dropping hasMore, which made the button vanish with no feedback.
-  const [loadOlderError, setLoadOlderError] = useState(false);
-  // Bumped on every successful older-window prepend; the scroll-anchor layout
-  // effect keys on it (its other deps have stable identities, so it needs an
-  // explicit change signal per commit).
-  const [prependTick, setPrependTick] = useState(0);
-  const loadingOlderRef = useRef(false);
   const [sessionLoading, setSessionLoading] = useState(false);
-  // Set while prepending older rows; the layout effect below re-anchors the
-  // viewport to the content the user was reading instead of jumping.
-  const pendingScrollAnchorRef = useRef<{ prevHeight: number; prevTop: number } | null>(null);
   const prevSessionIdRef = useRef<string | null>(null);
   // Real session id adopted by a fresh spawn ("new-…" → UUID). onAgentStart
   // may fire before React re-renders with the new URL, so it reads the id
@@ -84,15 +74,32 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
   const adoptedSessionIdRef = useRef<string | null>(null);
   // Model seeded from the spawn response; kept until the JSONL writes model_change.
   const seededModelRef = useRef<{ provider: string; modelId: string } | null>(null);
+  // Thinking level seeded from the spawn response. The spawn's
+  // `set_thinking_level` IS the level this session runs, and `/api/chat/:id`
+  // cannot report it until omp's JSONL is locatable — until then the loader
+  // answers from the chamber DB copy, which carries no thinkingLevel at all.
+  // Without this seed the composer that takes over the pending view falls back
+  // to a catalog default and claims a level the run never used.
+  const seededThinkingLevelRef = useRef<string | null>(null);
 
   const applySessionData = useCallback((incoming: SessionDataShape) => {
     if (incoming.model && typeof incoming.model === 'object') seededModelRef.current = incoming.model;
     const model = incoming.model ?? (isGeneratingRef.current ? seededModelRef.current ?? undefined : undefined);
-    setSessionData({ ...incoming, model });
+    const thinkingLevel = incoming.thinkingLevel ?? seededThinkingLevelRef.current ?? undefined;
+    setSessionData({ ...incoming, model, thinkingLevel });
   }, []);
 
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
+
+  // Older-window pagination (cursor, retry flag, scroll anchoring) lives in its
+  // own hook so this one stays under the repo's per-file size ceiling.
+  const { hasMore, loadingOlder, loadOlderError, loadOlder, resetPages, applyWindow } = useSessionPagination({
+    sessionId,
+    sessionIdRef,
+    setLocalMessages,
+    scrollRef,
+  });
 
   /** Re-fetch the session's title/metadata after the omp JSONL has been
    *  written (spawn or agent end) so the navbar and context panel show the
@@ -127,9 +134,17 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
     tryFetch();
   }, [applySessionData]);
 
-  const setSessionModelWithSeed = useCallback((model: { provider: string; modelId: string } | null) => {
-    seededModelRef.current = model;
-    setSessionData(prev => ({ ...(prev ?? {}), model: model ?? undefined }));
+  /** Adopt a spawn's session identity: the model and the thinking level the
+   *  first prompt is running with. Only the fields a caller supplies are
+   *  written, so a null model/level leaves the previous value untouched. */
+  const seedSession = useCallback((seed: SessionSeed) => {
+    if (seed.model) seededModelRef.current = seed.model;
+    if (seed.thinkingLevel) seededThinkingLevelRef.current = seed.thinkingLevel;
+    setSessionData(prev => ({
+      ...(prev ?? {}),
+      ...(seed.model ? { model: seed.model } : {}),
+      ...(seed.thinkingLevel ? { thinkingLevel: seed.thinkingLevel } : {}),
+    }));
   }, []);
 
   /** Whether the optimistic bubble set currently owns the timeline tail (a
@@ -159,6 +174,14 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
         setGenerating(false);
         adoptedSessionIdRef.current = null;
         seededModelRef.current = null;
+        // Metadata (model / thinking level) belongs to ONE session: leaving it
+        // in place let a pending "new-…" composer — and any other session's
+        // composer — display a level that session never ran with, until the
+        // fetch replaced it.
+        setSessionData(null);
+        // The thinking seed belongs to the previous session's spawn; keeping it
+        // would report that level for the newly opened session.
+        seededThinkingLevelRef.current = null;
         // The placeholder/optimistic ids belong to the PREVIOUS session's
         // in-flight send; message_end never arrives after a switch away (the
         // stream is disconnected), so they must be dropped here. A stale
@@ -174,11 +197,7 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
       }
       // Reset pagination cursor on every session switch — the window belongs
       // to the previous session otherwise.
-      setHasMore(false);
-      setOldestIndex(0);
-      loadingOlderRef.current = false;
-      setLoadingOlder(false);
-      setLoadOlderError(false);
+      resetPages();
       // metaRefreshedRef must NOT survive a session switch — including a
       // spawn adoption. It is the once-per-session guard in onAgentStart
       // (omp-callbacks.ts); keeping the stale value here ate the retrigger,
@@ -216,8 +235,7 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
             } else if (!sessionId.startsWith('new-') && !optimisticOwnsTail) {
               setLocalMessages([]);
             }
-            if (typeof data.hasMore === 'boolean') setHasMore(data.hasMore);
-            if (typeof data.oldestIndex === 'number') setOldestIndex(data.oldestIndex);
+            applyWindow(data.hasMore, data.oldestIndex);
           } else {
             setSessionData(null);
             if (!timelineOwnedByOptimistic()) setLocalMessages([]);
@@ -243,79 +261,6 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, applySessionData, timelineOwnedByOptimistic, setLocalMessages, setGenerating]);
 
-  /** Page the next older window into the timeline. Called from the click
-   *  handler and the scroll handler when the viewport reaches the top; a no-op
-   *  while a page is in flight, when the session has no more history, or while
-   *  the session is a pending optimistic spawn. Prepending older rows only
-   *  grows the list ABOVE the tail, so it is safe while the agent is
-   *  generating — unlike a committed refetch, it never clobbers the AI
-   *  placeholder, and blocking it made the button feel dead mid-run. */
-  const loadOlder = useCallback(() => {
-    if (!sessionId || sessionId.startsWith('new-')) return;
-    if (!hasMore || loadingOlderRef.current) return;
-    loadingOlderRef.current = true;
-    setLoadingOlder(true);
-    setLoadOlderError(false);
-    const el = scrollRef?.current;
-    if (el) pendingScrollAnchorRef.current = { prevHeight: el.scrollHeight, prevTop: el.scrollTop };
-    // Session id snapshot: prepending a window fetched for the PREVIOUS
-    // session into the freshly-switched timeline is worse than dropping the
-    // page, so the response is discarded if the user switched mid-flight.
-    const requestedSessionId = sessionId;
-    fetch(`/api/chat/${sessionId}?before=${oldestIndex}`)
-      .then(res => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
-      .then((data: { session?: { messages?: ChatMessageData[] }; hasMore?: boolean; oldestIndex?: number }) => {
-        // The main load effect may have cleared/repurposed localMessages for a
-        // new session while this fetch was in flight.
-        if (sessionIdRef.current !== requestedSessionId) return;
-        const older = data.session?.messages ?? [];
-        setHasMore(Boolean(data.hasMore));
-        if (typeof data.oldestIndex === 'number') setOldestIndex(data.oldestIndex);
-        if (older.length === 0) {
-          // No rows prepended: the recorded anchor is stale — drop it so a
-          // later tick cannot apply it against the wrong geometry.
-          pendingScrollAnchorRef.current = null;
-          return;
-        }
-        setLocalMessages(prev => {
-          // Drop overlap guard: the server window is index-based, so the
-          // fetched slice is strictly older than everything already mounted.
-          return [...older, ...prev];
-        });
-        // Bump the prepend tick so the layout effect below re-runs for THIS
-        // commit — it previously depended only on stable identities and ran
-        // exactly once at mount, so the viewport anchor never fired and every
-        // pagination jump snapped the user to the (shifted) top.
-        setPrependTick(t => t + 1);
-      })
-      .catch(() => {
-        // Keep the button mounted and marked for retry; a swallowed failure
-        // previously also cleared hasMore on the next full reload path.
-        if (sessionIdRef.current === requestedSessionId) setLoadOlderError(true);
-      })
-      .finally(() => {
-        loadingOlderRef.current = false;
-        setLoadingOlder(false);
-      });
-  }, [sessionId, hasMore, oldestIndex, scrollRef, setLocalMessages]);
-
-  // Position preservation: after older rows commit above the viewport, shift
-  // scrollTop by the height delta so the rows the user was reading stay put.
-  // prependTick changes on every prepend — without it the effect ran only at
-  // mount (its other deps are stable) and never re-anchored.
-  useLayoutEffect(() => {
-    const anchor = pendingScrollAnchorRef.current;
-    if (!anchor) return;
-    const el = scrollRef?.current;
-    if (!el) return;
-    pendingScrollAnchorRef.current = null;
-    const delta = el.scrollHeight - anchor.prevHeight;
-    if (delta > 0) el.scrollTop = anchor.prevTop + delta;
-  }, [prependTick, scrollRef]);
-
   return {
     sessionData,
     hasMore,
@@ -324,10 +269,7 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
     sessionLoading,
     loadOlder,
     adoptedSessionIdRef,
-    seededModelRef,
-    applySessionData,
     refreshSessionMeta,
-    setSessionModel: setSessionModelWithSeed,
-    timelineOwnedByOptimistic,
+    seedSession,
   };
 }

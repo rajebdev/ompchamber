@@ -15,32 +15,12 @@ import type { Dispatch, SetStateAction } from 'preact/compat';
 import type { Attachment, ChatMessageData, OmpAgentHandle, QueuedMessageModel } from '@/shared/types';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { streamChatResponse } from '@/client/hooks/chat/stream';
-import { composeMessageWithTextAttachments, isTextAttachmentFile } from '@/shared/lib/chat/attachments';
-import { loadAgentNames } from '@/shared/lib/chat/composer/client';
-import { translateAgentMentions, translateFileMentions } from '@/shared/lib/chat/composer/translate';
+import type { SessionSeed } from '@/client/hooks/chat/timeline/session-load';
+import { buildPromptText } from '@/client/hooks/chat/timeline/prompt-text';
+import { isTextAttachmentFile } from '@/shared/lib/chat/attachments';
 import { createMockStreamCallbacks } from '@/shared/lib/chat/timeline/stream-callbacks';
 import { PHASE_VERBS } from '@/shared/lib/chat/timeline/tool-phrases';
 import { formatClock } from '@/shared/lib/format/time';
-
-type TextFileAttachment = Parameters<typeof composeMessageWithTextAttachments>[1][number];
-
-/**
- * Build the outgoing prompt. `@agent` mentions are rewritten into an explicit
- * task-tool delegation directive at send time (oh-my-pi has no `@agent`
- * syntax); translation failures fall back to the raw prompt.
- */
-async function buildPromptText(text: string, textFiles: TextFileAttachment[]): Promise<string> {
-  let translated = text;
-  try {
-    const names = await loadAgentNames();
-    if (names.length > 0) translated = translateAgentMentions(text, names).text;
-  } catch {
-    // keep the raw prompt
-  }
-  // File mentions are namespaced (`@file:`) by the picker; strip the namespace
-  // only after the agent pass so `@file:<name>` is never mistaken for `@agent`.
-  return composeMessageWithTextAttachments(translateFileMentions(translated), textFiles);
-}
 
 export interface ChatTimelineSendDeps {
   folders: any[];
@@ -61,7 +41,9 @@ export interface ChatTimelineSendDeps {
   adoptedSessionIdRef: { current: string | null };
   optimisticUserIdRef: { current: string | null };
   pendingUserDisplaysRef: { current: { sent: string; display: string }[] };
-  setSessionModel: (model: { provider: string; modelId: string } | null) => void;
+  /** Adopt the spawned session's identity (model + the thinking level the first
+   *  prompt runs with) so the composer replacing the pending view shows it. */
+  seedSession: (seed: SessionSeed) => void;
   /** Model/thinking picked in the composer before the session existed —
    *  applied to the spawn command so the first prompt runs with them. */
   pendingComposerModelRef: { current: { provider: string; modelId: string } | null };
@@ -106,7 +88,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
     adoptedSessionIdRef,
     optimisticUserIdRef,
     pendingUserDisplaysRef,
-    setSessionModel,
+    seedSession,
     pendingComposerModelRef,
     pendingThinkingLevelRef,
     accessModeRef,
@@ -291,7 +273,11 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
         if (spawned) {
           adoptedSessionIdRef.current = spawned.sessionId;
           aiPlaceholderIdRef.current = aiPlaceholderId;
-          if (spawned.model) setSessionModel(spawned.model);
+          // The spawn already applied this level to the session; seed it so the
+          // composer taking over from the pending view reports the run's real
+          // setting instead of a catalog default (the JSONL that carries it is
+          // not locatable yet).
+          seedSession({ model: spawned.model, thinkingLevel: composerThinking });
           pendingComposerModelRef.current = null;
           pendingThinkingLevelRef.current = null;
           fetch(`/api/chat/${encodeURIComponent(spawned.sessionId)}`, {
@@ -343,6 +329,6 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
         scrollToBottom,
       })
     );
-  }, [appSettings, folders, isOmpSession, ompAgent, selectedFolderId, sessionId, scrollToBottom, jumpToBottom, persistMessages, setSessionModel, pendingComposerModelRef, pendingThinkingLevelRef, accessModeRef]);
+  }, [appSettings, folders, isOmpSession, ompAgent, selectedFolderId, sessionId, scrollToBottom, jumpToBottom, persistMessages, seedSession, pendingComposerModelRef, pendingThinkingLevelRef, accessModeRef]);
   return { steerOmpAgent, executeSend };
 }

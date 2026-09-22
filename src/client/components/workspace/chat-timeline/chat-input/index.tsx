@@ -7,6 +7,7 @@ import { ComposerTextarea } from '@/client/components/common/ComposerTextarea';
 import { AttachmentToolbar } from '@/client/components/workspace/chat-timeline/chat-input/AttachmentToolbar';
 import { selectableThinkingLevels } from '@/shared/lib/models/thinking-levels';
 import { fetchModelsData, subscribeModelsUpdated } from '@/shared/lib/models/client';
+import { resolveThinkingLevel, selectionFor } from '@/client/components/workspace/chat-timeline/chat-input/selection';
 
 export function ChatInput({ 
   value, 
@@ -96,21 +97,11 @@ export function ChatInput({
   const sessionModelRef = useRef<{ provider: string; modelId: string } | null>(sessionModel ?? null);
   sessionModelRef.current = sessionModel ?? null;
 
-  // Preserve the session's last-used thinking level when applying a model
-  // picked from the catalog: the session level is authoritative and an async
-  // fetch resolving later must not reset it to the ladder default.
-  const resolveSessionLevel = (ladder: readonly string[] | undefined, fallback: string): string => {
-    const sessionLevel = sessionThinkingLevelRef.current;
-    if (!sessionLevel) return fallback;
-    const selectable = selectableThinkingLevels(ladder ?? []);
-    return selectable.length === 0 || selectable.includes(sessionLevel) ? sessionLevel : fallback;
-  };
-
   // Adopt the active session's last-used model as the selected model. The
-  // thinking level must fall back to the CURRENT one, never the ladder
-  // default: this effect re-runs right after a spawn (sessionModel changes
-  // while the session's own thinking_level_change entry is not written yet),
-  // and an `off` fallback here is the "thinking resets to off on send" bug.
+  // thinking level must fall back to the CURRENT one, never the ladder default:
+  // this effect re-runs right after a spawn (sessionModel changes while the
+  // session's own thinking_level_change entry is not readable yet), and any
+  // concrete fallback here claims a level the run never used.
   useEffect(() => {
     if (!sessionModel?.provider || !sessionModel.modelId) return;
     let active = true;
@@ -121,14 +112,7 @@ export function ChatInput({
           (m) => m.id === sessionModel.modelId && m.provider === sessionModel.provider
         );
         if (match) {
-          setSelectedModel(prev => ({
-            id: match.id,
-            name: match.name,
-            provider: match.provider,
-            contextWindow: match.contextWindow,
-            thinkingLevels: match.thinkingLevels,
-            thinkingLevel: resolveSessionLevel(match.thinkingLevels, prev?.thinkingLevel ?? match.thinkingLevels?.[0] ?? 'off'),
-          }));
+          setSelectedModel(prev => selectionFor(match, sessionThinkingLevelRef.current, prev));
         }
       })
       .catch(() => {});
@@ -143,14 +127,7 @@ export function ChatInput({
     if (!sessionThinkingLevel) return;
     setSelectedModel(prev => {
       if (!prev) return prev;
-      const selectable = selectableThinkingLevels(prev.thinkingLevels ?? []);
-      // The session level is authoritative (omp recorded it for this model).
-      // Only reject it when the ladder is KNOWN and explicitly excludes it;
-      // an empty ladder (catalog not resolved / model exposes none) must not
-      // fall back to 'off' and erase the session's actual level.
-      const level = selectable.length === 0 || selectable.includes(sessionThinkingLevel)
-        ? sessionThinkingLevel
-        : prev.thinkingLevel;
+      const level = resolveThinkingLevel(prev.thinkingLevels, sessionThinkingLevel, prev.thinkingLevel);
       return level === prev.thinkingLevel ? prev : { ...prev, thinkingLevel: level };
     });
   }, [sessionThinkingLevel]);
@@ -169,13 +146,7 @@ export function ChatInput({
           if (sm?.provider && sm.modelId) {
             const match = data.modelList.find((m: ModelEntry) => m.id === sm.modelId && m.provider === sm.provider);
             if (match) {
-              setSelectedModel(prev => ({
-                id: match.id,
-                name: match.name,
-                provider: match.provider,
-                thinkingLevels: match.thinkingLevels,
-                thinkingLevel: resolveSessionLevel(match.thinkingLevels, prev?.thinkingLevel ?? match.thinkingLevels?.[0] ?? 'off'),
-              }));
+              setSelectedModel(prev => selectionFor(match, sessionThinkingLevelRef.current, prev));
             }
             return;
           }
@@ -184,13 +155,7 @@ export function ChatInput({
           if (persisted?.provider && persisted.id) {
             const match = data.modelList.find((m: ModelEntry) => m.id === persisted.id && m.provider === persisted.provider);
             if (match) {
-              setSelectedModel(prev => ({
-                id: match.id,
-                name: match.name,
-                provider: match.provider,
-                thinkingLevels: match.thinkingLevels,
-                thinkingLevel: resolveSessionLevel(match.thinkingLevels, prev?.thinkingLevel ?? match.thinkingLevels?.[0] ?? 'off'),
-              }));
+              setSelectedModel(prev => selectionFor(match, sessionThinkingLevelRef.current, prev));
               return;
             }
           }
@@ -199,20 +164,14 @@ export function ChatInput({
           if (defaultModel) {
             const match = data.modelList.find((m: ModelEntry) => m.id === defaultModel.modelId && m.provider === defaultModel.provider);
             if (match) {
-              setSelectedModel(prev => ({
-                id: match.id,
-                name: match.name,
-                provider: match.provider,
-                thinkingLevels: match.thinkingLevels,
-                thinkingLevel: resolveSessionLevel(match.thinkingLevels, prev?.thinkingLevel ?? match.thinkingLevels?.[0] ?? 'off'),
-              }));
+              setSelectedModel(prev => selectionFor(match, sessionThinkingLevelRef.current, prev));
             }
           }
         } else if (data.selectedModel) {
           const selected = data.selectedModel;
           setSelectedModel(prev => ({
             ...selected,
-            thinkingLevel: resolveSessionLevel(selected.thinkingLevels, prev?.thinkingLevel ?? selected.thinkingLevel ?? 'off'),
+            thinkingLevel: resolveThinkingLevel(selected.thinkingLevels, sessionThinkingLevelRef.current, prev?.thinkingLevel ?? selected.thinkingLevel),
           }));
         }
       } catch {}
