@@ -6,6 +6,7 @@ import { getDatabasePath } from '@/server/db.server';
 import { fetchOmpRegistrySnapshot } from '@/server/lib/models/provider-registry.server';
 import { ompStartupError, ompStartupLogLines } from '@/server/lib/omp/core/startup';
 import { readInstanceRecord, removeInstanceRecord, writeInstanceRecord } from '@/server/lib/lifecycle/instance';
+import { resolveLaunchMode } from '@/server/lib/lifecycle/launch-mode';
 import { acquirePortLock, claimPort, PortInUseError } from '@/server/lib/lifecycle/port-guard';
 import { isMockMode } from '@/server/mock.server';
 
@@ -28,9 +29,9 @@ console.log(`[ompchamber] db:             ${await getDatabasePath()}`);
 const port = Number(Bun.env.PORT) || 3000;
 const host = Bun.env.HOST || 'localhost';
 const mode = Bun.env.NODE_ENV === 'production' ? 'prod' : 'dev';
-const launchMode = Bun.env.OMPCHAMBER_LAUNCH_MODE === 'daemon' || Bun.env.OMPCHAMBER_LAUNCH_MODE === 'foreground'
-  ? Bun.env.OMPCHAMBER_LAUNCH_MODE
-  : 'direct';
+// argv, not env: see launch-mode.ts — an inherited `OMPCHAMBER_LAUNCH_MODE`
+// would label a `bun run dev` started inside an OMPChamber shell as `daemon`.
+const launchMode = resolveLaunchMode();
 
 const lock = await acquirePortLock(port);
 if (!lock) {

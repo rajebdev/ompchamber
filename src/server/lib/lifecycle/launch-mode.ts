@@ -1,0 +1,40 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * How this server was launched — the fact that decides whether an update may
+ * replace it.
+ *
+ * The marker travels as an argv flag, never as an environment variable. Env is
+ * inherited by every descendant, so a server started from a shell *inside* an
+ * OMPChamber tree — the chamber's own terminal panel runs commands with the
+ * server's environment — would inherit `daemon` and then be swapped out by the
+ * next update, killing a `bun run dev` loop OMPChamber does not own. argv
+ * belongs to the process alone.
+ */
+
+import type { InstanceLaunchMode } from '@/server/lib/lifecycle/instance';
+
+/** The argv flag the CLI appends to every server it spawns. */
+const LAUNCH_MODE_FLAG = '--launch-mode=';
+
+/**
+ * The argv entry for `mode`. Paired with `resolveLaunchMode`, so the flag
+ * spelling exists in exactly one place for the writer and the reader.
+ */
+export function launchModeArg(mode: InstanceLaunchMode): string {
+  return `${LAUNCH_MODE_FLAG}${mode}`;
+}
+
+/**
+ * Launch mode of a server invocation. Only the CLI passes the flag, so a
+ * `bun run dev`, a `bun run start`, a manual run and an externally supervised
+ * process all resolve to `direct` — the mode that is left alone.
+ */
+export function resolveLaunchMode(argv: readonly string[] = Bun.argv): InstanceLaunchMode {
+  const flag = argv.find((arg) => arg.startsWith(LAUNCH_MODE_FLAG));
+  const value = flag?.slice(LAUNCH_MODE_FLAG.length);
+  return value === 'daemon' || value === 'foreground' ? value : 'direct';
+}

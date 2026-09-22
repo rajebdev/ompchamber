@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import { ensureDataDirs, getLogFilePath } from '@/cli/lib/paths.js';
 import { killChildTree, STOP_TIMEOUT_MS } from '@/cli/lib/process-lifecycle.js';
 import { getProcessState, isProcessAlive } from '@/server/lib/lifecycle/identity';
+import { launchModeArg } from '@/server/lib/lifecycle/launch-mode';
 import { listInstanceRecords, readInstanceRecord, removeInstanceRecord } from '@/server/lib/lifecycle/instance';
 import { fetchHealth, probeHost } from '@/server/lib/lifecycle/probe';
 import { joinPath, homeDir } from '@/cli/lib/path-utils.js';
@@ -134,7 +135,10 @@ export function resolveBunBin() {
  * the SSR shell either way. `--ompchamber-server` is an identity marker: it
  * makes this process recognizable in `ps` output, which is how a starting
  * server decides whether a busy port belongs to OMPChamber before signalling
- * anything.
+ * anything. The launch mode rides along as argv (`--launch-mode=`), never as an
+ * environment variable: env is inherited by descendants, so a `bun run dev`
+ * started from an OMPChamber shell would otherwise be labelled `daemon` and
+ * replaced by the next update.
  */
 export function buildServeInvocation({ pkgRoot, mode, port, host, launchMode = 'daemon' }) {
   const entry = joinPath(pkgRoot, 'src', 'server', 'index.ts');
@@ -146,13 +150,12 @@ export function buildServeInvocation({ pkgRoot, mode, port, host, launchMode = '
   }
   return {
     file: resolveBunBin(),
-    args: [entry, '--ompchamber-server'],
+    args: [entry, '--ompchamber-server', launchModeArg(launchMode)],
     env: {
       ...Bun.env,
       NODE_ENV: mode === 'prod' ? 'production' : 'development',
       PORT: String(port),
       HOST: host,
-      OMPCHAMBER_LAUNCH_MODE: launchMode,
     },
   };
 }

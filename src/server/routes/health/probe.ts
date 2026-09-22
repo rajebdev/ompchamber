@@ -1,5 +1,6 @@
 import { json, NO_STORE_HEADERS } from '@/server/lib/remix-compat';
 import pkg from '@/../package.json';
+import { resolveLaunchMode } from '@/server/lib/lifecycle/launch-mode';
 import { isMockMode } from '@/server/mock.server';
 
 const STARTED_AT = Date.now();
@@ -26,7 +27,7 @@ export async function loader() {
       // `launchMode` are what `status` prints, and the pair with `pid` is what
       // separates a dev server from a stale published build.
       mode: Bun.env.NODE_ENV === 'production' ? 'prod' : 'dev',
-      launchMode: Bun.env.OMPCHAMBER_LAUNCH_MODE ?? 'direct',
+      launchMode: resolveLaunchMode(),
       port: Number(Bun.env.PORT) || 3000,
       host: Bun.env.HOST || 'localhost',
     },
