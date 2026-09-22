@@ -121,6 +121,21 @@ Bun implements `node:*` builtins natively — they do **not** shell out to a Nod
 - Write entries as released behavior: a bullet **is** the commit subject, so the subject carries the changelog — name the behavior that changed, never a restatement of the diff. A type marked `hidden` in `release.config.mjs` (`chore`, `style`, `test`, `build`, `ci`) appears nowhere and, because the analyzer runs `bumpStrict`, cannot cut a version on its own.
 - A bullet credits its author — `… ([c148bc5](…)) (thanks [@octocat](https://github.com/octocat))` — unless that author is the repository owner, whose own commits carry the bulk of every release. `release/contributors.js` resolves the handle offline from GitHub privacy addresses (`NNN+login@users.noreply.github.com`) and asks the API about every other author, which is why the release job's `GITHUB_TOKEN` is what credits a contributor who commits with a real mailbox; bots (`[bot]` logins, `type: 'Bot'`) and unverified addresses get nothing, and a failed lookup never fails the release.
 
+### Conventional Commit Type Selection
+Every commit uses Conventional Commits — pick the type from what the diff actually does to observable behavior, not from how big it is:
+- **`feat`** — new user-visible behavior: a feature, endpoint, setting option, or capability that did not exist before. A change that only reorganizes internals while the UI/API output stays identical is NOT a feat.
+- **`fix`** — corrects existing behavior that was wrong: a bug, regression, wrong result, crash, or broken edge case. There must be a demonstrable "before was wrong" state; a behavior change that is merely a decision is not a fix.
+- **`refactor`** — restructures code with zero external behavior change: renames, file moves/extractions, deduplication, type tightening, performance work with no visible effect.
+- **`perf`** — the primary intent is a measurable performance improvement, with behavior unchanged.
+- **`style`** — formatting/whitespace/import order only; no logic change. (`hidden` in `release.config.mjs`.)
+- **`test`** — adds or repairs tests only; no production code change. (`hidden`.)
+- **`build`** — toolchain, dependencies, build scripts (`package.json`, `rsbuild.config.ts`, `bun.lock`). (`hidden`.)
+- **`ci`** — pipeline config only (`.github/workflows/`, `release.config.mjs`). (`hidden`.)
+- **`chore`** — maintenance that fits none of the above (ignore files, secondary scripts). (`hidden`.)
+- **`docs`** — documentation only (README, AGENTS.md, comments).
+- **`BREAKING CHANGE`** — append `!` (`feat!:` / `fix!:`) and a footer when a change requires callers/users to act: removed/renamed API, route, setting, or a changed contract. The changelog's `### BREAKING CHANGES` group comes from this footer.
+Mixed change in one commit: split into separate commits when the files are separable; if not, use the dominant type and note the rest in the body. The subject names the behavior that changed (it becomes a changelog bullet verbatim), the body explains the why/how — never restate the diff.
+
 ---
 
 ## Codebase Architecture & File Organization Rules
