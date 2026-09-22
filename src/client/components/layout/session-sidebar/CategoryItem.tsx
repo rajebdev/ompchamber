@@ -224,6 +224,7 @@ export function Category({
                   isActive={isActive && !isViewingSubagent}
                   isArchived={session.is_archived === 1}
                   status={sessionStatus[sessionKey]}
+                  awaitingInput={Boolean(session.awaitingInput)}
                   onClick={() => onSelectSession(session.id)}
                   onArchive={() => handleArchive(session)}
                   onRename={String(session.id).startsWith('new-') ? undefined : (name) => void handleRename(session, name)}

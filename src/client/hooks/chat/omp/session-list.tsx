@@ -21,6 +21,7 @@ import type { ReactNode } from 'preact/compat';
 import { useFetcher } from '@/client/lib/router/fetcher';
 import { usePanelRefresh } from '@/client/hooks/workspace/panel-refresh';
 import { SIDEBAR_IDLE_REFRESH_MS } from '@/shared/lib/workspace/refresh-cadence';
+import { useInputRequiredAlert } from '@/client/hooks/ui/input-required-alert';
 import type { WorkspaceFolderData } from '@/shared/types';
 import type { SessionListPayload } from '@/server/lib/omp/session/sidebar-data.server';
 
@@ -87,6 +88,9 @@ export function SidebarDataProvider({ children, initialFolders = [] }: { childre
       folder.sessions?.some((session) => session.streamStatus === 'stream'),
     ),
   );
+  // Fires for ANY session, including one this tab never opened — the cue that an
+  // agent is blocked on an answer must not depend on the open timeline.
+  useInputRequiredAlert(fetcher.data?.folders ?? []);
   usePanelRefresh(refresh, !hasStreaming, SIDEBAR_IDLE_REFRESH_MS);
 
   const markSeen = useCallback((sessionId: number | string) => {

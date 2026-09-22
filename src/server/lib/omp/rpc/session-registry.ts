@@ -72,6 +72,24 @@ export function getRunningRpcSessionIds(): string[] {
   return getRunningRpcSessions().map((s) => s.id);
 }
 
+/**
+ * Sessions whose omp process is parked on a dialog only the user can release —
+ * an `ask` question or an approval gate. Deliberately independent of
+ * `isRunning()`: a blocked dialog leaves every turn flag exactly as it was, so
+ * the pending-dialog registry is the only thing that can tell a session waiting
+ * for an answer from an idle one. Feeds the sidebar's "needs input" badge, which
+ * has to reach clients that never opened the session.
+ */
+export function getAwaitingInputSessionIds(): string[] {
+  const ids = new Set<string>();
+  for (const [sessionId, session] of getRegistry()) {
+    if (session.isAlive() && session.getPendingUiDialogs().length > 0) {
+      ids.add(session.sessionId || sessionId);
+    }
+  }
+  return [...ids];
+}
+
 function getRunningListeners(): Set<(update: RunningSessionUpdate) => void> {
   if (!globalThis.__ompRunningListeners) globalThis.__ompRunningListeners = new Set();
   return globalThis.__ompRunningListeners;

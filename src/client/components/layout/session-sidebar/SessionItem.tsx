@@ -1,5 +1,5 @@
 import type { TargetedMouseEvent } from 'preact';
-import { Archive, ArchiveRestore, Check, ChevronDown, ChevronRight, Loader2, Pencil } from 'lucide-preact';
+import { Archive, ArchiveRestore, Check, ChevronDown, ChevronRight, CircleQuestionMark, Loader2, Pencil } from 'lucide-preact';
 import { useInlineRename } from '@/client/hooks/ui/inline-rename';
 
 export interface SessionItemProps {
@@ -7,6 +7,8 @@ export interface SessionItemProps {
   isActive?: boolean;
   isArchived?: boolean;
   status?: 'stream' | 'finish' | 'abort' | 'error';
+  /** The session's agent is blocked on a question until the user answers it. */
+  awaitingInput?: boolean;
   onClick?: () => void;
   onArchive?: () => void;
   onRename?: (name: string) => void;
@@ -21,6 +23,7 @@ export function SessionItem({
   isActive = false,
   isArchived = false,
   status,
+  awaitingInput = false,
   onClick,
   onArchive,
   onRename,
@@ -73,13 +76,17 @@ export function SessionItem({
             {isExpanded ? <ChevronDown size={13} className="text-ink/70" /> : <ChevronRight size={13} />}
           </button>
         )}
-        {status && !(showChevron && isExpanded) && (
+        {(awaitingInput || status) && !(showChevron && isExpanded) && (
           <span
             className={`absolute inset-0 flex items-center justify-center text-ink/60 transition-opacity ${
               showChevron ? 'group-hover/item:opacity-0 peer-focus-visible:opacity-0' : ''
             }`}
           >
-            {status === 'stream' ? (
+            {/* Waiting on an answer outranks the run spinner: the spinner says
+                work is happening, the question mark says it is YOUR turn. */}
+            {awaitingInput ? (
+              <CircleQuestionMark size={12} className="animate-pulse text-ink/80" />
+            ) : status === 'stream' ? (
               <Loader2 size={12} className="animate-spin" />
             ) : (
               <Check size={12} />

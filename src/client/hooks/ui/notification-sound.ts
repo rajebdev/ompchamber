@@ -73,6 +73,60 @@ export function playNotificationSound() {
 }
 
 /**
+ * Web Audio cue for "the agent is blocked on you" — an ask question or an
+ * approval gate. Deliberately the mirror image of the completion chime: a
+ * triangle wave stepping DOWN (A5 → E5) instead of two sines climbing, so the
+ * two are never mistaken for each other when the tab is in the background.
+ */
+export function playInputRequiredSound() {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const AudioCtx = window.AudioContext || (window as WebkitWindow).webkitAudioContext;
+    if (!AudioCtx) return;
+
+    const ctx = new AudioCtx();
+    if (ctx.state === 'suspended') {
+      ctx.resume();
+    }
+
+    const now = ctx.currentTime;
+    const notes = [
+      { at: 0, frequency: 880, duration: 0.18, peak: 0.11 },
+      { at: 0.16, frequency: 659.25, duration: 0.46, peak: 0.13 },
+    ];
+
+    for (const note of notes) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(note.frequency, now + note.at);
+
+      gain.gain.setValueAtTime(0, now + note.at);
+      gain.gain.linearRampToValueAtTime(note.peak, now + note.at + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + note.at + note.duration);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now + note.at);
+      osc.stop(now + note.at + note.duration);
+    }
+
+    setTimeout(() => {
+      try {
+        ctx.close();
+      } catch {
+        // Safe to ignore
+      }
+    }, 800);
+  } catch (err) {
+    console.warn('Unable to play input-required audio cue:', err);
+  }
+}
+
+/**
  * Checks whether chat completion sound is enabled in user preferences.
  */
 export function isChatSoundEnabled(appSettings?: Record<string, any>): boolean {
@@ -88,6 +142,17 @@ export function isChatSoundEnabled(appSettings?: Record<string, any>): boolean {
 export function triggerChatCompletionSound(appSettings?: Record<string, any>) {
   if (isChatSoundEnabled(appSettings)) {
     playNotificationSound();
+  }
+}
+
+/**
+ * Triggers the input-required cue, gated by the same notification preference as
+ * the completion chime. Reads settings from the primed snapshot: the alert fires
+ * from the app-wide session list, which has no settings props to thread.
+ */
+export function triggerInputRequiredSound() {
+  if (isChatSoundEnabled()) {
+    playInputRequiredSound();
   }
 }
 

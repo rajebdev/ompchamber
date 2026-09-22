@@ -22,7 +22,7 @@ import { isValidSessionSortOption, sortFolders } from '@/shared/lib/workspace/si
 import { loadOmpSidebarData } from '@/server/lib/omp/session/reader';
 import { sessionHasSubagents } from '@/server/lib/omp/session/subagent-presence';
 import { healStaleStreamStatuses, loadStreamStatuses } from '@/shared/lib/omp/session/stream-state.server';
-import { getRunningRpcSessionIds } from '@/server/lib/omp/rpc/session-registry';
+import { getAwaitingInputSessionIds, getRunningRpcSessionIds } from '@/server/lib/omp/rpc/session-registry';
 import type { SessionItemData, SessionSortOption, WorkspaceFolderData } from '@/shared/types';
 import type { OmpSession } from '@/shared/types/omp/session';
 
@@ -115,15 +115,21 @@ export async function loadSidebarData(): Promise<SessionListPayload> {
   // `finish` right here — the authoritative status travels with the same
   // fetch that refreshes the sidebar list.
   const streamStatuses: Record<string, 'stream' | 'finish' | 'abort' | 'error'> = {};
+  // Sessions blocked on a dialog nobody has answered yet. Read live from the
+  // process registry (never persisted): the child that owns the question is the
+  // same thing that owns the flag, so a restart cannot leave a stale badge.
+  const awaitingInput = new Set<string>();
   if (!mock) {
     await healStaleStreamStatuses(new Set(getRunningRpcSessionIds()));
     Object.assign(streamStatuses, await loadStreamStatuses());
+    for (const id of getAwaitingInputSessionIds()) awaitingInput.add(id);
   }
   const foldersWithStatus = groupedFolders.map((folder) => ({
     ...folder,
     sessions: (folder.sessions ?? []).map((s) => ({
       ...s,
       streamStatus: streamStatuses[String(s.id)],
+      ...(awaitingInput.has(String(s.id)) ? { awaitingInput: true } : {}),
     })),
   }));
 
