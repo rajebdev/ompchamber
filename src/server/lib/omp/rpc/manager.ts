@@ -102,10 +102,21 @@ export class AgentSessionWrapper {
   }
 
   /** Anything in flight that a process reset would destroy: the current turn,
-   *  a compaction, a shell command, or live subagents — which outlive the turn
-   *  that spawned them, so no other flag here can see them. */
+   *  a compaction, a shell command, live subagents — which outlive the turn that
+   *  spawned them, so no other flag here can see them — or an ask/approval dialog
+   *  omp is BLOCKED on.
+   *
+   *  The dialogs are the load-bearing entry: an ask parks the tool call for as
+   *  long as the user takes to answer, and omp answers RPC handlers one at a
+   *  time, so every probe (`get_state`) queues behind it and times out. Without
+   *  this the timeout path read the session as "idle and unresponsive", killed
+   *  the child, and with it the question the user was still reading. */
   isBusy(): boolean {
-    return this.isRunning() || this.subagents.liveCount(Date.now(), SUBAGENT_STALE_MS) > 0;
+    return (
+      this.isRunning() ||
+      this.pendingUiDialogs.list().length > 0 ||
+      this.subagents.liveCount(Date.now(), SUBAGENT_STALE_MS) > 0
+    );
   }
 
   start(): void {
