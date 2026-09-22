@@ -1,19 +1,21 @@
-export interface TerminalLogItem {
-  id: string;
-  command: string;
-  stdout?: string;
-  stderr?: string;
-  exitCode: number;
-  durationMs?: number;
-  timestamp: string;
-  cwd?: string;
+/**
+ * Live terminal inventory, as served by `GET /api/terminal/sessions`.
+ *
+ * The frame types themselves live in `@/shared/lib/workspace/terminal/protocol`
+ * — they are the wire contract the socket encodes and decodes, not domain data.
+ */
+
+import type { TerminalSnapshot } from '@/shared/lib/workspace/terminal/protocol';
+
+export interface TerminalSessionsResponse {
+  terminals: TerminalSnapshot[];
 }
 
-export interface TerminalRunResponse {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  durationMs: number;
+/** Launch context for the terminal header (`GET /api/terminal/run`). */
+export interface TerminalContextResponse {
+  bunVersion: string;
+  nodeVersion: string;
+  gitBranch: string;
   cwd: string;
-  error?: string;
+  relativePath: string;
 }

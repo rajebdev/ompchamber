@@ -1,315 +1,119 @@
 import { useEffect, useRef, useState, useImperativeHandle, useCallback } from 'preact/hooks';
 import { forwardRef } from 'preact/compat';
 import { ArrowDown } from 'lucide-preact';
-import type { Terminal } from '@xterm/xterm';
-import type { FitAddon } from '@xterm/addon-fit';
 import { useTheme } from '@/client/hooks/ui/theme';
-import { useTerminalOutputSync } from '@/client/hooks/workspace/terminal-output';
-import {
-  getXtermTheme,
-  XTERM_FONT_FAMILY,
-  safePatchFitAddon,
-  safePatchRenderService,
-  getTerminalSessionOutput,
-  type XtermCore,
-  type XtermModule,
-} from '@/client/data/theme/terminal';
+import { getXtermTheme } from '@/client/data/theme/terminal';
+import { mountXterm, type XtermMount } from '@/client/components/workspace/terminal-panel/mount';
 
 export interface RealtimeXtermHandle {
-  write: (data: string) => void;
-  writeln: (line: string) => void;
-  clear: () => void;
+  /** Raw PTY output. Bytes, not text: xterm's decoder reassembles them. */
+  write: (bytes: Uint8Array) => void;
+  /**
+   * Write the retained scrollback at the size it was drawn for, then fit back
+   * to the panel. Replaying history at another width leaves wrapped fragments
+   * the shell's own redraw never clears.
+   */
+  writeReplay: (bytes: Uint8Array, cols: number, rows: number) => void;
+  /** Drop the buffer and reset the cursor — used when the shell is replaced. */
+  reset: () => void;
   focus: () => void;
-  scrollToBottom: () => void;
-  scrollToTop: () => void;
-  scrollLines: (amount: number) => void;
 }
 
 interface RealtimeXtermViewProps {
-  onCommandSubmit?: (cmd: string, options?: { fromXterm?: boolean }) => void;
-  cwd: string;
+  /** Keystrokes and paste, raw. */
+  onInput: (data: string) => void;
+  /** Non-UTF-8 payloads xterm reports separately (some mouse reports). */
+  onBinaryInput: (data: string) => void;
+  /** The grid changed; the PTY must be resized to match. */
+  onGridChange: (cols: number, rows: number) => void;
+  /** The terminal is measurable and knows its size; attach with these. */
+  onReady: (cols: number, rows: number) => void;
 }
 
-function handleKeyNavigation(term: Terminal, event: globalThis.KeyboardEvent): boolean {
-  if (event.type !== 'keydown') return true;
-  if (event.shiftKey) {
-    if (event.key === 'PageUp') { term.scrollPages(-1); return false; }
-    if (event.key === 'PageDown') { term.scrollPages(1); return false; }
-    if (event.key === 'Home') { term.scrollToTop(); return false; }
-    if (event.key === 'End') { term.scrollToBottom(); return false; }
-    if (event.key === 'ArrowUp') { term.scrollLines(-1); return false; }
-    if (event.key === 'ArrowDown') { term.scrollLines(1); return false; }
-  }
-  return true;
-}
-
+/**
+ * xterm view bound to a real PTY.
+ *
+ * Every keystroke goes to the shell as bytes — line editing, history, tab
+ * completion and Ctrl+C are the shell's job, not this component's. Output is
+ * written as bytes so a character split across two PTY reads is reassembled by
+ * xterm's own streaming decoder rather than by a decode step here.
+ */
 export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermViewProps>(
-  ({ onCommandSubmit, cwd: _cwd }, ref) => {
+  ({ onInput, onBinaryInput, onGridChange, onReady }, ref) => {
     const { isDark } = useTheme();
     const containerRef = useRef<HTMLDivElement>(null);
-    const terminalRef = useRef<Terminal | null>(null);
-    const fitAddonRef = useRef<FitAddon | null>(null);
-    const inputBufferRef = useRef<string>('');
-    const pendingWritesRef = useRef<string[]>([]);
+    const mountRef = useRef<XtermMount | null>(null);
     const [isScrolledUp, setIsScrolledUp] = useState(false);
-    const onCommandSubmitRef = useRef(onCommandSubmit);
-    const { recordOutput, clearOutput } = useTerminalOutputSync(terminalRef);
+
+    const inputRef = useRef(onInput);
+    inputRef.current = onInput;
+    const binaryInputRef = useRef(onBinaryInput);
+    binaryInputRef.current = onBinaryInput;
+    const gridChangeRef = useRef(onGridChange);
+    gridChangeRef.current = onGridChange;
+    const readyRef = useRef(onReady);
+    readyRef.current = onReady;
+    const themeRef = useRef(isDark);
+    themeRef.current = isDark;
 
     useEffect(() => {
-      if (terminalRef.current) {
-        terminalRef.current.options.theme = getXtermTheme(isDark);
-        terminalRef.current.refresh(0, terminalRef.current.rows - 1);
-      }
+      const term = mountRef.current?.term;
+      if (!term) return;
+      term.options.theme = getXtermTheme(isDark);
+      term.refresh(0, term.rows - 1);
     }, [isDark]);
 
-    useEffect(() => {
-      onCommandSubmitRef.current = onCommandSubmit;
-    }, [onCommandSubmit]);
+    useImperativeHandle(ref, () => ({
+      write(bytes: Uint8Array) {
+        mountRef.current?.term.write(bytes);
+      },
+      writeReplay(bytes: Uint8Array, cols: number, rows: number) {
+        mountRef.current?.writeReplay(bytes, cols, rows);
+      },
+      reset() {
+        mountRef.current?.term.reset();
+      },
+      focus() {
+        mountRef.current?.term.focus();
+      },
+    }), []);
 
     const scrollToBottom = useCallback(() => {
-      if (terminalRef.current) {
-        terminalRef.current.scrollToBottom();
-        setIsScrolledUp(false);
-      }
+      mountRef.current?.term.scrollToBottom();
+      setIsScrolledUp(false);
     }, []);
 
-    const scrollToTop = useCallback(() => {
-      terminalRef.current?.scrollToTop();
-    }, []);
-
-    const scrollLines = useCallback((amount: number) => {
-      terminalRef.current?.scrollLines(amount);
-    }, []);
-
-    useImperativeHandle(ref, () => ({
-      write: (data: string) => {
-        recordOutput(data);
-        if (terminalRef.current) {
-          const term = terminalRef.current;
-          const wasAtBottom = term.buffer.active.viewportY === term.buffer.active.baseY;
-          term.write(data, () => {
-            if (wasAtBottom) term.scrollToBottom();
-          });
-        } else {
-          pendingWritesRef.current.push(data);
-        }
-      },
-      writeln: (line: string) => {
-        recordOutput(line + '\r\n');
-        if (terminalRef.current) {
-          const term = terminalRef.current;
-          const wasAtBottom = term.buffer.active.viewportY === term.buffer.active.baseY;
-          term.writeln(line, () => {
-            if (wasAtBottom) term.scrollToBottom();
-          });
-        } else {
-          pendingWritesRef.current.push(line + '\r\n');
-        }
-      },
-      clear: () => {
-        clearOutput();
-        if (terminalRef.current) {
-          terminalRef.current.clear();
-          terminalRef.current.write('\r\x1b[33m$\x1b[0m ');
-          recordOutput('\r\x1b[33m$\x1b[0m ');
-          setIsScrolledUp(false);
-        } else {
-          pendingWritesRef.current = [];
-        }
-      },
-      focus: () => {
-        terminalRef.current?.focus();
-      },
-      scrollToBottom,
-      scrollToTop,
-      scrollLines,
-    }));
-
+    // Mount once. Sizing flows out through callbacks; the server owns the PTY,
+    // so nothing here restarts a shell on its own.
     useEffect(() => {
-      let isMounted = true;
-      let termInstance: Terminal | null = null;
-      let fitAddonInstance: FitAddon | null = null;
-      let resizeObserver: ResizeObserver | null = null;
-      let dataDisposable: { dispose: () => void } | null = null;
-      let scrollDisposable: { dispose: () => void } | null = null;
-      let fitTimeout: ReturnType<typeof setTimeout> | null = null;
-      let rafId: number | null = null;
-      let cleanupTouch: (() => void) | null = null;
+      const container = containerRef.current;
+      if (!container) return;
+      let cancelled = false;
 
-      const safeFit = () => {
-        if (!isMounted || !termInstance || !fitAddonInstance || !containerRef.current) return;
-        const el = containerRef.current;
-        if (el.clientWidth <= 0 || el.clientHeight <= 0) return;
-        try {
-          const core = (termInstance as unknown as XtermCore)._core;
-          const renderService = core?._renderService;
-          if (!renderService) return;
-          const dims = renderService.dimensions;
-          if (!dims?.css?.cell?.width || !dims?.css?.cell?.height) return;
-          fitAddonInstance.fit();
-        } catch {}
-      };
-
-      async function initXterm() {
-        if (!containerRef.current || !isMounted) return;
-
-        const xtermModule = (await import('@xterm/xterm')) as unknown as XtermModule<typeof Terminal>;
-        const fitModule = (await import('@xterm/addon-fit')) as unknown as XtermModule<typeof FitAddon>;
-
-        const TerminalClass =
-          xtermModule.Terminal ||
-          xtermModule.default?.Terminal ||
-          xtermModule.default;
-
-        const FitAddonClass =
-          fitModule.FitAddon ||
-          fitModule.default?.FitAddon ||
-          fitModule.default;
-
-        if (!TerminalClass || !FitAddonClass || !containerRef.current || !isMounted) return;
-
-        safePatchFitAddon(FitAddonClass);
-
-        const term = new TerminalClass({
-          cursorBlink: true,
-          cursorStyle: 'block',
-          fontSize: 12,
-          lineHeight: 1.25,
-          fontFamily: XTERM_FONT_FAMILY,
-          theme: getXtermTheme(isDark),
-          convertEol: true,
-          scrollback: 10000,
-          scrollSensitivity: 1.5,
-          fastScrollSensitivity: 5,
-          smoothScrollDuration: 0,
-          allowProposedApi: true,
-        }) as Terminal;
-
-        term.open(containerRef.current);
-        safePatchRenderService(term);
-
-        const fitAddon = new FitAddonClass() as FitAddon;
-        term.loadAddon(fitAddon);
-
-        termInstance = term;
-        fitAddonInstance = fitAddon;
-        terminalRef.current = term;
-        fitAddonRef.current = fitAddon;
-
-        rafId = requestAnimationFrame(() => {
-          if (isMounted) safeFit();
-        });
-
-        term.attachCustomKeyEventHandler((event: globalThis.KeyboardEvent) => handleKeyNavigation(term, event));
-
-        scrollDisposable = term.onScroll(() => {
-          const buffer = term.buffer.active;
-          setIsScrolledUp(buffer.viewportY < buffer.baseY);
-        });
-
-        const savedOutput = getTerminalSessionOutput();
-        if (savedOutput) {
-          term.write(savedOutput);
-        } else {
-          const welcome = '\x1b[1;33m[OMPChamber Realtime Terminal]\x1b[0m\r\n\x1b[90mStream connected. Live xterm canvas active.\x1b[0m\r\n\r\n\x1b[33m$\x1b[0m ';
-          term.write(welcome);
-          recordOutput(welcome);
+      void mountXterm(
+        container,
+        themeRef.current,
+        {
+          onInput: (data) => inputRef.current(data),
+          onBinaryInput: (data) => binaryInputRef.current(data),
+          onGridChange: (cols, rows) => gridChangeRef.current(cols, rows),
+          onReady: (cols, rows) => readyRef.current(cols, rows),
+          onScrolledUpChange: setIsScrolledUp,
+        },
+        () => cancelled,
+      ).then((mount) => {
+        if (!mount) return;
+        if (cancelled) {
+          mount.dispose();
+          return;
         }
-
-        if (pendingWritesRef.current.length > 0) {
-          for (const chunk of pendingWritesRef.current) {
-            term.write(chunk);
-          }
-          pendingWritesRef.current = [];
-          term.scrollToBottom();
-        }
-
-        dataDisposable = term.onData((data: string) => {
-          if (data === '\r') {
-            const cmd = inputBufferRef.current.trim();
-            term.write('\r\n');
-            inputBufferRef.current = '';
-            if (cmd && onCommandSubmitRef.current) {
-              recordOutput(cmd + '\r\n');
-              onCommandSubmitRef.current(cmd, { fromXterm: true });
-            } else {
-              term.write('\x1b[33m$\x1b[0m ');
-              recordOutput('\r\n\x1b[33m$\x1b[0m ');
-            }
-          } else if (data === '\x7f' || data === '\b') {
-            if (inputBufferRef.current.length > 0) {
-              inputBufferRef.current = inputBufferRef.current.slice(0, -1);
-              term.write('\b \b');
-            }
-          } else if (data === '\x03') {
-            inputBufferRef.current = '';
-            term.write('^C\r\n\x1b[33m$\x1b[0m ');
-            recordOutput('^C\r\n\x1b[33m$\x1b[0m ');
-          } else if (data === '\x0c') {
-            clearOutput();
-            term.clear();
-            term.write('\x1b[33m$\x1b[0m ');
-            recordOutput('\x1b[33m$\x1b[0m ');
-          } else if (data >= ' ') {
-            inputBufferRef.current += data;
-            term.write(data);
-          }
-        });
-
-        let touchStartY = 0;
-        const containerEl = containerRef.current;
-        const handleTouchStart = (e: globalThis.TouchEvent) => {
-          if (e.touches.length === 1) touchStartY = e.touches[0].clientY;
-        };
-        const handleTouchMove = (e: globalThis.TouchEvent) => {
-          if (e.touches.length === 1) {
-            const deltaY = touchStartY - e.touches[0].clientY;
-            if (Math.abs(deltaY) >= 16) {
-              term.scrollLines(Math.trunc(deltaY / 16));
-              touchStartY = e.touches[0].clientY;
-            }
-          }
-        };
-
-        if (containerEl) {
-          containerEl.addEventListener('touchstart', handleTouchStart, { passive: true });
-          containerEl.addEventListener('touchmove', handleTouchMove, { passive: true });
-          cleanupTouch = () => {
-            containerEl.removeEventListener('touchstart', handleTouchStart);
-            containerEl.removeEventListener('touchmove', handleTouchMove);
-          };
-        }
-
-        resizeObserver = new ResizeObserver(() => {
-          if (fitTimeout) clearTimeout(fitTimeout);
-          fitTimeout = setTimeout(() => {
-            safeFit();
-          }, 35);
-        });
-
-        if (containerEl) {
-          resizeObserver.observe(containerEl);
-        }
-      }
-
-      initXterm();
+        mountRef.current = mount;
+      });
 
       return () => {
-        isMounted = false;
-        if (rafId !== null) cancelAnimationFrame(rafId);
-        if (fitTimeout !== null) clearTimeout(fitTimeout);
-        cleanupTouch?.();
-        dataDisposable?.dispose();
-        scrollDisposable?.dispose();
-        resizeObserver?.disconnect();
-        try {
-          fitAddonInstance?.dispose();
-        } catch {}
-        try {
-          termInstance?.dispose();
-        } catch {}
-        terminalRef.current = null;
-        fitAddonRef.current = null;
+        cancelled = true;
+        mountRef.current?.dispose();
+        mountRef.current = null;
       };
     }, []);
 

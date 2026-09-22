@@ -10,6 +10,7 @@ import { foldersBindings } from '@/server/routes/folders';
 import { filesBindings } from '@/server/routes/files';
 import { telemetryBindings } from '@/server/routes/telemetry';
 import { terminalBindings } from '@/server/routes/terminal';
+import { terminalWsRoutes } from '@/server/routes/terminal/ws';
 import { browserBindings } from '@/server/routes/browser';
 import { modelsBindings } from '@/server/routes/models';
 import { ompBindings } from '@/server/routes/omp';
@@ -35,4 +36,4 @@ const allBindings: HandlerBinding[] = [
   ...wellKnownBindings,
 ];
 
-export const apiRoutes = mountBindings(new Elysia(), allBindings).use(agentWsRoutes);
+export const apiRoutes = mountBindings(new Elysia(), allBindings).use(agentWsRoutes).use(terminalWsRoutes);

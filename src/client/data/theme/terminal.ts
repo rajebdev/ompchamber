@@ -54,7 +54,33 @@ export function getXtermTheme(isDark: boolean) {
 
 export const XTERM_THEME = XTERM_DARK_THEME;
 
-export const XTERM_FONT_FAMILY = "'Fira Code', Menlo, Monaco, 'Courier New', monospace";
+/**
+ * Font stack for the terminal canvas.
+ *
+ * The glyph fallbacks after the text faces are load-bearing. A shell prompt is
+ * usually drawn with private-use symbols (powerline separators, devicons,
+ * Material Design icons) that **no** coding webfont contains — `@fontsource/
+ * fira-code`'s latin subset maps 226 codepoints and not one of them is above
+ * U+FFFF — so without a face that supplies them the browser paints a hollow
+ * tofu box for every prompt segment. The names below cover the Nerd Font
+ * families a user is most likely to have installed (plus the *fontconfig*
+ * symbol faces on Linux); a face that is absent is simply skipped by the
+ * normal fallback chain, so listing many costs nothing.
+ *
+ * This is the same shape OpenChamber ships (`TERMINAL_GLYPH_FALLBACKS` in its
+ * `ghostty/surface.ts`), which additionally bundles `SymbolsNerdFontMono` as a
+ * webfont so the coverage never depends on the machine.
+ *
+ * Only glyphs the text face lacks reach these entries, so Latin metrics are
+ * untouched — verified: `A`/`m`/`W` keep identical advance and ink.
+ */
+export const XTERM_GLYPH_FALLBACKS =
+  "'FiraCode Nerd Font Mono', 'FiraCode Nerd Font', 'JetBrainsMono Nerd Font', " +
+  "'JetBrainsMono NF', 'JetBrains Mono Nerd Font', 'Hack Nerd Font', 'MesloLGS NF', " +
+  "'MesloLGM Nerd Font', 'CaskaydiaCove Nerd Font', 'SauceCodePro Nerd Font', " +
+  "'Symbols Nerd Font Mono', 'Symbols Nerd Font', 'PowerlineSymbols'";
+
+export const XTERM_FONT_FAMILY = `'Fira Code', ${XTERM_GLYPH_FALLBACKS}, Menlo, Monaco, 'Courier New', monospace`;
 
 /** xterm's private render service, read only to size-check before fitting. */
 export interface XtermCore {
@@ -119,32 +145,4 @@ export function safePatchRenderService(term: any) {
       }
     }
   } catch {}
-}
-
-let terminalSessionOutput = '';
-
-export function getTerminalSessionOutput(): string {
-  return terminalSessionOutput;
-}
-
-export function appendTerminalSessionOutput(chunk: string): void {
-  terminalSessionOutput += chunk;
-  if (terminalSessionOutput.length > 250000) {
-    terminalSessionOutput = terminalSessionOutput.slice(-200000);
-  }
-}
-
-export function clearTerminalSessionOutput(): void {
-  terminalSessionOutput = '';
-}
-
-const TERMINAL_OUTPUT_SNAPSHOT_LIMIT = 8000;
-
-export function getTerminalOutputSnapshot(): string {
-  if (terminalSessionOutput.length <= TERMINAL_OUTPUT_SNAPSHOT_LIMIT) return terminalSessionOutput;
-  return terminalSessionOutput.slice(-TERMINAL_OUTPUT_SNAPSHOT_LIMIT);
-}
-
-export function setTerminalOutputSnapshot(value: string): void {
-  terminalSessionOutput = value;
 }

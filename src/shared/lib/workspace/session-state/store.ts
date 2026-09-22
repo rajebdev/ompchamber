@@ -28,10 +28,7 @@
  * - userBrowser.viewportMode  string
  * - userBrowser.zoomLevel     number
  * - terminal.activeRepo       string
- * - terminal.cwd              string
- * - terminal.commandHistory   string[]
- * - terminal.input            string
- * - terminal.output           string (trimmed tail)
+ * - terminal.id               string (server-side PTY id; reattached on reload)
  * - git.viewMode              'flat' | 'tree'
  * - git.commitDraft           string
  * - git.stagedExpanded        boolean

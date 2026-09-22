@@ -1,9 +1,9 @@
 import { useCallback, useRef } from 'preact/hooks';
 import { useTerminal } from '@/client/hooks/workspace/terminal';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
+import { useTheme } from '@/client/hooks/ui/theme';
 import { TerminalHeader } from '@/client/components/workspace/terminal-panel/Header';
 import { TerminalQuickActions } from '@/client/components/workspace/terminal-panel/QuickActions';
-import { TerminalInputBar } from '@/client/components/workspace/terminal-panel/InputBar';
 import { RealtimeXtermView, type RealtimeXtermHandle } from '@/client/components/workspace/terminal-panel/RealtimeXtermView';
 
 interface TerminalPanelProps {
@@ -13,52 +13,80 @@ interface TerminalPanelProps {
   showHeader?: boolean;
 }
 
+const encoder = new TextEncoder();
+
 export function TerminalPanel({ className = '', enabled = true, rootPath, showHeader = true }: TerminalPanelProps) {
   const xtermRef = useRef<RealtimeXtermHandle>(null);
+  const { isDark } = useTheme();
   const [activeRepo, setActiveRepo] = useSessionState<string>('terminal.activeRepo', '.');
+  const gridRef = useRef<{ cols: number; rows: number } | null>(null);
 
-  const handleStreamChunk = useCallback((text: string) => {
-    xtermRef.current?.write(text);
+  const handleOutput = useCallback((bytes: Uint8Array) => {
+    xtermRef.current?.write(bytes);
   }, []);
 
-  const handleCommandStart = useCallback((cmd: string, options?: { fromXterm?: boolean }) => {
-    if (!options?.fromXterm) {
-      xtermRef.current?.write(`\r\x1b[K\x1b[33m$\x1b[0m \x1b[1m${cmd}\x1b[0m\r\n`);
-    }
+  const handleReplay = useCallback((bytes: Uint8Array, frame: { replayCols: number; replayRows: number }) => {
+    xtermRef.current?.writeReplay(bytes, frame.replayCols, frame.replayRows);
   }, []);
 
-  const handleCommandEnd = useCallback((exitCode: number, _cwd: string) => {
-    if (exitCode !== 0 && exitCode !== 130) {
-      xtermRef.current?.write(`\x1b[31m[exit ${exitCode}]\x1b[0m\r\n`);
-    }
-    xtermRef.current?.write(`\x1b[33m$\x1b[0m `);
-  }, []);
-
-  const handleXtermClear = useCallback(() => {
-    xtermRef.current?.clear();
+  const handleRestart = useCallback(() => {
+    xtermRef.current?.reset();
   }, []);
 
   const {
-    terminalInput,
-    setTerminalInput,
-    isRunning,
+    status,
     cwd,
+    shell,
+    exitCode,
+    error,
     systemInfo,
-    executeCommand,
-    cancelRunningCommand,
-    handleKeyDown,
+    attach,
+    resize,
+    input,
+    restart,
   } = useTerminal({
-    onStreamChunk: handleStreamChunk,
-    onCommandStart: handleCommandStart,
-    onCommandEnd: handleCommandEnd,
-    onClear: handleXtermClear,
     root: enabled ? rootPath : undefined,
     repo: activeRepo,
+    theme: isDark ? 'dark' : 'light',
+    onOutput: handleOutput,
+    onReplay: handleReplay,
+    onRestart: handleRestart,
   });
 
-  const handleCommandSubmit = useCallback((cmd: string, options?: { fromXterm?: boolean }) => {
-    executeCommand(cmd, options);
-  }, [executeCommand]);
+  // The view reports its grid before the first attach and on every fit, so the
+  // PTY is created at the panel's real size instead of a default 80x24.
+  const handleReady = useCallback((cols: number, rows: number) => {
+    gridRef.current = { cols, rows };
+    attach(cols, rows);
+  }, [attach]);
+
+  const handleGridChange = useCallback((cols: number, rows: number) => {
+    const previous = gridRef.current;
+    gridRef.current = { cols, rows };
+    if (!previous) return;
+    resize(cols, rows);
+  }, [resize]);
+
+  // Keystrokes arrive as text; `onBinary` payloads are latin-1 bytes and must
+  // not be UTF-8 encoded on the way out.
+  const handleInput = useCallback((data: string) => {
+    input(encoder.encode(data));
+  }, [input]);
+
+  const handleBinaryInput = useCallback((data: string) => {
+    const bytes = new Uint8Array(data.length);
+    for (let i = 0; i < data.length; i += 1) bytes[i] = data.charCodeAt(i) & 0xff;
+    input(bytes);
+  }, [input]);
+
+  const handleQuickAction = useCallback((command: string) => {
+    input(encoder.encode(`${command}\r`));
+    xtermRef.current?.focus();
+  }, [input]);
+
+  const handleRestartClick = useCallback(() => {
+    restart();
+  }, [restart]);
 
   if (!enabled) {
     return (
@@ -72,39 +100,37 @@ export function TerminalPanel({ className = '', enabled = true, rootPath, showHe
     <div className={`flex flex-col h-full w-full bg-paper text-ink overflow-hidden ${className}`}>
       {showHeader && (
         <TerminalHeader
-          isRunning={isRunning}
+          status={status}
+          exitCode={exitCode}
           rootPath={rootPath}
           activeRepo={activeRepo}
           onSelectRepo={setActiveRepo}
-          bunVersion={systemInfo.bunVersion}
-          nodeVersion={systemInfo.nodeVersion}
+          cwd={cwd}
+          shell={shell}
+          gitBranch={systemInfo.gitBranch}
+          onRestart={handleRestartClick}
         />
       )}
 
-      {/* Preset Command Shortcuts */}
-      <TerminalQuickActions
-        onSelectCommand={executeCommand}
-        disabled={isRunning}
-      />
+      {/* Preset command shortcuts: typed into the live shell, not a new process */}
+      <TerminalQuickActions onSelectCommand={handleQuickAction} disabled={status !== 'running'} />
 
-      {/* Real-time Xterm Terminal Canvas */}
+      {error && (
+        <div className="px-3 py-1.5 border-b border-error/20 bg-error/5 text-[11px] font-mono text-error flex-shrink-0">
+          {error}
+        </div>
+      )}
+
+      {/* Real-time Xterm Terminal Canvas, driven by the PTY socket */}
       <div className="flex-1 w-full min-h-0 bg-canvas overflow-hidden">
         <RealtimeXtermView
           ref={xtermRef}
-          cwd={cwd}
-          onCommandSubmit={handleCommandSubmit}
+          onInput={handleInput}
+          onBinaryInput={handleBinaryInput}
+          onReady={handleReady}
+          onGridChange={handleGridChange}
         />
       </div>
-
-      {/* Input Bar with History and Cancel controls */}
-      <TerminalInputBar
-        value={terminalInput}
-        onChange={setTerminalInput}
-        onSubmit={() => executeCommand()}
-        onKeyDown={handleKeyDown}
-        onCancel={cancelRunningCommand}
-        isRunning={isRunning}
-      />
     </div>
   );
 }
