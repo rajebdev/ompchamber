@@ -5,6 +5,7 @@ import { resolveRoot } from '@/server/lib/fs/root';
 import { runShell } from '@/server/lib/fs/shell';
 import { fetchFileDiff, fetchGitCommits } from '@/server/lib/fs/git-log';
 import { fetchWorkingFileDiff } from '@/server/lib/fs/git-diff';
+import { gitSyncCount, invalidateRemoteRefs, markRemoteRefsFresh, refreshRemoteRefs } from '@/server/lib/fs/git-sync';
 
 const MAX_GIT_DEPTH = 8;
 
@@ -117,7 +118,17 @@ export async function loader({ request }: LoaderFunctionArgs) {
     });
   }
 
+  // Ahead/behind are only requested by the git panel (`?sync=1`); the
+  // status-only polls (activity bar, file explorer) must not trigger a network
+  // fetch, and must not pay for a count they never read.
+  const syncRequested = url.searchParams.get('sync') === '1';
+
   try {
+    // Started before the local probes below so the fetch overlaps them instead
+    // of adding up; TTL'd inside the helper, so the panel's 5s poll is not a 5s
+    // fetch loop.
+    const remoteRefresh = syncRequested ? refreshRemoteRefs(targetDir) : Promise.resolve();
+
     // Use --porcelain=v1 -uall so all individual edited/untracked files are listed
     const statusOut = (await runShell('git status --porcelain=v1 -uall', { cwd: targetDir, maxBuffer: 1024 * 1024 })).stdout;
 
@@ -167,18 +178,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
         };
       });
 
-    // `git rev-list --left-right --count HEAD...@{upstream}` prints "<ahead>\t<behind>".
-    let syncCount = { ahead: 0, behind: 0 };
-    try {
-      const syncOut = await runShell(
-        'git rev-list --left-right --count HEAD...@{upstream}',
-        { cwd: targetDir, timeout: 8000 }
-      );
-      const [ahead, behind] = syncOut.stdout.trim().split(/\s+/).map(Number);
-      syncCount = { ahead: ahead || 0, behind: behind || 0 };
-    } catch {
-      // No upstream configured — nothing to sync against.
-    }
+    await remoteRefresh;
+    const syncCount = syncRequested ? await gitSyncCount(targetDir) : undefined;
 
     return json({
       changes,
@@ -262,9 +263,13 @@ export async function action({ request }: ActionFunctionArgs) {
           await expectOk(`git checkout -b "${localName}" --track "${branch}"`, targetDir);
         }
       }
+      // The counts are per-branch: the refs the previous branch refreshed say
+      // nothing about the new one's upstream.
+      invalidateRemoteRefs(targetDir);
     } else if (actionType === 'create_branch') {
       const branch = formData.get('branch') as string;
       await expectOk(`git checkout -b "${branch}"`, targetDir);
+      invalidateRemoteRefs(targetDir);
     } else if (actionType === 'history' || actionType === 'graph') {
       const limit = parseInt((formData.get('limit') as string) || '50', 10);
       const skip = parseInt((formData.get('skip') as string) || '0', 10);
@@ -306,11 +311,16 @@ export async function action({ request }: ActionFunctionArgs) {
       await expectOk(`git rebase "${hash}"`, targetDir);
     } else if (actionType === 'push') {
       await expectOk('git push', targetDir, 120000);
+      markRemoteRefsFresh(targetDir);
     } else if (actionType === 'pull') {
       await expectOk('git pull --ff-only', targetDir, 120000);
+      markRemoteRefsFresh(targetDir);
     } else if (actionType === 'sync') {
       await expectOk('git pull --ff-only', targetDir, 120000);
       await expectOk('git push', targetDir, 120000);
+      // Both commands already moved the tracking ref; the next poll must not
+      // fetch again to see a state it just produced.
+      markRemoteRefsFresh(targetDir);
     }
     return json({ success: true });
   } catch (error: any) {

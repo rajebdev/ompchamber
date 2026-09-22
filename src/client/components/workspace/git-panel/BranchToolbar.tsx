@@ -113,7 +113,7 @@ export function GitBranchToolbar({
         <button
           type="button"
           onClick={onSync}
-          disabled={isBusy || (syncCount.ahead === 0 && syncCount.behind === 0)}
+          disabled={isBusy}
           title={
             syncCount.ahead > 0 && syncCount.behind > 0
               ? `Pull ${syncCount.behind} then push ${syncCount.ahead} commit(s)`
@@ -121,7 +121,7 @@ export function GitBranchToolbar({
                 ? `Push ${syncCount.ahead} commit(s)`
                 : syncCount.behind > 0
                   ? `Pull ${syncCount.behind} commit(s)`
-                  : 'Up to date'
+                  : 'Up to date — sync anyway'
           }
           className="flex items-center gap-1 p-1 rounded hover:text-ink hover:bg-ink/5 cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >

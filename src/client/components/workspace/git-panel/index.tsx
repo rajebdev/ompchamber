@@ -34,6 +34,10 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
     const params = new URLSearchParams();
     if (rootPath) params.set('root', rootPath);
     if (targetRepo && targetRepo !== '.') params.set('repo', targetRepo);
+    // The toolbar's ↑ahead ↓behind badge is what this asks for; it makes the
+    // loader refresh the branch's remote-tracking ref before counting, so the
+    // numbers describe origin rather than the last fetch.
+    params.set('sync', '1');
     params.set('t', String(Date.now()));
     fetcher.load(`/api/fs/git?${params.toString()}`);
   };
@@ -200,7 +204,7 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
     if (!enabled || pollingRepos || rescanningRepos) return;
     setExtraRepos(repos);
     setRescanningRepos(true);
-    const params = new URLSearchParams({ rescan: '1' });
+    const params = new URLSearchParams({ rescan: '1', sync: '1' });
     if (rootPath) params.set('root', rootPath);
     if (activeRepo !== '.') params.set('repo', activeRepo);
     params.set('t', String(Date.now()));
