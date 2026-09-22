@@ -28,16 +28,36 @@ import type { QueuedMessage } from '@/shared/types/chat';
  *  the same child, and an instant dispatch races it. */
 const DELIVERY_DELAY_MS = 500;
 
+/**
+ * How long a scheduled-but-not-yet-run delivery may sit before the next
+ * trigger supersedes it.
+ *
+ * Without this, one lost timer wedges the session's queue FOREVER: the guard
+ * below early-returns on any existing entry, so nothing would ever schedule
+ * again. A timer can be lost without the process dying — `bun --hot`
+ * re-evaluating this module discards the pending closure, and a wedged event
+ * loop drops the callback — and the symptom is silent: the queue simply never
+ * drains and no error is reported. Past this bound the entry is presumed lost
+ * and rescheduled, so a client nudge (sent whenever a session with queued
+ * items mounts or regains focus) always recovers the queue.
+ */
+const DELIVERY_STALE_MS = 5_000;
+
+interface PendingDelivery {
+  timer: ReturnType<typeof setTimeout>;
+  /** Wall-clock after which this entry is presumed lost and superseded. */
+  expiresAt: number;
+}
+
 /** Per-session pending delivery timer, so a second agent_end while one is
  *  already scheduled cannot double-book the head. */
-const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const pendingTimers = new Map<string, PendingDelivery>();
 
 function clearPendingTimer(sessionId: string): void {
-  const timer = pendingTimers.get(sessionId);
-  if (timer !== undefined) {
-    clearTimeout(timer);
-    pendingTimers.delete(sessionId);
-  }
+  const entry = pendingTimers.get(sessionId);
+  if (entry === undefined) return;
+  clearTimeout(entry.timer);
+  pendingTimers.delete(sessionId);
 }
 
 /** Send one queued item to the session as a normal prompt. The model snapshot
@@ -79,15 +99,25 @@ export interface QueueDeliveryHost {
  * Schedule the next queued delivery for this session. Called on terminal
  * agent_end and on a client's mount nudge. Idempotent: an in-flight timer is
  * reused, a claimed head can only be won by one caller.
+ *
+ * A pending entry older than {@link DELIVERY_STALE_MS} is presumed lost (see
+ * that constant) and replaced, so a dropped timer delays the queue instead of
+ * wedging it.
  */
 export function scheduleQueueDelivery(session: QueueDeliveryHost): void {
   const sessionId = session.sessionId;
-  if (!sessionId || pendingTimers.has(sessionId)) return;
+  if (!sessionId) return;
+  const pending = pendingTimers.get(sessionId);
+  if (pending !== undefined) {
+    if (Date.now() < pending.expiresAt) return;
+    // Lost timer: clear it so its callback cannot also fire and double-deliver.
+    clearTimeout(pending.timer);
+  }
   const timer = setTimeout(() => {
     pendingTimers.delete(sessionId);
     void deliverNext(session);
   }, DELIVERY_DELAY_MS);
-  pendingTimers.set(sessionId, timer);
+  pendingTimers.set(sessionId, { timer, expiresAt: Date.now() + DELIVERY_STALE_MS });
 }
 
 async function deliverNext(session: QueueDeliveryHost): Promise<void> {
