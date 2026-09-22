@@ -1,0 +1,18 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * The Bun binary to spawn child processes with.
+ *
+ * The server is usually itself Bun, so `process.execPath` is the most
+ * trustworthy answer — it is the exact runtime this install was started with.
+ * A host that is not Bun falls back to a PATH lookup, and finally to the
+ * literal `bun`, which lets the child resolve it from its own environment.
+ */
+export function resolveBunBin(): string {
+  const execPath = process.execPath;
+  if (/(^|[\\/])bun$/.test(execPath)) return execPath;
+  return Bun.which('bun') ?? 'bun';
+}

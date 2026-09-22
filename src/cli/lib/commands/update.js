@@ -2,19 +2,23 @@
 //
 // The installation mechanics live in the shared update engine so the CLI and
 // the console's "Update" button do the same thing; this command owns the
-// terminal presentation and restarts any instance still serving the previous
-// build.
+// terminal presentation and restarts the instances still serving the previous
+// build (the ones the CLI started — a server running from source is left to its
+// own launcher).
 
 import { color, configure, error, log, ok, warn, printJson, isJson, isQuiet } from '@/cli/lib/output.js';
 import { listLiveInstances, findLiveInstance, stopInstance } from '@/cli/lib/runtime.js';
 import { STOP_TIMEOUT_MS } from '@/cli/lib/process-lifecycle.js';
 import { run as runServe } from '@/cli/lib/commands/serve.js';
+import { isAutoRestartable, skipRestartNote } from '@/server/lib/lifecycle/restart';
 import { resolveInstallContext, resolveOmpChamberVersion, updateOmpChamber } from '@/server/lib/updates/install';
 
 /**
  * Live instances to restart after an update: every one with `--all`, otherwise
  * the first. Their recorded port/host/mode is reused, so a server started on a
- * non-default port comes back on that same port.
+ * non-default port comes back on that same port. Instances started outside the
+ * CLI (`bun run dev`, `bun run start`, a supervisor) are reported and left
+ * running — their own launcher is what applies the new files.
  */
 async function liveInstances(options) {
   if (options?.all) return await listLiveInstances();
@@ -24,7 +28,14 @@ async function liveInstances(options) {
 
 async function restartInstances(options, ctx) {
   const restarted = [];
+  const skipped = [];
   for (const entry of await liveInstances(options)) {
+    if (!isAutoRestartable(entry.launchMode)) {
+      skipped.push({ port: entry.port, pid: entry.pid, launchMode: entry.launchMode });
+      log(`Skipping OMPChamber on port ${entry.port}: ${skipRestartNote(entry.launchMode)}.`);
+      continue;
+    }
+
     log(`Restarting OMPChamber on port ${entry.port} (pid ${entry.pid})...`);
     await stopInstance(entry, { timeoutMs: STOP_TIMEOUT_MS });
     await runServe(
@@ -41,7 +52,7 @@ async function restartInstances(options, ctx) {
     );
     restarted.push(entry.port);
   }
-  return restarted;
+  return { restarted, skipped };
 }
 
 async function runCheck(pkgRoot, json) {
@@ -91,8 +102,10 @@ export async function run(options, ctx) {
     // Restarting prints through the serve command; silence it so stdout stays
     // one JSON document.
     if (result.success && result.updated && shouldRestart) configure({ json: false, quiet: true });
-    const restarted = result.success && result.updated && shouldRestart ? await restartInstances(options, ctx) : [];
-    printJson({ ...result, restarted });
+    const { restarted, skipped } = result.success && result.updated && shouldRestart
+      ? await restartInstances(options, ctx)
+      : { restarted: [], skipped: [] };
+    printJson({ ...result, restarted, skipped });
     if (!result.success) process.exitCode = 1;
     return;
   }
@@ -111,7 +124,8 @@ export async function run(options, ctx) {
     return;
   }
 
-  if ((await restartInstances(options, ctx)).length === 0) {
+  const { restarted, skipped } = await restartInstances(options, ctx);
+  if (restarted.length === 0 && skipped.length === 0) {
     log('No running instance to restart.');
   }
 }

@@ -14,6 +14,7 @@
 
 import { join as joinPath, resolve as resolvePath } from 'node:path';
 
+import { resolveBunBin } from '@/server/lib/lifecycle/bun';
 import { fetchLatestRelease, type GitHubRelease } from '@/server/lib/updates/github';
 import {
   detectInstallMethod,
@@ -137,10 +138,12 @@ export function resolveInstallContext(pkgRoot = DEFAULT_PKG_ROOT): InstallContex
   const remote = gitWorkTree ? runSync(['git', '-C', root, 'remote', 'get-url', 'origin']) : null;
   const gitRemote = remote?.ok && remote.out.length > 0 ? remote.out : null;
 
-  const execPath = process.execPath;
-  const bunBin = /(^|[\\/])bun$/.test(execPath) ? execPath : (Bun.which('bun') ?? 'bun');
-
-  return { ...detectInstallMethod({ pkgRoot: root, gitWorkTree, gitRemote }), pkgRoot: root, gitRemote, bunBin };
+  return {
+    ...detectInstallMethod({ pkgRoot: root, gitWorkTree, gitRemote }),
+    pkgRoot: root,
+    gitRemote,
+    bunBin: resolveBunBin(),
+  };
 }
 
 /** The commands that install `version` for a given install method. */

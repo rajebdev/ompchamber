@@ -189,7 +189,7 @@ COMMANDS:
   serve          Start the OMPChamber web server (default when no command is given)
   update         Update OMPChamber to the latest GitHub release
   stop           Stop running OMPChamber instances (every one, or --port <port>)
-  restart        Stop and then start again (every instance, or --port <port>)
+  restart        Stop and start again (every CLI-started instance, or --port <port>)
   status         Show running instances (every one, or --port <port>)
   logs           Print or follow server logs (every instance, or --port <port>)
 
