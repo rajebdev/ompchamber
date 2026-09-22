@@ -13,7 +13,8 @@ interface ComposerDockProps {
   provider?: string;
   providerNames?: Record<string, string>;
   messageQueue: QueuedMessage[];
-  setMessageQueue: Dispatch<SetStateAction<QueuedMessage[]>>;
+  onRemoveQueueItem: (id: string) => void;
+  onReorderQueue: (orderedIds: string[]) => void;
   onEditQueueItem: (item: QueuedMessage) => void;
   onSendNowQueueItem: (item: QueuedMessage) => void;
   steeringQueue: QueuedMessage[];
@@ -49,7 +50,8 @@ export function ComposerDock({
   provider,
   providerNames,
   messageQueue,
-  setMessageQueue,
+  onRemoveQueueItem,
+  onReorderQueue,
   onEditQueueItem,
   onSendNowQueueItem,
   steeringQueue,
@@ -87,13 +89,18 @@ export function ComposerDock({
         )}
         <QueueList
           queue={messageQueue}
-          setQueue={setMessageQueue}
+          onRemove={onRemoveQueueItem}
+          onReorder={onReorderQueue}
           onEdit={onEditQueueItem}
           onSendNow={onSendNowQueueItem}
         />
         <QueueList
           queue={steeringQueue}
-          setQueue={setSteeringQueue}
+          onRemove={(id) => setSteeringQueue((q) => q.filter((i) => i.id !== id))}
+          onReorder={(orderedIds) => setSteeringQueue((prev) => {
+            const byId = new Map(prev.map((i) => [i.id, i]));
+            return orderedIds.map((id) => byId.get(id)).filter((i): i is QueuedMessage => Boolean(i));
+          })}
           isSteering
         />
         <ChatInput

@@ -177,10 +177,11 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
 
   const {
     messageQueue,
-    setMessageQueue,
+    enqueueMessage,
+    removeMessage,
+    reorderMessages,
     steeringQueue,
     setSteeringQueue,
-    removeDeliveredFromQueue,
   } = useChatTimelineQueue(sessionId);
   const {
     pending: extensionDialogs,
@@ -190,7 +191,6 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   } = useExtensionDialogQueue(sessionId);
 
   const ompAgent = useOmpAgent(isOmpSession ? sessionId : null, createOmpAgentCallbacks({
-    removeDeliveredFromQueue,
     setGenerating,
     setGeneratingVerb,
     scrollToBottom,
@@ -236,21 +236,11 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     setSearchParams,
   });
 
-  // Auto-process queue: when the run ends (or was never active), deliver the
-  // head item. Both modes queue client-side now — omp sends it as a normal
-  // prompt via executeSend (which routes to the omp bridge); the mock path
-  // streams the same way. A user Stop arms `stopHoldRef`: the run ends but the
-  // queue stays put (stop-all semantics — the toast offers Send now); the next
-  // explicit send disarms it.
-  useEffect(() => {
-    if (stopHoldRef.current) return;
-    if (!isGenerating && messageQueue.length > 0) {
-      const nextMessage = messageQueue[0];
-      setMessageQueue(q => q.slice(1));
-      // The queued snapshot re-applies model/thinking/access before the prompt.
-      executeSend(nextMessage.text, nextMessage.attachments, { model: nextMessage.model });
-    }
-  }, [isGenerating, messageQueue, executeSend, setMessageQueue]);
+  // Queue auto-delivery moved server-side: the wrapper's terminal `agent_end`
+  // schedules the next queued prompt (`lib/queue/delivery.server.ts`), with a
+  // transactional head claim so no reload/tab race can double-send or wipe the
+  // table. The client panel is a view; the mount nudge lives in the queue
+  // hook. `stopHoldRef` remains only for the mock path below.
 
   const {
     handleSend,
@@ -271,7 +261,8 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     sessionId,
     appSettings,
     messageQueue,
-    setMessageQueue,
+    enqueueMessage,
+    removeMessage,
     executeSend,
     steerOmpAgent,
     ompAgent,
@@ -303,7 +294,8 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     loadOlder,
     generatingVerb,
     messageQueue,
-    setMessageQueue,
+    removeMessage,
+    reorderMessages,
     steeringQueue,
     setSteeringQueue,
     inputValue,

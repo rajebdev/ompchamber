@@ -49,7 +49,8 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
     loadOlder,
     generatingVerb,
     messageQueue,
-    setMessageQueue,
+    removeMessage,
+    reorderMessages,
     steeringQueue,
     setSteeringQueue,
     inputValue,
@@ -243,7 +244,8 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
                 provider={sessionProvider}
                 providerNames={providerNames}
                 messageQueue={messageQueue}
-                setMessageQueue={setMessageQueue}
+                onRemoveQueueItem={removeMessage}
+                onReorderQueue={reorderMessages}
                 onEditQueueItem={handleEditQueueItem}
                 onSendNowQueueItem={handleSendNowQueueItem}
                 steeringQueue={steeringQueue}

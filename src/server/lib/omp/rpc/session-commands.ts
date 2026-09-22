@@ -13,6 +13,7 @@ import { RpcCommandTimeoutError, type RpcProcess } from '@/server/lib/omp/rpc/pr
 import { AWAITING_AGENT_START_TIMEOUT_MS, GET_STATE_TIMEOUT_MS, IMAGE_BEARING_COMMANDS, PASSTHROUGH_COMMANDS, PROMPT_ACK_TIMEOUT_MS, RESTARTING_MESSAGE, SESSION_BUSY_MESSAGE, WebRpcError, toImageContents, type AgentEvent, type RpcSessionState, validateAgentImages } from '@/server/lib/omp/rpc/constants';
 import { clearSessionFileCaches } from '@/server/lib/omp/session/files';
 import { notifyRunningChange } from '@/server/lib/omp/rpc/session-registry';
+import { scheduleQueueDelivery } from '@/server/lib/queue/delivery.server';
 import { clearStreamStatus, markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
 import { buildWebState, type WebStateHost } from '@/server/lib/omp/rpc/web-state';
 
@@ -28,6 +29,8 @@ export interface SessionCommandHost extends WebStateHost {
   /** Real omp session id (empty before the first get_state). */
   sessionId: string;
   emit(event: AgentEvent): void;
+  /** One dispatch throat (same surface the wrapper's own send uses). */
+  send(command: Record<string, unknown>): Promise<unknown>;
   resetIdleTimer(force?: boolean): void;
   /** Forget a pending ask/approval dialog once its response is sent. */
   resolvePendingUiDialog(id: string): void;
@@ -100,6 +103,9 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
           releaseStreamRow();
           host.emit({ type: 'prompt_result', agentInvoked: false });
           notifyRunningChange();
+          // Nothing ran (agent was idle and declined) — the queue may hold the
+          // next item; give it the same delivery window a run end would.
+          scheduleQueueDelivery(host);
         } else if (!streamingBehavior && ack?.agentInvoked !== false) {
           host.awaitingAgentStart = true;
           host.awaitingAgentStartDeadline = Date.now() + AWAITING_AGENT_START_TIMEOUT_MS;

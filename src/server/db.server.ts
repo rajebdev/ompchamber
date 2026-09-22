@@ -10,6 +10,9 @@ import { loadOmpSidebarData } from '@/server/lib/omp/session/reader';
 import { pathExists, projectPathKey } from '@/server/lib/omp/core/paths';
 
 let dbPromise: Promise<DbClient> | null = null;
+/** Resolved handle cached by getDb(); promise callbacks never run sync, so
+ *  hot paths unwrap through `getDbSync` instead of awaiting. */
+let dbResolved: DbClient | null = null;
 
 /** SYNC_WORKSPACE env flag (default true when unset). When enabled in real
  *  mode, workspace folders are auto-created from discovered omp projects. */
@@ -123,6 +126,10 @@ export async function getDb(): Promise<DbClient> {
 
     const { migrateWorkspaceFolderColumns } = await import('@/shared/lib/workspace/schema-migrations');
     await migrateWorkspaceFolderColumns(db);
+    // Installs older `queued_messages` schemas carry an invalid FK (see the
+    // migration module); rebuild once so real-session queue inserts work.
+    const { migrateQueueTableFk } = await import('@/server/lib/queue/schema-migration.server');
+    await migrateQueueTableFk(db);
 
     await db.exec(`
       CREATE TABLE IF NOT EXISTS files (
@@ -292,10 +299,22 @@ export async function getDb(): Promise<DbClient> {
     const { migrateLegacyProjectSettings } = await import('@/shared/lib/workspace/project-settings-migration');
     await migrateLegacyProjectSettings(db);
 
+    dbResolved = db;
     return db;
   })();
 
   return dbPromise;
+}
+
+/**
+ * Synchronous handle for hot paths needing raw sync transactions
+ * (`bun:sqlite` is sync, so BEGIN…COMMIT cannot interleave with another
+ * request). The server initializes the db at startup; anything earlier must
+ * use `getDb()`.
+ */
+export function getDbSync(): DbClient {
+  if (!dbResolved) throw new Error('Database not initialized — call getDb() first');
+  return dbResolved;
 }
 
 /**

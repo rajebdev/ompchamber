@@ -1,4 +1,3 @@
-import type { Dispatch, SetStateAction } from 'preact/compat';
 import { useRef } from 'preact/hooks';
 import { GripVertical, Pencil, Send, X } from 'lucide-preact';
 import type { QueuedMessage } from '@/shared/types';
@@ -7,7 +6,10 @@ export type { QueuedMessage };
 
 interface QueueListProps {
   queue: QueuedMessage[];
-  setQueue: Dispatch<SetStateAction<QueuedMessage[]>>;
+  /** Reorder handler (drag-and-drop): receives the new id order. */
+  onReorder?: (orderedIds: string[]) => void;
+  /** Remove one row by id. */
+  onRemove?: (id: string) => void;
   /** True when every row in this panel is a steering delivery. */
   isSteering?: boolean;
   onEdit?: (item: QueuedMessage) => void;
@@ -20,18 +22,18 @@ const KIND_LABEL: Record<string, string> = {
   followup: 'follow-up',
 };
 
-export function QueueList({ queue, setQueue, isSteering = false, onEdit, onSendNow }: QueueListProps) {
+export function QueueList({ queue, onReorder, onRemove, isSteering = false, onEdit, onSendNow }: QueueListProps) {
   const dragItem = useRef<number | null>(null);
   const dragOverItem = useRef<number | null>(null);
 
   const handleSort = () => {
     if (dragItem.current === null || dragOverItem.current === null) return;
-    const _queue = [...queue];
-    const draggedItemContent = _queue.splice(dragItem.current, 1)[0];
-    _queue.splice(dragOverItem.current, 0, draggedItemContent);
+    const ids = queue.map((i) => i.id);
+    const draggedId = ids.splice(dragItem.current, 1)[0];
+    ids.splice(dragOverItem.current, 0, draggedId);
     dragItem.current = null;
     dragOverItem.current = null;
-    setQueue(_queue);
+    onReorder?.(ids);
   };
 
   if (queue.length === 0) return null;
@@ -80,13 +82,15 @@ export function QueueList({ queue, setQueue, isSteering = false, onEdit, onSendN
               <Pencil size={12} />
             </button>
           )}
-          <button
-            onClick={() => setQueue(q => q.filter(i => i.id !== item.id))}
-            className="text-ink/40 hover:text-error opacity-0 group-hover:opacity-100 transition-opacity"
-            title="Remove"
-          >
-            <X size={14} />
-          </button>
+          {onRemove && (
+            <button
+              onClick={() => onRemove(item.id)}
+              className="text-ink/40 hover:text-error opacity-0 group-hover:opacity-100 transition-opacity"
+              title="Remove"
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
       ))}
     </div>

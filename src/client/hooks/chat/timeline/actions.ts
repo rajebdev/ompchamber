@@ -28,7 +28,9 @@ export interface ChatTimelineActionsDeps {
   sessionId: string | null;
   appSettings: Record<string, any>;
   messageQueue: QueuedMessage[];
-  setMessageQueue: (updater: SetStateAction<QueuedMessage[]>) => void;
+  /** Server-backed per-item queue ops (append/remove/reorder). */
+  enqueueMessage: (item: Omit<QueuedMessage, 'id'>) => void;
+  removeMessage: (id: string) => void;
   executeSend: (text: string, attachments: Attachment[], options?: { model?: QueuedMessageModel | null }) => Promise<void>;
   steerOmpAgent: (text: string, attachments: Attachment[]) => Promise<void>;
   ompAgent: OmpAgentHandle;
@@ -74,7 +76,8 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     sessionId,
     appSettings,
     messageQueue,
-    setMessageQueue,
+    enqueueMessage,
+    removeMessage,
     executeSend,
     steerOmpAgent,
     ompAgent,
@@ -123,41 +126,36 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
         return;
       }
       const composerPick = composerModelRef.current;
-      const queuedItem: QueuedMessage = {
-        id: `queue-${Date.now()}`,
-        text: textToSend,
-        attachments,
-        // Snapshot the composer's model/thinking plus the live access mode so
-        // auto-delivery runs the item with exactly these settings.
-        model: composerPick
-          ? { ...composerPick, accessMode: accessModeRef.current }
-          : null,
-      };
-      // Both modes: hold the follow-up in the client queue. The panel is the
-      // source of truth (editable, removable, survives reload via the
-      // session-state blob); delivery happens when the run ends — the
-      // auto-process effect sends the head item. For omp this replaces the
-      // old immediate `follow_up` RPC, whose server-side queue the client
-      // could never cancel (Stop kept executing it).
+      // Snapshot the composer's model/thinking plus the live access mode so
+      // server-side auto-delivery runs the item with exactly these settings.
+      const model = composerPick
+        ? { ...composerPick, accessMode: accessModeRef.current }
+        : null;
+      // Both modes: the item is stored server-side (`queued_messages`) and the
+      // panel is a view of it. Delivery happens when the run ends — the
+      // wrapper's terminal `agent_end` claims the head and dispatches it.
       setInputValue('');
-      setMessageQueue(prev => [...prev, queuedItem]);
+      enqueueMessage({ text: textToSend, attachments, model });
       return;
     }
 
     setInputValue('');
     executeSend(textToSend, attachments);
-  }, [inputValue, isGenerating, executeSend, setMessageQueue, isOmpSession, appSettings, steerOmpAgent, setInputValue, abortControllerRef, setGenerating, stopHoldRef, composerModelRef, accessModeRef]);
+  }, [inputValue, isGenerating, executeSend, enqueueMessage, isOmpSession, appSettings, steerOmpAgent, setInputValue, abortControllerRef, setGenerating, stopHoldRef, composerModelRef, accessModeRef]);
 
   const handleEditQueueItem = useCallback((item: QueuedMessage) => {
-    setMessageQueue(q => q.filter(i => i.id !== item.id));
+    // Lift the text into the composer and drop the row. If the user never
+    // re-submits, the delete (below) already removed it — the old flow had a
+    // dead window here where removing from the local list was the only edit.
     setInputValue(item.text);
     setInputAttachments(item.attachments);
-  }, [setMessageQueue, setInputValue, setInputAttachments]);
+    removeMessage(item.id);
+  }, [removeMessage, setInputValue, setInputAttachments]);
 
   const handleSendNowQueueItem = useCallback(async (item: QueuedMessage) => {
-    // Explicit delivery also lifts the Stop hold.
+    // Explicit delivery also lifts the Stop hold (mock path).
     stopHoldRef.current = false;
-    setMessageQueue(q => q.filter(i => i.id !== item.id));
+    removeMessage(item.id);
 
     if (isGenerating) {
       if (isOmpSession) {
@@ -173,7 +171,7 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     } else {
       executeSend(item.text, item.attachments, { model: item.model });
     }
-  }, [isGenerating, executeSend, setMessageQueue, isOmpSession, steerOmpAgent, abortControllerRef, setGenerating, stopHoldRef]);
+  }, [isGenerating, executeSend, removeMessage, isOmpSession, steerOmpAgent, abortControllerRef, setGenerating, stopHoldRef]);
 
   const handleUndo = useCallback(async (msgId: string, content?: string): Promise<boolean> => {
     if (isGenerating) {
