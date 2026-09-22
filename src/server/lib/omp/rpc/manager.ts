@@ -20,6 +20,7 @@ import { PendingUiDialogs } from '@/server/lib/omp/rpc/pending-ui-dialogs';
 import { clearSessionFileCaches } from '@/server/lib/omp/session/files';
 import { notifyRunningChange } from '@/server/lib/omp/rpc/session-registry';
 import { dispatchSessionCommand } from '@/server/lib/omp/rpc/session-commands';
+import { scheduleQueueDelivery } from '@/server/lib/queue/delivery.server';
 import { SubagentLiveness } from '@/server/lib/omp/rpc/subagent-liveness';
 import { loadStreamStatuses, markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
 import { GET_STATE_TIMEOUT_MS, IDLE_DESTROY_MS, NON_TERMINAL_CONTINUATION_GRACE_MS, READY_TIMEOUT_MS, SUBAGENT_STALE_MS, type AgentEvent, type EventListener, type RpcSessionState } from '@/server/lib/omp/rpc/constants';
@@ -210,6 +211,12 @@ export class AgentSessionWrapper {
         // between frames). The turn is proof enough the session is live.
         if (this.sessionId) void markStreamStatus(this.sessionId, 'stream');
         break;
+      case 'message_start':
+        // Same recovery as turn_start: a message frame is only emitted inside
+        // a live run, so its arrival re-arms the `stream` row no matter what
+        // stale status sits there (upsert overwrites any terminal badge).
+        if (this.sessionId) void markStreamStatus(this.sessionId, 'stream');
+        break;
       case 'turn_end': {
         // A multi-turn run emits turn_end for EVERY turn — intermediates end
         // with `toolUse`/`stop` while the run keeps going (verified against
@@ -236,7 +243,16 @@ export class AgentSessionWrapper {
           // ambiguous `error` that tool failures also produce) completes as
           // `finish`. This must not overwrite a fresh `abort` row from a NEWER
           // run — guard against downgrades by checking the current row first.
+          const aborted = Array.isArray(event.messages) && event.messages.some((entry) => {
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+            return (entry as Record<string, unknown>).stopReason === 'aborted';
+          });
           if (this.sessionId) void this.markEndStatus(event.messages);
+          // The run truly ended — the server, not the browser, decides whether
+          // a queued follow-up goes out next. A user-aborted run holds the
+          // queue (stop-all semantics): the next run end or an explicit send
+          // picks it up.
+          if (!aborted) scheduleQueueDelivery(this);
         } else {
           this.continuationGraceUntil = Date.now() + NON_TERMINAL_CONTINUATION_GRACE_MS;
         }

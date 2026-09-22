@@ -182,6 +182,10 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       // Assistant phases (thinking / prose / tool-call assembly) name the
       // action directly — a tool that never starts still shows its phrase.
       setActivity(describeAssistantPhase(data.assistantMessageEvent), deps);
+      // The first message frame of a turn is another proof the run is live —
+      // re-signal so the sidebar can restore a lost `stream` status row.
+      // message_update frames arrive per delta and must stay silent here.
+      if (data.type === 'message_start') callbacks?.onTurnStart?.();
       // Steering (abort_and_prompt) and follow-up deliveries create no
       // optimistic bubble — the user turn only exists on the stream. Convert
       // it here so the bubble renders live instead of after a JSONL reload.
