@@ -309,6 +309,42 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
       abortControllerRef.current = null;
       console.error('OMP prompt error:', errorMessage);
     },
+    // The prompt ran a built-in slash command (omp answered on the command
+    // path, no agent run): drop the optimistic AI placeholder and settle the
+    // optimistic user row — it stays as the record of what the user invoked.
+    onPromptSettled: () => {
+      disposeStreamingCoalescer();
+      setGenerating(false);
+      abortControllerRef.current = null;
+      optimisticUserIdRef.current = null;
+      const placeholderId = aiPlaceholderIdRef.current;
+      aiPlaceholderIdRef.current = null;
+      if (placeholderId) {
+        setLocalMessages(prev => {
+          if (!prev.some(m => m.id === placeholderId)) return prev;
+          return prev.filter(m => m.id !== placeholderId);
+        });
+      }
+    },
+    // Built-in slash command output only rides the live stream — append it as
+    // a notice row before any active placeholder, exactly like omp notices.
+    onCommandOutput: (text) => {
+      const row: ChatMessageData = {
+        id: `cmdout-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        role: 'ai',
+        content: '',
+        notice: text,
+      };
+      setLocalMessages(prev => {
+        const placeholderId = aiPlaceholderIdRef.current;
+        if (placeholderId) {
+          const pIdx = prev.findIndex(m => m.id === placeholderId);
+          if (pIdx !== -1) return [...prev.slice(0, pIdx), row, ...prev.slice(pIdx)];
+        }
+        if (prev.some(m => m.notice === text)) return prev;
+        return [...prev, row];
+      });
+    },
     onNotice: (_level, message) => {
       console.info('OMP notice:', message);
     },

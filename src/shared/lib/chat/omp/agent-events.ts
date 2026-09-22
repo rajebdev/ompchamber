@@ -307,6 +307,27 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       break;
     }
 
+    // omp's prompt ack ran a built-in slash command instead of an agent turn
+    // (`agentInvoked:false`, mirrored server-side as this frame): there will be
+    // no agent_start/agent_end pair. Clear the optimistic generating state —
+    // the callbacks drop the AI placeholder and keep the user's message row.
+    case 'prompt_result': {
+      if (data.agentInvoked === false) {
+        deps.setState((prev) => ({ ...prev, isGenerating: false }));
+        deps.activityRef.current = '';
+        callbacks?.onPromptSettled?.();
+      }
+      break;
+    }
+
+    // Built-in slash command output (/usage, /compact result, …). Rendered as
+    // a notice row — see the callback type note: this frame is the ONLY copy.
+    case 'command_output': {
+      const text = typeof data.text === 'string' ? data.text.trim() : '';
+      if (text) callbacks?.onCommandOutput?.(text);
+      break;
+    }
+
     case 'notice': {
       callbacks?.onNotice?.(
         typeof data.level === 'string' ? data.level : 'info',

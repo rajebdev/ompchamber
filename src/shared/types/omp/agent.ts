@@ -28,6 +28,16 @@ export interface OmpAgentCallbacks {
   onMessageEnd?: (msg: ChatMessageData) => void;
   onAgentEnd?: (info: { errorMessage?: string; message?: string }) => void;
   onPromptError?: (errorMessage: string) => void;
+  /** The dispatched prompt ran no agent turn: omp executed a built-in slash
+   *  command itself (ack `agentInvoked:false`, e.g. /usage, /compact). No
+   *  agent_start/agent_end follows, so the timeline must clear the optimistic
+   *  generating state here or the AI placeholder spins forever. */
+  onPromptSettled?: () => void;
+  /** Output of a built-in slash command omp executed on the prompt path
+   *  (`command_output` frame — /usage, /model, /compact result, …). Lives only
+   *  on the live stream: it never enters get_state.messages or the session
+   *  JSONL, so the timeline must render it from this frame or it is lost. */
+  onCommandOutput?: (text: string) => void;
   onNotice?: (level: string, message: string) => void;
   onConnected?: () => void;
   /** Mount-time probe found the session mid-run → the stream was reattached

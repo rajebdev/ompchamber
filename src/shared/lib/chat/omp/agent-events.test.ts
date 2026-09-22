@@ -25,10 +25,14 @@ const ABORTED_TURN = {
 function makeDeps() {
   const ended: ChatMessageData[] = [];
   const activity: string[] = [];
+  const commandOutputs: string[] = [];
+  let settledCount = 0;
   let state: OmpAgentState = { isGenerating: false, connected: true, error: null };
   const callbacks: OmpAgentCallbacks = {
     onMessageEnd: (msg) => ended.push(msg),
     onActivity: (verb) => activity.push(verb),
+    onPromptSettled: () => { settledCount += 1; },
+    onCommandOutput: (text) => commandOutputs.push(text),
   };
   const deps: OmpAgentFoldDeps = {
     sessionId: 's1',
@@ -43,7 +47,7 @@ function makeDeps() {
     currentThinkingLevelRef: { current: undefined },
     fileMutatingCallsRef: { current: new Set<string>() },
   };
-  return { deps, ended, activity };
+  return { deps, ended, activity, commandOutputs, settled: () => settledCount, state: () => state };
 }
 
 describe('toChatMessage error derivation', () => {
@@ -57,6 +61,38 @@ describe('toChatMessage error derivation', () => {
   test('leaves a normally finished turn without an error', () => {
     const msg = toChatMessage({ ...ABORTED_TURN, stopReason: 'end_turn', errorMessage: undefined }, false);
     expect(msg?.error).toBeUndefined();
+  });
+});
+
+describe('foldAgentEvent prompt_result (builtin slash commands)', () => {
+  test('agentInvoked:false settles generating state and fires onPromptSettled', () => {
+    const { deps, state, settled } = makeDeps();
+    foldAgentEvent({ type: 'agent_start' }, deps);
+    expect(state().isGenerating).toBe(true);
+    foldAgentEvent({ type: 'prompt_result', agentInvoked: false }, deps);
+    expect(state().isGenerating).toBe(false);
+    expect(settled()).toBe(1);
+  });
+
+  test('prompt_result with agentInvoked:true does not settle (a run follows)', () => {
+    const { deps, settled } = makeDeps();
+    foldAgentEvent({ type: 'prompt_result', agentInvoked: true }, deps);
+    expect(settled()).toBe(0);
+  });
+});
+
+describe('foldAgentEvent command_output (builtin slash output)', () => {
+  test('forwards trimmed text to onCommandOutput', () => {
+    const { deps, commandOutputs } = makeDeps();
+    foldAgentEvent({ type: 'command_output', text: 'Usage\nInput tokens: 0\n' }, deps);
+    expect(commandOutputs).toEqual(['Usage\nInput tokens: 0']);
+  });
+
+  test('drops empty output frames', () => {
+    const { deps, commandOutputs } = makeDeps();
+    foldAgentEvent({ type: 'command_output', text: '   ' }, deps);
+    foldAgentEvent({ type: 'command_output' }, deps);
+    expect(commandOutputs).toEqual([]);
   });
 });
 
