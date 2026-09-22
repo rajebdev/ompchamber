@@ -70,7 +70,8 @@ ompchamber logs -f -n 200            # follow the server log
 - **Two data modes** — `MOCK=false` (the default, also when unset) runs purely on the real SQLite
   database and real workspace files; `MOCK=true` opts into demo datasets for previews.
 - **Self-update** — `ompchamber update` installs the latest GitHub release (bun global or git
-  checkout) and restarts a running instance; **About → Updates** does the same from the console.
+  checkout) and restarts the instance it started; **About → Updates** does the same from the console,
+  restart included.
 
 ## Install
 
@@ -125,8 +126,16 @@ release tag and rebuilt (`bun install`, `bun run build`). Uncommitted work is ne
 the update refuses and asks you to commit or stash first. An install owned by another package
 manager is not touched — the command prints the exact command to run instead.
 
-The same check runs from the console — **About → Updates** — and its Update button performs the
-same install, then asks you to restart the server, because a running server cannot replace itself.
+The same check runs from the console — **About → Updates**. Its Update button performs the same
+install and then restarts the instance serving that console, exactly as `ompchamber update` restarts
+the instance it finds: a detached `ompchamber restart --port <port>` is armed a moment after the
+response, so the server that answered is replaced without losing the reply, and the console
+reconnects on its own.
+
+A server OMPChamber did not start is never restarted. `bun run dev`, `bun run start`, a manual
+`bun src/server/index.ts` and an instance owned by a supervisor (systemd, pm2, a container) all
+record themselves as `direct`, so the update leaves them running and says so — their own launcher is
+what picks up the new files. `--no-restart` turns the restart off entirely.
 
 ## CLI
 
@@ -135,9 +144,9 @@ same install, then asks you to restart the server, because a running server cann
 | Command | Purpose |
 |---|---|
 | `serve` | Start the web server (daemon by default) |
-| `update` | Install the latest GitHub release, then restart a running instance |
+| `update` | Install the latest GitHub release, then restart the instance it started |
 | `stop` | Stop the running instance |
-| `restart` | Stop, then start again |
+| `restart` | Stop, then start again — leaving servers started from source alone |
 | `status` | Report whether an instance is running |
 | `logs` | Print or follow the server log |
 
@@ -180,7 +189,9 @@ PORT=3001 bun run dev              # or: PORT=3001 bun run start
   on the next `listen`. Saving a file neither trips the guard nor resets the reported uptime.
 
 Running several ports at once is supported. `status`, `stop`, `restart` and `logs` act on **every**
-live instance by default, and `--port <port>` narrows them to one:
+live instance by default, and `--port <port>` narrows them to one. `restart` is the one exception to
+"every": an instance started from source is reported and left running, exactly as `ompchamber update`
+leaves it — `status`/`stop`/`logs` still see it, and `stop` still ends it:
 
 ```bash
 ompchamber status                  # every instance: port, pid, mode, launch mode, health, log
@@ -189,12 +200,17 @@ ompchamber logs -n 200             # one header per instance, sources included
 ompchamber logs --port 3001 -f     # follow one instance's log
 ompchamber stop                    # stop them all (--all is the explicit spelling)
 ompchamber stop --port 3001        # stop just that one
+ompchamber restart                 # restart the CLI-started ones, skip a `bun run dev`
 ```
 
 The server writes `~/.ompchamber/run/<port>.json` (`pid`, `host`, `mode`, `launchMode`,
 `startedAt`) once it owns the port, which is why `status`/`stop`/`logs` also see servers started by
-`bun run dev` or `--foreground` — not just daemon-spawned ones. Records left by a killed server are
-pruned as soon as their PID stops answering, so a recycled PID is never reported as an instance.
+`bun run dev` or `--foreground` — not just daemon-spawned ones. `launchMode` is `daemon` or
+`foreground` for a server the CLI spawned and `direct` for every other launch, and it is derived from
+the process's **argv**, never from an environment variable: env is inherited, so a `bun run dev`
+started inside an OMPChamber shell would otherwise be mislabelled and replaced by an update. Records
+left by a killed server are pruned as soon as their PID stops answering, so a recycled PID is never
+reported as an instance.
 
 ## Configuration
 
