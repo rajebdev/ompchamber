@@ -32,6 +32,7 @@ interface ComposerDockProps {
   accessMode: ApprovalMode;
   onAccessModeChange: (mode: ApprovalMode) => void;
   composerModelRef: { current: { provider: string; modelId: string; thinkingLevel: string } | null };
+  deferredComposerPickRef: { current: { provider?: string; modelId?: string; thinkingLevel?: string } | null };
   sessionModel: { provider: string; modelId: string } | null;
   sessionThinkingLevel?: string | null;
   variant: 'desktop' | 'mobile';
@@ -69,6 +70,7 @@ export function ComposerDock({
   accessMode,
   onAccessModeChange,
   composerModelRef,
+  deferredComposerPickRef,
   sessionModel,
   sessionThinkingLevel,
   variant,
@@ -118,6 +120,7 @@ export function ComposerDock({
           accessMode={accessMode}
           onAccessModeChange={onAccessModeChange}
           composerModelRef={composerModelRef}
+          deferredComposerPickRef={deferredComposerPickRef}
           sessionModel={sessionModel}
           sessionThinkingLevel={sessionThinkingLevel}
           variant={variant}

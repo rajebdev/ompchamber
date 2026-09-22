@@ -8,6 +8,7 @@ import { useChatTimelineScroll } from '@/client/hooks/chat/timeline/scroll';
 import { useTimelineAutoScroll } from '@/client/hooks/chat/timeline/auto-scroll';
 import { useChatTimelineActions } from '@/client/hooks/chat/timeline/actions';
 import { useChatTimelineSend } from '@/client/hooks/chat/timeline/send';
+import type { ComposerModelPick } from '@/client/hooks/chat/timeline/deferred-model';
 import { useSessionLoad } from '@/client/hooks/chat/timeline/session-load';
 import { useBrowserPageContextInsert } from '@/client/hooks/chat/timeline/browser-context';
 import { cancelStreamingCoalescer, createOmpAgentCallbacks } from '@/shared/lib/chat/timeline/omp-callbacks';
@@ -148,6 +149,15 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   // Live mirror of the composer's model/thinking pick: the enqueue path
   // snapshots it onto queued items so auto-delivery replays those settings.
   const composerModelRef = useRef<{ provider: string; modelId: string; thinkingLevel: string } | null>(null);
+  // Picks made WHILE a turn streams: held here so they cannot re-target the
+  // answer in flight (omp applies set_model to the running turn), and pushed
+  // onto the session right before the next prompt.
+  const deferredComposerPickRef = useRef<ComposerModelPick | null>(null);
+  // A stashed pick belongs to ONE session's next prompt: carrying it across a
+  // switch would silently re-target the session the user just opened.
+  useEffect(() => {
+    deferredComposerPickRef.current = null;
+  }, [sessionId]);
 
   // Access-control mode is a global, persisted user preference (unlike the
   // per-session model/thinking picks): it hydrates from appSettings at first
@@ -229,7 +239,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     seedSession,
     pendingComposerModelRef,
     pendingThinkingLevelRef,
-    composerModelRef,
+    deferredComposerPickRef,
     accessModeRef,
     abortControllerRef,
     setInputValue,
@@ -274,6 +284,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     pendingComposerModelRef,
     pendingThinkingLevelRef,
     composerModelRef,
+    deferredComposerPickRef,
     accessModeRef,
     setSearchParams,
   });
@@ -321,6 +332,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     accessMode,
     handleAccessModeChange,
     composerModelRef,
+    deferredComposerPickRef,
     extensionDialogs,
     resolveExtensionDialog,
     respondToExtensionUi: ompAgent.respondToExtensionUi,

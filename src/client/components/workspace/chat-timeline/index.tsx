@@ -75,6 +75,7 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
     accessMode,
     handleAccessModeChange,
     composerModelRef,
+    deferredComposerPickRef,
     extensionDialogs,
     resolveExtensionDialog,
     respondToExtensionUi,
@@ -180,6 +181,7 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
         accessMode={accessMode}
         onAccessModeChange={handleAccessModeChange}
         composerModelRef={composerModelRef}
+        deferredComposerPickRef={deferredComposerPickRef}
         sessionModel={typeof sessionData?.model === 'object' ? sessionData.model : null}
         sessionThinkingLevel={sessionData?.thinkingLevel}
         generatingVerb={generatingVerb}
@@ -263,6 +265,7 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
                 accessMode={accessMode}
                 onAccessModeChange={handleAccessModeChange}
                 composerModelRef={composerModelRef}
+                deferredComposerPickRef={deferredComposerPickRef}
                 sessionModel={typeof sessionData?.model === 'object' ? sessionData.model : null}
                 sessionThinkingLevel={sessionData?.thinkingLevel}
                 variant={variant}

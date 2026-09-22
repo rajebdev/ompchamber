@@ -40,6 +40,7 @@ interface EmptyWorkspacePromptProps {
   accessMode: ApprovalMode;
   onAccessModeChange: (mode: ApprovalMode) => void;
   composerModelRef: { current: { provider: string; modelId: string; thinkingLevel: string } | null };
+  deferredComposerPickRef: { current: { provider?: string; modelId?: string; thinkingLevel?: string } | null };
   generatingVerb?: string;
   variant?: 'desktop' | 'mobile';
 }
@@ -69,6 +70,7 @@ export function EmptyWorkspacePrompt({
   accessMode,
   onAccessModeChange,
   composerModelRef,
+  deferredComposerPickRef,
   generatingVerb,
   variant = 'desktop',
 }: EmptyWorkspacePromptProps) {
@@ -226,6 +228,7 @@ export function EmptyWorkspacePrompt({
           accessMode={accessMode}
           onAccessModeChange={onAccessModeChange}
           composerModelRef={composerModelRef}
+          deferredComposerPickRef={deferredComposerPickRef}
           variant={variant}
         />
       </div>

@@ -8,6 +8,7 @@ import { AttachmentToolbar } from '@/client/components/workspace/chat-timeline/c
 import { selectableThinkingLevels } from '@/shared/lib/models/thinking-levels';
 import { fetchModelsData, subscribeModelsUpdated } from '@/shared/lib/models/client';
 import { resolveThinkingLevel, selectionFor } from '@/client/components/workspace/chat-timeline/chat-input/selection';
+import { NO_PENDING_PICK } from '@/client/hooks/chat/timeline/deferred-model';
 
 export function ChatInput({ 
   value, 
@@ -31,6 +32,12 @@ export function ChatInput({
   /** Written on every model/thinking pick so the send path can snapshot the
    *  selection into queued items without lifting ChatInput state. */
   composerModelRef,
+  /** A pick the user made while a turn was streaming, still waiting for the
+   *  next prompt. While set, the session's own model must NOT be adopted over
+   *  it — the composer shows what the next prompt will actually run. Omitted
+   *  by composers that never stream (the New Chat modal), where there is
+   *  nothing to defer and adoption must behave as before. */
+  deferredComposerPickRef = NO_PENDING_PICK,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -58,6 +65,7 @@ export function ChatInput({
    */
   variant?: 'desktop' | 'mobile';
   composerModelRef: { current: { provider: string; modelId: string; thinkingLevel: string } | null };
+  deferredComposerPickRef?: { current: { provider?: string; modelId?: string; thinkingLevel?: string } | null };
 }) {
   const [internalAttachments, setInternalAttachments] = useState<Attachment[]>([]);
 
@@ -102,12 +110,18 @@ export function ChatInput({
   // this effect re-runs right after a spawn (sessionModel changes while the
   // session's own thinking_level_change entry is not readable yet), and any
   // concrete fallback here claims a level the run never used.
+  //
+  // A pick still waiting for the next prompt wins: the session's model is what
+  // the RUNNING turn uses, and adopting it would erase the user's choice from
+  // the composer even though it is what the next prompt will run with.
   useEffect(() => {
     if (!sessionModel?.provider || !sessionModel.modelId) return;
+    if (deferredComposerPickRef.current) return;
     let active = true;
     fetchModelsData()
       .then((data) => {
         if (!active || !sessionModel) return;
+        if (deferredComposerPickRef.current) return;
         const match = (data.modelList || []).find(
           (m) => m.id === sessionModel.modelId && m.provider === sessionModel.provider
         );
@@ -119,18 +133,21 @@ export function ChatInput({
     return () => {
       active = false;
     };
-  }, [sessionModel?.provider, sessionModel?.modelId]);
+  }, [sessionModel?.provider, sessionModel?.modelId, deferredComposerPickRef]);
 
   // Adopt the active session's last-used thinking level. Runs after the model
   // sync effect above so it overrides the catalog default for this session.
+  // Same rule as the model: a pick waiting for the next prompt is not
+  // overridden by the level the running turn recorded.
   useEffect(() => {
     if (!sessionThinkingLevel) return;
+    if (deferredComposerPickRef.current?.thinkingLevel) return;
     setSelectedModel(prev => {
       if (!prev) return prev;
       const level = resolveThinkingLevel(prev.thinkingLevels, sessionThinkingLevel, prev.thinkingLevel);
       return level === prev.thinkingLevel ? prev : { ...prev, thinkingLevel: level };
     });
-  }, [sessionThinkingLevel]);
+  }, [sessionThinkingLevel, deferredComposerPickRef]);
 
   // Sync selected model from server and event listener
   useEffect(() => {
@@ -139,6 +156,9 @@ export function ChatInput({
       try {
         const data = await fetchModelsData();
         if (!active) return;
+        // A pick waiting for the next prompt owns the composer's selection:
+        // every branch below would replace it with a session/catalog default.
+        if (deferredComposerPickRef.current) return;
         if (Array.isArray(data.modelList) && data.modelList.length > 0) {
           // 1. The active session's last-used model is authoritative; even when
           // it is missing from the catalog, never replace it with the default.
@@ -183,7 +203,7 @@ export function ChatInput({
       active = false;
       unsubscribe();
     };
-  }, []);
+  }, [deferredComposerPickRef]);
 
   // Thinking Dropdown State - Reactive with selectedModel
   const thinkingLevels = useMemo(() => {

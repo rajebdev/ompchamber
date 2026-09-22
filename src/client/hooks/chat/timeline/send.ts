@@ -17,6 +17,7 @@ import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { streamChatResponse } from '@/client/hooks/chat/stream';
 import type { SessionSeed } from '@/client/hooks/chat/timeline/session-load';
 import { buildPromptText } from '@/client/hooks/chat/timeline/prompt-text';
+import { flushDeferredPick, type DeferredModelStore } from '@/client/hooks/chat/timeline/deferred-model';
 import { isTextAttachmentFile } from '@/shared/lib/chat/attachments';
 import { createMockStreamCallbacks } from '@/shared/lib/chat/timeline/stream-callbacks';
 import { PHASE_VERBS } from '@/shared/lib/chat/timeline/tool-phrases';
@@ -51,9 +52,9 @@ export interface ChatTimelineSendDeps {
   /** Global access-control mode (persisted user preference), read at send time
    *  so the spawn-capable requests carry the latest value. */
   accessModeRef: { current: ApprovalMode };
-  /** Live composer model/thinking mirror (written by ChatInput) so enqueue can
-   *  snapshot the selection onto queued items. */
-  composerModelRef: { current: { provider: string; modelId: string; thinkingLevel: string } | null };
+  /** Picks the composer made while a turn was streaming. Pushed onto the
+   *  session here, immediately before the prompt they were meant for. */
+  deferredComposerPickRef: DeferredModelStore;
   abortControllerRef: { current: AbortController | null };
   setInputValue: (v: string) => void;
   setSearchParams: (fn: (prev: URLSearchParams) => URLSearchParams, opts?: { replace?: boolean }) => void;
@@ -91,6 +92,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
     seedSession,
     pendingComposerModelRef,
     pendingThinkingLevelRef,
+    deferredComposerPickRef,
     accessModeRef,
     abortControllerRef,
     setInputValue,
@@ -133,10 +135,13 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
 
   // Steer the running omp agent with a fresh prompt (interrupt-and-reply).
   const steerOmpAgent = useCallback(async (text: string, attachments: Attachment[]) => {
+    // A steer IS a new prompt: a pick made during the interrupted turn belongs
+    // to it, so it is pushed before the interrupt-and-reply starts the turn.
+    await flushDeferredPick(ompAgent, deferredComposerPickRef);
     const { promptText, images } = await prepareDeliverable(text, attachments);
     const ok = await ompAgent.sendInterruptAndReply(promptText, images);
     if (!ok) setInputValue(text);
-  }, [ompAgent, prepareDeliverable, setInputValue]);
+  }, [ompAgent, prepareDeliverable, setInputValue, deferredComposerPickRef]);
 
   const executeSend = useCallback(async (
     text: string,
@@ -209,6 +214,12 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
     if (isOmpSession) {
       aiPlaceholderIdRef.current = aiPlaceholderId;
       optimisticUserIdRef.current = userMsgId;
+      // A model/thinking pick made while the previous turn streamed was held
+      // back so it could not re-target that answer. A queued delivery does NOT
+      // own it: that item carries its own snapshot, so the pick stays pending
+      // for the composer's own next prompt instead of being spent — and then
+      // overwritten — by a delivery it was never meant for.
+      if (!modelOverride) await flushDeferredPick(ompAgent, deferredComposerPickRef);
       // Replay the queued snapshot first so the prompt runs on the exact
       // model/thinking the item was queued with.
       if (modelOverride) {
@@ -329,6 +340,6 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
         scrollToBottom,
       })
     );
-  }, [appSettings, folders, isOmpSession, ompAgent, selectedFolderId, sessionId, scrollToBottom, jumpToBottom, persistMessages, seedSession, pendingComposerModelRef, pendingThinkingLevelRef, accessModeRef]);
+  }, [appSettings, folders, isOmpSession, ompAgent, selectedFolderId, sessionId, scrollToBottom, jumpToBottom, persistMessages, seedSession, pendingComposerModelRef, pendingThinkingLevelRef, deferredComposerPickRef, accessModeRef]);
   return { steerOmpAgent, executeSend };
 }

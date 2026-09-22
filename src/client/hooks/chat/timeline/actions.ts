@@ -16,6 +16,7 @@ import type { Dispatch, SetStateAction } from 'preact/compat';
 import type { Attachment, ChatMessageData, OmpAgentHandle, QueuedMessageModel } from '@/shared/types';
 import type { QueuedMessage } from '@/client/components/workspace/chat-timeline/QueueList';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
+import { applyComposerPick, consumeComposerPick, stashComposerPick, type DeferredModelStore } from '@/client/hooks/chat/timeline/deferred-model';
 
 export interface ChatTimelineActionsDeps {
   inputValue: string;
@@ -48,6 +49,9 @@ export interface ChatTimelineActionsDeps {
   /** Live composer model/thinking mirror, snapshotted onto queued items so
    *  auto-delivery replays the exact settings. */
   composerModelRef: { current: { provider: string; modelId: string; thinkingLevel: string } | null };
+  /** Picks made while a turn streams: held back so they cannot re-target the
+   *  in-flight answer, then pushed onto the session before the next prompt. */
+  deferredComposerPickRef: DeferredModelStore;
   /** Global access-control mode, snapshotted onto queued items. */
   accessModeRef: { current: ApprovalMode };
   setSearchParams: (fn: (prev: URLSearchParams) => URLSearchParams, opts?: { replace?: boolean }) => void;
@@ -89,6 +93,7 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     pendingComposerModelRef,
     pendingThinkingLevelRef,
     composerModelRef,
+    deferredComposerPickRef,
     accessModeRef,
     setSearchParams,
   } = deps;
@@ -285,16 +290,32 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
       pendingThinkingLevelRef.current = level;
       return;
     }
+    // A pick made mid-run is intent for the NEXT prompt: pushing it now would
+    // re-target the turn already streaming (omp applies set_thinking_level to
+    // the running turn's next LLM call).
+    if (isGenerating) {
+      stashComposerPick(deferredComposerPickRef, { thinkingLevel: level });
+      return;
+    }
+    consumeComposerPick(deferredComposerPickRef, { thinkingLevel: level });
     void ompAgent.setThinkingLevel(level);
-  }, [isOmpSession, ompAgent, pendingThinkingLevelRef]);
+  }, [isGenerating, isOmpSession, ompAgent, pendingThinkingLevelRef, deferredComposerPickRef]);
 
   const handleModelChange = useCallback((provider: string, modelId: string) => {
     if (!isOmpSession) {
       pendingComposerModelRef.current = { provider, modelId };
       return;
     }
-    void ompAgent.setModel(provider, modelId);
-  }, [isOmpSession, ompAgent, pendingComposerModelRef]);
+    // Same rule as the thinking pick: a mid-run model change is held back so
+    // the answer being streamed finishes on the model it started with, and is
+    // applied right before the next prompt this composer sends.
+    if (isGenerating) {
+      stashComposerPick(deferredComposerPickRef, { provider, modelId });
+      return;
+    }
+    consumeComposerPick(deferredComposerPickRef, { provider, modelId });
+    void applyComposerPick(ompAgent, { provider, modelId });
+  }, [isGenerating, isOmpSession, ompAgent, pendingComposerModelRef, deferredComposerPickRef]);
 
   return {
     handleSend,
