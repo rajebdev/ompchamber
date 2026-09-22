@@ -62,7 +62,7 @@ export interface SessionSidebarController {
   sortOption: SessionSortOption;
   handleSortChange: (opt: SessionSortOption) => void;
   processedFolders: WorkspaceFolderData[];
-  sessionStatus: Record<string, 'stream' | 'finish' | 'abort' | 'error'>;
+  sessionStatus: Record<string, 'stream' | 'finish' | 'abort'>;
   handleSelectSession: (id: number | string) => void;
 }
 

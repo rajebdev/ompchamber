@@ -110,11 +110,11 @@ export async function loadSidebarData(): Promise<SessionListPayload> {
   const sidebarSort = await serverSidebarSort();
 
   // Live stream status per session (spinner / one-shot done badge), written by
-  // the RPC manager on agent_start/agent_end/abort/error. `stream` rows whose
-  // session is no longer running are stale (restart mid-run) and heal to
+  // the RPC manager on agent_start/agent_end and by the abort command. `stream`
+  // rows whose session is no longer running are stale (restart mid-run) and heal to
   // `finish` right here — the authoritative status travels with the same
   // fetch that refreshes the sidebar list.
-  const streamStatuses: Record<string, 'stream' | 'finish' | 'abort' | 'error'> = {};
+  const streamStatuses: Record<string, 'stream' | 'finish' | 'abort'> = {};
   // Sessions blocked on a dialog nobody has answered yet. Read live from the
   // process registry (never persisted): the child that owns the question is the
   // same thing that owns the flag, so a restart cannot leave a stale badge.

@@ -15,8 +15,8 @@ export interface SessionItemData {
   hasSubagents?: boolean;
   subagentCount?: number;
   /** Server-tracked stream state: `stream` while a run is in flight, then a
-   *  one-shot `finish`/`abort`/`error` badge cleared when the session opens. */
-  streamStatus?: 'stream' | 'finish' | 'abort' | 'error';
+   *  one-shot `finish`/`abort` badge cleared when the session opens. */
+  streamStatus?: 'stream' | 'finish' | 'abort';
   /** Live-only: the session's omp process is BLOCKED on an ask/approval dialog
    *  waiting for a user answer. Derived from the running process registry, never
    *  persisted — the process it describes is the same thing that owns the flag. */

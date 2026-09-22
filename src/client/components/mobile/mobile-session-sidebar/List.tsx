@@ -7,7 +7,7 @@ interface MobileSessionListProps {
   activeSessionId: number | string | null;
   expandedFolders: Record<number, boolean>;
   showArchived: boolean;
-  sessionStatus: Record<string, 'stream' | 'finish' | 'abort' | 'error'>;
+  sessionStatus: Record<string, 'stream' | 'finish' | 'abort'>;
   isScrolling: boolean;
   onScroll: () => void;
   onSelectSession: (id: number | string) => void;

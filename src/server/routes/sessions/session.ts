@@ -316,7 +316,7 @@ export async function putSessionState({ request, params }: ActionFunctionArgs) {
 
 /**
  * POST /api/sessions/:sessionId/stream-seen — acknowledge the session's
- * one-shot stream badge (`finish` / `abort` / `error`). Called when the
+ * one-shot stream badge (`finish` / `abort`). Called when the
  * session is opened; deletes the terminal row so the check shows exactly
  * once. A `stream` row (live run) is never deleted — a client acking from a
  * stale status map must not kill the spinner of a running session.

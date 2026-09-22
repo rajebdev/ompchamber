@@ -5,7 +5,7 @@ import { useInlineRename } from '@/client/hooks/ui/inline-rename';
 export interface MobileSessionRowProps {
   session: SessionItemData;
   isActive: boolean;
-  status?: 'stream' | 'finish' | 'abort' | 'error';
+  status?: 'stream' | 'finish' | 'abort';
   /** Relative age of the session, or null when no usable timestamp exists. */
   timeAgo: string | null;
   showTreeGlyph?: boolean;
@@ -64,7 +64,7 @@ export function MobileSessionRow({
         <div className="flex items-center space-x-1.5 min-w-0 pr-2">
           <span className="w-4 flex-shrink-0 flex items-center justify-center">
             {status === 'stream' && <Loader2 size={13} className="text-ink/50 animate-spin" />}
-            {(status === 'finish' || status === 'abort' || status === 'error') && <Check size={13} className="text-ink/50" />}
+            {(status === 'finish' || status === 'abort') && <Check size={13} className="text-ink/50" />}
           </span>
           {showTreeGlyph && <span className="text-ink/40 text-xs flex-shrink-0 font-mono">&gt;</span>}
           <span className="text-xs truncate leading-snug">

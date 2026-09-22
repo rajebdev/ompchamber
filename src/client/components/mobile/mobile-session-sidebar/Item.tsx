@@ -17,7 +17,7 @@ interface MobileSessionCategoryProps {
   isExpanded: boolean;
   onToggleExpand: () => void;
   showArchived?: boolean;
-  sessionStatus?: Record<string, 'stream' | 'finish' | 'abort' | 'error'>;
+  sessionStatus?: Record<string, 'stream' | 'finish' | 'abort'>;
 }
 
 export function MobileSessionCategory({

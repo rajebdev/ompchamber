@@ -6,7 +6,7 @@ export interface SessionItemProps {
   title: string;
   isActive?: boolean;
   isArchived?: boolean;
-  status?: 'stream' | 'finish' | 'abort' | 'error';
+  status?: 'stream' | 'finish' | 'abort';
   /** The session's agent is blocked on a question until the user answers it. */
   awaitingInput?: boolean;
   onClick?: () => void;

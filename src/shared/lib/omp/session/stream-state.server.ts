@@ -11,7 +11,6 @@
  *   stream  — a run is in flight (prompt dispatch → agent_start)
  *   finish  — the run ended normally (agent_end), not yet seen
  *   abort   — the user stopped it, not yet seen
- *   error   — the run failed (prompt_error / process exit), not yet seen
  *
  * A terminal status is a one-shot badge: opening the session acknowledges it
  * (`markStreamSeen` deletes the row), which is exactly the "check appears
@@ -25,7 +24,7 @@
 
 import { getDb } from '@/server/db.server';
 
-export type SessionStreamStatus = 'stream' | 'finish' | 'abort' | 'error';
+export type SessionStreamStatus = 'stream' | 'finish' | 'abort';
 
 export async function markStreamStatus(sessionId: string, status: SessionStreamStatus): Promise<void> {
   try {
@@ -87,7 +86,7 @@ export async function loadStreamStatuses(): Promise<Record<string, SessionStream
     }[];
     const map: Record<string, SessionStreamStatus> = {};
     for (const row of rows) {
-      if (row.status === 'stream' || row.status === 'finish' || row.status === 'abort' || row.status === 'error') {
+      if (row.status === 'stream' || row.status === 'finish' || row.status === 'abort') {
         map[row.session_id] = row.status;
       }
     }
