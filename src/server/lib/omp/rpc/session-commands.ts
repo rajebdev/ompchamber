@@ -13,7 +13,7 @@ import { RpcCommandTimeoutError, type RpcProcess } from '@/server/lib/omp/rpc/pr
 import { AWAITING_AGENT_START_TIMEOUT_MS, GET_STATE_TIMEOUT_MS, IMAGE_BEARING_COMMANDS, PASSTHROUGH_COMMANDS, PROMPT_ACK_TIMEOUT_MS, RESTARTING_MESSAGE, SESSION_BUSY_MESSAGE, WebRpcError, toImageContents, type AgentEvent, type RpcSessionState, validateAgentImages } from '@/server/lib/omp/rpc/constants';
 import { clearSessionFileCaches } from '@/server/lib/omp/session/files';
 import { notifyRunningChange } from '@/server/lib/omp/rpc/session-registry';
-import { markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
+import { clearStreamStatus, markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
 import { buildWebState, type WebStateHost } from '@/server/lib/omp/rpc/web-state';
 
 /** Runtime surface AgentSessionWrapper exposes to the command dispatcher. */
@@ -66,12 +66,24 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
         throw new Error('Cannot send a prompt while a shell command is running');
       }
       const streamingBehavior = command.streamingBehavior as 'steer' | 'followUp' | undefined;
+      // The live `stream` row starts with the DISPATCH, not with agent_start:
+      // the spawn/ack round trip that precedes agent_start must not read as
+      // "nothing happened" in the sidebar after the user hit send. Skipped
+      // while a turn already streams — that row belongs to the running turn,
+      // and this dispatch's failure must never roll it back.
+      const ownsStreamRow = !streamingBehavior && !host.streaming && Boolean(host.sessionId);
+      // A prompt that never started a turn leaves no run behind, so the row we
+      // wrote must go — unless a turn began meanwhile, which owns it now.
+      const releaseStreamRow = (): void => {
+        if (ownsStreamRow && !host.streaming) void clearStreamStatus(host.sessionId);
+      };
       if (!streamingBehavior) {
         host.promptRunning = true;
         host.promptDispatchPendingCount += 1;
         host.awaitingAgentStart = false;
         host.awaitingAgentStartDeadline = 0;
         host.continuationGraceUntil = 0;
+        if (ownsStreamRow) void markStreamStatus(host.sessionId, 'stream');
         notifyRunningChange();
       }
       try {
@@ -85,6 +97,7 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
           host.promptRunning = false;
           host.awaitingAgentStart = false;
           host.awaitingAgentStartDeadline = 0;
+          releaseStreamRow();
           host.emit({ type: 'prompt_result', agentInvoked: false });
           notifyRunningChange();
         } else if (!streamingBehavior && ack?.agentInvoked !== false) {
@@ -95,6 +108,7 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
         host.promptRunning = false;
         host.awaitingAgentStart = false;
         host.awaitingAgentStartDeadline = 0;
+        releaseStreamRow();
         notifyRunningChange();
         // The ack may simply be queued behind a running turn: omp accepts the
         // prompt before the turn it starts. No reset, and the client must not

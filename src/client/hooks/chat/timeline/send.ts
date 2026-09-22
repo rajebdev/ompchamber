@@ -304,8 +304,9 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
             next.set('sessionId', spawned.sessionId);
             return next;
           }, { replace: true });
-          // The agent_start event refreshes the session metadata/sidebar once
-          // the JSONL has the user turn; no immediate refresh is needed here.
+          // The sidebar already re-read at prompt dispatch (sendNewPrompt
+          // signals it), so the new session shows its live badge without
+          // waiting for the JSONL to carry the user turn.
           return;
         }
       }

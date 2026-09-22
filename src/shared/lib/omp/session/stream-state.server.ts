@@ -8,7 +8,7 @@
  * sidebar can render spinner/check from the SAME loader that already refresh
  * on stream events (`omp:session-updated` → revalidator). Statuses:
  *
- *   stream  — a run is in flight (agent_start)
+ *   stream  — a run is in flight (prompt dispatch → agent_start)
  *   finish  — the run ended normally (agent_end), not yet seen
  *   abort   — the user stopped it, not yet seen
  *   error   — the run failed (prompt_error / process exit), not yet seen
@@ -38,6 +38,21 @@ export async function markStreamStatus(sessionId: string, status: SessionStreamS
     );
   } catch {
     // Status tracking is best-effort by design.
+  }
+}
+
+/**
+ * Drop an optimistic `stream` row whose prompt never started a turn: the ack
+ * reported `agentInvoked: false`, or the dispatch failed before omp accepted
+ * it. Live-only — a `stream` row a concurrent `agent_start` wrote is still the
+ * truth, and terminal badges are cleared by `markStreamSeen`.
+ */
+export async function clearStreamStatus(sessionId: string): Promise<void> {
+  try {
+    const db = await getDb();
+    await db.run("DELETE FROM session_stream_state WHERE session_id = ? AND status = 'stream'", [sessionId]);
+  } catch {
+    // Best-effort.
   }
 }
 
