@@ -1,10 +1,12 @@
 import { useEffect, useRef } from 'preact/hooks';
 import type { ReactElement } from 'preact/compat';
-import type { ComposerMatchItem, ComposerPickItem, ComposerPickKind } from '@/shared/types';
+import type { ComposerMatchItem, ComposerPickItem, ComposerPickKind, ComposerTriggerPhase } from '@/shared/types';
 
 export interface ComposerPickerProps {
   open: boolean;
   kind: ComposerPickKind;
+  /** `args` swaps the header for the subcommand hint of the typed command. */
+  phase?: ComposerTriggerPhase;
   items: ComposerMatchItem[];
   activeIndex: number;
   loading: boolean;
@@ -37,6 +39,7 @@ function OptionName({ item }: { item: ComposerMatchItem }) {
 export function ComposerPicker({
   open,
   kind,
+  phase = 'name',
   items,
   activeIndex,
   loading,
@@ -56,9 +59,18 @@ export function ComposerPicker({
   if (!open) return null;
 
   const isMention = kind === 'mention';
-  const headerText = isMention ? 'Type to search files and agents' : 'Type to search commands and skills';
-  const ariaLabel = isMention ? 'Files and agents' : 'Commands and skills';
-  const emptyText = isMention ? 'No matching files or agents' : 'No matching commands or skills';
+  const isArgs = !isMention && phase === 'args';
+  const headerText = isMention
+    ? 'Type to search files and agents'
+    : isArgs
+      ? 'Pick a subcommand'
+      : 'Type to search commands and skills';
+  const ariaLabel = isMention ? 'Files and agents' : isArgs ? 'Subcommands' : 'Commands and skills';
+  const emptyText = isMention
+    ? 'No matching files or agents'
+    : isArgs
+      ? 'No matching subcommands'
+      : 'No matching commands or skills';
 
   return (
     <div

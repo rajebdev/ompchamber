@@ -56,8 +56,13 @@ export function toFilePickItems(files: FsFileEntry[]): ComposerPickItem[] {
 }
 
 /**
- * Combine commands (`/name`) then skills (`/skill:name`). A skill is skipped
- * when a command already covers its plain name or `skill:<name>`; commands win.
+ * Combine live command items (`/name`, including omp's own `skill:<name>`
+ * entries) with the chamber's skill list. Commands win: a skill whose plain or
+ * `skill:`-namespaced name a command already covers is skipped, so the two
+ * sources never double-list the same skill.
+ *
+ * The description carries the argument hint exactly as oh-my-pi renders it
+ * (`[on|off|status] - Toggle fast mode`) so the popup matches the CLI.
  */
 export function mergeCommandAndSkillItems(commands: CommandItem[], skills: SkillItem[]): ComposerPickItem[] {
   const result: ComposerPickItem[] = [];
@@ -67,13 +72,17 @@ export function mergeCommandAndSkillItems(commands: CommandItem[], skills: Skill
     const key = command.name.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
+    const description = command.description ?? '';
     result.push({
       id: `command-${command.name}`,
       name: command.name,
-      description: command.description,
-      kind: 'command',
-      source: 'command',
+      description: command.inputHint ? (description ? `${command.inputHint} - ${description}` : command.inputHint) : description,
+      kind: command.name.toLowerCase().startsWith('skill:') ? 'skill' : 'command',
+      source: command.name.toLowerCase().startsWith('skill:') ? 'skill' : 'command',
       token: `/${command.name}`,
+      ...(command.aliases?.length ? { aliases: command.aliases } : {}),
+      ...(command.subcommands?.length ? { subcommands: command.subcommands } : {}),
+      ...(command.inputHint ? { inputHint: command.inputHint } : {}),
     });
   }
 
@@ -84,11 +93,11 @@ export function mergeCommandAndSkillItems(commands: CommandItem[], skills: Skill
     seen.add(prefixed);
     result.push({
       id: `skill-${skill.name}`,
-      name: skill.name,
+      name: prefixed,
       description: skill.description,
-      kind: 'command',
+      kind: 'skill',
       source: 'skill',
-      token: `/skill:${skill.name}`,
+      token: `/${prefixed}`,
     });
   }
 

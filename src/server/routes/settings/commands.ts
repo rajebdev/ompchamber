@@ -5,6 +5,7 @@ import { getDb } from '@/server/db.server';
 import { DEFAULT_COMMANDS_LIST } from '@/client/data/settings/command';
 import { isMockMode } from '@/server/mock.server';
 import type { CommandItem } from '@/shared/types';
+import { isRecord } from '@/shared/lib/util/guards';
 import { createSettingsListStore } from '@/server/lib/db/settings-store';
 import { runUtilityCommand } from '@/server/lib/omp/rpc/utility';
 
@@ -16,27 +17,67 @@ const commandsStore = createSettingsListStore<CommandItem>({
   plural: 'commands',
 });
 
-/** Read live agent commands (skill/custom/extension/file sources) via RPC. */
+/** Command sources the chamber surfaces in the composer (mcp_prompt is not user-typable). */
+const AGENT_COMMAND_SOURCES: Record<string, true> = {
+  builtin: true,
+  skill: true,
+  custom: true,
+  extension: true,
+  file: true,
+};
+
+/**
+ * Live slash commands from the agent's `get_available_commands`, mapped into
+ * the chamber's CommandItem. Aliases, subcommands and the argument hint ride
+ * along: they are what the composer's `/` popup needs to behave like omp's own
+ * editor (`/models` completing to the alias, `/fast ` offering on|off|status).
+ * Anything malformed is dropped rather than trusted.
+ */
+function toLiveCommandItem(value: unknown): CommandItem | null {
+  if (!isRecord(value)) return null;
+  const name = typeof value.name === 'string' ? value.name : '';
+  if (!name) return null;
+  if (typeof value.source !== 'string' || !AGENT_COMMAND_SOURCES[value.source]) return null;
+
+  const aliases = Array.isArray(value.aliases)
+    ? value.aliases.filter((alias): alias is string => typeof alias === 'string' && alias.length > 0)
+    : [];
+
+  const hint = isRecord(value.input) && typeof value.input.hint === 'string' ? value.input.hint : undefined;
+
+  const subcommands = Array.isArray(value.subcommands)
+    ? value.subcommands.flatMap((sub) => {
+        if (!isRecord(sub) || typeof sub.name !== 'string' || !sub.name) return [];
+        return [{
+          name: sub.name,
+          ...(typeof sub.description === 'string' ? { description: sub.description } : {}),
+          ...(typeof sub.usage === 'string' ? { usage: sub.usage } : {}),
+        }];
+      })
+    : [];
+
+  return {
+    id: `omp-live-${name}`,
+    name,
+    description: typeof value.description === 'string' ? value.description : '',
+    scope: 'user',
+    template: `/${name}`,
+    isBuiltIn: true,
+    ...(aliases.length ? { aliases } : {}),
+    ...(subcommands.length ? { subcommands } : {}),
+    ...(hint ? { inputHint: hint } : {}),
+  };
+}
+
+/** Read live agent commands (builtin/skill/custom/extension/file sources) via RPC. */
 async function loadAgentCommands(): Promise<CommandItem[]> {
   try {
     const data = await runUtilityCommand<{ commands?: unknown }>({ type: 'get_available_commands' }, 30_000);
-    const available = Array.isArray(data.commands) ? data.commands : [];
-    const agentSources = new Set(['builtin', 'skill', 'custom', 'extension', 'file']);
-    return available
-      .filter((c) => agentSources.has((c as { source?: string })?.source ?? ''))
-      .map((c) => {
-        const command = c as { name?: string; description?: string; source?: string };
-        const name = typeof command.name === 'string' ? command.name : '';
-        return {
-          id: `omp-live-${name}`,
-          name,
-          description: typeof command.description === 'string' ? command.description : '',
-          scope: 'user' as const,
-          template: `/${name}`,
-          isBuiltIn: true,
-        };
-      })
-      .filter((c) => c.name.length > 0);
+    if (!Array.isArray(data.commands)) return [];
+    return data.commands.flatMap((command) => {
+      const item = toLiveCommandItem(command);
+      return item ? [item] : [];
+    });
   } catch {
     return [];
   }

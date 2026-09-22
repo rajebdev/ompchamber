@@ -1,8 +1,10 @@
-import type { ComposerMatchItem, ComposerPickItem } from '@/shared/types';
+import type { ComposerMatchItem, ComposerPickItem, ComposerTrigger } from '@/shared/types';
+import { filterCommandItems, commandArgumentItems } from '@/shared/lib/chat/composer/commands';
 
 /** Detects the `file:` query prefix (case-insensitive) that scopes to files. */
 const FILE_QUERY_PREFIX_RE = /^file:/i;
 
+/** Rank tiers for `@` mentions (chamber-only; omp's file completion is path-based). */
 interface RankedMatch {
   tier: number;
   index: number;
@@ -13,7 +15,7 @@ interface RankedMatch {
  * Score a single item against a query. Tier order: exact name > name
  * startsWith > name includes > description includes. Returns null on no match.
  */
-export function rankComposerItem(
+function rankComposerItem(
   name: string,
   description: string,
   query: string,
@@ -35,13 +37,16 @@ export function rankComposerItem(
   return null;
 }
 
-/** Filter items by query, ranked by tier then original order. */
-export function filterComposerItems(items: ComposerPickItem[], query: string): ComposerMatchItem[] {
+/**
+ * Filter `@` mention items by query, ranked by tier then original order.
+ *
+ * `file:` scopes the pool to files and ranks on the path remainder, so
+ * `@file:composer` finds `app/lib/chat/composer/client.ts`. Bare `@` keeps the
+ * full agents + files pool.
+ */
+function filterMentionItems(items: ComposerPickItem[], query: string): ComposerMatchItem[] {
   const trimmed = query.trim();
 
-  // `file:` scopes the pool to files and ranks on the path remainder, so
-  // `@file:composer` finds `app/lib/chat/composer/client.ts`. Bare `@` keeps
-  // the full agents + files pool.
   const fileQuery = FILE_QUERY_PREFIX_RE.test(trimmed);
   const pool = fileQuery ? items.filter((item) => item.source === 'file') : items;
   const rankingQuery = fileQuery ? trimmed.replace(FILE_QUERY_PREFIX_RE, '').trim() : trimmed;
@@ -59,4 +64,13 @@ export function filterComposerItems(items: ComposerPickItem[], query: string): C
   ranked.sort((a, b) => a.tier - b.tier || a.index - b.index);
 
   return ranked.map((entry) => ({ ...pool[entry.index], match: entry.match }));
+}
+
+/** Dispatch on the trigger: mentions keep their own ranking, commands use omp's. */
+export function filterComposerItems(items: ComposerPickItem[], trigger: ComposerTrigger): ComposerMatchItem[] {
+  if (trigger.kind === 'mention') return filterMentionItems(items, trigger.query);
+  if (trigger.phase === 'args' && trigger.command) {
+    return commandArgumentItems(items, trigger.command, trigger.query);
+  }
+  return filterCommandItems(items, trigger.query, trigger.midPrompt === true);
 }

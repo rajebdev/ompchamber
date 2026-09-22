@@ -117,6 +117,7 @@ export function ComposerTextarea({
       <ComposerPicker
         open={composer.isOpen}
         kind={composer.trigger?.kind ?? 'mention'}
+        phase={composer.trigger?.phase ?? 'name'}
         items={composer.matches}
         activeIndex={composer.activeIndex}
         loading={composer.loading}

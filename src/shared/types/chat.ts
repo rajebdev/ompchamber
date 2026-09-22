@@ -259,6 +259,13 @@ export type ComposerPickKind = 'mention' | 'command';
 /** Origin of a pickable item: an `@` mention is an agent or a workspace file. */
 export type ComposerPickSource = 'agent' | 'file' | 'command' | 'skill';
 
+/**
+ * Which part of a slash invocation the popup is completing. oh-my-pi splits
+ * these the same way: `name` completes the command token itself, `args`
+ * completes a declarative subcommand after `<command> `.
+ */
+export type ComposerTriggerPhase = 'name' | 'args';
+
 /** A detected trigger: the `@`/`/` char plus the query typed after it. */
 export interface ComposerTrigger {
   kind: ComposerPickKind;
@@ -267,6 +274,18 @@ export interface ComposerTrigger {
   start: number;
   /** Caret index when detected. */
   end: number;
+  /** Command completion phase; `mention` triggers are always `name`. */
+  phase: ComposerTriggerPhase;
+  /** Index the accepted text replaces from — equals `start` in the `name` phase. */
+  replaceFrom: number;
+  /** Command the `args` phase belongs to (name or alias as typed). */
+  command?: string;
+  /**
+   * The `/token` sits mid-prompt (prose precedes it on the line or an earlier
+   * line exists), so only skill entries may surface — oh-my-pi's
+   * `buildMidPromptSkillCompletions` gate.
+   */
+  midPrompt?: boolean;
 }
 
 /** One autocomplete item surfaced in the composer popover. */
@@ -281,6 +300,25 @@ export interface ComposerPickItem {
   token: string;
   /** Workspace-relative path (file items only). */
   path?: string;
+  /**
+   * Suppress the trailing space on insertion. Set on the collapsed `/skill:`
+   * namespace row so the popup reopens with the individual skills, matching
+   * oh-my-pi's accept path.
+   */
+  insertWithoutSpace?: boolean;
+  /** Command aliases from oh-my-pi (`/models` for `/model`). */
+  aliases?: string[];
+  /** Declarative subcommands; drives the `args` phase. */
+  subcommands?: ComposerSubcommand[];
+  /** Argument hint (`[on|off|status]`), prefixed to the description like omp. */
+  inputHint?: string;
+}
+
+/** One declarative subcommand of an oh-my-pi slash command. */
+export interface ComposerSubcommand {
+  name: string;
+  description?: string;
+  usage?: string;
 }
 
 /** A pick item after filtering, with the matched range within `name` (or null). */

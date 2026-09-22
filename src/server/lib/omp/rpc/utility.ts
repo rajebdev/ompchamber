@@ -22,7 +22,13 @@ import { RpcProcess } from '@/server/lib/omp/rpc/process';
 
 // Extensions stay ENABLED: they can register models and login providers, and
 // omitting them made the web UI's model/provider lists disagree with the CLI's.
-const UTILITY_EXTRA_ARGS = ['--no-session', '--no-skills', '--no-lsp'];
+//
+// Skills stay ENABLED too. `--no-skills` made `get_available_commands` omit
+// every `skill:<name>` entry (measured: 45 commands without, 52 with), so the
+// composer's `/` popup could not offer the skills omp happily executes — and
+// the chamber's own disk scan missed provider roots omp reads (`~/.agents/skills`).
+// Cost is nil: the ready frame lands at the same ~420ms either way.
+const UTILITY_EXTRA_ARGS = ['--no-session', '--no-lsp'];
 const READY_TIMEOUT_MS = 60_000;
 // Longer than the 60s models-cache TTL on purpose: with idle-kill == TTL every
 // pause past a minute paid a cold multi-second respawn on top of the stale

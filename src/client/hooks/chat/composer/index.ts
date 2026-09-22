@@ -42,7 +42,18 @@ function isComposingInput(native: Event): boolean {
   );
 }
 
-/** Orchestrates the composer `@`-agent / `/`-command autocomplete flow. */
+/**
+ * Whether the popup may open for this trigger. oh-my-pi only shows the command
+ * popup once the slash token has a real match — a bare `/`, a `/tmp/fo` path,
+ * or a completed `/retry ` must not cover the composer with an empty list.
+ * Mentions keep their own rule: the empty state tells the user what `@` accepts.
+ */
+function shouldOpen(trigger: ComposerTrigger | null, matches: ComposerMatchItem[]): boolean {
+  if (!trigger) return false;
+  return trigger.kind === 'mention' || matches.length > 0;
+}
+
+/** Orchestrates the composer `@`-mention / `/`-command autocomplete flow. */
 export function useComposerTrigger(options: UseComposerTriggerOptions): ComposerTriggerController {
   const { value, setValue, textareaRef, disabled = false, rootPath } = options;
 
@@ -54,8 +65,8 @@ export function useComposerTrigger(options: UseComposerTriggerOptions): Composer
   const { items, loading, error } = useComposerItems(trigger?.kind ?? null, rootPath ?? null);
 
   const matches = useMemo(
-    () => filterComposerItems(items, trigger?.query ?? ''),
-    [items, trigger?.query],
+    () => (trigger ? filterComposerItems(items, trigger) : []),
+    [items, trigger],
   );
 
   const clampedIndex = matches.length > 0
@@ -65,6 +76,8 @@ export function useComposerTrigger(options: UseComposerTriggerOptions): Composer
   const listboxId = useId();
 
   const optionId = useCallback((index: number) => `${listboxId}-option-${index}`, [listboxId]);
+
+  const open = shouldOpen(trigger, matches);
 
   const close = useCallback(() => {
     setTrigger(null);
@@ -112,15 +125,22 @@ export function useComposerTrigger(options: UseComposerTriggerOptions): Composer
       const next = insertToken(value, trigger, tokenForItem(item));
       pendingCaretRef.current = next.caret;
       setValue(next.value);
-      close();
+      // Re-query instead of closing: oh-my-pi reopens on the accepted text, so
+      // `/fast` → `/fast ` immediately offers its subcommands and the collapsed
+      // `/skill:` row expands into the individual skills. `shouldOpen` keeps a
+      // completed command from leaving an empty popup behind.
+      setTrigger(detectComposerTrigger(next.value, next.caret));
+      setActiveIndexState(0);
     },
-    [value, trigger, setValue, close],
+    [value, trigger, setValue],
   );
 
   const handleKeyDown = useCallback(
     (e: TargetedKeyboardEvent<HTMLTextAreaElement>): boolean => {
       if (composingRef.current || e.keyCode === 229) return false;
-      if (!trigger) return false;
+      // A closed popup owns nothing: `/tmp/fo` must keep Enter/Tab meaning send
+      // and indent rather than being swallowed by an invisible list.
+      if (!trigger || !open) return false;
 
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
@@ -147,7 +167,7 @@ export function useComposerTrigger(options: UseComposerTriggerOptions): Composer
 
       return false;
     },
-    [trigger, matches, clampedIndex, selectItem, close],
+    [trigger, open, matches, clampedIndex, selectItem, close],
   );
 
   useLayoutEffect(() => {
@@ -163,7 +183,7 @@ export function useComposerTrigger(options: UseComposerTriggerOptions): Composer
 
   return {
     trigger,
-    isOpen: trigger !== null,
+    isOpen: open,
     matches,
     loading,
     error,
