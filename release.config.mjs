@@ -8,6 +8,12 @@
  * its shape — `## [x.y.z] — YYYY-MM-DD` over the Added / Changed / Fixed /
  * Removed categories, newest first, under an untouched intro block.
  *
+ * A bullet credits the contributor who wrote it, unless that contributor is the
+ * repository owner: `release/contributors.js` reads GitHub's privacy addresses
+ * (`NNN+login@users.noreply.github.com`) directly and asks the API about every
+ * other author — the job's `GITHUB_TOKEN` is what makes that second path work,
+ * so a rehearsal without one credits privacy addresses alone.
+ *
  * Two pins here are load-bearing:
  *
  * - `conventional-changelog-conventionalcommits@9` is the last preset written for
@@ -26,6 +32,8 @@
  * where the reason `origin` alone does not contain it is written down.
  */
 import { readFileSync } from 'node:fs';
+import conventionalcommits from 'conventional-changelog-conventionalcommits';
+import { attachThanks, withThanksClause } from './release/contributors.js';
 
 const changelog = 'CHANGELOG.md';
 
@@ -65,6 +73,16 @@ const commitTypes = [
 ];
 
 /**
+ * The preset's own commit partial, loaded rather than copied so the scope
+ * prefix, the hash link and the `, closes` list stay exactly what the pinned
+ * preset renders — only the credit clause is added, at the seam the preset
+ * marks for it (see `release/contributors.js`).
+ */
+const { commitPartial: presetCommitPartial } = (await conventionalcommits({ types: commitTypes })).writer;
+
+const commitPartial = withThanksClause(presetCommitPartial);
+
+/**
  * The house header links the version to its compare range. It does so with a
  * reference (`[0.6.0]` plus a `[0.6.0]:` definition at the file's tail, which the
  * writer cannot maintain); the inline form below renders identically.
@@ -101,6 +119,29 @@ const mainTemplate = `{{> header}}
 {{> footer}}
 `;
 
+/**
+ * Attribution is the notes generator's job to display and ours to fill in: the
+ * writer runs `finalizeContext` on the commits it is about to render, which is
+ * the last point where each one still carries both its hash and its author.
+ * Those objects are the ones the template reads, so setting `thanks` there is
+ * what the credit clause renders.
+ */
+const finalizeContext = async (context, _options, commits) => {
+  const credited = await attachThanks(commits, {
+    owner: context.owner,
+    host: context.host,
+    repository: context.repository,
+    api: process.env.GITHUB_API_URL ?? 'https://api.github.com',
+    token: process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN,
+  });
+
+  if (credited) {
+    console.log(`changelog: credited ${credited} commit(s) to their authors`);
+  }
+
+  return context;
+};
+
 export default {
   branches: ['main'],
   tagFormat: 'v${version}',
@@ -111,7 +152,7 @@ export default {
     ],
     [
       '@semantic-release/release-notes-generator',
-      { preset: 'conventionalcommits', presetConfig: { types: commitTypes }, writerOpts: { headerPartial, mainTemplate } },
+      { preset: 'conventionalcommits', presetConfig: { types: commitTypes }, writerOpts: { commitPartial, headerPartial, mainTemplate, finalizeContext } },
     ],
     ['@semantic-release/changelog', { changelogFile: changelog, changelogTitle: changelogIntro }],
     ['@semantic-release/npm', { npmPublish: false }],

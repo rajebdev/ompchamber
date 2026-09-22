@@ -34,8 +34,10 @@ name: Release
 #   git init --bare /tmp/sr-origin.git && git push /tmp/sr-origin.git main --tags
 #   node node_modules/semantic-release/bin/semantic-release.js \
 #     --repository-url file:///tmp/sr-origin.git
-# The rehearsal writes the changelog with that scratch URL's links, so read it for
-# structure, not for URLs.
+# The rehearsal writes the changelog with that scratch URL's links — and with that
+# URL's path parsed as the owner, so the maintainer's own commits come out credited
+# too (the contributor credit is owner-relative, see release/contributors.js). Read
+# the result for structure, not for URLs or attribution.
 
 on:
   push:
