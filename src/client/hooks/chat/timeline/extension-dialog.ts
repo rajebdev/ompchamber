@@ -13,19 +13,22 @@
  * tool call stayed blocked on an approval nobody could answer and the turn never
  * reached `agent_end` — the run looked hung until Stop.
  *
- * Requests surface one at a time in arrival order; answering the head advances
- * the queue. Extracted from useChatTimeline to stay under the size ceiling.
+ * The queue keeps EVERY pending request rather than the head alone: `ask` raises
+ * one frame per question, and those are rendered inline on the ask tool card
+ * (see ask-frames.ts) instead of in a modal, so the head is not the only
+ * answerable request at any moment. Entries leave the queue by id once their
+ * response is on the wire, or when omp withdraws them (`method: 'cancel'`).
  */
 
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import type { ExtensionUiDialogRequest } from '@/shared/types/omp/agent';
 
 export interface ExtensionDialogQueue {
-  /** Head of the queue — the single dialog to render. */
-  dialog: ExtensionUiDialogRequest | null;
+  /** Still-blocking requests, in omp's arrival order. */
+  pending: ExtensionUiDialogRequest[];
   enqueue: (request: ExtensionUiDialogRequest) => void;
-  /** Advance past the head once its response has been sent. */
-  dismiss: () => void;
+  /** Advance past a request once its response has been sent. */
+  resolve: (id: string) => void;
   /** Drop a request omp withdrew (`method: 'cancel'`) without an answer. */
   withdraw: (targetId: string) => void;
 }
@@ -45,12 +48,12 @@ export function useExtensionDialogQueue(sessionId: string | null): ExtensionDial
     // entry per omp id keeps the queue answerable exactly once.
     setQueue((current) => (current.some((pending) => pending.id === request.id) ? current : [...current, request]));
   }, []);
-  const dismiss = useCallback(() => {
-    setQueue((current) => current.slice(1));
+  const resolve = useCallback((id: string) => {
+    setQueue((current) => current.some((pending) => pending.id === id) ? current.filter((pending) => pending.id !== id) : current);
   }, []);
   const withdraw = useCallback((targetId: string) => {
     setQueue((current) => current.filter((pending) => pending.id !== targetId));
   }, []);
 
-  return { dialog: queue[0] ?? null, enqueue, dismiss, withdraw };
+  return { pending: queue, enqueue, resolve, withdraw };
 }

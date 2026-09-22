@@ -19,7 +19,7 @@ import { AstEdit } from '@/client/components/workspace/chat-timeline/tool-render
 import { Resolve } from '@/client/components/workspace/chat-timeline/tool-renderers/panels/Resolve';
 import { ManageSkill } from '@/client/components/workspace/chat-timeline/tool-renderers/panels/ManageSkill';
 import { SearchFs } from '@/client/components/workspace/chat-timeline/tool-renderers/panels/SearchFs';
-import { Ask } from '@/client/components/workspace/chat-timeline/tool-renderers/panels/Ask';
+import { AskPanel } from '@/client/components/workspace/chat-timeline/tool-renderers/ask-panel';
 import { Think } from '@/client/components/workspace/chat-timeline/tool-renderers/panels/Think';
 import { Read } from '@/client/components/workspace/chat-timeline/tool-renderers/panels/Read';
 import { Edit } from '@/client/components/workspace/chat-timeline/tool-renderers/panels/Edit';
@@ -142,7 +142,7 @@ export function ToolDetailsPanel({ tool }: { tool: ToolCallData }): ReactNode {
     return <Memory tool={tool} />;
   }
   if (key === 'goal' || key === 'yield') return <Goal tool={tool} />;
-  if (key === 'ask') return <Ask tool={tool} />;
+  if (key === 'ask') return <AskPanel tool={tool} />;
   if (key === 'think') return <Think tool={tool} />;
 
   // Dynamic MCP / custom tools — `mcp__<tool>` names and xd:// device writes

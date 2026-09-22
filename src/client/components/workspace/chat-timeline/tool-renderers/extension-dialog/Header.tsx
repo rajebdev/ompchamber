@@ -1,7 +1,7 @@
 import type { ReactNode } from 'preact/compat';
 import { Sparkles, X } from 'lucide-preact';
 
-interface AskDialogHeaderProps {
+interface ExtensionDialogHeaderProps {
   title?: string;
   methodLabel: string;
   badge: string;
@@ -9,13 +9,13 @@ interface AskDialogHeaderProps {
   onCancel: () => void;
 }
 
-export function AskDialogHeader({
+export function ExtensionDialogHeader({
   title,
   methodLabel,
   badge,
   icon,
   onCancel,
-}: AskDialogHeaderProps) {
+}: ExtensionDialogHeaderProps) {
   return (
     <div className="flex items-center justify-between border-b border-ink/8 bg-canvas/40 px-5 py-3.5">
       <div className="flex items-center gap-3 min-w-0">

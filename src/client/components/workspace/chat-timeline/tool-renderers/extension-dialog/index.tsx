@@ -2,9 +2,9 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { AlertCircle, CheckCircle2, FileText, HelpCircle, ListFilter, Terminal } from 'lucide-preact';
 import type { ExtensionUiDialogRequest } from '@/client/hooks/chat/omp';
-import { AskDialogHeader } from '@/client/components/workspace/chat-timeline/tool-renderers/ask-dialog/Header';
-import { AskDialogSelectBody } from '@/client/components/workspace/chat-timeline/tool-renderers/ask-dialog/SelectBody';
-import { AskDialogFooter } from '@/client/components/workspace/chat-timeline/tool-renderers/ask-dialog/Footer';
+import { ExtensionDialogHeader } from '@/client/components/workspace/chat-timeline/tool-renderers/extension-dialog/Header';
+import { ExtensionDialogSelectBody } from '@/client/components/workspace/chat-timeline/tool-renderers/extension-dialog/SelectBody';
+import { ExtensionDialogFooter } from '@/client/components/workspace/chat-timeline/tool-renderers/extension-dialog/Footer';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 
 export type ExtensionDialogResponse =
@@ -12,12 +12,18 @@ export type ExtensionDialogResponse =
   | { confirmed: boolean }
   | { cancelled: true };
 
-interface AskDialogProps {
+interface ExtensionDialogProps {
   request: ExtensionUiDialogRequest;
   onRespond: (request: ExtensionUiDialogRequest, response: ExtensionDialogResponse) => void;
 }
 
-export function AskDialog({ request, onRespond }: AskDialogProps) {
+/**
+ * Blocking extension dialog that has no card of its own to render in: an
+ * approval gate under `always-ask`, or a picker an extension raised. The `ask`
+ * tool's own dialogs render inline on its tool card instead (see ask-panel) —
+ * a modal would only ever show the question currently in flight.
+ */
+export function ExtensionDialog({ request, onRespond }: ExtensionDialogProps) {
   const [value, setValue] = useState(request.method === 'editor' ? request.prefill ?? '' : '');
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [customValue, setCustomValue] = useState('');
@@ -202,7 +208,7 @@ export function AskDialog({ request, onRespond }: AskDialogProps) {
 
   return (
     <div
-      className="ask-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
+      className="extension-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
       style={{
         background: 'color-mix(in srgb, var(--theme-ink) 55%, transparent)',
         backdropFilter: 'blur(8px)',
@@ -217,12 +223,12 @@ export function AskDialog({ request, onRespond }: AskDialogProps) {
         aria-modal="true"
         aria-label={request.title || methodMeta.label}
         tabIndex={-1}
-        className="ask-dialog-panel w-full max-w-[560px] overflow-hidden rounded-2xl border border-ink/15 bg-paper shadow-2xl outline-none"
+        className="extension-dialog-panel w-full max-w-[560px] overflow-hidden rounded-2xl border border-ink/15 bg-paper shadow-2xl outline-none"
         style={{
           boxShadow: '0 24px 64px -8px color-mix(in srgb, var(--theme-ink) 28%, transparent)',
         }}
       >
-          <AskDialogHeader
+          <ExtensionDialogHeader
             title={request.title}
             methodLabel={methodMeta.label}
             badge={methodMeta.badge}
@@ -240,7 +246,7 @@ export function AskDialog({ request, onRespond }: AskDialogProps) {
 
             {/* Select Options */}
             {request.method === 'select' && (
-              <AskDialogSelectBody
+              <ExtensionDialogSelectBody
                 options={options}
                 optionDetails={optionDetails}
                 selectedOption={selectedOption}
@@ -307,7 +313,7 @@ export function AskDialog({ request, onRespond }: AskDialogProps) {
             )}
           </div>
 
-          <AskDialogFooter
+          <ExtensionDialogFooter
             method={request.method}
             optionsLength={options.length}
             selectedOption={selectedOption}

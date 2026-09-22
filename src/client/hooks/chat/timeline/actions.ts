@@ -49,8 +49,6 @@ export interface ChatTimelineActionsDeps {
   /** Global access-control mode, snapshotted onto queued items. */
   accessModeRef: { current: ApprovalMode };
   setSearchParams: (fn: (prev: URLSearchParams) => URLSearchParams, opts?: { replace?: boolean }) => void;
-  /** Advance the pending-dialog queue after the head was answered. */
-  dismissExtensionDialog: () => void;
 }
 
 export interface ChatTimelineActionsResult {
@@ -64,7 +62,6 @@ export interface ChatTimelineActionsResult {
   stopGenerating: () => number;
   handleThinkingLevelChange: (level: string) => void;
   handleModelChange: (provider: string, modelId: string) => void;
-  closeExtensionDialog: () => void;
 }
 
 export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimelineActionsResult {
@@ -91,7 +88,6 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     composerModelRef,
     accessModeRef,
     setSearchParams,
-    dismissExtensionDialog,
   } = deps;
 
   const handleSend = useCallback(async (attachments: Attachment[], options?: { steering?: boolean }) => {
@@ -302,10 +298,6 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     void ompAgent.setModel(provider, modelId);
   }, [isOmpSession, ompAgent, pendingComposerModelRef]);
 
-  const closeExtensionDialog = useCallback(() => {
-    dismissExtensionDialog();
-  }, [dismissExtensionDialog]);
-
   return {
     handleSend,
     handleEditQueueItem,
@@ -316,6 +308,5 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     stopGenerating,
     handleThinkingLevelChange,
     handleModelChange,
-    closeExtensionDialog,
   };
 }

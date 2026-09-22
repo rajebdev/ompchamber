@@ -1,7 +1,7 @@
 import type { RefObject } from 'preact/compat';
 import { CheckCircle2, Circle } from 'lucide-preact';
 
-interface AskDialogSelectBodyProps {
+interface ExtensionDialogSelectBodyProps {
   options: string[];
   optionDetails: { description?: string }[];
   selectedOption: string | null;
@@ -12,7 +12,7 @@ interface AskDialogSelectBodyProps {
   onConfirmOption: (option: string) => void;
 }
 
-export function AskDialogSelectBody({
+export function ExtensionDialogSelectBody({
   options,
   optionDetails,
   selectedOption,
@@ -21,7 +21,7 @@ export function AskDialogSelectBody({
   customInputRef,
   onSelect,
   onConfirmOption,
-}: AskDialogSelectBodyProps) {
+}: ExtensionDialogSelectBodyProps) {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between text-[11px] font-medium tracking-wider text-ink/50 uppercase">

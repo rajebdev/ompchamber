@@ -1,6 +1,6 @@
 import { CornerDownLeft, X } from 'lucide-preact';
 
-interface AskDialogFooterProps {
+interface ExtensionDialogFooterProps {
   method: string;
   optionsLength: number;
   selectedOption: string | null;
@@ -9,14 +9,14 @@ interface AskDialogFooterProps {
   onSubmit: () => void;
 }
 
-export function AskDialogFooter({
+export function ExtensionDialogFooter({
   method,
   optionsLength,
   selectedOption,
   hasCustomAnswer = false,
   onCancel,
   onSubmit,
-}: AskDialogFooterProps) {
+}: ExtensionDialogFooterProps) {
   const isSelectDisabled = method === 'select' && !selectedOption && !hasCustomAnswer;
 
   return (

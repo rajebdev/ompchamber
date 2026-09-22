@@ -370,31 +370,31 @@
 }
 
 
-/* Ask-dialog enter animation — replaces the retired `motion` dependency.
-   Exit is intentionally instant: a 160ms fade-out on a blocking modal is not
-   load-bearing, and keeping the element mounted to animate it out would add
-   state the dialog does not otherwise need. */
-@keyframes ask-dialog-backdrop-in {
+/* Blocking extension-dialog enter animation — replaces the retired `motion`
+   dependency. Exit is intentionally instant: a 160ms fade-out on a blocking
+   modal is not load-bearing, and keeping the element mounted to animate it out
+   would add state the dialog does not otherwise need. */
+@keyframes extension-dialog-backdrop-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
-@keyframes ask-dialog-panel-in {
+@keyframes extension-dialog-panel-in {
   from { opacity: 0; transform: translateY(10px) scale(0.95); }
   to { opacity: 1; transform: none; }
 }
 
-.ask-dialog-backdrop {
-  animation: ask-dialog-backdrop-in 150ms ease-out;
+.extension-dialog-backdrop {
+  animation: extension-dialog-backdrop-in 150ms ease-out;
 }
 
-.ask-dialog-panel {
-  animation: ask-dialog-panel-in 180ms ease-out;
+.extension-dialog-panel {
+  animation: extension-dialog-panel-in 180ms ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ask-dialog-backdrop,
-  .ask-dialog-panel {
+  .extension-dialog-backdrop,
+  .extension-dialog-panel {
     animation: none;
   }
 }

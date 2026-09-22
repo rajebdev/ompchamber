@@ -13,6 +13,7 @@ import { FallbackOutput } from '@/client/components/workspace/chat-timeline/tool
 import { tryParseJson } from '@/shared/lib/code/syntax-highlight';
 import { JsonCodeBlock } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/JsonCodeBlock';
 import { getTodoSummary } from '@/shared/lib/chat/todo-parser';
+import { parseAskQuestions } from '@/shared/lib/chat/ask-questions';
 
 interface ToolCallCardProps {
   tool: ToolCallData;
@@ -199,6 +200,12 @@ export const ToolCallCard = memo(function ToolCallCard({ tool, isOpen, onToggle,
         .join(' · ');
       displaySubtitle = cleaned || sub;
     }
+  } else if (toolKey === 'ask') {
+    // The question itself is the card's body; the header says how many were
+    // asked, matching the summary the same card shows once they are answered.
+    displayTitle = 'Question';
+    const asked = parseAskQuestions(tool).length;
+    if (asked > 0) displaySubtitle = `Asked ${asked} question${asked === 1 ? '' : 's'}`;
   } else if (mcpToolNameOf(tool)) {
     // MCP call: `write xd://mcp__<tool>` (or a direct `mcp__<tool>` name) —
     // the MCP tool names the action, never the transport `write`.
@@ -258,7 +265,7 @@ export const ToolCallCard = memo(function ToolCallCard({ tool, isOpen, onToggle,
       isOpen={isOpen}
       onToggle={onToggle ? handleToggle : undefined}
       defaultExpanded={defaultExpanded}
-      alwaysExpanded={toolKey === 'yield' && hasPanel}
+      alwaysExpanded={hasPanel && (toolKey === 'yield' || toolKey === 'ask')}
     >
       <ToolDetailsPanel tool={tool} />
 

@@ -120,7 +120,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     sessionData,
     adoptedSessionIdRef,
     refreshSessionMeta,
-    setSessionModel,
+    seedSession,
     hasMore,
     loadingOlder,
     loadOlderError,
@@ -183,9 +183,9 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     removeDeliveredFromQueue,
   } = useChatTimelineQueue(sessionId);
   const {
-    dialog: extensionDialog,
+    pending: extensionDialogs,
     enqueue: enqueueExtensionDialog,
-    dismiss: dismissExtensionDialog,
+    resolve: resolveExtensionDialog,
     withdraw: withdrawExtensionDialog,
   } = useExtensionDialogQueue(sessionId);
 
@@ -226,7 +226,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     adoptedSessionIdRef,
     optimisticUserIdRef,
     pendingUserDisplaysRef,
-    setSessionModel,
+    seedSession,
     pendingComposerModelRef,
     pendingThinkingLevelRef,
     composerModelRef,
@@ -262,7 +262,6 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     stopGenerating,
     handleThinkingLevelChange,
     handleModelChange,
-    closeExtensionDialog,
   } = useChatTimelineActions({
     inputValue,
     setInputValue,
@@ -286,7 +285,6 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     composerModelRef,
     accessModeRef,
     setSearchParams,
-    dismissExtensionDialog,
   });
 
   return {
@@ -331,8 +329,8 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     accessMode,
     handleAccessModeChange,
     composerModelRef,
-    extensionDialog,
-    closeExtensionDialog,
+    extensionDialogs,
+    resolveExtensionDialog,
     respondToExtensionUi: ompAgent.respondToExtensionUi,
   };
 }

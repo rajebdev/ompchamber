@@ -24,7 +24,7 @@
  * the stale bootstrap payload.
  *
  * `fallback={null}` matches the other lazy dialog boundary
- * (`tool-renderers/ask-dialog/Lazy.tsx`): the modal is a full-screen overlay
+ * (`tool-renderers/extension-dialog/Lazy.tsx`): the modal is a full-screen overlay
  * that appears on user intent, so a brief absence reads as the click landing
  * rather than as a broken surface.
  */

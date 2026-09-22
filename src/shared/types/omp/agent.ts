@@ -5,8 +5,8 @@
 
 /**
  * omp agent event surface types shared by useOmpAgent, the chamber timeline
- * and the AskDialog renderer. Kept separate so the hook file stays under the
- * repo's per-file size ceiling.
+ * and the extension-dialog renderer. Kept separate so the hook file stays under
+ * the repo's per-file size ceiling.
  */
 
 import type { ChatMessageData } from '@/shared/types/chat';

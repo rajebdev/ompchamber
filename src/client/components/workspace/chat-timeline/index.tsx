@@ -1,6 +1,9 @@
 import { useCallback, useMemo, useState } from 'preact/hooks';
 import { useSearchParams } from '@/client/lib/router/search-params';
-import { AskDialog } from '@/client/components/workspace/chat-timeline/tool-renderers/ask-dialog/Lazy';
+import { ExtensionDialog } from '@/client/components/workspace/chat-timeline/tool-renderers/extension-dialog/Lazy';
+import { AskFramesContext, splitAskFrames, type AskFramesHandle } from '@/client/hooks/chat/timeline/ask-frames';
+import type { ExtensionUiDialogRequest } from '@/shared/types/omp/agent';
+import type { ExtensionDialogResponse } from '@/client/components/workspace/chat-timeline/tool-renderers/extension-dialog/Lazy';
 import { EmptyWorkspacePrompt } from '@/client/components/workspace/chat-timeline/EmptyWorkspacePrompt';
 import { SessionSkeleton } from '@/client/components/workspace/chat-timeline/SessionSkeleton';
 import { UndoConfirmModal } from '@/client/components/workspace/chat-timeline/UndoConfirmModal';
@@ -71,11 +74,26 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
     accessMode,
     handleAccessModeChange,
     composerModelRef,
-    extensionDialog,
-    closeExtensionDialog,
+    extensionDialogs,
+    resolveExtensionDialog,
     respondToExtensionUi,
   } = useChatTimeline({ folders, appSettings });
   const { toasts, pushToast, dismissToast } = useToasts();
+
+  // Ask dialogs render on their own tool card; anything else omp is blocked on
+  // (an approval gate, an extension picker) has no card and keeps the modal.
+  const { framesByTool, modalRequest } = useMemo(
+    () => splitAskFrames(localMessages, extensionDialogs),
+    [localMessages, extensionDialogs],
+  );
+  const respondToFrame = useCallback((request: ExtensionUiDialogRequest, response: ExtensionDialogResponse) => {
+    void respondToExtensionUi(request, response);
+    resolveExtensionDialog(request.id);
+  }, [respondToExtensionUi, resolveExtensionDialog]);
+  const askFrames = useMemo<AskFramesHandle>(
+    () => ({ framesByTool, respond: respondToFrame }),
+    [framesByTool, respondToFrame],
+  );
 
   const [newChatInitialContent, setNewChatInitialContent] = useState<string | null>(null);
   const { pendingUndo, undoing, requestUndo: handleRequestUndo, closeUndoConfirm, confirmUndo } = useUndoConfirmation(handleUndo);
@@ -170,118 +188,114 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
   }
 
   return (
-    <div className={`flex flex-col h-full min-h-0 overflow-hidden bg-canvas relative ${className}`}>
-      {showFullSkeleton ? (
-        <SessionSkeleton />
-      ) : (
-        <>
-          {/* Main chat container wrapper */}
-          <div className="relative flex-1 min-h-0 flex flex-col">
-            {activeSubagent ? (
-              <SubagentView
-                sessionId={sessionId}
-                subagent={activeSubagent}
-                onBack={handleSubagentBack}
-                provider={sessionProvider}
-                providerNames={providerNames}
-              />
-            ) : (
-              <TimelineBody
+    <AskFramesContext.Provider value={askFrames}>
+      <div className={`flex flex-col h-full min-h-0 overflow-hidden bg-canvas relative ${className}`}>
+        {showFullSkeleton ? (
+          <SessionSkeleton />
+        ) : (
+          <>
+            {/* Main chat container wrapper */}
+            <div className="relative flex-1 min-h-0 flex flex-col">
+              {activeSubagent ? (
+                <SubagentView
+                  sessionId={sessionId}
+                  subagent={activeSubagent}
+                  onBack={handleSubagentBack}
+                  provider={sessionProvider}
+                  providerNames={providerNames}
+                />
+              ) : (
+                <TimelineBody
+                  isMobile={isMobile}
+                  userMessages={userMessages}
+                  onScrollTo={handleScrollTo}
+                  scrollRef={scrollRef}
+                  contentRef={contentRef}
+                  handleScroll={handleScroll}
+                  isScrolling={isScrolling}
+                  loadingOlder={loadingOlder}
+                  hasMore={hasMore}
+                  loadOlderError={loadOlderError}
+                  loadOlder={loadOlder}
+                  messages={localMessages}
+                  isGenerating={isGenerating}
+                  provider={sessionProvider}
+                  providerNames={providerNames}
+                  modelName={sessionModelName}
+                  modelNames={modelNames}
+                  thinkingLevel={sessionData?.thinkingLevel}
+                  onUndo={handleRequestUndo}
+                  onRetry={handleRetry}
+                  onNewChat={handleNewChat}
+                  showScrollBottom={showScrollBottom}
+                  jumpToBottom={jumpToBottom}
+                />
+              )}
+            </div>
+
+            {/* Input Area Footer with Docked Generating Indicator (Seamless & Transparent) */}
+            {!activeSubagent && (
+              <ComposerDock
                 isMobile={isMobile}
-                userMessages={userMessages}
-                onScrollTo={handleScrollTo}
-                scrollRef={scrollRef}
-                contentRef={contentRef}
-                handleScroll={handleScroll}
-                isScrolling={isScrolling}
-                loadingOlder={loadingOlder}
-                hasMore={hasMore}
-                loadOlderError={loadOlderError}
-                loadOlder={loadOlder}
-                messages={localMessages}
                 isGenerating={isGenerating}
+                modelName={sessionModelName}
+                generatingVerb={generatingVerb}
                 provider={sessionProvider}
                 providerNames={providerNames}
-                modelName={sessionModelName}
-                modelNames={modelNames}
-                thinkingLevel={sessionData?.thinkingLevel}
-                onUndo={handleRequestUndo}
-                onRetry={handleRetry}
-                onNewChat={handleNewChat}
-                showScrollBottom={showScrollBottom}
-                jumpToBottom={jumpToBottom}
+                messageQueue={messageQueue}
+                setMessageQueue={setMessageQueue}
+                onEditQueueItem={handleEditQueueItem}
+                onSendNowQueueItem={handleSendNowQueueItem}
+                steeringQueue={steeringQueue}
+                setSteeringQueue={setSteeringQueue}
+                inputValue={inputValue}
+                setInputValue={setInputValue}
+                rootPath={composerRoot}
+                attachments={inputAttachments}
+                setAttachments={setInputAttachments}
+                onSend={handleSend}
+                onStop={handleStop}
+                appSettings={appSettings}
+                onThinkingLevelChange={handleThinkingLevelChange}
+                onModelChange={handleModelChange}
+                accessMode={accessMode}
+                onAccessModeChange={handleAccessModeChange}
+                composerModelRef={composerModelRef}
+                sessionModel={typeof sessionData?.model === 'object' ? sessionData.model : null}
+                sessionThinkingLevel={sessionData?.thinkingLevel}
+                variant={variant}
               />
             )}
-          </div>
+          </>
+        )}
 
-          {/* Input Area Footer with Docked Generating Indicator (Seamless & Transparent) */}
-          {!activeSubagent && (
-            <ComposerDock
-              isMobile={isMobile}
-              isGenerating={isGenerating}
-              modelName={sessionModelName}
-              generatingVerb={generatingVerb}
-              provider={sessionProvider}
-              providerNames={providerNames}
-              messageQueue={messageQueue}
-              setMessageQueue={setMessageQueue}
-              onEditQueueItem={handleEditQueueItem}
-              onSendNowQueueItem={handleSendNowQueueItem}
-              steeringQueue={steeringQueue}
-              setSteeringQueue={setSteeringQueue}
-              inputValue={inputValue}
-              setInputValue={setInputValue}
-              rootPath={composerRoot}
-              attachments={inputAttachments}
-              setAttachments={setInputAttachments}
-              onSend={handleSend}
-              onStop={handleStop}
-              appSettings={appSettings}
-              onThinkingLevelChange={handleThinkingLevelChange}
-              onModelChange={handleModelChange}
-              accessMode={accessMode}
-              onAccessModeChange={handleAccessModeChange}
-              composerModelRef={composerModelRef}
-              sessionModel={typeof sessionData?.model === 'object' ? sessionData.model : null}
-              sessionThinkingLevel={sessionData?.thinkingLevel}
-              variant={variant}
-            />
-          )}
-        </>
-      )}
+        {pendingUndo && (
+          <UndoConfirmModal
+            isOmpSession={Boolean(sessionId) && !sessionId.startsWith('new-') && Number.isNaN(Number(sessionId))}
+            content={pendingUndo.content}
+            undoing={undoing}
+            onClose={closeUndoConfirm}
+            onConfirm={confirmUndo}
+          />
+        )}
+        {newChatInitialContent !== null && (
+          <NewChatModal
+            initialContent={newChatInitialContent}
+            onClose={() => setNewChatInitialContent(null)}
+            onSend={submitNewChat}
+            appSettings={appSettings}
+            accessMode={accessMode}
+            onAccessModeChange={handleAccessModeChange}
+            composerModelRef={composerModelRef}
+          />
+        )}
 
-      {pendingUndo && (
-        <UndoConfirmModal
-          isOmpSession={Boolean(sessionId) && !sessionId.startsWith('new-') && Number.isNaN(Number(sessionId))}
-          content={pendingUndo.content}
-          undoing={undoing}
-          onClose={closeUndoConfirm}
-          onConfirm={confirmUndo}
-        />
-      )}
-      {newChatInitialContent !== null && (
-        <NewChatModal
-          initialContent={newChatInitialContent}
-          onClose={() => setNewChatInitialContent(null)}
-          onSend={submitNewChat}
-          appSettings={appSettings}
-          accessMode={accessMode}
-          onAccessModeChange={handleAccessModeChange}
-          composerModelRef={composerModelRef}
-        />
-      )}
+        {modalRequest && (
+          <ExtensionDialog request={modalRequest} onRespond={respondToFrame} />
+        )}
 
-      {extensionDialog && (
-        <AskDialog
-          request={extensionDialog}
-          onRespond={(request, response) => {
-            void respondToExtensionUi(request, response);
-            closeExtensionDialog();
-          }}
-        />
-      )}
-
-      <ToastStack toasts={toasts} onDismiss={dismissToast} />
-    </div>
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
+      </div>
+    </AskFramesContext.Provider>
   );
 }
