@@ -21,7 +21,7 @@ async function loadAgentCommands(): Promise<CommandItem[]> {
   try {
     const data = await runUtilityCommand<{ commands?: unknown }>({ type: 'get_available_commands' }, 30_000);
     const available = Array.isArray(data.commands) ? data.commands : [];
-    const agentSources = new Set(['skill', 'custom', 'extension', 'file']);
+    const agentSources = new Set(['builtin', 'skill', 'custom', 'extension', 'file']);
     return available
       .filter((c) => agentSources.has((c as { source?: string })?.source ?? ''))
       .map((c) => {
