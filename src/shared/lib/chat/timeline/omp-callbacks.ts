@@ -47,7 +47,6 @@ export function cancelStreamingCoalescer(): void {
 }
 
 export interface OmpAgentCallbacksDeps {
-  removeDeliveredFromQueue: (text: string) => void;
   setGenerating: (v: boolean) => void;
   setGeneratingVerb: (v: string) => void;
   scrollToBottom: (behavior?: ScrollBehavior) => void;
@@ -73,7 +72,6 @@ export interface OmpAgentCallbacksDeps {
 
 export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCallbacks {
   const {
-    removeDeliveredFromQueue,
     setGenerating,
     setGeneratingVerb,
     scrollToBottom,
@@ -97,12 +95,6 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
   scrollAfterFlush = () => scrollToBottom('smooth');
 
   return {
-    // A queued steer/follow-up text was picked up by the agent (user turn
-    // arrived) — drop it from whichever queue mirrors it so the panel stays
-    // truthful without a chat bubble for every delivery.
-    onQueuedMessageDelivered: (text) => {
-      removeDeliveredFromQueue(text);
-    },
     onAgentStart: () => {
       setGenerating(true);
       setGeneratingVerb(PHASE_VERBS.thinking);
@@ -120,6 +112,15 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
           metaRefreshedRef.current = sid;
           setTimeout(() => refreshSessionMeta(sid), 100);
         }
+      }
+    },
+    onTurnStart: () => {
+      // Every turn inside the run re-signals the sidebar: the throttle makes
+      // this cheap, and it recovers the `stream` status row if a previous
+      // dispatch raced with the status write (or the row was healed away).
+      const sid = adoptedSessionIdRef.current ?? sessionIdRef.current;
+      if (sid && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('omp:session-updated', { detail: { sessionId: sid } }));
       }
     },
     // Reload recovery: the omp process kept running server-side, so the event

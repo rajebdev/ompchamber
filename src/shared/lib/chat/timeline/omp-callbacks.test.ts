@@ -63,7 +63,6 @@ describe('createOmpAgentCallbacks first-assistant sidebar signal', () => {
 
   function makeCallbacks(): OmpAgentCallbacks {
     const deps: OmpAgentCallbacksDeps = {
-      removeDeliveredFromQueue: () => {},
       setGenerating: () => {},
       setGeneratingVerb: () => {},
       scrollToBottom: () => {},
@@ -131,6 +130,15 @@ describe('createOmpAgentCallbacks first-assistant sidebar signal', () => {
     callbacks.onMessageEnd?.(assistantTurn('a2'));
 
     expect(signals).toHaveLength(2);
+  });
+
+  test('onTurnStart signals the sidebar on every turn of the run', () => {
+    const callbacks = makeCallbacks();
+
+    callbacks.onTurnStart?.();
+    callbacks.onTurnStart?.();
+    expect(signals).toHaveLength(2);
+    expect(signals.every(s => s.name === 'omp:session-updated' && s.sessionId === 'sess-1')).toBe(true);
   });
 
   test('never signals from user turns or notice rows alone', () => {

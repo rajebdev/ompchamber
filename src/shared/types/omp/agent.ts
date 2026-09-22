@@ -22,6 +22,8 @@ export interface OmpAgentEvent {
  *  into ChatMessageData lands on one of these. */
 export interface OmpAgentCallbacks {
   onAgentStart?: () => void;
+  /** A single turn inside the run began (multi-turn runs emit several). */
+  onTurnStart?: () => void;
   onMessageUpdate?: (msg: ChatMessageData) => void;
   onMessageEnd?: (msg: ChatMessageData) => void;
   onAgentEnd?: (info: { errorMessage?: string; message?: string }) => void;

@@ -165,6 +165,11 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       callbacks?.onAgentStart?.();
       break;
 
+    case 'turn_start':
+      setActivity(PHASE_VERBS.thinking, deps);
+      callbacks?.onTurnStart?.();
+      break;
+
     case 'message_start':
     case 'message_update': {
       const msg = data.message as Record<string, unknown> | undefined;
