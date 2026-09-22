@@ -63,6 +63,14 @@ export function mergeProviderModels(
   return { merged: [...existing, ...added], added, addedCount: added.length };
 }
 
+/**
+ * Register newly added provider models on the chamber's catalog.
+ *
+ * `isFavorite` is deliberately NOT sent: the picker derives favorites from the
+ * stored preference keys, so a catalog flag would be a second, silently
+ * ignored source of truth for the FAVORITES rail. A new provider's models are
+ * starred by the user, not by this sync.
+ */
 export async function syncProviderModelsToCatalog(
   providerName: string,
   models: ProviderModel[],
@@ -81,7 +89,6 @@ export async function syncProviderModelsToCatalog(
               provider: providerName,
               contextWindow: model.contextWindow?.split(' ')[0] || '128K',
               thinkingLevel: 'Default',
-              isFavorite: true,
               capabilities: ['Tool calling', 'Reasoning'],
               inputFormats: ['text'],
               outputFormats: ['text'],

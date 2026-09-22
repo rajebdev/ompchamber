@@ -20,7 +20,14 @@ export interface AIModelOption {
   providerIcon?: string;
   contextWindow?: string | number;
   isCmdAgent?: boolean;
+  /**
+   * Favorite / last-used flag. On a picker row these are DERIVED from the
+   * stored preference keys (`ModelPreferences`), never read off the registry —
+   * a favorite is a chamber-local preference, not a property of omp's config.
+   * On the MOCK catalog they are the seed for a fresh install's rails.
+   */
   isFavorite?: boolean;
+  /** MOCK seed only — the RECENT rail is ordered by `ModelPreferences.recentKeys`. */
   isRecent?: boolean;
   thinkingLevel?: string;
   /** Baked thinking ladder for this model: `["off", ...efforts]`. */
@@ -68,6 +75,19 @@ export interface ThinkingModelMeta {
   thinking?: { efforts?: string[] };
 }
 
+/**
+ * The user's favorite + last-used models, keyed by the composite `provider:id`
+ * identity (`modelKey`). Stored separately from the model registry because the
+ * registry is a read-only view of omp's config — a favorite is a chamber-local
+ * preference, and an id-only key would light up every provider serving it.
+ */
+export interface ModelPreferences {
+  /** Composite keys in the order the FAVORITES rail renders them. */
+  favorites: string[];
+  /** Composite keys, most recently used first, capped at `RECENT_MODELS_LIMIT`. */
+  recentKeys: string[];
+}
+
 /** Response shape of GET /api/models (mirrors omp-web ModelsData). */
 export interface ModelsData {
   models: Record<string, string>;
@@ -76,4 +96,6 @@ export interface ModelsData {
   thinkingLevels: Record<string, string[]>;
   connectedProviders?: { id: string; name: string; disabled: boolean }[];
   modelError?: string;
+  /** Absent when the settings row has never been written. */
+  modelPreferences?: ModelPreferences;
 }

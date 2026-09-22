@@ -5,6 +5,7 @@ import { INITIAL_MODELS_CATALOG } from '@/client/data/models/catalog';
 import { isMockMode } from '@/server/mock.server';
 import type { AIModelOption, ModelsData, ProviderItem } from '@/shared/types';
 import { readSettingsJson, writeSettingsJson } from '@/server/lib/db/settings-store';
+import { modelKey } from '@/shared/lib/models/identity';
 import {
   EMPTY_MODELS,
   SAFE_MODEL_LOAD_FAILURE_MESSAGE,
@@ -12,6 +13,11 @@ import {
   loadModelsWithCache,
   readStoredProvidersForModels,
 } from '@/server/lib/models/registry.server';
+import {
+  readModelPreferencesFor,
+  recordRecentPreference,
+  toggleFavoritePreference,
+} from '@/server/lib/models/preferences.server';
 
 const MODELS_CATALOG_KEY = 'omp_models_catalog';
 const SELECTED_MODEL_KEY = 'omp_selected_model';
@@ -52,7 +58,11 @@ async function loadPersistedModelOption(modelList: ModelsData['modelList']): Pro
   }
 }
 
-/** MOCK mode keeps the SQLite-backed demo catalog. */
+/**
+ * MOCK mode keeps the SQLite-backed demo catalog, but the favorite/recent
+ * rails come from the same preference store as real mode — the catalog's own
+ * `isFavorite`/`isRecent` flags are only its seed.
+ */
 async function loadMockModels() {
   const db = await getDb();
   const catalog = await readSettingsJson<unknown>(db, MODELS_CATALOG_KEY, null);
@@ -72,7 +82,7 @@ async function loadMockModels() {
     const match = models.find(m => m.id === persisted.id && m.provider === persisted.provider);
     if (match) selectedModel = match;
   }
-  return { models, selectedModel, isMock: true };
+  return { models, selectedModel, modelPreferences: await readModelPreferencesFor(models), isMock: true };
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -96,8 +106,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
   void request;
   try {
     const data = await loadModelsWithCache();
-    // The selection changes independently of the 60s registry cache.
-    return json({ ...data, selectedModel: await loadPersistedModelOption(data.modelList) });
+    // The selection and the preferences change independently of the 60s
+    // registry cache, so both are read fresh on every request.
+    return json({
+      ...data,
+      selectedModel: await loadPersistedModelOption(data.modelList),
+      modelPreferences: await readModelPreferencesFor(data.modelList),
+    });
   } catch {
     return json({ ...EMPTY_MODELS, modelError: SAFE_MODEL_LOAD_FAILURE_MESSAGE });
   }
@@ -118,13 +133,31 @@ export async function action({ request }: ActionFunctionArgs) {
 
     const { actionType, modelId, provider, thinkingLevel, model, models: newModels } = body;
 
+    /**
+     * Composite keys the registry currently serves. Preference writes prune
+     * against it so a model that left models.yml — or whose provider was
+     * disconnected — cannot hold one of the five recent slots. Real mode reads
+     * the same 60s-cached registry the loader serves; MOCK uses its demo list.
+     */
+    const knownModelKeys = async (): Promise<Set<string>> => {
+      const live = mock ? models : (await loadModelsWithCache()).modelList;
+      return new Set(live.map((entry) => modelKey(entry)));
+    };
+
     // Model-scoped mutations must match provider + id: the registry serves the
     // same model id from several providers, so an id-only match rewrites the
     // first provider's entry instead of the one the user acted on.
     if (actionType === 'toggleFavorite' && modelId && provider) {
-      models = models.map(m => m.id === modelId && m.provider === provider ? { ...m, isFavorite: !m.isFavorite } : m);
-      await writeSettingsJson(db, MODELS_CATALOG_KEY, models);
-      return json({ success: true, models });
+      // Favorites live in the preference store, NOT in the model catalog: the
+      // catalog is a MOCK-only demo list that real mode never reads back, so a
+      // star written there vanished on the next render.
+      const preferences = await toggleFavoritePreference(modelKey({ provider, id: modelId }), await knownModelKeys());
+      // Keep the demo catalog's flag in step so MOCK mode's own views agree.
+      if (mock) {
+        models = models.map(m => m.id === modelId && m.provider === provider ? { ...m, isFavorite: !m.isFavorite } : m);
+        await writeSettingsJson(db, MODELS_CATALOG_KEY, models);
+      }
+      return json({ success: true, models, modelPreferences: preferences });
     }
 
     if (actionType === 'setThinking' && modelId && provider && thinkingLevel) {
@@ -144,8 +177,12 @@ export async function action({ request }: ActionFunctionArgs) {
       const parsedModel = readSelectedModelRef(model);
       if (parsedModel) {
         invalidateModelsCache();
-        // Live set_model against the current session is handled by the agent
-        // RPC bridge; here we only persist the selection for session spawn.
+        // "The user picked this model" is one event: recording the recent here
+        // keeps a second request from ever disagreeing with the selection.
+        await recordRecentPreference(
+          modelKey({ provider: parsedModel.provider, id: parsedModel.modelId }),
+          await knownModelKeys(),
+        );
       }
       return json({ success: true, selectedModel: model });
     }

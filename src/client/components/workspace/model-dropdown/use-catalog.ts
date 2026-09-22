@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import type { AIModelOption, ModelEntry } from '@/shared/types';
+import type { AIModelOption, ModelEntry, ModelPreferences } from '@/shared/types';
 import { fetchModelsData, subscribeModelsUpdated } from '@/shared/lib/models/client';
+import {
+  EMPTY_MODEL_PREFERENCES,
+  applyModelPreferences,
+  readModelPreferences,
+} from '@/shared/lib/models/preferences';
 
 function toOption(m: ModelEntry): AIModelOption {
   const ladder = Array.isArray(m.thinkingLevels) ? m.thinkingLevels : [];
@@ -28,6 +33,10 @@ export interface ModelCatalogState {
   setModels: (updater: (prev: AIModelOption[]) => AIModelOption[]) => void;
   selectedModel: AIModelOption | null;
   setSelectedModel: (model: AIModelOption | null) => void;
+  /** Favorite + recent rails, ordered by the stored key lists. */
+  preferences: ModelPreferences;
+  /** Merge a server-returned preference pair into the rails. */
+  applyPreferences: (preferences: ModelPreferences) => void;
 }
 
 /**
@@ -42,11 +51,17 @@ export interface ModelCatalogState {
  * An externally-driven selection (the composer's session model) always wins over
  * the API's own default — it is read through a ref so a thinking-level change
  * flowing back through the prop does not re-arm the fetch.
+ *
+ * Favorites arrive as a key list, never as a flag on the registry rows: the
+ * registry is a read-only view of omp's config, so the only place a star can
+ * live is the preference store. The rows are stamped from it here, which is why
+ * a toggle must go through {@link applyPreferences} rather than patching a row.
  */
 export function useModelCatalog(externalSelectedModel?: AIModelOption): ModelCatalogState {
   const [models, setModelsState] = useState<AIModelOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedModel, setSelectedModel] = useState<AIModelOption | null>(externalSelectedModel ?? null);
+  const [preferences, setPreferences] = useState<ModelPreferences>(EMPTY_MODEL_PREFERENCES);
 
   const externalSelectedRef = useRef(externalSelectedModel);
   externalSelectedRef.current = externalSelectedModel;
@@ -56,11 +71,18 @@ export function useModelCatalog(externalSelectedModel?: AIModelOption): ModelCat
     setModelsState(updater);
   }, []);
 
+  const applyPreferences = useCallback((next: ModelPreferences) => {
+    setPreferences(next);
+    setModelsState(prev => applyModelPreferences(prev, next));
+  }, []);
+
   const load = useCallback(async () => {
     try {
       const data = await fetchModelsData();
       if (Array.isArray(data.modelList) && data.modelList.length > 0) {
-        const realModels = data.modelList.map(toOption);
+        const prefs = readModelPreferences(data.modelPreferences);
+        const realModels = applyModelPreferences(data.modelList.map(toOption), prefs);
+        setPreferences(prefs);
         // Keep a thinking level the user already picked, but only when it is
         // still a real level of this model's ladder (legacy mock values like
         // 'Default'/'High' must not be preserved).
@@ -76,7 +98,9 @@ export function useModelCatalog(externalSelectedModel?: AIModelOption): ModelCat
           if (match) setSelectedModel(match);
         }
       } else if (Array.isArray(data.models) && data.models.length > 0) {
-        setModelsState(data.models);
+        const prefs = readModelPreferences(data.modelPreferences);
+        setPreferences(prefs);
+        setModelsState(applyModelPreferences(data.models, prefs));
       }
       if (data.selectedModel && !externalSelectedRef.current) {
         setSelectedModel(data.selectedModel);
@@ -107,5 +131,5 @@ export function useModelCatalog(externalSelectedModel?: AIModelOption): ModelCat
     ));
   }, [externalSelectedModel]);
 
-  return { models, isLoading, setModels, selectedModel, setSelectedModel };
+  return { models, isLoading, setModels, selectedModel, setSelectedModel, preferences, applyPreferences };
 }

@@ -1,3 +1,8 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import type { AIModelOption } from '@/shared/types';
 import { modelKey } from '@/shared/lib/models/identity';
 
@@ -14,6 +19,25 @@ export interface ModelPickerGroups {
 }
 
 /**
+ * Models named by an ordered key list, in that order.
+ *
+ * The order is the point: RECENT means "most recently used first", and the
+ * catalog's own order is alphabetical by name — so reading recents off a flag
+ * (the previous `isRecent`) could not express the ranking at all, and a
+ * re-picked model never moved back to the top.
+ */
+function modelsInKeyOrder(models: AIModelOption[], keys: readonly string[]): AIModelOption[] {
+  if (keys.length === 0) return [];
+  const byKey = new Map(models.map((model) => [modelKey(model), model]));
+  const ordered: AIModelOption[] = [];
+  for (const key of keys) {
+    const match = byKey.get(key);
+    if (match) ordered.push(match);
+  }
+  return ordered;
+}
+
+/**
  * All derived picker state in one place: search filtering, the favorites/recent
  * rails, the per-provider grouping, and the flattened key→index map the
  * keyboard navigation addresses rows through.
@@ -21,11 +45,16 @@ export interface ModelPickerGroups {
  * Keying `index` on the composite identity matters — the same model id is served
  * by several providers, so an id-only key collapsed their rows onto one index
  * and hovering one highlighted every other provider's row.
+ *
+ * A row never appears twice: a favorite that is also recent is only listed under
+ * FAVORITES, and neither rail repeats the row in its provider section.
  */
 export function buildPickerGroups(
   models: AIModelOption[],
   search: string,
   collapsedSections: Record<string, boolean>,
+  favoriteKeys: readonly string[],
+  recentKeys: readonly string[],
 ): ModelPickerGroups {
   const query = search.trim().toLowerCase();
   const filtered = query
@@ -37,8 +66,12 @@ export function buildPickerGroups(
       )
     : models;
 
-  const favorites = filtered.filter(m => m.isFavorite);
-  const recent = filtered.filter(m => m.isRecent && !m.isFavorite);
+  // The rails are ordered by the stored key lists, not by the catalog order.
+  // A search narrows them like every other section — a starred model that does
+  // not match the query must not sit above the results.
+  const favorites = modelsInKeyOrder(filtered, favoriteKeys);
+  const favoriteSet = new Set(favoriteKeys);
+  const recent = modelsInKeyOrder(filtered, recentKeys).filter(m => !favoriteSet.has(modelKey(m)));
 
   const byProvider: Record<string, AIModelOption[]> = {};
   for (const model of filtered) {

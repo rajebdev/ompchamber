@@ -1,13 +1,14 @@
 import type { TargetedMouseEvent } from 'preact';
 import { useMemo, useRef, useState } from 'preact/hooks';
 import { ChevronDown, Sparkles } from 'lucide-preact';
-import type { AIModelOption } from '@/shared/types';
+import type { AIModelOption, ModelPreferences } from '@/shared/types';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 import { invalidateModelsCache } from '@/shared/lib/models/client';
 import { ModelDropdownPanel } from '@/client/components/workspace/model-dropdown/Panel';
 import { useModelCatalog } from '@/client/components/workspace/model-dropdown/use-catalog';
 import { buildPickerGroups } from '@/client/components/workspace/model-dropdown/groups';
 import { modelKey } from '@/shared/lib/models/identity';
+import { RECENT_MODELS_LIMIT, filterKnownKeys, readModelPreferences, recordRecentKey, toggleFavoriteKey } from '@/shared/lib/models/preferences';
 
 interface ModelDropdownProps {
   selectedModel?: AIModelOption;
@@ -29,7 +30,15 @@ export function ModelDropdown({
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
   const [hoveredModel, setHoveredModel] = useState<AIModelOption | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
-  const { models, isLoading, setModels, selectedModel, setSelectedModel } = useModelCatalog(externalSelectedModel);
+  const {
+    models,
+    isLoading,
+    setModels,
+    selectedModel,
+    setSelectedModel,
+    preferences,
+    applyPreferences,
+  } = useModelCatalog(externalSelectedModel);
 
   const containerRef = useRef<HTMLDivElement>(null);
   useOnClickOutside(containerRef, () => {
@@ -46,8 +55,8 @@ export function ModelDropdown({
     visibleFlatList,
     index: modelIndex,
   } = useMemo(
-    () => buildPickerGroups(models, search, collapsedSections),
-    [models, search, collapsedSections],
+    () => buildPickerGroups(models, search, collapsedSections, preferences.favorites, preferences.recentKeys),
+    [models, search, collapsedSections, preferences],
   );
 
   const selectedModelKey = modelKey(selectedModel);
@@ -70,17 +79,40 @@ export function ModelDropdown({
     setCollapsedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
+  /**
+   * Flip one row's star. The optimistic stamp and the rollback both go through
+   * the preference pair — the flag on a row is derived state, so patching the
+   * row alone would be undone by the next `applyModelPreferences` (every reload
+   * re-stamps rows from the store).
+   */
   const handleToggleFavorite = async (model: AIModelOption, e: TargetedMouseEvent<HTMLElement>) => {
     e.stopPropagation();
     const key = modelKey(model);
-    setModels(prev => prev.map(m => modelKey(m) === key ? { ...m, isFavorite: !m.isFavorite } : m));
+    const previous = preferences;
+    const optimistic: ModelPreferences = {
+      ...previous,
+      favorites: toggleFavoriteKey(previous.favorites, key),
+    };
+    applyPreferences(optimistic);
     try {
-      await fetch('/api/models', {
+      const response = await fetch('/api/models', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ actionType: 'toggleFavorite', provider: model.provider, modelId: model.id }),
       });
-    } catch {}
+      if (!response.ok) throw new Error(`toggleFavorite failed: ${response.status}`);
+      const data = await response.json() as { modelPreferences?: unknown };
+      // The server is the authority on the resulting list — it also drops keys
+      // the registry no longer serves. An absent/malformed payload keeps the
+      // optimistic list rather than blanking the rail.
+      if (data.modelPreferences) {
+        applyPreferences(readModelPreferences(data.modelPreferences));
+      }
+    } catch {
+      // A failed write must not leave the star lit: the next reload would show
+      // it unlit anyway, so the rollback keeps the panel honest immediately.
+      applyPreferences(previous);
+    }
   };
 
   const cycleThinkingLevel = (model: AIModelOption) => {
@@ -125,6 +157,15 @@ export function ModelDropdown({
     onSelectModel?.(model);
     setIsOpen(false);
     setHoveredModel(null);
+    // Move the pick to the top of RECENT straight away — the server records it
+    // alongside the selection, and waiting for the round trip would leave the
+    // rail stale until the next full reload. Same rules as the server's write:
+    // pruned to the models the registry serves, de-duplicated, capped.
+    const known = new Set(models.map(modelKey));
+    applyPreferences({
+      favorites: filterKnownKeys(preferences.favorites, known),
+      recentKeys: recordRecentKey(filterKnownKeys(preferences.recentKeys, known), modelKey(model), RECENT_MODELS_LIMIT),
+    });
     try {
       await fetch('/api/models', {
         method: 'POST',
