@@ -116,11 +116,28 @@ export function SidebarDataProvider({ children, initialFolders = [] }: { childre
   const value = useMemo<SidebarDataHandle>(() => {
     const data = fetcher.data;
     const seen = seenRef.current;
+    // A session that streams again earns a fresh badge lifecycle: forget the
+    // ack from an earlier run. Without this, a session opened with a terminal
+    // badge stays stripped for the whole mount — its spinner never renders no
+    // matter how many times the list refetches, and only a page reload (fresh
+    // mount) brings it back.
+    if (seen.size && data?.folders) {
+      for (const folder of data.folders) {
+        for (const session of folder.sessions ?? []) {
+          if (session.streamStatus === 'stream') seen.delete(String(session.id));
+        }
+      }
+    }
     return {
       folders: ((data?.folders ?? initialFolders) as WorkspaceFolderData[])
-        // Optimistic badge strip for sessions marked seen this mount.
+        // Optimistic badge strip for sessions marked seen this mount. NEVER
+        // strip a live `stream` row — the spinner must always render.
         .map((f) => seen.size
-          ? { ...f, sessions: (f.sessions ?? []).map((s) => (seen.has(String(s.id)) ? { ...s, streamStatus: undefined } : s)) }
+          ? { ...f, sessions: (f.sessions ?? []).map((s) => (
+              seen.has(String(s.id)) && s.streamStatus && s.streamStatus !== 'stream'
+                ? { ...s, streamStatus: undefined }
+                : s
+            )) }
           : f),
       isMock: data?.isMock ?? false,
       initializing: !hasLoaded,
