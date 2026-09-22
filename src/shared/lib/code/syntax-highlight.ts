@@ -268,12 +268,24 @@ export function highlightJson(code: string): string {
   return highlightCode(code, 'json');
 }
 
+export interface HighlightLinesOptions {
+  /**
+   * Lines at or above this length are emitted as plain text instead of being
+   * tokenized — the guard a minified bundle (one line of hundreds of KB) needs.
+   */
+  maxLineLength?: number;
+}
+
 /**
  * Highlight code and return one HTML fragment per line, aligned 1:1 with
  * `code.split('\n')`. Tokenizes the whole input at once so multi-line grammar
  * state (block comments, template literals) survives, unlike per-line calls.
  */
-export function highlightLines(code: string, language = 'javascript'): string[] {
+export function highlightLines(
+  code: string,
+  language = 'javascript',
+  options: HighlightLinesOptions = {},
+): string[] {
   const rawLines = code.split('\n');
   if (!code) return rawLines;
   const hl = getHighlighterSync();
@@ -284,6 +296,7 @@ export function highlightLines(code: string, language = 'javascript'): string[] 
       lang,
       themes: SHIKI_THEMES,
       defaultColor: false,
+      tokenizeMaxLineLength: options.maxLineLength ?? 0,
     });
     if (tokens.length !== rawLines.length) return rawLines.map(escapeCode);
     return tokens.map((lineTokens) =>

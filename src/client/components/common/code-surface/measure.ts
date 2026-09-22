@@ -8,6 +8,11 @@
  * width the editor actually got — so it is measured rather than estimated: the
  * same lines are laid out once in a hidden mirror that copies the editor's
  * typography, and each line's height is read back.
+ *
+ * Measuring every line on every keystroke is linear in the document, which no
+ * long file can afford, so heights are cached per line *text*: an edit re-reads
+ * the one line it touched, and a document whose lines all fit on one row is
+ * never mirrored at all.
  */
 
 /**
@@ -34,6 +39,13 @@ const MIRRORED_PROPERTIES = [
   'wordSpacing',
 ] as const;
 
+/**
+ * Newest-first ceiling on the height cache. A long editing session mints one
+ * entry per keystroke, so the oldest entries are dropped once it is reached;
+ * whatever leaves the cache is simply measured again on the next pass.
+ */
+const HEIGHT_CACHE_LIMIT = 100_000;
+
 export interface WrappedLines {
   /** Height in px of a single visual row. */
   rowHeight: number;
@@ -43,6 +55,11 @@ export interface WrappedLines {
 
 let mirrorHost: HTMLDivElement | null = null;
 let mirrorLines: HTMLDivElement[] = [];
+/** The column the cached heights were measured in; a new one re-wraps every line. */
+let mirrorSignature = '';
+const heightByLine = new Map<string, number>();
+/** Line indexes awaiting a mirror read this pass; reused to keep the pass allocation-free. */
+const pendingLines: number[] = [];
 
 /** Off-screen mirror, reused across measurements (one per page). */
 function getMirrorHost(): HTMLDivElement {
@@ -57,16 +74,22 @@ function getMirrorHost(): HTMLDivElement {
   return mirrorHost;
 }
 
+/** Height in px of `source`'s line box, or null while it cannot be measured (SSR, `line-height: normal`). */
+export function measureRowHeight(source: HTMLPreElement): number | null {
+  if (typeof document === 'undefined' || !source.isConnected) return null;
+  const rowHeight = Number.parseFloat(getComputedStyle(source).lineHeight);
+  return Number.isFinite(rowHeight) && rowHeight > 0 ? rowHeight : null;
+}
+
 /**
  * Height each line of `value` occupies in `source`'s wrap layout, or null when
  * the layout is not measurable yet (SSR, zero width, unresolved line-height) —
  * callers then fall back to one row per line.
  */
 export function measureWrappedLines(source: HTMLPreElement, value: string): WrappedLines | null {
-  if (typeof document === 'undefined' || !source.isConnected) return null;
+  const rowHeight = measureRowHeight(source);
+  if (rowHeight === null) return null;
   const computed = getComputedStyle(source);
-  const rowHeight = Number.parseFloat(computed.lineHeight);
-  if (!Number.isFinite(rowHeight) || rowHeight <= 0) return null;
   // The editor's text column: its padding is the gutter's offset, not text area.
   const width =
     source.clientWidth -
@@ -79,21 +102,47 @@ export function measureWrappedLines(source: HTMLPreElement, value: string): Wrap
   host.style.lineHeight = `${rowHeight}px`;
   host.style.width = `${width}px`;
 
-  const lines = value.split('\n');
-  while (mirrorLines.length > lines.length) mirrorLines.pop()?.remove();
-  while (mirrorLines.length < lines.length) {
-    const line = document.createElement('div');
-    host.appendChild(line);
-    mirrorLines.push(line);
+  const signature = `${width}|${rowHeight}|${MIRRORED_PROPERTIES.map((property) => computed[property]).join('|')}`;
+  if (signature !== mirrorSignature) {
+    mirrorSignature = signature;
+    heightByLine.clear();
   }
-  // Write the whole text first, then read the whole layout: interleaving the
-  // two would force a re-layout per line.
-  for (let i = 0; i < lines.length; i++) mirrorLines[i].textContent = lines[i];
-  const heights = mirrorLines.map((line) => {
-    const height = line.getBoundingClientRect().height;
-    // An empty line has no line box at all, and sub-pixel wrapping would
-    // otherwise leave the gutter fractions of a row out of step.
-    return height > rowHeight ? Math.round(height / rowHeight) * rowHeight : rowHeight;
-  });
+
+  const lines = value.split('\n');
+  const heights = new Array<number>(lines.length);
+  let pending = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const cached = heightByLine.get(lines[i]);
+    if (cached === undefined) pendingLines[pending++] = i;
+    else heights[i] = cached;
+  }
+
+  if (pending > 0) {
+    while (mirrorLines.length < pending) {
+      const line = document.createElement('div');
+      host.appendChild(line);
+      mirrorLines.push(line);
+    }
+    // Write the whole batch first, then read the whole layout: interleaving the
+    // two would force a re-layout per line.
+    for (let k = 0; k < pending; k++) mirrorLines[k].textContent = lines[pendingLines[k]];
+    for (let k = 0; k < pending; k++) {
+      const index = pendingLines[k];
+      const height = mirrorLines[k].getBoundingClientRect().height;
+      // An empty line has no line box at all, and sub-pixel wrapping would
+      // otherwise leave the gutter fractions of a row out of step.
+      const rows = height > rowHeight ? Math.round(height / rowHeight) * rowHeight : rowHeight;
+      heights[index] = rows;
+      heightByLine.set(lines[index], rows);
+    }
+    if (heightByLine.size > HEIGHT_CACHE_LIMIT) {
+      let drop = heightByLine.size - HEIGHT_CACHE_LIMIT / 2;
+      for (const key of heightByLine.keys()) {
+        if (drop-- <= 0) break;
+        heightByLine.delete(key);
+      }
+    }
+  }
+
   return { rowHeight, heights };
 }

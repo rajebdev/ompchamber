@@ -6,7 +6,8 @@
 import { beforeAll, describe, expect, test } from 'bun:test';
 
 import { bootSyntax, onLanguageReady, requestLanguage } from '@/shared/lib/code/highlighter';
-import { getLanguageFromPath, highlightCode } from '@/shared/lib/code/syntax-highlight';
+import { getLanguageFromPath, highlightCode, highlightLines } from '@/shared/lib/code/syntax-highlight';
+import { highlightCodeWindow } from '@/shared/lib/code/windowed-highlight';
 
 /** Shiki emits `<span class="shiki">…` with dual-theme CSS variables per token. */
 const SHIKI_RE = /<span class="shiki">/;
@@ -109,6 +110,54 @@ describe('highlightCode', () => {
 
     expect(html).not.toContain('<script>');
     expect(html).toMatch(/&(lt|#x3C;)/);
+  });
+});
+
+describe('highlightCodeWindow', () => {
+  const source = Array.from({ length: 120 }, (_, index) =>
+    index === 0 ? 'export const first = 1;' : `export const value${index} = ${index}; // line ${index}`,
+  ).join('\n');
+
+  /** The wrapper the app's `.shiki span` colour rule depends on. */
+  const unwrap = (html: string) => html.replace(/^<span class="shiki">/, '').replace(/<\/span>$/, '');
+
+  test('wraps the window in the class the token colours are scoped to', () => {
+    const window = highlightCodeWindow(source, 'typescript', { start: 0, end: 3 });
+
+    // Without this class no `.shiki span` rule matches, so the tokens would
+    // render in the plain ink colour.
+    expect(window).toMatch(SHIKI_RE);
+    expect(window.endsWith('</span>')).toBe(true);
+  });
+
+  test('returns only the requested lines, joined as the editor renders them', () => {
+    const window = highlightCodeWindow(source, 'typescript', { start: 10, end: 13 });
+    const rows = highlightLines(source, 'typescript');
+
+    expect(unwrap(window).split('\n')).toEqual(rows.slice(10, 13));
+  });
+
+  test('keeps multi-line grammar state from the lines above the window', () => {
+    const commented = ['/*', ' * a block comment', ' * spanning several lines', ' */', 'const after = 1;'].join('\n');
+    const rows = highlightLines(commented, 'typescript');
+    // Line 2 sits inside the comment, whose opening line is outside the window.
+    const window = highlightCodeWindow(commented, 'typescript', { start: 2, end: 4 });
+
+    expect(unwrap(window).split('\n')).toEqual(rows.slice(2, 4));
+  });
+
+  test('renders an over-long line as plain text instead of tokenizing it', () => {
+    const minified = `const bundled = "${'x'.repeat(200)}";\nconst next = 1;`;
+    const window = highlightCodeWindow(minified, 'javascript', { start: 0, end: 2 }, { maxLineLength: 50 });
+
+    expect(window).toContain('const bundled');
+    expect(unwrap(window).split('\n')[0]).not.toContain('--shiki-light:');
+    expect(unwrap(window).split('\n')[1]).toContain('--shiki-light:');
+  });
+
+  test('returns nothing for a window outside the document', () => {
+    expect(highlightCodeWindow('const a = 1;', 'typescript', { start: 5, end: 9 })).toBe('');
+    expect(highlightCodeWindow('const a = 1;', 'typescript', { start: 0, end: 0 })).toBe('');
   });
 });
 

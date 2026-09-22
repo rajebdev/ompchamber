@@ -1,6 +1,17 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { CSSProperties, Ref, TargetedKeyboardEvent } from 'preact';
 
+import {
+  continuesTyping,
+  createHistory,
+  mergeTyping,
+  pushEdit,
+  pushRecord,
+  stepHistory,
+  type HistoryRecord,
+} from '@/client/components/common/code-editor/history';
+import type { CodeWindow, LineWindow } from '@/shared/lib/code/lazy-window';
+
 /**
  * Preact hand-roll of the textarea-over-<pre> highlighting editor
  * (the pattern react-simple-code-editor popularized), trimmed to the
@@ -9,28 +20,18 @@ import type { CSSProperties, Ref, TargetedKeyboardEvent } from 'preact';
  * How it works: a transparent <textarea> sits on top of a syntax-highlighted
  * <pre>. Typing, selecting and copying hit the native textarea; the <pre>
  * below just mirrors the text with Shiki markup.
+ *
+ * For a long document only a window of lines is mirrored (`virtual`): the
+ * textarea still holds every line, so editing, selection and copy are
+ * untouched, while the `<pre>` carries just the visible ones and reserves the
+ * rest as padding — the alignment that keeps the caret over its own row.
  */
-
-const HISTORY_LIMIT = 100;
-const HISTORY_TIME_GAP = 3000;
-
-interface HistoryRecord {
-  value: string;
-  selectionStart: number;
-  selectionEnd: number;
-  timestamp: number;
-}
-
-interface History {
-  stack: HistoryRecord[];
-  offset: number;
-}
 
 export interface CodeEditorProps {
   value: string;
   onValueChange: (value: string) => void;
-  /** Return the Shiki-highlighted HTML for the given code. */
-  highlight: (code: string) => string;
+  /** Return the Shiki-highlighted HTML for `code`, limited to `range` when the surface is windowed. */
+  highlight: (code: string, range: LineWindow | null) => string;
   padding?: number;
   /** Class applied to the inner <pre> holding the highlighted code. */
   preClassName?: string;
@@ -44,6 +45,8 @@ export interface CodeEditorProps {
   placeholder?: string;
   readOnly?: boolean;
   autoFocus?: boolean;
+  /** Renders only this window of lines, with the rest reserved as space. Omit to mirror the whole value. */
+  virtual?: CodeWindow | null;
 }
 
 const BASE_TEXTAREA_CLASS = 'code-editor-native-textarea';
@@ -80,9 +83,10 @@ export function CodeEditor({
   placeholder,
   readOnly,
   autoFocus,
+  virtual,
 }: CodeEditorProps) {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const historyRef = useRef<History>({ stack: [], offset: -1 });
+  const historyRef = useRef(createHistory());
   const [captureTab, setCaptureTab] = useState(true);
 
   // Re-record when the controlled value is replaced from the outside
@@ -90,18 +94,12 @@ export function CodeEditor({
   useEffect(() => {
     const input = inputRef.current;
     if (!input) return;
-    const record: HistoryRecord = {
+    pushRecord(historyRef.current, {
       value: input.value,
       selectionStart: input.selectionStart,
       selectionEnd: input.selectionEnd,
       timestamp: Date.now(),
-    };
-    const { stack, offset } = historyRef.current;
-    if (stack.length && offset > -1) {
-      historyRef.current.stack = stack.slice(0, offset + 1);
-    }
-    historyRef.current.stack.push(record);
-    historyRef.current.offset = historyRef.current.stack.length - 1;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
@@ -109,19 +107,15 @@ export function CodeEditor({
     const input = inputRef.current;
     const last = historyRef.current.stack[historyRef.current.offset];
     if (last && input) {
+      // The entry on top is about to be superseded: keep where its caret was,
+      // so undo returns to the selection this edit replaced.
       historyRef.current.stack[historyRef.current.offset] = {
         ...last,
         selectionStart: input.selectionStart,
         selectionEnd: input.selectionEnd,
       };
     }
-    historyRef.current.stack.push({ ...record, timestamp: Date.now() });
-    historyRef.current.offset = historyRef.current.stack.length - 1;
-    if (historyRef.current.stack.length > HISTORY_LIMIT) {
-      const extras = historyRef.current.stack.length - HISTORY_LIMIT;
-      historyRef.current.stack = historyRef.current.stack.slice(extras);
-      historyRef.current.offset = Math.max(historyRef.current.offset - extras, 0);
-    }
+    pushEdit(historyRef.current, { ...record, timestamp: Date.now() });
     onValueChange(record.value);
     if (input) {
       input.value = record.value;
@@ -220,14 +214,12 @@ export function CodeEditor({
     const undoKey = isMac ? e.metaKey && e.key.toLowerCase() === 'z' : e.ctrlKey && e.key.toLowerCase() === 'z';
     if (undoKey && !e.shiftKey && !e.altKey) {
       e.preventDefault();
-      const { stack, offset } = historyRef.current;
-      const record = stack[offset - 1];
+      const record = stepHistory(historyRef.current, 'undo');
       if (record && inputRef.current) {
         inputRef.current.value = record.value;
         inputRef.current.selectionStart = record.selectionStart;
         inputRef.current.selectionEnd = record.selectionEnd;
         onValueChange(record.value);
-        historyRef.current.offset = Math.max(offset - 1, 0);
       }
       return;
     }
@@ -239,14 +231,12 @@ export function CodeEditor({
         : e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'z';
     if (redoKey && !e.altKey) {
       e.preventDefault();
-      const { stack, offset } = historyRef.current;
-      const record = stack[offset + 1];
+      const record = stepHistory(historyRef.current, 'redo');
       if (record && inputRef.current) {
         inputRef.current.value = record.value;
         inputRef.current.selectionStart = record.selectionStart;
         inputRef.current.selectionEnd = record.selectionEnd;
         onValueChange(record.value);
-        historyRef.current.offset = Math.min(offset + 1, stack.length - 1);
       }
       return;
     }
@@ -261,36 +251,17 @@ export function CodeEditor({
   const handleChange = (e: Event) => {
     const input = e.target as HTMLTextAreaElement;
     const { value: next, selectionStart, selectionEnd } = input;
-    const { stack, offset } = historyRef.current;
+    const history = historyRef.current;
     const timestamp = Date.now();
-    if (stack.length && offset > -1) {
-      historyRef.current.stack = stack.slice(0, offset + 1);
-    }
-    const last = historyRef.current.stack[historyRef.current.offset];
     // Merge typing bursts into one word-level undo entry.
-    if (last && timestamp - last.timestamp < HISTORY_TIME_GAP) {
-      const re = /[^a-z0-9]([a-z0-9]+)$/i;
-      const previous = getLines(last.value, last.selectionStart).pop()?.match(re);
-      const current = getLines(next, selectionStart).pop()?.match(re);
-      if (previous?.[1] && current?.[1]?.startsWith(previous[1])) {
-        historyRef.current.stack[historyRef.current.offset] = { value: next, selectionStart, selectionEnd, timestamp };
-        onValueChange(next);
-        return;
-      }
+    if (continuesTyping(history.stack[history.offset], next, selectionStart, timestamp)) {
+      mergeTyping(history, next, selectionStart, selectionEnd, timestamp);
+      onValueChange(next);
+      return;
     }
-    historyRef.current.stack.push({ value: next, selectionStart, selectionEnd, timestamp });
-    historyRef.current.offset = historyRef.current.stack.length - 1;
+    pushRecord(history, { value: next, selectionStart, selectionEnd, timestamp });
     onValueChange(next);
   };
-
-  const contentStyle: CSSProperties = {
-    paddingTop: padding,
-    paddingRight: padding,
-    paddingBottom: padding,
-    paddingLeft: padding,
-  };
-
-  const highlighted = highlight(value);
 
   const layerStyle: CSSProperties = {
     margin: 0,
@@ -314,14 +285,33 @@ export function CodeEditor({
     overflowWrap: 'break-word',
   };
 
+  // The textarea owns the full document, so its padding is the plain inset and
+  // its lines land exactly where the geometry says line 0 starts.
+  const contentStyle: CSSProperties = {
+    paddingTop: padding,
+    paddingRight: padding,
+    paddingBottom: padding,
+    paddingLeft: padding,
+  };
+
+  // The `<pre>` carries only the window; the lines it is not given are reserved
+  // as padding, so the aligned layers stay aligned.
+  const windowStyle: CSSProperties = {
+    ...contentStyle,
+    paddingTop: padding + (virtual?.top ?? 0),
+    paddingBottom: padding + (virtual?.bottom ?? 0),
+  };
+
+  const highlighted = highlight(value, virtual ?? null);
+
   return (
     <div className={className} style={{ position: 'relative', textAlign: 'left', boxSizing: 'border-box', padding: 0, overflow: 'hidden', ...style }}>
       <pre
         ref={preRef}
         className={preClassName}
         aria-hidden="true"
-        style={{ ...layerStyle, ...contentStyle, position: 'relative', pointerEvents: 'none' }}
-        dangerouslySetInnerHTML={{ __html: highlighted + '<br />' }}
+        style={{ ...layerStyle, ...windowStyle, position: 'relative', pointerEvents: 'none' }}
+        dangerouslySetInnerHTML={{ __html: highlighted + (virtual && !virtual.breakAtEnd ? '' : '<br />') }}
       />
       <textarea
         ref={inputRef}
