@@ -63,15 +63,28 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
     loadFiles();
   }, [refreshKey, rootPath, enabled, activeRepo, expandedPathsReady]);
 
-  // Auto refresh: re-read the directory tree on a cadence so external changes
-  // (terminal output, agent edits) surface without a manual refresh. Silent —
-  // the loading spinner stays reserved for the user's own refresh button.
-  usePanelRefresh(() => loadFiles({ silent: true }), enabled && expandedPathsReady);
+  // The listing and its git decorations describe the same working tree, so one
+  // refresh drives both. Re-reading only the tree left every folder dot stale:
+  // `useGitStatus` has no poll of its own in this panel, so a new/changed file
+  // appeared under a folder that still claimed a clean status until the user
+  // hit refresh or refocused the window.
+  const refreshListing = () => {
+    loadFiles({ silent: true });
+    refreshGitStatus();
+  };
+  // Auto refresh: re-read on a cadence so external changes (terminal output,
+  // agent edits) surface without a manual refresh. Silent — the loading
+  // spinner stays reserved for the user's own refresh button.
+  usePanelRefresh(refreshListing, enabled && expandedPathsReady);
   // AI edits land between poll ticks: re-read right after a file-mutating tool
   // (edit / write / ast_edit / bash) finishes, not up to 2s later.
-  useFileMutationRefresh(() => loadFiles({ silent: true }), enabled && expandedPathsReady);
+  useFileMutationRefresh(refreshListing, enabled && expandedPathsReady);
 
   const loadChildren = (path: string) => {
+    // Expanding IS a directory load: fetch the children AND re-read git status,
+    // so a freshly listed row never renders bare next to a status map that
+    // still predates its change (the panel poll alone can lag a fresh edit).
+    refreshGitStatus();
     return fetch(listUrl(path))
       .then(r => r.json())
       .then(data => {
