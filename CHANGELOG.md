@@ -5,6 +5,33 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0](https://github.com/rajebdev/ompchamber/compare/v0.8.0...v1.0.0) — 2026-09-22
+
+### BREAKING CHANGES
+
+* (!) footer plus the mixed-change split rule. The
+commit subject doubles as a changelog bullet, so the subject must
+name the behavior that changed.
+
+### Added
+
+* **chat:** move follow-up queue ownership to the server ([dc8101e](https://github.com/rajebdev/ompchamber/commit/dc8101ee6438913421e47fa0b5bf71f460a884b7))
+* **chat:** re-signal the sidebar on every turn start ([b2eccf1](https://github.com/rajebdev/ompchamber/commit/b2eccf1126e35572f38dd216b77bb5b22de99fd7))
+* **chat:** render builtin slash command output and settle the spinner ([25cb527](https://github.com/rajebdev/ompchamber/commit/25cb527345d008c510c449f173aec146aa500aae))
+* **chat:** restore the stream status row on message_start frames ([4c68630](https://github.com/rajebdev/ompchamber/commit/4c68630f965a62dfb9d85206fbae899e645b072c))
+* **settings:** surface omp builtin commands in the slash autocomplete ([0b47f43](https://github.com/rajebdev/ompchamber/commit/0b47f43192060ad508d3e86b3831d6bfdc247507))
+* **terminal:** replace one-shot command runner with a real PTY shell ([f36ef40](https://github.com/rajebdev/ompchamber/commit/f36ef40e78de67083f6ef53aab1dbe91bb082fae))
+
+### Changed
+
+* add conventional commit type selection rules to AGENTS.md ([4589b94](https://github.com/rajebdev/ompchamber/commit/4589b94d6723e75debc4b523fa359c997a5ec269))
+
+### Fixed
+
+* **git:** refresh the tracking ref before counting ahead/behind ([b62da76](https://github.com/rajebdev/ompchamber/commit/b62da76b53dadc6aea34c9416d82c525eae55887))
+* **sidebar:** spinner vanished for sessions re-streaming after a seen badge ([b442607](https://github.com/rajebdev/ompchamber/commit/b4426074559c204840dc794d7abb550ac659d67f))
+* **stream-status:** derive terminal badge from turn stopReason, drop ambiguous error status ([1636647](https://github.com/rajebdev/ompchamber/commit/1636647e5c038a74dc1e12649d1319fe62ece1b1))
+
 ## [0.8.0](https://github.com/rajebdev/ompchamber/compare/v0.7.0...v0.8.0) — 2026-09-22
 
 ### Added
