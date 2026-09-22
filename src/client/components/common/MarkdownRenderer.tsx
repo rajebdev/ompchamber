@@ -14,13 +14,16 @@
  */
 
 import type { TargetedMouseEvent } from 'preact';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'preact/hooks';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { renderMarkdown } from '@/shared/lib/markdown/marked';
 import { hydrateMathBlocks, MATH_PENDING_CLASS, preloadKatex } from '@/shared/lib/markdown/katex';
 import { sanitizeHtml } from '@/shared/lib/markdown/sanitize';
 import { hydrateMermaidBlocks } from '@/shared/lib/markdown/mermaid';
 import { copyToClipboard } from '@/client/hooks/ui/clipboard';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
+import { DiagramViewer } from '@/client/components/common/diagram-viewer';
+import { readDiagramBlock, type DiagramSnapshot } from '@/client/components/common/diagram-viewer/read-block';
+
 
 const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
@@ -31,6 +34,9 @@ interface MarkdownRendererProps {
 
 export function MarkdownRenderer({ content, className = '' }: MarkdownRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  /** Block the open viewer was read from, so a theme re-render can refresh it. */
+  const diagramBlockRef = useRef<HTMLElement | null>(null);
+  const [diagram, setDiagram] = useState<DiagramSnapshot | null>(null);
 
   const syntaxReady = useSyntaxReady();
 
@@ -83,13 +89,13 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
     if (!container) return;
 
     let timer: number | undefined;
-    const hydrate = () => {
+    const hydrate = async () => {
       const current = containerRef.current;
       if (!current || !current.isConnected) return;
-      void hydrateMermaidBlocks(current);
+      await hydrateMermaidBlocks(current);
     };
 
-    hydrate();
+    void hydrate();
     // React can rewrite the container's innerHTML with an identical html
     // string (timeline re-renders) without this effect re-running, which
     // would strand freshly-inserted pending blocks. Re-hydrate on any
@@ -99,45 +105,81 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
       const current = containerRef.current;
       if (current?.isConnected) void hydrateMermaidBlocks(current, { cachedOnly: true });
       window.clearTimeout(timer);
-      timer = window.setTimeout(hydrate, 120);
+      timer = window.setTimeout(() => void hydrate(), 120);
     });
     observer.observe(container, { childList: true });
 
-    const onThemeChange = () => hydrate();
-    window.addEventListener('omp:theme-changed', onThemeChange);
+    // Diagrams bake the palette into their SVG, so every theme write must
+    // re-render them. The trigger is the `data-theme` attribute itself rather
+    // than the `omp:theme-changed` event: the navbar toggle and the settings
+    // modal are both writers, and observing the attribute catches all of them
+    // the moment the document changes. Vacuously cheap for a same-palette write
+    // (blocks already matching the new theme key are skipped).
+    const rehydrateForTheme = async () => {
+      await hydrate();
+      const block = diagramBlockRef.current;
+      // A timeline re-render can replace the block under an open viewer; keep
+      // the last snapshot then rather than closing the viewer on the user.
+      if (!block?.isConnected) return;
+      const snapshot = readDiagramBlock(block);
+      if (snapshot) setDiagram(snapshot);
+    };
+    const themeObserver = new MutationObserver(() => void rehydrateForTheme());
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
     return () => {
       window.clearTimeout(timer);
       observer.disconnect();
-      window.removeEventListener('omp:theme-changed', onThemeChange);
+      themeObserver.disconnect();
     };
   }, [hasMermaid, html]);
 
   const handleContainerClick = useCallback((e: TargetedMouseEvent<HTMLDivElement>) => {
     const target = (e.target as HTMLElement).closest<HTMLButtonElement>('button.code-copy-float');
-    if (!target) return;
-    const text = target.dataset.copy ?? '';
-    if (!text) return;
+    if (target) {
+      const text = target.dataset.copy ?? '';
+      if (!text) return;
+      e.preventDefault();
+      e.stopPropagation();
+      void copyToClipboard(text).then((ok) => {
+        if (!ok) return;
+        target.setAttribute('data-copied', 'true');
+        target.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+        setTimeout(() => {
+          target.removeAttribute('data-copied');
+          target.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+        }, 2000);
+      });
+      return;
+    }
+
+    // A rendered diagram is a door into the zoom/pan viewer; pending, failed,
+    // and still-streaming blocks stay inert.
+    const block = (e.target as HTMLElement).closest<HTMLElement>('.mermaid-block[data-mermaid-state="done"]');
+    if (!block) return;
+    const snapshot = readDiagramBlock(block);
+    if (!snapshot) return;
     e.preventDefault();
-    e.stopPropagation();
-    void copyToClipboard(text).then((ok) => {
-      if (!ok) return;
-      target.setAttribute('data-copied', 'true');
-      target.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-      setTimeout(() => {
-        target.removeAttribute('data-copied');
-        target.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-      }, 2000);
-    });
+    diagramBlockRef.current = block;
+    setDiagram(snapshot);
+  }, []);
+
+  const closeDiagram = useCallback(() => {
+    diagramBlockRef.current = null;
+    setDiagram(null);
   }, []);
 
   if (!content) return null;
 
   return (
-    <div
-      ref={containerRef}
-      className={`prose-content text-[13px] text-ink leading-relaxed select-text ${className}`}
-      onClick={handleContainerClick}
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    <>
+      <div
+        ref={containerRef}
+        className={`prose-content text-[13px] text-ink leading-relaxed select-text ${className}`}
+        onClick={handleContainerClick}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      {diagram && <DiagramViewer {...diagram} onClose={closeDiagram} />}
+    </>
   );
 }

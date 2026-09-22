@@ -94,7 +94,7 @@ function applySvg(block: HTMLElement, svg: string, themeKey: ThemeKey): void {
   const source = block.dataset.mermaid ?? '';
   const copyAttr = source.replace(/"/g, '&quot;');
   block.innerHTML =
-    `<button type="button" class="code-copy-float" data-copy="${copyAttr}" aria-label="Copy diagram source">` +
+    `<button type="button" class="code-copy-float" data-copy="${copyAttr}" aria-label="Copy diagram source" title="Copy diagram source">` +
     '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>' +
     '</button>' +
     svg;
@@ -142,11 +142,13 @@ async function renderBlock(block: HTMLElement, cachedOnly: boolean): Promise<boo
 }
 
 /**
- * Render every pending `.mermaid-block` under `root`. Theme changes re-run
- * this via `force: true`. Idempotent — blocks already rendered with the
- * current theme are skipped unless forced. With `cachedOnly`, only blocks
- * whose SVG is already cached are restored (synchronous, no rendering) — the
- * fast path that keeps remounted blocks from flashing the placeholder.
+ * Render every pending `.mermaid-block` under `root`. A block whose SVG was
+ * rendered for a different theme key is re-rendered here, which is how a theme
+ * switch repaints diagrams; `force` re-renders even matching blocks.
+ * Idempotent — blocks already rendered with the current theme are skipped
+ * unless forced, and blocks mid-render are left alone. With `cachedOnly`, only
+ * blocks whose SVG is already cached are restored (synchronous, no rendering) —
+ * the fast path that keeps remounted blocks from flashing the placeholder.
  */
 export async function hydrateMermaidBlocks(
   root: ParentNode,

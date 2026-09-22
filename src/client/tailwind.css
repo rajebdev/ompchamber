@@ -318,6 +318,11 @@
   border-radius: 0.5rem;
   background: var(--theme-paper);
   padding: 0.75rem;
+  /* `applySvg` swaps the `.code-block` shell (the positioned ancestor the copy
+     button relied on) for the SVG, so the block owns the anchor itself. */
+  position: relative;
+  /* The block is the door into the zoom/pan viewer. */
+  cursor: zoom-in;
 }
 .prose-content .mermaid-block > svg {
   display: block;
@@ -330,6 +335,27 @@
 }
 .prose-content .mermaid-block[data-mermaid-state='error'] pre {
   color: var(--theme-error);
+}
+
+/* Full-screen mermaid viewer (`common/diagram-viewer/`): a chart opened from
+   the timeline. The stage is the fixed-size pan surface, the canvas child
+   carries the zoom/pan transform, so the SVG keeps its natural pixel size and
+   `100%` on it always means "the size mermaid rendered". */
+.diagram-viewer-stage {
+  touch-action: none;
+  overscroll-behavior: contain;
+}
+.diagram-viewer-canvas {
+  transform-origin: center center;
+  will-change: transform;
+  background: var(--theme-paper);
+  box-shadow: 0 25px 50px -12px color-mix(in srgb, var(--theme-ink) 45%, transparent);
+}
+.diagram-viewer-canvas > svg {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
 }
 
 /* PWA Window Controls Overlay and Native Titlebar Styling */

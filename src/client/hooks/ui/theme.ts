@@ -1,6 +1,25 @@
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import { useChamberSettingsWriter } from '@/client/hooks/settings/use-chamber-setting';
 
+/** Broadcast on every theme write. Detail is the new theme id; the
+ *  `data-theme` attribute on `<html>` is the durable copy of the same fact. */
+export const THEME_CHANGED_EVENT = 'omp:theme-changed';
+
+/**
+ * Point the document at `theme` and announce it.
+ *
+ * The single writer path for the theme: the navbar toggle and the settings
+ * modal both call this, because a writer that only sets `data-theme` leaves
+ * runtime consumers (the mermaid hydrator re-renders diagrams per theme) on the
+ * previous palette until the next reload. CSS reads the attribute; listeners
+ * watch the attribute too, so this stays correct even if the event is missed.
+ */
+export function applyDocumentTheme(theme: string): void {
+  if (typeof document === 'undefined') return;
+  document.documentElement.dataset.theme = theme;
+  window.dispatchEvent(new CustomEvent(THEME_CHANGED_EVENT, { detail: theme }));
+}
+
 export function useTheme() {
   const writeChamberSettings = useChamberSettingsWriter();
   const [theme, setThemeState] = useState<string>(() => {
@@ -60,12 +79,9 @@ export function useTheme() {
   }, []);
 
   const setTheme = useCallback((newTheme: string) => {
-    if (typeof document !== 'undefined') {
-      document.documentElement.dataset.theme = newTheme;
-      setThemeState(newTheme);
-      writeChamberSettings({ theme: newTheme });
-      window.dispatchEvent(new CustomEvent('omp:theme-changed', { detail: newTheme }));
-    }
+    applyDocumentTheme(newTheme);
+    setThemeState(newTheme);
+    writeChamberSettings({ theme: newTheme });
   }, [writeChamberSettings]);
 
   const toggleTheme = useCallback(() => {

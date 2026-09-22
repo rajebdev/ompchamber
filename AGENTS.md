@@ -68,7 +68,7 @@ Bun implements `node:*` builtins natively — they do **not** shell out to a Nod
 ### OMPChamber Web View Interface
 - **Session Sidebar** (left, default 268px): workspace folders bound to oh-my-pi projects, each listing its sessions, plus search/sort/archive toolbar and the settings/about/new-workspace/scheduler modals (`src/client/components/layout/session-sidebar/`).
 - **Top Navbar**: active session title plus view controls — switch to mobile view, toggle the editor panel, and toggle the right panel (`src/client/components/layout/desktop-layout/TopNavbar.tsx`).
-- **Chat Timeline** (center): the streaming agent conversation — thinking accordions, tool-call cards, queue panel, and the composer (`src/client/components/workspace/chat-timeline/`).
+- **Chat Timeline** (center): the streaming agent conversation — thinking accordions, tool-call cards, rendered mermaid diagrams (click one to open the zoom/pan viewer in `src/client/components/common/diagram-viewer/`), queue panel, and the composer (`src/client/components/workspace/chat-timeline/`).
 - **Editor Panel**: opened-file tabs and code editing (`src/client/components/workspace/editor/`).
 - **Right Panel + Activity Bar**: switchable developer panels — `context` (Context & Telemetry), `files`, `search`, `git` (Source Control), `terminal` (Bun), and `browser` (`src/client/components/workspace/`, `src/client/components/layout/RightActivityBar.tsx`).
 
@@ -101,6 +101,7 @@ Bun implements `node:*` builtins natively — they do **not** shell out to a Nod
 - Use the CSS variable system defined in `src/client/tailwind.css` (`var(--theme-ink)`, `var(--theme-paper)`, etc.) and standard Tailwind classes mapped to them (`bg-paper`, `text-ink`, `border-ink/20`).
 - The application supports multiple themes (e.g., E-Ink Paper Monochrome, One Dark Pro Soft). **DO NOT** hardcode raw hex colors like `#141310` or `#faf8f3` in component files.
 - Semantic states are expressed purely through these theme variables.
+- Every theme write goes through `applyDocumentTheme` (`src/client/hooks/ui/theme.ts`): it sets `<html data-theme>` and dispatches `omp:theme-changed`. Writing `document.documentElement.dataset.theme` directly leaves runtime consumers that cannot see CSS (the mermaid hydrator repaints diagrams per theme) on the previous palette.
 - The only allowable chroma (outside of dark theme) is the signal red variable `var(--theme-error)` (`text-error`, `bg-error`) reserved for failures and error messages. Syntax highlighting is an explicit, user-approved exception: it is provided by Shiki with the dual-theme pair `one-light` (light themes) + `one-dark-pro` (dark themes). Token colors arrive as `--shiki-light` / `--shiki-dark` CSS variables on `.shiki` spans — consume them in `src/client/tailwind.css` under `[data-theme]`, never hardcode token hex, and never reintroduce `--syntax-*` variables or `.token.*` classes.
 
 ### Changelog Policy (Release-Only)
