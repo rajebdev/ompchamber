@@ -5,6 +5,22 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0](https://github.com/rajebdev/ompchamber/compare/v0.7.0...v0.8.0) — 2026-09-22
+
+### Added
+
+* **chat:** answer the ask tool inline with every question and answer ([92baa04](https://github.com/rajebdev/ompchamber/commit/92baa043b59c24731f84655502a6b333a8c5993f))
+* **editor:** render long files lazily in the code surface ([fb30237](https://github.com/rajebdev/ompchamber/commit/fb302374a27499513015725f06851949a73a89d7))
+* **markdown:** repaint mermaid diagrams on theme switch and open them in a zoom/pan viewer ([7b89852](https://github.com/rajebdev/ompchamber/commit/7b89852d59fe60bcbf5efaad922753da1e9ee2bd))
+* **release:** credit contributors in the generated changelog ([af11d2a](https://github.com/rajebdev/ompchamber/commit/af11d2aaafb10286b722252fad9084ea4572a43a))
+* **sidebar:** flag sessions waiting for input with an icon and a cue ([5253963](https://github.com/rajebdev/ompchamber/commit/52539636a2ede8205783ee420d5e9d0bd8bff569))
+
+### Fixed
+
+* **chat:** stop the thinking level resetting to off on send ([470d283](https://github.com/rajebdev/ompchamber/commit/470d2838774311c208e3d61e3e1cc8e0ec3cf065))
+* **file-explorer:** refresh git status on the same triggers as the listing ([c983ac1](https://github.com/rajebdev/ompchamber/commit/c983ac1a97386991acc4025eb02e74b38ff78402))
+* **rpc:** keep a session alive while it is blocked on a dialog ([cace9e3](https://github.com/rajebdev/ompchamber/commit/cace9e396e714b7074bd1b4c2128057250fb5ca3))
+
 ## [0.7.0](https://github.com/rajebdev/ompchamber/compare/v0.6.0...v0.7.0) — 2026-09-22
 
 ### Added
