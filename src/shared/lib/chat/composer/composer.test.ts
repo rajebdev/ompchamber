@@ -14,7 +14,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { ComposerPickItem } from '@/shared/types';
-import { detectComposerTrigger, insertToken, tokenForItem } from '@/shared/lib/chat/composer/trigger';
+import { detectComposerTrigger, insertToken, sendInsteadOfAccept, tokenForItem } from '@/shared/lib/chat/composer/trigger';
 import { filterComposerItems } from '@/shared/lib/chat/composer/filter';
 
 function item(over: Partial<ComposerPickItem> & { name: string }): ComposerPickItem {
@@ -153,5 +153,33 @@ describe('composer slash trigger', () => {
     expect(detectComposerTrigger('@file:src/a', 11)).toMatchObject({ kind: 'mention', query: 'file:src/a', start: 0 });
     expect(detectComposerTrigger('see @sonic', 10)).toMatchObject({ kind: 'mention', query: 'sonic', start: 4 });
     expect(detectComposerTrigger('foo@bar', 7)).toBeNull();
+  });
+});
+
+describe('composer Enter on a complete command', () => {
+  /** Does Enter send here, or does the popup accept the highlighted item? */
+  const enterSends = (text: string): boolean => {
+    const trigger = detectComposerTrigger(text, text.length);
+    if (!trigger) throw new Error(`no trigger for ${text}`);
+    const [highlighted] = filterComposerItems(POOL, trigger);
+    return sendInsteadOfAccept(trigger, highlighted);
+  };
+
+  test('a fully typed command with no subcommands sends', () => {
+    expect(enterSends('/model')).toBe(true);
+    expect(enterSends('/MODEL')).toBe(true);
+  });
+
+  test('a partial command still accepts the completion', () => {
+    expect(enterSends('/mo')).toBe(false);
+  });
+
+  test('a command with subcommands still opens its arguments', () => {
+    expect(enterSends('/fast')).toBe(false);
+  });
+
+  test('arguments and mentions never yield Enter', () => {
+    expect(enterSends('/fast o')).toBe(false);
+    expect(enterSends('@sonic')).toBe(false);
   });
 });
