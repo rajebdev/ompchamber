@@ -5,6 +5,35 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0](https://github.com/rajebdev/ompchamber/compare/v1.1.0...v1.2.0) — 2026-09-23
+
+### Added
+
+* **btw:** add a side-question panel backed by a resumed session copy ([548da54](https://github.com/rajebdev/ompchamber/commit/548da545f0efe64d5f052ad9355e92403bbaf97a)) (thanks [@rayzalzero](https://github.com/rayzalzero))
+* **btw:** make the side-question form replace the composer ([1a9eea2](https://github.com/rajebdev/ompchamber/commit/1a9eea2c7050e1a90ef46ab6330a8a3f633accd3)) (thanks [@rayzalzero](https://github.com/rayzalzero))
+* **chat:** drag and drop files onto the composer ([633ae6b](https://github.com/rajebdev/ompchamber/commit/633ae6b4712c2c651329d3bae0491d6f645ce069))
+* **chat:** generate a session title from the first settled run ([e373d1a](https://github.com/rajebdev/ompchamber/commit/e373d1a30e31185fc477f39d42f782c532657f9b))
+* **chat:** list every user turn in the jump rail and reach any of them ([0814e16](https://github.com/rajebdev/ompchamber/commit/0814e1689dba656ba1ea5f3c5b02564e9f5e2cc5))
+* **chat:** offer the chamber's /btw in the composer command popup ([1e9529f](https://github.com/rajebdev/ompchamber/commit/1e9529fd9422bc072ed93bb689c0810fff5e559c)) (thanks [@rayzalzero](https://github.com/rayzalzero))
+* **editor:** render image files as pictures instead of binary text ([48104a6](https://github.com/rajebdev/ompchamber/commit/48104a657e9e5bcc0199f5a434a3fbc9f4e649d1))
+
+### Changed
+
+* **agents:** document the BTW side-question subsystem ([c6210bf](https://github.com/rajebdev/ompchamber/commit/c6210bfb8c2af522a64dd3331ae98b0587ed443a)) (thanks [@rayzalzero](https://github.com/rayzalzero))
+* **chat:** make the agent stream connectors transport-generic ([fd13bda](https://github.com/rajebdev/ompchamber/commit/fd13bda24fb69c2e7323cdde18577ecd045b3438)) (thanks [@rayzalzero](https://github.com/rayzalzero))
+* split session scanner and db bootstrap under file ceiling ([7f184bb](https://github.com/rajebdev/ompchamber/commit/7f184bb798aaa70ae880e3ed60c563c7074cbe27))
+
+### Fixed
+
+* **btw:** bring the caret into the ask field when the form opens ([a881fc0](https://github.com/rajebdev/ompchamber/commit/a881fc09c676688f72eee4bde23d12add6f4831e)) (thanks [@rayzalzero](https://github.com/rayzalzero))
+* **btw:** land the caret in the side session's composer ([f138574](https://github.com/rajebdev/ompchamber/commit/f1385742f5ada1f7ea0e02ba59421b23667aded1)) (thanks [@rayzalzero](https://github.com/rayzalzero))
+* **btw:** stop side questions from corrupting turns, titles and composer behaviour ([e5e1a8e](https://github.com/rajebdev/ompchamber/commit/e5e1a8e18ff2cd92479d92f640f2394305e07c7f))
+* **chat:** attach files a drop names but does not hand over ([4eba052](https://github.com/rajebdev/ompchamber/commit/4eba0522d3355cf22a40359f705c0f9f6d912764))
+* **chat:** keep attachments intact across reload, queue and retry ([8aef900](https://github.com/rajebdev/ompchamber/commit/8aef900391d1e4b0883b95e1a5641df0a8582d0e))
+* **chat:** let Enter send a command the popup has already completed ([27907c1](https://github.com/rajebdev/ompchamber/commit/27907c134cf445d1b0b306f255a60d46429f86df)) (thanks [@rayzalzero](https://github.com/rayzalzero))
+* **chat:** read dropped files from the object that can actually be read ([2423ab5](https://github.com/rajebdev/ompchamber/commit/2423ab521fefd0dc73382ad590b8cbc11fc6f488))
+* **session-sidebar:** order sessions by last real activity, not file mtime ([1207f88](https://github.com/rajebdev/ompchamber/commit/1207f887b213ae927c94e809943ccec3165d1a62))
+
 ## [1.1.0](https://github.com/rajebdev/ompchamber/compare/v1.0.0...v1.1.0) — 2026-09-23
 
 ### Added
