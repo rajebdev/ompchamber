@@ -33,6 +33,15 @@ export function SessionItem({
   onToggleExpand,
 }: SessionItemProps) {
   const showChevron = Boolean(expandable && hasSubagents && onToggleExpand);
+  // The slot shows one glyph, never two side by side. A live run signal owns
+  // it at rest — the spinner, or the blocked-on-a-question cue, which says it
+  // is YOUR turn. With nothing live to report the chevron is PINNED, collapsed
+  // or expanded: it is the only affordance left worth showing, and making it
+  // hover-only would leave the roster reachable only by hovering exactly the
+  // right 16px.
+  const liveRun = awaitingInput || status === 'stream';
+  const chevronPinned = showChevron && !liveRun;
+  const showStatus = Boolean(awaitingInput || status) && !chevronPinned;
   const {
     isEditing,
     draft,
@@ -52,16 +61,16 @@ export function SessionItem({
           : 'text-ink/75 hover:text-ink hover:bg-ink/5'
       }`}
     >
-      {/* One 16px slot owns both icons: the run-status indicator (spinner /
-          check) shows at rest, and the expand toggle takes the slot over on
-          hover. Never two icons.
-          The toggle is hover-reveal only, expanded or not: an open roster
-          must not cost the row its run status, and the roster below already
-          says the row is expanded. Both layers are pointer-inert for the
-          opposite state — the toggle while hidden, the status glyph ALWAYS
-          (it is painted after the toggle, so without that it wins the hit
-          test over the revealed chevron and every click on a badged row
-          selects the session instead of expanding it). */}
+      {/* One 16px slot owns both icons — never two side by side. A live run
+          signal (blocked question, run spinner) holds the slot; otherwise the
+          chevron is pinned, collapsed or expanded. While the signal holds it,
+          hovering hands the slot to the chevron so the roster stays reachable
+          mid-run.
+          Both layers are pointer-inert for the opposite state: the toggle
+          while hidden, the status glyph ALWAYS (it is painted after the
+          toggle, so without that it wins the hit test over the revealed
+          chevron and every click on a badged row selects the session instead
+          of expanding it). */}
       <span className="relative w-4 h-4 shrink-0">
         {showChevron && onToggleExpand && (
           <button
@@ -72,12 +81,16 @@ export function SessionItem({
             }}
             title={isExpanded ? 'Collapse subagents' : 'Expand subagents'}
             aria-expanded={isExpanded}
-            className="peer absolute inset-0 flex items-center justify-center rounded cursor-pointer text-ink/40 transition-opacity hover:text-ink pointer-events-none opacity-0 group-hover/item:pointer-events-auto group-hover/item:opacity-100 focus-visible:opacity-100"
+            className={`peer absolute inset-0 flex items-center justify-center rounded cursor-pointer transition-opacity ${
+              chevronPinned
+                ? 'text-ink/60 hover:text-ink'
+                : 'text-ink/40 hover:text-ink pointer-events-none opacity-0 group-hover/item:pointer-events-auto group-hover/item:opacity-100 focus-visible:opacity-100'
+            }`}
           >
             {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
           </button>
         )}
-        {(awaitingInput || status) && (
+        {showStatus && (
           <span
             className={`pointer-events-none absolute inset-0 flex items-center justify-center text-ink/60 transition-opacity ${
               showChevron ? 'group-hover/item:opacity-0 peer-focus-visible:opacity-0' : ''
