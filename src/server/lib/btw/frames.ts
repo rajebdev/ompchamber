@@ -10,29 +10,26 @@
  */
 
 import { isRecord } from '@/shared/lib/util/guards';
+import { turnStoppedAbnormally } from '@/shared/lib/omp/session/turn-error';
+import { ANSWERABLE_UI_METHODS } from '@/server/lib/omp/rpc/constants';
 import type { BtwTurnStatus } from '@/shared/types';
 
-/** Extension-UI methods that PARK the child until they are answered. A side
- *  session has no UI, so it must release every one of them. */
-const ANSWERABLE_UI_METHODS: Record<string, true> = {
-  select: true,
-  confirm: true,
-  input: true,
-  editor: true,
-};
-
+/** A side session has no UI, so it must release every dialog omp parks on. */
 export function isAnswerableUiMethod(method: unknown): boolean {
-  return typeof method === 'string' && method in ANSWERABLE_UI_METHODS;
+  return typeof method === 'string' && ANSWERABLE_UI_METHODS.has(method);
 }
 
-/** A turn stopped by the user is 'cancelled', not a failure; anything else
- *  that produced a terminal `agent_end` completed. */
+/** A turn stopped by the user is 'cancelled'; a provider error is a failure —
+ *  both are abnormal stops, so the shared predicate decides (it also reads the
+ *  flat `errorStatus`/`errorMessage` fields, which a bare `stopReason` check
+ *  would miss). Anything else that produced a terminal `agent_end` completed. */
 export function finalStatus(messages: unknown): BtwTurnStatus {
   if (Array.isArray(messages)) {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const message = messages[index];
       if (isRecord(message) && message.role === 'assistant') {
-        return message.stopReason === 'aborted' ? 'cancelled' : 'complete';
+        if (!turnStoppedAbnormally(message)) return 'complete';
+        return message.stopReason === 'aborted' ? 'cancelled' : 'failed';
       }
     }
   }

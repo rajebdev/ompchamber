@@ -12,6 +12,8 @@
  * place. The file picker is `accept="image/*"`; this reads what it returns.
  */
 
+import type { AgentImage } from '@/shared/types';
+
 /** An attachment held by the side composer until it is sent. */
 export interface BtwAttachment {
   id: string;
@@ -50,10 +52,14 @@ export async function readBtwAttachments(files: File[]): Promise<BtwAttachment[]
 }
 
 /** The model payload for an ask — images only, base64 already read. */
-export function btwImagesFrom(attachments: BtwAttachment[]): Array<{ data: string; mimeType: string }> {
+export function btwImagesFrom(attachments: BtwAttachment[]): AgentImage[] {
   return attachments
     .filter((attachment): attachment is BtwAttachment & { dataBase64: string } => typeof attachment.dataBase64 === 'string')
-    .map((attachment) => ({ data: attachment.dataBase64, mimeType: mimeTypeOf(attachment.name) }));
+    .map((attachment) => ({
+      type: 'image' as const,
+      data: attachment.dataBase64,
+      mimeType: mimeTypeOf(attachment.name),
+    }));
 }
 
 const MIME_BY_EXTENSION: Record<string, string> = {

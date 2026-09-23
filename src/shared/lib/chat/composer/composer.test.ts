@@ -16,6 +16,7 @@ import { describe, expect, test } from 'bun:test';
 import type { ComposerPickItem } from '@/shared/types';
 import { detectComposerTrigger, insertToken, sendInsteadOfAccept, tokenForItem } from '@/shared/lib/chat/composer/trigger';
 import { filterComposerItems } from '@/shared/lib/chat/composer/filter';
+import { mergeCommandAndSkillItems } from '@/shared/lib/chat/composer/client';
 
 function item(over: Partial<ComposerPickItem> & { name: string }): ComposerPickItem {
   const isSkill = over.name.startsWith('skill:');
@@ -157,20 +158,29 @@ describe('composer slash trigger', () => {
 });
 
 describe('composer Enter on a complete command', () => {
+  /** The real popup pool: omp's commands plus the chamber's own. */
+  const CHAMBER_POOL: ComposerPickItem[] = mergeCommandAndSkillItems(
+    [{ id: 'c-model', name: 'model', description: 'Show current model selection', scope: 'system', template: '' }],
+    [],
+  );
+
   /** Does Enter send here, or does the popup accept the highlighted item? */
   const enterSends = (text: string): boolean => {
     const trigger = detectComposerTrigger(text, text.length);
     if (!trigger) throw new Error(`no trigger for ${text}`);
-    const [highlighted] = filterComposerItems(POOL, trigger);
+    const [highlighted] = filterComposerItems(CHAMBER_POOL, trigger);
     return sendInsteadOfAccept(trigger, highlighted);
   };
 
-  test('a fully typed command with no subcommands sends', () => {
-    expect(enterSends('/model')).toBe(true);
-    expect(enterSends('/MODEL')).toBe(true);
+  test('the chamber-owned /btw sends, so Enter reaches the side-question form', () => {
+    expect(enterSends('/btw')).toBe(true);
+    expect(enterSends('/BTW')).toBe(true);
   });
 
-  test('a partial command still accepts the completion', () => {
+  test('a command omp owns still accepts, however complete it looks', () => {
+    // `/model` takes no subcommands, but the chamber does not intercept it:
+    // accepting is what the CLI does, and it must stay that way.
+    expect(enterSends('/model')).toBe(false);
     expect(enterSends('/mo')).toBe(false);
   });
 

@@ -51,6 +51,18 @@ describe('buildTitleLine', () => {
     expect(record.title).toBe('Which codeword did we agree on?');
     expect(record.source).toBe('user');
   });
+
+  test('fits a title the model wrote in multi-byte characters', () => {
+    // A 60-character topic label is 180 UTF-8 bytes in CJK: the slot holds
+    // ~158, so the title is truncated rather than thrown — otherwise promoting
+    // a perfectly ordinary question fails the whole request.
+    const title = 'この質問は日本語で書かれています。プロモートできるか確認します。ここから先は切り詰められます';
+    const line = buildTitleLine(title, 'user', timestamp);
+    expect(Buffer.byteLength(line, 'utf8')).toBe(255);
+    const record = JSON.parse(line);
+    expect(record.title.length).toBeGreaterThan(0);
+    expect(title.startsWith(record.title)).toBe(true);
+  });
 });
 
 describe('createBtwWorkspace', () => {

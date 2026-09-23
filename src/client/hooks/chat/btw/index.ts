@@ -15,12 +15,12 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import type { BtwState, StreamTransport } from '@/shared/types';
+import type { AgentImage, BtwState, StreamTransport } from '@/shared/types';
 import { BtwRequestError, abortBtwQuestion, askBtwQuestion, connectBtwStream, deleteBtwTopic, fetchBtwState, promoteBtwTopic } from '@/shared/lib/chat/btw/client';
 import type { StreamConnection } from '@/shared/lib/chat/omp/transport';
 
 /** Images the side session accepts, already read as base64. */
-export type BtwImage = { data: string; mimeType: string };
+export type BtwImage = AgentImage;
 
 /** The turn streaming right now; `text` accumulates its deltas. */
 export interface BtwLiveAnswer {

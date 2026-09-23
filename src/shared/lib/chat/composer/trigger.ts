@@ -1,4 +1,4 @@
-import type { ComposerMatchItem, ComposerPickItem, ComposerTrigger } from '@/shared/types';
+import type { CommandItem, ComposerMatchItem, ComposerPickItem, ComposerTrigger } from '@/shared/types';
 
 /** Chars that may legally precede an `@` agent trigger (besides string start). */
 const AT_PRECEDING_RE = /[\s([{]/;
@@ -8,6 +8,35 @@ export const SKILL_NAMESPACE = 'skill:';
 
 /** The collapsed namespace row's token (no trailing space on accept). */
 export const SKILL_NAMESPACE_TOKEN = `/${SKILL_NAMESPACE}`;
+
+/**
+ * Slash commands the chamber answers itself, reserved exactly like oh-my-pi
+ * reserves its own tokens.
+ *
+ * omp's `/btw` is TUI-only — its registry entry has `handleTui` and no
+ * text-mode `handle`, and `get_available_commands` only advertises entries the
+ * RPC dispatcher can run — so the composer would offer every command except the
+ * one it intercepts on send. The entry is byte-for-byte omp's own metadata
+ * (description and inline hint), so the popup reads the same in both clients.
+ */
+export const CHAMBER_COMMANDS: CommandItem[] = [
+  {
+    id: 'chamber-btw',
+    name: 'btw',
+    description: "Ask a side question, or browse this session's BTW history",
+    scope: 'system',
+    template: '',
+    isBuiltIn: true,
+    inputHint: '[question]',
+  },
+];
+
+/** True when the chamber intercepts this command instead of forwarding it to
+ *  omp as chat text. */
+function isChamberOwnedCommand(name: string): boolean {
+  const lower = name.toLowerCase();
+  return CHAMBER_COMMANDS.some((command) => command.name.toLowerCase() === lower);
+}
 
 /**
  * Index of a `/` that starts the draft, ignoring leading whitespace —
@@ -134,17 +163,16 @@ export function tokenForItem(item: ComposerPickItem): string {
 /**
  * Whether a popup accept should stand aside and let Enter mean "send".
  *
- * A command typed in full that takes no subcommands has nothing left to
- * complete, so accept-on-Enter would charge an extra keystroke to run it — and
- * for a chamber command like `/btw` the Enter *is* the action, so the popup
- * would swallow the very keystroke the user is aiming at. Partial names and
- * commands that declare subcommands keep accepting, which is what opens their
- * argument completions.
+ * Only the chamber's own commands qualify: the composer intercepts those on
+ * send, so for `/btw` the Enter *is* the action and accept-on-Enter would
+ * swallow the very keystroke the user is aiming at. Every command omp owns
+ * keeps accepting, which is what opens its argument completions — including the
+ * ones that declare no subcommands and take free-form arguments.
  */
 export function sendInsteadOfAccept(trigger: ComposerTrigger, item: ComposerMatchItem | undefined): boolean {
   if (!item || trigger.kind !== 'command' || trigger.phase !== 'name') return false;
   if (item.name.toLowerCase() !== trigger.query.toLowerCase()) return false;
-  return !item.subcommands?.length;
+  return isChamberOwnedCommand(item.name);
 }
 
 /** Splice `token` over the trigger span in `value`, returning the new value and caret. */

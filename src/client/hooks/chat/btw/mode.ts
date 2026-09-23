@@ -33,6 +33,8 @@ export interface BtwMode {
   activeTopic: BtwTopic | null;
   /** Topic with a turn in flight, if any. */
   runningTopicId: string | null;
+  /** A command is still in flight — the panel holds its actions meanwhile. */
+  busy: boolean;
   /** Partial answer of the running turn, when it belongs to the active topic. */
   liveAnswer: string;
   error: string | null;
@@ -147,6 +149,7 @@ export function useBtwMode(sessionId: string | null, appSettings: Record<string,
     topics,
     activeTopic,
     runningTopicId,
+    busy: session.busy,
     liveAnswer: live ? live.text : '',
     error: session.error,
     askDraft,

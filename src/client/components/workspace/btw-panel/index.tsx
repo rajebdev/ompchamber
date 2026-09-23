@@ -31,7 +31,9 @@ export interface BtwFormProps {
 export function BtwForm({ mode, modelName, provider }: BtwFormProps) {
   const [attachments, setAttachments] = useState<BtwAttachment[]>([]);
   const lastTurn = mode.activeTopic?.turns[mode.activeTopic.turns.length - 1];
-  const canPromote = Boolean(mode.activeTopic) && !mode.runningTopicId && lastTurn?.status === 'complete';
+  // `busy` is the command in flight (a promote POST, say): promoting again from
+  // the same click burst would be a second request for work already running.
+  const canPromote = Boolean(mode.activeTopic) && !mode.runningTopicId && !mode.busy && lastTurn?.status === 'complete';
   const showTurns = (mode.activeTopic?.turns.length ?? 0) > 0 || Boolean(mode.error);
 
   return (
@@ -60,7 +62,12 @@ export function BtwForm({ mode, modelName, provider }: BtwFormProps) {
       <BtwComposer
         value={mode.followUpDraft}
         onChange={mode.setFollowUpDraft}
-        onSubmit={() => mode.submitFollowUp(mode.followUpDraft, btwImagesFrom(attachments))}
+        onSubmit={() => {
+          // Hand the images over and clear them: leaving them staged would
+          // re-send the same picture with every later follow-up.
+          mode.submitFollowUp(mode.followUpDraft, btwImagesFrom(attachments));
+          setAttachments([]);
+        }}
         onStop={mode.abort}
         running={Boolean(mode.runningTopicId)}
         modelLabel={mode.activeTopic?.model?.name ?? modelName}

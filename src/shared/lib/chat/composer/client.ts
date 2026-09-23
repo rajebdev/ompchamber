@@ -1,4 +1,5 @@
 import type { AgentItem, CommandItem, ComposerPickItem, ComposerPickKind, FsFileEntry, SkillItem } from '@/shared/types';
+import { CHAMBER_COMMANDS } from '@/shared/lib/chat/composer/trigger';
 
 const CACHE_TTL_MS = 300_000;
 
@@ -56,35 +57,14 @@ export function toFilePickItems(files: FsFileEntry[]): ComposerPickItem[] {
 }
 
 /**
- * Slash commands the chamber serves itself.
- *
- * omp's `/btw` is TUI-only — its registry entry has `handleTui` and no
- * text-mode `handle`, and `get_available_commands` only advertises entries the
- * RPC dispatcher can run — so the composer would offer every command except the
- * one it intercepts on send. The entry is byte-for-byte omp's own metadata
- * (description and inline hint), so the popup reads the same in both clients.
- */
-const CHAMBER_COMMANDS: CommandItem[] = [
-  {
-    id: 'chamber-btw',
-    name: 'btw',
-    description: "Ask a side question, or browse this session's BTW history",
-    scope: 'system',
-    template: '',
-    isBuiltIn: true,
-    inputHint: '[question]',
-  },
-];
-
-/**
  * Combine live command items (`/name`, including omp's own `skill:<name>`
  * entries) with the chamber's skill list. Commands win: a skill whose plain or
  * `skill:`-namespaced name a command already covers is skipped, so the two
  * sources never double-list the same skill.
  *
- * The chamber's own commands lead, so a same-named entry from omp can never
- * advertise behavior the composer overrides on send — `/btw` is reserved by omp
- * in the TUI for the same reason.
+ * The chamber's own commands (`CHAMBER_COMMANDS`) lead, so a same-named entry
+ * from omp can never advertise behavior the composer overrides on send — `/btw`
+ * is reserved by omp in the TUI for the same reason.
  *
  * The description carries the argument hint exactly as oh-my-pi renders it
  * (`[on|off|status] - Toggle fast mode`) so the popup matches the CLI.

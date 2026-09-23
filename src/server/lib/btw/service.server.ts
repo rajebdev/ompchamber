@@ -103,6 +103,8 @@ async function topicModel(sessionFile: string) {
 }
 
 export async function abortBtw(sessionId: string, topicId: string): Promise<BtwState> {
+  const topic = await getBtwTopic(topicId);
+  if (!topic || topic.sessionId !== sessionId) throw new BtwError('Unknown side question.', 'btw_topic_not_found');
   await getBtwRuntime(topicId)?.abort();
   return btwStateFor(sessionId);
 }
@@ -115,6 +117,9 @@ export async function promoteBtw(sessionId: string, topicId: string): Promise<{ 
   assertAvailable();
   const topic = await getBtwTopic(topicId);
   if (!topic || topic.sessionId !== sessionId) throw new BtwError('Unknown side question.', 'btw_topic_not_found');
+  // Promotion materializes a file beside the parent, so it happens once: a
+  // second promote re-opens the branch it already wrote.
+  if (topic.promotedSessionId) return { sessionId: topic.promotedSessionId };
   if (topic.turns.length === 0) throw new BtwError('This side question has no answer to promote yet.', 'btw_empty');
   if (topic.turns.some((turn) => turn.status === 'running')) {
     throw new BtwError('Wait for the side answer to finish, or cancel it, before promoting it.', 'btw_busy');

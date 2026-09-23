@@ -115,19 +115,6 @@ export async function getBtwTopic(topicId: string): Promise<BtwTopic | undefined
   return { ...rowToTopic(row), turns: turns.map(rowToTurn) };
 }
 
-/** The topic carrying a turn in flight for this session, if any. */
-export async function findRunningBtwTopic(sessionId: string): Promise<BtwTopic | undefined> {
-  const db = await getDb();
-  const row = (await db.get(
-    `SELECT btw_topics.* FROM btw_topics
-       JOIN btw_turns ON btw_turns.topic_id = btw_topics.id
-      WHERE btw_topics.session_id = ? AND btw_turns.status = 'running'
-      ORDER BY btw_turns.updated_at DESC LIMIT 1`,
-    [sessionId],
-  )) as TopicRow | undefined;
-  return row ? rowToTopic(row) : undefined;
-}
-
 export interface NewBtwTopicInput {
   sessionId: string;
   title: string;

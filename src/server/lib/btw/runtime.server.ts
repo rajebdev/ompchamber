@@ -26,13 +26,13 @@ import { appendBtwTurn, setBtwTopicLeaf, setBtwTopicModel, settleRunningBtwTurns
 import { createBtwWorkspace, resolveBtwWorkspacePaths, type BtwWorkspace } from '@/server/lib/btw/session-copy.server';
 import { isRecord } from '@/shared/lib/util/guards';
 import { finalAnswer, finalStatus, isAnswerableUiMethod } from '@/server/lib/btw/frames';
-import type { BtwFrame, BtwModel, BtwTurnStatus } from '@/shared/types';
+import type { AgentImage, BtwFrame, BtwModel, BtwTurnStatus } from '@/shared/types';
 
 /** Longest an aborted turn may stay unsettled before its child is reclaimed. */
 const ABORT_GRACE_MS = 10_000;
 
 /** Prompt images, validated by the route before they reach the child. */
-export type BtwImages = Array<{ type: 'image'; data: string; mimeType: string }>;
+export type BtwImages = AgentImage[];
 
 export interface BtwRuntimeContext {
   topicId: string;
@@ -69,6 +69,7 @@ export class BtwRuntime {
   private abortTimer: NodeJS.Timeout | null = null;
   private lastIdleReset = 0;
   private turnIndex: number | null = null;
+  private settling = false;
   private answer = '';
   private disposing: Promise<void> | null = null;
 
@@ -90,18 +91,11 @@ export class BtwRuntime {
     return this.turnIndex !== null;
   }
 
-  /** The running turn's index, for the panel's streaming row. */
-  get runningTurnIndex(): number | null {
-    return this.turnIndex;
-  }
-
-  /** Partial answer text received so far. */
-  get liveAnswer(): string {
-    return this.answer;
-  }
-
-  get isAlive(): boolean {
-    return this.proc?.isAlive === true;
+  /** True from the moment a turn starts settling until its row is written:
+   *  the state repair must treat this topic as live, or it would overwrite the
+   *  turn's own status with `interrupted`. */
+  get busy(): boolean {
+    return this.settling;
   }
 
   /** Ask (or follow up) — the caller has already refused concurrent turns. */
@@ -284,9 +278,13 @@ export class BtwRuntime {
     this.turnIndex = null;
     const text = answer ?? this.answer;
     this.answer = '';
+    // `busy` holds the topic live across the write: a state read that lands in
+    // this window must not settle the row as `interrupted` (see `btwStateFor`).
+    this.settling = true;
     try {
       await updateBtwTurn(this.topicId, turnIndex, { answer: text, status });
     } finally {
+      this.settling = false;
       this.sink.stateChanged();
     }
   }

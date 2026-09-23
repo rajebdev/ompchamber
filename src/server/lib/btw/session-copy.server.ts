@@ -23,7 +23,9 @@
  * 18.2.6 files):
  *  - Line 1 is the title slot: `{"type":"title","v":1,"title":…,"source":…,
  *    "updatedAt":…,"pad":"…"}` padded so the serialized line is exactly
- *    `SESSION_TITLE_SLOT_BYTES - 1` bytes — omp rewrites it in place.
+ *    `SESSION_TITLE_SLOT_BYTES` bytes — omp rewrites it in place, and the
+ *    serializer in `omp/session/title-slot.ts` owns both the truncation and the
+ *    padding arithmetic.
  *  - Line 2 is the session header (`type:"session"`), carrying `id`, `cwd`,
  *    and for a branch `parentSession` — the file it branched from.
  *  - File names are `<ISO with [:. ] → ->_<session id>.jsonl`.
@@ -32,13 +34,9 @@
 import fs from 'fs';
 import * as path from 'path';
 import { getDatabasePath } from '@/server/db.server';
-import { SESSION_TITLE_SLOT_BYTES, clearSessionFileCaches } from '@/server/lib/omp/session/files';
+import { clearSessionFileCaches } from '@/server/lib/omp/session/files';
+import { serializeTitleSlot } from '@/server/lib/omp/session/title-slot';
 import { isRecord } from '@/shared/lib/util/guards';
-
-/** Bytes of a title line's serialized content, excluding its newline: the
- *  slot's own arithmetic counts the newline, and omp rewrites the line in
- *  place, so a shorter line would leave stale bytes behind. */
-const TITLE_SLOT_LINE_BYTES = SESSION_TITLE_SLOT_BYTES - 1;
 
 /** Root holding every topic workspace, beside the chamber database. */
 export async function getBtwRoot(): Promise<string> {
@@ -87,12 +85,16 @@ export async function readTranscriptLeaf(sessionFile: string): Promise<string | 
   }
 }
 
-/** The title slot line, padded to the fixed slot omp rewrites in place. */
+/** The title slot line, padded to the fixed slot omp rewrites in place, with
+ *  the trailing newline removed (the writer here joins lines itself).
+ *
+ *  Delegates to the repo's slot serializer rather than re-deriving the width:
+ *  that one truncates the title by code point, so a question written in CJK
+ *  (up to 3 UTF-8 bytes each) still fits — clipping by character count alone
+ *  would overflow the slot and fail promotion outright. */
 export function buildTitleLine(title: string, source: string, updatedAt: string): string {
-  const empty = JSON.stringify({ type: 'title', v: 1, title, source, updatedAt, pad: '' });
-  const padLength = TITLE_SLOT_LINE_BYTES - Buffer.byteLength(empty, 'utf8');
-  if (padLength < 0) throw new Error('Session title is too long for the title slot');
-  return JSON.stringify({ type: 'title', v: 1, title, source, updatedAt, pad: ' '.repeat(padLength) });
+  const line = serializeTitleSlot({ title, source: source === 'auto' ? 'auto' : 'user', updatedAt });
+  return line.endsWith('\n') ? line.slice(0, -1) : line;
 }
 
 export interface BtwWorkspace {

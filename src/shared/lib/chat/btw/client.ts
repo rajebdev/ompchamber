@@ -13,7 +13,7 @@
  * where the upgrade is blocked — instead of forking a third stream flavour.
  */
 
-import type { BtwFrame, BtwState, StreamTransport } from '@/shared/types';
+import type { AgentImage, BtwFrame, BtwState, StreamTransport } from '@/shared/types';
 import { connectEvents } from '@/shared/lib/chat/omp/sse';
 import { connectSocket } from '@/shared/lib/chat/omp/socket';
 import { btwEventsUrl, btwSocketUrl } from '@/shared/lib/chat/omp/transport';
@@ -69,7 +69,7 @@ export function fetchBtwState(sessionId: string): Promise<BtwState> {
 export interface AskBtwInput {
   topicId?: string;
   question: string;
-  images?: Array<{ data: string; mimeType: string }>;
+  images?: AgentImage[];
 }
 
 export function askBtwQuestion(sessionId: string, input: AskBtwInput): Promise<BtwState> {

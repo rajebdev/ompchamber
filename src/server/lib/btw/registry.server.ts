@@ -108,7 +108,14 @@ export function subscribeBtw(sessionId: string, listener: (frame: BtwFrame) => v
 /** The session's BTW state, with stale `running` rows repaired. */
 export async function btwStateFor(sessionId: string): Promise<BtwState> {
   const topics = await listBtwTopics(sessionId);
-  const liveTopicIds = new Set(sessionBtwRuntimes(sessionId).filter((runtime) => runtime.running).map((runtime) => runtime.topicId));
+  // A runtime that is mid-`settle()` has already cleared its turn index but has
+  // not written the row yet; counting it as gone would race its own UPDATE and
+  // rewrite a completed turn as `interrupted`. `busy` covers that window.
+  const liveTopicIds = new Set(
+    sessionBtwRuntimes(sessionId)
+      .filter((runtime) => runtime.running || runtime.busy)
+      .map((runtime) => runtime.topicId),
+  );
 
   const stale = topics.filter((topic) => topic.turns.some((turn) => turn.status === 'running') && !liveTopicIds.has(topic.id));
   if (stale.length > 0) {
