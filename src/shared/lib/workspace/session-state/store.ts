@@ -12,6 +12,9 @@
  * Key namespace contract (dot-prefixed by owning panel):
  * - layout.activeRightPanel   RightPanelType
  * - layout.showRightPanel     boolean
+ * - layout.showLeftPanel      boolean
+ * - layout.userToggledEditor  boolean | null (null = follow whether a file is open)
+ * - layout.panelWidths        PanelWidths (per-panel widths, seeded from app_settings.desktopLayoutSizes)
  * - layout.openedFiles        editor file entries array
  * - layout.activeFileId       number | null
  * - editor.previewMode        Record<fileId, boolean>

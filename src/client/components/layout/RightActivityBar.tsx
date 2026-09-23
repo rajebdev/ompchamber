@@ -34,7 +34,7 @@ export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen, hasA
   const hasGitChanges = changes.length > 0;
 
   return (
-    <nav className="w-12 flex-shrink-0 border-l border-ink/10 bg-paper flex flex-col items-center py-3 space-y-2 z-10">
+    <nav className="w-11 flex-shrink-0 border-l border-ink/10 bg-paper flex flex-col items-center py-3 space-y-2 z-10">
       {/* Top Icons */}
       <div className="flex flex-col items-center space-y-1 w-full">
         {RIGHT_PANEL_TYPES.map((panel) => {

@@ -1,11 +1,9 @@
-import type { RefObject } from 'preact/compat';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useCallback, useMemo, useRef, useState } from 'preact/hooks';
 import { useSearchParams } from '@/client/lib/router/search-params';
 import { Group, Panel, type PanelImperativeHandle } from '@/client/components/layout/desktop-layout/resizer';
 import { SessionSidebar } from '@/client/components/layout/session-sidebar/index';
-import { DEFAULT_RIGHT_PANEL_WIDTHS, type RightPanelType } from '@/shared/lib/workspace/right-panels';
+import type { RightPanelType } from '@/shared/lib/workspace/right-panels';
 import { SettingsModal } from '@/client/components/settings/LazyModal';
-import { PanelLeft } from 'lucide-preact';
 import type { SettingsCategoryId } from '@/shared/types';
 import { activeProjectForSession } from '@/shared/lib/workspace/active-project';
 import { useFileTabs } from '@/client/hooks/workspace/file-tabs';
@@ -15,9 +13,8 @@ import { WorkspacePanels } from '@/client/components/layout/desktop-layout/Works
 import { useAgentStreamStatus } from '@/client/hooks/chat/omp/status';
 import { usePanelWidths } from '@/client/hooks/workspace/panel-widths';
 import { useSidebarData } from '@/client/hooks/chat/omp/session-list';
-import { DEFAULT_PANEL_WIDTHS, MAX_LEFT_PANEL_WIDTH, MIN_LEFT_PANEL_WIDTH, type EditorWidthMode } from '@/shared/lib/workspace/panel-widths';
+import { DEFAULT_LEFT_PANEL_WIDTH, MAX_LEFT_PANEL_WIDTH, MIN_LEFT_PANEL_WIDTH, type EditorWidthMode } from '@/shared/lib/workspace/panel-widths';
 import { ResizeHandle } from '@/client/components/layout/desktop-layout/ResizeHandle';
-import { writeSetting } from '@/shared/lib/settings/client';
 import { useChamberEvent, useWindowEvent } from '@/client/hooks/ui/window-event';
 
 interface DesktopLayoutProps {
@@ -26,29 +23,17 @@ interface DesktopLayoutProps {
   appSettings?: Record<string, any>;
 }
 
-/**
- * Push a remembered width onto a mounted panel. Panels report nothing while
- * unmounted, so a missing width (never resized) or a missing handle (panel
- * closed) simply leaves the panel at whatever its `defaultSize` derived.
- */
-function applyWidth(
-  ref: RefObject<PanelImperativeHandle | null>,
-  px: number | undefined,
-) {
-  if (px != null) ref.current?.resize(px);
-}
-
 export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }: DesktopLayoutProps) {
   const { folders } = useSidebarData();
   const [showRightPanel, setShowRightPanel] = useSessionState<boolean>('layout.showRightPanel', appSettings.showRightPanel ?? true);
   const [activeRightPanel, setActiveRightPanel] = useSessionState<RightPanelType>('layout.activeRightPanel', (appSettings.activeRightPanel as RightPanelType) ?? 'files');
-  const [showLeftPanel, setShowLeftPanel] = useState(appSettings.showLeftPanel ?? true);
-  const { widths: panelWidths, widthsRef, commitWidths } = usePanelWidths(appSettings, activeRightPanel);
+  const [showLeftPanel, setShowLeftPanel] = useSessionState<boolean>('layout.showLeftPanel', appSettings.showLeftPanel ?? true);
+  const { widths: panelWidths, commitWidths } = usePanelWidths(appSettings, activeRightPanel);
 
   const editorPanelRef = useRef<PanelImperativeHandle | null>(null);
   const rightPanelRef = useRef<PanelImperativeHandle | null>(null);
   const leftPanelRef = useRef<PanelImperativeHandle | null>(null);
-  const [userToggledEditor, setUserToggledEditor] = useState<boolean | null>(appSettings.userToggledEditor ?? null);
+  const [userToggledEditor, setUserToggledEditor] = useSessionState<boolean | null>('layout.userToggledEditor', appSettings.userToggledEditor ?? null);
 
   const [searchParams] = useSearchParams();
   const folderIdParam = searchParams.get('folderId');
@@ -63,8 +48,7 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
 
   const handleOpenTab = useCallback(() => {
     setUserToggledEditor(true);
-    saveSetting('userToggledEditor', true);
-  }, []);
+  }, [setUserToggledEditor]);
 
   const {
     openedFiles,
@@ -83,42 +67,13 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
     [openedFiles, activeFileId],
   );
 
-  const saveSetting = (key: string, value: any) => {
-    writeSetting(key, value);
-  };
-
-  // The sidebar shares a group with the workspace stack, so the stack absorbs
-  // its width and only the toggle can lose it: reapplying it after the panel
-  // remounts is what keeps the sidebar where the user left it.
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      const widths = widthsRef.current;
-      if (widths) applyWidth(leftPanelRef, widths.left);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [showLeftPanel, widthsRef]);
-
-  // The right panel survives activity-bar view switches (only CSS hides the
-  // outgoing view), so a mounted panel never re-reads its defaultSize. A view
-  // that has been resized gets that width pushed here; one that never has gets
-  // the width it is supposed to open at, which the element would otherwise
-  // have taken from the view it was mounted under.
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      applyWidth(rightPanelRef, widthsRef.current?.right?.[activeRightPanel] ?? DEFAULT_RIGHT_PANEL_WIDTHS[activeRightPanel]);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [showRightPanel, activeRightPanel, widthsRef]);
-
-  // Same story for the editor across a source↔diff tab switch: the panel
-  // stays mounted, so the width its tab kind remembers — or opens at, for a
-  // diff, which is wider than a source view — is re-applied here.
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      applyWidth(editorPanelRef, widthsRef.current?.[editorWidthMode] ?? DEFAULT_PANEL_WIDTHS[editorWidthMode]);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [showEditor, editorWidthMode, widthsRef]);
+  // Width restoration is declarative: every panel's `defaultSize` is derived
+  // from the remembered width for its current slot, and `Panel` adopts a
+  // changed `defaultSize` itself. That covers the two cases that used to need
+  // an imperative push — a right-panel view switch and an editor source↔diff
+  // switch, both of which keep the panel mounted while only its width slot
+  // changes — and it cannot go stale, because there is no cached layout to
+  // disagree with the props.
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategoryId>('appearance');
@@ -153,41 +108,30 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
   const handleChangeRightPanel = (panel: RightPanelType) => {
     let nextShow = showRightPanel;
     let nextActive = activeRightPanel;
-    
+
     if (activeRightPanel === panel && showRightPanel) {
       nextShow = false;
     } else {
       nextActive = panel;
       nextShow = true;
     }
-    
+
     setShowRightPanel(nextShow);
     setActiveRightPanel(nextActive);
-
-    // The width is not set here: the restore effect re-applies whichever width
-    // this view remembers, and a view that opens for the first time derives it
-    // from its own defaultSize. Reopening the same view keeps its width.
-    writeSetting('showRightPanel', nextShow);
-    writeSetting('activeRightPanel', nextActive);
   };
 
   const handleToggleLeftPanel = (show: boolean) => {
     setShowLeftPanel(show);
-    saveSetting('showLeftPanel', show);
   };
 
   const handleToggleRightPanel = () => {
-    const nextShow = !showRightPanel;
-    setShowRightPanel(nextShow);
-    saveSetting('showRightPanel', nextShow);
+    setShowRightPanel(!showRightPanel);
   };
 
   const handleToggleEditor = () => {
-    const nextShow = !showEditor;
-    setUserToggledEditor(nextShow);
-    saveSetting('userToggledEditor', nextShow);
-    // Reopening the editor re-applies the width its tab kind remembers (see the
-    // restore effect), so a dragged width survives the toggle.
+    setUserToggledEditor(!showEditor);
+    // The editor panel keeps its own remembered width per tab kind, so a
+    // dragged width survives the toggle without being re-applied here.
   };
 
   return (
@@ -195,18 +139,6 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
 
       {/* Main Workspace: full-height left sidebar (resizable) + right stack */}
       <div className="flex flex-1 overflow-hidden">
-        {!showLeftPanel && (
-          <div 
-            className="w-12 h-full bg-paper border-r border-ink/10 flex flex-col items-center py-3 flex-shrink-0 cursor-pointer hover:bg-ink/5 transition-colors titlebar-no-drag" 
-            style={{ paddingTop: 'max(0.75rem, env(titlebar-area-height, 0px))' }}
-            onClick={() => handleToggleLeftPanel(true)} 
-            title="Expand Sidebar"
-          >
-            <PanelLeft size={16} className="text-ink/60" />
-            <div className="w-[1px] flex-1 bg-ink/10 my-4" />
-          </div>
-        )}
-
         <Group
           orientation="horizontal"
           id="ompchamber-main"
@@ -215,14 +147,10 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
             if (left != null && left > 0) commitWidths({ left: Math.round(left) });
           }}
         >
-          {showLeftPanel && (
-            <>
-              <Panel panelRef={leftPanelRef} id="left-panel" defaultSize={panelWidths.left ?? DEFAULT_PANEL_WIDTHS.left} minSize={MIN_LEFT_PANEL_WIDTH} maxSize={MAX_LEFT_PANEL_WIDTH} collapsible>
-                <SessionSidebar className="w-full h-full" onClose={() => handleToggleLeftPanel(false)} appSettings={appSettings} />
-              </Panel>
-              <ResizeHandle />
-            </>
-          )}
+          <Panel panelRef={leftPanelRef} id="left-panel" defaultSize={panelWidths.left ?? DEFAULT_LEFT_PANEL_WIDTH} minSize={MIN_LEFT_PANEL_WIDTH} maxSize={MAX_LEFT_PANEL_WIDTH} collapsed={!showLeftPanel}>
+            <SessionSidebar className="w-full h-full" onClose={() => handleToggleLeftPanel(false)} appSettings={appSettings} />
+          </Panel>
+          {showLeftPanel && <ResizeHandle />}
 
           {/* Right stack: top navbar + resizable workspace (the group's filler) */}
           <Panel id="main-right-stack" filler minSize={0}>
@@ -236,6 +164,7 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
                 onSwitchToMobile={onSwitchToMobile}
                 onToggleEditor={handleToggleEditor}
                 onToggleRightPanel={handleToggleRightPanel}
+                onToggleLeftPanel={() => handleToggleLeftPanel(!showLeftPanel)}
               />
 
               <WorkspacePanels

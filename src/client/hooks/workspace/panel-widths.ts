@@ -1,59 +1,56 @@
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import type { RefObject } from 'preact/compat';
-import { mergePanelWidths, normalizePanelWidths, type PanelWidths } from '@/shared/lib/workspace/panel-widths';
+import { useCallback, useMemo } from 'preact/hooks';
+import {
+  mergePanelWidths,
+  normalizePanelWidths,
+  type PanelWidths,
+} from '@/shared/lib/workspace/panel-widths';
 import type { RightPanelType } from '@/shared/lib/workspace/right-panels';
-import { writeSetting } from '@/shared/lib/settings/client';
+import { useSessionState } from '@/client/hooks/workspace/session-state';
 
-/** A drag commits once, after the pointer is released; this only coalesces. */
-const PERSIST_DEBOUNCE_MS = 500;
+/** Session-state key holding this session's own per-panel widths. */
+const PANEL_WIDTHS_KEY = 'layout.panelWidths';
 
 interface PanelWidthsResult {
   widths: PanelWidths;
-  /** Live widths, for imperative restores that cannot wait on a re-render. */
-  widthsRef: RefObject<PanelWidths>;
-  /** Fold measured panel widths in and persist the merged map. */
+  /** Fold measured panel widths into this session's map. */
   commitWidths: (patch: PanelWidths) => void;
 }
 
 /**
- * Owns the desktop layout's per-panel width map: restored from
- * `app_settings.desktopLayoutSizes`, kept in a ref for resize handlers, and
- * written back (debounced) whenever a panel is resized. One writer for both
- * resizable groups, so neither clobbers the other's widths.
+ * Owns the desktop layout's per-panel width map.
+ *
+ * Widths are **per session**: they live in `session_ui_state` under
+ * `layout.panelWidths`, next to the rest of a session's layout state
+ * (`layout.activeRightPanel`, `layout.showRightPanel`, `layout.openedFiles`), so
+ * switching sessions brings back the layout that session was left in.
+ *
+ * `app_settings.desktopLayoutSizes` is the **seed**: a session that has never
+ * been resized reads it, which is what keeps an existing user's layout across
+ * the upgrade instead of resetting everyone to the defaults. Once a panel is
+ * dragged, the session stores its own map and the seed is no longer consulted
+ * for that session.
+ *
+ * There is deliberately no px→fraction rewrite pass here. Converting a legacy
+ * pixel value is done when a width is *read* (`resolvePanelWidth`), because a
+ * write would have to run before this session's own blob has loaded and would
+ * therefore overwrite it with the seed.
  */
 export function usePanelWidths(
   appSettings: Record<string, any>,
   legacyView: RightPanelType,
 ): PanelWidthsResult {
-  const [widths, setWidths] = useState<PanelWidths>(() =>
-    normalizePanelWidths(appSettings.desktopLayoutSizes, legacyView),
+  const seed = useMemo(
+    () => normalizePanelWidths(appSettings.desktopLayoutSizes, legacyView),
+    [appSettings.desktopLayoutSizes, legacyView],
   );
-  const widthsRef = useRef<PanelWidths>(widths);
-  // Set while a debounced write is pending, which is also the flush condition.
-  const timerRef = useRef<number | undefined>(undefined);
-
-  const saveNow = useCallback(() => {
-    clearTimeout(timerRef.current);
-    timerRef.current = undefined;
-    writeSetting('desktopLayoutSizes', widthsRef.current);
-  }, []);
+  const [widths, setWidths] = useSessionState<PanelWidths>(PANEL_WIDTHS_KEY, seed);
 
   const commitWidths = useCallback(
     (patch: PanelWidths) => {
-      const next = mergePanelWidths(widthsRef.current, patch);
-      widthsRef.current = next;
-      setWidths(next);
-      clearTimeout(timerRef.current);
-      timerRef.current = window.setTimeout(saveNow, PERSIST_DEBOUNCE_MS);
+      setWidths((prev) => mergePanelWidths(prev, patch));
     },
-    [saveNow],
+    [setWidths],
   );
 
-  // The mobile layout unmounts this hook; flush instead of dropping the width
-  // the user just dragged.
-  useEffect(() => () => {
-    if (timerRef.current !== undefined) saveNow();
-  }, [saveNow]);
-
-  return { widths, widthsRef, commitWidths };
+  return { widths, commitWidths };
 }

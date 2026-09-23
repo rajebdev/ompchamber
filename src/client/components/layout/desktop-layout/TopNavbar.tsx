@@ -1,4 +1,4 @@
-import { LayoutTemplate, MoreHorizontal, PanelRight, PanelRightClose, Smartphone } from 'lucide-preact';
+import { LayoutTemplate, MoreHorizontal, PanelLeft, PanelRight, PanelRightClose, Smartphone } from 'lucide-preact';
 import { PWAInstallButton } from '@/client/components/common/PWAInstallButton';
 import { StreamStatusDot } from '@/client/components/common/StreamStatusDot';
 import type { AgentStreamStatus } from '@/shared/lib/chat/omp/status';
@@ -13,6 +13,7 @@ interface TopNavbarProps {
   onSwitchToMobile?: () => void;
   onToggleEditor: () => void;
   onToggleRightPanel: () => void;
+  onToggleLeftPanel: () => void;
 }
 
 export function TopNavbar({
@@ -24,10 +25,11 @@ export function TopNavbar({
   onSwitchToMobile,
   onToggleEditor,
   onToggleRightPanel,
+  onToggleLeftPanel,
 }: TopNavbarProps) {
   return (
     <header 
-      className="h-12 flex-shrink-0 border-b border-ink/10 bg-paper flex items-center justify-between pr-4 z-20 titlebar-drag-region select-none"
+      className="h-14 flex-shrink-0 border-b border-ink/10 bg-paper flex items-center justify-between pr-4 z-20 titlebar-drag-region select-none"
       style={{
         paddingLeft: !showLeftPanel ? 'max(1rem, env(titlebar-area-x, 0px))' : undefined,
         paddingRight: 'max(1rem, calc(100vw - env(titlebar-area-width, 100vw)))',
@@ -36,6 +38,15 @@ export function TopNavbar({
       <div className="flex items-center space-x-2 px-4 min-w-0">
         {!showLeftPanel && (
           <>
+            <button
+              type="button"
+              onClick={onToggleLeftPanel}
+              className="p-1.5 rounded hover:bg-ink/10 transition-colors text-ink/60 hover:text-ink cursor-pointer flex-shrink-0 titlebar-no-drag"
+              title="Expand Sidebar"
+              aria-label="Expand Sidebar"
+            >
+              <PanelLeft size={16} />
+            </button>
             <span className="font-bold text-sm tracking-tight hidden sm:flex items-center flex-shrink-0">
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-500 font-extrabold text-[15px] tracking-tighter">OMP</span>
               <span className="ml-[1px]">Chamber</span>

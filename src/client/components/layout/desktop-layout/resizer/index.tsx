@@ -1,8 +1,9 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'preact/compat';
 import { useRef as useRefBase } from 'preact/hooks';
 import type { ComponentChildren, RefObject } from 'preact';
-import type { CSSProperties, TargetedPointerEvent } from 'preact';
-import { clamp, toPx, transfer } from '@/client/components/layout/desktop-layout/resizer/utils';
+import type { CSSProperties } from 'preact';
+import { clamp, toPx } from '@/client/components/layout/desktop-layout/resizer/utils';
+import { useSeparatorDrag } from '@/client/components/layout/desktop-layout/resizer/separator-drag';
 
 /**
  * Hand-rolled resizable panel group (the Preact-native replacement for
@@ -14,6 +15,10 @@ import { clamp, toPx, transfer } from '@/client/components/layout/desktop-layout
  * Separator drag transfers pixels between the two panels adjacent to it,
  * clamped by both neighbors' min/max constraints, and commits once per drag
  * through `onLayoutChanged(_, { isUserInteraction: true })`.
+ *
+ * Sizes are pixels here. A caller that stores a width as a share of the group's
+ * area (see `panel-widths.ts`) resolves it to px before passing it in — the
+ * resizer has no percentage path and should not grow one.
  *
  * The filler's `minSize` is a real CSS floor, which is what makes a shrinking
  * window push the resizable panels toward their own floors instead of
@@ -39,14 +44,9 @@ export interface PanelImperativeHandle {
   getSize: () => { inPixels: number } | null;
 }
 
-export interface GroupImperativeHandle {
-  /** Batch resize of the named panels, in pixels. */
-  setLayout: (layout: Record<string, number>) => void;
-}
-
 export type LayoutChangedHandler = (layout: Record<string, number>, meta: LayoutMeta) => void;
 
-interface PanelState {
+export interface PanelState {
   id: string;
   isFiller: boolean;
   minSize: number;
@@ -69,7 +69,8 @@ const GroupContext = createContext<GroupContextValue | null>(null);
 export function Group(props: {
   orientation: GroupOrientation;
   id?: string;
-  groupRef?: RefObject<GroupImperativeHandle | null>;
+  /** The group's own element, for measuring the area its panels share. */
+  groupRef?: RefObject<HTMLDivElement>;
   onLayoutChanged?: LayoutChangedHandler;
   className?: string;
   children: ComponentChildren;
@@ -86,35 +87,10 @@ export function Group(props: {
     [orientation],
   );
 
-  const snapshot = () => {
-    const layout: Record<string, number> = {};
-    for (const [pid, state] of panelsRef.current) {
-      const px = state.getSize();
-      if (px != null) layout[pid] = px;
-    }
-    return layout;
-  };
-
-  useEffect(() => {
-    if (!groupRef) return;
-    groupRef.current = {
-      setLayout: (layout) => {
-        for (const [pid, px] of Object.entries(layout)) {
-          const state = panelsRef.current.get(pid);
-          if (!state || state.isFiller || typeof px !== 'number') continue;
-          state.setSize(clamp(px, state.minSize, state.maxSize));
-        }
-        changedRef.current?.(snapshot(), { isUserInteraction: false });
-      },
-    };
-    return () => {
-      groupRef.current = null;
-    };
-  }, [groupRef]);
-
   return (
     <GroupContext.Provider value={ctx}>
       <div
+        ref={groupRef}
         data-panel-group=""
         data-panel-group-id={id}
         className={className}
@@ -133,14 +109,19 @@ export function Panel(props: {
   defaultSize?: number | string;
   minSize?: number | string;
   maxSize?: number | string;
-  collapsible?: boolean;
+  /**
+   * Render at zero width without unmounting. The panel keeps its size state, so
+   * reopening restores the remembered width and the width transition animates
+   * the movement instead of the content popping in.
+   */
+  collapsed?: boolean;
   /** This panel absorbs the remaining space instead of holding its own px. */
   filler?: boolean;
   className?: string;
   style?: CSSProperties;
   children: ComponentChildren;
 }) {
-  const { id, panelRef, defaultSize, minSize = 0, maxSize, filler = false, className, style, children } = props;
+  const { id, panelRef, defaultSize, minSize = 0, maxSize, collapsed = false, filler = false, className, style, children } = props;
   const group = useContext(GroupContext);
   if (!group) {
     throw new Error(`<Panel id="${id}"> must be rendered inside a <Group>`);
@@ -184,6 +165,21 @@ export function Panel(props: {
     }
   });
 
+  // Adopt a changed `defaultSize`. This is what restores a panel after its
+  // owner swaps it — a right-panel view switch, an editor source↔diff switch —
+  // and after a resize recomputes it, without an imperative push from the
+  // owner. A drag does not fight it: the owner only produces a new
+  // `defaultSize` once the drag commits, and that value is the size the drag
+  // already applied.
+  const lastDefaultPxRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (filler || defaultSize == null) return;
+    const nextPx = toPx(defaultSize, minPx);
+    if (lastDefaultPxRef.current === nextPx) return;
+    lastDefaultPxRef.current = nextPx;
+    setSizePx(clamp(nextPx, minPx, maxPx));
+  }, [defaultSize, filler, minPx, maxPx]);
+
   useEffect(() => {
     if (!panelRef) return;
     panelRef.current = {
@@ -212,17 +208,29 @@ export function Panel(props: {
       }
     : {
         flex: '0 1 auto',
-        width: orientation === 'horizontal' ? sizePx ?? undefined : undefined,
-        height: orientation === 'horizontal' ? undefined : sizePx ?? undefined,
-        minWidth: orientation === 'horizontal' ? minPx : undefined,
-        minHeight: orientation === 'horizontal' ? undefined : minPx,
+        width: orientation === 'horizontal' ? (collapsed ? 0 : sizePx ?? undefined) : undefined,
+        height: orientation === 'horizontal' ? undefined : collapsed ? 0 : sizePx ?? undefined,
+        minWidth: orientation === 'horizontal' ? (collapsed ? 0 : minPx) : undefined,
+        minHeight: orientation === 'horizontal' ? undefined : collapsed ? 0 : minPx,
         maxWidth: maxSize != null ? maxPx : undefined,
+        // A drag re-applies the real width at most every RESIZE_FOLLOW_INTERVAL_MS
+        // (see useSeparatorDrag), and this transition is what makes those steps
+        // read as one movement. It also carries a panel to its remembered width
+        // on a view switch, and to zero on collapse, instead of snapping.
+        transition: `${orientation === 'horizontal' ? 'width' : 'height'} 200ms cubic-bezier(0.22, 1, 0.36, 1)`,
         overflow: 'hidden',
         position: 'relative',
       };
 
   return (
-    <div ref={elementRef} data-panel="" data-panel-id={id} className={className} style={{ ...baseStyle, ...style }}>
+    <div
+      ref={elementRef}
+      data-panel=""
+      data-panel-id={id}
+      data-panel-collapsed={collapsed ? '' : undefined}
+      className={className}
+      style={{ ...baseStyle, ...style }}
+    >
       {children}
     </div>
   );
@@ -240,88 +248,26 @@ export function Panel(props: {
 export function Separator(props: { className?: string; style?: CSSProperties; children?: ComponentChildren }) {
   const { className, style, children } = props;
   const group = useContext(GroupContext);
-  const [dragging, setDragging] = useState(false);
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const dragCleanupRef = useRef<(() => void) | null>(null);
-
-  // A drag owns two window listeners; if the separator unmounts mid-drag (a
-  // layout switch) nothing else would ever remove them.
-  useEffect(() => () => dragCleanupRef.current?.(), []);
 
   if (!group) {
     throw new Error('<Separator> must be rendered inside a <Group>');
   }
   const { orientation, panels, onLayoutChanged } = group;
-
-  const handlePointerDown = (e: TargetedPointerEvent<HTMLDivElement>) => {
-    const host = hostRef.current;
-    if (!host || e.button !== 0) return;
-    const previous = host.previousElementSibling as HTMLElement | null;
-    const next = host.nextElementSibling as HTMLElement | null;
-    const aId = previous?.getAttribute('data-panel-id');
-    const bId = next?.getAttribute('data-panel-id');
-    const a = aId ? panels.current.get(aId) : undefined;
-    const b = bId ? panels.current.get(bId) : undefined;
-    if (!a || !b || !previous || !next) return;
-
-    e.preventDefault();
-    setDragging(true);
-
-    const startPos = orientation === 'horizontal' ? e.clientX : e.clientY;
-    const measure = (el: HTMLElement) =>
-      orientation === 'horizontal' ? el.getBoundingClientRect().width : el.getBoundingClientRect().height;
-    // Measure, never ask the panel: a window narrow enough for flexbox to
-    // shrink a panel below its specified width would otherwise start the drag
-    // from a size the panel does not have on screen.
-    const aStart = measure(previous);
-    const bStart = measure(next);
-
-    const onMove = (ev: PointerEvent) => {
-      const pos = orientation === 'horizontal' ? ev.clientX : ev.clientY;
-      const delta = transfer(
-        { size: aStart, min: a.minSize, max: a.maxSize },
-        { size: bStart, min: b.minSize, max: b.maxSize },
-        pos - startPos,
-      );
-      a.setSize(clamp(aStart + delta, a.minSize, a.maxSize));
-      if (!b.isFiller) b.setSize(clamp(bStart - delta, b.minSize, b.maxSize));
-    };
-
-    const cleanup = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
-      dragCleanupRef.current = null;
-      setDragging(false);
-      const layout: Record<string, number> = {};
-      for (const [pid, state] of panels.current) {
-        const px = state.getSize();
-        if (px != null) layout[pid] = px;
-      }
-      onLayoutChanged.current?.(layout, { isUserInteraction: true });
-    };
-    const onUp = () => cleanup();
-
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
-    dragCleanupRef.current = cleanup;
-  };
+  const { dragging, guidePx, onPointerDown } = useSeparatorDrag(hostRef, orientation, panels, onLayoutChanged);
 
   return (
-    <>
-      <div
-        ref={hostRef}
-        data-separator=""
-        role="separator"
-        aria-orientation={orientation === 'horizontal' ? 'vertical' : 'horizontal'}
-        className={className}
-        style={style}
-        onPointerDown={handlePointerDown}
-        onDragStart={(e: DragEvent) => e.preventDefault()}
-      >
-        {children}
-      </div>
+    <div
+      ref={hostRef}
+      data-separator=""
+      role="separator"
+      aria-orientation={orientation === 'horizontal' ? 'vertical' : 'horizontal'}
+      className={className}
+      style={style}
+      onPointerDown={onPointerDown}
+      onDragStart={(e: DragEvent) => e.preventDefault()}
+    >
+      {children}
       {dragging && (
         <div
           style={{
@@ -332,6 +278,21 @@ export function Separator(props: { className?: string; style?: CSSProperties; ch
           } as CSSProperties}
         />
       )}
-    </>
+      {guidePx !== null && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'fixed',
+            ...(orientation === 'horizontal'
+              ? { left: `${guidePx}px`, top: 0, bottom: 0, width: '1px' }
+              : { top: `${guidePx}px`, left: 0, right: 0, height: '1px' }),
+            zIndex: 9998,
+            pointerEvents: 'none',
+            background: 'var(--theme-ink)',
+            opacity: 0.35,
+          } as CSSProperties}
+        />
+      )}
+    </div>
   );
 }

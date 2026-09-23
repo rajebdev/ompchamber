@@ -5,7 +5,7 @@ export function SessionSidebarHeader({ onNewSession }: { onNewSession: () => voi
     <>
       {/* App Title */}
       <div 
-        className="h-12 flex-shrink-0 flex items-center px-4 border-b border-ink/10 titlebar-drag-region select-none"
+        className="h-14 flex-shrink-0 flex items-center px-4 border-b border-ink/10 titlebar-drag-region select-none"
         style={{ paddingLeft: 'max(1rem, env(titlebar-area-x, 0px))' }}
       >
         <span className="font-bold text-sm tracking-tight flex items-center">
