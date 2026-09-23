@@ -2,6 +2,7 @@ import { useRef } from 'preact/hooks';
 import type { ChangeEvent } from 'preact/compat';
 import { File as FileIcon, Paperclip, X } from 'lucide-preact';
 import type { Attachment } from '@/shared/types';
+import { attachmentName } from '@/shared/lib/chat/attachments';
 
 interface AttachmentToolbarProps {
   attachments: Attachment[];
@@ -39,7 +40,7 @@ export function AttachmentToolbar({ attachments, onFilesSelected, onRemove }: At
                 <FileIcon size={12} />
               </div>
             )}
-            <span className="truncate max-w-[120px] font-mono text-[10px] text-ink/80">{att.file.name}</span>
+            <span className="truncate max-w-[120px] font-mono text-[10px] text-ink/80">{attachmentName(att)}</span>
             <button
               onClick={() => onRemove(att.id)}
               className="absolute right-0.5 top-1/2 -translate-y-1/2 p-0.5 text-ink/40 hover:text-error hover:bg-error/10 rounded transition-colors"

@@ -17,7 +17,7 @@
 
 import { useCallback } from 'preact/hooks';
 import type { Dispatch, SetStateAction } from 'preact/compat';
-import type { OmpAgentState } from '@/shared/types';
+import type { AgentImage, OmpAgentState } from '@/shared/types';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 
 export interface OmpPromptSenderDeps {
@@ -29,11 +29,11 @@ export interface OmpPromptSenderDeps {
 }
 
 export interface OmpPromptSender {
-  sendPrompt: (message: string, images?: { data: string; mimeType: string }[], options?: { accessMode?: ApprovalMode }) => Promise<boolean>;
+  sendPrompt: (message: string, images?: AgentImage[], options?: { accessMode?: ApprovalMode }) => Promise<boolean>;
   sendNewPrompt: (
     message: string,
     cwd: string,
-    images?: { data: string; mimeType: string }[],
+    images?: AgentImage[],
     composerOptions?: { model?: { provider: string; modelId: string } | null; thinkingLevel?: string | null; accessMode?: ApprovalMode },
   ) => Promise<{ sessionId: string; model: { provider: string; modelId: string } | null } | null>;
 }
@@ -44,7 +44,7 @@ export function useOmpPromptSender(deps: OmpPromptSenderDeps): OmpPromptSender {
   /** Send a prompt to the omp session via the RPC bridge. */
   const sendPrompt = useCallback(async (
     message: string,
-    images?: { data: string; mimeType: string }[],
+    images?: AgentImage[],
     options?: { accessMode?: ApprovalMode },
   ) => {
     const sid = sessionIdRef.current;
@@ -105,7 +105,7 @@ export function useOmpPromptSender(deps: OmpPromptSenderDeps): OmpPromptSender {
   const sendNewPrompt = useCallback(async (
     message: string,
     cwd: string,
-    images?: { data: string; mimeType: string }[],
+    images?: AgentImage[],
     composerOptions?: { model?: { provider: string; modelId: string } | null; thinkingLevel?: string | null; accessMode?: ApprovalMode },
   ): Promise<{ sessionId: string; model: { provider: string; modelId: string } | null } | null> => {
     setState((prev) => ({ ...prev, isGenerating: true, error: null }));

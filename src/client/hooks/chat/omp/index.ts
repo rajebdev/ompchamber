@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import type { ChatMessageData, OmpAgentCallbacks, OmpAgentHandle, OmpAgentState, StreamTransport } from '@/shared/types';
+import type { AgentImage, ChatMessageData, OmpAgentCallbacks, OmpAgentHandle, OmpAgentState, StreamTransport } from '@/shared/types';
 import type { ExtensionUiDialogRequest } from '@/shared/types/omp/agent';
 import { type ToolResultRecord, useOmpAgentStream } from '@/client/hooks/chat/omp/stream';
 import { useOmpPromptSender } from '@/client/hooks/chat/omp/prompt-send';
@@ -120,7 +120,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
    *  arrives via the interruptPending guard. */
   const sendInterruptAndReply = useCallback(async (
     message: string,
-    images?: { data: string; mimeType: string }[],
+    images?: AgentImage[],
   ): Promise<boolean> => {
     const sid = sessionIdRef.current;
     if (!sid) return false;
@@ -153,7 +153,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
   /** Enqueue a follow-up message the agent processes after the current turn. */
   const sendFollowUp = useCallback(async (
     message: string,
-    images?: { data: string; mimeType: string }[],
+    images?: AgentImage[],
   ): Promise<boolean> => {
     const sid = sessionIdRef.current;
     if (!sid) return false;

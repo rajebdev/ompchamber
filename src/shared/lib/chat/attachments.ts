@@ -4,21 +4,116 @@
  */
 
 /**
- * Text-file attachment composition for the chat composer. Faithful port of
- * omp-web/lib/chat-attachments.ts: text files are inlined into the prompt as
- * fenced blocks so the model sees their full content.
+ * Attachment metadata and prompt composition for the chat composer.
+ *
+ * Two representations of the same attachment exist and the difference is the
+ * whole reason this module exists:
+ *
+ * - A LIVE attachment (just picked/pasted/dropped) carries `file: File`, so its
+ *   bytes are readable.
+ * - A REPLAYED attachment comes from the `queued_messages` row or from committed
+ *   history. `File` does not survive either trip (`JSON.stringify(new File(…))`
+ *   is `{}`), so only `name`/`type`/`size`/`preview`/`dataBase64`/`content`
+ *   remain.
+ *
+ * Every read of an attachment's metadata therefore goes through the accessors
+ * below, which read the display fields and fall back to the live `File` — never
+ * `a.file.name`, which throws on a replayed attachment and is what used to break
+ * queued delivery and retry.
  */
+
+import type { AgentImage, Attachment } from '@/shared/types';
 
 export const MAX_ATTACHED_TEXT_BYTES = 256 * 1024;
 export const MAX_ATTACHED_TEXT_FILES = 10;
 
+/**
+ * Extensions treated as inline-able text when the browser reports no useful
+ * MIME type. `File.type` is empty for many code files, so the extension is the
+ * only signal — a dropped `script.py` used to attach without its contents ever
+ * reaching the prompt.
+ */
 const TEXT_FILE_EXTENSIONS: Record<string, true> = {
   txt: true,
   text: true,
   md: true,
   markdown: true,
   mdx: true,
+  json: true,
+  jsonc: true,
+  yaml: true,
+  yml: true,
+  toml: true,
+  ini: true,
+  env: true,
+  csv: true,
+  tsv: true,
+  log: true,
+  xml: true,
+  html: true,
+  htm: true,
+  css: true,
+  scss: true,
+  less: true,
+  js: true,
+  mjs: true,
+  cjs: true,
+  jsx: true,
+  ts: true,
+  mts: true,
+  cts: true,
+  tsx: true,
+  py: true,
+  rb: true,
+  go: true,
+  rs: true,
+  java: true,
+  kt: true,
+  kts: true,
+  swift: true,
+  c: true,
+  h: true,
+  cc: true,
+  cpp: true,
+  cxx: true,
+  hpp: true,
+  hh: true,
+  cs: true,
+  php: true,
+  pl: true,
+  lua: true,
+  r: true,
+  sql: true,
+  sh: true,
+  bash: true,
+  zsh: true,
+  fish: true,
+  ps1: true,
+  bat: true,
+  cmd: true,
+  dockerfile: true,
+  makefile: true,
+  gitignore: true,
+  editorconfig: true,
+  diff: true,
+  patch: true,
 };
+
+/** MIME types the browser reports for text-ish files it does know. */
+function isTextMimeType(type: string): boolean {
+  if (!type) return false;
+  if (type === 'text/plain' || type === 'text/markdown') return true;
+  return type.startsWith('text/')
+    || type === 'application/json'
+    || type === 'application/xml'
+    || type === 'application/x-yaml'
+    || type === 'application/yaml'
+    || type === 'application/javascript'
+    || type === 'application/x-sh'
+    || type === 'application/sql'
+    || type.endsWith('+json')
+    || type.endsWith('+xml');
+}
 
 export interface AttachedTextFileData {
   name: string;
@@ -27,19 +122,125 @@ export interface AttachedTextFileData {
   size: number;
 }
 
+/** An inlined text file plus the id of the attachment it came from. */
+export interface ReadTextAttachment extends AttachedTextFileData {
+  id: string;
+  /** True when no bytes could be read — the file is named but not carried. */
+  missing?: boolean;
+}
+
 function getFileExtension(name: string): string {
   return name.toLowerCase().replace(/\\/g, '/').split('/').pop()?.split('.').pop() ?? '';
 }
 
-export function isTextAttachmentFile(file: Pick<File, 'name' | 'type'>): boolean {
-  return file.type === 'text/plain'
-    || file.type === 'text/markdown'
-    || TEXT_FILE_EXTENSIONS[getFileExtension(file.name)] === true;
+/** Attachment display name, live file first, persisted name second. */
+export function attachmentName(att: Pick<Attachment, 'name' | 'file'>): string {
+  return att.name ?? att.file?.name ?? 'attachment';
+}
+
+/** Attachment MIME type, live file first, persisted type second. */
+export function attachmentType(att: Pick<Attachment, 'type' | 'file'>): string {
+  return att.type ?? att.file?.type ?? '';
+}
+
+/** Attachment byte size, live file first, persisted size second. */
+export function attachmentSize(att: Pick<Attachment, 'size' | 'file'>): number {
+  return att.file?.size ?? att.size ?? 0;
+}
+
+/** Whether this attachment's contents can be inlined into the prompt. */
+export function isTextAttachment(att: Pick<Attachment, 'name' | 'type' | 'file'>): boolean {
+  const type = attachmentType(att);
+  if (isTextMimeType(type)) return true;
+  // An image is never inlined, whatever its extension claims.
+  if (type.startsWith('image/')) return false;
+  return TEXT_FILE_EXTENSIONS[getFileExtension(attachmentName(att))] === true;
+}
+
+/** Whether this attachment is an image the model can receive. */
+export function isImageAttachment(att: Pick<Attachment, 'name' | 'type' | 'file'>): boolean {
+  return attachmentType(att).startsWith('image/');
+}
+
+/** Base64 image payload for the omp RPC, or null when there is nothing to send. */
+export function attachmentImage(
+  att: Pick<Attachment, 'type' | 'file' | 'dataBase64'>,
+): AgentImage | null {
+  if (!att.dataBase64 || !isImageAttachment(att)) return null;
+  return {
+    type: 'image',
+    data: att.dataBase64,
+    // A persisted attachment carries the authoritative type; the fallback keeps
+    // a provider from rejecting a payload whose type the browser left empty.
+    mimeType: attachmentType(att) || 'image/png',
+  };
+}
+
+export interface AttachmentBudget {
+  /** Files that fit the inline budget and may be attached. */
+  accepted: File[];
+  /** Text files refused because the budget was already spent. */
+  skipped: File[];
+}
+
+/** User-facing reason for a refusal, shared by every composer attach path. */
+export function describeAttachmentBudget(skipped: File[]): string {
+  const limit = `${MAX_ATTACHED_TEXT_FILES} text files / ${Math.round(MAX_ATTACHED_TEXT_BYTES / 1024)} KB total`;
+  if (skipped.length === 1) return `"${skipped[0].name}" was not attached — inline limit is ${limit}.`;
+  return `${skipped.length} text files were not attached — inline limit is ${limit}.`;
+}
+
+/**
+ * Gate a batch of incoming files against the text-inline budget.
+ *
+ * Only text files are gated: their contents are inlined into the prompt, so a
+ * directory drop can otherwise push megabytes into a single request. Images and
+ * other binaries travel as payloads and are capped by the caller's own limit.
+ *
+ * The budget spans the whole composer, not the batch — `existing` counts too,
+ * so three successive drops of four text files stop at ten.
+ */
+export function applyTextAttachmentBudget(
+  files: File[],
+  existing: { name?: string; type?: string; size?: number; file?: File }[],
+): AttachmentBudget {
+  const accepted: File[] = [];
+  const skipped: File[] = [];
+  let textFiles = existing.filter((a) => isTextAttachment(a)).length;
+  let textBytes = existing.reduce((total, a) => (isTextAttachment(a) ? attachmentSize(a) : total), 0);
+
+  for (const file of files) {
+    if (!isTextAttachment({ name: file.name, type: file.type, file })) {
+      accepted.push(file);
+      continue;
+    }
+    if (textFiles >= MAX_ATTACHED_TEXT_FILES || textBytes + file.size > MAX_ATTACHED_TEXT_BYTES) {
+      skipped.push(file);
+      continue;
+    }
+    textFiles += 1;
+    textBytes += file.size;
+    accepted.push(file);
+  }
+
+  return { accepted, skipped };
 }
 
 function languageForFile(name: string): string {
   const extension = getFileExtension(name);
   if (extension === 'md' || extension === 'markdown' || extension === 'mdx') return 'markdown';
+  if (extension === 'json' || extension === 'jsonc') return 'json';
+  if (extension === 'yaml' || extension === 'yml') return 'yaml';
+  if (extension === 'ts' || extension === 'tsx' || extension === 'mts' || extension === 'cts') return 'typescript';
+  if (extension === 'js' || extension === 'jsx' || extension === 'mjs' || extension === 'cjs') return 'javascript';
+  if (extension === 'py') return 'python';
+  if (extension === 'sh' || extension === 'bash' || extension === 'zsh') return 'bash';
+  if (extension === 'rs') return 'rust';
+  if (extension === 'go') return 'go';
+  if (extension === 'sql') return 'sql';
+  if (extension === 'html' || extension === 'htm') return 'html';
+  if (extension === 'css') return 'css';
+  if (extension === 'xml') return 'xml';
   return 'text';
 }
 
@@ -59,4 +260,63 @@ export function composeMessageWithTextAttachments(
     return `Attached file: ${file.name}\n${fence}${languageForFile(file.name)}\n${file.content}\n${fence}`;
   });
   return [message.trim(), ...blocks].filter(Boolean).join('\n\n');
+}
+
+/**
+ * Snapshot attachments for storage in the queue row, where a `File` cannot
+ * survive. Reads text contents while the live handle still exists, so delivery
+ * can inline them, and keeps every display field the chip renderer needs.
+ */
+export async function prepareQueuedAttachments(attachments: Attachment[]): Promise<Attachment[]> {
+  const textFiles = await readTextAttachments(attachments);
+  const contentById = new Map(textFiles.map((file) => [file.id, file.content]));
+  return attachments.map((att) => ({
+    id: att.id,
+    name: attachmentName(att),
+    type: attachmentType(att),
+    size: attachmentSize(att),
+    // The blob URL dies with the page; the data URL survives in the row.
+    preview: att.dataBase64 ? `data:${attachmentType(att)};base64,${att.dataBase64}` : att.preview,
+    ...(att.dataBase64 ? { dataBase64: att.dataBase64 } : {}),
+    ...(contentById.has(att.id) ? { content: contentById.get(att.id) } : {}),
+  }));
+}
+
+/**
+ * The inline-able text files of a batch, reading live `File` bytes where
+ * present and persisted `content` otherwise. Returns [] when nothing qualifies.
+ *
+ * Each entry carries the source attachment's `id`, so the caller can map a file
+ * back to the attachment it came from without re-deriving the filter.
+ *
+ * An attachment with NO readable bytes is returned with `missing: true` rather
+ * than dropped: silently omitting it sent a prompt that named a file the model
+ * never received, with nothing in the UI to say so. The caller decides whether
+ * to warn or to send anyway.
+ */
+export async function readTextAttachments(
+  attachments: Attachment[],
+): Promise<ReadTextAttachment[]> {
+  const textAttachments = attachments.filter((a) => isTextAttachment(a));
+  const contents = await Promise.all(
+    textAttachments.map(async (att): Promise<{ content: string | null; missing: boolean }> => {
+      if (att.file) {
+        try {
+          return { content: await att.file.text(), missing: false };
+        } catch {
+          // Fall through to the persisted copy, if any.
+        }
+      }
+      if (typeof att.content === 'string') return { content: att.content, missing: false };
+      return { content: null, missing: true };
+    }),
+  );
+  return textAttachments.map((att, index) => ({
+    id: att.id,
+    name: attachmentName(att),
+    mimeType: attachmentType(att),
+    content: contents[index].content ?? '',
+    size: attachmentSize(att),
+    missing: contents[index].missing,
+  }));
 }

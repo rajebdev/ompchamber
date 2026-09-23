@@ -21,6 +21,7 @@
  */
 
 import { claimHeadQueueItem, requeueHeadQueueItem } from '@/server/lib/queue/store.server';
+import { composeMessageWithTextAttachments } from '@/shared/lib/chat/attachments';
 import type { QueuedMessage } from '@/shared/types/chat';
 
 /** Settling time between agent_end and the next prompt dispatch. Small on
@@ -71,12 +72,33 @@ async function dispatchQueuedItem(session: QueueDeliveryHost, item: QueuedMessag
         await session.send({ type: 'set_thinking_level', level: item.model.thinkingLevel });
       }
     }
+    // Attachments reach this point as the persisted display fields — the live
+    // `File` never survived the queue's JSON round trip. The base64 payload and
+    // the MIME type are therefore read from the fields that DID persist:
+    // `dataBase64` for the bytes, `type` for the media type. (Matching on a
+    // `data:` preview used to yield zero images, because the composer's preview
+    // is a `blob:` object URL that the server cannot read.)
     const images = item.attachments
-      .filter((a) => typeof a?.preview === 'string' && a.preview.startsWith('data:image/') && typeof a?.dataBase64 === 'string')
-      .map((a) => ({ type: 'image' as const, data: a.dataBase64 as string, mimeType: a.preview.slice(5).split(';')[0] || 'image/png' }));
+      .filter((a) => typeof a?.dataBase64 === 'string' && a.dataBase64.length > 0)
+      .map((a) => ({
+        type: 'image' as const,
+        data: a.dataBase64 as string,
+        mimeType: typeof a.type === 'string' && a.type.startsWith('image/') ? a.type : 'image/png',
+      }));
+    // Text attachments are inlined into the prompt, exactly as the composer
+    // does at send time — the item's own `text` is the raw composer input, so
+    // without this a queued file would deliver as a bare filename mention.
+    const textFiles = item.attachments
+      .filter((a) => typeof a?.content === 'string' && a.content.length > 0)
+      .map((a) => ({
+        name: typeof a.name === 'string' && a.name ? a.name : 'attachment',
+        mimeType: typeof a.type === 'string' ? a.type : 'text/plain',
+        content: a.content as string,
+        size: typeof a.size === 'number' ? a.size : (a.content as string).length,
+      }));
     await session.send({
       type: 'prompt',
-      message: item.text,
+      message: composeMessageWithTextAttachments(item.text, textFiles),
       ...(images.length ? { images } : {}),
       ...(item.model ? { accessMode: item.model.accessMode } : {}),
     });

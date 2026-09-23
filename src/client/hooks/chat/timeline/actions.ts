@@ -17,6 +17,7 @@ import type { Attachment, ChatMessageData, OmpAgentHandle, QueuedMessageModel } 
 import type { QueuedMessage } from '@/client/components/workspace/chat-timeline/QueueList';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { applyComposerPick, consumeComposerPick, stashComposerPick, type DeferredModelStore } from '@/client/hooks/chat/timeline/deferred-model';
+import { prepareQueuedAttachments } from '@/shared/lib/chat/attachments';
 
 export interface ChatTimelineActionsDeps {
   inputValue: string;
@@ -140,7 +141,12 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
       // panel is a view of it. Delivery happens when the run ends — the
       // wrapper's terminal `agent_end` claims the head and dispatches it.
       setInputValue('');
-      enqueueMessage({ text: textToSend, attachments, model });
+      // The queue row is JSON: a `File` does not survive it. Capture the text
+      // contents and the display fields now, so delivery can inline the files
+      // and render the chips without a live handle.
+      void prepareQueuedAttachments(attachments).then((prepared) => {
+        enqueueMessage({ text: textToSend, attachments: prepared, model });
+      });
       return;
     }
 

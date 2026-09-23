@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ClipboardEvent, SetStateAction } from 'preact/compat';
+import { AlertTriangle, X } from 'lucide-preact';
 import type { AIModelOption, Attachment, ModelEntry } from '@/shared/types';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
+import { describeAttachmentBudget } from '@/shared/lib/chat/attachments';
 import { ComposerToolbar } from '@/client/components/workspace/chat-timeline/chat-input/Toolbar';
 import { ComposerTextarea } from '@/client/components/common/ComposerTextarea';
 import { AttachmentToolbar } from '@/client/components/workspace/chat-timeline/chat-input/AttachmentToolbar';
@@ -9,6 +11,10 @@ import { selectableThinkingLevels } from '@/shared/lib/models/thinking-levels';
 import { fetchModelsData, subscribeModelsUpdated } from '@/shared/lib/models/client';
 import { resolveThinkingLevel, selectionFor } from '@/client/components/workspace/chat-timeline/chat-input/selection';
 import { NO_PENDING_PICK } from '@/client/hooks/chat/timeline/deferred-model';
+import { useFileDrop, DROP_LIMIT_NOTICE } from '@/client/hooks/chat/composer/file-drop';
+import { describeUnreadable, readDroppedReference, referenceName } from '@/client/hooks/chat/composer/drop-references';
+import { useComposerAttachments } from '@/client/hooks/chat/composer/attachments';
+import { DropOverlay } from '@/client/components/workspace/chat-timeline/chat-input/DropOverlay';
 
 export function ChatInput({ 
   value, 
@@ -229,56 +235,100 @@ export function ChatInput({
     if (!clipboard) return;
     if (clipboard.files.length > 0) {
       e.preventDefault();
-      const files = Array.from(clipboard.files);
-      addFiles(files);
+      acceptFiles(Array.from(clipboard.files));
     }
   };
 
-  const addFiles = (files: File[]) => {
-    const newAttachments = files.map(file => ({
-      id: Math.random().toString(36).substring(7),
-      file,
-      preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : ''
+  const { addFiles, removeAttachment, readyForSend } = useComposerAttachments({ attachments, setAttachments });
+
+  // Refusals are reported inline, right above the input: the composer has no
+  // toast stack of its own, and its three call sites share no host to borrow.
+  const [attachNotice, setAttachNotice] = useState<string | null>(null);
+
+  const acceptFiles = (files: File[], incomplete = false, references: string[] = []) => {
+    const { added, skipped, unreadable } = addFiles(files);
+    if (skipped.length > 0) {
+      setAttachNotice(describeAttachmentBudget(skipped));
+    } else if (incomplete) {
+      setAttachNotice(DROP_LIMIT_NOTICE);
+    } else if (unreadable.length > 0) {
+      // Reported, never silent: a chip whose bytes never arrived would send a
+      // prompt that names a file the model cannot see.
+      setAttachNotice(describeUnreadable(unreadable));
+    } else if (added > 0) {
+      setAttachNotice(null);
+    }
+    if (references.length > 0) void attachReferences(references);
+  };
+
+  // A download dragged out of a web page carries no File — only a URL. The
+  // server reads it, because the browser cannot fetch an arbitrary path and the
+  // drop gives no bytes to work with.
+  const attachReferences = async (references: string[]) => {
+    const resolved: File[] = [];
+    const failed: string[] = [];
+    await Promise.all(references.map(async (reference) => {
+      const file = await readDroppedReference(reference, rootPath ?? null);
+      if (file) resolved.push(file);
+      else failed.push(referenceName(reference));
     }));
-    setAttachments(prev => [...prev, ...newAttachments]);
-    // Read image payloads as base64 so the omp model can receive them.
-    for (const att of newAttachments) {
-      if (!att.file.type.startsWith('image/')) continue;
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        const base64 = result.split(',')[1];
-        if (!base64) return;
-        setAttachments(prev => prev.map(a => (a.id === att.id ? { ...a, dataBase64: base64 } : a)));
-      };
-      reader.readAsDataURL(att.file);
+    if (resolved.length > 0) {
+      const { unreadable } = addFiles(resolved);
+      setAttachNotice(unreadable.length > 0 ? describeUnreadable(unreadable) : null);
+    }
+    if (failed.length > 0) {
+      setAttachNotice(describeUnreadable(failed));
     }
   };
 
-  const removeAttachment = (id: string) => {
-    setAttachments(prev => {
-      const att = prev.find(p => p.id === id);
-      if (att && att.preview) URL.revokeObjectURL(att.preview);
-      return prev.filter(p => p.id !== id);
-    });
-  };
+  // OS drag-and-drop. Bound to the composer CARD, not the textarea: the whole
+  // composer is the drop target, so a drop anywhere inside it (including on the
+  // textarea) bubbles here instead of letting the browser navigate away.
+  const { isDragging, dropProps } = useFileDrop({
+    disabled,
+    onFiles: acceptFiles,
+  });
 
   const handleSendClick = (options?: { steering?: boolean }) => {
     if (!value.trim() && attachments.length === 0) return;
-    onSend(attachments, options);
+    const outgoing = attachments;
     setAttachments([]);
+    // Bytes are read at attach time; this waits for any still in flight so a
+    // prompt never goes out while an attachment is half-populated.
+    void readyForSend().then(() => onSend(outgoing, options));
   };
 
   const isMobile = variant === 'mobile';
 
   return (
-    <div className={`relative border border-ink/20 rounded-md bg-paper focus-within:border-ink transition-colors flex flex-col shadow-sm ${className}`}>
-      
+    <div
+      className={`relative border rounded-md bg-paper transition-colors flex flex-col shadow-sm ${
+        isDragging ? 'border-ink/40' : 'border-ink/20 focus-within:border-ink'
+      } ${className}`}
+      {...dropProps}
+    >
+      <DropOverlay visible={isDragging} />
+
       <AttachmentToolbar
         attachments={attachments}
-        onFilesSelected={addFiles}
+        onFilesSelected={(files) => acceptFiles(files)}
         onRemove={removeAttachment}
       />
+
+      {attachNotice && (
+        <div className="flex items-start gap-1.5 border-b border-error/20 bg-error/5 px-3 py-1.5 text-[11px] text-error">
+          <AlertTriangle size={11} className="mt-0.5 shrink-0" />
+          <span className="min-w-0 flex-1 break-words">{attachNotice}</span>
+          <button
+            type="button"
+            onClick={() => setAttachNotice(null)}
+            className="shrink-0 text-error/60 hover:text-error transition-colors"
+            title="Dismiss"
+          >
+            <X size={11} />
+          </button>
+        </div>
+      )}
 
       {/* Textarea */}
       <ComposerTextarea

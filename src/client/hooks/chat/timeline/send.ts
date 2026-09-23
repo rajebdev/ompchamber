@@ -12,13 +12,19 @@
 
 import { useCallback } from 'preact/hooks';
 import type { Dispatch, SetStateAction } from 'preact/compat';
-import type { Attachment, ChatMessageData, OmpAgentHandle, QueuedMessageModel } from '@/shared/types';
+import type { AgentImage, Attachment, ChatMessageData, OmpAgentHandle, QueuedMessageModel } from '@/shared/types';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { streamChatResponse } from '@/client/hooks/chat/stream';
 import type { SessionSeed } from '@/client/hooks/chat/timeline/session-load';
 import { buildPromptText } from '@/client/hooks/chat/timeline/prompt-text';
 import { flushDeferredPick, type DeferredModelStore } from '@/client/hooks/chat/timeline/deferred-model';
-import { isTextAttachmentFile } from '@/shared/lib/chat/attachments';
+import {
+  attachmentImage,
+  attachmentName,
+  attachmentSize,
+  attachmentType,
+  readTextAttachments,
+} from '@/shared/lib/chat/attachments';
 import { createMockStreamCallbacks } from '@/shared/lib/chat/timeline/stream-callbacks';
 import { PHASE_VERBS } from '@/shared/lib/chat/timeline/tool-phrases';
 import { formatClock } from '@/shared/lib/format/time';
@@ -104,32 +110,13 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
   const prepareDeliverable = useCallback(async (
     text: string,
     attachments: Attachment[],
-  ): Promise<{ promptText: string; images?: { data: string; mimeType: string }[] }> => {
-    const textFileContents = new Map<string, string>();
-    try {
-      await Promise.all(
-        attachments
-          .filter(a => isTextAttachmentFile(a.file))
-          .map(async a => {
-            textFileContents.set(a.id, await a.file.text());
-          })
-      );
-    } catch {
-      // Fall back to prompt without inlined contents if a file cannot be read.
-    }
-    const textFiles = attachments
-      .filter(a => textFileContents.has(a.id))
-      .map(a => ({
-        name: a.file.name,
-        mimeType: a.file.type,
-        content: textFileContents.get(a.id) as string,
-        size: a.file.size,
-      }));
+  ): Promise<{ promptText: string; images?: AgentImage[] }> => {
+    const textFiles = await readTextAttachments(attachments);
     const promptText = await buildPromptText(text, textFiles);
     pendingUserDisplaysRef.current = [...pendingUserDisplaysRef.current.slice(-7), { sent: promptText, display: text }];
     const images = attachments
-      .filter(a => a.file.type.startsWith('image/') && a.dataBase64)
-      .map(a => ({ data: a.dataBase64 as string, mimeType: a.file.type }));
+      .map(attachmentImage)
+      .filter((image): image is AgentImage => image !== null);
     return { promptText, images: images.length ? images : undefined };
   }, []);
 
@@ -157,19 +144,10 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
     const aiPlaceholderId = `msg-${Date.now() + 1}-ai`;
 
     // Read text-file contents once: used for the editor (attachment.content)
-    // and for inlining into the prompt (mirror omp-web).
-    const textFileContents = new Map<string, string>();
-    try {
-      await Promise.all(
-        attachments
-          .filter(a => isTextAttachmentFile(a.file))
-          .map(async a => {
-            textFileContents.set(a.id, await a.file.text());
-          })
-      );
-    } catch {
-      // Fall back to prompt without inlined contents if a file cannot be read.
-    }
+    // and for inlining into the prompt. Reads a persisted `content` when the
+    // attachment is a replay (queue delivery, retry) and has no live File.
+    const textFiles = await readTextAttachments(attachments);
+    const textContentById = new Map(textFiles.map((file) => [file.id, file.content]));
 
     const now = Date.now();
     const newUserMsg: ChatMessageData = {
@@ -182,11 +160,13 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
       startedAt: now,
       content: text,
       attachments: attachments.map(a => ({
-        name: a.file.name,
-        preview: a.dataBase64 ? `data:${a.file.type};base64,${a.dataBase64}` : a.preview,
-        type: a.file.type,
-        size: a.file.size,
-        content: textFileContents.get(a.id),
+        name: attachmentName(a),
+        // The blob URL only lives as long as this page, so the data URL wins
+        // where it exists — a persisted turn re-renders its images from it.
+        preview: a.dataBase64 ? `data:${attachmentType(a)};base64,${a.dataBase64}` : a.preview,
+        type: attachmentType(a),
+        size: attachmentSize(a),
+        content: textContentById.get(a.id),
       }))
     };
 
@@ -229,18 +209,10 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
         }
       }
       const images = attachments
-        .filter(a => a.file.type.startsWith('image/') && a.dataBase64)
-        .map(a => ({ data: a.dataBase64 as string, mimeType: a.file.type }));
-      // Inline text-file contents into the prompt (mirror omp-web): the model
-      // sees the full file content as fenced blocks, not just the filename.
-      const textFiles = attachments
-        .filter(a => textFileContents.has(a.id))
-        .map(a => ({
-          name: a.file.name,
-          mimeType: a.file.type,
-          content: textFileContents.get(a.id) as string,
-          size: a.file.size,
-        }));
+        .map(attachmentImage)
+        .filter((image): image is AgentImage => image !== null);
+      // Inline text-file contents into the prompt: the model sees the full file
+      // content as fenced blocks, not just the filename.
       const promptText = await buildPromptText(text, textFiles);
       const ok = await ompAgent.sendPrompt(promptText, images.length ? images : undefined, { accessMode: effectiveAccessMode });
       if (!ok) {
@@ -261,16 +233,8 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
       const cwd = currentFolder?.project_path || currentFolder?.name;
       if (cwd) {
         const images = attachments
-          .filter(a => a.file.type.startsWith('image/') && a.dataBase64)
-          .map(a => ({ data: a.dataBase64 as string, mimeType: a.file.type }));
-        const textFiles = attachments
-          .filter(a => textFileContents.has(a.id))
-          .map(a => ({
-            name: a.file.name,
-            mimeType: a.file.type,
-            content: textFileContents.get(a.id) as string,
-            size: a.file.size,
-          }));
+          .map(attachmentImage)
+          .filter((image): image is AgentImage => image !== null);
         const promptText = await buildPromptText(text, textFiles);
         optimisticUserIdRef.current = userMsgId;
         const composerModel = pendingComposerModelRef.current;

@@ -169,6 +169,63 @@ describe('queue delivery', () => {
     expect(queue.get(sessionId)).toEqual([]);
   });
 
+  // Attachments reach the server as the persisted display fields only: the
+  // composer's `File` never survives the queue row's JSON round trip, and its
+  // image preview is a `blob:` object URL the server cannot read. These pin the
+  // fields the delivery must use instead — `dataBase64` for the bytes, `type`
+  // for the media type, `content` for an inline-able text file.
+  test('a queued image rides its persisted base64 payload', async () => {
+    const item = queueItem('with image', null);
+    item.attachments = [
+      { id: 'i', name: 'shot.png', type: 'image/png', size: 4, preview: 'blob:http://x/1', dataBase64: 'iVBORw0KGgo=' },
+    ] as QueuedMessage['attachments'];
+    queue.set(sessionId, [item]);
+    const { host, sent } = makeHost(sessionId);
+
+    scheduleQueueDelivery(host);
+    jest.advanceTimersByTime(600);
+    await flush();
+
+    expect(sent).toEqual([
+      {
+        type: 'prompt',
+        message: 'with image',
+        images: [{ type: 'image', data: 'iVBORw0KGgo=', mimeType: 'image/png' }],
+      },
+    ]);
+  });
+
+  test('a queued text file is inlined into the delivered prompt', async () => {
+    const item = queueItem('review this', null);
+    item.attachments = [
+      { id: 't', name: 'notes.md', type: 'text/markdown', size: 5, preview: '', content: '# hi' },
+    ] as QueuedMessage['attachments'];
+    queue.set(sessionId, [item]);
+    const { host, sent } = makeHost(sessionId);
+
+    scheduleQueueDelivery(host);
+    jest.advanceTimersByTime(600);
+    await flush();
+
+    const prompt = sent.find((c) => c.type === 'prompt');
+    expect(prompt?.message).toBe('review this\n\nAttached file: notes.md\n```markdown\n# hi\n```');
+  });
+
+  test('an attachment without a payload is not sent as a blank image', async () => {
+    const item = queueItem('no payload', null);
+    item.attachments = [
+      { id: 'i', name: 'broken.png', type: 'image/png', size: 4, preview: 'blob:http://x/1', dataBase64: '' },
+    ] as QueuedMessage['attachments'];
+    queue.set(sessionId, [item]);
+    const { host, sent } = makeHost(sessionId);
+
+    scheduleQueueDelivery(host);
+    jest.advanceTimersByTime(600);
+    await flush();
+
+    expect(sent).toEqual([{ type: 'prompt', message: 'no payload' }]);
+  });
+
   test('a lost timer delays the queue instead of wedging it', async () => {
     queue.set(sessionId, [queueItem('recovered')]);
     const { host, sent } = makeHost(sessionId);

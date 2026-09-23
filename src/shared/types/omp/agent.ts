@@ -61,8 +61,15 @@ export interface OmpAgentState {
   error: string | null;
 }
 
-/** An attached image payload accepted by every prompt-bearing RPC command. */
+/**
+ * An attached image payload accepted by every prompt-bearing RPC command.
+ * `type` is part of omp's `ImageContent` contract and is REQUIRED: omp's
+ * history encoder (`pi-ai/src/dialect/history.ts`) and its text fallback
+ * (`pi-ai/src/dialect/rendering.ts`) both select blocks by `type === "image"`,
+ * so a payload without it is dropped from the model's context.
+ */
 export interface AgentImage {
+  type: 'image';
   data: string;
   mimeType: string;
 }

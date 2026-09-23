@@ -3,13 +3,28 @@ import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 
 export interface Attachment {
   id: string;
+  /**
+   * Display name. Written at creation so a replayed attachment — one that has
+   * been through the queue's JSON round trip or back out of committed history —
+   * still renders and still inlines.
+   */
   name?: string;
-  file: File;
+  /**
+   * Live file handle. ABSENT on every replayed attachment: `File` is not
+   * serializable (`JSON.stringify(new File(...))` is `{}`), so the queue row and
+   * the committed message keep only the display fields below. Read the fields
+   * through `@/shared/lib/chat/attachments` accessors — `a.file.name` throws
+   * here, which is what used to break queue delivery and retry.
+   */
+  file?: File;
   preview: string;
   type?: string;
   size?: number;
   /** Base64 payload for image attachments (sent to the omp model). */
   dataBase64?: string;
+  /** Inlined text-file contents, persisted with the committed user turn so a
+   *  retry can re-send them without the original `File`. */
+  content?: string;
 }
 
 export type ChatAttachment = Attachment;
@@ -164,6 +179,23 @@ export interface ChatMessageData {
     message?: string;
     stopReason?: string;
   };
+}
+
+/** One user turn of a session's FULL history, as listed by
+ *  `GET /api/chat/:sessionId/turns`. The timeline jump rail draws one tick per
+ *  entry and pages the timeline to it, so an entry carries the row id the
+ *  timeline renders (the jump target) and the row's position in the full
+ *  message list (`index`, the cursor the older-window loader pages from). */
+export interface UserTurnRef {
+  id: string;
+  /** 0-based position in the session's full message list. `-1` for a row that
+   *  exists only in the live timeline (an optimistic send the committed
+   *  history does not carry yet) — such a row is always mounted. */
+  index: number;
+  /** Truncated prompt text for the rail tooltip. */
+  preview: string;
+  date?: string;
+  timestamp?: string;
 }
 
 /** Model settings snapshotted with a queued message so auto-delivery replays
