@@ -9,6 +9,7 @@ import {
   FolderOpen,
 } from 'lucide-preact';
 import { BRAND_ICONS, BRAND_VIEWBOX, type BrandIconName } from '@/client/components/common/file-icon/brand-paths';
+import { getImageMimeType } from '@/shared/lib/fs/file-kind';
 
 interface FileIconProps {
   name: string;
@@ -110,7 +111,9 @@ export function FileIcon({ name, isFolder, isOpen, size = 14, className = '' }: 
   if (lowerName.endsWith('.md') || lowerName.endsWith('.txt')) {
     return <FileText size={size} className={`text-ink/70 ${className}`} />;
   }
-  if (lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.svg') || lowerName.endsWith('.ico') || lowerName.endsWith('.webp')) {
+  // SVG is text the editor edits as code, but it is still a picture to the eye,
+  // so the icon stays the image glyph for it.
+  if (getImageMimeType(lowerName) || lowerName.endsWith('.svg')) {
     return <FileImage size={size} color="#c084fc" className={className} />;
   }
   if (lowerName.endsWith('.sh') || lowerName.endsWith('.bash')) {

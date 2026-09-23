@@ -5,6 +5,7 @@ import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 import { useScrollbarFade, scrollbarFadeClass } from '@/client/hooks/ui/scrollbar-fade';
 import { EditorTabs } from '@/client/components/workspace/editor/Tabs';
 import { EditorToolbar } from '@/client/components/workspace/editor/Toolbar';
+import { ImageViewer } from '@/client/components/common/image-viewer';
 import { getDefaultContent } from '@/shared/lib/code/editor-utils';
 import { DiffPanel } from '@/client/components/workspace/diff-panel';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
@@ -134,6 +135,7 @@ export function Editor({
               wordWrap={wordWrap}
               isMd={isMd}
               isPreview={isPreview}
+              isImage={editor.isImage}
               onSave={editor.saveNow}
               onTogglePreview={togglePreview}
               onToggleWordWrap={() => setWordWrap(!wordWrap)}
@@ -144,42 +146,49 @@ export function Editor({
               onToggleMaximize={() => setIsMaximized(!isMaximized)}
             />
 
-            <div onScroll={handleScroll} className={`flex-1 overflow-auto bg-paper flex ${scrollbarFadeClass(isScrolling)}`}>
-              {(isMd && isPreview) ? (
-                <div className="p-6 prose prose-sm max-w-4xl mx-auto font-sans flex-1" style={{ fontSize: `${zoomLevel}px` }}>
-                  <MarkdownRenderer content={currentContent} />
-                </div>
-              ) : (
-                <CodeSurface
-                  value={currentContent}
-                  onValueChange={editor.onChange}
-                  language={editor.language}
-                  wordWrap={wordWrap}
-                  rootClassName="flex"
-                  gutterClassName="flex flex-col text-right pl-4 pr-3 select-none text-ink/30 font-mono border-r border-ink/10 bg-canvas sticky left-0 z-10"
-                  gutterStyle={{
-                    fontSize: zoomLevel,
-                    paddingTop: 16,
-                    paddingBottom: 16,
-                    lineHeight: 1.5,
-                    fontFamily: '"Fira Code", "JetBrains Mono", "SF Mono", Consolas, monospace',
-                  }}
-                  gutterLineClassName="min-w-[1.5rem]"
-                  // `min-w-max` keeps a long line intact and lets the panel
-                  // scroll sideways; while wrapping it would instead widen the
-                  // column past the panel, so the toggle had no effect at all.
-                  editorWrapperClassName={`flex-1 code-surface ${wordWrap ? 'min-w-0' : 'min-w-max'}`}
-                  editorPadding={16}
-                  editorClassName="font-mono focus:outline-none"
-                  editorStyle={{
-                    fontFamily: '"Fira Code", "JetBrains Mono", "SF Mono", Consolas, monospace',
-                    fontSize: zoomLevel,
-                    lineHeight: 1.5,
-                    minHeight: '100%',
-                  }}
-                />
-              )}
-            </div>
+            {editor.isImage && editor.imageUrl ? (
+              // The picture owns its own pan/zoom, so it must NOT sit inside
+              // the scrolling text container — a wheel there would scroll the
+              // pane instead of zooming the image.
+              <ImageViewer src={editor.imageUrl} name={activeFile.name} className="flex-1 min-h-0" />
+            ) : (
+              <div onScroll={handleScroll} className={`flex-1 overflow-auto bg-paper flex ${scrollbarFadeClass(isScrolling)}`}>
+                {(isMd && isPreview) ? (
+                  <div className="p-6 prose prose-sm max-w-4xl mx-auto font-sans flex-1" style={{ fontSize: `${zoomLevel}px` }}>
+                    <MarkdownRenderer content={currentContent} />
+                  </div>
+                ) : (
+                  <CodeSurface
+                    value={currentContent}
+                    onValueChange={editor.onChange}
+                    language={editor.language}
+                    wordWrap={wordWrap}
+                    rootClassName="flex"
+                    gutterClassName="flex flex-col text-right pl-4 pr-3 select-none text-ink/30 font-mono border-r border-ink/10 bg-canvas sticky left-0 z-10"
+                    gutterStyle={{
+                      fontSize: zoomLevel,
+                      paddingTop: 16,
+                      paddingBottom: 16,
+                      lineHeight: 1.5,
+                      fontFamily: '"Fira Code", "JetBrains Mono", "SF Mono", Consolas, monospace',
+                    }}
+                    gutterLineClassName="min-w-[1.5rem]"
+                    // `min-w-max` keeps a long line intact and lets the panel
+                    // scroll sideways; while wrapping it would instead widen the
+                    // column past the panel, so the toggle had no effect at all.
+                    editorWrapperClassName={`flex-1 code-surface ${wordWrap ? 'min-w-0' : 'min-w-max'}`}
+                    editorPadding={16}
+                    editorClassName="font-mono focus:outline-none"
+                    editorStyle={{
+                      fontFamily: '"Fira Code", "JetBrains Mono", "SF Mono", Consolas, monospace',
+                      fontSize: zoomLevel,
+                      lineHeight: 1.5,
+                      minHeight: '100%',
+                    }}
+                  />
+                )}
+              </div>
+            )}
           </>
         )
       ) : (

@@ -2,6 +2,7 @@ import { useState } from 'preact/hooks';
 import { AlertTriangle, Loader2 } from 'lucide-preact';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 import { CodeSurface } from '@/client/components/common/code-surface';
+import { ImageViewer } from '@/client/components/common/image-viewer';
 import { EditorHeader } from '@/client/components/mobile/mobile-right-sidebar/Header';
 import { useScrollbarFade, scrollbarFadeClass } from '@/client/hooks/ui/scrollbar-fade';
 import { useFileEditor } from '@/client/hooks/editor/use-file-editor';
@@ -48,6 +49,7 @@ export function MobileFullEditor({ file, onClose, onFileSaved }: MobileFullEdito
         isPreview={isPreview}
         wordWrap={wordWrap}
         copied={editor.copied}
+        isImage={editor.isImage}
         onClose={onClose}
         onTogglePreview={() => setIsPreview(!isPreview)}
         onToggleWrap={() => setWordWrap(!wordWrap)}
@@ -57,46 +59,52 @@ export function MobileFullEditor({ file, onClose, onFileSaved }: MobileFullEdito
         onDownload={editor.download}
       />
 
-      {/* Editor Content Area - Desktop styled: bg-paper text-ink */}
-      <div onScroll={handleScroll} className={`flex-1 min-h-0 overflow-auto relative bg-paper text-ink select-text ${scrollbarFadeClass(isScrolling)}`}>
-        {editor.isLoading ? (
-          <div className="flex items-center justify-center h-full text-ink/40 text-xs gap-2">
-            <Loader2 size={14} className="animate-spin" />
-            <span>Loading file content...</span>
-          </div>
-        ) : editor.loadError ? (
-          <div className="flex flex-col items-center justify-center h-full gap-2 px-6 text-center">
-            <AlertTriangle size={20} className="text-error" />
-            <span className="text-xs text-error font-sans">Could not read {file.name}</span>
-            <span className="text-[11px] text-ink/50 font-mono break-all">{editor.loadError}</span>
-          </div>
-        ) : isMd && isPreview ? (
-          /* Markdown Preview Mode */
-          <div className="p-4 bg-paper text-ink min-h-full font-sans prose prose-sm max-w-none">
-            <MarkdownRenderer content={content} />
-          </div>
-        ) : (
-          /* Code Editor with Line Numbers - Desktop styled: gutter bg-canvas border-r border-ink/10 */
-          <CodeSurface
-            value={content}
-            onValueChange={editor.onChange}
-            language={lang}
-            wordWrap={wordWrap}
-            rootClassName="flex min-h-full bg-paper"
-            gutterClassName="w-10 py-3 pr-2 select-none text-right text-[10px] text-ink/30 bg-canvas border-r border-ink/10 font-mono leading-[20px] flex-shrink-0"
-            editorWrapperClassName="flex-1 p-3 overflow-x-auto min-w-0 bg-paper text-ink code-surface"
-            editorClassName="focus:outline-none"
-            editorStyle={{
-              fontFamily: 'monospace',
-              fontSize: `${fontSize}px`,
-              lineHeight: '20px',
-              backgroundColor: 'transparent',
-              minHeight: '100%',
-              color: 'var(--theme-ink)',
-            }}
-          />
-        )}
-      </div>
+      {/* Editor Content Area - Desktop styled: bg-paper text-ink. An image owns
+          its own pan/zoom, so it replaces the scrolling text container rather
+          than living inside it. */}
+      {editor.isImage && editor.imageUrl ? (
+        <ImageViewer src={editor.imageUrl} name={file.name} className="flex-1 min-h-0" />
+      ) : (
+        <div onScroll={handleScroll} className={`flex-1 min-h-0 overflow-auto relative bg-paper text-ink select-text ${scrollbarFadeClass(isScrolling)}`}>
+          {editor.isLoading ? (
+            <div className="flex items-center justify-center h-full text-ink/40 text-xs gap-2">
+              <Loader2 size={14} className="animate-spin" />
+              <span>Loading file content...</span>
+            </div>
+          ) : editor.loadError ? (
+            <div className="flex flex-col items-center justify-center h-full gap-2 px-6 text-center">
+              <AlertTriangle size={20} className="text-error" />
+              <span className="text-xs text-error font-sans">Could not read {file.name}</span>
+              <span className="text-[11px] text-ink/50 font-mono break-all">{editor.loadError}</span>
+            </div>
+          ) : isMd && isPreview ? (
+            /* Markdown Preview Mode */
+            <div className="p-4 bg-paper text-ink min-h-full font-sans prose prose-sm max-w-none">
+              <MarkdownRenderer content={content} />
+            </div>
+          ) : (
+            /* Code Editor with Line Numbers - Desktop styled: gutter bg-canvas border-r border-ink/10 */
+            <CodeSurface
+              value={content}
+              onValueChange={editor.onChange}
+              language={lang}
+              wordWrap={wordWrap}
+              rootClassName="flex min-h-full bg-paper"
+              gutterClassName="w-10 py-3 pr-2 select-none text-right text-[10px] text-ink/30 bg-canvas border-r border-ink/10 font-mono leading-[20px] flex-shrink-0"
+              editorWrapperClassName="flex-1 p-3 overflow-x-auto min-w-0 bg-paper text-ink code-surface"
+              editorClassName="focus:outline-none"
+              editorStyle={{
+                fontFamily: 'monospace',
+                fontSize: `${fontSize}px`,
+                lineHeight: '20px',
+                backgroundColor: 'transparent',
+                minHeight: '100%',
+                color: 'var(--theme-ink)',
+              }}
+            />
+          )}
+        </div>
+      )}
 
       {/* Bottom Status Bar - Desktop styled: bg-canvas border-t border-ink/10 */}
       <footer
@@ -109,9 +117,15 @@ export function MobileFullEditor({ file, onClose, onFileSaved }: MobileFullEdito
         }}
       >
         <div className="flex items-center space-x-3">
-          <span>{linesCount} lines</span>
-          <span>{content.length} chars</span>
-          <span className="uppercase">{lang}</span>
+          {editor.isImage ? (
+            <span className="uppercase">Image</span>
+          ) : (
+            <>
+              <span>{linesCount} lines</span>
+              <span>{content.length} chars</span>
+              <span className="uppercase">{lang}</span>
+            </>
+          )}
         </div>
         <div className="flex items-center space-x-2">
           {editor.saveStatus === 'saving' && (

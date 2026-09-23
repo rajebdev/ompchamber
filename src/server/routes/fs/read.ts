@@ -12,6 +12,7 @@ import path from 'path';
 import { isMockMode } from '@/server/mock.server';
 import { getDefaultFsRoot, resolveRoot, resolveWithinRoot } from '@/server/lib/fs/root';
 import { collectIgnoredPaths } from '@/server/lib/fs/git-ignore';
+import { getImageMimeType } from '@/shared/lib/fs/file-kind';
 
 /**
  * GET /api/fs/browse?path=<abs> — list subdirectories of a folder for the
@@ -254,8 +255,17 @@ export async function readFile({ request }: LoaderFunctionArgs) {
     if (!(await file.exists())) {
       return json({ error: 'File not found' }, { status: 404 });
     }
-    if ((await file.stat()).isDirectory()) {
+    const stat = await file.stat();
+    if (stat.isDirectory()) {
       return json({ error: 'Cannot read a directory' }, { status: 400 });
+    }
+
+    // An image has no text: decoding its bytes here returned replacement
+    // characters, which every reader painted as mojibake. Every in-repo reader
+    // branches on the extension first and takes `/api/fs/raw`, so this answers
+    // the remaining callers with the real reason instead of garbage.
+    if (getImageMimeType(cleanPath)) {
+      return json({ error: 'Image files are served by /api/fs/raw' }, { status: 400 });
     }
 
     const content = await file.text();

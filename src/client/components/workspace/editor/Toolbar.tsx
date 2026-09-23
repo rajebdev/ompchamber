@@ -6,6 +6,8 @@ interface EditorToolbarProps {
   wordWrap: boolean;
   isMd: boolean;
   isPreview: boolean;
+  /** Raster image: no text to save or wrap, and zoom belongs to the picture. */
+  isImage?: boolean;
   onSave: () => void;
   onTogglePreview: () => void;
   onToggleWordWrap: () => void;
@@ -22,6 +24,7 @@ export function EditorToolbar({
   wordWrap,
   isMd,
   isPreview,
+  isImage = false,
   onSave,
   onTogglePreview,
   onToggleWordWrap,
@@ -40,22 +43,24 @@ export function EditorToolbar({
 
       {/* Right actions */}
       <div className="flex items-center space-x-3 text-ink/40">
-        <div className="flex items-center pr-3 border-r border-ink/10">
-          <button
-            type="button"
-            onClick={onSave}
-            className="flex items-center justify-center rounded hover:bg-ink/5 transition-colors"
-            title="Save file (Ctrl+S)"
-          >
-            {saveStatus === 'saving' ? (
-              <Save size={14} className="text-amber-500 animate-pulse" />
-            ) : saveStatus === 'saved' ? (
-              <Check size={14} className="text-success" />
-            ) : (
-              <Save size={14} className="hover:text-ink cursor-pointer" />
-            )}
-          </button>
-        </div>
+        {!isImage && (
+          <div className="flex items-center pr-3 border-r border-ink/10">
+            <button
+              type="button"
+              onClick={onSave}
+              className="flex items-center justify-center rounded hover:bg-ink/5 transition-colors"
+              title="Save file (Ctrl+S)"
+            >
+              {saveStatus === 'saving' ? (
+                <Save size={14} className="text-amber-500 animate-pulse" />
+              ) : saveStatus === 'saved' ? (
+                <Check size={14} className="text-success" />
+              ) : (
+                <Save size={14} className="hover:text-ink cursor-pointer" />
+              )}
+            </button>
+          </div>
+        )}
 
         {isMd && (
           <div onClick={onTogglePreview} className="flex items-center pr-3 border-r border-ink/10">
@@ -67,14 +72,18 @@ export function EditorToolbar({
           </div>
         )}
 
-        <div className="flex items-center space-x-2 pr-3 border-r border-ink/10">
-          <WrapText size={14} className={`cursor-pointer ${wordWrap ? 'text-ink' : 'hover:text-ink'}`} onClick={onToggleWordWrap} />
-        </div>
+        {!isImage && (
+          <>
+            <div className="flex items-center space-x-2 pr-3 border-r border-ink/10">
+              <WrapText size={14} className={`cursor-pointer ${wordWrap ? 'text-ink' : 'hover:text-ink'}`} onClick={onToggleWordWrap} />
+            </div>
 
-        <div className="flex items-center space-x-2 pr-3 border-r border-ink/10">
-          <ZoomOut size={14} className="hover:text-ink cursor-pointer" onClick={onZoomOut} />
-          <ZoomIn size={14} className="hover:text-ink cursor-pointer" onClick={onZoomIn} />
-        </div>
+            <div className="flex items-center space-x-2 pr-3 border-r border-ink/10">
+              <ZoomOut size={14} className="hover:text-ink cursor-pointer" onClick={onZoomOut} />
+              <ZoomIn size={14} className="hover:text-ink cursor-pointer" onClick={onZoomIn} />
+            </div>
+          </>
+        )}
 
         <div className="flex items-center space-x-2 pr-3 border-r border-ink/10">
           <Copy size={14} className="hover:text-ink cursor-pointer" onClick={onCopy} />

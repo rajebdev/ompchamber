@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { getLanguageFromPath } from '@/shared/lib/code/syntax-highlight';
+import { getImageMimeType } from '@/shared/lib/fs/file-kind';
+import { buildFsRawUrl } from '@/shared/lib/fs/paths';
+import { useFileTransfer } from '@/client/hooks/editor/use-file-transfer';
 
 export type FileEditorSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -37,6 +40,10 @@ export interface UseFileEditorResult {
   copied: boolean;
   isDirty: boolean;
   language: string;
+  /** True for raster images: the surface renders `imageUrl`, not `content`. */
+  isImage: boolean;
+  /** Raw-byte URL of the active image (cache-busted per revision), else null. */
+  imageUrl: string | null;
   saveNow: () => void;
   copy: () => void;
   download: () => void;
@@ -78,13 +85,21 @@ export function useFileEditor(
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<FileEditorSaveStatus>('idle');
-  const [copied, setCopied] = useState(false);
   /** Bumped by `reset()` to re-run the read effect for the active file. */
   const [revision, setRevision] = useState(0);
 
   const key = target ? targetKey(target) : '';
   const content = target ? (contents[key] ?? target.content ?? '') : '';
   const isDirty = content !== (baselines[key] ?? content);
+
+  // Extension-keyed, matching the server's own classification: an image tab
+  // never reads a text buffer and never writes one back. A target without a
+  // path has no bytes to serve, and one that already carries inline `content`
+  // (an attachment chip) has its text in hand — both stay on the text path.
+  const imageTarget =
+    target?.path && target.content === undefined && getImageMimeType(target.path) ? target.path : null;
+  const isImage = imageTarget !== null;
+  const imageUrl = imageTarget ? `${buildFsRawUrl({ ...target, path: imageTarget })}&v=${revision}` : null;
 
   // Keys whose read has been requested or served, so a re-render cannot fire a
   // duplicate fetch while the first one is still in flight.
@@ -141,6 +156,15 @@ export function useFileEditor(
     const fileKey = targetKey(target);
     if (loadedRef.current.has(fileKey)) return;
     loadedRef.current.add(fileKey);
+
+    // An image has no text to read: the surface points an <img> at the raw
+    // bytes. Fetching here would only decode them into replacement characters
+    // and paint mojibake, so the key is marked loaded and left bufferless.
+    if (isImage) {
+      setLoadError(null);
+      setIsLoading(false);
+      return;
+    }
 
     if (target.content !== undefined) {
       remember(fileKey, target.content);
@@ -207,7 +231,7 @@ export function useFileEditor(
     return () => {
       cancelled = true;
     };
-  }, [key, target, fallback, reportLoadError, remember, revision]);
+  }, [key, target, fallback, reportLoadError, remember, revision, isImage]);
 
   useEffect(() => {
     if (saveStatus !== 'saved') return;
@@ -217,7 +241,7 @@ export function useFileEditor(
 
   const onChange = useCallback(
     (next: string) => {
-      if (!target) return;
+      if (!target || isImage) return;
       const fileKey = targetKey(target);
       setContents((prev) => ({ ...prev, [fileKey]: next }));
       if (!target.path) return;
@@ -228,11 +252,11 @@ export function useFileEditor(
       }, 800);
       pendingRef.current = { timer, file: target, content: next };
     },
-    [target],
+    [target, isImage],
   );
 
   const saveNow = useCallback(() => {
-    if (!target) return;
+    if (!target || isImage) return;
     const text = contents[targetKey(target)];
     if (text === undefined) return;
     if (pendingRef.current) {
@@ -240,29 +264,14 @@ export function useFileEditor(
       pendingRef.current = null;
     }
     void persistRef.current(target, text);
-  }, [target, contents]);
+  }, [target, contents, isImage]);
 
-  const copy = useCallback(() => {
-    if (!target || !navigator.clipboard) return;
-    navigator.clipboard
-      .writeText(contents[targetKey(target)] ?? '')
-      .then(() => {
-        setCopied(true);
-        window.setTimeout(() => setCopied(false), 1500);
-      })
-      .catch(() => {});
-  }, [target, contents]);
-
-  const download = useCallback(() => {
-    if (!target) return;
-    const blob = new Blob([contents[targetKey(target)] ?? ''], { type: downloadMimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = target.name;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [target, contents, downloadMimeType]);
+  const { copied, copy, download } = useFileTransfer({
+    target,
+    content,
+    imageUrl,
+    downloadMimeType,
+  });
 
   const reset = useCallback(() => {
     // Invalidate every key, then let the read effect refetch the active one.
@@ -309,6 +318,8 @@ export function useFileEditor(
     copied,
     isDirty,
     language: target ? getLanguageFromPath(target.name) : 'javascript',
+    isImage,
+    imageUrl,
     saveNow,
     copy,
     download,

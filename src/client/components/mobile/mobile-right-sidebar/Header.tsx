@@ -8,6 +8,8 @@ interface EditorHeaderProps {
   isPreview: boolean;
   wordWrap: boolean;
   copied: boolean;
+  /** Raster image: wrap and font zoom are text-only, so both are hidden. */
+  isImage?: boolean;
   onClose: () => void;
   onTogglePreview: () => void;
   onToggleWrap: () => void;
@@ -24,6 +26,7 @@ export function EditorHeader({
   isPreview,
   wordWrap,
   copied,
+  isImage = false,
   onClose,
   onTogglePreview,
   onToggleWrap,
@@ -71,32 +74,36 @@ export function EditorHeader({
           </button>
         )}
 
-        <button
-          type="button"
-          onClick={onToggleWrap}
-          className={`p-1.5 rounded hover:bg-ink/10 transition-colors cursor-pointer ${wordWrap ? 'text-ink' : ''}`}
-          title="Toggle word wrap"
-        >
-          <WrapText size={15} />
-        </button>
+        {!isImage && (
+          <>
+            <button
+              type="button"
+              onClick={onToggleWrap}
+              className={`p-1.5 rounded hover:bg-ink/10 transition-colors cursor-pointer ${wordWrap ? 'text-ink' : ''}`}
+              title="Toggle word wrap"
+            >
+              <WrapText size={15} />
+            </button>
 
-        <button
-          type="button"
-          onClick={onZoomOut}
-          className="p-1.5 rounded hover:bg-ink/10 transition-colors cursor-pointer"
-          title="Decrease font size"
-        >
-          <ZoomOut size={15} />
-        </button>
+            <button
+              type="button"
+              onClick={onZoomOut}
+              className="p-1.5 rounded hover:bg-ink/10 transition-colors cursor-pointer"
+              title="Decrease font size"
+            >
+              <ZoomOut size={15} />
+            </button>
 
-        <button
-          type="button"
-          onClick={onZoomIn}
-          className="p-1.5 rounded hover:bg-ink/10 transition-colors cursor-pointer"
-          title="Increase font size"
-        >
-          <ZoomIn size={15} />
-        </button>
+            <button
+              type="button"
+              onClick={onZoomIn}
+              className="p-1.5 rounded hover:bg-ink/10 transition-colors cursor-pointer"
+              title="Increase font size"
+            >
+              <ZoomIn size={15} />
+            </button>
+          </>
+        )}
 
         <button
           type="button"
