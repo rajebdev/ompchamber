@@ -19,6 +19,7 @@ export interface BtwComposerProps {
   running: boolean;
   modelLabel?: string;
   provider?: string;
+  providerNames?: Record<string, string>;
   attachments: { id: string; name: string; size: number }[];
   onFilesSelected: (files: File[]) => void;
   onRemoveAttachment: (id: string) => void;
@@ -34,6 +35,7 @@ export function BtwComposer({
   running,
   modelLabel,
   provider,
+  providerNames,
   attachments,
   onFilesSelected,
   onRemoveAttachment,
@@ -42,7 +44,7 @@ export function BtwComposer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const canSend = value.trim().length > 0 || attachments.length > 0;
-  const providerText = provider ? providerLabel(provider) : '';
+  const providerText = provider ? providerLabel(provider, providerNames) : '';
 
   // The form replaces the chat composer that had focus, so the caret is put
   // here — the field the form is for, and the one a restored draft is waiting

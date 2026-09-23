@@ -26,14 +26,18 @@ export interface BtwFormProps {
   /** The chat's own model, shown until the topic reports the one it ran on. */
   modelName?: string;
   provider?: string;
+  providerNames?: Record<string, string>;
 }
 
-export function BtwForm({ mode, modelName, provider }: BtwFormProps) {
+export function BtwForm({ mode, modelName, provider, providerNames }: BtwFormProps) {
   const [attachments, setAttachments] = useState<BtwAttachment[]>([]);
   const lastTurn = mode.activeTopic?.turns[mode.activeTopic.turns.length - 1];
   // `busy` is the command in flight (a promote POST, say): promoting again from
   // the same click burst would be a second request for work already running.
-  const canPromote = Boolean(mode.activeTopic) && !mode.runningTopicId && !mode.busy && lastTurn?.status === 'complete';
+  // An already-promoted topic needs no second button either — its branch
+  // session exists, and the server hands that id back on a repeat promote.
+  const canPromote =
+    Boolean(mode.activeTopic) && !mode.runningTopicId && !mode.busy && !mode.activeTopic?.promotedSessionId && lastTurn?.status === 'complete';
   const showTurns = (mode.activeTopic?.turns.length ?? 0) > 0 || Boolean(mode.error);
 
   return (
@@ -72,6 +76,7 @@ export function BtwForm({ mode, modelName, provider }: BtwFormProps) {
         running={Boolean(mode.runningTopicId)}
         modelLabel={mode.activeTopic?.model?.name ?? modelName}
         provider={mode.activeTopic?.model?.provider ?? provider}
+        providerNames={providerNames}
         attachments={attachments}
         onFilesSelected={(files) => {
           void readBtwAttachments(files).then((next) => setAttachments((prev) => [...prev, ...next]));
