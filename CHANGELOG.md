@@ -5,6 +5,12 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1](https://github.com/rajebdev/ompchamber/compare/v1.2.0...v1.2.1) — 2026-09-23
+
+### Fixed
+
+* **btw:** hide the promote button once promoted and label the chip like the chat does ([cd48766](https://github.com/rajebdev/ompchamber/commit/cd48766034389b0fe7d9ca8ed23e90c6ab86b7fb))
+
 ## [1.2.0](https://github.com/rajebdev/ompchamber/compare/v1.1.0...v1.2.0) — 2026-09-23
 
 ### Added
