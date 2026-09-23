@@ -4,7 +4,7 @@
  */
 
 import type { ChatMessageData } from '@/shared/types/chat';
-import { extractText, extractUserImageAttachments, parseAssistantContent, resultOutput, roleFor, stripInlinedTextAttachments, type OmpMessageEntry } from '@/shared/lib/omp/session/messages-parse';
+import { extractInlinedTextAttachments, extractText, extractUserImageAttachments, parseAssistantContent, resultOutput, roleFor, stripInlinedTextAttachments, type OmpMessageEntry } from '@/shared/lib/omp/session/messages-parse';
 import { isRecord } from '@/shared/lib/util/guards';
 import { reminderPartIndex } from '@/shared/lib/chat/notice-row';
 import { deriveTurnError } from '@/shared/lib/omp/session/turn-error';
@@ -32,8 +32,21 @@ export function toChatMessage(entry: OmpMessageEntry): ChatMessageData | null {
   };
 
   if (role === 'user') {
-    const text = stripInlinedTextAttachments(extractText(content));
-    const attachments = extractUserImageAttachments(content);
+    const rawText = extractText(content);
+    const text = stripInlinedTextAttachments(rawText);
+    // omp keeps no attachment metadata for a text file: the composer inlined it
+    // into the prompt and that composed prompt is the only record. Recover the
+    // names from those blocks so a reloaded session still shows their chips —
+    // images survive on their own (they ride as a content block), text files
+    // did not, and disappeared from the timeline entirely.
+    const textAttachments = extractInlinedTextAttachments(rawText);
+    const attachments = [...extractUserImageAttachments(content), ...textAttachments.map((file, index) => ({
+      id: `text-${index + 1}`,
+      name: file.name,
+      type: 'text/plain',
+      preview: '',
+      content: file.content,
+    }))];
     if (!text.trim() && attachments.length === 0) return null;
     return { ...base, content: text, attachments };
   }

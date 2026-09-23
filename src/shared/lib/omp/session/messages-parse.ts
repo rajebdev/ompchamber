@@ -13,7 +13,7 @@
 
 import type { ToolCallData } from '@/shared/types/chat';
 import type { OmpMessageEntry } from '@/shared/types/omp/session';
-import { extractText as coreExtractText, extractUserImageAttachments, parseMessageBlocks, stripInlinedTextAttachments, toToolCallData } from '@/shared/lib/omp/session/parse-message-blocks';
+import { extractInlinedTextAttachments, extractText as coreExtractText, extractUserImageAttachments, parseMessageBlocks, stripInlinedTextAttachments, toToolCallData } from '@/shared/lib/omp/session/parse-message-blocks';
 import { isRecord } from '@/shared/lib/util/guards';
 
 export { stripInlinedTextAttachments };
@@ -66,4 +66,4 @@ export function parseAssistantContent(content: unknown): ParsedAssistantTurn {
   };
 }
 
-export { extractUserImageAttachments };
+export { extractUserImageAttachments, extractInlinedTextAttachments };

@@ -13,7 +13,7 @@
  */
 
 import type { ChatMessageData, ToolCallData } from '@/shared/types';
-import { extractText, extractUserImageAttachments, parseMessageBlocks, stripInlinedTextAttachments, toToolCallData } from '@/shared/lib/omp/session/parse-message-blocks';
+import { extractInlinedTextAttachments, extractText, extractUserImageAttachments, parseMessageBlocks, stripInlinedTextAttachments, toToolCallData } from '@/shared/lib/omp/session/parse-message-blocks';
 import { reminderPartIndex } from '@/shared/lib/chat/notice-row';
 import { deriveTurnError } from '@/shared/lib/omp/session/turn-error';
 import { formatClock } from '@/shared/lib/format/time';
@@ -95,8 +95,22 @@ export function toChatMessage(raw: Record<string, unknown>, streaming = true): C
   }
 
   if (role === 'user') {
-    const text = stripInlinedTextAttachments(parsed.textParts.join('\n'));
-    const attachments = extractUserImageAttachments(raw.content);
+    const rawText = parsed.textParts.join('\n');
+    const text = stripInlinedTextAttachments(rawText);
+    // Parity with the JSONL path: the composer's inlined `Attached file:` blocks
+    // are the only record of a text attachment, so they are read back into
+    // chips here too. Without this a text file vanished from the timeline as
+    // soon as the turn was re-rendered from the wire.
+    const attachments = [
+      ...extractUserImageAttachments(raw.content),
+      ...extractInlinedTextAttachments(rawText).map((file, index) => ({
+        id: `text-${index + 1}`,
+        name: file.name,
+        type: 'text/plain',
+        preview: '',
+        content: file.content,
+      })),
+    ];
     return {
       id,
       role,
@@ -105,7 +119,13 @@ export function toChatMessage(raw: Record<string, unknown>, streaming = true): C
       startedAt,
       content: text,
       attribution,
-      attachments: attachments.map((a) => ({ id: a.id, name: a.name, preview: a.preview, type: a.type })),
+      attachments: attachments.map((a) => ({
+        id: a.id,
+        name: a.name,
+        preview: a.preview,
+        type: a.type,
+        ...('content' in a ? { content: a.content } : {}),
+      })),
     };
   }
 

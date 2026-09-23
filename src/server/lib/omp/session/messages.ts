@@ -25,6 +25,7 @@ import { normalizeThinkingLevel } from '@/shared/lib/models/thinking-levels';
 import type { ChatMessageData } from '@/shared/types/chat';
 import { collectToolOutputs, noticeFromCustomMessage, toChatMessage, type SequenceState } from '@/shared/lib/omp/session/messages-map';
 import type { OmpMessageEntry } from '@/shared/lib/omp/session/messages-parse';
+import { readBlobRef } from '@/server/lib/omp/session/blobs.server';
 
 const MAX_SESSION_LOAD_BYTES = 512 * 1024 * 1024;
 
@@ -121,7 +122,40 @@ export async function loadSessionMessages(filePath: string): Promise<ChatMessage
     }
     state.messages.push(mapped);
   }
+  await resolveImageBlobs(state.messages);
   return state.messages;
+}
+
+/**
+ * Replace `blob:sha256:` image references with the bytes they point at.
+ *
+ * omp externalizes a large attached image out of the session JSONL: the entry
+ * keeps the ref, the bytes go to the blob store. Only omp's own loader resolves
+ * them, so a reloaded chamber session used to render
+ * `data:image/png;base64,blob:sha256:…` — a data URL whose payload is the ref
+ * string, which the browser cannot decode. The ref itself is dropped once
+ * resolved; an unresolvable one leaves the attachment with no preview rather
+ * than a broken image.
+ */
+async function resolveImageBlobs(messages: ChatMessageData[]): Promise<void> {
+  const pending: Promise<void>[] = [];
+  for (const message of messages) {
+    for (const attachment of message.attachments ?? []) {
+      // `blobRef` rides the attachment only until the bytes are read back; it is
+      // not part of the public attachment shape, so narrow before touching it.
+      if (!('blobRef' in attachment) || typeof attachment.blobRef !== 'string') continue;
+      const ref = attachment.blobRef;
+      delete attachment.blobRef;
+      pending.push(
+        readBlobRef(ref).then((bytes) => {
+          if (bytes) {
+            attachment.preview = `data:${attachment.type ?? 'image/png'};base64,${bytes.toString('base64')}`;
+          }
+        }),
+      );
+    }
+  }
+  await Promise.all(pending);
 }
 
 /** Derive the display title from the JSONL header/title slot (cheap read). */

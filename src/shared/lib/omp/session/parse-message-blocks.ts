@@ -182,14 +182,37 @@ export function toToolCallData(
   };
 }
 
+/**
+ * A user-attachment entry extracted from an omp content block. `blobRef` is set
+ * when omp externalized the bytes instead of inlining them (see
+ * `@/server/lib/omp/session/blobs.server`); the server resolves it before the
+ * timeline sees the attachment, so `preview` here is only a placeholder.
+ */
+export interface ExtractedImageAttachment {
+  id: string;
+  name: string;
+  preview: string;
+  type: string;
+  /** `blob:sha256:<hash>` when the bytes were externalized, else undefined. */
+  blobRef?: string;
+}
+
+/** True for the `blob:sha256:<hash>` references omp writes in place of image data. */
+export function isBlobImageRef(data: string): boolean {
+  return data.startsWith('blob:sha256:');
+}
+
 /** Extract image blocks from an omp user content array ({type:'image',
- *  data: base64, mimeType}) into ChatMessageData attachment entries so the
- *  timeline keeps showing them after a reload from the session JSONL. */
+ *  data: base64 | blob:sha256:<hash>, mimeType}) into ChatMessageData attachment
+ *  entries so the timeline keeps showing them after a reload from the session
+ *  JSONL. A blob ref carries no preview: building one from the ref string
+ *  produced an undecodable `data:` URL, which is what the server-side resolver
+ *  now replaces with the real bytes. */
 export function extractUserImageAttachments(
   content: unknown,
-): { id: string; name: string; preview: string; type: string }[] {
+): ExtractedImageAttachment[] {
   if (!Array.isArray(content)) return [];
-  const attachments: { id: string; name: string; preview: string; type: string }[] = [];
+  const attachments: ExtractedImageAttachment[] = [];
   let index = 0;
   for (const block of content) {
     if (!isRecord(block) || block.type !== 'image') continue;
@@ -198,11 +221,13 @@ export function extractUserImageAttachments(
     if (!data) continue;
     index += 1;
     const ext = (mimeType.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '') || 'png';
+    const externalized = isBlobImageRef(data);
     attachments.push({
       id: `att-${index}`,
       name: `attachment-${index}.${ext}`,
-      preview: `data:${mimeType};base64,${data}`,
+      preview: externalized ? '' : `data:${mimeType};base64,${data}`,
       type: mimeType,
+      ...(externalized ? { blobRef: data } : {}),
     });
   }
   return attachments;
@@ -220,4 +245,59 @@ export function stripInlinedTextAttachments(text: string): string {
   const rest = text.slice(match.index + match[0].length);
   if (!/^[^\n]+\n```[a-z]*\n/.test(rest)) return text;
   return before.trim();
+}
+
+/** One text file recovered from an inlined `Attached file:` block. */
+export interface InlinedTextAttachment {
+  name: string;
+  content: string;
+}
+
+/**
+ * Recover the text files the composer inlined into a delivered prompt.
+ *
+ * omp stores no attachment metadata for a text file: the composer appends each
+ * one to the prompt as `Attached file: <name>` plus a fenced block, and that
+ * composed prompt IS the session record. `stripInlinedTextAttachments` removes
+ * those blocks for display, which also throws the names away — so a reloaded
+ * session showed no chip for a dropped `.md`/`.py`/`.json` while its image
+ * siblings survived (images ride as their own content block).
+ *
+ * This walks the same format back out, so the timeline can render the chips and
+ * re-open the files. The fence length is whatever `fenceForContent` chose (at
+ * least 3 backticks, longer when the content itself contains a run), and a
+ * block's content may contain anything — including the literal string
+ * "Attached file:" — so the closing fence is matched by exact length rather
+ * than by looking for the next header.
+ */
+export function extractInlinedTextAttachments(text: string): InlinedTextAttachment[] {
+  const attachments: InlinedTextAttachment[] = [];
+  const header = /(?:^|\n{2})Attached file: ([^\n]+)\n(`{3,})[a-zA-Z0-9_-]*\n/g;
+  let match: RegExpExecArray | null;
+  while ((match = header.exec(text)) !== null) {
+    const name = match[1].trim();
+    const fence = match[2];
+    const contentStart = match.index + match[0].length;
+    // The closing fence sits on its own line and repeats the opening run
+    // exactly; a longer run is content, not the close.
+    const closer = `\n${fence}`;
+    let cursor = contentStart;
+    let end = -1;
+    while (cursor <= text.length) {
+      const at = text.indexOf(closer, cursor);
+      if (at === -1) break;
+      const after = text.slice(at + closer.length);
+      // Accept the close only at a block boundary: end of string, or a blank
+      // line followed by the next header / nothing.
+      if (after === '' || after.startsWith('\n') || /^\n{2}Attached file: /.test(after)) {
+        end = at;
+        break;
+      }
+      cursor = at + closer.length;
+    }
+    if (end === -1) continue;
+    attachments.push({ name, content: text.slice(contentStart, end) });
+    header.lastIndex = end + closer.length;
+  }
+  return attachments;
 }
