@@ -124,9 +124,9 @@ export function Goal({ tool }: { tool: ToolCallData }) {
             {payload.summary && (
               <div>
                 <span className="text-[10px] font-mono text-ink/45 uppercase tracking-wider">Summary</span>
-                <p className="mt-0.5 font-sans text-[12px] text-ink font-medium leading-relaxed">
-                  {payload.summary}
-                </p>
+                <div className="mt-0.5 rounded border border-ink/6 bg-ink/[0.03] p-2">
+                  <MarkdownRenderer content={payload.summary} className="font-medium" />
+                </div>
               </div>
             )}
 
