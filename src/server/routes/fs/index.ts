@@ -1,5 +1,5 @@
 import { bindingsFor, type HandlerBinding } from '@/server/lib/route-adapter';
-import { browseDirectories, listDirectory, listFiles, readFile } from '@/server/routes/fs/read';
+import { browseDirectories, listDirectory, listFiles, readFile, readReferencedFile } from '@/server/routes/fs/read';
 import { serveRawFile } from '@/server/routes/fs/raw';
 import * as fsAction from '@/server/routes/fs/action';
 import * as fsGit from '@/server/routes/fs/git';
@@ -17,5 +17,6 @@ export const fsBindings: HandlerBinding[] = [
   { method: 'GET', path: '/api/fs/dir', handler: listDirectory },
   { method: 'GET', path: '/api/fs/list', handler: listFiles },
   { method: 'GET', path: '/api/fs/read', handler: readFile },
+  { method: 'GET', path: '/api/fs/read-reference', handler: readReferencedFile },
   { method: 'GET', path: '/api/fs/raw', handler: serveRawFile },
 ];

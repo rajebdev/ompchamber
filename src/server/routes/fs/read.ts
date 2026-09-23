@@ -10,7 +10,7 @@ import { dirname, isAbsolute, join, resolve } from 'path';
 import fs from 'fs';
 import path from 'path';
 import { isMockMode } from '@/server/mock.server';
-import { getDefaultFsRoot, resolveRoot, resolveWithinRoot } from '@/server/lib/fs/root';
+import { getDefaultFsRoot, resolveReferencedPath, resolveRoot, resolveWithinRoot } from '@/server/lib/fs/root';
 import { collectIgnoredPaths } from '@/server/lib/fs/git-ignore';
 import { getImageMimeType } from '@/shared/lib/fs/file-kind';
 
@@ -231,7 +231,6 @@ export async function readFile({ request }: LoaderFunctionArgs) {
   if (!filePath) {
     return json({ error: 'Missing path' }, { status: 400 });
   }
-
   let baseDir = await resolveRoot(url.searchParams.get('root'), await getDefaultFsRoot(isMockMode()));
 
   // If repo is specified (e.g. nested git project), resolve inside the repo
@@ -270,6 +269,52 @@ export async function readFile({ request }: LoaderFunctionArgs) {
 
     const content = await file.text();
     return json({ content });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+/**
+ * GET /api/fs/read-reference?path=<abs path or URL> — read a file a drop or a
+ * link pointed at.
+ *
+ * A download dragged out of a web page (WhatsApp Web, Gmail, Slack) carries no
+ * bytes, only a reference, and the page cannot fetch a `file://` path itself.
+ * The path is therefore resolved against the same allow-list that governs a
+ * client-supplied `root` — the app root, a path beneath it, or a registered
+ * workspace — so this cannot be used to read an arbitrary file.
+ *
+ * Text only: an image or binary has no string form to return, and the drop's
+ * own `File` is the path that carries those.
+ */
+export async function readReferencedFile({ request }: LoaderFunctionArgs) {
+  const url = new URL(request.url);
+  const reference = url.searchParams.get('path');
+  if (!reference) {
+    return json({ error: 'Missing path' }, { status: 400 });
+  }
+
+  // A remote reference is not fetched here: the chamber has no policy for
+  // outbound requests and a drag from a page is not a reason to add one.
+  if (/^https?:\/\//i.test(reference)) {
+    return json({ error: 'Remote references are not supported' }, { status: 400 });
+  }
+
+  const filePath = await resolveReferencedPath(reference.replace(/^file:\/\//, ''));
+  if (!filePath) {
+    return json({ error: 'File not found' }, { status: 404 });
+  }
+
+  try {
+    const file = Bun.file(filePath);
+    const stat = await file.stat();
+    if (stat.isDirectory()) {
+      return json({ error: 'Cannot read a directory' }, { status: 400 });
+    }
+    if (getImageMimeType(filePath)) {
+      return json({ error: 'Image files are served by /api/fs/raw' }, { status: 400 });
+    }
+    return json({ content: await file.text(), name: path.basename(filePath) });
   } catch (error) {
     return errorResponse(error);
   }

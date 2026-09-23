@@ -29,6 +29,43 @@ export function resolveWithinRoot(root: string, rel: string): string | null {
 }
 
 /**
+ * Resolve a file a drop or a link pointed at, which may live outside the active
+ * root.
+ *
+ * A dropped file is always named by an absolute path or URL — a file manager
+ * cannot know which workspace the page considers active — so
+ * {@link resolveWithinRoot} rejects exactly the references the composer needs.
+ * The allow-list that governs a client-supplied `root` governs these too: the
+ * app root, a path beneath it, or an exact registered workspace project path.
+ * Anything else resolves to null, so an arbitrary path from a page still cannot
+ * read the filesystem.
+ */
+export async function resolveReferencedPath(rawPath: string): Promise<string | null> {
+  const candidate = rawPath.trim();
+  if (!candidate) return null;
+
+  const resolved = path.resolve(candidate);
+  if (resolved === APP_ROOT || resolved.startsWith(APP_ROOT + path.sep)) {
+    return (await pathExists(resolved)) ? resolved : null;
+  }
+
+  try {
+    const db = await getDb();
+    const rows = (await db.all(
+      'SELECT project_path FROM workspace_folders WHERE project_path IS NOT NULL'
+    )) as { project_path: string }[];
+    for (const row of rows) {
+      const workspaceRoot = path.resolve(row.project_path);
+      if (isWithinRoot(workspaceRoot, resolved) && (await pathExists(resolved))) return resolved;
+    }
+  } catch {
+    // Database unavailable — nothing outside the app root can be verified.
+  }
+
+  return null;
+}
+
+/**
  * Default browsing root when no session-bound project is active. Mock/demo
  * mode browses the bundled `examples` tree; real mode browses the app root.
  */
