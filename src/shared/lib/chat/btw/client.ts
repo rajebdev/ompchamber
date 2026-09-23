@@ -1,0 +1,94 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * Client for a session's BTW API: the frame stream, plus the commands that
+ * create, continue, cancel and promote a side question.
+ *
+ * The stream reuses the generic JSON connectors the agent stream introduced
+ * (they are transport-only: URL in, decoded frames out), so a session's side
+ * questions follow the same transport setting — WebSocket by default, SSE
+ * where the upgrade is blocked — instead of forking a third stream flavour.
+ */
+
+import type { BtwFrame, BtwState, StreamTransport } from '@/shared/types';
+import { connectEvents } from '@/shared/lib/chat/omp/sse';
+import { connectSocket } from '@/shared/lib/chat/omp/socket';
+import { btwEventsUrl, btwSocketUrl } from '@/shared/lib/chat/omp/transport';
+import type { StreamConnection, StreamHandlers } from '@/shared/lib/chat/omp/transport';
+
+export type BtwStreamHandlers = StreamHandlers<BtwFrame>;
+
+/** A rejected command, carrying the server's machine-readable reason. */
+export class BtwRequestError extends Error {
+  readonly code?: string;
+
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = 'BtwRequestError';
+    this.code = code;
+  }
+}
+
+export function connectBtwStream(
+  sessionId: string,
+  transport: StreamTransport,
+  handlers: BtwStreamHandlers,
+): StreamConnection {
+  return transport === 'sse' ? connectEvents(btwEventsUrl(sessionId), handlers) : connectSocket(btwSocketUrl(sessionId), handlers);
+}
+
+interface BtwResponseBody {
+  success?: boolean;
+  data?: unknown;
+  error?: string;
+  code?: string;
+}
+
+async function requestBtw<T>(sessionId: string, method: 'GET' | 'POST', body?: Record<string, unknown>): Promise<T> {
+  const response = await fetch(`/api/btw/${encodeURIComponent(sessionId)}`, {
+    method,
+    ...(body
+      ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+      : {}),
+  });
+  const payload = (await response.json().catch(() => null)) as BtwResponseBody | null;
+  if (!response.ok || !payload?.success) {
+    throw new BtwRequestError(payload?.error ?? `Side question request failed (${response.status})`, payload?.code);
+  }
+  return payload.data as T;
+}
+
+/** The session's side questions as the server sees them. */
+export function fetchBtwState(sessionId: string): Promise<BtwState> {
+  return requestBtw<BtwState>(sessionId, 'GET');
+}
+
+export interface AskBtwInput {
+  topicId?: string;
+  question: string;
+  images?: Array<{ data: string; mimeType: string }>;
+}
+
+export function askBtwQuestion(sessionId: string, input: AskBtwInput): Promise<BtwState> {
+  return requestBtw<BtwState>(sessionId, 'POST', {
+    action: 'ask',
+    question: input.question,
+    ...(input.topicId ? { topicId: input.topicId } : {}),
+    ...(input.images?.length ? { images: input.images } : {}),
+  });
+}
+
+export function abortBtwQuestion(sessionId: string, topicId: string): Promise<BtwState> {
+  return requestBtw<BtwState>(sessionId, 'POST', { action: 'abort', topicId });
+}
+
+export function promoteBtwTopic(sessionId: string, topicId: string): Promise<{ sessionId: string }> {
+  return requestBtw<{ sessionId: string }>(sessionId, 'POST', { action: 'promote', topicId });
+}
+
+export function deleteBtwTopic(sessionId: string, topicId: string): Promise<BtwState> {
+  return requestBtw<BtwState>(sessionId, 'POST', { action: 'delete', topicId });
+}

@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from 'preact/compat';
 import { ChatInput } from '@/client/components/workspace/chat-timeline/chat-input/index';
+import { BtwPanel } from '@/client/components/workspace/btw-panel/index';
 import { GeneratingIndicator } from '@/client/components/workspace/chat-timeline/GeneratingIndicator';
 import { QueueList } from '@/client/components/workspace/chat-timeline/QueueList';
 import type { Attachment, QueuedMessage } from '@/shared/types';
@@ -7,6 +8,8 @@ import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 
 interface ComposerDockProps {
   isMobile: boolean;
+  /** Chamber session the side-question panel scopes to. */
+  sessionId: string | null;
   isGenerating: boolean;
   modelName?: string;
   generatingVerb: string;
@@ -45,6 +48,7 @@ interface ComposerDockProps {
  */
 export function ComposerDock({
   isMobile,
+  sessionId,
   isGenerating,
   modelName,
   generatingVerb,
@@ -80,7 +84,11 @@ export function ComposerDock({
       className={`bg-transparent border-t-0 flex-shrink-0 space-y-2 ${isMobile ? 'px-3 pt-1' : 'p-4 pt-1'}`}
       style={isMobile ? { paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' } : undefined}
     >
-      <div className="mx-auto w-full max-w-[970px]">
+      {/* `relative` is the side-question panel's containing block: it floats
+          above the whole dock stack (`bottom-full`), so it never covers the
+          composer it is opened from. */}
+      <div className="relative mx-auto w-full max-w-[970px]">
+        <BtwPanel sessionId={sessionId} appSettings={appSettings} />
         {isGenerating && (
           <GeneratingIndicator
             modelName={modelName}

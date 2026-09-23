@@ -106,6 +106,23 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     // resume delivering after this run ends.
     stopHoldRef.current = false;
 
+    // `/btw [question]` is the side-question entry point, not chat text: the
+    // panel owns it (omp's `/btw` is TUI-only, so nothing downstream would
+    // understand the token). A bare `/btw` only opens the panel's history.
+    const btwCommand = /^\/btw(?:\s+([\s\S]*))?$/i.exec(textToSend);
+    if (btwCommand) {
+      const images = attachments
+        .filter(a => a.file.type.startsWith('image/') && a.dataBase64)
+        .map(a => ({ data: a.dataBase64 as string, mimeType: a.file.type }));
+      setInputValue('');
+      window.dispatchEvent(
+        new CustomEvent('omp:btw', {
+          detail: { question: btwCommand[1]?.trim() ?? '', ...(images.length ? { images } : {}) },
+        }),
+      );
+      return;
+    }
+
     if (isGenerating) {
       if (options?.steering) {
         // Explicit steering while a run is active.

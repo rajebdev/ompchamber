@@ -2,6 +2,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import { createDb, type DbClient } from '@/server/lib/db/client';
+import { ensureBtwSchema } from '@/server/lib/btw/schema.server';
 import { isMockMode } from '@/server/mock.server';
 import { SAMPLE_TOOLS_SESSION_ID, getSampleToolsSession } from '@/client/data/samples/tools-session';
 import { SAMPLE_DIALOGUE_SESSION_ID, getSampleDialogueSession } from '@/client/data/samples/dialogue-session';
@@ -126,6 +127,8 @@ export async function getDb(): Promise<DbClient> {
 
     const { migrateWorkspaceFolderColumns } = await import('@/shared/lib/workspace/schema-migrations');
     await migrateWorkspaceFolderColumns(db);
+    // Side-question tables live in their own module (see schema.server.ts).
+    await ensureBtwSchema(db);
     // Installs older `queued_messages` schemas carry an invalid FK (see the
     // migration module); rebuild once so real-session queue inserts work.
     const { migrateQueueTableFk } = await import('@/server/lib/queue/schema-migration.server');
