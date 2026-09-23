@@ -94,7 +94,7 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
 
   // Older-window pagination (cursor, retry flag, scroll anchoring) lives in its
   // own hook so this one stays under the repo's per-file size ceiling.
-  const { hasMore, loadingOlder, loadOlderError, loadOlder, resetPages, applyWindow } = useSessionPagination({
+  const { hasMore, loadingOlder, loadOlderError, loadOlder, jumpToTurn, resetPages, applyWindow } = useSessionPagination({
     sessionId,
     sessionIdRef,
     setLocalMessages,
@@ -268,6 +268,7 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
     loadOlderError,
     sessionLoading,
     loadOlder,
+    jumpToTurn,
     adoptedSessionIdRef,
     refreshSessionMeta,
     seedSession,

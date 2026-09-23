@@ -8,7 +8,14 @@
  * rewind endpoint: identifying raw composer input and deciding whether a
  * JSONL-derived user turn and a stored DB-copy turn are the same request
  * (omp rewrites delivered prompts, so equality is not enough).
+ *
+ * The jump rail also reads from here: it lists user turns of the FULL session
+ * (`/api/chat/:id/turns`) and from the mounted window, and both build the same
+ * tooltip preview, so the truncation length is shared rather than duplicated.
  */
+
+/** Longest prompt excerpt a rail tooltip renders. */
+export const TURN_PREVIEW_CHARS = 220;
 
 /** Whether a stored content string is raw composer input (slash command or
  *  @mention) rather than the prompt omp actually delivered. */

@@ -10,6 +10,7 @@ import { useChatTimelineActions } from '@/client/hooks/chat/timeline/actions';
 import { useChatTimelineSend } from '@/client/hooks/chat/timeline/send';
 import type { ComposerModelPick } from '@/client/hooks/chat/timeline/deferred-model';
 import { useSessionLoad } from '@/client/hooks/chat/timeline/session-load';
+import { useUserTurns } from '@/client/hooks/chat/timeline/user-turns';
 import { useBrowserPageContextInsert } from '@/client/hooks/chat/timeline/browser-context';
 import { cancelStreamingCoalescer, createOmpAgentCallbacks } from '@/shared/lib/chat/timeline/omp-callbacks';
 import { readStreamTransport } from '@/shared/lib/chat/omp/transport';
@@ -119,14 +120,9 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
 
   const {
     sessionData,
-    adoptedSessionIdRef,
-    refreshSessionMeta,
-    seedSession,
+    adoptedSessionIdRef, refreshSessionMeta, seedSession,
     hasMore,
-    loadingOlder,
-    loadOlderError,
-    sessionLoading,
-    loadOlder,
+    loadingOlder, loadOlderError, sessionLoading, loadOlder, jumpToTurn,
   } = useSessionLoad({
     sessionId,
     setLocalMessages,
@@ -140,6 +136,14 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     scrollRef,
   });
   loadOlderRef.current = loadOlder;
+
+  // Jump rail: the full-history turn index (the mounted window is only a page
+  // of a long session) plus the paging walk that reaches a turn outside it.
+  const { turns: userTurns, jumping: jumpingTurn, jumpToTurn: jumpToUserTurn } = useUserTurns({
+    sessionId,
+    messages: localMessages,
+    jumpToTurn,
+  });
 
   // Composer picks made BEFORE the omp session exists (pending "new-…" view):
   // there is no live session to receive the RPC yet, so the selection is held
@@ -303,6 +307,9 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     loadOlderError,
     sessionLoading,
     loadOlder,
+    userTurns,
+    jumpingTurn,
+    jumpToUserTurn,
     generatingVerb,
     messageQueue,
     removeMessage,

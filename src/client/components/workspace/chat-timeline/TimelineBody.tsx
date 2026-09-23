@@ -3,12 +3,15 @@ import { ArrowDown } from 'lucide-preact';
 import { MessageList } from '@/client/components/workspace/chat-timeline/MessageList';
 import { MinimapShortcuts } from '@/client/components/workspace/chat-timeline/MinimapShortcuts';
 import { LoadingOlderIndicator } from '@/client/components/workspace/chat-timeline/SessionSkeleton';
-import type { ChatMessageData } from '@/shared/types';
+import type { ChatMessageData, UserTurnRef } from '@/shared/types';
 
 interface TimelineBodyProps {
   isMobile: boolean;
-  userMessages: ChatMessageData[];
-  onScrollTo: (id: string) => void;
+  /** Every user turn of the session (full history), for the jump rail. */
+  userTurns: UserTurnRef[];
+  /** A jump is paging history to reach the clicked turn. */
+  jumpingTurn: boolean;
+  onJumpTurn: (turn: UserTurnRef) => void;
   scrollRef: RefObject<HTMLDivElement>;
   contentRef: (node: HTMLDivElement | null) => void;
   handleScroll: () => void;
@@ -38,8 +41,9 @@ interface TimelineBodyProps {
  */
 export function TimelineBody({
   isMobile,
-  userMessages,
-  onScrollTo,
+  userTurns,
+  jumpingTurn,
+  onJumpTurn,
   scrollRef,
   contentRef,
   handleScroll,
@@ -66,7 +70,7 @@ export function TimelineBody({
       {/* Minimap Shortcuts — desktop only: the rail needs side room a
           phone does not have. */}
       {!isMobile && (
-        <MinimapShortcuts userMessages={userMessages} onScrollTo={onScrollTo} />
+        <MinimapShortcuts turns={userTurns} jumping={jumpingTurn} onJumpTurn={onJumpTurn} />
       )}
 
       {/* Timeline Body */}

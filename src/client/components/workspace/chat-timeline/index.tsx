@@ -3,6 +3,7 @@ import { useSearchParams } from '@/client/lib/router/search-params';
 import { ExtensionDialog } from '@/client/components/workspace/chat-timeline/tool-renderers/extension-dialog/Lazy';
 import { AskFramesContext, splitAskFrames, type AskFramesHandle } from '@/client/hooks/chat/timeline/ask-frames';
 import type { ExtensionUiDialogRequest } from '@/shared/types/omp/agent';
+import type { UserTurnRef } from '@/shared/types/chat';
 import type { ExtensionDialogResponse } from '@/client/components/workspace/chat-timeline/tool-renderers/extension-dialog/Lazy';
 import { EmptyWorkspacePrompt } from '@/client/components/workspace/chat-timeline/EmptyWorkspacePrompt';
 import { SessionSkeleton } from '@/client/components/workspace/chat-timeline/SessionSkeleton';
@@ -47,6 +48,9 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
     hasMore,
     loadingOlder, loadOlderError, sessionLoading,
     loadOlder,
+    userTurns,
+    jumpingTurn,
+    jumpToUserTurn,
     generatingVerb,
     messageQueue,
     removeMessage,
@@ -127,18 +131,14 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
 
   useSessionTitle(sessionId, sessionData?.title, onSessionTitle);
 
-  const handleScrollTo = useCallback((id: string) => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-  }, []);
+  const handleJumpTurn = useCallback((turn: UserTurnRef) => {
+    void jumpToUserTurn(turn.id, turn.index);
+  }, [jumpToUserTurn]);
 
   const handleNewChat = useCallback((content: string) => setNewChatInitialContent(content), []);
 
   const modelNames = useModelNames();
   const providerNames = useProviderNames();
-  const userMessages = useMemo(() => localMessages.filter(m => m.role === 'user'), [localMessages]);
   const sessionProvider = typeof sessionData?.model === 'object' ? sessionData.model.provider : undefined;
   const sessionModelName = typeof sessionData?.model === 'object'
     ? (modelNames[sessionData.model.modelId] ?? sessionData.model.modelId)
@@ -210,8 +210,9 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
               ) : (
                 <TimelineBody
                   isMobile={isMobile}
-                  userMessages={userMessages}
-                  onScrollTo={handleScrollTo}
+                  userTurns={userTurns}
+                  jumpingTurn={jumpingTurn}
+                  onJumpTurn={handleJumpTurn}
                   scrollRef={scrollRef}
                   contentRef={contentRef}
                   handleScroll={handleScroll}
