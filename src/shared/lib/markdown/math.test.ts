@@ -20,16 +20,19 @@
  * they are no-ops everywhere else.
  */
 
-import { beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
 let hydrateMathBlocks: typeof import('@/shared/lib/markdown/katex').hydrateMathBlocks;
 let renderMarkdown: typeof import('@/shared/lib/markdown/marked').renderMarkdown;
 let sanitizeHtml: typeof import('@/shared/lib/markdown/sanitize').sanitizeHtml;
 
+const displaced: Record<string, unknown> = {};
+const installed: Record<string, unknown> = {};
+
 beforeAll(async () => {
   const win = new Window({ url: 'http://localhost' });
-  Object.assign(globalThis, {
+  for (const [key, value] of Object.entries({
     window: win,
     document: win.document,
     MutationObserver: win.MutationObserver,
@@ -37,7 +40,11 @@ beforeAll(async () => {
     Element: win.Element,
     HTMLElement: win.HTMLElement,
     NodeFilter: win.NodeFilter,
-  });
+  })) {
+    displaced[key] = (globalThis as Record<string, unknown>)[key];
+    installed[key] = value;
+    (globalThis as Record<string, unknown>)[key] = value;
+  }
   // Dynamic import is required here, not stylistic: `sanitize.ts` binds
   // DOMPurify at module scope, which captures the DOM globals present at
   // evaluation time. A static import would run before the happy-dom globals
@@ -45,6 +52,16 @@ beforeAll(async () => {
   ({ hydrateMathBlocks } = await import('@/shared/lib/markdown/katex'));
   ({ renderMarkdown } = await import('@/shared/lib/markdown/marked'));
   ({ sanitizeHtml } = await import('@/shared/lib/markdown/sanitize'));
+});
+
+// Every test file shares one process, so the globals go back the way they were:
+// the fold in `agent-events.ts` branches on `typeof window`, and a leaked DOM
+// window would take its browser path with a `CustomEvent` from another realm.
+afterAll(() => {
+  for (const key of Object.keys(installed)) {
+    if (displaced[key] === undefined) delete (globalThis as Record<string, unknown>)[key];
+    else (globalThis as Record<string, unknown>)[key] = displaced[key];
+  }
 });
 
 /** Render markdown and mount it exactly as `MarkdownRenderer` does. */
