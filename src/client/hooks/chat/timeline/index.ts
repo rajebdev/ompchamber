@@ -12,7 +12,8 @@ import type { ComposerModelPick } from '@/client/hooks/chat/timeline/deferred-mo
 import { useSessionLoad } from '@/client/hooks/chat/timeline/session-load';
 import { useUserTurns } from '@/client/hooks/chat/timeline/user-turns';
 import { useBrowserPageContextInsert } from '@/client/hooks/chat/timeline/browser-context';
-import { cancelStreamingCoalescer, createOmpAgentCallbacks } from '@/shared/lib/chat/timeline/omp-callbacks';
+import { createOmpAgentCallbacks } from '@/shared/lib/chat/timeline/omp-callbacks';
+import { cancelStreamingCoalescer } from '@/shared/lib/chat/timeline/stream-coalescer';
 import { readStreamTransport } from '@/shared/lib/chat/omp/transport';
 import { ACCESS_MODE_SETTING_KEY, normalizeApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';

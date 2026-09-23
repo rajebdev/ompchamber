@@ -20,40 +20,20 @@ import { normalizeThinkingLevel } from '@/shared/lib/models/thinking-levels';
 import { PHASE_VERBS } from '@/shared/lib/chat/timeline/tool-phrases';
 import { describeAssistantPhase, describeToolActivity } from '@/shared/lib/chat/timeline/tool-verbs';
 import { FILE_MUTATION_EVENT, isFileMutatingTool } from '@/shared/lib/chat/omp/file-mutations';
+import {
+  pairToolOutputs,
+  putToolResult,
+  recordToolResult,
+  refreshToolMessage,
+  type ToolResultHost,
+  type ToolResultRecord,
+} from '@/shared/lib/chat/omp/tool-results';
 
-/** Tool output accumulated between a `toolCall` block and its result frame. */
-export interface ToolResultRecord {
-  output: string;
-  isError?: boolean;
-  details?: Record<string, any>;
-}
+// Re-exported so stream.ts and the timeline hook keep their existing import
+// site; the implementation lives in tool-results.ts.
+export type { ToolResultRecord } from '@/shared/lib/chat/omp/tool-results';
 
-/** Per-entry cap on stored tool output; the tail of a build log is what matters. */
-const MAX_TOOL_OUTPUT_CHARS = 200_000;
-/** Max tool results retained per session; oldest entries are dropped first. */
-const MAX_TRACKED_TOOL_RESULTS = 200;
-
-/** Truncate tool output to the cap, keeping the tail and marking the cut. */
-function capToolOutput(output: string): string {
-  if (output.length <= MAX_TOOL_OUTPUT_CHARS) return output;
-  return `…[truncated]\n${output.slice(-MAX_TOOL_OUTPUT_CHARS)}`;
-}
-
-/** Write a tool result into the map, enforcing both caps. */
-function storeToolResult(
-  map: Map<string, ToolResultRecord>,
-  callId: string,
-  record: ToolResultRecord,
-): void {
-  map.set(callId, { ...record, output: capToolOutput(record.output) });
-  while (map.size > MAX_TRACKED_TOOL_RESULTS) {
-    const oldest = map.keys().next().value;
-    if (oldest === undefined) break;
-    map.delete(oldest);
-  }
-}
-
-export interface OmpAgentFoldDeps {
+export interface OmpAgentFoldDeps extends ToolResultHost {
   sessionId: string;
   setState: Dispatch<SetStateAction<OmpAgentState>>;
   callbacksRef: RefObject<OmpAgentCallbacks>;
@@ -78,45 +58,9 @@ function setActivity(verb: string | undefined, deps: OmpAgentFoldDeps): void {
   deps.callbacksRef.current?.onActivity?.(verb);
 }
 
-/** Re-emit the last tool-carrying assistant message with its results paired. */
-function pairToolOutputs(
-  msg: ChatMessageData,
-  toolResultsRef: RefObject<Map<string, ToolResultRecord>>,
-): ChatMessageData {
-  if (!msg.toolCalls?.length) return msg;
-  const toolCalls = msg.toolCalls.map(tc => {
-    const res = toolResultsRef.current?.get(tc.id);
-    return res
-      ? {
-          ...tc,
-          output: res.output,
-          details: tc.details || res.details || undefined,
-          status: (res.isError ? 'error' : 'success') as ToolCallData['status'],
-        }
-      : tc;
-  });
-  return { ...msg, toolCalls };
-}
-
-/** Record a toolResult frame's output against its tool call id. */
-function recordToolResult(
-  raw: Record<string, unknown>,
-  deps: OmpAgentFoldDeps,
-): void {
-  const callId = typeof raw.toolCallId === 'string' ? raw.toolCallId : undefined;
-  if (!callId) return;
-  deps.toolResultsRef.current?.set(callId, {
-    output: extractTextFromContent(raw.content),
-    details: (raw.details && typeof raw.details === 'object' ? raw.details : undefined) as ToolResultRecord['details'],
-  });
-}
-
-/** Re-emit the last tool-carrying message when `callId` belongs to it. */
-function refreshToolMessage(callId: string | undefined, deps: OmpAgentFoldDeps): void {
-  if (!callId) return;
-  const last = deps.lastToolMessageRef.current;
-  if (!last?.toolCalls?.some(tc => tc.id === callId)) return;
-  deps.callbacksRef.current?.onMessageUpdate?.(pairToolOutputs(last, deps.toolResultsRef));
+/** Narrow a deps record to the tool-output host, adding the re-emit sink. */
+function toolHost(deps: OmpAgentFoldDeps): ToolResultHost {
+  return { ...deps, onMessageUpdate: deps.callbacksRef.current?.onMessageUpdate };
 }
 
 /** Flush assistant turns that stopped abnormally and were never streamed as
@@ -141,7 +85,7 @@ function materializeTerminalMessages(
     if (raw.stopReason !== 'aborted' && raw.stopReason !== 'error') continue;
     const converted = toChatMessage(raw, false);
     if (!converted) continue;
-    const paired = pairToolOutputs(converted, deps.toolResultsRef);
+    const paired = pairToolOutputs(converted, deps);
     if (paired.toolCalls?.length) deps.lastToolMessageRef.current = paired;
     callbacks?.onMessageEnd?.(paired);
     if (typeof raw.errorMessage === 'string') errorMessage = raw.errorMessage;
@@ -205,7 +149,7 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       const completed = data.message as Record<string, unknown> | undefined;
       if (!completed) break;
       if (completed.role === 'toolResult') {
-        recordToolResult(completed, deps);
+        recordToolResult(completed, toolHost(deps));
         break;
       }
       if (completed.role === 'custom') break;
@@ -219,7 +163,7 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       if (converted.role !== 'user' && deps.currentThinkingLevelRef.current) {
         converted.thinkingLevel = deps.currentThinkingLevelRef.current;
       }
-      const paired = pairToolOutputs(converted, deps.toolResultsRef);
+      const paired = pairToolOutputs(converted, deps);
       if (paired.toolCalls?.length) deps.lastToolMessageRef.current = paired;
       callbacks?.onMessageEnd?.(paired);
       break;
@@ -254,9 +198,8 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       const partial = toolResultText(data.partialResult);
       if (!callId || !partial) break;
       const prev = deps.toolResultsRef.current?.get(callId)?.output ?? '';
-      const map = deps.toolResultsRef.current;
-      if (map) storeToolResult(map, callId, { output: prev + partial });
-      refreshToolMessage(callId, deps);
+      putToolResult(deps, callId, { output: prev + partial });
+      refreshToolMessage(callId, toolHost(deps));
       break;
     }
 
@@ -264,13 +207,12 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       const callId = typeof data.toolCallId === 'string' ? data.toolCallId : undefined;
       if (!callId) break;
       setActivity(PHASE_VERBS.thinking, deps);
-      const map = deps.toolResultsRef.current;
-      if (map) storeToolResult(map, callId, {
+      putToolResult(deps, callId, {
         output: toolResultText(data.result),
         isError: data.isError === true,
         details: (data.details && typeof data.details === 'object' ? data.details : undefined) as ToolResultRecord['details'],
       });
-      refreshToolMessage(callId, deps);
+      refreshToolMessage(callId, toolHost(deps));
       // A file-mutating tool just finished — tell the data-bearing right panels
       // (files / git / context) to re-read now, not on their next poll tick.
       // Guarded: the fold also runs headless under `bun test` (no window).
@@ -325,6 +267,17 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
     case 'command_output': {
       const text = typeof data.text === 'string' ? data.text.trim() : '';
       if (text) callbacks?.onCommandOutput?.(text);
+      break;
+    }
+
+    // omp renamed the session (auto-title generation, /rename, set_session_name).
+    // Nothing in the timeline changes, but the sidebar reads titles from the
+    // session file — and the rename is a 256-byte in-place slot write that the
+    // scan cache's mtime key cannot see — so this frame is the only push
+    // signal that the list is stale.
+    case 'session_info_update': {
+      const title = typeof data.title === 'string' ? data.title.trim() : '';
+      if (title) callbacks?.onSessionTitleChanged?.(title);
       break;
     }
 

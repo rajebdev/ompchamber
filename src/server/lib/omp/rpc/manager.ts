@@ -17,13 +17,12 @@
 
 import { RpcProcess, type RpcFrame } from '@/server/lib/omp/rpc/process';
 import { PendingUiDialogs } from '@/server/lib/omp/rpc/pending-ui-dialogs';
-import { clearSessionFileCaches } from '@/server/lib/omp/session/files';
+import { foldSessionFrame } from '@/server/lib/omp/rpc/frame-fold';
 import { notifyRunningChange } from '@/server/lib/omp/rpc/session-registry';
 import { dispatchSessionCommand } from '@/server/lib/omp/rpc/session-commands';
-import { scheduleQueueDelivery } from '@/server/lib/queue/delivery.server';
 import { SubagentLiveness } from '@/server/lib/omp/rpc/subagent-liveness';
-import { loadStreamStatuses, markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
-import { GET_STATE_TIMEOUT_MS, IDLE_DESTROY_MS, NON_TERMINAL_CONTINUATION_GRACE_MS, READY_TIMEOUT_MS, SUBAGENT_STALE_MS, type AgentEvent, type EventListener, type RpcSessionState } from '@/server/lib/omp/rpc/constants';
+import { markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
+import { GET_STATE_TIMEOUT_MS, IDLE_DESTROY_MS, READY_TIMEOUT_MS, SUBAGENT_STALE_MS, type AgentEvent, type EventListener, type RpcSessionState } from '@/server/lib/omp/rpc/constants';
 
 export type {
   AgentEvent,
@@ -68,6 +67,13 @@ export class AgentSessionWrapper {
   // set in initialize(). No other flag on this wrapper can see them, and an
   // idle reclaim or a spawn-mode reconcile must never kill a running subagent.
   private readonly subagents = new SubagentLiveness();
+  // One background `/rename` at a time. A settled run may be followed by
+  // another (queue delivery, a second prompt), and two overlapping generations
+  // would race to write the same title slot.
+  autoTitleInFlight = false;
+  // Epoch ms until which `command_output` frames belong to our own background
+  // rename and must not reach the timeline. 0 when nothing is outstanding.
+  autoTitleWindowUntil = 0;
   readonly idleDestroyMs: number;
   proc: RpcProcess;
   readonly cwd: string;
@@ -173,130 +179,28 @@ export class AgentSessionWrapper {
     this.destroy();
   }
 
-  /** Write the terminal stream badge from the ending turn's own stopReason.
-   *  The `abort` command already wrote `abort` at dispatch time, but the
-   *  agent_end frame arrives later and previously flattened it to `finish`.
-   *  Re-check the current row and only upgrade `stream` rows, so a `finish`
-   *  written here can never clobber a newer run's live `stream`/`abort`. */
-  private async markEndStatus(messages: unknown): Promise<void> {
-    if (!this.sessionId) return;
-    const aborted = Array.isArray(messages) && messages.some((entry) => {
-      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
-      return (entry as Record<string, unknown>).stopReason === 'aborted';
-    });
-    const current = await loadStreamStatuses();
-    if (current[this.sessionId] !== 'stream') return;
-    await markStreamStatus(this.sessionId, aborted ? 'abort' : 'finish');
+  /** SessionFrameHost adapter: remember a blocking dialog for reattaching clients. */
+  trackUiDialog(frame: AgentEvent): void {
+    this.pendingUiDialogs.track(frame);
+  }
+
+  /** SessionFrameHost adapter: fold a subagent frame into the liveness roster. */
+  observeSubagent(frame: AgentEvent, now: number): void {
+    this.subagents.observe(frame, now);
   }
 
   private handleFrame(frame: RpcFrame): void {
     this.resetIdleTimer();
     const event = frame as AgentEvent;
-    let refreshSessionList = false;
-
-    switch (event.type) {
-      case 'agent_start':
-        this.promptRunning = true;
-        this.streaming = true;
-        this.awaitingAgentStart = false;
-        this.awaitingAgentStartDeadline = 0;
-        this.continuationGraceUntil = 0;
-        clearSessionFileCaches();
-        refreshSessionList = true;
-        if (this.sessionId) void markStreamStatus(this.sessionId, 'stream');
-        break;
-      case 'turn_start':
-        // Redundant with agent_start in the happy path, but the run-level
-        // counterpart can be missed (e.g. the state was cleared by a command
-        // between frames). The turn is proof enough the session is live.
-        if (this.sessionId) void markStreamStatus(this.sessionId, 'stream');
-        break;
-      case 'message_start':
-        // Same recovery as turn_start: a message frame is only emitted inside
-        // a live run, so its arrival re-arms the `stream` row no matter what
-        // stale status sits there (upsert overwrites any terminal badge).
-        if (this.sessionId) void markStreamStatus(this.sessionId, 'stream');
-        break;
-      case 'turn_end': {
-        // A multi-turn run emits turn_end for EVERY turn — intermediates end
-        // with `toolUse`/`stop` while the run keeps going (verified against
-        // omp 18.2.8: agent_start → turn_start → turn_end('toolUse') →
-        // turn_start → turn_end('stop') → agent_end, and the frame carries no
-        // isTerminal field). Only `aborted` is unambiguous here: the run is
-        // over, so the abort badge can be written before agent_end arrives.
-        // Everything else waits for agent_end, which knows isTerminal.
-        if (!this.sessionId) break;
-        const turn = event.message as Record<string, unknown> | undefined;
-        if (turn?.stopReason === 'aborted') void markStreamStatus(this.sessionId, 'abort');
-        break;
-      }
-      case 'agent_end':
-        if (event.isTerminal !== false) {
-          this.streaming = false;
-          this.promptRunning = false;
-          this.awaitingAgentStart = false;
-          this.awaitingAgentStartDeadline = 0;
-          this.continuationGraceUntil = 0;
-          clearSessionFileCaches();
-          // The turn's own stopReason is the ground truth for how it ended:
-          // `aborted` = user stop, anything else (`stop`, `toolUse`, and the
-          // ambiguous `error` that tool failures also produce) completes as
-          // `finish`. This must not overwrite a fresh `abort` row from a NEWER
-          // run — guard against downgrades by checking the current row first.
-          const aborted = Array.isArray(event.messages) && event.messages.some((entry) => {
-            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
-            return (entry as Record<string, unknown>).stopReason === 'aborted';
-          });
-          if (this.sessionId) void this.markEndStatus(event.messages);
-          // The run truly ended — the server, not the browser, decides whether
-          // a queued follow-up goes out next. A user-aborted run holds the
-          // queue (stop-all semantics): the next run end or an explicit send
-          // picks it up.
-          if (!aborted) scheduleQueueDelivery(this);
-        } else {
-          this.continuationGraceUntil = Date.now() + NON_TERMINAL_CONTINUATION_GRACE_MS;
-        }
-        break;
-      case 'prompt_result':
-        this.promptRunning = false;
-        this.awaitingAgentStart = false;
-        this.awaitingAgentStartDeadline = 0;
-        break;
-      case 'auto_compaction_start':
-        this.compacting = true;
-        break;
-      case 'auto_compaction_end':
-        this.compacting = false;
-        clearSessionFileCaches();
-        break;
-      case 'session_info_update':
-        clearSessionFileCaches();
-        refreshSessionList = true;
-        break;
-      case 'extension_ui_request':
-        this.pendingUiDialogs.track(event);
-        break;
-      // Subagent frames carry no turn state, but they are the only proof that
-      // work is still running once the parent turn has ended.
-      case 'subagent_lifecycle':
-      case 'subagent_progress':
-      case 'subagent_event':
-        this.subagents.observe(event, Date.now());
-        break;
-      case 'response': {
-        if (event.success === false && event.command === 'prompt') {
-          this.promptRunning = false;
-          this.awaitingAgentStart = false;
-          this.awaitingAgentStartDeadline = 0;
-          this.emit({ type: 'prompt_error', errorMessage: (event.error as string) ?? 'Prompt failed' });
-          notifyRunningChange();
-          return;
-        }
-        break;
-      }
-    }
-
-    this.emit(event);
+    // The state machine and its settle-time side effects live in frame-fold.ts;
+    // this method owns only the wrapper's own bookkeeping around it.
+    const { refreshSessionList, suppressForward } = foldSessionFrame(this, event);
+    // `suppressForward` withholds only the FRAME — a failed prompt response
+    // already emitted its own `prompt_error`, and the chamber's own background
+    // rename must not surface its diagnostics. The running-state notification
+    // still fires: the fold just cleared `promptRunning`, and that flip is what
+    // releases the sidebar's spinner.
+    if (!suppressForward) this.emit(event);
     notifyRunningChange({ refreshSessionList });
   }
 

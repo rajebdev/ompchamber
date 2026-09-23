@@ -16,35 +16,13 @@ import type { Dispatch, SetStateAction } from 'preact/compat';
 import type { ChatMessageData, ExtensionUiDialogRequest, IncomingExtensionUiRequest, OmpAgentCallbacks } from '@/shared/types';
 import { triggerChatCompletionSound } from '@/client/hooks/ui/notification-sound';
 import { isNoticeRow } from '@/shared/lib/chat/notice-row';
-import { createRafBatch } from '@/shared/lib/chat/timeline/stream-raf';
+import {
+  bindStreamingCoalescer,
+  disposeStreamingCoalescer,
+  flushStreamingUpdates,
+  queueStreamingUpdate,
+} from '@/shared/lib/chat/timeline/stream-coalescer';
 import { PHASE_VERBS } from '@/shared/lib/chat/timeline/tool-phrases';
-
-// omp emits one message_update per model chunk, each carrying that message's
-// FULL accumulated content, so a burst only needs the newest payload per
-// message id. This batch commits at most once per animation frame; the terminal
-// frame flushes synchronously first so the last chunk is never dropped.
-// `apply`/`afterFlush` delegate through module vars because the callbacks
-// factory re-runs on every render.
-let applyMessageUpdater: Dispatch<SetStateAction<ChatMessageData[]>> = () => {};
-let scrollAfterFlush: () => void = () => {};
-
-const messageBatch = createRafBatch<ChatMessageData[]>(
-  updater => applyMessageUpdater(updater),
-  () => scrollAfterFlush(),
-);
-
-/** Apply any coalesced update, then invalidate its scheduled frame. */
-export function disposeStreamingCoalescer(): void {
-  messageBatch.flush();
-  messageBatch.cancel();
-}
-
-/** Drop coalesced updates without applying them — a session switch discards
- *  the previous session's queued `message_update` frames so they cannot leak
- *  into the freshly cleared timeline of the next session. */
-export function cancelStreamingCoalescer(): void {
-  messageBatch.cancel();
-}
 
 export interface OmpAgentCallbacksDeps {
   setGenerating: (v: boolean) => void;
@@ -91,8 +69,7 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
     withdrawExtensionDialog,
   } = deps;
 
-  applyMessageUpdater = setLocalMessages;
-  scrollAfterFlush = () => scrollToBottom('smooth');
+  bindStreamingCoalescer(setLocalMessages, () => scrollToBottom('smooth'));
 
   return {
     onAgentStart: () => {
@@ -152,7 +129,7 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
       if (msg.role !== 'user' && !isNoticeRow(msg)) optimisticUserIdRef.current = null;
       // Queue for the next frame, collapsing same-message bursts to the newest
       // full-content frame; scroll runs once per rendered frame.
-      messageBatch.queue(prev => {
+      queueStreamingUpdate(prev => {
         const placeholderId = aiPlaceholderIdRef.current;
         // Notice rows (e.g. background job done, system alerts) are appended in
         // arrival order — the timeline renders state as-is, so omp's own write
@@ -237,7 +214,7 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
       }
       // Apply any coalesced update before the terminal frame so the last chunk
       // is never dropped and the end always runs after it.
-      messageBatch.flush();
+      flushStreamingUpdates();
       if (msg.role !== 'user') optimisticUserIdRef.current = null;
       setLocalMessages(prev => {
         const placeholderId = aiPlaceholderIdRef.current;
@@ -344,6 +321,15 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
         if (prev.some(m => m.notice === text)) return prev;
         return [...prev, row];
       });
+    },
+    // omp renamed the session — the auto-title generation the chamber asks for
+    // after a settled run, a `/rename`, or an RPC set_session_name. The slot
+    // write is in place, so the title is already on disk: refresh the metadata
+    // the navbar/context panel read, and signal the sidebar (whose scan cache
+    // is keyed on file mtime, which a fixed-width in-place write cannot move).
+    onSessionTitleChanged: () => {
+      const sid = adoptedSessionIdRef.current ?? sessionIdRef.current;
+      if (sid) refreshSessionMeta(sid);
     },
     onNotice: (_level, message) => {
       console.info('OMP notice:', message);

@@ -40,6 +40,7 @@ const DEFAULT_SETTINGS: SettingsState = {
   editorFont: 'JetBrains Mono',
   streamResponses: true,
   streamTransport: 'websocket',
+  autoSessionTitle: true,
   expandedThinking: true,
   detailedToolCalls: false,
   notificationsEnabled: true,

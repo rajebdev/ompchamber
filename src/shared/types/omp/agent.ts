@@ -38,6 +38,12 @@ export interface OmpAgentCallbacks {
    *  on the live stream: it never enters get_state.messages or the session
    *  JSONL, so the timeline must render it from this frame or it is lost. */
   onCommandOutput?: (text: string) => void;
+  /** omp changed the session's display title (auto-generation, /rename, or an
+   *  RPC set_session_name). The frame is the only push signal for it — the
+   *  sidebar reads titles from the session file, which the 256-byte slot write
+   *  updates without changing the scan cache's mtime key — so consumers must
+   *  revalidate the session list from here. */
+  onSessionTitleChanged?: (title: string) => void;
   onNotice?: (level: string, message: string) => void;
   onConnected?: () => void;
   /** Mount-time probe found the session mid-run → the stream was reattached
