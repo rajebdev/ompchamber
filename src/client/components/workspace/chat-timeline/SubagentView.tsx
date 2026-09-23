@@ -8,6 +8,7 @@ import { RunFooter } from '@/client/components/workspace/chat-timeline/RunFooter
 import { useSubagentTranscript } from '@/client/hooks/chat/subagent';
 import { useModelNames } from '@/client/hooks/models/use-model-names';
 import { isNoticeRow } from '@/shared/lib/chat/notice-row';
+import { subagentHeaderTitle } from '@/shared/lib/omp/subagent/label';
 import { previousNonNoticeIndex, resolveRunFooters, streamingRowIndex } from '@/shared/lib/chat/timeline/run-footer';
 import { formatCompactTokens } from '@/shared/lib/format/number';
 
@@ -62,6 +63,7 @@ export function SubagentView({ sessionId, subagent, onBack, provider, providerNa
 
   const progress = status?.progress ?? subagent.progress;
   const modelName = progress?.resolvedModel ?? subagent.agent;
+  const headerTitle = subagentHeaderTitle(status ?? subagent);
   const compactTokens = formatCompactTokens(progress?.tokens);
   const meta = compactTokens ? `${compactTokens} tok` : '';
   const rawTask = status?.task ?? status?.assignment ?? status?.description
@@ -85,7 +87,7 @@ export function SubagentView({ sessionId, subagent, onBack, provider, providerNa
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 min-w-0">
             <span className="font-mono text-[12px] font-semibold text-ink truncate">
-              {status?.agent ?? subagent.agent}
+              {headerTitle}
             </span>
             <span className="shrink-0 rounded bg-ink/5 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-ink/50">
               {STATUS_LABEL[effectiveStatus]}

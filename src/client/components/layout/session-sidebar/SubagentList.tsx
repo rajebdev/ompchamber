@@ -3,6 +3,7 @@ import { useSearchParams } from '@/client/lib/router/search-params';
 import { SubagentStatusIcon } from '@/client/components/common/SubagentStatusIcon';
 import { isRecord } from '@/shared/lib/util/guards';
 import { fetchSubagentHistory, historyEntryToSubagentInfo } from '@/shared/lib/omp/subagent/history/client';
+import { subagentRowLabel } from '@/shared/lib/omp/subagent/label';
 import { mergeSubagentRoster, parseSubagentLifecycle, parseSubagentProgress, parseSubagentRosterResponse } from '@/shared/lib/omp/subagent/parse';
 import type { SubagentInfo, SubagentProgress } from '@/shared/types';
 
@@ -123,13 +124,14 @@ export function SubagentList({ sessionId, isActiveSession }: SubagentListProps) 
         </div>
       ) : (
         subagents.map((subagent) => {
-          const taskText = subagent.task ?? subagent.description ?? subagent.assignment ?? subagent.agent ?? '';
+          const label = subagentRowLabel(subagent);
+          const brief = subagent.task ?? subagent.assignment ?? subagent.description ?? label;
           const isViewed = subagent.id === viewedSubagentId;
           return (
             <button
               key={subagent.id}
               type="button"
-              title={taskText}
+              title={brief}
               onClick={() => window.dispatchEvent(new CustomEvent('omp:view-subagent', { detail: { sessionId: String(sessionId), subagent } }))}
               className={`w-full flex items-center text-left text-xs rounded-md px-2 py-1 cursor-pointer transition-colors select-none group/subagent ${isViewed ? 'bg-ink/10 font-medium text-ink' : 'text-ink/70 hover:text-ink hover:bg-ink/5'}`}
             >
@@ -141,8 +143,8 @@ export function SubagentList({ sessionId, isActiveSession }: SubagentListProps) 
               {/* Gap between subagent icon and task text */}
               <span className="w-2 shrink-0" />
 
-              {/* Subagent task description text */}
-              <span className="flex-1 min-w-0 truncate leading-snug">{taskText}</span>
+              {/* Subagent label: `id (agent): target` */}
+              <span className="flex-1 min-w-0 truncate leading-snug">{label}</span>
             </button>
           );
         })

@@ -150,6 +150,10 @@ export interface SubagentInfo {
   detached?: boolean;
   progress?: SubagentProgress;
   lastUpdate?: number;
+  /** Model role the run resolved to. On-disk history entries carry it here
+   *  (folded from the parent's task toolResult); live snapshots carry it on
+   *  `progress` instead, because it arrives with the progress frame. */
+  modelRole?: string;
   /** Settled result for history entries (SingleResult-derived). */
   result?: SubagentHistoryResult;
   /** Roster origin: live frames/snapshots (default) vs on-disk history. */
