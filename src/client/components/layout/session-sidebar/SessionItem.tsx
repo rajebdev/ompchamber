@@ -56,7 +56,12 @@ export function SessionItem({
           check) shows at rest, and the expand toggle takes the slot over on
           hover — or permanently while the roster is open. Never two icons.
           The toggle is pointer-inert while invisible so the slot keeps
-          selecting the session until the chevron is what you see. */}
+          selecting the session until the chevron is what you see.
+          Both layers are pointer-inert for the opposite state: the toggle
+          while hidden, the status glyph ALWAYS — it is painted after the
+          toggle, so without that it wins the hit test over the revealed
+          chevron and every click on a badged row selects the session
+          instead of expanding it. */}
       <span className="relative w-4 h-4 shrink-0">
         {showChevron && onToggleExpand && (
           <button
@@ -78,7 +83,7 @@ export function SessionItem({
         )}
         {(awaitingInput || status) && !(showChevron && isExpanded) && (
           <span
-            className={`absolute inset-0 flex items-center justify-center text-ink/60 transition-opacity ${
+            className={`pointer-events-none absolute inset-0 flex items-center justify-center text-ink/60 transition-opacity ${
               showChevron ? 'group-hover/item:opacity-0 peer-focus-visible:opacity-0' : ''
             }`}
           >
