@@ -44,6 +44,16 @@ export function BtwComposer({
   const canSend = value.trim().length > 0 || attachments.length > 0;
   const providerText = provider ? providerLabel(provider) : '';
 
+  // The form replaces the chat composer that had focus, so the caret is put
+  // here — the field the form is for, and the one a restored draft is waiting
+  // in — instead of being left on the document body.
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  }, []);
+
   // Grow with the content and collapse again when the parent clears `value`
   // after a submit — `height: auto` first, otherwise the box can only expand.
   useEffect(() => {

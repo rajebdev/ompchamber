@@ -56,17 +56,6 @@ export function BtwAskCard({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // The form replaces the composer that had focus, so without this the caret
-  // is left on the document body and the first keystroke after `/btw` goes
-  // nowhere. Focus lands here because asking is what the mode was opened for.
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.focus();
-    // A restored draft keeps its caret at the end, not before its text.
-    el.setSelectionRange(el.value.length, el.value.length);
-  }, []);
-
   // Grow with the text and collapse again once it is submitted or cleared.
   useEffect(() => {
     const el = textareaRef.current;
