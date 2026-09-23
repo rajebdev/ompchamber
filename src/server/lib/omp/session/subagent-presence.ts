@@ -12,10 +12,13 @@
  * megabytes, and doing that per session per poll dominated the endpoint's cost
  * (the dataset scan itself is cached; this probe was not).
  *
- * The roster can only change when the session file or its sibling artifacts
- * directory changes, so that (session mtime, sibling-dir mtime) pair is a
- * sufficient cache version. Both cost one stat — orders of magnitude cheaper
- * than the parse they gate.
+ * The roster can only change when the session file gains entries or its
+ * sibling artifacts directory changes, so that (last-entry timestamp,
+ * sibling-dir mtime) pair is a sufficient cache version. Both cost one stat —
+ * orders of magnitude cheaper than the parse they gate. The timestamp is the
+ * file's last ENTRY time, not its mtime: a title-slot rewrite bumps mtime
+ * without appending anything, and a spurious version bump would re-run the
+ * parse it exists to avoid.
  */
 
 import { promises as fs } from 'fs';
@@ -42,10 +45,10 @@ async function siblingDirMtimeMs(dir: string): Promise<number> {
 
 export async function sessionHasSubagents(
   sessionPath: string,
-  sessionModified: string,
+  sessionLastEntryAt: string,
 ): Promise<boolean> {
   const siblingDir = siblingDirForSession(sessionPath);
-  const version = `${sessionModified}:${await siblingDirMtimeMs(siblingDir)}`;
+  const version = `${sessionLastEntryAt}:${await siblingDirMtimeMs(siblingDir)}`;
 
   const cached = cache.get(sessionPath);
   if (cached && cached.version === version) return cached.hasSubagents;

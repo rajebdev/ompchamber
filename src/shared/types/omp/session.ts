@@ -132,7 +132,10 @@ export interface OmpSession extends OmpSessionBase {
   name?: string;
   /** ISO timestamp of session creation (header timestamp). */
   created: string;
-  /** ISO timestamp of last modification (file mtime). */
+  /** ISO timestamp of the session's last entry — the newest JSONL record's own
+   *  `timestamp`. Drives "latest session" ordering and the row's relative age;
+   *  the file mtime is deliberately not used (a title-slot rewrite bumps it
+   *  without a turn having happened). */
   modified: string;
   /** Parent session id when this session was forked/branched. */
   parentSessionId?: string;

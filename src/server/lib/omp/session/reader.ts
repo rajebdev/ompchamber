@@ -15,8 +15,8 @@
  *   - cwd → repository root      → lib/omp/worktree.ts
  *   - managed projects registry  → lib/omp/project-registry.ts
  *
- * All reads are bounded (4 KiB prefix per session file), cached by mtime, and
- * never mutate the agent's files.
+ * All reads are bounded (a 4 KiB prefix plus a 16 KiB tail window per session
+ * file), cached by file mtime, and never mutate the agent's files.
  */
 
 import { listAllSessionInfos, type OmpSessionInfo } from '@/server/lib/omp/session/files';

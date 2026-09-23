@@ -11,7 +11,7 @@
 
 import { json } from '@/server/lib/remix-compat';
 import { getSessionsDir } from '@/server/lib/omp/core/paths';
-import { listSessionFiles, readRawHeaderLine, scanSessionInfo } from '@/server/lib/omp/session/files';
+import { listSessionFiles, readRawHeaderLine, scanSessionInfoCached } from '@/server/lib/omp/session/files';
 
 /** Find the absolute path of the .jsonl whose header id matches. */
 export async function findSessionFileById(
@@ -20,7 +20,7 @@ export async function findSessionFileById(
 ): Promise<string | undefined> {
   const files = await listSessionFiles(sessionsRoot);
   for (const file of files) {
-    const info = await scanSessionInfo(file);
+    const info = await scanSessionInfoCached(file);
     if (info?.id === sessionId) return file;
   }
   return undefined;
