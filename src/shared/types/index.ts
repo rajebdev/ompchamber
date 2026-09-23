@@ -2,6 +2,7 @@ export * from '@/shared/types/workspace';
 export * from '@/shared/types/fs';
 export * from '@/shared/types/git';
 export * from '@/shared/types/chat';
+export * from '@/shared/types/btw';
 export * from '@/shared/types/models';
 export * from '@/shared/types/terminal';
 export * from '@/shared/types/settings/state';

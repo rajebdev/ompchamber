@@ -14,19 +14,24 @@
 import type { OmpAgentEvent, StreamTransport } from '@/shared/types';
 import { readChamberSetting } from '@/shared/lib/settings/client';
 
-export interface AgentStreamHandlers {
+export interface StreamHandlers<TFrame> {
   /** Transport is attached; frames may arrive. */
   onOpen: () => void;
   /** One decoded event frame. */
-  onFrame: (data: OmpAgentEvent) => void;
+  onFrame: (data: TFrame) => void;
   /** Transport is gone for good (no further frames without a re-dial). */
   onClose: () => void;
 }
 
-export interface AgentStreamConnection {
+export interface StreamConnection {
   /** Permanently release the transport; no callbacks fire afterwards. */
   close: () => void;
 }
+
+/** Agent-stream handlers — the socket's frames feed the timeline's fold. */
+export type AgentStreamHandlers = StreamHandlers<OmpAgentEvent>;
+
+export type AgentStreamConnection = StreamConnection;
 
 export const DEFAULT_STREAM_TRANSPORT: StreamTransport = 'websocket';
 
@@ -39,6 +44,17 @@ export function agentSocketUrl(sessionId: string): string {
 /** SSE endpoint for a session's agent event stream. */
 export function agentEventsUrl(sessionId: string): string {
   return `/api/agent/${encodeURIComponent(sessionId)}/events`;
+}
+
+/** WebSocket endpoint for a session's BTW frame stream. */
+export function btwSocketUrl(sessionId: string): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}/api/btw/${encodeURIComponent(sessionId)}/ws`;
+}
+
+/** SSE endpoint for a session's BTW frame stream. */
+export function btwEventsUrl(sessionId: string): string {
+  return `/api/btw/${encodeURIComponent(sessionId)}/events`;
 }
 
 /**

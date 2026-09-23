@@ -2,7 +2,7 @@ import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState } from '
 import type { ChangeEvent, RefObject } from 'preact/compat';
 import type { TargetedKeyboardEvent } from 'preact';
 import type { ComposerMatchItem, ComposerPickItem, ComposerTrigger } from '@/shared/types';
-import { detectComposerTrigger, insertToken, tokenForItem } from '@/shared/lib/chat/composer/trigger';
+import { detectComposerTrigger, insertToken, sendInsteadOfAccept, tokenForItem } from '@/shared/lib/chat/composer/trigger';
 import { filterComposerItems } from '@/shared/lib/chat/composer/filter';
 import { useComposerItems } from '@/client/hooks/chat/composer/items';
 
@@ -152,6 +152,12 @@ export function useComposerTrigger(options: UseComposerTriggerOptions): Composer
       }
 
       if ((e.key === 'Enter' || e.key === 'Tab') && matches.length > 0) {
+        // A complete command with nothing left to complete: Enter is a send, so
+        // drop the popup rather than consuming the keystroke.
+        if (e.key === 'Enter' && sendInsteadOfAccept(trigger, matches[clampedIndex])) {
+          close();
+          return false;
+        }
         e.preventDefault();
         e.stopPropagation();
         selectItem(matches[clampedIndex]);

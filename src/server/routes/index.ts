@@ -2,6 +2,8 @@ import { Elysia } from 'elysia';
 import { mountBindings, type HandlerBinding } from '@/server/lib/route-adapter';
 import { agentBindings } from '@/server/routes/agent';
 import { agentWsRoutes } from '@/server/routes/agent/ws';
+import { btwBindings } from '@/server/routes/btw';
+import { btwWsRoutes } from '@/server/routes/btw/ws';
 import { chatBindings } from '@/server/routes/chat';
 import { sessionsBindings } from '@/server/routes/sessions';
 import { settingsBindings } from '@/server/routes/settings';
@@ -20,6 +22,7 @@ import { wellKnownBindings } from '@/server/routes/well-known';
 
 const allBindings: HandlerBinding[] = [
   ...agentBindings,
+  ...btwBindings,
   ...chatBindings,
   ...sessionsBindings,
   ...settingsBindings,
@@ -36,4 +39,7 @@ const allBindings: HandlerBinding[] = [
   ...wellKnownBindings,
 ];
 
-export const apiRoutes = mountBindings(new Elysia(), allBindings).use(agentWsRoutes).use(terminalWsRoutes);
+export const apiRoutes = mountBindings(new Elysia(), allBindings)
+  .use(agentWsRoutes)
+  .use(btwWsRoutes)
+  .use(terminalWsRoutes);

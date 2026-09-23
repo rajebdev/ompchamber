@@ -13,6 +13,7 @@
 
 import type { DbClient } from '@/server/lib/db/client';
 import { migrateQueueTableFk } from '@/server/lib/queue/schema-migration.server';
+import { ensureBtwSchema } from '@/server/lib/btw/schema.server';
 import { migrateWorkspaceFolderColumns } from '@/shared/lib/workspace/schema-migrations';
 
 export async function initSchema(db: DbClient): Promise<void> {
@@ -91,6 +92,8 @@ export async function initSchema(db: DbClient): Promise<void> {
   // Installs older `queued_messages` schemas carry an invalid FK (see the
   // migration module); rebuild once so real-session queue inserts work.
   await migrateQueueTableFk(db);
+  // Side-question tables live in their own module (see schema.server.ts).
+  await ensureBtwSchema(db);
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS files (

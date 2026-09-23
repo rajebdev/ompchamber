@@ -1,4 +1,4 @@
-import type { ComposerPickItem, ComposerTrigger } from '@/shared/types';
+import type { ComposerMatchItem, ComposerPickItem, ComposerTrigger } from '@/shared/types';
 
 /** Chars that may legally precede an `@` agent trigger (besides string start). */
 const AT_PRECEDING_RE = /[\s([{]/;
@@ -129,6 +129,22 @@ export function detectComposerTrigger(text: string, caret: number): ComposerTrig
 /** Insertion text for an item: its token, plus a trailing space unless suppressed. */
 export function tokenForItem(item: ComposerPickItem): string {
   return item.insertWithoutSpace ? item.token : `${item.token} `;
+}
+
+/**
+ * Whether a popup accept should stand aside and let Enter mean "send".
+ *
+ * A command typed in full that takes no subcommands has nothing left to
+ * complete, so accept-on-Enter would charge an extra keystroke to run it — and
+ * for a chamber command like `/btw` the Enter *is* the action, so the popup
+ * would swallow the very keystroke the user is aiming at. Partial names and
+ * commands that declare subcommands keep accepting, which is what opens their
+ * argument completions.
+ */
+export function sendInsteadOfAccept(trigger: ComposerTrigger, item: ComposerMatchItem | undefined): boolean {
+  if (!item || trigger.kind !== 'command' || trigger.phase !== 'name') return false;
+  if (item.name.toLowerCase() !== trigger.query.toLowerCase()) return false;
+  return !item.subcommands?.length;
 }
 
 /** Splice `token` over the trigger span in `value`, returning the new value and caret. */

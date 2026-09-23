@@ -17,6 +17,7 @@ import type { Attachment, ChatMessageData, OmpAgentHandle, QueuedMessageModel } 
 import type { QueuedMessage } from '@/client/components/workspace/chat-timeline/QueueList';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { applyComposerPick, consumeComposerPick, stashComposerPick, type DeferredModelStore } from '@/client/hooks/chat/timeline/deferred-model';
+import { dispatchBtwCommand } from '@/client/hooks/chat/btw/intercept';
 import { prepareQueuedAttachments } from '@/shared/lib/chat/attachments';
 
 export interface ChatTimelineActionsDeps {
@@ -106,6 +107,14 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     // An explicit send disarms the Stop hold: the queue auto-process may
     // resume delivering after this run ends.
     stopHoldRef.current = false;
+
+    // `/btw [question]` is the side-question entry point, not chat text: the
+    // panel owns it (omp's `/btw` is TUI-only, so nothing downstream would
+    // understand the token). A bare `/btw` only opens the panel's history.
+    if (dispatchBtwCommand(textToSend, attachments)) {
+      setInputValue('');
+      return;
+    }
 
     if (isGenerating) {
       if (options?.steering) {

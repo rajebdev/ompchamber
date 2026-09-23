@@ -241,6 +241,7 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
             {!activeSubagent && (
               <ComposerDock
                 isMobile={isMobile}
+                sessionId={sessionId}
                 isGenerating={isGenerating}
                 modelName={sessionModelName}
                 generatingVerb={generatingVerb}
