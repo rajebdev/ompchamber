@@ -18,8 +18,7 @@
  * route's observer-only contract.
  */
 
-import type { OmpAgentEvent } from '@/shared/types';
-import type { AgentStreamConnection, AgentStreamHandlers } from '@/shared/lib/chat/omp/transport';
+import type { AgentStreamConnection, AgentStreamHandlers, StreamConnection, StreamHandlers } from '@/shared/lib/chat/omp/transport';
 import { agentSocketUrl } from '@/shared/lib/chat/omp/transport';
 
 const RECONNECT_BASE_MS = 500;
@@ -27,7 +26,8 @@ const RECONNECT_MAX_MS = 8_000;
 /** Consecutive re-dials that never opened before the stream is given up on. */
 const MAX_FAILED_DIALS = 4;
 
-export function connectAgentSocket(sessionId: string, handlers: AgentStreamHandlers): AgentStreamConnection {
+/** One duplex JSON socket: reconnect with capped backoff, terminal first dial. */
+export function connectSocket<TFrame>(url: string, handlers: StreamHandlers<TFrame>): StreamConnection {
   let socket: WebSocket | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let failures = 0;
@@ -35,7 +35,7 @@ export function connectAgentSocket(sessionId: string, handlers: AgentStreamHandl
   let released = false;
 
   const dial = () => {
-    const ws = new WebSocket(agentSocketUrl(sessionId));
+    const ws = new WebSocket(url);
     socket = ws;
 
     ws.onopen = () => {
@@ -47,9 +47,9 @@ export function connectAgentSocket(sessionId: string, handlers: AgentStreamHandl
 
     ws.onmessage = (event) => {
       if (released) return;
-      let data: OmpAgentEvent;
+      let data: TFrame;
       try {
-        data = JSON.parse(String(event.data)) as OmpAgentEvent;
+        data = JSON.parse(String(event.data)) as TFrame;
       } catch {
         return;
       }
@@ -92,4 +92,9 @@ export function connectAgentSocket(sessionId: string, handlers: AgentStreamHandl
       }
     },
   };
+}
+
+/** WebSocket transport for a session's agent event stream. */
+export function connectAgentSocket(sessionId: string, handlers: AgentStreamHandlers): AgentStreamConnection {
+  return connectSocket(agentSocketUrl(sessionId), handlers);
 }

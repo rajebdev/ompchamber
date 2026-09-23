@@ -12,12 +12,12 @@
  * (the server closed the stream) is reported upward.
  */
 
-import type { OmpAgentEvent } from '@/shared/types';
-import type { AgentStreamConnection, AgentStreamHandlers } from '@/shared/lib/chat/omp/transport';
+import type { AgentStreamConnection, AgentStreamHandlers, StreamConnection, StreamHandlers } from '@/shared/lib/chat/omp/transport';
 import { agentEventsUrl } from '@/shared/lib/chat/omp/transport';
 
-export function connectAgentEvents(sessionId: string, handlers: AgentStreamHandlers): AgentStreamConnection {
-  const source = new EventSource(agentEventsUrl(sessionId));
+/** One EventSource stream: the browser owns reconnection on transient drops. */
+export function connectEvents<TFrame>(url: string, handlers: StreamHandlers<TFrame>): StreamConnection {
+  const source = new EventSource(url);
   let released = false;
 
   source.onopen = () => {
@@ -27,9 +27,9 @@ export function connectAgentEvents(sessionId: string, handlers: AgentStreamHandl
 
   source.onmessage = (event) => {
     if (released) return;
-    let data: OmpAgentEvent;
+    let data: TFrame;
     try {
-      data = JSON.parse(event.data) as OmpAgentEvent;
+      data = JSON.parse(event.data) as TFrame;
     } catch {
       return;
     }
@@ -50,4 +50,9 @@ export function connectAgentEvents(sessionId: string, handlers: AgentStreamHandl
       source.close();
     },
   };
+}
+
+/** SSE transport for a session's agent event stream. */
+export function connectAgentEvents(sessionId: string, handlers: AgentStreamHandlers): AgentStreamConnection {
+  return connectEvents(agentEventsUrl(sessionId), handlers);
 }
