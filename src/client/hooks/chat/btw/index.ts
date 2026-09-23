@@ -14,7 +14,7 @@
  * deliberate action, not background traffic.
  */
 
-import { useCallback, useEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { BtwState, StreamTransport } from '@/shared/types';
 import { BtwRequestError, abortBtwQuestion, askBtwQuestion, connectBtwStream, deleteBtwTopic, fetchBtwState, promoteBtwTopic } from '@/shared/lib/chat/btw/client';
 import type { StreamConnection } from '@/shared/lib/chat/omp/transport';
@@ -57,6 +57,13 @@ export function useBtwSession(sessionId: string | null, options: BtwSessionOptio
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const { enabled, transport } = options;
+
+  // Commands must not be bound to the render that produced them: `/btw <q>`
+  // asks from the same tick that opens the form, before the stream attached and
+  // before this hook re-rendered with a session — a captured `sessionId` there
+  // would be null and the question would silently go nowhere.
+  const sessionIdRef = useRef(sessionId);
+  sessionIdRef.current = sessionId;
 
   useEffect(() => {
     if (!enabled || !sessionId) return;
@@ -102,10 +109,11 @@ export function useBtwSession(sessionId: string | null, options: BtwSessionOptio
 
   const run = useCallback(
     async (operation: (id: string) => Promise<BtwState>): Promise<BtwState | null> => {
-      if (!sessionId) return null;
+      const id = sessionIdRef.current;
+      if (!id) return null;
       setBusy(true);
       try {
-        const next = await operation(sessionId);
+        const next = await operation(id);
         setState(next);
         return next;
       } catch (cause) {
@@ -115,7 +123,7 @@ export function useBtwSession(sessionId: string | null, options: BtwSessionOptio
         setBusy(false);
       }
     },
-    [sessionId],
+    [],
   );
 
   const ask = useCallback(
@@ -149,11 +157,12 @@ export function useBtwSession(sessionId: string | null, options: BtwSessionOptio
 
   const promote = useCallback(
     async (topicId: string): Promise<string | null> => {
-      if (!sessionId) return null;
+      const id = sessionIdRef.current;
+      if (!id) return null;
       setError(null);
       setBusy(true);
       try {
-        const created = await promoteBtwTopic(sessionId, topicId);
+        const created = await promoteBtwTopic(id, topicId);
         return created.sessionId;
       } catch (cause) {
         setError(cause instanceof BtwRequestError || cause instanceof Error ? cause.message : String(cause));
@@ -162,7 +171,7 @@ export function useBtwSession(sessionId: string | null, options: BtwSessionOptio
         setBusy(false);
       }
     },
-    [sessionId],
+    [],
   );
 
   const clearError = useCallback(() => setError(null), []);

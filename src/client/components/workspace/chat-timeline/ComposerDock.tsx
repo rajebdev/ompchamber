@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from 'preact/compat';
 import { ChatInput } from '@/client/components/workspace/chat-timeline/chat-input/index';
-import { BtwPanel } from '@/client/components/workspace/btw-panel/index';
+import { BtwForm } from '@/client/components/workspace/btw-panel/index';
+import { useBtwMode } from '@/client/hooks/chat/btw/mode';
 import { GeneratingIndicator } from '@/client/components/workspace/chat-timeline/GeneratingIndicator';
 import { QueueList } from '@/client/components/workspace/chat-timeline/QueueList';
 import type { Attachment, QueuedMessage } from '@/shared/types';
@@ -79,16 +80,19 @@ export function ComposerDock({
   sessionThinkingLevel,
   variant,
 }: ComposerDockProps) {
+  // Side questions take over the composer entirely: the chat's own input is
+  // hidden while the form is open, so a stray Enter cannot send to the wrong
+  // conversation.
+  const btw = useBtwMode(sessionId, appSettings);
+
   return (
     <div
       className={`bg-transparent border-t-0 flex-shrink-0 space-y-2 ${isMobile ? 'px-3 pt-1' : 'p-4 pt-1'}`}
       style={isMobile ? { paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' } : undefined}
     >
-      {/* `relative` is the side-question panel's containing block: it floats
-          above the whole dock stack (`bottom-full`), so it never covers the
-          composer it is opened from. */}
+      {/* `relative` keeps the queue/indicator stack anchored above the input
+          while the side-question form takes the composer's place. */}
       <div className="relative mx-auto w-full max-w-[970px]">
-        <BtwPanel sessionId={sessionId} appSettings={appSettings} />
         {isGenerating && (
           <GeneratingIndicator
             modelName={modelName}
@@ -113,26 +117,30 @@ export function ComposerDock({
           })}
           isSteering
         />
-        <ChatInput
-          value={inputValue}
-          onChange={setInputValue}
-          rootPath={rootPath}
-          attachments={attachments}
-          onAttachmentsChange={setAttachments}
-          onSend={onSend}
-          isGenerating={isGenerating}
-          onStop={onStop}
-          appSettings={appSettings}
-          onThinkingLevelChange={onThinkingLevelChange}
-          onModelChange={onModelChange}
-          accessMode={accessMode}
-          onAccessModeChange={onAccessModeChange}
-          composerModelRef={composerModelRef}
-          deferredComposerPickRef={deferredComposerPickRef}
-          sessionModel={sessionModel}
-          sessionThinkingLevel={sessionThinkingLevel}
-          variant={variant}
-        />
+        {btw.open ? (
+          <BtwForm mode={btw} modelName={modelName} provider={provider} />
+        ) : (
+          <ChatInput
+            value={inputValue}
+            onChange={setInputValue}
+            rootPath={rootPath}
+            attachments={attachments}
+            onAttachmentsChange={setAttachments}
+            onSend={onSend}
+            isGenerating={isGenerating}
+            onStop={onStop}
+            appSettings={appSettings}
+            onThinkingLevelChange={onThinkingLevelChange}
+            onModelChange={onModelChange}
+            accessMode={accessMode}
+            onAccessModeChange={onAccessModeChange}
+            composerModelRef={composerModelRef}
+            deferredComposerPickRef={deferredComposerPickRef}
+            sessionModel={sessionModel}
+            sessionThinkingLevel={sessionThinkingLevel}
+            variant={variant}
+          />
+        )}
       </div>
     </div>
   );
