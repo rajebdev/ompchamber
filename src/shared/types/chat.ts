@@ -25,6 +25,12 @@ export interface Attachment {
   /** Inlined text-file contents, persisted with the committed user turn so a
    *  retry can re-send them without the original `File`. */
   content?: string;
+  /**
+   * Set when `content` came from sniffing the file's bytes rather than from its
+   * name or MIME. A promised-file drag from another app has neither, so without
+   * this marker the send path would classify it as binary and drop it again.
+   */
+  sniffedText?: boolean;
 }
 
 export type ChatAttachment = Attachment;

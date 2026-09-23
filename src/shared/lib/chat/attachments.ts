@@ -23,97 +23,12 @@
  */
 
 import type { AgentImage, Attachment } from '@/shared/types';
+import { TEXT_FILE_EXTENSIONS, isTextMimeType } from '@/shared/lib/chat/text-file';
+
+export { looksLikeTextFile } from '@/shared/lib/chat/text-file';
 
 export const MAX_ATTACHED_TEXT_BYTES = 256 * 1024;
 export const MAX_ATTACHED_TEXT_FILES = 10;
-
-/**
- * Extensions treated as inline-able text when the browser reports no useful
- * MIME type. `File.type` is empty for many code files, so the extension is the
- * only signal — a dropped `script.py` used to attach without its contents ever
- * reaching the prompt.
- */
-const TEXT_FILE_EXTENSIONS: Record<string, true> = {
-  txt: true,
-  text: true,
-  md: true,
-  markdown: true,
-  mdx: true,
-  json: true,
-  jsonc: true,
-  yaml: true,
-  yml: true,
-  toml: true,
-  ini: true,
-  env: true,
-  csv: true,
-  tsv: true,
-  log: true,
-  xml: true,
-  html: true,
-  htm: true,
-  css: true,
-  scss: true,
-  less: true,
-  js: true,
-  mjs: true,
-  cjs: true,
-  jsx: true,
-  ts: true,
-  mts: true,
-  cts: true,
-  tsx: true,
-  py: true,
-  rb: true,
-  go: true,
-  rs: true,
-  java: true,
-  kt: true,
-  kts: true,
-  swift: true,
-  c: true,
-  h: true,
-  cc: true,
-  cpp: true,
-  cxx: true,
-  hpp: true,
-  hh: true,
-  cs: true,
-  php: true,
-  pl: true,
-  lua: true,
-  r: true,
-  sql: true,
-  sh: true,
-  bash: true,
-  zsh: true,
-  fish: true,
-  ps1: true,
-  bat: true,
-  cmd: true,
-  dockerfile: true,
-  makefile: true,
-  gitignore: true,
-  editorconfig: true,
-  diff: true,
-  patch: true,
-};
-
-/** MIME types the browser reports for text-ish files it does know. */
-function isTextMimeType(type: string): boolean {
-  if (!type) return false;
-  if (type === 'text/plain' || type === 'text/markdown') return true;
-  return type.startsWith('text/')
-    || type === 'application/json'
-    || type === 'application/xml'
-    || type === 'application/x-yaml'
-    || type === 'application/yaml'
-    || type === 'application/javascript'
-    || type === 'application/x-sh'
-    || type === 'application/sql'
-    || type.endsWith('+json')
-    || type.endsWith('+xml');
-}
 
 export interface AttachedTextFileData {
   name: string;
@@ -279,6 +194,7 @@ export async function prepareQueuedAttachments(attachments: Attachment[]): Promi
     preview: att.dataBase64 ? `data:${attachmentType(att)};base64,${att.dataBase64}` : att.preview,
     ...(att.dataBase64 ? { dataBase64: att.dataBase64 } : {}),
     ...(contentById.has(att.id) ? { content: contentById.get(att.id) } : {}),
+    ...(att.sniffedText ? { sniffedText: true } : {}),
   }));
 }
 
@@ -297,9 +213,18 @@ export async function prepareQueuedAttachments(attachments: Attachment[]): Promi
 export async function readTextAttachments(
   attachments: Attachment[],
 ): Promise<ReadTextAttachment[]> {
-  const textAttachments = attachments.filter((a) => isTextAttachment(a));
+  // An attachment that already carries `content` was read at attach time — for
+  // an unclassified file that read only happened because the sniffer cleared it.
+  // Anything else must still classify from metadata, so a binary that happens to
+  // have a stray `content` string cannot smuggle itself into the prompt.
+  const textAttachments = attachments.filter((a) => isTextAttachment(a) || a.sniffedText === true);
   const contents = await Promise.all(
     textAttachments.map(async (att): Promise<{ content: string | null; missing: boolean }> => {
+      // The persisted copy wins: it was read at attach time through
+      // `FileReader`, which is the read that waits for another app's file to
+      // materialize. Re-reading the live handle here is what returned an empty
+      // body for a file whose bytes had already been captured.
+      if (typeof att.content === 'string') return { content: att.content, missing: false };
       if (att.file) {
         try {
           return { content: await att.file.text(), missing: false };

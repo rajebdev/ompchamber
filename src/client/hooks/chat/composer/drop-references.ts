@@ -18,6 +18,7 @@
  * provides one) is the path that carries those.
  */
 
+
 /** Last path segment of a URL or path, for the attachment's display name. */
 export function referenceName(reference: string): string {
   const withoutQuery = reference.split(/[?#]/)[0] ?? reference;
@@ -30,36 +31,76 @@ export function referenceName(reference: string): string {
   }
 }
 
+/** Why a dropped reference could not be turned into a file. */
+export type ReferenceFailure =
+  /** The path exists but lies outside the roots the chamber may read. */
+  | 'outside-roots'
+  /** A URL from a web page; the chamber does not fetch outbound. */
+  | 'remote'
+  /** The path exists but its contents are not text (an image, an archive). */
+  | 'binary'
+  /** The server could not read it at all — gone, or an unreadable permission. */
+  | 'unavailable';
+
+export type ReferenceReadResult =
+  | { ok: true; file: File }
+  | { ok: false; reason: ReferenceFailure };
+
 /**
  * Read a dropped reference through the server.
  *
  * `path` is used as the filesystem root hint so a relative reference resolves
- * inside the active workspace; an absolute path or URL ignores it. Returns null
- * when the server cannot produce text — an unreadable path, a binary body, or
- * an unreachable URL — so the caller reports the omission instead of attaching
- * an empty file.
+ * inside the active workspace; an absolute path or URL ignores it. The failure
+ * carries its REASON because the three cases need three different actions from
+ * the user, and a single "could not be read" left them with no way to tell them
+ * apart — or the developer with no way to tell which branch ran.
  */
-export async function readDroppedReference(reference: string, rootPath: string | null): Promise<File | null> {
+export async function readDroppedReference(reference: string, rootPath: string | null): Promise<ReferenceReadResult> {
   const params = new URLSearchParams({ path: reference });
   if (rootPath) params.set('root', rootPath);
+  const url = `/api/fs/read-reference?${params.toString()}`;
+  let res: Response;
   try {
-    const res = await fetch(`/api/fs/read-reference?${params.toString()}`);
-    if (!res.ok) return null;
-    const body = (await res.json().catch(() => null)) as { content?: unknown; name?: unknown } | null;
-    if (!body || typeof body.content !== 'string') return null;
-    // The server reports the basename it actually read, which is more reliable
-    // than re-deriving one from a percent-encoded URL.
-    const name = typeof body.name === 'string' && body.name ? body.name : referenceName(reference);
-    return new File([body.content], name, { type: 'text/plain' });
-  } catch {
-    return null;
+    res = await fetch(url);
+  } catch (error) {
+    return { ok: false, reason: 'unavailable' };
   }
+  const body = (await res.json().catch(() => null)) as { content?: unknown; name?: unknown; error?: unknown } | null;
+  if (!res.ok) {
+    const error = typeof body?.error === 'string' ? body.error : '';
+    if (/remote/i.test(error)) return { ok: false, reason: 'remote' };
+    if (/image|raw/i.test(error)) return { ok: false, reason: 'binary' };
+    if (res.status === 404 || /not found/i.test(error)) return { ok: false, reason: 'outside-roots' };
+    return { ok: false, reason: 'unavailable' };
+  }
+  if (!body || typeof body.content !== 'string') return { ok: false, reason: 'unavailable' };
+  // The server reports the basename it actually read, which is more reliable
+  // than re-deriving one from a percent-encoded URL.
+  const name = typeof body.name === 'string' && body.name ? body.name : referenceName(reference);
+  return { ok: true, file: new File([body.content], name, { type: 'text/plain' }) };
 }
 
-/** User-facing reason for files that could not be read. */
+/** User-facing reason for files whose contents could not be read. */
 export function describeUnreadable(names: string[]): string {
   if (names.length === 1) {
     return `"${names[0]}" could not be read and was not attached.`;
   }
   return `${names.length} files could not be read and were not attached: ${names.slice(0, 3).join(', ')}${names.length > 3 ? '…' : ''}.`;
+}
+
+/** User-facing reason for a dropped reference the server refused, per cause. */
+export function describeReferenceFailure(names: string[], reason: ReferenceFailure): string {
+  const list = names.slice(0, 3).join(', ');
+  const subject = names.length === 1 ? `"${names[0]}"` : `${names.length} files`;
+  const tail = names.length > 3 ? '…' : '';
+  switch (reason) {
+    case 'outside-roots':
+      return `${subject} lie${names.length === 1 ? 's' : ''} outside the folders the chamber may read, so ${names.length === 1 ? 'it was' : 'they were'} not attached (${list}${tail}).`;
+    case 'remote':
+      return `${subject} ${names.length === 1 ? 'is a web download' : 'are web downloads'}; save ${names.length === 1 ? 'it' : 'them'} into a workspace folder first (${list}${tail}).`;
+    case 'binary':
+      return `${subject} ${names.length === 1 ? 'is not' : 'are not'} a text file and ${names.length === 1 ? 'was' : 'were'} not attached (${list}${tail}).`;
+    default:
+      return describeUnreadable(names);
+  }
 }

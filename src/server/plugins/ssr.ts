@@ -36,7 +36,7 @@ function missingBuildResponse(): Response {
 <p>For a rebuild-on-change loop while developing:</p>
 <pre style="background:#f4f1ea;padding:1rem;border-radius:6px">bunx rsbuild build --watch</pre>
 </body>`,
-    { status: 503, headers: { 'content-type': 'text/html; charset=utf-8' } },
+    { status: 503, headers: HTML_HEADERS },
   );
 }
 
@@ -63,6 +63,33 @@ function themeColor(theme: string): string {
 }
 
 const MOBILE_UA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile|CriOS/i;
+
+/**
+ * The HTML shell is generated per request, so its cacheability is declared
+ * rather than left to the browser's heuristics.
+ *
+ * It is not a static file: the theme and the bootstrap settings are injected on
+ * every request, and its only link to the bundle is a content hash inside the
+ * markup. A copy that outlives its build does not merely go stale — it points at
+ * an asset hash the build no longer emits, leaving the page running previous
+ * code with nothing in the response to signal it.
+ *
+ * Chrome does not currently cache it: the response carries no `Cache-Control`,
+ * `Last-Modified` or `ETag`, so there is no freshness to heuristically derive
+ * and every navigation re-fetches (measured: a second load of the shell reported
+ * the full 41 KB `transferSize`). That is the behaviour this header makes
+ * explicit — the day a validator is added for the template, heuristic caching
+ * would start and nothing else here would prevent it.
+ *
+ * `no-store` rather than `no-cache`: with no validator there is nothing to
+ * revalidate against, so a stored copy is never usable.
+ */
+const SHELL_CACHE = 'no-store';
+
+const HTML_HEADERS = {
+  'content-type': 'text/html; charset=utf-8',
+  'cache-control': SHELL_CACHE,
+} as const;
 
 export const ssrRoutes = new Elysia({ name: 'ssr' }).get('*', async ({ request }) => {
   const pathname = new URL(request.url).pathname;
@@ -95,6 +122,6 @@ export const ssrRoutes = new Elysia({ name: 'ssr' }).get('*', async ({ request }
       .replace('data-theme="paper"', `data-theme="${theme}"`)
       .replace('<!--app-head-->', `<meta name="theme-color" content="${themeColor(theme)}">`)
       .replace('<!--app-bootstrap-->', `<script>window.__OMP_BOOTSTRAP__=${bootstrap}</script>`),
-    { headers: { 'content-type': 'text/html; charset=utf-8' } },
+    { headers: HTML_HEADERS },
   );
 });

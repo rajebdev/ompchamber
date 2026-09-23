@@ -25,6 +25,7 @@ import {
   composeMessageWithTextAttachments,
   isImageAttachment,
   isTextAttachment,
+  looksLikeTextFile,
   prepareQueuedAttachments,
   readTextAttachments,
 } from '@/shared/lib/chat/attachments';
@@ -163,5 +164,45 @@ describe('inline budget', () => {
     const { accepted, skipped } = applyTextAttachmentBudget([liveFile('shot.png', 'x', 'image/png')], existing);
     expect(accepted.map((f) => f.name)).toEqual(['shot.png']);
     expect(skipped).toEqual([]);
+  });
+});
+
+describe('content sniffing for unclassified files', () => {
+  test('a file whose name and MIME say nothing is recognised as text', async () => {
+    // A promised-file drag from another app arrives like this: real bytes, a
+    // generic name, no usable type. Deciding from metadata alone left it
+    // attached but never inlined.
+    expect(await looksLikeTextFile(liveFile('document', 'IMPORTANT\ncode: ABC'))).toBe(true);
+    expect(await looksLikeTextFile(liveFile('file', '# Title\n\nBody'))).toBe(true);
+  });
+
+  test('binary content is refused', async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    expect(await looksLikeTextFile(new File([png], 'download'))).toBe(false);
+    // A NUL byte is decisive: no text encoding this app handles contains one.
+    expect(await looksLikeTextFile(new File([new Uint8Array([65, 66, 0, 67])], 'blob'))).toBe(false);
+  });
+
+  test('an empty file is not treated as text', async () => {
+    expect(await looksLikeTextFile(liveFile('empty', ''))).toBe(false);
+  });
+
+  test('a sniffed attachment keeps its content through the read path', async () => {
+    // The sniffer's verdict is recorded on the attachment at attach time, so the
+    // send path must honour it even though the name still says nothing — and a
+    // bare `content` string must NOT be enough to smuggle a binary through.
+    const sniffed: Attachment = {
+      id: 'x',
+      name: 'document',
+      type: '',
+      size: 20,
+      preview: '',
+      content: 'IMPORTANT\ncode: ABC',
+      sniffedText: true,
+    };
+    const read = await readTextAttachments([sniffed]);
+    expect(read.map((f) => ({ name: f.name, content: f.content }))).toEqual([
+      { name: 'document', content: 'IMPORTANT\ncode: ABC' },
+    ]);
   });
 });

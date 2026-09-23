@@ -32,114 +32,20 @@
 
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { TargetedDragEvent } from 'preact';
-import { collectDroppedFiles, collectDroppedFileUris, hasDraggedFiles } from '@/client/hooks/chat/composer/drop-payload';
-
-/**
- * Safety valve: a dropped tree (a repo root, `node_modules`) must not queue
- * thousands of attachments. The walk stops as soon as it is reached.
- */
-export const MAX_DROPPED_FILES = 50;
-
-/** Directory nesting limit — a symlinked cycle would otherwise never end. */
-const MAX_DROP_DEPTH = 10;
+import { collectDroppedFileUris, hasDraggedFiles } from '@/client/hooks/chat/composer/drop-payload';
+import { primeFileReads, primedPrefix } from '@/client/hooks/chat/composer/file-reads';
+import type { PrimedReads } from '@/client/hooks/chat/composer/file-reads';
+import {
+  expandDroppedFiles,
+  readDroppedEntries,
+  MAX_DROP_DEPTH,
+  MAX_DROPPED_FILES,
+} from '@/client/hooks/chat/composer/drop-entries';
+import type { DroppedEntries } from '@/client/hooks/chat/composer/drop-entries';
 
 /** Reason shown when a drop yielded more than the composer can take. */
 export const DROP_LIMIT_NOTICE =
   `Some files were skipped — a drop is limited to ${MAX_DROPPED_FILES} files and ${MAX_DROP_DEPTH} folder levels deep.`;
-
-function readEntryFile(entry: FileSystemFileEntry): Promise<File | null> {
-  const { promise, resolve } = Promise.withResolvers<File | null>();
-  entry.file(resolve, () => resolve(null));
-  return promise;
-}
-
-/** `readEntries` yields at most 100 children per call; keep pulling until empty. */
-function readAllEntries(reader: FileSystemDirectoryReader): Promise<FileSystemEntry[]> {
-  const { promise, resolve } = Promise.withResolvers<FileSystemEntry[]>();
-  const all: FileSystemEntry[] = [];
-  const readBatch = () => {
-    reader.readEntries((batch) => {
-      if (batch.length === 0) {
-        resolve(all);
-        return;
-      }
-      all.push(...batch);
-      readBatch();
-    }, () => resolve(all));
-  };
-  readBatch();
-  return promise;
-}
-
-/** Walk one directory tree into `out`; true when a cap stopped the walk early. */
-async function walkDirectory(
-  directory: FileSystemDirectoryEntry,
-  out: File[],
-  depth: number,
-): Promise<boolean> {
-  if (depth >= MAX_DROP_DEPTH) return true;
-  const children = await readAllEntries(directory.createReader());
-  for (const child of children) {
-    if (out.length >= MAX_DROPPED_FILES) return true;
-    if (child.isFile) {
-      const file = await readEntryFile(child as FileSystemFileEntry);
-      if (file) out.push(file);
-    } else if (child.isDirectory) {
-      if (await walkDirectory(child as FileSystemDirectoryEntry, out, depth + 1)) return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Expand a drop into the flat file list the composer attaches: the files it
- * already carries plus every directory's contents, walked recursively.
- * `incomplete` reports that a cap cut the drop short, so the composer can say so
- * instead of silently attaching a prefix. Exported for tests.
- *
- * The `DataTransfer` is read synchronously here — the store is cleared once the
- * drop handler returns — while the returned entries stay readable during the
- * walk.
- */
-export async function expandDroppedFiles(
-  dt: DataTransfer,
-  directFiles: File[] = collectDroppedFiles(dt),
-): Promise<{ files: File[]; incomplete: boolean }> {
-  const files: File[] = [];
-  const directories: FileSystemDirectoryEntry[] = [];
-
-  for (const item of Array.from(dt.items ?? [])) {
-    if (item.kind !== 'file') continue;
-    const entry = typeof item.webkitGetAsEntry === 'function' ? item.webkitGetAsEntry() : null;
-    if (entry?.isDirectory) directories.push(entry as FileSystemDirectoryEntry);
-  }
-
-  // No directory in the payload: the flat list is already the answer. A host
-  // that never populates `items` lands here too.
-  if (directories.length === 0) {
-    return { files: directFiles.slice(0, MAX_DROPPED_FILES), incomplete: directFiles.length > MAX_DROPPED_FILES };
-  }
-
-  // Directories arrive as size-0 stubs in the flat list; the walk supplies the
-  // real files, so only the non-stub entries are kept from it.
-  for (const file of directFiles) {
-    if (file.size === 0 && file.type === '') continue;
-    files.push(file);
-  }
-
-  let incomplete = false;
-  for (const directory of directories) {
-    if (files.length >= MAX_DROPPED_FILES) {
-      incomplete = true;
-      break;
-    }
-    if (await walkDirectory(directory, files, 0)) {
-      incomplete = true;
-      break;
-    }
-  }
-  return { files: files.slice(0, MAX_DROPPED_FILES), incomplete };
-}
 
 export interface UseFileDropOptions {
   /**
@@ -147,7 +53,7 @@ export interface UseFileDropOptions {
    * plus any file REFERENCES the host offered instead of bytes (a download
    * dragged out of a web page) for the caller to resolve server-side.
    */
-  onFiles: (files: File[], incomplete: boolean, references: string[]) => void;
+  onFiles: (files: File[], incomplete: boolean, references: string[], primed: PrimedReads) => void;
   /** While true a drop is cancelled but not attached — the composer is closed. */
   disabled?: boolean;
 }
@@ -240,31 +146,81 @@ export function useFileDrop({ onFiles, disabled = false }: UseFileDropOptions): 
   }, []);
 
   const onDrop = useCallback((e: TargetedDragEvent<HTMLElement>) => {
-    if (!hasDraggedFiles(e.dataTransfer)) return;
+    const dt = e.dataTransfer;
+    // Read the payload in ONE pass before anything else touches it:
+    // `getAsFile()` and `webkitGetAsEntry()` are not pure accessors on a
+    // file-manager drag, and each call can consume state the other needs.
+    const entries: DroppedEntries = dt ? readDroppedEntries(dt) : { files: [], directories: [], fallbacks: new Map() };
+    const references = dt ? collectDroppedFileUris(dt) : [];
+
+    if (!dt || !hasDraggedFiles(dt)) return;
     e.preventDefault();
     reset();
     if (disabledRef.current) return;
-    const dt = e.dataTransfer;
-    if (!dt) return;
-    // Read the store-bound values synchronously: it is cleared when this
-    // handler returns, so a later read yields nothing.
-    const references = collectDroppedFileUris(dt);
-    const files = collectDroppedFiles(dt);
-    const directories = files.filter((file) => file.size === 0 && file.type === '');
-    if (files.length > 0 && directories.length === files.length && references.length > 0) {
-      // Host handed over path stubs, not bytes — let the server read them.
-      onFilesRef.current([], false, references);
+
+    // START THE READS NOW, in the drop handler's own tick. A dropped File's
+    // read permission is released when this handler returns, and a read started
+    // afterwards fails permanently — the chip rendered with the right name and
+    // size while its contents never arrived, on every retry. `FileReader` takes
+    // the permission at call time, so starting here is what makes the bytes
+    // reachable; the pipeline only awaits these later.
+    const primed = primeFileReads(entries.files, entries.fallbacks);
+
+    if (entries.files.length === 0 && entries.directories.length === 0) {
+      // No File at all: the host named the file without handing it over, and the
+      // reference resolver is the only route left to its contents.
+      if (references.length > 0) onFilesRef.current([], false, references, primed);
       return;
     }
-    if (files.length === 0) {
-      if (references.length > 0) onFilesRef.current([], false, references);
-      return;
-    }
-    void expandDroppedFiles(dt, files).then(({ files: resolved, incomplete }) => {
-      if (resolved.length > 0) onFilesRef.current(resolved, incomplete, references);
-      else if (references.length > 0) onFilesRef.current([], incomplete, references);
+
+    void expandDroppedFiles(entries).then(async ({ files: resolved, incomplete }) => {
+      const carries = resolved.length > 0 ? await carriesBytes(resolved, primed) : false;
+      // A File that carries bytes is attached directly. Deciding from metadata
+      // instead — "size 0 and no type, so it must be a path stub" — misread a
+      // real file whose size the browser had not filled in, and sent it to the
+      // reference resolver, which only reads inside the allow-list. The file
+      // was then refused with no way for the user to tell why. Bytes settle it.
+      if (resolved.length > 0 && carries) {
+        onFilesRef.current(resolved, incomplete, [], primed);
+        return;
+      }
+      if (references.length > 0) {
+        onFilesRef.current([], incomplete, references, primed);
+        return;
+      }
+      // Files that declare no bytes are attached as-is; the attachment hook
+      // reports the ones that never produced content.
+      if (resolved.length > 0) onFilesRef.current(resolved, incomplete, [], primed);
     });
   }, [reset]);
 
   return { isDragging, dropProps: { onDragEnter, onDragOver, onDragLeave, onDrop } };
+}
+
+/**
+ * Whether any dropped file actually holds bytes.
+ *
+ * A promised file (another app's drag) reports `size: 0` until its contents
+ * land, so the check reads rather than trusting the declared size. One readable
+ * file is enough: the batch is attached as a unit, and a member that stays
+ * empty is reported by the attachment hook rather than by re-routing the whole
+ * drop.
+ */
+export async function carriesBytes(files: File[], primed?: PrimedReads): Promise<boolean> {
+  const sample = files.slice(0, 4);
+  const results = await Promise.all(sample.map(async (file) => {
+    if (file.size > 0) return true;
+    // A stub declaring no size is settled by its bytes — read from the primed
+    // prefix where the drop provided one, because a `slice()` started after the
+    // drop window closes is not authorized to read a dropped file at all.
+    const bytes = await primedPrefix(file, primed);
+    if (bytes !== undefined) return bytes.byteLength > 0;
+    try {
+      const raw = await file.slice(0, 1).arrayBuffer();
+      return raw.byteLength > 0;
+    } catch {
+      return false;
+    }
+  }));
+  return results.some(Boolean);
 }

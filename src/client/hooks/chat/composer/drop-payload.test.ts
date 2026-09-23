@@ -18,7 +18,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { collectDroppedFiles, collectDroppedFileUris, hasDraggedFiles } from '@/client/hooks/chat/composer/drop-payload';
+import { collectDroppedFileUris, hasDraggedFiles } from '@/client/hooks/chat/composer/drop-payload';
 
 function transfer(types: Record<string, string>, files: File[] = [], items: DataTransferItem[] = []): DataTransfer {
   return {
@@ -28,12 +28,6 @@ function transfer(types: Record<string, string>, files: File[] = [], items: Data
     getData: (type: string) => types[type] ?? types[type.toLowerCase()] ?? '',
   } as unknown as DataTransfer;
 }
-
-const fakeItem = (kind: string, file: File | null): DataTransferItem => ({
-  kind,
-  getAsFile: () => file,
-  webkitGetAsEntry: () => null,
-} as unknown as DataTransferItem);
 
 describe('hasDraggedFiles', () => {
   test('a real file list is always a file drag', () => {
@@ -101,15 +95,3 @@ describe('collectDroppedFileUris', () => {
   });
 });
 
-describe('collectDroppedFiles', () => {
-  test('prefers the file list', () => {
-    const file = new File(['x'], 'a.txt', { type: 'text/plain' });
-    expect(collectDroppedFiles(transfer({}, [file])).map((f) => f.name)).toEqual(['a.txt']);
-  });
-
-  test('falls back to the item list for hosts that only populate it', () => {
-    const file = new File(['x'], 'b.txt', { type: 'text/plain' });
-    const dt = transfer({}, [], [fakeItem('string', null), fakeItem('file', file)]);
-    expect(collectDroppedFiles(dt).map((f) => f.name)).toEqual(['b.txt']);
-  });
-});

@@ -3,7 +3,6 @@ import type { ClipboardEvent, SetStateAction } from 'preact/compat';
 import { AlertTriangle, X } from 'lucide-preact';
 import type { AIModelOption, Attachment, ModelEntry } from '@/shared/types';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
-import { describeAttachmentBudget } from '@/shared/lib/chat/attachments';
 import { ComposerToolbar } from '@/client/components/workspace/chat-timeline/chat-input/Toolbar';
 import { ComposerTextarea } from '@/client/components/common/ComposerTextarea';
 import { AttachmentToolbar } from '@/client/components/workspace/chat-timeline/chat-input/AttachmentToolbar';
@@ -11,9 +10,8 @@ import { selectableThinkingLevels } from '@/shared/lib/models/thinking-levels';
 import { fetchModelsData, subscribeModelsUpdated } from '@/shared/lib/models/client';
 import { resolveThinkingLevel, selectionFor } from '@/client/components/workspace/chat-timeline/chat-input/selection';
 import { NO_PENDING_PICK } from '@/client/hooks/chat/timeline/deferred-model';
-import { useFileDrop, DROP_LIMIT_NOTICE } from '@/client/hooks/chat/composer/file-drop';
-import { describeUnreadable, readDroppedReference, referenceName } from '@/client/hooks/chat/composer/drop-references';
-import { useComposerAttachments } from '@/client/hooks/chat/composer/attachments';
+import { primeFileReads } from '@/client/hooks/chat/composer/file-reads';
+import { useComposerPipeline } from '@/client/hooks/chat/composer/pipeline';
 import { DropOverlay } from '@/client/components/workspace/chat-timeline/chat-input/DropOverlay';
 
 export function ChatInput({ 
@@ -235,68 +233,24 @@ export function ChatInput({
     if (!clipboard) return;
     if (clipboard.files.length > 0) {
       e.preventDefault();
-      acceptFiles(Array.from(clipboard.files));
+      const files = Array.from(clipboard.files);
+      // Same rule as a drop: the clipboard's file permission is released when
+      // this handler returns, so the reads are started here, in its tick.
+      acceptFiles(files, false, [], primeFileReads(files));
     }
   };
 
-  const { addFiles, removeAttachment, readyForSend } = useComposerAttachments({ attachments, setAttachments });
-
-  // Refusals are reported inline, right above the input: the composer has no
-  // toast stack of its own, and its three call sites share no host to borrow.
-  const [attachNotice, setAttachNotice] = useState<string | null>(null);
-
-  const acceptFiles = (files: File[], incomplete = false, references: string[] = []) => {
-    const { added, skipped, unreadable } = addFiles(files);
-    if (skipped.length > 0) {
-      setAttachNotice(describeAttachmentBudget(skipped));
-    } else if (incomplete) {
-      setAttachNotice(DROP_LIMIT_NOTICE);
-    } else if (unreadable.length > 0) {
-      // Reported, never silent: a chip whose bytes never arrived would send a
-      // prompt that names a file the model cannot see.
-      setAttachNotice(describeUnreadable(unreadable));
-    } else if (added > 0) {
-      setAttachNotice(null);
-    }
-    if (references.length > 0) void attachReferences(references);
-  };
-
-  // A download dragged out of a web page carries no File — only a URL. The
-  // server reads it, because the browser cannot fetch an arbitrary path and the
-  // drop gives no bytes to work with.
-  const attachReferences = async (references: string[]) => {
-    const resolved: File[] = [];
-    const failed: string[] = [];
-    await Promise.all(references.map(async (reference) => {
-      const file = await readDroppedReference(reference, rootPath ?? null);
-      if (file) resolved.push(file);
-      else failed.push(referenceName(reference));
-    }));
-    if (resolved.length > 0) {
-      const { unreadable } = addFiles(resolved);
-      setAttachNotice(unreadable.length > 0 ? describeUnreadable(unreadable) : null);
-    }
-    if (failed.length > 0) {
-      setAttachNotice(describeUnreadable(failed));
-    }
-  };
-
-  // OS drag-and-drop. Bound to the composer CARD, not the textarea: the whole
-  // composer is the drop target, so a drop anywhere inside it (including on the
-  // textarea) bubbles here instead of letting the browser navigate away.
-  const { isDragging, dropProps } = useFileDrop({
+  // Attach-and-send pipeline: drop handling, the inline notice, and the send
+  // guard all live in the hook, because a drop registers files before this
+  // component re-renders and the send decision cannot read a stale prop.
+  const { notice, dismissNotice, isDragging, dropProps, acceptFiles, removeAttachment, submit } = useComposerPipeline({
+    attachments,
+    setAttachments,
+    value,
     disabled,
-    onFiles: acceptFiles,
+    rootPath,
+    onSend,
   });
-
-  const handleSendClick = (options?: { steering?: boolean }) => {
-    if (!value.trim() && attachments.length === 0) return;
-    const outgoing = attachments;
-    setAttachments([]);
-    // Bytes are read at attach time; this waits for any still in flight so a
-    // prompt never goes out while an attachment is half-populated.
-    void readyForSend().then(() => onSend(outgoing, options));
-  };
 
   const isMobile = variant === 'mobile';
 
@@ -315,13 +269,13 @@ export function ChatInput({
         onRemove={removeAttachment}
       />
 
-      {attachNotice && (
+      {notice && (
         <div className="flex items-start gap-1.5 border-b border-error/20 bg-error/5 px-3 py-1.5 text-[11px] text-error">
           <AlertTriangle size={11} className="mt-0.5 shrink-0" />
-          <span className="min-w-0 flex-1 break-words">{attachNotice}</span>
+          <span className="min-w-0 flex-1 break-words">{notice}</span>
           <button
             type="button"
-            onClick={() => setAttachNotice(null)}
+            onClick={() => dismissNotice()}
             className="shrink-0 text-error/60 hover:text-error transition-colors"
             title="Dismiss"
           >
@@ -334,7 +288,7 @@ export function ChatInput({
       <ComposerTextarea
         value={value}
         onChange={onChange}
-        onSend={handleSendClick}
+        onSend={submit}
         disabled={disabled}
         appSettings={appSettings}
         rootPath={rootPath}
@@ -360,7 +314,7 @@ export function ChatInput({
         onThinkingLevelChange={onThinkingLevelChange}
         isGenerating={isGenerating}
         onStop={onStop}
-        onSend={() => handleSendClick()}
+        onSend={() => submit()}
         sendDisabled={disabled || (!value.trim() && attachments.length === 0)}
         accessMode={accessMode}
         onSelectAccess={onAccessModeChange}

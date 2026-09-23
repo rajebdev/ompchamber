@@ -26,6 +26,7 @@
  * `drop`; every read is guarded so one unreadable type cannot abort the scan.
  */
 
+
 /** Data types that, by their presence alone, mean files are being dragged. */
 const FILE_BEARING_TYPES = ['files', 'text/uri-list', 'codefiles', 'downloadurl'];
 
@@ -64,31 +65,26 @@ function readData(dataTransfer: DataTransfer, type: string): string {
  * its own: that would make every text selection a drop target.
  */
 export function hasDraggedFiles(dataTransfer: DataTransfer | null | undefined): boolean {
-  if (!dataTransfer) return false;
-  if (dataTransfer.files && dataTransfer.files.length > 0) return true;
+  if (!dataTransfer) {
+    return false;
+  }
+  if (dataTransfer.files && dataTransfer.files.length > 0) {
+    return true;
+  }
 
   const types = dataTransfer.types ? Array.from(dataTransfer.types).map((type) => type.toLowerCase()) : [];
-  if (FILE_BEARING_TYPES.some((type) => types.includes(type))) return true;
-  if (types.some((type) => type.includes('vnd.code.tree'))) return true;
+  if (FILE_BEARING_TYPES.some((type) => types.includes(type))) {
+    return true;
+  }
+  if (types.some((type) => type.includes('vnd.code.tree'))) {
+    return true;
+  }
 
   // A path-bearing type only counts when its payload looks like a path or URL:
   // `text/plain` alone is how every text selection arrives, and treating that as
   // a file drag would make the drop target light up for ordinary prose.
-  return collectDroppedFileUris(dataTransfer).length > 0;
-}
-
-/** The actual `File` objects in a drop. `files` first, `items` for hosts that
- *  only populate the item list. */
-export function collectDroppedFiles(dataTransfer: DataTransfer | null | undefined): File[] {
-  if (!dataTransfer) return [];
-
-  const direct = Array.from(dataTransfer.files || []);
-  if (direct.length > 0) return direct;
-
-  return Array.from(dataTransfer.items || [])
-    .filter((item) => item.kind === 'file')
-    .map((item) => item.getAsFile())
-    .filter((file): file is File => Boolean(file));
+  const references = collectDroppedFileUris(dataTransfer);
+  return references.length > 0;
 }
 
 /** True for a payload that is a path or URL rather than a document body. */
