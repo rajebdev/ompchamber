@@ -5,6 +5,28 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0](https://github.com/rajebdev/ompchamber/compare/v1.0.0...v1.1.0) — 2026-09-23
+
+### Added
+
+* **chat:** match the composer slash popup to oh-my-pi ([9635283](https://github.com/rajebdev/ompchamber/commit/9635283712e2793920b27e800db13f75b575c10a))
+* **layout:** store panel widths per session as a share of the available area ([0004c95](https://github.com/rajebdev/ompchamber/commit/0004c95db26476d4d910115fa2c1daef8fda9c1c))
+* **models:** persist favorite and recent models, keep the last five ([2abd752](https://github.com/rajebdev/ompchamber/commit/2abd752dbc046ff3cb234c2cbf328ccf85d2f365))
+* **sidebar:** label subagent rows and transcripts with identity and target ([ef85132](https://github.com/rajebdev/ompchamber/commit/ef85132d8ef5816311c0337fcce6b676a94d884c))
+
+### Changed
+
+* **models:** extract the registry loader and split model types ([4926da7](https://github.com/rajebdev/ompchamber/commit/4926da76b188ea95819af6b444114b3e58c197a8))
+
+### Fixed
+
+* **chat-timeline:** render yield summary as markdown ([2bdd27c](https://github.com/rajebdev/ompchamber/commit/2bdd27c748ee56f1039bfee31604fdbdd36d1bbc))
+* **chat:** keep a mid-stream model pick off the running turn ([5b6f7b7](https://github.com/rajebdev/ompchamber/commit/5b6f7b7e504006b94863b60c469c7443c12a48b6))
+* **queue:** recover the follow-up queue from a lost delivery timer ([6832174](https://github.com/rajebdev/ompchamber/commit/6832174643909c5a568cd32be33edd2893cf7a3d))
+* **session-sidebar:** keep the chevron hover-only while the roster is expanded ([363998f](https://github.com/rajebdev/ompchamber/commit/363998fb91f4e0056dd0b198a435c9de6d45b5d8))
+* **session-sidebar:** make the run-status glyph pointer-inert so the chevron is clickable ([cd3f8c1](https://github.com/rajebdev/ompchamber/commit/cd3f8c181fa691a67252b67f083dbd7491a6e174))
+* **session-sidebar:** pin the expand chevron whenever the row is not streaming ([1bbefcc](https://github.com/rajebdev/ompchamber/commit/1bbefcc40fb219a454161129972c6bb678f2b32e))
+
 ## [1.0.0](https://github.com/rajebdev/ompchamber/compare/v0.8.0...v1.0.0) — 2026-09-22
 
 ### BREAKING CHANGES
