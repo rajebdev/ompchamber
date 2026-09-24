@@ -35,12 +35,21 @@ export function ExtensionDialog({ request, onRespond }: ExtensionDialogProps) {
   const options = request.options ?? [];
   const optionDetails = request.optionDetails ?? [];
 
+  // Reset for a NEW dialog only. `request` is the identity to depend on —
+  // `options`/`optionDetails` above are derived arrays, re-created on every
+  // render, so listing one as a dependency re-ran this effect after every
+  // commit and threw away whatever had just been typed: an editor/input frame
+  // carries no `options` at all, so the reset fired on every keystroke and the
+  // dialog could not be typed into.
   useEffect(() => {
+    const items = request.options ?? [];
     setValue(request.method === 'editor' ? request.prefill ?? '' : '');
-    setSelectedOption(options.length > 0 ? options[0] : null);
+    setSelectedOption(items.length > 0 ? items[0] : null);
     setCustomValue('');
-  }, [request, options]);
+  }, [request]);
 
+  // Focus once per dialog, for the same reason: a fresh dependency on every
+  // render also pulls the caret back into the field the user just left.
   useEffect(() => {
     panelRef.current?.focus();
     if (request.method === 'input') {
@@ -50,12 +59,12 @@ export function ExtensionDialog({ request, onRespond }: ExtensionDialogProps) {
     } else if (request.method === 'select') {
       // When the AI offers an "Other"-style option, the intended interaction
       // is typing a custom answer — focus the input right away.
-      const hasOther = options.some((option) => /^other\b/i.test(option.trim()));
+      const hasOther = (request.options ?? []).some((option) => /^other\b/i.test(option.trim()));
       if (hasOther) {
         customInputRef.current?.focus();
       }
     }
-  }, [request.id, request.method, options]);
+  }, [request]);
 
   const cancel = useCallback(() => {
     onRespond(request, { cancelled: true });
