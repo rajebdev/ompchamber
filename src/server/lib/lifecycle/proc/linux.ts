@@ -39,8 +39,15 @@ function statTail(pid: number): string[] | null {
   return raw.slice(close + 1).trim().split(/\s+/);
 }
 
-/** Field 8 of `/proc/<pid>/stat` (1-indexed): the terminal foreground group. */
-const TPGID_FIELD = 6;
+/**
+ * Index of tpgid in `statTail`'s output.
+ *
+ * `/proc/<pid>/stat` numbers it 8 (1-indexed), and `statTail` has already
+ * dropped fields 1 (`pid`) and 2 (`(comm)`) — so the index is 8 - 3 = 5. At 6
+ * this read field 9, `flags`, which answered every live process with 0x400000
+ * instead of a process group.
+ */
+const TPGID_FIELD = 5;
 
 export const linuxProbe: ProcessProbe = {
   commandLine(pid) {

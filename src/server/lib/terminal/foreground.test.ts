@@ -23,9 +23,19 @@
 import { afterAll, describe, expect, test } from 'bun:test';
 
 import { processProbe } from '@/server/lib/lifecycle/proc';
+import { shellLaunch } from '@/server/lib/terminal/shell';
 import { detectBusyShells, type ShellProcess } from '@/server/lib/terminal/foreground';
 
 const describePosix = process.platform === 'win32' ? describe.skip : describe;
+
+/** The shell the test drives, and the prompt it announces itself with. */
+const SHELL = '/bin/sh';
+/**
+ * Spelled `CHAM''BER` on the command line below: the PTY echoes what is typed,
+ * so a literal needle would be satisfied by the echo before the shell ever
+ * parsed the line — the same trap the busy marker avoids.
+ */
+const PROMPT = 'CHAMBER> ';
 
 /** The value `ps` prints for the same field the probe reads. */
 async function psTpgid(pid: number): Promise<number> {
@@ -62,7 +72,13 @@ async function spawnShell(id: string): Promise<PtyShell> {
       }
     },
   });
-  const proc = Bun.spawn(['/bin/sh'], { terminal: term, detached: true, cwd: '/tmp' });
+  // The production launch argv, not a bare `/bin/sh`. The runtime must spawn
+  // `detached: true`, and `setsid()` drops the controlling terminal — a shell
+  // that never re-opens the PTY reports `tpgid` as -1 (verified on Linux), which
+  // reads as "a command owns the terminal" and is what made the prompt
+  // assertion below fail there. `shellLaunch` is the shim that re-acquires it,
+  // so this is the shell shape the probe is actually asked about.
+  const proc = Bun.spawn(shellLaunch(SHELL), { terminal: term, detached: true, cwd: '/tmp' });
   const shell: PtyShell = {
     id,
     pid: proc.pid,
@@ -110,8 +126,11 @@ describePosix('detectBusyShells', () => {
     const shell = await spawnShell('probe');
     const shells: ShellProcess[] = [{ id: shell.id, pid: shell.pid }];
 
-    // The prompt is the shell printing from its own foreground group.
-    await shell.until('$ ');
+    // The prompt is the shell printing from its own foreground group. It is
+    // named by us rather than assumed: the default is `$ ` for a user and `# `
+    // for root, and the assertion is about the foreground group, not the glyph.
+    shell.term.write("PS1='CHAM''BER> '\n");
+    await shell.until(PROMPT);
     expect((await detectBusyShells(shells)).has(shell.id)).toBe(false);
 
     // The marker is printed by a child that already owns the terminal, and the
