@@ -11,28 +11,41 @@ interface ModelConfigModalProps {
   onSaveModelConfig: (modelId: string, updates: Partial<ProviderModel>) => void;
 }
 
+/** The reasoning levels omp's `thinking.efforts` accepts, in its own order. */
+const EFFORT_LEVELS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+type EffortLevel = (typeof EFFORT_LEVELS)[number];
+
+/**
+ * Per-model configuration for one entry of `models.yml`.
+ *
+ * Only the knobs omp resolves per MODEL live here: `maxTokens` and the
+ * reasoning `thinking` block. omp has no per-model temperature or top-P — those
+ * are global `config.yml` settings, editable in Settings → OMP Engine — so
+ * offering sliders for them here would be a control that changes nothing. The
+ * dialog points at that panel instead.
+ */
 export function ModelConfigModal({
   isOpen,
   model,
   onClose,
   onSaveModelConfig,
 }: ModelConfigModalProps) {
-  if (!isOpen || !model) return null;
-
-  const [temperature, setTemperature] = useState<number>(model.temperature ?? 0.7);
-  const [maxTokens, setMaxTokens] = useState<number>(model.maxTokens ?? 384000);
-  const [topP, setTopP] = useState<number>(model.topP ?? 0.95);
-  const [reasoningEffort, setReasoningEffort] = useState<'low' | 'medium' | 'high'>(
-    model.reasoningEffort ?? 'medium'
+  const [maxTokens, setMaxTokens] = useState<string>(
+    model?.maxTokens ? String(model.maxTokens) : '',
   );
+  const [reasoningEffort, setReasoningEffort] = useState<EffortLevel | ''>(
+    (model?.reasoningEffort as EffortLevel | undefined) ?? '',
+  );
+
+  if (!isOpen || !model) return null;
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
+    const parsed = Number.parseInt(maxTokens, 10);
     onSaveModelConfig(model.id, {
-      temperature,
-      maxTokens,
-      topP,
-      reasoningEffort,
+      // Empty clears the override, so the model returns to the catalog value.
+      maxTokens: Number.isFinite(parsed) && parsed > 0 ? parsed : undefined,
+      reasoningEffort: reasoningEffort || undefined,
     });
     onClose();
   };
@@ -73,43 +86,6 @@ export function ModelConfigModal({
         </div>
       }
     >
-      {/* Temperature Slider */}
-      <div>
-        <div className="flex items-center justify-between mb-1 text-xs">
-          <span className="font-semibold text-ink">Sampling Temperature</span>
-          <span className="font-mono text-ink/70 font-semibold">{temperature.toFixed(2)}</span>
-        </div>
-        <input
-          type="range"
-          min="0.0"
-          max="2.0"
-          step="0.05"
-          value={temperature}
-          onChange={(e) => setTemperature(parseFloat(e.currentTarget.value))}
-          className="w-full accent-ink cursor-pointer"
-        />
-        <p className="text-[10px] text-ink/40 mt-0.5">
-          Controls randomness: lower is more deterministic, higher is more creative.
-        </p>
-      </div>
-
-      {/* Top P Slider */}
-      <div>
-        <div className="flex items-center justify-between mb-1 text-xs">
-          <span className="font-semibold text-ink">Top P (Nucleus Sampling)</span>
-          <span className="font-mono text-ink/70 font-semibold">{topP.toFixed(2)}</span>
-        </div>
-        <input
-          type="range"
-          min="0.1"
-          max="1.0"
-          step="0.05"
-          value={topP}
-          onChange={(e) => setTopP(parseFloat(e.currentTarget.value))}
-          className="w-full accent-ink cursor-pointer"
-        />
-      </div>
-
       {/* Max Output Tokens */}
       <div>
         <label className="block text-xs font-semibold text-ink mb-1">
@@ -117,23 +93,37 @@ export function ModelConfigModal({
         </label>
         <input
           type="number"
-          min={1024}
-          max={1000000}
+          min={1}
           step={1024}
           value={maxTokens}
-          onChange={(e) => setMaxTokens(parseInt(e.currentTarget.value, 10) || 4096)}
+          placeholder="Catalog default"
+          onChange={(e) => setMaxTokens(e.currentTarget.value)}
           className="w-full bg-paper border border-ink/20 rounded-md px-3 py-1.5 text-xs text-ink outline-none focus:border-ink/60 font-mono"
         />
+        <p className="text-[10px] text-ink/40 mt-0.5">
+          Written to models.yml as this model's output cap. Empty uses the catalog value.
+        </p>
       </div>
 
-      {/* Reasoning Effort (if supported) */}
+      {/* Reasoning Effort (only for models that support reasoning) */}
       {model.hasReasoning && (
         <div>
           <label className="block text-xs font-semibold text-ink mb-1.5">
-            Reasoning Effort
+            Default Reasoning Effort
           </label>
           <div className="grid grid-cols-3 gap-2">
-            {(['low', 'medium', 'high'] as const).map((lvl) => (
+            <button
+              type="button"
+              onClick={() => setReasoningEffort('')}
+              className={`py-1.5 rounded-md text-xs font-medium border text-center transition-colors cursor-pointer ${
+                reasoningEffort === ''
+                  ? 'border-ink/50 bg-ink/10 text-ink'
+                  : 'border-ink/15 text-ink/60 hover:border-ink/30'
+              }`}
+            >
+              Auto
+            </button>
+            {EFFORT_LEVELS.map((lvl) => (
               <button
                 key={lvl}
                 type="button"
@@ -148,8 +138,18 @@ export function ModelConfigModal({
               </button>
             ))}
           </div>
+          <p className="text-[10px] text-ink/40 mt-0.5">
+            The level omp starts this model at. Auto leaves the choice to the chat composer.
+          </p>
         </div>
       )}
+
+      <div className="flex items-start gap-2 px-3 py-2 rounded-md bg-ink/5 border border-ink/10 text-[11px] text-ink/60">
+        <span>
+          Sampling temperature and Top P are global omp settings, not per-model —
+          change them in <span className="font-medium text-ink">Settings → OMP Engine</span>.
+        </span>
+      </div>
     </Modal>
   );
 }

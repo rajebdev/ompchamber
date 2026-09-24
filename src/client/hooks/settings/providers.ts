@@ -254,9 +254,40 @@ export function useProviderSettings({
     (models) => models.map((m) => (m.id === modelId ? { ...m, isVisible: !m.isVisible } : m)),
   );
 
-  const handleSaveModelConfig = (modelId: string, updates: Partial<ProviderModel>) => updateSelectedModels(
-    (models) => models.map((m) => (m.id === modelId ? { ...m, ...updates } : m)),
-  );
+  /**
+   * Save the per-model knobs omp honours (`models.yml` modelOverrides). The
+   * overlay still stores the display value so the dialog reopens where the user
+   * left it, but omp only reads the override — writing just the overlay was the
+   * bug that made these controls inert.
+   */
+  const handleSaveModelConfig = async (modelId: string, updates: Partial<ProviderModel>) => {
+    if (!selectedProvider) return;
+    const provider = selectedProvider;
+    updateSelectedModels((models) => models.map((m) => (m.id === modelId ? { ...m, ...updates } : m)));
+
+    const body: Record<string, unknown> = { provider: provider.slug, modelId };
+    if ('maxTokens' in updates) body.maxTokens = updates.maxTokens ?? null;
+    if ('reasoningEffort' in updates) body.reasoningEffort = updates.reasoningEffort ?? null;
+    if (Object.keys(body).length === 2) return;
+
+    try {
+      const response = await fetch('/api/settings/model-override', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await response.json() as { success?: boolean; written?: boolean; reason?: string; error?: string };
+      if (!response.ok) {
+        pushToast(data.error || 'Failed to save the model configuration.', 'error');
+        return;
+      }
+      if (data.written) notifyModelsUpdated();
+      else if (data.reason) pushToast(data.reason, 'error');
+    } catch (error) {
+      console.error('Failed to save model override:', error);
+      pushToast('Failed to save the model configuration.', 'error');
+    }
+  };
 
   return {
     providers,

@@ -15,7 +15,11 @@ export interface ProviderModel {
   temperature?: number;
   maxTokens?: number;
   topP?: number;
-  reasoningEffort?: 'low' | 'medium' | 'high';
+  /**
+   * Default reasoning effort written to models.yml `modelOverrides`. Mirrors
+   * omp's `EffortSchema` vocabulary.
+   */
+  reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 }
 
 export interface ProviderItem {

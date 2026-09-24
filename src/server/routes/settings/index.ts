@@ -4,6 +4,7 @@ import * as settingsAgents from '@/server/routes/settings/agents';
 import * as settingsBehavior from '@/server/routes/settings/behavior';
 import * as settingsCommands from '@/server/routes/settings/commands';
 import * as settingsMcp from '@/server/routes/settings/mcp';
+import * as settingsModelOverride from '@/server/routes/settings/model-override';
 import * as settingsMcpTest from '@/server/routes/settings/mcp-test';
 import * as settingsOmpConfig from '@/server/routes/settings/omp-config';
 import * as settingsProjects from '@/server/routes/settings/projects';
@@ -18,6 +19,7 @@ export const settingsBindings: HandlerBinding[] = [
   ...bindingsFor(settingsBehavior, '/api/settings/behavior'),
   ...bindingsFor(settingsCommands, '/api/settings/commands'),
   ...bindingsFor(settingsMcp, '/api/settings/mcp'),
+  ...bindingsFor(settingsModelOverride, '/api/settings/model-override'),
   ...bindingsFor(settingsMcpTest, '/api/settings/mcp-test'),
   ...bindingsFor(settingsOmpConfig, '/api/settings/omp-config'),
   ...bindingsFor(settingsProjects, '/api/settings/projects'),
