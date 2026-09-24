@@ -5,6 +5,53 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0](https://github.com/rajebdev/ompchamber/compare/v1.2.1...v2.0.0) — 2026-09-24
+
+### BREAKING CHANGES
+
+* **btw:** a side question now runs with the tools its approval mode
+allows and can modify the workspace, where it was previously read-only. The
+`<btw>` prompt is no longer byte-identical to omp's TUI template.
+
+### Added
+
+* **btw:** mark a promoted session with a "btw:" prefix in the sidebar ([1d8a45d](https://github.com/rajebdev/ompchamber/commit/1d8a45d03243153ab519712688d5d744223658b1))
+* **btw:** run side questions with tools and render them through the chat timeline ([c1c7986](https://github.com/rajebdev/ompchamber/commit/c1c79861250fa5e19113e8b7ec6aff4c552e9357))
+* **chat:** name a session as soon as its first message lands ([54e6e3d](https://github.com/rajebdev/ompchamber/commit/54e6e3db1f5dd74567fc2481fa961a53d4fcb23d))
+* **settings:** write per-model configuration omp actually applies ([6f61042](https://github.com/rajebdev/ompchamber/commit/6f6104257295c2e40bc7e5a93651bfc573139407))
+* **theme:** add 42 ported palettes and palette cards to appearance ([fa8d222](https://github.com/rajebdev/ompchamber/commit/fa8d2224f648fd653dc688861d8ecd9e599b48d3))
+
+### Changed
+
+* **agents:** document the 350-line ceiling in the verification gates ([7f52118](https://github.com/rajebdev/ompchamber/commit/7f52118800965beecb2a53e4df2582ac5aa6a16e))
+* **btw:** record the tool-enabled child, chat-timeline rendering and dialog state ([134c360](https://github.com/rajebdev/ompchamber/commit/134c3600611e9d2878ffba284a6ff5156b8c24ff))
+* **fs:** answer repeated git-ignore questions from a cache ([1858fbd](https://github.com/rajebdev/ompchamber/commit/1858fbd3c48ce051d1c5df3d95df754d9cf1dbd8))
+* **fs:** run the Search panel on a native ripgrep when one is installed ([bf87e01](https://github.com/rajebdev/ompchamber/commit/bf87e01292a1ce111a5fa116e4cec386cc29decd))
+* **lifecycle:** read process identity natively instead of spawning ps ([261500d](https://github.com/rajebdev/ompchamber/commit/261500d921449f34613a71c72f8b2ce06ad81ea0))
+* **omp:** drop the running-session broadcast nothing subscribes to ([e10e7be](https://github.com/rajebdev/ompchamber/commit/e10e7beffb59857cc70e5d4d74ae8d333371b156))
+* **plugins:** offer zstd before brotli and gzip ([31187a7](https://github.com/rajebdev/ompchamber/commit/31187a7c794ebee069e3ff6290a512eef90ee7cf))
+* **readme:** compose the mobile capture at the aspect of its row ([ee2f752](https://github.com/rajebdev/ompchamber/commit/ee2f7525a23a53eb6d82ed2ebf79e9f5de78bb84))
+* **readme:** rebuild the README around live versions and real captures ([fb23335](https://github.com/rajebdev/ompchamber/commit/fb233356a5e27a235d3c1ca06286a479c71bf102))
+* **terminal:** read the PTY's foreground group without spawning ps ([3b6aee6](https://github.com/rajebdev/ompchamber/commit/3b6aee649d0a530f85fb1c97fab10be776f58d08))
+* **terminal:** scan replay scrollback with indexOf instead of byte by byte ([fc5cf1f](https://github.com/rajebdev/ompchamber/commit/fc5cf1f9a259086ae67b57999cdbc3797656736e))
+
+### Fixed
+
+* **chat:** hold the ask modal until the session history has settled ([d686c5b](https://github.com/rajebdev/ompchamber/commit/d686c5b810b0bdafcf8469af23f3e93e168c2c99))
+* **chat:** keep what is typed in the extension dialog's editor ([ccd7e8a](https://github.com/rajebdev/ompchamber/commit/ccd7e8adf76bb98fcb857f492eb3fe0f1ba897df))
+* **chat:** land the timeline at the tail on open and jump-to-bottom ([8351e52](https://github.com/rajebdev/ompchamber/commit/8351e523d69ba0088870c16b803ec750e4e6a257))
+* **chat:** stop the ask card reading a stopped ask as still queued ([9bd47d2](https://github.com/rajebdev/ompchamber/commit/9bd47d23453cf304db800af37e9a9bcc8c74830d))
+* **chat:** title a session from its first message only ([5765027](https://github.com/rajebdev/ompchamber/commit/576502749b1c3e2671d4f8a219b5e4a24998770c))
+* **editor:** render an opened markdown file as the document it is ([c47689f](https://github.com/rajebdev/ompchamber/commit/c47689f8f742e5008d8d74339308c3f9b8087d68))
+* **lifecycle:** open the Darwin probe's libraries on first use ([93fe031](https://github.com/rajebdev/ompchamber/commit/93fe031a212858de057d4385503ff2d6afd24065))
+* **markdown:** keep a code span from being autolinked as a link ([a890660](https://github.com/rajebdev/ompchamber/commit/a8906605adcb73506209936042e30a75fc3930d1))
+* **queue:** stop a queued follow-up from being stranded by a busy session ([b280393](https://github.com/rajebdev/ompchamber/commit/b28039344698c144d6efd19b076a1bc09da594bd))
+* **sessions:** judge a stream row by its owner, not the reader's registry ([2de306a](https://github.com/rajebdev/ompchamber/commit/2de306a47c800f0aeb8e94dd583fab31566c5277))
+* **settings:** stop a stale writer reverting another writer's settings ([ce9b9d4](https://github.com/rajebdev/ompchamber/commit/ce9b9d43698c300a1d0038a3d3831fa2841b2674))
+* **settings:** stop the provider writers corrupting omp's config files ([45d3cff](https://github.com/rajebdev/ompchamber/commit/45d3cff8c2887e03ab1161729ea9c4d88bc51ad2))
+* **terminal:** read tpgid from the right /proc offset ([5baf941](https://github.com/rajebdev/ompchamber/commit/5baf9410f01d4558996104e1579df8cf51c74d73))
+* **workspace:** scope repo picker and listing to the active workspace root ([90097be](https://github.com/rajebdev/ompchamber/commit/90097bee917e699376197da05acad1168cfd698c))
+
 ## [1.2.1](https://github.com/rajebdev/ompchamber/compare/v1.2.0...v1.2.1) — 2026-09-23
 
 ### Fixed
