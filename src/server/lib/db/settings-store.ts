@@ -35,6 +35,31 @@ export async function writeSettingsRaw(db: DbClient, key: string, value: string)
   await db.run(UPSERT_VALUE_SQL, [key, value]);
 }
 
+/** A JSON object that is not an array — the only shape a key-wise merge applies to. */
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Shallow-merge a plain-object patch into the object already stored for `key`.
+ *
+ * A patch is the only thing the settings client can send without republishing
+ * values it merely read: the `omp_chamber_settings` blob is written by two
+ * writers (the settings modal, the theme picker) and read by many, so a writer
+ * that echoed its whole copy would discard whatever another writer stored in
+ * between. Merging is what makes a partial write safe; a stored value that is
+ * absent or not an object is replaced outright, and arrays still replace
+ * because a list has no per-key identity to merge on.
+ */
+export async function mergeSettingsJson(
+  db: DbClient,
+  key: string,
+  patch: Record<string, unknown>,
+): Promise<void> {
+  const stored = await readSettingsJson<unknown>(db, key, null);
+  await writeSettingsJson(db, key, { ...(isPlainObject(stored) ? stored : {}), ...patch });
+}
+
 /** Read every settings row, parsing JSON where possible and keeping raw text otherwise. */
 export async function readAllSettingsJson(db: DbClient): Promise<Record<string, unknown>> {
   const rows = await db.all<{ key: string; value: string }>(SELECT_ALL_SQL);

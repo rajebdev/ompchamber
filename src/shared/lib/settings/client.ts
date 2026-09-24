@@ -76,14 +76,20 @@ export function writeSetting(key: string, value: unknown): void {
 }
 
 /**
- * Write a patch of chamber-blob keys (`theme`, `streamTransport`, …). The blob
- * is kept whole so the durable copy stays one round-trippable object, while the
- * snapshot exposes its keys flat.
+ * Write a patch of chamber-blob keys (`theme`, `streamTransport`, …). The
+ * snapshot exposes the blob's keys flat, so an edit applies to the next read
+ * without a round-trip.
+ *
+ * Only the patch travels, and the server merges it into the stored blob. The
+ * whole local blob must not be republished: this page's copy was taken when it
+ * booted, so a tab left open across an external change (a second tab, a direct
+ * API call) would overwrite the newer keys with its own stale ones on the next
+ * unrelated write — which is exactly how a theme chosen elsewhere reverted.
  */
 export function writeChamberSettings(patch: Record<string, any>): void {
   chamberBlob = { ...chamberBlob, ...patch };
   snapshot = { ...current(), ...patch };
-  sendSettings({ [CHAMBER_SETTINGS_KEY]: chamberBlob });
+  sendSettings({ [CHAMBER_SETTINGS_KEY]: patch });
 }
 
 /** POST a settings patch to SQLite. Fire-and-forget; failures are non-fatal. */

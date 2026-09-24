@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { Check, ChevronLeft, X } from 'lucide-preact';
 import type { SettingsCategoryId, SettingsState } from '@/shared/types';
 import { mergeChamberSettings } from '@/shared/lib/settings/client';
+import { diffSettings } from '@/shared/lib/settings/diff';
 import { useChamberSettingsWriter } from '@/client/hooks/settings/use-chamber-setting';
 import { applyDocumentTheme } from '@/client/hooks/ui/theme';
 import { DEFAULT_THEME_ID } from '@/shared/lib/theme/catalog';
@@ -105,7 +106,14 @@ export function SettingsModal({
       if (typeof document !== 'undefined' && next.theme) {
         applyDocumentTheme(next.theme);
       }
-      writeChamberSettings(next);
+      // Only the keys this update actually touched are persisted. The modal
+      // holds a full `SettingsState` snapshot taken when it opened, so writing
+      // the whole object back would also republish every value it read at that
+      // moment — a tab left open across an external change (another tab, a
+      // `curl` to /api/settings) would silently revert it on the next unrelated
+      // toggle. `theme` in particular is written by the appearance picker and
+      // read by the SSR shell, so the stale copy is not just cosmetic.
+      writeChamberSettings(diffSettings(prev, next, updater));
       return next;
     });
     setToastMessage('Setting was saved');
