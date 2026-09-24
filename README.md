@@ -57,7 +57,7 @@ bun run src/server/index.ts    # API + WebSocket + static client on :3000
 | ![Source control](docs/assets/panel-git.png)<br>**Source control** — staged/unstaged changes, commits, branches, tracking state | ![Editor and diff](docs/assets/panel-diff.png)<br>**Editor &amp; diff** — split or unified diffs, Shiki highlighting, images as pictures |
 | ![Terminal](docs/assets/panel-terminal.png)<br>**Terminal** — a real PTY (one shell per terminal id, scrollback replayed on reload) | ![Context and telemetry](docs/assets/panel-context.png)<br>**Context &amp; telemetry** — context window use, cache hit rate, cost, per-turn breakdown |
 | ![Usage](docs/assets/panel-usage.png)<br>**Usage** — provider balance, plan windows, per-model token spend | ![Appearance settings](docs/assets/settings-themes.png)<br>**Settings** — appearance, chats, OMP engine, providers, agents, commands, MCP, skills |
-| ![Mobile view](docs/assets/mobile.png)<br>**Mobile view** — the same session on a phone, one column | ![Light theme](docs/assets/hero-light.png)<br>**Any palette** — 45 light and dark themes, applied to the whole console |
+| ![Mobile view — chat, sessions drawer and the panel rail on a phone](docs/assets/mobile.png)<br>**Mobile view** — the same session on a phone: chat, sessions drawer, the full panel rail | ![Light theme](docs/assets/hero-light.png)<br>**Any palette** — 45 light and dark themes, applied to the whole console |
 
 - **Chat timeline** — streaming thinking blocks, tool-call cards with a structured renderer per tool
   (bash, LSP, AST edit, hub tasks, mermaid diagrams you can zoom), usage footers, a persistent
