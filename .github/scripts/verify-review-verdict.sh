@@ -69,11 +69,18 @@ if [ "$current_head" != "$expected_head" ]; then
 fi
 
 display="$(printf '%s' "$verdict" | tr '[:lower:]-' '[:upper:]_')"
-printf '%s' "$body" | grep -Fq "**Verdict: ${display}**" \
+
+# These checks read the comment the way a maintainer does, ignoring markdown decoration.
+# A live run posted a correct review whose backticks and bold markers were dropped on the
+# way, and a gate that rejects a correct comment over formatting turns a finished review
+# into a wasted run plus an `automation-failed` label. The machine contract is the marker
+# above; these only prove the human-readable lines agree with it, so each check requires
+# the label, then the value as a complete token.
+printf '%s\n' "$body" | grep -Eq "Verdict:[^A-Za-z]*${display}([^A-Za-z]|\$)" \
   || fail "human-readable verdict missing or disagreeing with the marker (${verdict})"
-printf '%s' "$body" | grep -Fq "Reviewed HEAD: \`${expected_head}\`" \
+printf '%s\n' "$body" | grep -Eq "Reviewed HEAD:[^0-9a-f]*${expected_head}([^0-9a-f]|\$)" \
   || fail "review comment does not identify the reviewed HEAD"
-printf '%s' "$body" | grep -Fq '**For the maintainer:**' \
+printf '%s\n' "$body" | grep -Fqi 'for the maintainer:' \
   || fail "review comment has no maintainer line"
 
 case "$verdict" in
