@@ -26,22 +26,26 @@ export class PendingUiDialogs {
   // answer them in — a Map preserves it.
   private readonly requests = new Map<string, RpcFrame>();
 
-  /** Record an answerable request, or forget one omp withdrew (`cancel`). */
-  track(frame: RpcFrame): void {
+  /** Record an answerable request, or forget one omp withdrew (`cancel`).
+   *  Returns whether the pending set changed — a caller that republishes state
+   *  on every frame would otherwise republish for `notify`/`open_url` too. */
+  track(frame: RpcFrame): boolean {
     if (frame.method === 'cancel') {
       const targetId = typeof frame.targetId === 'string' ? frame.targetId : '';
-      if (targetId) this.requests.delete(targetId);
-      return;
+      return targetId ? this.requests.delete(targetId) : false;
     }
     const id = typeof frame.id === 'string' ? frame.id : '';
-    if (!id || typeof frame.method !== 'string' || !ANSWERABLE_UI_METHODS.has(frame.method)) return;
+    if (!id || typeof frame.method !== 'string' || !ANSWERABLE_UI_METHODS.has(frame.method)) return false;
+    // A repeat of the same id is not a change.
+    if (this.requests.has(id)) return false;
     this.requests.set(id, frame);
+    return true;
   }
 
   /** Forget a request once its response is on the wire — omp will not raise it
    *  again, so replaying it to a later client would only show a dead modal. */
-  resolve(id: string): void {
-    this.requests.delete(id);
+  resolve(id: string): boolean {
+    return this.requests.delete(id);
   }
 
   /** Still-blocking requests, oldest first. */

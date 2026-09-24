@@ -90,10 +90,17 @@ export const DEVICE_VERBS: Record<string, string> = {
  * Phrase shown while the model streams reasoning or prose rather than running a
  * tool. A tool call always names itself from its own name (see
  * `describeAssistantPhase`), so there is no in-between "preparing" state.
+ *
+ * `sideQuestion` is the BTW panel's FALLBACK phase, used only before the side
+ * child has reported anything: once it does, the panel shows the child's own
+ * per-phase verb (`Thinking`, `Writing response`, or the running tool's name).
+ * It is named for the feature rather than reusing `thinking`, which would claim
+ * a reasoning phase that has not been observed yet.
  */
 export const PHASE_VERBS = {
   thinking: 'Thinking',
   writing: 'Writing response',
+  sideQuestion: 'Answering side question',
 } as const;
 
 export function asString(value: unknown): string | undefined {

@@ -4,12 +4,17 @@
  */
 
 /**
- * The ask card — the top card of the side-question form.
+ * The ask card — the HEADER of the side-question panel.
  *
- * It is the form's own entry, not the chat's: the question typed here is always
- * a question of its own (a new topic), which is why it carries its own `⟳`
- * (start over) and `✕` (leave the form). The topic history and promotion ride
- * along here because the form replaced the composer that used to hold them.
+ * It is the panel's own entry, not the chat's: the question typed here is
+ * always a question of its own (a new topic), which is why it carries the
+ * panel's actions — `⟳` start over, `⌄` topic history, `⧉` promote, `✕` leave.
+ *
+ * It is a header rather than another card in the stack on purpose. The panel
+ * also holds a composer, and a second free-standing input beside it read as
+ * "the same thing again": users typed a follow-up into the new-question field.
+ * As a header it belongs to the answers card it sits on, and the composer below
+ * is the only input that continues the topic on screen.
  */
 
 import { useEffect, useRef, useState } from 'preact/hooks';
@@ -77,7 +82,7 @@ export function BtwAskCard({
   };
 
   return (
-    <div className="bg-paper border border-ink/20 rounded-2xl shadow-sm flex items-center gap-1 pl-1.5 pr-2 py-1 focus-within:border-ink transition-colors">
+    <div className="flex items-center gap-1 pl-1.5 pr-2 py-1.5 border-b border-ink/10 bg-canvas/40">
       <button
         type="button"
         onClick={() => {

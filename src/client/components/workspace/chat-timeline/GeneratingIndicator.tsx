@@ -7,6 +7,12 @@ interface GeneratingIndicatorProps {
   generatingVerb?: string;
   provider?: string;
   providerNames?: Record<string, string>;
+  /**
+   * DOM id for the docked row. Two indicators can be mounted at once — the chat
+   * run and a side question both streaming — so a second caller must pass its
+   * own id rather than duplicating the default one.
+   */
+  id?: string;
 }
 
 const COOL_VERBS = [
@@ -18,7 +24,7 @@ const COOL_VERBS = [
   'Compiling edge routes'
 ];
 
-export function GeneratingIndicator({ modelName, generatingVerb, provider, providerNames }: GeneratingIndicatorProps) {
+export function GeneratingIndicator({ modelName, generatingVerb, provider, providerNames, id = 'generating-docked-indicator' }: GeneratingIndicatorProps) {
   const [activeVerbIndex, setActiveVerbIndex] = useState(0);
 
   // Rotate action verb every 2.8s
@@ -38,7 +44,7 @@ export function GeneratingIndicator({ modelName, generatingVerb, provider, provi
 
   return (
     <div 
-      id="generating-docked-indicator"
+      id={id}
       className="w-full flex items-center px-1 py-1 bg-transparent border-0 border-none text-[11px] font-mono select-none animate-in fade-in duration-200"
     >
       <style>{`

@@ -33,6 +33,8 @@ export function ChatInput({
   variant = 'desktop',
   accessMode,
   onAccessModeChange,
+  enablePicker = true,
+  placeholder,
   /** Written on every model/thinking pick so the send path can snapshot the
    *  selection into queued items without lifting ChatInput state. */
   composerModelRef,
@@ -62,6 +64,14 @@ export function ChatInput({
   rootPath?: string | null;
   accessMode: ApprovalMode;
   onAccessModeChange: (mode: ApprovalMode) => void;
+  /**
+   * Whether the `@` / `/` / `!` / `#` autocomplete runs. Off for the
+   * side-question form, which has no file tree, commands or skills to offer —
+   * and whose text is never run through the mention translator.
+   */
+  enablePicker?: boolean;
+  /** Overrides the default hint text (the side-question form names its own). */
+  placeholder?: string;
   /**
    * `mobile` sizes the composer for a phone: 16px text (iOS Safari zooms the
    * viewport when focusing an input below that), thumb-sized send/stop
@@ -292,7 +302,8 @@ export function ChatInput({
         disabled={disabled}
         appSettings={appSettings}
         rootPath={rootPath}
-        placeholder={disabled ? "Please select a workspace above to start prompting..." : "@ for files/agents; / for commands and skills; ! for shell; # for snippets (Paste images/files here)"}
+        enablePicker={enablePicker}
+        placeholder={placeholder ?? (disabled ? "Please select a workspace above to start prompting..." : "@ for files/agents; / for commands and skills; ! for shell; # for snippets (Paste images/files here)")}
         className={`w-full bg-transparent border-none focus:outline-none resize-none text-ink placeholder-ink/40 disabled:opacity-50 disabled:cursor-not-allowed ${
           isMobile ? 'px-3 py-3 text-base min-h-[68px] max-h-40' : 'px-3 py-3 text-sm min-h-[80px]'
         }`}

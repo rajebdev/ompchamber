@@ -118,7 +118,16 @@ export function ComposerDock({
           isSteering
         />
         {btw.open ? (
-          <BtwForm mode={btw} modelName={modelName} provider={provider} providerNames={providerNames} />
+          <BtwForm
+            mode={btw}
+            appSettings={appSettings}
+            composerModelRef={composerModelRef}
+            rootPath={rootPath}
+            variant={variant}
+            modelName={modelName}
+            provider={provider}
+            providerNames={providerNames}
+          />
         ) : (
           <ChatInput
             value={inputValue}

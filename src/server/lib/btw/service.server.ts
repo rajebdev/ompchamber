@@ -21,11 +21,23 @@ import { findSessionFileById } from '@/server/lib/omp/session/locator';
 import { readRawHeaderLine } from '@/server/lib/omp/session/files';
 import { loadSessionModel } from '@/server/lib/omp/session/messages';
 import { resolveSpawnCwd } from '@/server/lib/omp/rpc/manager';
-import { createBtwTopic, deleteBtwTopic, getBtwTopic, readBtwTopicLeaf, setBtwTopicPromoted } from '@/server/lib/btw/store.server';
+import { loadPersistedAccessMode } from '@/shared/lib/omp/config/access-mode.server';
+import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
+import { composeMessageWithTextAttachments, type AttachedTextFileData } from '@/shared/lib/chat/attachments';
+import {
+  createBtwTopic,
+  deleteBtwTopic,
+  getBtwTopic,
+  readBtwTopicLeaf,
+  setBtwTopicApprovalMode,
+  setBtwTopicModel,
+  setBtwTopicPromoted,
+  setBtwTopicThinkingLevel,
+} from '@/server/lib/btw/store.server';
 import { promoteBtwTopic as materializePromotedTopic, readTranscriptLeaf, removeBtwWorkspace, resolveBtwWorkspacePaths } from '@/server/lib/btw/session-copy.server';
 import { btwStateFor, ensureBtwRuntime, findRunningBtwRuntime, forgetBtwRuntime, getBtwRuntime, publishBtwState } from '@/server/lib/btw/registry.server';
 import { BtwError, type BtwImages } from '@/server/lib/btw/runtime.server';
-import type { BtwState } from '@/shared/types';
+import type { BtwModel, BtwState } from '@/shared/types';
 
 /** Longest a topic label may be, matching the sidebar's session-title length. */
 const TOPIC_TITLE_CHARS = 60;
@@ -59,6 +71,22 @@ export interface AskBtwInput {
   topicId?: string;
   question: string;
   images?: BtwImages;
+  /**
+   * Inline-able text files, read by the client at attach time and sent with the
+   * question. They are appended to the prompt body exactly as a chat prompt
+   * carries them (`composeMessageWithTextAttachments`), so a side question can
+   * be asked about a file the same way a chat turn can.
+   */
+  textFiles?: AttachedTextFileData[];
+  /**
+   * Composer picks for the FIRST question of a topic, which has no row to write
+   * them to yet. Later questions address an existing topic and are re-targeted
+   * through the dedicated `set_model` / `set_thinking_level` / `set_access_mode`
+   * actions instead.
+   */
+  model?: BtwModel;
+  thinkingLevel?: string;
+  approvalMode?: ApprovalMode;
 }
 
 export async function askBtw(sessionId: string, input: AskBtwInput): Promise<BtwState> {
@@ -76,12 +104,15 @@ export async function askBtw(sessionId: string, input: AskBtwInput): Promise<Btw
     throw new BtwError('Unknown side question.', 'btw_topic_not_found');
   }
 
+  const approvalMode = input.approvalMode ?? (await loadPersistedAccessMode());
   const topic =
     existing ??
     (await createBtwTopic({
       sessionId,
       title: topicTitle(question),
-      model: await topicModel(parent.sessionFile),
+      model: input.model ?? (await topicModel(parent.sessionFile)),
+      thinkingLevel: input.thinkingLevel,
+      approvalMode,
     }));
 
   const runtime = ensureBtwRuntime({
@@ -90,9 +121,64 @@ export async function askBtw(sessionId: string, input: AskBtwInput): Promise<Btw
     parentSessionFile: parent.sessionFile,
     cwd: parent.cwd,
     model: topic.model,
+    thinkingLevel: topic.thinkingLevel,
+    // The topic's own mode wins once set; a fresh topic adopts the composer's.
+    approvalMode: topic.approvalMode ?? approvalMode,
   });
 
-  await runtime.ask(question, input.images);
+  await runtime.ask(composeMessageWithTextAttachments(question, input.textFiles ?? []), input.images);
+  return btwStateFor(sessionId);
+}
+
+/** One topic of this session, or a `btw_topic_not_found` refusal. */
+async function requireTopic(sessionId: string, topicId: string) {
+  const topic = await getBtwTopic(topicId);
+  if (!topic || topic.sessionId !== sessionId) throw new BtwError('Unknown side question.', 'btw_topic_not_found');
+  return topic;
+}
+
+/**
+ * Re-target a topic's model. With a live child the change reaches it through
+ * `set_model` (omp applies it to the running turn, which is what the dropdown
+ * promises); an idle topic simply records it for the next spawn.
+ */
+export async function setBtwModel(sessionId: string, topicId: string, provider: string, modelId: string): Promise<BtwState> {
+  await requireTopic(sessionId, topicId);
+  const runtime = getBtwRuntime(topicId);
+  if (runtime) {
+    await runtime.setModel(provider, modelId);
+  } else {
+    await setBtwTopicModel(topicId, { provider, id: modelId });
+    await publishBtwState(sessionId);
+  }
+  return btwStateFor(sessionId);
+}
+
+export async function setBtwThinkingLevel(sessionId: string, topicId: string, level: string): Promise<BtwState> {
+  await requireTopic(sessionId, topicId);
+  await setBtwTopicThinkingLevel(topicId, level === 'auto' ? null : level);
+  await getBtwRuntime(topicId)?.setThinkingLevel(level);
+  await publishBtwState(sessionId);
+  return btwStateFor(sessionId);
+}
+
+/**
+ * Adopt a new tool-approval mode for a topic. omp has no RPC for it, so an idle
+ * child is dropped and the next question respawns with the new flag; a running
+ * turn keeps its child (and therefore its mode) until it settles.
+ */
+export async function setBtwApprovalMode(sessionId: string, topicId: string, mode: ApprovalMode): Promise<BtwState> {
+  await requireTopic(sessionId, topicId);
+  await setBtwTopicApprovalMode(topicId, mode);
+  await getBtwRuntime(topicId)?.setApprovalMode(mode);
+  await publishBtwState(sessionId);
+  return btwStateFor(sessionId);
+}
+
+/** Answer an ask/approval dialog a side child is blocked on. */
+export async function respondBtwDialog(sessionId: string, topicId: string, id: string, response: Record<string, unknown>): Promise<BtwState> {
+  await requireTopic(sessionId, topicId);
+  getBtwRuntime(topicId)?.respondToDialog(id, response);
   return btwStateFor(sessionId);
 }
 

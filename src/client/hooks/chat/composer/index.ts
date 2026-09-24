@@ -13,6 +13,12 @@ export interface UseComposerTriggerOptions {
   disabled?: boolean;
   /** Workspace root to scope `@` file mentions to (null → app root). */
   rootPath?: string | null;
+  /**
+   * Whether the popup may open at all. A composer with no completable surface
+   * (the side-question form) turns it off so a stray `@` or `/` cannot open an
+   * empty list over its text.
+   */
+  enabled?: boolean;
 }
 
 export interface ComposerTriggerController {
@@ -55,7 +61,7 @@ function shouldOpen(trigger: ComposerTrigger | null, matches: ComposerMatchItem[
 
 /** Orchestrates the composer `@`-mention / `/`-command autocomplete flow. */
 export function useComposerTrigger(options: UseComposerTriggerOptions): ComposerTriggerController {
-  const { value, setValue, textareaRef, disabled = false, rootPath } = options;
+  const { value, setValue, textareaRef, disabled = false, rootPath, enabled = true } = options;
 
   const [trigger, setTrigger] = useState<ComposerTrigger | null>(null);
   const [activeIndex, setActiveIndexState] = useState(0);
@@ -77,7 +83,7 @@ export function useComposerTrigger(options: UseComposerTriggerOptions): Composer
 
   const optionId = useCallback((index: number) => `${listboxId}-option-${index}`, [listboxId]);
 
-  const open = shouldOpen(trigger, matches);
+  const open = enabled && shouldOpen(trigger, matches);
 
   const close = useCallback(() => {
     setTrigger(null);
@@ -109,14 +115,14 @@ export function useComposerTrigger(options: UseComposerTriggerOptions): Composer
       }
 
       setValue(text);
-      if (disabled) {
+      if (disabled || !enabled) {
         close();
         return;
       }
       setTrigger(detectComposerTrigger(text, caret));
       setActiveIndexState(0);
     },
-    [setValue, close, disabled],
+    [setValue, close, disabled, enabled],
   );
 
   const selectItem = useCallback(

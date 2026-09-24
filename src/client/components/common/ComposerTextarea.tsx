@@ -20,6 +20,13 @@ export interface ComposerTextareaProps {
   onPaste?: (e: ClipboardEvent<HTMLTextAreaElement>) => void;
   rootPath?: string | null;
   /**
+   * Whether the `@` / `/` / `!` / `#` autocomplete runs. Off for a composer with
+   * nothing to complete against — the side-question form has no file tree, no
+   * commands and no skills, and an `@` mention left in its text would reach the
+   * model as a literal no prompt builder translates.
+   */
+  enablePicker?: boolean;
+  /**
    * `mobile` makes a bare Enter insert a newline instead of sending: phone
    * keyboards have no Shift key, so the configured Enter-to-send binding would
    * leave no way to write a multi-line prompt. Modifier bindings
@@ -39,12 +46,13 @@ export function ComposerTextarea({
   className,
   onPaste,
   rootPath,
+  enablePicker = true,
   variant = 'desktop',
 }: ComposerTextareaProps): ReactElement {
   const isMobile = variant === 'mobile';
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const composer = useComposerTrigger({ value, setValue: onChange, textareaRef, disabled, rootPath });
+  const composer = useComposerTrigger({ value, setValue: onChange, textareaRef, disabled, rootPath, enabled: enablePicker });
 
   useOnClickOutside(wrapperRef, composer.close);
 

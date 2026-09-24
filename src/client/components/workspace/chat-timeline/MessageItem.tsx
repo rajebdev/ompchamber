@@ -23,6 +23,12 @@ interface ChatMessageItemProps {
   className?: string;
   /** Whether the message immediately preceding this one was also an assistant message. */
   isPrevAssistant?: boolean;
+  /**
+   * Whether a user row offers Undo / New-chat. Both act on the CHAT, so a row
+   * that is not a chat turn (the BTW panel's question row) turns them off
+   * instead of rendering buttons that do nothing.
+   */
+  userActions?: boolean;
 }
 
 export const ChatMessageItem = memo(function ChatMessageItem({
@@ -32,6 +38,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   onNewChat,
   className = '',
   isPrevAssistant = false,
+  userActions = true,
 }: ChatMessageItemProps) {
   const isUser = msg.role === 'user';
 
@@ -107,14 +114,16 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           
           <div className="flex items-center space-x-1">
             {/* Undo Button (to the left of copy button) */}
-            <button 
-              type="button"
-              className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" 
-              title="Undo / Edit message"
-              onClick={handleUndo}
-            >
-              <Undo2 size={12} />
-            </button>
+            {userActions && (
+              <button 
+                type="button"
+                className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" 
+                title="Undo / Edit message"
+                onClick={handleUndo}
+              >
+                <Undo2 size={12} />
+              </button>
+            )}
 
             {/* Copy Button */}
             <CopyButton
@@ -125,14 +134,16 @@ export const ChatMessageItem = memo(function ChatMessageItem({
             />
 
             {/* New Chat Button */}
-            <button 
-              type="button"
-              className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" 
-              title="New Chat from here"
-              onClick={handleNewChat}
-            >
-              <MessageSquarePlus size={12} />
-            </button>
+            {userActions && (
+              <button 
+                type="button"
+                className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" 
+                title="New Chat from here"
+                onClick={handleNewChat}
+              >
+                <MessageSquarePlus size={12} />
+              </button>
+            )}
           </div>
         </div>
       </div>

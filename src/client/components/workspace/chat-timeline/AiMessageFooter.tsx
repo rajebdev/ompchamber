@@ -26,6 +26,13 @@ interface AiMessageFooterProps {
   onRetry?: (msgId: string) => void;
   onNewChat?: (content: string) => void;
   isMobile?: boolean;
+  /**
+   * Whether the row offers Retry / New-chat. Both act on the CHAT (re-run a chat
+   * turn, branch a chat session from an answer), so a footer that describes a
+   * row the chat does not own — the BTW panel's side answer — turns them off
+   * instead of rendering buttons that do nothing.
+   */
+  showActions?: boolean;
 }
 
 export function AiMessageFooter({
@@ -41,6 +48,7 @@ export function AiMessageFooter({
   onRetry,
   onNewChat,
   isMobile = false,
+  showActions = true,
 }: AiMessageFooterProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -198,14 +206,18 @@ export function AiMessageFooter({
                   wrapLabel
                   onClick={() => setIsMenuOpen(false)}
                 />
-                <button type="button" onClick={handleRetry} className="flex min-h-12 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-ink transition-colors hover:bg-ink/5 cursor-pointer">
-                  <RotateCcw size={20} className="shrink-0 text-ink/55" />
-                  <span>Retry response</span>
-                </button>
-                <button type="button" onClick={handleNewChat} className="flex min-h-12 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-ink transition-colors hover:bg-ink/5 cursor-pointer">
-                  <MessageSquarePlus size={20} className="shrink-0 text-ink/55" />
-                  <span>Start new chat from this answer</span>
-                </button>
+                {showActions && (
+                  <>
+                    <button type="button" onClick={handleRetry} className="flex min-h-12 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-ink transition-colors hover:bg-ink/5 cursor-pointer">
+                      <RotateCcw size={20} className="shrink-0 text-ink/55" />
+                      <span>Retry response</span>
+                    </button>
+                    <button type="button" onClick={handleNewChat} className="flex min-h-12 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-ink transition-colors hover:bg-ink/5 cursor-pointer">
+                      <MessageSquarePlus size={20} className="shrink-0 text-ink/55" />
+                      <span>Start new chat from this answer</span>
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -232,18 +244,22 @@ export function AiMessageFooter({
       </div>
 
       <div className="flex items-center space-x-1 shrink-0">
-        <button type="button" className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" title="Re-run / Retry generation" onClick={handleRetry}>
-          <RotateCcw size={12} />
-        </button>
+        {showActions && (
+          <button type="button" className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" title="Re-run / Retry generation" onClick={handleRetry}>
+            <RotateCcw size={12} />
+          </button>
+        )}
         <CopyButton
           text={content}
           className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer"
           iconSize={12}
           title="Copy response"
         />
-        <button type="button" className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" title="New Chat from here" onClick={handleNewChat}>
-          <MessageSquarePlus size={12} />
-        </button>
+        {showActions && (
+          <button type="button" className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" title="New Chat from here" onClick={handleNewChat}>
+            <MessageSquarePlus size={12} />
+          </button>
+        )}
       </div>
     </div>
   );

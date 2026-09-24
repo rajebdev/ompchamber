@@ -7,8 +7,13 @@
  * `/btw [question]` typed into the main composer is the side-question entry
  * point, not chat text: the panel owns the token (omp's `/btw` is TUI-only, so
  * nothing downstream would understand it). This module is the whole
- * interception — recognize the command, carry the composer's images across as
- * provider payloads, and hand the question to the panel over `omp:btw`.
+ * interception — recognize the command and hand it, with the composer's
+ * attachments, to the panel over `omp:btw`.
+ *
+ * The attachments cross as the composer's own `Attachment` objects, not as
+ * pre-built provider payloads: the side session accepts the same shapes the chat
+ * does (images as payloads, text files inlined into the prompt), and it makes
+ * that split itself — from the fields the attach step already filled in.
  *
  * It lives beside the rest of the client-side btw state (`hooks/chat/btw/`)
  * rather than in the send handler: the attachment read goes through the shared
@@ -16,7 +21,6 @@
  */
 
 import type { Attachment } from '@/shared/types';
-import { attachmentImage } from '@/shared/lib/chat/attachments';
 
 /** A bare `/btw` opens the form on the current history; anything after it is
  *  the first question. Case-insensitive, because omp's command tokens are. */
@@ -30,13 +34,9 @@ export function dispatchBtwCommand(text: string, attachments: Attachment[]): boo
   const match = BTW_COMMAND_RE.exec(text);
   if (!match) return false;
 
-  const images = attachments
-    .map((attachment) => attachmentImage(attachment))
-    .filter((image): image is NonNullable<typeof image> => image !== null);
-
   window.dispatchEvent(
     new CustomEvent('omp:btw', {
-      detail: { question: match[1]?.trim() ?? '', ...(images.length ? { images } : {}) },
+      detail: { question: match[1]?.trim() ?? '', ...(attachments.length ? { attachments } : {}) },
     }),
   );
   return true;

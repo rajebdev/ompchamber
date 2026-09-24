@@ -20,7 +20,7 @@
 
 import { listBtwTopics, settleRunningBtwTurns } from '@/server/lib/btw/store.server';
 import { BtwRuntime, type BtwRuntimeContext } from '@/server/lib/btw/runtime.server';
-import type { BtwFrame, BtwState, BtwTopic } from '@/shared/types';
+import type { BtwFrame, BtwState, BtwTopic, ExtensionUiDialogRequest } from '@/shared/types';
 
 interface BtwRegistryHost {
   runtimes: Map<string, BtwRuntime>;
@@ -111,10 +111,9 @@ export async function btwStateFor(sessionId: string): Promise<BtwState> {
   // A runtime that is mid-`settle()` has already cleared its turn index but has
   // not written the row yet; counting it as gone would race its own UPDATE and
   // rewrite a completed turn as `interrupted`. `busy` covers that window.
+  const runtimes = sessionBtwRuntimes(sessionId);
   const liveTopicIds = new Set(
-    sessionBtwRuntimes(sessionId)
-      .filter((runtime) => runtime.running || runtime.busy)
-      .map((runtime) => runtime.topicId),
+    runtimes.filter((runtime) => runtime.running || runtime.busy).map((runtime) => runtime.topicId),
   );
 
   const stale = topics.filter((topic) => topic.turns.some((turn) => turn.status === 'running') && !liveTopicIds.has(topic.id));
@@ -128,9 +127,19 @@ export async function btwStateFor(sessionId: string): Promise<BtwState> {
       : { ...topic, turns: topic.turns.map((turn) => (turn.status === 'running' ? { ...turn, status: 'interrupted' as const } : turn)) },
   );
 
+  const liveRuntime = runtimes.find((runtime) => runtime.running);
   return {
     topics: repaired,
     runningTopicId: repaired.find((topic) => topic.turns.some((turn) => turn.status === 'running'))?.id ?? null,
+    live: liveRuntime?.liveTurn() ?? null,
+    // Dialogs live on the runtime, not in SQLite: they belong to the child
+    // process that raised them, and a child that is gone has none.
+    dialogs: runtimes.flatMap((runtime) =>
+      runtime.dialogs
+        .list()
+        .filter((request) => typeof request.id === 'string')
+        .map((request) => ({ topicId: runtime.topicId, request: request as unknown as ExtensionUiDialogRequest })),
+    ),
   };
 }
 

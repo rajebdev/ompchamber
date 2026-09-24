@@ -21,6 +21,14 @@ export interface MessageListProps {
   onRetry?: (id: string) => void;
   onNewChat?: (content: string) => void;
   isMobile?: boolean;
+  /**
+   * Whether chat-owning actions render: a USER row's Undo / New-chat, and the
+   * run footer's Retry / New-chat. All of them act on the CHAT (rewind a chat
+   * turn, re-run it, branch a session from it), so a renderer that draws rows
+   * the chat does not own — the BTW panel's side question and its answer — turns
+   * them off instead of showing buttons that do nothing.
+   */
+  userActions?: boolean;
 }
 
 /**
@@ -49,6 +57,7 @@ export const MessageList = memo(function MessageList({
   onRetry,
   onNewChat,
   isMobile = false,
+  userActions = true,
 }: MessageListProps) {
   const { streamingIdx, footers, prevNonNoticeIdx } = useMemo(() => {
     return {
@@ -79,6 +88,7 @@ export const MessageList = memo(function MessageList({
               onUndo={onUndo}
               onNewChat={onNewChat}
               isPrevAssistant={isPrevAssistant}
+              userActions={userActions}
               className={isNoticeRow(msg) ? 'mt-3 mb-1' : isAiFragment ? 'mt-1' : 'mt-3'}
             />
             {footer && (
@@ -93,6 +103,7 @@ export const MessageList = memo(function MessageList({
                 onRetry={onRetry}
                 onNewChat={onNewChat}
                 isMobile={isMobile}
+                showActions={userActions}
               />
             )}
           </Fragment>

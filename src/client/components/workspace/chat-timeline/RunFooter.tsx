@@ -19,6 +19,12 @@ interface RunFooterProps {
   onNewChat?: (content: string) => void;
   /** Mobile uses a compact provider/model footer with a bottom-sheet menu. */
   isMobile?: boolean;
+  /**
+   * Whether the footer offers Retry / New-chat. Both act on the CHAT, so a
+   * footer describing a row the chat does not own (the BTW panel's side answer)
+   * turns them off rather than rendering dead buttons.
+   */
+  showActions?: boolean;
 }
 
 /**
@@ -38,6 +44,7 @@ export function RunFooter({
   onRetry,
   onNewChat,
   isMobile = false,
+  showActions = true,
 }: RunFooterProps) {
   return (
     <div className="mt-2">
@@ -54,6 +61,7 @@ export function RunFooter({
         onRetry={onRetry}
         onNewChat={onNewChat}
         isMobile={isMobile}
+        showActions={showActions}
       />
     </div>
   );
