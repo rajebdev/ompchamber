@@ -8,9 +8,10 @@
  *
  * Stack (run in order, all server/client safe — parsed synchronously):
  *   1. remend  — heal incomplete markdown while streaming (before parse)
- *   2. marked  — GFM true, breaks true, autolink via marked-linkify-it (CJK
- *      punctuation is not swallowed into URLs), plus a KaTeX extension for
- *      \(...\) inline, \[...\] block, and $$...$$ display math
+ *   2. marked  — GFM true, breaks true, autolink via linkify-it (CJK
+ *      punctuation is not swallowed into URLs, and a match carrying a backtick
+ *      is left to the code-span rule — see autolink.ts), plus a KaTeX
+ *      extension for \(...\) inline, \[...\] block, and $$...$$ display math
  *
  * The resulting HTML is NOT sanitized here — run the output through
  * DOMPurify (see sanitize.ts) before injecting, so raw HTML from the
@@ -18,7 +19,7 @@
  */
 
 import { Marked } from 'marked';
-import markedLinkifyIt from 'marked-linkify-it';
+import { codeSafeAutolink } from '@/shared/lib/markdown/autolink';
 import remend from 'remend';
 import { highlightCode } from '@/shared/lib/code/syntax-highlight';
 import { MATH_PENDING_CLASS } from '@/shared/lib/markdown/katex';
@@ -64,7 +65,7 @@ const marked = new Marked({
   breaks: true,
 });
 
-marked.use(markedLinkifyIt());
+marked.use(codeSafeAutolink());
 
 interface CodeToken {
   type: string;
