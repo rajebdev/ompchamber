@@ -44,7 +44,10 @@ export function SplitView({ rows, language }: SplitViewProps) {
 
   return (
     <div className="w-full h-full overflow-auto font-mono text-xs select-text bg-paper text-ink code-surface">
-      <div className="w-max min-w-full min-w-[700px]">
+      {/* The room under the last row belongs to the content, not the scroller:
+          a scroll container's own bottom padding is not part of its scrollable
+          overflow, so the padding has to sit inside it to have any effect. */}
+      <div className="w-max min-w-full min-w-[700px] pb-4">
         <div className="grid grid-cols-2 sticky top-0 z-10 bg-canvas border-b border-ink/10 text-[11px] text-ink/70 font-sans select-none shadow-xs">
           <div className="px-3 py-1 font-medium border-r border-ink/10 flex items-center justify-between">
             <span>Original (HEAD / Base)</span>

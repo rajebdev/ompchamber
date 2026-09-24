@@ -135,7 +135,14 @@ export function DiffPanel({
   };
 
   return (
-    <div className={`flex flex-col h-full bg-paper select-text relative font-sans ${className}`}>
+    // The panel fills, it does not size itself: the caller owns the height
+    // (`flex-1` in the editor's column, `h-full` in the mobile overlay). A
+    // hardcoded `h-full` here resolves against the whole editor column rather
+    // than the space left under the tabs, so the panel began below the tabs
+    // *and* stood the full column tall — its bottom, the toolbar's height,
+    // hung past the panel edge and was clipped for good, since the scroll
+    // range ends below the visible area.
+    <div className={`flex flex-col min-h-0 bg-paper select-text relative font-sans ${className}`}>
       {/* Top Diff Toolbar */}
       <DiffToolbar
         filePath={filePath}

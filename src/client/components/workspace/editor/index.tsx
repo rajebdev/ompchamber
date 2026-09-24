@@ -193,6 +193,13 @@ export function Editor({
                       fontSize: zoomLevel,
                       lineHeight: 1.5,
                       minHeight: '100%',
+                      // Breathing room under the last line. It has to live on the
+                      // surface, not on the scroll container: a scroll container's
+                      // own bottom padding is not part of its scrollable overflow,
+                      // so `pb-*` on the scroller left the last line flush with the
+                      // panel's edge (measured: padding-bottom 32px did not change
+                      // scrollHeight by a single pixel).
+                      paddingBottom: 16,
                     }}
                   />
                 )}
