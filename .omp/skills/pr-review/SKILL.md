@@ -310,6 +310,12 @@ Piping through stdin is mandatory. An inline `--body "..."` loses backticks to t
 happened in production on a sibling project, where `Reviewed HEAD: \`sha\`` arrived with the
 backticks stripped.
 
+Write the body through a **quoted** heredoc delimiter (`<<'OMC_REVIEW'`). An unquoted delimiter lets
+the shell expand backticks and `$`, and a live review arrived at the API with every code span
+stripped — the text survived, the delimiters did not. Never drop or reword content to make a shell
+command feel safer: the gate reads values rather than markdown decoration, so a missing backtick
+costs nothing, while a missing SHA or verdict costs the whole run.
+
 - Exactly ONE top-level comment per review. Never post a second comment to correct the first, never
   reply in a thread, never edit an earlier review comment.
 - Verify by reading the comments back and confirming your marker for this HEAD is present:
