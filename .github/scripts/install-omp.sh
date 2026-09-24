@@ -11,6 +11,11 @@
 # flake under load, and a flake is not a review failure.
 set -euo pipefail
 
+if ! command -v bun >/dev/null 2>&1; then
+  echo "::error::bun is not on PATH; the job must run oven-sh/setup-bun before this script" >&2
+  exit 1
+fi
+
 OMP_VERSION="${OMP_VERSION:-18.3.0}"
 PACKAGE="@oh-my-pi/pi-coding-agent"
 WANTED="omp/${OMP_VERSION}"

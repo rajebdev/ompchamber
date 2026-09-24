@@ -199,6 +199,12 @@ jobs:
           echo "endpoint=${endpoint}" >> "$GITHUB_OUTPUT"
           echo "id=${reaction_id}" >> "$GITHUB_OUTPUT"
 
+      # `omp` is installed with Bun, so the toolchain has to be here before the install
+      # step — without it that step fails with a bare `bun: command not found` (exit 127).
+      - name: Setup bun
+        if: steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe == 'true' && steps.throttle.outputs.skip != 'true'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
       - name: Install omp
         if: steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe == 'true' && steps.throttle.outputs.skip != 'true'
         run: bash .github/scripts/install-omp.sh
