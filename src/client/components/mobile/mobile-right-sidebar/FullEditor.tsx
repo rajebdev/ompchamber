@@ -78,9 +78,15 @@ export function MobileFullEditor({ file, onClose, onFileSaved }: MobileFullEdito
               <span className="text-[11px] text-ink/50 font-mono break-all">{editor.loadError}</span>
             </div>
           ) : isMd && isPreview ? (
-            /* Markdown Preview Mode */
-            <div className="p-4 bg-paper text-ink min-h-full font-sans prose prose-sm max-w-none">
-              <MarkdownRenderer content={content} />
+            /* Markdown Preview Mode — styled by `.prose-content` (the chat
+               timeline's system), see the desktop editor for why there is no
+               `prose` wrapper. */
+            <div className="p-4 bg-paper text-ink min-h-full font-sans">
+              <MarkdownRenderer
+                content={content}
+                document
+                scope={{ path: file.path ?? file.name, root: file.root, repo: file.repo }}
+              />
             </div>
           ) : (
             /* Code Editor with Line Numbers - Desktop styled: gutter bg-canvas border-r border-ink/10 */

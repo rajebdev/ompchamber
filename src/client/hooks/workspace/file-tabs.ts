@@ -93,7 +93,7 @@ export function useFileTabs(
 
   // Global listeners for omp:open-file and omp:open-diff
   useChamberEvent('omp:open-file', (e) => {
-    const customEvent = e as CustomEvent<{ path: string; name?: string; id?: number; content?: string }>;
+    const customEvent = e as CustomEvent<{ path: string; name?: string; id?: number; content?: string; root?: string; repo?: string }>;
     if (!customEvent.detail || !customEvent.detail.path) return;
 
     const rawPath = customEvent.detail.path.replace(/^\/+/, '');
@@ -110,6 +110,10 @@ export function useFileTabs(
       name,
       path: rawPath,
       content: customEvent.detail.content,
+      // A caller that knows its own scope (a preview's relative link) keeps it;
+      // otherwise the file belongs to the active project.
+      root: customEvent.detail.root,
+      repo: customEvent.detail.repo,
     });
   });
 

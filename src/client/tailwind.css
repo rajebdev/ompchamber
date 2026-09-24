@@ -1,6 +1,5 @@
 @import "tailwindcss";
 @import "@xterm/xterm/css/xterm.css";
-@plugin "@tailwindcss/typography";
 
 @theme {
   --color-ink: var(--theme-ink);
@@ -192,6 +191,13 @@
 .prose-content li { line-height: inherit; position: relative; }
 .prose-content li + li { margin-top: 0.375rem; }
 .prose-content li p { margin: 0.25rem 0; }
+/* Tailwind's preflight makes every `img` block-level. Markdown images are
+ * inline content: a README badge row is one `<p align="center">` of
+ * `<a><img></a>` links, and a block image stacks it one badge per line (and
+ * pushes an image off the text line it was written on). `inline-block` restores
+ * the line box GitHub renders; the preflight's `max-width: 100%` still applies,
+ * and `vertical-align: middle` keeps badges of different heights aligned. */
+.prose-content img { display: inline-block; vertical-align: middle; }
 .prose-content ul > li::before { content: ''; display: block; position: absolute; left: -1.25em; top: 0; }
 .prose-content blockquote {
   border-left: 2px solid color-mix(in srgb, var(--theme-ink) 30%, transparent);

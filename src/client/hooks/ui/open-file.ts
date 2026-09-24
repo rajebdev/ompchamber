@@ -5,6 +5,10 @@ export interface OpenFilePayload {
   name?: string;
   id?: number;
   content?: string;
+  /** Absolute workspace root the path belongs to; the panel defaults it to the active project. */
+  root?: string;
+  /** Repo picked in the panel, relative to `root` — the path's own scope when set. */
+  repo?: string;
 }
 
 /**
@@ -26,7 +30,9 @@ export function openFileInEditor(payloadOrPath: string | OpenFilePayload) {
         path: cleanPath,
         name: fileName,
         id: payload.id,
-        content: payload.content
+        content: payload.content,
+        root: payload.root,
+        repo: payload.repo,
       }
     })
   );

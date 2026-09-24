@@ -154,8 +154,17 @@ export function Editor({
             ) : (
               <div onScroll={handleScroll} className={`flex-1 overflow-auto bg-paper flex ${scrollbarFadeClass(isScrolling)}`}>
                 {(isMd && isPreview) ? (
-                  <div className="p-6 prose prose-sm max-w-4xl mx-auto font-sans flex-1" style={{ fontSize: `${zoomLevel}px` }}>
-                    <MarkdownRenderer content={currentContent} />
+                  // No `prose` wrapper: markdown is styled by `.prose-content`
+                  // alone (the same system the chat timeline uses). The
+                  // typography plugin fought it — `.prose img` added 2em
+                  // vertical margins that ballooned a badge row into its own
+                  // line box, and `--tw-prose-*` colors ignored the theme.
+                  <div className="p-6 max-w-4xl mx-auto font-sans flex-1" style={{ fontSize: `${zoomLevel}px` }}>
+                    <MarkdownRenderer
+                      content={currentContent}
+                      document
+                      scope={{ path: activeFile.path, root: activeFile.root, repo: activeFile.repo }}
+                    />
                   </div>
                 ) : (
                   <CodeSurface

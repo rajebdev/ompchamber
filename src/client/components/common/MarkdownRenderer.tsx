@@ -16,10 +16,12 @@
 import type { TargetedMouseEvent } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { renderMarkdown } from '@/shared/lib/markdown/marked';
+import { rewriteDocumentReferences, type DocumentScope } from '@/shared/lib/markdown/document-urls';
 import { hydrateMathBlocks, MATH_PENDING_CLASS, preloadKatex } from '@/shared/lib/markdown/katex';
 import { sanitizeHtml } from '@/shared/lib/markdown/sanitize';
 import { hydrateMermaidBlocks } from '@/shared/lib/markdown/mermaid';
 import { copyToClipboard } from '@/client/hooks/ui/clipboard';
+import { openFileInEditor } from '@/client/hooks/ui/open-file';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 import { DiagramViewer } from '@/client/components/common/diagram-viewer';
 import { readDiagramBlock, type DiagramSnapshot } from '@/client/components/common/diagram-viewer/read-block';
@@ -30,9 +32,17 @@ const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : us
 interface MarkdownRendererProps {
   content: string;
   className?: string;
+  /**
+   * Render the content as the document it IS (an opened file's preview) rather
+   * than as agent output: the source's own HTML renders as markup instead of
+   * showing its tags, and relative references resolve against `scope`.
+   */
+  document?: boolean;
+  /** Where the document lives, so its relative links and images resolve. */
+  scope?: DocumentScope;
 }
 
-export function MarkdownRenderer({ content, className = '' }: MarkdownRendererProps) {
+export function MarkdownRenderer({ content, className = '', document: isDocument = false, scope }: MarkdownRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   /** Block the open viewer was read from, so a theme re-render can refresh it. */
   const diagramBlockRef = useRef<HTMLElement | null>(null);
@@ -40,15 +50,24 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
 
   const syntaxReady = useSyntaxReady();
 
+  // Primitive deps: call sites build `scope` inline, and a new object identity
+  // per render would re-run marked + DOMPurify over the whole document.
+  const scopePath = scope?.path;
+  const scopeRoot = scope?.root;
+  const scopeRepo = scope?.repo;
+
   const html = useMemo(() => {
     if (!content) return '';
-    const rendered = renderMarkdown(content);
+    const rendered = renderMarkdown(content, { allowHtml: isDocument });
+    const scoped = isDocument && scopePath
+      ? rewriteDocumentReferences(rendered, { path: scopePath, root: scopeRoot, repo: scopeRepo })
+      : rendered;
     // If the message contains math, start fetching KaTeX during parse rather
     // than waiting for the post-mount hydration effect — the request overlaps
     // sanitization and the rest of the render instead of following it.
-    if (rendered.includes(MATH_PENDING_CLASS)) preloadKatex();
-    return sanitizeHtml(rendered);
-  }, [content, syntaxReady]);
+    if (scoped.includes(MATH_PENDING_CLASS)) preloadKatex();
+    return sanitizeHtml(scoped);
+  }, [content, syntaxReady, isDocument, scopePath, scopeRoot, scopeRepo]);
 
   const hasMermaid = html.includes('mermaid-block');
   const hasMath = html.includes(MATH_PENDING_CLASS);
@@ -154,15 +173,34 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
     }
 
     // A rendered diagram is a door into the zoom/pan viewer; pending, failed,
-    // and still-streaming blocks stay inert.
+    // and still-streaming blocks stay inert. It is checked before the document
+    // links below so a diagram's own anchors never steal its click.
     const block = (e.target as HTMLElement).closest<HTMLElement>('.mermaid-block[data-mermaid-state="done"]');
-    if (!block) return;
-    const snapshot = readDiagramBlock(block);
-    if (!snapshot) return;
+    if (block) {
+      const snapshot = readDiagramBlock(block);
+      if (!snapshot) return;
+      e.preventDefault();
+      diagramBlockRef.current = block;
+      setDiagram(snapshot);
+      return;
+    }
+
+    if (!isDocument) return;
+
+    // A document's own links: a relative one is rewritten to the workspace
+    // file it names, so it belongs in an editor tab rather than in a top-level
+    // navigation off the console; an external one leaves the console.
+    const link = (e.target as HTMLElement).closest<HTMLAnchorElement>('a[href]');
+    if (!link) return;
     e.preventDefault();
-    diagramBlockRef.current = block;
-    setDiagram(snapshot);
-  }, []);
+    e.stopPropagation();
+    const filePath = link.dataset.filePath;
+    if (filePath) {
+      openFileInEditor({ path: filePath, root: scopeRoot, repo: scopeRepo });
+    } else if (/^https?:/i.test(link.href)) {
+      window.open(link.href, '_blank', 'noopener,noreferrer');
+    }
+  }, [isDocument, scopeRoot, scopeRepo]);
 
   const closeDiagram = useCallback(() => {
     diagramBlockRef.current = null;

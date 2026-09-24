@@ -14,8 +14,9 @@
  *      extension for \(...\) inline, \[...\] block, and $$...$$ display math
  *
  * The resulting HTML is NOT sanitized here — run the output through
- * DOMPurify (see sanitize.ts) before injecting, so raw HTML from the
- * assistant is escaped rather than executed.
+ * DOMPurify (see sanitize.ts) before injecting. What the source's own HTML
+ * means is the caller's call: `renderMarkdown` escapes it (assistant output,
+ * where markup is data) unless `allowHtml` says the source is a document.
  */
 
 import { Marked } from 'marked';
@@ -218,19 +219,29 @@ function escapeHtmlOutsideCode(source: string): string {
  * parsing so the placeholder URL never leaks into the DOM as an href. */
 const INCOMPLETE_LINK_RE = /\[([^\]]*)\]\(streamdown:incomplete-link\)/g;
 
+export interface RenderMarkdownOptions {
+  /**
+   * Leave the source's own HTML markup intact so marked parses it as markup.
+   *
+   * OFF (default) is the agent-output contract: assistant HTML is data, never
+   * markup, so `<div align="center">` and `<br>` arrive as visible text and
+   * DOMPurify is only the second line of defence. ON is the file-preview
+   * contract, where the source IS the document — a README's `<p align="center">`
+   * block, badge `<img>` and inline `<br>` are the layout its author wrote, and
+   * escaping them shows the tags instead of the page. DOMPurify still sanitizes
+   * the result, so scripts and event handlers never survive either way.
+   */
+  allowHtml?: boolean;
+}
+
 /**
  * Heal streaming markdown (remend) then parse to HTML via marked.
  * Synchronous and side-effect free — safe in both server loaders and the
  * browser. The output must be sanitized with DOMPurify before injection.
- *
- * Raw HTML in the source is escaped (instruksi: assistant HTML is escaped,
- * never rendered) — `<script>`/`<img onerror>` come through as literal text
- * while backtick code is preserved. DOMPurify remains the second line of
- * defence.
  */
-export function renderMarkdown(markdown: string): string {
-  const escaped = escapeHtmlOutsideCode(markdown);
-  const healed = remend(escaped, { katex: true, inlineKatex: true })
+export function renderMarkdown(markdown: string, options: RenderMarkdownOptions = {}): string {
+  const source = options.allowHtml ? markdown : escapeHtmlOutsideCode(markdown);
+  const healed = remend(source, { katex: true, inlineKatex: true })
     .replace(INCOMPLETE_LINK_RE, (_, text: string) => `<span class="md-incomplete-link">${text}</span>`);
   return (marked.parse(healed) as string).trim();
 }
