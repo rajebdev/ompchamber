@@ -43,6 +43,11 @@ jobs:
           BOT_API_BASEURL: ${{ vars.BOT_API_BASEURL || secrets.BOT_API_BASEURL }}
           BOT_API_KEY_ENV: ${{ vars.BOT_API_KEY_ENV || secrets.BOT_API_KEY_ENV }}
         run: |
+          # The report is written to the step summary for the maintainer and echoed into
+          # the job log for whoever is verifying the check from the CLI: a summary that
+          # only exists in the web UI cannot be read with `gh run view`.
+          report() { tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"; }
+
           # The installation token identifies its own bot, which is the name users must
           # type. `login` is `"<slug>[bot]"`.
           bot_login="$(gh api user --jq '.login')"
@@ -59,7 +64,7 @@ jobs:
             echo "- provider key: \`${BOT_API_KEY_SET}\`"
             echo "- provider mode: \`$(if [ -n "$BOT_API_BASEURL" ]; then echo "openai-compatible gateway ${BOT_API_BASEURL}"; elif [ -n "$BOT_API_KEY_ENV" ]; then echo "built-in provider via ${BOT_API_KEY_ENV}"; else echo "<unset: set BOT_API_BASEURL or BOT_API_KEY_ENV>"; fi)\`"
             echo
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | report
 
           problems=0
 
@@ -71,7 +76,7 @@ jobs:
           # the maintainer believes a name the bot does not answer to.
           if [ "$MENTION_VAR_SET" != "yes" ] && [ "$MENTION_SECRET_SET" = "yes" ]; then
             if [ "$MENTION_SECRET_VALUE" = "$MENTION" ]; then
-              echo "- note: a secret \`BOT_MENTION\` holds the same name the workflows already use (\`@${MENTION}\`). Job conditions cannot read secrets, so it is ignored — harmless, but better moved to Variables or deleted." >> "$GITHUB_STEP_SUMMARY"
+              echo "- note: a secret \`BOT_MENTION\` holds the same name the workflows already use (\`@${MENTION}\`). Job conditions cannot read secrets, so it is ignored — harmless, but better moved to Variables or deleted." | report
             else
               problems=$((problems + 1))
               {
@@ -80,7 +85,7 @@ jobs:
                 echo "A secret named \`BOT_MENTION\` exists with a value the workflows never see: a job condition can only read repository **variables**, so the bot answers to \`@${MENTION}\` instead. A comment mentioning the name held in that secret triggers nothing, and nothing reports an error — it looks like nobody talked to the bot."
                 echo
                 echo "Fix: Settings → Secrets and variables → Actions → **Variables** → New repository variable, name \`BOT_MENTION\`, value \`${bot_slug}\` — then delete the secret."
-              } >> "$GITHUB_STEP_SUMMARY"
+              } | report
             fi
           fi
 
@@ -92,26 +97,26 @@ jobs:
               echo "The workflows answer \`@${MENTION} <command>\`, but this App's own slug is \`${bot_slug}\`."
               echo "Either set the repository variable \`BOT_MENTION\` to \`${bot_slug}\`, or rename the App to \`${MENTION}\`."
               echo "Until then a comment mentioning \`@${MENTION}\` triggers nothing, and one mentioning \`@${bot_slug}\` is ignored."
-            } >> "$GITHUB_STEP_SUMMARY"
+            } | report
           fi
 
           if [ -z "$BOT_MODEL" ]; then
             problems=$((problems + 1))
-            echo "- \`BOT_MODEL\` is unset: every agent run fails before reaching a model." >> "$GITHUB_STEP_SUMMARY"
+            echo "- \`BOT_MODEL\` is unset: every agent run fails before reaching a model." | report
           fi
 
           if [ "$BOT_API_KEY_SET" != "yes" ]; then
             problems=$((problems + 1))
-            echo "- \`BOT_API_KEY\` is unset: the agent has no provider credential." >> "$GITHUB_STEP_SUMMARY"
+            echo "- \`BOT_API_KEY\` is unset: the agent has no provider credential." | report
           fi
 
           if [ -z "$BOT_API_BASEURL" ] && [ -z "$BOT_API_KEY_ENV" ]; then
             problems=$((problems + 1))
-            echo "- Neither \`BOT_API_BASEURL\` nor \`BOT_API_KEY_ENV\` is set: the runner cannot choose a provider mode." >> "$GITHUB_STEP_SUMMARY"
+            echo "- Neither \`BOT_API_BASEURL\` nor \`BOT_API_KEY_ENV\` is set: the runner cannot choose a provider mode." | report
           fi
 
           if [ "$problems" -eq 0 ]; then
-            echo "- all checks passed; a mention of \`@${bot_slug}\` will reach the bot" >> "$GITHUB_STEP_SUMMARY"
+            echo "- all checks passed; a mention of \`@${bot_slug}\` will reach the bot" | report
           else
             echo "::error::${problems} configuration problem(s); see the step summary."
             exit 1
