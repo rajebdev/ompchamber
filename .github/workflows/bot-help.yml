@@ -52,6 +52,9 @@ jobs:
       - name: Post command list
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          # This job deliberately has no checkout — it only needs the API — so `gh` has no
+          # git remote to infer the repository from and must be told.
+          GH_REPO: ${{ github.repository }}
           COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENT_ID: ${{ github.event.comment.id }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
