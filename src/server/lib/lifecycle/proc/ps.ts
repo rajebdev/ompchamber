@@ -1,0 +1,80 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * `ps` fallback for POSIX platforms without a native probe (the BSDs).
+ *
+ * Kept because it is the only mechanism left that works everywhere a `ps` is
+ * installed, and because dropping it would make identity worse on those
+ * platforms than it was before the native probes existed. macOS and Linux no
+ * longer reach this path.
+ *
+ * The whole table is read once and cached briefly: every question in a port
+ * check happens within milliseconds, so one snapshot answers all of them.
+ */
+
+import { spawnSync } from 'bun';
+
+import type { ProcessProbe } from '@/server/lib/lifecycle/proc/types';
+
+interface ProcessRow {
+  pid: number;
+  /** `ps` state column — `Z…` means defunct (exited, awaiting reaping). */
+  state: string;
+  command: string;
+}
+
+const TABLE_MAX_AGE_MS = 250;
+let cached: { at: number; rows: ProcessRow[] } | null = null;
+
+function processTable(): ProcessRow[] {
+  if (cached && Date.now() - cached.at < TABLE_MAX_AGE_MS) return cached.rows;
+  const rows: ProcessRow[] = [];
+  try {
+    const snapshot = spawnSync({
+      cmd: ['ps', '-ax', '-o', 'pid=,stat=,command='],
+      stdout: 'pipe',
+      stderr: 'ignore',
+    });
+    if (snapshot.success) {
+      for (const line of snapshot.stdout.toString().split('\n')) {
+        const match = /^\s*(\d+)\s+(\S+)\s+(.*)$/.exec(line);
+        if (!match) continue;
+        rows.push({ pid: Number(match[1]), state: match[2], command: match[3].trim() });
+      }
+    }
+  } catch {
+    // No `ps` on PATH: every question degrades to "unknown".
+  }
+  cached = { at: Date.now(), rows };
+  return rows;
+}
+
+function signalAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM: the PID exists, we may not signal it.
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+export const psProbe: ProcessProbe = {
+  commandLine(pid) {
+    const row = processTable().find((entry) => entry.pid === pid);
+    return row && row.command.length > 0 ? row.command : null;
+  },
+  isAlive(pid) {
+    if (!signalAlive(pid)) return false;
+    const row = processTable().find((entry) => entry.pid === pid);
+    // Absent from the table means no `ps` (or a race) — liveness stands.
+    return row ? !row.state.startsWith('Z') : true;
+  },
+  isZombie(pid) {
+    const row = processTable().find((entry) => entry.pid === pid);
+    return row ? row.state.startsWith('Z') : false;
+  },
+};
