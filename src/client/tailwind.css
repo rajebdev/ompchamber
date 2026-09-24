@@ -8,8 +8,6 @@
   --color-canvas: var(--theme-canvas);
   --color-error: var(--theme-error);
   --color-success: var(--theme-success);
-  --color-success-bg: var(--theme-success-bg);
-  --color-success-border: var(--theme-success-border);
   --color-meta: var(--theme-meta);
   --color-info: var(--theme-info);
   --color-info-hover: var(--theme-info-hover);
@@ -18,19 +16,23 @@
 }
 
 @layer base {
+  /* The default palette. Every other theme's block is generated from the
+   * catalog in `src/shared/lib/theme/palettes/` and injected as
+   * `html[data-theme=…]` by the SSR shell (see `shared/lib/theme/css.ts`) —
+   * hand-writing them here would duplicate the same eight values the appearance
+   * cards render as chips. */
   :root {
     --theme-paper: #faf8f3;
     --theme-canvas: #f4f1ea;
     --theme-ink: #141310;
     --theme-error: #c8321e;
     --theme-success: #047857;
-    --theme-success-bg: #ecfdf5;
-    --theme-success-border: #a7f3d0;
     --theme-meta: #4f46e5;
     --theme-info: #0284c7;
-    --theme-info-hover: #0369a1;
+    --theme-info-hover: color-mix(in srgb, var(--theme-info) 85%, var(--theme-ink));
     --theme-warning: #c2410c;
-    --theme-warning-hover: #9a3412;
+    --theme-warning-hover: color-mix(in srgb, var(--theme-warning) 85%, var(--theme-ink));
+    color-scheme: light;
 
     --paper-bg: var(--theme-canvas);
     --paper-raised: var(--theme-paper);
@@ -40,51 +42,6 @@
     --ink-muted: color-mix(in srgb, var(--theme-ink) 42%, transparent);
     --ink-hairline: color-mix(in srgb, var(--theme-ink) 14%, transparent);
     --signal-red: var(--theme-error);
-  }
-
-  [data-theme="contrast"] {
-    --theme-paper: #ffffff;
-    --theme-canvas: #f4f4f4;
-    --theme-ink: #111111;
-    --theme-error: #b42318;
-    --theme-success: #067647;
-    --theme-success-bg: #ecfdf3;
-    --theme-success-border: #abefc6;
-    --theme-meta: #4338ca;
-    --theme-info: #0369a1;
-    --theme-info-hover: #075985;
-    --theme-warning: #b54708;
-    --theme-warning-hover: #93370d;
-  }
-
-  [data-theme="noir"] {
-    --theme-paper: #282c34;
-    --theme-canvas: #21252b;
-    --theme-ink: #abb2bf;
-    --theme-error: #e06c75;
-    --theme-success: #34d399;
-    --theme-success-bg: rgba(5, 150, 105, 0.15);
-    --theme-success-border: rgba(16, 185, 129, 0.2);
-    --theme-meta: #818cf8;
-    --theme-info: #61afef;
-    --theme-info-hover: #8ec7ff;
-    --theme-warning: #fb923c;
-    --theme-warning-hover: #fdba74;
-  }
-
-  [data-theme="one-dark-pro-soft"] {
-    --theme-paper: #282c34;
-    --theme-canvas: #21252b;
-    --theme-ink: #abb2bf;
-    --theme-error: #e06c75;
-    --theme-success: #34d399;
-    --theme-success-bg: rgba(5, 150, 105, 0.15);
-    --theme-success-border: rgba(16, 185, 129, 0.2);
-    --theme-meta: #818cf8;
-    --theme-info: #61afef;
-    --theme-info-hover: #8ec7ff;
-    --theme-warning: #fb923c;
-    --theme-warning-hover: #fdba74;
   }
 
   body {
@@ -276,13 +233,13 @@
 .prose-content .code-block pre { margin: 0; padding: 0.75rem; overflow-x: auto; line-height: var(--markdown-code-block-line-height); }
 .prose-content .code-block code { font-family: 'Fira Code', monospace; font-size: 0.75rem; line-height: var(--markdown-code-block-line-height); }
 .prose-content .code-block pre code { background: transparent; text-shadow: none; }
-/* Shiki dual-theme tokens: the highlighter emits BOTH palettes (min-light for
+/* Shiki dual-theme tokens: the highlighter emits BOTH palettes (one-light for
  * light themes, one-dark-pro for dark themes) as CSS variables on every token
  * span and no inline `color`, so the active [data-theme] selects the palette.
- * Switching themes recolors code blocks with zero JS and no re-highlight. */
+ * Switching themes recolors code blocks with zero JS and no re-highlight.
+ * The selector keys off the variant attribute, not a list of theme ids. */
 .shiki span { color: var(--shiki-light); }
-[data-theme="noir"] .shiki span,
-[data-theme="one-dark-pro-soft"] .shiki span { color: var(--shiki-dark); }
+html[data-theme-variant="dark"] .shiki span { color: var(--shiki-dark); }
 .prose-content .katex-display { overflow-x: auto; overflow-y: hidden; }
 
 /* Math placeholder: `marked.ts` emits a `.math-pending` span and KaTeX is

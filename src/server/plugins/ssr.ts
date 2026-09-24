@@ -3,6 +3,8 @@ import { join } from 'path';
 import { getDb } from '@/server/db.server';
 import { tryServeStatic } from '@/server/plugins/static';
 import { tryProxyDevAsset } from '@/server/plugins/dev-assets';
+import { resolveTheme } from '@/shared/lib/theme/catalog';
+import { THEME_STYLE_ELEMENT_ID, themeStyleSheet } from '@/shared/lib/theme/css';
 
 const CLIENT_INDEX = join(process.cwd(), 'dist/client/index.html');
 
@@ -58,10 +60,6 @@ async function readSettings(): Promise<Record<string, unknown>> {
   }
 }
 
-function themeColor(theme: string): string {
-  return theme === 'one-dark-pro-soft' ? '#282c34' : '#faf8f3';
-}
-
 const MOBILE_UA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile|CriOS/i;
 
 /**
@@ -111,16 +109,25 @@ export const ssrRoutes = new Elysia({ name: 'ssr' }).get('*', async ({ request }
 
   const settings = await readSettings();
   const chamberSettings = (settings.omp_chamber_settings ?? {}) as { theme?: string };
-  const theme = chamberSettings.theme ?? 'paper';
+  // Resolved through the catalog: an id this build no longer ships (a
+  // downgrade, the retired `noir` alias) renders the default palette instead of
+  // an unstyled page.
+  const theme = resolveTheme(chamberSettings.theme);
   const initialIsMobile = MOBILE_UA.test(request.headers.get('user-agent') ?? '');
 
   const template = await readTemplate();
   const bootstrap = JSON.stringify({ initialIsMobile, appSettings: settings }).replace(/</g, '\\u003c');
+  // The template's own `<meta name="theme-color">` is REWRITTEN, not joined by
+  // a second tag: with both present Chrome reads the first one, so an appended
+  // tag would leave a dark theme painting light browser chrome.
+  const themeStyle = `<style id="${THEME_STYLE_ELEMENT_ID}">${themeStyleSheet()}</style>`;
 
   return new Response(
     template
-      .replace('data-theme="paper"', `data-theme="${theme}"`)
-      .replace('<!--app-head-->', `<meta name="theme-color" content="${themeColor(theme)}">`)
+      .replace('data-theme="paper"', `data-theme="${theme.id}"`)
+      .replace('data-theme-variant="light"', `data-theme-variant="${theme.variant}"`)
+      .replace('<meta name="theme-color" content="#faf8f3" />', `<meta name="theme-color" content="${theme.canvas}" />`)
+      .replace('<!--app-head-->', themeStyle)
       .replace('<!--app-bootstrap-->', `<script>window.__OMP_BOOTSTRAP__=${bootstrap}</script>`),
     { headers: HTML_HEADERS },
   );

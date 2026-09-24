@@ -1,4 +1,5 @@
 export * from '@/shared/types/workspace';
+export * from '@/shared/types/theme';
 export * from '@/shared/types/fs';
 export * from '@/shared/types/git';
 export * from '@/shared/types/chat';

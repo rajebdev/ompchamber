@@ -1,58 +1,56 @@
-export const XTERM_LIGHT_THEME = {
-  background: '#f4f1ea',
-  foreground: '#141310',
-  cursor: '#141310',
-  cursorAccent: '#f4f1ea',
-  selectionBackground: '#ded8ce',
-  selectionForeground: '#141310',
-  black: '#141310',
-  red: '#c8321e',
-  green: '#047857',
-  yellow: '#b45309',
-  blue: '#1d4ed8',
-  magenta: '#9333ea',
-  cyan: '#0284c7',
-  white: '#faf8f3',
-  brightBlack: '#78716c',
-  brightRed: '#dc2626',
-  brightGreen: '#059669',
-  brightYellow: '#d97706',
-  brightBlue: '#2563eb',
-  brightMagenta: '#a855f7',
-  brightCyan: '#0ea5e9',
-  brightWhite: '#292524',
-};
+import { mixHex } from '@/shared/lib/theme/color';
+import { resolveTheme } from '@/shared/lib/theme/catalog';
 
-export const XTERM_DARK_THEME = {
-  background: '#21252b',
-  foreground: '#abb2bf',
-  cursor: '#528bff',
-  cursorAccent: '#21252b',
-  selectionBackground: '#3e4451',
-  selectionForeground: '#abb2bf',
-  black: '#282c34',
-  red: '#e06c75',
-  green: '#98c379',
-  yellow: '#e5c07b',
-  blue: '#61afef',
-  magenta: '#c678dd',
-  cyan: '#56b6c2',
-  white: '#abb2bf',
-  brightBlack: '#5c6370',
-  brightRed: '#e06c75',
-  brightGreen: '#98c379',
-  brightYellow: '#e5c07b',
-  brightBlue: '#61afef',
-  brightMagenta: '#c678dd',
-  brightCyan: '#56b6c2',
-  brightWhite: '#ffffff',
-};
+/**
+ * The terminal palette for a theme, derived from the same eight colors the rest
+ * of the app paints with.
+ *
+ * xterm parses its own colors and understands only literal notations (hex,
+ * `rgb()`, `hsl()`, named) — `color-mix()` is not among them in either the DOM
+ * or the WebGL renderer — so every blend is computed here in hex instead of
+ * being left to CSS. The result follows the active theme rather than a fixed
+ * light/dark pair: a Nord terminal is Nord, and switching themes repaints the
+ * scrollback instead of leaving the previous palette on screen.
+ *
+ * ANSI slots map onto the semantic colors the palette does carry (red=error,
+ * green=success, yellow=warning, blue=info, magenta=accent); `cyan` has no
+ * counterpart, so it is a deterministic mix of info and success, and the
+ * grayscale slots are mixes of ink over canvas. "Bright" variants mix 20% toward
+ * the foreground, which is lighter on a dark theme and darker on a light one —
+ * the direction that increases contrast on both.
+ */
+export function getXtermTheme(themeId: string) {
+  const palette = resolveTheme(themeId);
+  const { canvas, ink } = palette;
 
-export function getXtermTheme(isDark: boolean) {
-  return isDark ? XTERM_DARK_THEME : XTERM_LIGHT_THEME;
+  const towardInk = (color: string) => mixHex(color, ink, 0.2);
+  const grayscale = (ratio: number) => mixHex(canvas, ink, ratio);
+
+  return {
+    background: canvas,
+    foreground: ink,
+    cursor: palette.meta,
+    cursorAccent: canvas,
+    selectionBackground: grayscale(0.28),
+    selectionForeground: ink,
+    black: grayscale(0.2),
+    red: palette.error,
+    green: palette.success,
+    yellow: palette.warning,
+    blue: palette.info,
+    magenta: palette.meta,
+    cyan: mixHex(palette.info, palette.success, 0.5),
+    white: grayscale(0.75),
+    brightBlack: grayscale(0.5),
+    brightRed: towardInk(palette.error),
+    brightGreen: towardInk(palette.success),
+    brightYellow: towardInk(palette.warning),
+    brightBlue: towardInk(palette.info),
+    brightMagenta: towardInk(palette.meta),
+    brightCyan: towardInk(mixHex(palette.info, palette.success, 0.5)),
+    brightWhite: grayscale(0.92),
+  };
 }
-
-export const XTERM_THEME = XTERM_DARK_THEME;
 
 /**
  * Font stack for the terminal canvas.

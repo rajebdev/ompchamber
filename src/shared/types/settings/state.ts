@@ -1,3 +1,5 @@
+import type { ThemeId } from '@/shared/lib/theme/catalog';
+
 /** Wire protocol for the live agent event stream (chat timeline). */
 export type StreamTransport = 'websocket' | 'sse';
 
@@ -35,7 +37,10 @@ export interface SettingsState {
   showUpdateNotifications: boolean;
   agentControlTool: boolean;
   ompChamberWebTool: boolean;
-  theme: 'paper' | 'contrast' | 'noir' | 'one-dark-pro-soft';
+  /** Palette id from the theme catalog (`shared/lib/theme/catalog.ts`). Typed
+   *  as the catalog's own id union, so a theme dropped from it breaks the build
+   *  here rather than rendering unstyled at runtime. */
+  theme: ThemeId;
   fontSize: 'compact' | 'standard' | 'comfort';
   editorFont: string;
   streamResponses: boolean;

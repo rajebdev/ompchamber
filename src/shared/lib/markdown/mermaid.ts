@@ -18,6 +18,7 @@
  */
 
 import { sanitizeMermaidSvg } from '@/shared/lib/markdown/sanitize';
+import { isDarkTheme } from '@/shared/lib/theme/catalog';
 
 export interface MermaidRenderResult {
   rendered: number;
@@ -34,8 +35,7 @@ let mermaidPromise: Promise<MermaidModule['default']> | null = null;
 let lastThemeKey: ThemeKey | null = null;
 
 function resolveThemeKey(): ThemeKey {
-  const theme = document.documentElement.dataset.theme || document.documentElement.getAttribute('data-theme');
-  return theme === 'one-dark-pro-soft' || theme === 'noir' || theme === 'dark' ? 'dark' : 'default';
+  return isDarkTheme(document.documentElement.dataset.theme || document.documentElement.getAttribute('data-theme')) ? 'dark' : 'default';
 }
 
 function cacheKey(themeKey: ThemeKey, source: string): string {

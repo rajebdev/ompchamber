@@ -71,7 +71,7 @@ export interface XtermMount {
  */
 export async function mountXterm(
   container: HTMLElement,
-  isDark: boolean,
+  themeId: string,
   callbacks: XtermMountCallbacks,
   isCancelled: () => boolean,
 ): Promise<XtermMount | null> {
@@ -93,7 +93,7 @@ export async function mountXterm(
     fontSize: 12,
     lineHeight: 1.25,
     fontFamily: XTERM_FONT_FAMILY,
-    theme: getXtermTheme(isDark),
+    theme: getXtermTheme(themeId),
     // No `convertEol`: the PTY already emits CRLF, and converting a lone LF
     // would re-introduce the line-feed doubling a real terminal avoids.
     scrollback: 10000,

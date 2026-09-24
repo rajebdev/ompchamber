@@ -4,6 +4,7 @@ import type { SettingsCategoryId, SettingsState } from '@/shared/types';
 import { mergeChamberSettings } from '@/shared/lib/settings/client';
 import { useChamberSettingsWriter } from '@/client/hooks/settings/use-chamber-setting';
 import { applyDocumentTheme } from '@/client/hooks/ui/theme';
+import { DEFAULT_THEME_ID } from '@/shared/lib/theme/catalog';
 import { useChamberEvent } from '@/client/hooks/ui/window-event';
 import { SETTINGS_CATEGORIES, SettingsSidebar } from '@/client/components/settings/Sidebar';
 import { AppearanceSettings } from '@/client/components/settings/categories/AppearanceSettings';
@@ -35,7 +36,7 @@ const DEFAULT_SETTINGS: SettingsState = {
   showUpdateNotifications: true,
   agentControlTool: true,
   ompChamberWebTool: true,
-  theme: 'paper',
+  theme: DEFAULT_THEME_ID,
   fontSize: 'standard',
   editorFont: 'JetBrains Mono',
   streamResponses: true,

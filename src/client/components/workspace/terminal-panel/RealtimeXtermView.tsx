@@ -40,7 +40,7 @@ interface RealtimeXtermViewProps {
  */
 export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermViewProps>(
   ({ onInput, onBinaryInput, onGridChange, onReady }, ref) => {
-    const { isDark } = useTheme();
+    const { theme } = useTheme();
     const containerRef = useRef<HTMLDivElement>(null);
     const mountRef = useRef<XtermMount | null>(null);
     const [isScrolledUp, setIsScrolledUp] = useState(false);
@@ -53,15 +53,15 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
     gridChangeRef.current = onGridChange;
     const readyRef = useRef(onReady);
     readyRef.current = onReady;
-    const themeRef = useRef(isDark);
-    themeRef.current = isDark;
+    const themeRef = useRef(theme);
+    themeRef.current = theme;
 
     useEffect(() => {
       const term = mountRef.current?.term;
       if (!term) return;
-      term.options.theme = getXtermTheme(isDark);
+      term.options.theme = getXtermTheme(theme);
       term.refresh(0, term.rows - 1);
-    }, [isDark]);
+    }, [theme]);
 
     useImperativeHandle(ref, () => ({
       write(bytes: Uint8Array) {
