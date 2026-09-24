@@ -258,7 +258,8 @@ Mixed change in one commit: split into separate commits when the files are separ
 - Every change must pass:
   1. `bun run lint` (`tsc --noEmit`) without errors.
   2. `bunx tsc --noEmit --noUnusedLocals --noUnusedParameters` without errors.
-  3. Production build verification (`bun run build`).
+  3. `find src -name "*.ts" -o -name "*.tsx" | xargs wc -l | grep -v total | awk '$1>350'` no file over 350 line codes
+  4. Production build verification (`bun run build`).
 - **Unused Code Check (MANDATORY before task completion)**: Before declaring any task done, verify no unused imports, locals, or dead props were introduced or left behind:
   - Fix every `TS6133` (declared but never read), `TS6192` (all imports unused), `TS6196` (declared but never used), and `TS6198` (all destructured elements unused) error.
   - Remove unused imports (icons, types, components) and unused destructured props/state — do not leave dead code behind.
