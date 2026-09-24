@@ -1,0 +1,56 @@
+name: Feature request
+description: A capability OMPChamber does not have yet.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        OMPChamber is a small project with one maintainer: what gets built is a judgement call, and a
+        request is not a commitment. The most useful thing you can write here is the problem, not the
+        implementation — design and scope are the maintainer's call.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to get done, and where OMPChamber gets in the way. Concrete beats general.
+    validations:
+      required: true
+
+  - type: textarea
+    id: today
+    attributes:
+      label: What you do today
+      description: The workaround, the other tool you use instead, or the manual step you repeat.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where it would live
+      description: The closest part of the app, if you have a view. This is a hint for triage, not a design decision.
+      options:
+        - chat timeline or composer
+        - session sidebar
+        - editor panel
+        - right panel — files
+        - right panel — search
+        - right panel — git
+        - right panel — terminal
+        - right panel — context and telemetry
+        - right panel — browser
+        - settings
+        - CLI
+        - somewhere else / not sure
+    validations:
+      required: false
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and OS
+      description: Where you would use it, when that matters for the request.
+    validations:
+      required: false

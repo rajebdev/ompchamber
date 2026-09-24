@@ -297,6 +297,18 @@ Two things to set up once and one to never do:
   `main` — it scans the whole message and silently skips the release run. Only the bot's release
   commit carries one, so that it does not re-trigger the workflow.
 
+## Contributing
+
+Issues and pull requests both get an automated first pass: a GitHub App runs the `omp` agent headlessly
+to triage a new issue and to review a pull request, and its verdict is published as a `review:*` label.
+
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) is the policy — the four mandatory gates, the pull request
+  sections the reviewer checks, what counts as evidence, and the label a review moves through.
+- The command surface is `@<bot> help | review | summarize | triage | reproduce` as the first line of a
+  comment. Run the **bot config check** workflow to print the name this repository answers to.
+- Bugs go through the issue form; requests through the feature form. Design and scope stay the
+  maintainer's call, and `AGENTS.md` is the normative reference for the code rules.
+
 ## License
 
 No license file is included. The source is public on GitHub and published to npm, but all rights are

@@ -1,0 +1,116 @@
+name: Bug report
+description: Something in OMPChamber is wrong, broken, or crashes.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The details below are what make a fix possible without guessing. The bot triages this
+        automatically and will try to reproduce it before asking you anything.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, in plain words. Paste the exact error text if there was one.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: What you expected to see instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Exact steps in order. Say which session or workspace it needs, and whether the app has to be restarted first.
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: how-run
+    attributes:
+      label: How you run OMPChamber
+      description: The install and the command you started it with.
+      options:
+        - ompchamber serve --prod (published install)
+        - ompchamber serve (dev server, daemon)
+        - bun run dev (from source)
+        - bun run start (from source, production)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mock
+    attributes:
+      label: Data mode
+      description: MOCK=true uses simulated data and needs no `omp` install; MOCK=false talks to real `omp` sessions.
+      options:
+        - MOCK=false (real omp)
+        - MOCK=true
+        - not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where it happens
+      description: The part of the UI or CLI the problem shows up in. Pick the closest one; "not sure" is a fine answer.
+      options:
+        - chat timeline (messages, tools, thinking, queue)
+        - composer (input, mentions, / commands, /btw)
+        - session sidebar (folders, sessions, search, archive)
+        - editor panel (tabs, diff, code editor)
+        - right panel — files
+        - right panel — search
+        - right panel — git
+        - right panel — terminal
+        - right panel — context and telemetry
+        - right panel — browser
+        - settings and about
+        - CLI (serve, update, stop, restart, status, logs)
+        - not sure
+    validations:
+      required: false
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and OS
+      description: The UI is a browser app, so this is the environment that matters. The CLI needs no browser.
+      placeholder: Chrome 141 / macOS 15.2, Firefox 145 / Ubuntu 24.04
+    validations:
+      required: true
+
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: Output of these, where they exist. `omp` is the agent binary the server shells out to.
+      placeholder: |
+        ompchamber update --check
+        omp --version
+        bun --version
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshot
+      description: The server log (`ompchamber logs -n 100`), and a screenshot if the problem is visual.
+      render: shell
+    validations:
+      required: false
