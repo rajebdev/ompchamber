@@ -60,10 +60,14 @@ export interface UseSessionLoadDeps {
   /** Scroll container of the timeline: lets loadOlder preserve the viewport
    *  position when older rows are prepended above it. */
   scrollRef?: RefObject<HTMLDivElement>;
+  /** Scroll hook's bottom-jump guard and counter, forwarded to the pagination
+   *  hook: a jump to the tail outranks an in-flight older window. */
+  jumpActiveRef?: RefObject<boolean>;
+  jumpCountRef?: RefObject<number>;
 }
 
 export function useSessionLoad(deps: UseSessionLoadDeps) {
-  const { sessionId, setLocalMessages, setGenerating, isGeneratingRef, aiPlaceholderIdRef, localMessagesRef, optimisticUserIdRef, cancelStreamingCoalescer, metaRefreshedRef, scrollRef } = deps;
+  const { sessionId, setLocalMessages, setGenerating, isGeneratingRef, aiPlaceholderIdRef, localMessagesRef, optimisticUserIdRef, cancelStreamingCoalescer, metaRefreshedRef, scrollRef, jumpActiveRef, jumpCountRef } = deps;
 
   const [sessionData, setSessionData] = useState<SessionDataShape | null>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
@@ -99,6 +103,8 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
     sessionIdRef,
     setLocalMessages,
     scrollRef,
+    jumpActiveRef,
+    jumpCountRef,
   });
 
   /** Re-fetch the session's title/metadata after the omp JSONL has been

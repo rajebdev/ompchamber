@@ -15,10 +15,8 @@ import { useBrowserPageContextInsert } from '@/client/hooks/chat/timeline/browse
 import { createOmpAgentCallbacks } from '@/shared/lib/chat/timeline/omp-callbacks';
 import { cancelStreamingCoalescer } from '@/shared/lib/chat/timeline/stream-coalescer';
 import { readStreamTransport } from '@/shared/lib/chat/omp/transport';
-import { ACCESS_MODE_SETTING_KEY, normalizeApprovalMode } from '@/shared/lib/omp/config/access-mode';
-import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
+import { useChatTimelineAccessMode } from '@/client/hooks/chat/timeline/access-mode';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
-import { writeSetting } from '@/shared/lib/settings/client';
 
 interface UseChatTimelineOptions {
   folders?: any[];
@@ -51,7 +49,7 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   // without re-creating it (useSessionLoad is defined below the scroll hook).
   const loadOlderRef = useRef<() => void>(() => {});
 
-  const { scrollRef, contentRef, showScrollBottom, isScrolling, handleScroll, scrollToBottom, jumpToBottom } = useChatTimelineScroll({
+  const { scrollRef, contentRef, showScrollBottom, isScrolling, handleScroll, scrollToBottom, jumpToBottom, jumpActiveRef, jumpCountRef } = useChatTimelineScroll({
     onScrollTop: () => loadOlderRef.current(),
   });
 
@@ -65,11 +63,12 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   const isPendingSession = Boolean(sessionId?.startsWith('new-'));
   // Committed history lands asynchronously (session-load.ts), so the container
   // paints at the top first; jump to the tail once per session when it does.
+  // Unconditional: follow mode is this view's, not the opened session's.
   useTimelineAutoScroll({
     sessionId,
     messages: localMessages,
     scrollRef,
-    scrollToBottom,
+    jumpToBottom,
     enabled: !isPendingSession,
   });
 
@@ -135,6 +134,8 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     cancelStreamingCoalescer,
     metaRefreshedRef,
     scrollRef,
+    jumpActiveRef,
+    jumpCountRef,
   });
   loadOlderRef.current = loadOlder;
 
@@ -165,21 +166,8 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
   }, [sessionId]);
 
   // Access-control mode is a global, persisted user preference (unlike the
-  // per-session model/thinking picks): it hydrates from appSettings at first
-  // paint and is mirrored into a ref so the send path reads the latest value
-  // without re-creating executeSend.
-  const [accessMode, setAccessMode] = useState<ApprovalMode>(() => normalizeApprovalMode(appSettings.omp_access_mode));
-  const accessModeRef = useRef<ApprovalMode>(accessMode);
-  accessModeRef.current = accessMode;
-
-  const handleAccessModeChange = useCallback((mode: ApprovalMode) => {
-    setAccessMode(mode);
-    accessModeRef.current = mode;
-    // Persist the last selection; the server reads this key as the spawn-time
-    // default. Fire-and-forget: the in-memory value is already authoritative
-    // for this session's requests, which carry it explicitly.
-    writeSetting(ACCESS_MODE_SETTING_KEY, mode);
-  }, []);
+  // per-session model/thinking picks).
+  const { accessMode, accessModeRef, setAccessMode: handleAccessModeChange } = useChatTimelineAccessMode(appSettings);
 
   const persistMessages = useCallback((messagesToSave: any[]) => {
     if (!sessionId) return;

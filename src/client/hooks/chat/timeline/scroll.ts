@@ -19,6 +19,12 @@
  * the tail disengages it (the scroll fight is gone — they can read while the
  * AI generates); scrolling back near the tail, or clicking the scroll-bottom
  * button, re-engages it. Programmatic jumps (`scrollTo`) never flip the mode.
+ *
+ * `jumpToBottom` is the unconditional bypass (`follow` is re-engaged, geometry
+ * is re-baselined, and the paging trigger stands down for a moment) — the
+ * button's jump, the open-session jump, and the send jump all go through it.
+ * `follow` lives across session switches, so an open jump that honoured it was
+ * simply refused for a session opened after the user had scrolled up.
  */
 
 import type { RefObject } from 'preact/compat';
@@ -26,6 +32,13 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 
 /** Distance from the tail, in pixels, that still counts as "at the bottom". */
 const FOLLOW_BOTTOM_THRESHOLD_PX = 100;
+
+/** How long a bottom jump counts as settling. The scroll handler reads "the
+ *  viewport is at the top, fetch older history" from geometry, and a jump that
+ *  STARTS at the top (the button, on a session scrolled back to its head)
+ *  passes through those first pixels — so the paging trigger stands down for
+ *  the jump's duration instead of paging a window the jump must then outrun. */
+const JUMP_SETTLE_MS = 1000;
 
 export interface ChatTimelineScrollOptions {
   /** Called when the viewport reaches the top (history paging trigger).
@@ -41,14 +54,28 @@ export interface ChatTimelineScrollResult {
   isScrolling: boolean;
   /** Streaming auto-scroll gates on this: pinned to the tail = true. */
   followRef: RefObject<boolean>;
+  /** Bottom jumps issued so far. A paging request stamps its viewport anchor
+   *  with this and drops the anchor once it has moved on — otherwise a window
+   *  that lands AFTER the user asked for the tail writes `scrollTop` straight
+   *  over the jump (reproduced: the jump stopped ~26k px short of the tail and
+   *  only the next click reached it, once no window was left to page in). */
+  jumpCountRef: RefObject<number>;
+  /** True while a bottom jump is settling ({@link JUMP_SETTLE_MS}); history
+   *  paging stands down meanwhile. */
+  jumpActiveRef: RefObject<boolean>;
   handleScroll: () => void;
   scrollToBottom: (behavior?: ScrollBehavior) => void;
-  /** Jump to the tail and re-engage follow mode (scroll-bottom button). */
+  /** Jump to the tail and re-engage follow mode (scroll-bottom button, the
+   *  session-open jump, the post-send jump). */
   jumpToBottom: (behavior?: ScrollBehavior) => void;
 }
 
 /** Distance from the top that counts as "reached the history boundary". */
 const SCROLL_TOP_TRIGGER_PX = 40;
+
+/** Pending timeout handle. Named here rather than re-derived per ref because
+ *  the DOM and Bun/Node typings disagree on what `setTimeout` returns. */
+type TimeoutHandle = ReturnType<typeof setTimeout>;
 
 export function useChatTimelineScroll(options: ChatTimelineScrollOptions = {}): ChatTimelineScrollResult {
   const onScrollTopRef = useRef<(() => void) | undefined>(options.onScrollTop);
@@ -57,15 +84,31 @@ export function useChatTimelineScroll(options: ChatTimelineScrollOptions = {}): 
   const [contentNode, setContentNode] = useState<HTMLDivElement | null>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [isScrolling, setIsScrolling] = useState(false);
-  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollTimerRef = useRef<TimeoutHandle>();
   // True while the viewport is (or should stay) pinned to the tail. A ref, not
   // state: scroll chunks read it every frame and a flip must not re-render.
   const followRef = useRef(true);
   // Previous scrollTop, for upward-scroll detection in handleScroll.
   const lastScrollTopRef = useRef(0);
+  // Bottom-jump bookkeeping; see ChatTimelineScrollResult for each ref.
+  const jumpCountRef = useRef(0);
+  const jumpActiveRef = useRef(false);
+  const jumpTimerRef = useRef<TimeoutHandle>();
 
   const contentRef = useCallback((node: HTMLDivElement | null) => {
     setContentNode(node);
+  }, []);
+
+  /** Move the viewport to the tail unconditionally, then re-baseline the
+   *  upward-scroll detector. Both matter: `scrollTo` applies the new position
+   *  for 'instant', and the previous session's (larger) scrollTop would
+   *  otherwise read as the user scrolling UP on the very event this jump
+   *  produces — disengaging follow and cancelling a jump in flight. */
+  const pinToBottom = useCallback((behavior: ScrollBehavior) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior });
+    lastScrollTopRef.current = el.scrollTop;
   }, []);
 
   const syncFollowBottom = useCallback(() => {
@@ -83,7 +126,12 @@ export function useChatTimelineScroll(options: ChatTimelineScrollOptions = {}): 
       // increasing scrollTop, so a geometry check alone would flip the flag
       // mid-animation as content outgrows the animation. Re-engage whenever
       // the viewport is back near the tail, whichever way it got there.
-      if (el.scrollTop < lastScrollTopRef.current - 1) followRef.current = false;
+      if (el.scrollTop < lastScrollTopRef.current - 1) {
+        followRef.current = false;
+        // The user took the viewport back: a jump still settling must not keep
+        // re-pinning the tail under them.
+        jumpActiveRef.current = false;
+      }
       if (el.scrollHeight - el.scrollTop - el.clientHeight < FOLLOW_BOTTOM_THRESHOLD_PX) followRef.current = true;
       lastScrollTopRef.current = el.scrollTop;
       // History paging: the viewport hit the top — ask for the older window.
@@ -92,43 +140,68 @@ export function useChatTimelineScroll(options: ChatTimelineScrollOptions = {}): 
     }
     syncFollowBottom();
     setIsScrolling(true);
-    if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+    clearTimeout(scrollTimerRef.current);
     scrollTimerRef.current = setTimeout(() => setIsScrolling(false), 600);
   }, [syncFollowBottom]);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
-    const el = scrollRef.current;
-    if (!el) return;
     // Follow-gated: a stream chunk in read mode (user scrolled away) must not
     // yank the viewport down. jumpToBottom is the explicit bypass.
     if (!followRef.current) return;
-    el.scrollTo({ top: el.scrollHeight, behavior });
-  }, []);
+    pinToBottom(behavior);
+  }, [pinToBottom]);
 
   const jumpToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
-    const el = scrollRef.current;
-    if (!el) return;
+    if (!scrollRef.current) return;
     followRef.current = true;
-    el.scrollTo({ top: el.scrollHeight, behavior });
-  }, []);
+    jumpActiveRef.current = true;
+    jumpCountRef.current += 1;
+    clearTimeout(jumpTimerRef.current);
+    jumpTimerRef.current = setTimeout(() => { jumpActiveRef.current = false; }, JUMP_SETTLE_MS);
+    pinToBottom(behavior);
+  }, [pinToBottom]);
 
-  // Re-sync whenever an observed box changes size. `contentNode` is a dep so the
-  // observer is rebuilt when the timeline mounts — a session picked from the
-  // workspace picker swaps the whole subtree in, and the callback ref fires
-  // before this effect, so the node is always available here.
+  // Geometry, not events: content that grows without the user scrolling
+  // (history prepending, an accordion expanding, an image decoding, a late
+  // Shiki/mermaid layout, the panel resizing) never fires `scroll`, so nothing
+  // else notices the tail moving away. While the viewport is pinned that growth
+  // is exactly when to re-pin it — a prepended window shifts the tail down by
+  // its own height, which strands a jump target measured a frame earlier (and
+  // a one-shot open jump by anything that lays out late). Unpinned (the user
+  // reading back) nothing is touched: the prepend anchor owns the position.
+  //
+  // `contentNode` is a dep so the observer is rebuilt when the timeline mounts
+  // — a session picked from the workspace picker swaps the whole subtree in,
+  // and the callback ref fires before this effect, so the node is always
+  // available here.
   useEffect(() => {
     syncFollowBottom();
     if (typeof ResizeObserver === 'undefined') return;
     const container = scrollRef.current;
-    const observer = new ResizeObserver(syncFollowBottom);
+    const observer = new ResizeObserver(() => {
+      if (followRef.current) pinToBottom('instant');
+      syncFollowBottom();
+    });
     if (container) observer.observe(container);
     if (contentNode) observer.observe(contentNode);
     return () => observer.disconnect();
-  }, [contentNode, syncFollowBottom]);
+  }, [contentNode, pinToBottom, syncFollowBottom]);
 
   useEffect(() => () => {
-    if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+    clearTimeout(scrollTimerRef.current);
+    clearTimeout(jumpTimerRef.current);
   }, []);
 
-  return { scrollRef, contentRef, showScrollBottom, isScrolling, followRef, handleScroll, scrollToBottom, jumpToBottom };
+  return {
+    scrollRef,
+    contentRef,
+    showScrollBottom,
+    isScrolling,
+    followRef,
+    jumpCountRef,
+    jumpActiveRef,
+    handleScroll,
+    scrollToBottom,
+    jumpToBottom,
+  };
 }

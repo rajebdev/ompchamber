@@ -31,6 +31,15 @@ export interface UseSessionPaginationDeps {
   /** Scroll container of the timeline: lets loadOlder preserve the viewport
    *  position when older rows are prepended above it. */
   scrollRef?: RefObject<HTMLDivElement>;
+  /** Scroll hook's bottom-jump guard: history paging stands down while a jump
+   *  to the tail is settling, so the jump does not race a window it never
+   *  asked for (the jump starts at the top, where the trigger lives). */
+  jumpActiveRef?: RefObject<boolean>;
+  /** Scroll hook's bottom-jump counter: a page request stamps its viewport
+   *  anchor with the count it saw and drops the anchor when it has moved on.
+   *  The anchor exists to hold a READING position, and applying it over a jump
+   *  the user asked for parked the viewport back where they used to be. */
+  jumpCountRef?: RefObject<number>;
 }
 
 export interface SessionPagination {
@@ -67,7 +76,7 @@ interface WindowPayload {
 }
 
 export function useSessionPagination(deps: UseSessionPaginationDeps): SessionPagination {
-  const { sessionId, sessionIdRef, setLocalMessages, scrollRef } = deps;
+  const { sessionId, sessionIdRef, setLocalMessages, scrollRef, jumpActiveRef: bottomJumpActiveRef, jumpCountRef } = deps;
 
   const [hasMore, setHasMore] = useState(false);
   const [oldestIndex, setOldestIndex] = useState(0);
@@ -83,14 +92,14 @@ export function useSessionPagination(deps: UseSessionPaginationDeps): SessionPag
   // the scroll handler would read "the user reached the top" and page an extra
   // window nobody asked for — and that window's own scroll anchor would fight
   // the jump's.
-  const jumpActiveRef = useRef(false);
+  const railJumpActiveRef = useRef(false);
   // Live cursor: a jump walks it across several requests, and state does not
   // update between iterations of that loop.
   const oldestIndexRef = useRef(0);
   oldestIndexRef.current = oldestIndex;
   // Set while prepending older rows; the layout effect below re-anchors the
   // viewport to the content the user was reading instead of jumping.
-  const pendingScrollAnchorRef = useRef<{ prevHeight: number; prevTop: number } | null>(null);
+  const pendingScrollAnchorRef = useRef<{ prevHeight: number; prevTop: number; jumpCount: number } | null>(null);
 
   const resetPages = useCallback(() => {
     setHasMore(false);
@@ -101,6 +110,10 @@ export function useSessionPagination(deps: UseSessionPaginationDeps): SessionPag
     loadingOlderRef.current = false;
     setLoadingOlder(false);
     setLoadOlderError(false);
+    // A recorded anchor belongs to the previous session's geometry, and its
+    // request was dropped on the switch — applying it would write THAT window's
+    // offset into this session's scrollTop.
+    pendingScrollAnchorRef.current = null;
   }, []);
 
   const applyWindow = useCallback((hasMoreFromLoad: unknown, oldestIndexFromLoad: unknown) => {
@@ -119,11 +132,15 @@ export function useSessionPagination(deps: UseSessionPaginationDeps): SessionPag
     return { messages: data.session?.messages ?? [], hasMore: data.hasMore, oldestIndex: data.oldestIndex };
   }, [sessionId]);
 
-  /** Record the viewport geometry an older-window prepend is about to shift. */
+  /** Record the viewport geometry an older-window prepend is about to shift,
+   *  stamped with the bottom-jump count so the anchor can be dropped if the
+   *  user asked for the tail after this request went out. */
   const anchorViewport = useCallback(() => {
     const el = scrollRef?.current;
-    if (el) pendingScrollAnchorRef.current = { prevHeight: el.scrollHeight, prevTop: el.scrollTop };
-  }, [scrollRef]);
+    if (el) {
+      pendingScrollAnchorRef.current = { prevHeight: el.scrollHeight, prevTop: el.scrollTop, jumpCount: jumpCountRef?.current ?? 0 };
+    }
+  }, [scrollRef, jumpCountRef]);
 
   /** Drop the jump's scroll-handler guard once its target scroll has settled.
    *  Until then the viewport is still near the top of history (where the paging
@@ -132,7 +149,7 @@ export function useSessionPagination(deps: UseSessionPaginationDeps): SessionPag
   const releaseJumpGuard = useCallback(() => {
     const el = scrollRef?.current;
     if (!el) {
-      jumpActiveRef.current = false;
+      railJumpActiveRef.current = false;
       return;
     }
     let lastTop = el.scrollTop;
@@ -145,7 +162,7 @@ export function useSessionPagination(deps: UseSessionPaginationDeps): SessionPag
       }
       // A few still frames = the smooth scroll is done (or never started).
       if (settledFrames >= 5) {
-        jumpActiveRef.current = false;
+        railJumpActiveRef.current = false;
         return;
       }
       requestAnimationFrame(watch);
@@ -162,7 +179,11 @@ export function useSessionPagination(deps: UseSessionPaginationDeps): SessionPag
    *  placeholder, and blocking it made the button feel dead mid-run. */
   const loadOlder = useCallback(() => {
     if (!sessionId || sessionId.startsWith('new-')) return;
-    if (!hasMore || loadingOlderRef.current || jumpActiveRef.current) return;
+    if (!hasMore || loadingOlderRef.current || railJumpActiveRef.current) return;
+    // A jump to the tail starts at the top, where this trigger lives: paging a
+    // window then is work the jump never asked for, and the window's own
+    // anchor would race the jump's landing.
+    if (bottomJumpActiveRef?.current) return;
     loadingOlderRef.current = true;
     setLoadingOlder(true);
     setLoadOlderError(false);
@@ -204,7 +225,7 @@ export function useSessionPagination(deps: UseSessionPaginationDeps): SessionPag
         loadingOlderRef.current = false;
         setLoadingOlder(false);
       });
-  }, [sessionId, sessionIdRef, hasMore, oldestIndex, fetchWindow, anchorViewport, setLocalMessages, applyWindow]);
+  }, [sessionId, sessionIdRef, hasMore, oldestIndex, fetchWindow, anchorViewport, setLocalMessages, applyWindow, bottomJumpActiveRef]);
 
   /**
    * Walk the cursor down until the row with `id` is mounted, prepending every
@@ -226,7 +247,7 @@ export function useSessionPagination(deps: UseSessionPaginationDeps): SessionPag
     if (loadingOlderRef.current) return false;
     const requestedSessionId = sessionId;
     loadingOlderRef.current = true;
-    jumpActiveRef.current = true;
+    railJumpActiveRef.current = true;
     setLoadingOlder(true);
     setLoadOlderError(false);
     // No viewport anchor here, deliberately: the anchor exists to hold the
@@ -283,6 +304,11 @@ export function useSessionPagination(deps: UseSessionPaginationDeps): SessionPag
     const el = scrollRef?.current;
     if (!el) return;
     pendingScrollAnchorRef.current = null;
+    // The user asked for the tail after this window was requested: holding the
+    // old reading position would write scrollTop straight over that jump (a
+    // window landing mid-jump parked the viewport ~26k px short of the tail).
+    // The jump's own landing, plus the scroll hook's re-pin, owns the position.
+    if (anchor.jumpCount !== (jumpCountRef?.current ?? 0)) return;
     const delta = el.scrollHeight - anchor.prevHeight;
     if (delta > 0) el.scrollTop = anchor.prevTop + delta;
   }, [prependTick, scrollRef]);

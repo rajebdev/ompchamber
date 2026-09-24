@@ -10,6 +10,14 @@
  * because every other trigger lives in the streaming callbacks. This jumps to
  * the tail exactly once per session, on the commit where that session's
  * messages appear.
+ *
+ * The jump is the UNCONDITIONAL one (`jumpToBottom`), not the follow-gated
+ * `scrollToBottom`. Follow mode is a property of this mounted view, not of the
+ * session being opened: a user who scrolled up before switching left it
+ * disengaged, and the open then painted the top of the new session with no
+ * scroll event to re-engage it — the session stayed at the head until the
+ * button was clicked (reproduced: scroll up in session A, open session B,
+ * `scrollTop` pinned at 0 with the jump button showing).
  */
 
 import type { RefObject } from 'preact/compat';
@@ -24,14 +32,15 @@ export interface UseTimelineAutoScrollDeps {
   messages: ChatMessageData[];
   /** Scroll container owned by useChatTimelineScroll. */
   scrollRef: RefObject<HTMLDivElement>;
-  scrollToBottom: (behavior?: ScrollBehavior) => void;
+  /** Unconditional tail jump (bypasses follow mode, re-engages it). */
+  jumpToBottom: (behavior?: ScrollBehavior) => void;
   /** Pending "new-…" sessions render the workspace picker, which owns its own
    *  timeline and scroll handling. */
   enabled: boolean;
 }
 
 export function useTimelineAutoScroll(deps: UseTimelineAutoScrollDeps): void {
-  const { sessionId, messages, scrollRef, scrollToBottom, enabled } = deps;
+  const { sessionId, messages, scrollRef, jumpToBottom, enabled } = deps;
   // Session the container was last rendering. On the commit where this flips
   // the DOM still holds the previous session's rows, so scrolling then would
   // aim at content that is about to be replaced.
@@ -53,6 +62,6 @@ export function useTimelineAutoScroll(deps: UseTimelineAutoScrollDeps): void {
     // scrollHeight forces layout, so the jump lands before the browser paints.
     // 'instant' is required because the container carries Tailwind's
     // `scroll-smooth`, which 'auto' would resolve to.
-    scrollToBottom('instant');
-  }, [sessionId, messages, enabled, scrollRef, scrollToBottom]);
+    jumpToBottom('instant');
+  }, [sessionId, messages, enabled, scrollRef, jumpToBottom]);
 }
