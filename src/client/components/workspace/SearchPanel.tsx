@@ -6,6 +6,7 @@ import { useFetcher } from '@/client/lib/router/fetcher';
 import { GitRepoDropdown } from '@/client/components/workspace/file-explorer/GitRepoDropdown';
 import { useScrollbarFade, scrollbarFadeClass } from '@/client/hooks/ui/scrollbar-fade';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
+import { useRepoList, useRepoScope } from '@/client/hooks/workspace/repo-scope';
 import { useSearchStream } from '@/client/hooks/workspace/search-stream';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 import { getLanguageFromPath, highlightCode } from '@/shared/lib/code/syntax-highlight';
@@ -23,13 +24,18 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
   const [includeFiles, setIncludeFiles] = useSessionState<string>('search.includeFiles', '');
   const [showMenu, setShowMenu] = useState(false);
   const [showIncludeField, setShowIncludeField] = useSessionState<boolean>('search.showIncludeField', false);
-  const [activeRepo, setActiveRepo] = useSessionState<string>('search.activeRepo', '.');
+  const { activeRepo, setActiveRepo } = useRepoScope(rootPath, 'search.activeRepo');
+  const { repos, scanning: reposScanning, rescan: rescanRepos } = useRepoList(rootPath, enabled);
   
   const menuRef = useRef<HTMLDivElement>(null);
   const { isScrolling, handleScroll } = useScrollbarFade();
 
   const replaceFetcher = useFetcher<{ success: boolean, results: any[] }>();
-  const { results, isSearching, start: startSearch } = useSearchStream();
+
+  // The tree being searched: the workspace root plus the selected repo. Every
+  // result is relative to it, so a switch must not keep the previous tree's
+  // hits on screen — `useSearchStream` tags them with this scope.
+  const { results, isSearching, start: startSearch } = useSearchStream(`${rootPath ?? ''}\u0000${activeRepo}`);
 
   useOnClickOutside(menuRef, () => setShowMenu(false));
 
@@ -109,7 +115,14 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
       <div className="p-3 border-b border-ink/10 flex items-center justify-between">
         <div className="flex items-center space-x-2 min-w-0">
           <h2 className="text-xs font-semibold text-ink uppercase tracking-wider">Search</h2>
-          <GitRepoDropdown rootPath={rootPath} activeRepo={activeRepo} onSelectRepo={setActiveRepo} />
+          <GitRepoDropdown
+            rootPath={rootPath}
+            activeRepo={activeRepo}
+            onSelectRepo={setActiveRepo}
+            repos={repos}
+            scanning={reposScanning}
+            onRefreshRepos={rescanRepos}
+          />
         </div>
         <div className="relative" ref={menuRef}>
           <button 

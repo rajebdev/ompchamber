@@ -1,13 +1,17 @@
 
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import { Check, ChevronDown, FolderGit2, RotateCcw, Search } from 'lucide-preact';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
-import { REPO_DISCOVERY_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
 
 interface GitRepoDropdownProps {
   rootPath?: string;
   activeRepo: string;
   onSelectRepo: (repo: string) => void;
+  /** Discovered repos of the active root; the panel owns discovery. */
+  repos: string[];
+  /** Discovery or a forced rescan is in flight. */
+  scanning: boolean;
+  onRefreshRepos: () => void;
 }
 
 function workspaceFolderName(rootPath?: string): string {
@@ -16,50 +20,20 @@ function workspaceFolderName(rootPath?: string): string {
   return parts.length > 0 ? parts[parts.length - 1] : 'workspace root';
 }
 
-export function GitRepoDropdown({ rootPath, activeRepo, onSelectRepo }: GitRepoDropdownProps) {
+export function GitRepoDropdown({
+  rootPath,
+  activeRepo,
+  onSelectRepo,
+  repos,
+  scanning,
+  onRefreshRepos,
+}: GitRepoDropdownProps) {
   const [open, setOpen] = useState(false);
-  const [repos, setRepos] = useState<string[]>(['.']);
-  const [scanning, setScanning] = useState(false);
   const [query, setQuery] = useState('');
   const ref = useRef<HTMLDivElement>(null);
   const rootLabel = workspaceFolderName(rootPath);
 
   const label = (r: string) => (r === '.' ? rootLabel : r);
-
-  const fetchRepos = async (rescan = false) => {
-    const params = new URLSearchParams({ reposOnly: '1' });
-    if (rootPath) params.set('root', rootPath);
-    if (rescan) params.set('rescan', '1');
-    params.set('t', String(Date.now()));
-    const data = await fetch(`/api/fs/git?${params.toString()}`).then(r => r.json()).catch(() => null);
-    if (data && Array.isArray(data.repos)) {
-      setRepos(data.repos);
-      if (data.reposPending) {
-        setScanning(true);
-      } else {
-        setScanning(false);
-      }
-    }
-  };
-
-  useEffect(() => {
-    if (!open) return;
-    void fetchRepos();
-  }, [open, rootPath]);
-
-  useEffect(() => {
-    if (!scanning) return;
-    const params = new URLSearchParams({ reposOnly: '1' });
-    if (rootPath) params.set('root', rootPath);
-    const id = setInterval(async () => {
-      const data = await fetch(`/api/fs/git?${params.toString()}`).then(r => r.json()).catch(() => null);
-      if (data && !data.reposPending && Array.isArray(data.repos)) {
-        setRepos(data.repos);
-        setScanning(false);
-      }
-    }, REPO_DISCOVERY_POLL_MS);
-    return () => clearInterval(id);
-  }, [scanning, rootPath]);
 
   useOnClickOutside(ref, () => setOpen(false));
 
@@ -106,7 +80,7 @@ export function GitRepoDropdown({ rootPath, activeRepo, onSelectRepo }: GitRepoD
             )}
             <button
               type="button"
-              onClick={() => void fetchRepos(true)}
+              onClick={onRefreshRepos}
               title="Refresh nested repos"
               disabled={scanning}
               className="text-ink/40 hover:text-ink flex-shrink-0 transition-colors disabled:opacity-40 disabled:hover:text-ink/40"

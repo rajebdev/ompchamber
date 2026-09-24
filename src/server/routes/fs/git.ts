@@ -181,14 +181,16 @@ export async function loader({ request }: LoaderFunctionArgs) {
     await remoteRefresh;
     const syncCount = syncRequested ? await gitSyncCount(targetDir) : undefined;
 
+    // No `repos`/`reposPending`/`activeRepo` here: the repo list travels on the
+    // `?reposOnly=1` branch, keyed to the root it was discovered for. Echoing a
+    // repo back in a status response is what let a panel adopt a repo it had
+    // never chosen — and adopt it under whichever workspace was active when the
+    // echo arrived.
     return json({
       changes,
       branch: branch || 'main',
       branches: branches.length ? branches : ['main'],
       remoteBranches,
-      repos,
-      reposPending: pending,
-      activeRepo: repo,
       syncCount,
     });
   } catch (error: any) {
@@ -197,9 +199,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
       branch: 'main',
       branches: ['main'],
       remoteBranches: [],
-      repos: repos.length ? repos : ['.'],
-      reposPending: pending,
-      activeRepo: repo,
       syncCount: { ahead: 0, behind: 0 },
       error: error?.message || 'Git error',
     }, { status: 200 });

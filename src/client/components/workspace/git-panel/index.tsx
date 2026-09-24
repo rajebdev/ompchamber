@@ -10,8 +10,8 @@ import { GitChangesList } from '@/client/components/workspace/git-panel/ChangesL
 import { ToastStack } from '@/client/components/common/ToastStack';
 import { useToasts } from '@/client/hooks/ui/toasts';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
+import { resolveRepoForPanel, useRepoList, useRepoScope } from '@/client/hooks/workspace/repo-scope';
 import { usePanelRefresh, useFileMutationRefresh } from '@/client/hooks/workspace/panel-refresh';
-import { REPO_DISCOVERY_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 
 interface GitPanelProps {
@@ -22,15 +22,46 @@ interface GitPanelProps {
 }
 
 export function GitPanel({ className = '', enabled = true, rootPath, refreshKey = 0 }: GitPanelProps) {
-  const fetcher = useFetcher<{ changes: GitChange[], branch: string, branches: string[], remoteBranches?: string[], repos: string[], reposPending?: boolean, activeRepo: string, syncCount?: { ahead: number, behind: number } }>();
+  const fetcher = useFetcher<{ changes: GitChange[], branch: string, branches: string[], remoteBranches?: string[], syncCount?: { ahead: number, behind: number } }>();
   const actionFetcher = useFetcher<{ success: boolean, type?: string, data?: any, error?: string }>();
 
-  const [storedActiveRepo, setStoredActiveRepo, activeRepoReady] = useSessionState<string>('git.activeRepo', '.');
-  const activeRepo = fetcher.data?.activeRepo || storedActiveRepo || '.';
+  const { activeRepo: pickedRepo, setActiveRepo, ready: activeRepoReady } = useRepoScope(rootPath, 'git.activeRepo');
+  const { repos, scanning: reposScanning, rescan: refreshRepos } = useRepoList(rootPath, enabled);
+  // When the user has picked nothing and the workspace root is not itself a
+  // repo, git falls back to the first repo discovery found — the same choice
+  // the loader makes for a request that names no repo. Resolving it here rather
+  // than reading it back from the response is what keeps the header label, the
+  // picker's checkmark and the requests describing one repo: the response
+  // arrives a render later, and by then it may belong to a workspace the user
+  // has already left.
+  const activeRepo = resolveRepoForPanel(pickedRepo, repos);
+  const activeRepoRef = useRef(activeRepo);
+  activeRepoRef.current = activeRepo;
+
+  // `root\0repo` — the working tree the panel is showing right now.
+  const scopeRef = useRef('');
+  scopeRef.current = `${rootPath ?? ''}\u0000${activeRepo}`;
+  // The scope the in-flight read was asked for, and the scope the payload
+  // currently in `fetcher.data` was asked for. Only one read is ever in flight
+  // (the fetcher aborts its predecessor), so the former is what the latter
+  // becomes when a new payload arrives.
+  const requestedScopeRef = useRef('');
+  const payloadScopeRef = useRef('');
+  const lastPayloadRef = useRef<unknown>(undefined);
+  if (fetcher.data !== lastPayloadRef.current) {
+    lastPayloadRef.current = fetcher.data;
+    payloadScopeRef.current = requestedScopeRef.current;
+  }
+  // A switch leaves the previous repo's branch, changes and branch list in
+  // `fetcher.data` until the new read lands. Rendering those under the new
+  // repo's header would claim the new working tree is on the old branch with
+  // the old changes, so the payload is used only while it describes the scope
+  // on screen.
+  const data = payloadScopeRef.current === scopeRef.current ? fetcher.data : undefined;
 
   const loadRepo = (repo?: string) => {
     if (!enabled) return;
-    const targetRepo = repo !== undefined ? repo : storedActiveRepo;
+    const targetRepo = repo ?? activeRepoRef.current;
     const params = new URLSearchParams();
     if (rootPath) params.set('root', rootPath);
     if (targetRepo && targetRepo !== '.') params.set('repo', targetRepo);
@@ -39,6 +70,11 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
     // numbers describe origin rather than the last fetch.
     params.set('sync', '1');
     params.set('t', String(Date.now()));
+    // Tag the response with the scope it was asked for: a switch leaves the
+    // previous repo's branch, changes and branch list in `fetcher.data` until
+    // the new read lands, and rendering those under the new repo's header
+    // claims the new working tree is on the old branch with the old changes.
+    requestedScopeRef.current = scopeRef.current;
     fetcher.load(`/api/fs/git?${params.toString()}`);
   };
   
@@ -66,70 +102,26 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
 
   const { toasts, pushToast, dismissToast } = useToasts();
 
-  // Background nested-repo discovery polling: the loader returns immediately
-  // with the root status and `reposPending`; we poll the lightweight
-  // `?reposOnly=1` endpoint until the discoverer finishes, then refresh.
-  const [extraRepos, setExtraRepos] = useState<string[] | null>(null);
-  const [pollingRepos, setPollingRepos] = useState(false);
-  const [rescanningRepos, setRescanningRepos] = useState(false);
-
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  // `activeRepo` is a dependency, not just the root: the repo list that
+  // resolves the root-level fallback arrives after the first render, and a
+  // workspace switch re-resolves it to '.'.
   useEffect(() => {
     if (!activeRepoReady) return;
-    loadRepo(storedActiveRepo);
-  }, [refreshKey, rootPath, enabled, activeRepoReady]);
+    loadRepo();
+  }, [refreshKey, rootPath, enabled, activeRepoReady, activeRepo]);
 
   // Auto refresh: keep the change list in step with external mutations
   // (terminal commits, agent edits) that never bump `refreshKey`. `loadRepo`
   // re-reads via `fetcher.load`, whose `t` param busts the cache; a load
   // already in flight is ignored by the loader so polls cannot pile up.
-  usePanelRefresh(() => loadRepo(storedActiveRepo), enabled && activeRepoReady);
+  usePanelRefresh(() => loadRepo(), enabled && activeRepoReady);
   // Agent edits/commits land between poll ticks: re-read right after a
   // file-mutating tool finishes so the change list tracks the AI's work.
-  useFileMutationRefresh(() => loadRepo(storedActiveRepo), enabled && activeRepoReady);
-
-  useEffect(() => {
-    if (fetcher.data?.activeRepo && fetcher.data.activeRepo !== storedActiveRepo) {
-      setStoredActiveRepo(fetcher.data.activeRepo);
-    }
-  }, [fetcher.data?.activeRepo, storedActiveRepo, setStoredActiveRepo]);
-
-  useEffect(() => {
-    if (fetcher.data?.reposPending) setPollingRepos(true);
-  }, [fetcher.data]);
-
-  // A forced rescan may finish before the polling interval kicks in; when that
-  // happens the loader returns the fresh repo list synchronously.
-  useEffect(() => {
-    if (
-      rescanningRepos &&
-      fetcher.data &&
-      !fetcher.data.reposPending &&
-      Array.isArray(fetcher.data.repos)
-    ) {
-      setExtraRepos(fetcher.data.repos);
-      setRescanningRepos(false);
-    }
-  }, [fetcher.data, rescanningRepos]);
-
-  useEffect(() => {
-    if (!pollingRepos) return;
-    const params = new URLSearchParams({ reposOnly: '1' });
-    if (rootPath) params.set('root', rootPath);
-    const id = setInterval(async () => {
-      const data = await fetch(`/api/fs/git?${params.toString()}`).then(r => r.json()).catch(() => null);
-      if (data && !data.reposPending && Array.isArray(data.repos)) {
-        setExtraRepos(data.repos);
-        setPollingRepos(false);
-        setRescanningRepos(false);
-        loadRepo(storedActiveRepo);
-      }
-    }, REPO_DISCOVERY_POLL_MS);
-    return () => clearInterval(id);
-  }, [pollingRepos, rootPath, storedActiveRepo]);
+  useFileMutationRefresh(() => loadRepo(), enabled && activeRepoReady);
 
   // Focus input when branch prompt opens
   useEffect(() => {
@@ -146,7 +138,7 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
       } else if (actionFetcher.data.type === 'graph') {
         setViewingOutput({ title: 'Git Graph', data: actionFetcher.data.data || [] });
       } else if (actionFetcher.data.success) {
-        loadRepo(activeRepo);
+        loadRepo();
       } else {
         pushToast(actionFetcher.data.error || 'Git operation failed');
       }
@@ -188,28 +180,16 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
     }
   };
 
-  const branch = fetcher.data?.branch || 'main';
-  const branches = fetcher.data?.branches || ['main'];
-  const remoteBranches = fetcher.data?.remoteBranches || [];
-  const repos = extraRepos ?? (fetcher.data?.repos || ['.']);
-  const changes = fetcher.data?.changes || [];
+  const branch = data?.branch || 'main';
+  const branches = data?.branches || ['main'];
+  const remoteBranches = data?.remoteBranches || [];
+  const changes = data?.changes || [];
   const isLoading = fetcher.state === 'loading' || actionFetcher.state !== 'idle';
 
   const stagedChanges = changes.filter(c => {
     const status = c.status;
     return status && status[0] !== ' ' && status[0] !== '?';
   });
-
-  const refreshRepos = () => {
-    if (!enabled || pollingRepos || rescanningRepos) return;
-    setExtraRepos(repos);
-    setRescanningRepos(true);
-    const params = new URLSearchParams({ rescan: '1', sync: '1' });
-    if (rootPath) params.set('root', rootPath);
-    if (activeRepo !== '.') params.set('repo', activeRepo);
-    params.set('t', String(Date.now()));
-    fetcher.load(`/api/fs/git?${params.toString()}`);
-  };
 
   if (!enabled) {
     return (
@@ -276,12 +256,14 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
         repos={repos}
         isLoading={isLoading}
         rootPath={rootPath}
-        reposScanning={pollingRepos || rescanningRepos}
+        reposScanning={reposScanning}
         onSelectRepo={(r) => {
-          setStoredActiveRepo(r);
-          loadRepo(r);
+          // The reload is the scope effect's job: it fires on the resolved
+          // `activeRepo` change, so selecting here would fetch the same repo
+          // twice.
+          if (r !== activeRepo) setActiveRepo(r);
         }}
-        onRefresh={() => loadRepo(activeRepo)}
+        onRefresh={() => loadRepo()}
         onRefreshRepos={refreshRepos}
       />
       
@@ -303,7 +285,7 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
         viewMode={viewMode}
         setViewMode={setViewMode}
         isBusy={isLoading}
-        syncCount={fetcher.data?.syncCount}
+        syncCount={data?.syncCount}
         onSync={() => executeAction('sync')}
       />
 

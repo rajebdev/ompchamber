@@ -8,6 +8,11 @@ interface TerminalHeaderProps {
   rootPath?: string;
   activeRepo: string;
   onSelectRepo: (repo: string) => void;
+  /** Discovered repos of the active root; the panel owns discovery. */
+  repos: string[];
+  /** Discovery or a forced rescan is in flight. */
+  reposScanning: boolean;
+  onRefreshRepos: () => void;
   /** Working directory the shell actually runs in. */
   cwd?: string;
   shell?: string;
@@ -35,6 +40,9 @@ export function TerminalHeader({
   rootPath,
   activeRepo,
   onSelectRepo,
+  repos,
+  reposScanning,
+  onRefreshRepos,
   cwd,
   shell,
   gitBranch,
@@ -60,7 +68,14 @@ export function TerminalHeader({
           <span>{status === 'exited' && exitCode !== null ? `EXIT ${exitCode}` : STATUS_LABEL[status]}</span>
         </span>
 
-        <GitRepoDropdown rootPath={rootPath} activeRepo={activeRepo} onSelectRepo={onSelectRepo} />
+        <GitRepoDropdown
+          rootPath={rootPath}
+          activeRepo={activeRepo}
+          onSelectRepo={onSelectRepo}
+          repos={repos}
+          scanning={reposScanning}
+          onRefreshRepos={onRefreshRepos}
+        />
 
         <button
           type="button"

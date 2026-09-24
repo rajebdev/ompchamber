@@ -1,27 +1,70 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { RefreshCw, Search } from 'lucide-preact';
+import type { FsNode } from '@/shared/types';
 import { rehydrateTree, setChildrenAt } from '@/shared/lib/fs/file-tree';
+import { isRecord } from '@/shared/lib/util/guards';
 import { GitRepoDropdown } from '@/client/components/workspace/file-explorer/GitRepoDropdown';
 import { FileTreeItem } from '@/client/components/workspace/file-explorer/TreeItem';
 import { useScrollbarFade, scrollbarFadeClass } from '@/client/hooks/ui/scrollbar-fade';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
+import { useRepoList, useRepoScope } from '@/client/hooks/workspace/repo-scope';
 import { usePanelRefresh, useFileMutationRefresh } from '@/client/hooks/workspace/panel-refresh';
 
+/**
+ * The listing on screen, tagged with the `root\0repo` scope it was read for.
+ *
+ * Tagging it is what makes a workspace switch instant and complete: the panel
+ * renders an empty tree until the new root's listing lands, instead of showing
+ * the previous workspace's files under the new workspace's header. It also
+ * covers what a plain "reset on switch" effect cannot — the children loaded on
+ * demand and the expansion set are keyed by paths RELATIVE to the listed root,
+ * so `src/` in one workspace would rehydrate into `src/` in the next.
+ */
+interface Listing {
+  scope: string;
+  files: FsNode[];
+  /** Absolute base dir reported by `/api/fs/dir`; Copy Path anchors on it. */
+  root: string;
+}
+
+const EMPTY_LISTING: Listing = { scope: '', files: [], root: '' };
+
+/** Directory listing payload from `/api/fs/dir`, validated field by field. */
+function readDirPayload(data: unknown): { files: FsNode[]; root: string } {
+  if (!isRecord(data)) return { files: [], root: '' };
+  return {
+    files: Array.isArray(data.files) ? data.files.filter((f): f is FsNode => isRecord(f)) : [],
+    root: typeof data.root === 'string' ? data.root : '',
+  };
+}
+
 export function FileExplorer({ className = '', enabled = true, rootPath, onOpenFile, refreshKey = 0, onRefresh }: { className?: string, enabled?: boolean, rootPath?: string, onOpenFile?: (file: any) => void, refreshKey?: number, onRefresh?: () => void }) {
-  const [tree, setTree] = useState<any[]>([]);
-  // Absolute base dir reported by `/api/fs/dir` for the current listing — the
-  // workspace root, or the selected nested repo. Copy Path anchors on it
-  // because the client's `rootPath` may be rejected/unset.
-  const [listingRoot, setListingRoot] = useState('');
+  const [listing, setListing] = useState<Listing>(EMPTY_LISTING);
   const [searchQuery, setSearchQuery] = useSessionState<string>('files.searchQuery', '');
   const [isLoading, setIsLoading] = useState(false);
   const [storedExpandedPaths, setStoredExpandedPaths, expandedPathsReady] = useSessionState<string[]>('files.expandedPaths', []);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set(storedExpandedPaths));
-  const childrenCacheRef = useRef<Record<string, any[]>>({});
-  const [activeRepo, setActiveRepo] = useSessionState<string>('files.activeRepo', '.');
+  const childrenCacheRef = useRef<Record<string, FsNode[]>>({});
+  const { activeRepo, setActiveRepo } = useRepoScope(rootPath, 'files.activeRepo');
+  const { repos, scanning: reposScanning, rescan: rescanRepos } = useRepoList(rootPath, enabled);
   const { isScrolling, handleScroll } = useScrollbarFade();
   const { fileMap: gitFileMap, folderMap: gitFolderMap, refreshGitStatus } = useGitStatus(rootPath, activeRepo, refreshKey, enabled);
+
+  // The scope every request and every cached child path below belongs to. A
+  // change to it means the previous workspace's or repo's entries are not this
+  // one's, so nothing read under the old value may be rendered.
+  const scope = `${rootPath ?? ''}\u0000${activeRepo}`;
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+  // The scope of the listing on screen, read outside the render closure so the
+  // async loaders can tell a superseded tree from the current one.
+  const listedScopeRef = useRef(EMPTY_LISTING.scope);
+
+  const commitListing = (next: Listing) => {
+    listedScopeRef.current = next.scope;
+    setListing(next);
+  };
 
   useEffect(() => {
     if (!expandedPathsReady) return;
@@ -43,14 +86,23 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
 
   const loadFiles = (opts?: { silent?: boolean }) => {
     if (!enabled) return;
+    const requested = scopeRef.current;
     if (!opts?.silent) setIsLoading(true);
     fetch(listUrl())
       .then(r => r.json())
       .then(data => {
-        if (typeof data.root === 'string') setListingRoot(data.root);
-        if (Array.isArray(data.files)) {
-          setTree(rehydrateTree(data.files, childrenCacheRef.current, expandedPaths));
-        }
+        // A read that was superseded by a workspace switch describes a tree
+        // this panel is no longer showing.
+        if (scopeRef.current !== requested) return;
+        // Children cached under the previous tree are keyed by paths relative
+        // to a root that is not this one: drop them before rehydrating.
+        if (listedScopeRef.current !== requested) childrenCacheRef.current = {};
+        const payload = readDirPayload(data);
+        commitListing({
+          scope: requested,
+          files: rehydrateTree(payload.files, childrenCacheRef.current),
+          root: payload.root,
+        });
       })
       .catch(() => {})
       .finally(() => {
@@ -85,13 +137,17 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
     // so a freshly listed row never renders bare next to a status map that
     // still predates its change (the panel poll alone can lag a fresh edit).
     refreshGitStatus();
+    const requested = scopeRef.current;
     return fetch(listUrl(path))
       .then(r => r.json())
       .then(data => {
-        if (Array.isArray(data.files)) {
-          childrenCacheRef.current[path] = data.files;
-          setTree(prev => setChildrenAt(prev, path, data.files));
-        }
+        if (scopeRef.current !== requested) return;
+        const payload = readDirPayload(data);
+        if (payload.files.length === 0 && payload.root === '') return;
+        childrenCacheRef.current[path] = payload.files;
+        setListing(prev => prev.scope === requested
+          ? { ...prev, files: setChildrenAt(prev.files, path, payload.files) }
+          : prev);
       })
       .catch(() => {});
   };
@@ -106,6 +162,10 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
 
   const handleSelectRepo = (repo: string) => {
     if (repo === activeRepo) return;
+    // The expansion set holds paths relative to the repo that was listed, so a
+    // repo switch starts from a collapsed tree. (A workspace switch needs no
+    // equivalent: the listing is re-read under the new root, and the session's
+    // own expansion set is restored with the session.)
     childrenCacheRef.current = {};
     setExpandedPaths(new Set());
     setStoredExpandedPaths([]);
@@ -119,6 +179,9 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
       </div>
     );
   }
+
+  const tree = listing.scope === scope ? listing.files : [];
+  const listingRoot = listing.scope === scope ? listing.root : '';
 
   const getFilteredFiles = () => {
     if (!searchQuery.trim()) return tree;
@@ -158,7 +221,14 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
     <div className={`flex flex-col h-full bg-paper ${className}`}>
       <div className="p-3 border-b border-ink/10 flex flex-col space-y-2">
         <div className="flex items-center justify-between">
-          <GitRepoDropdown rootPath={rootPath} activeRepo={activeRepo} onSelectRepo={handleSelectRepo} />
+          <GitRepoDropdown
+            rootPath={rootPath}
+            activeRepo={activeRepo}
+            onSelectRepo={handleSelectRepo}
+            repos={repos}
+            scanning={reposScanning}
+            onRefreshRepos={rescanRepos}
+          />
           <button
             onClick={refresh}
             className="p-1.5 text-ink/40 hover:text-ink hover:bg-ink/5 rounded transition-colors"

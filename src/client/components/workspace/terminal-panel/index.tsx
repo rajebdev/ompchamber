@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'preact/hooks';
 import { useTerminal } from '@/client/hooks/workspace/terminal';
-import { useSessionState } from '@/client/hooks/workspace/session-state';
+import { useRepoList, useRepoScope } from '@/client/hooks/workspace/repo-scope';
 import { useTheme } from '@/client/hooks/ui/theme';
 import { TerminalHeader } from '@/client/components/workspace/terminal-panel/Header';
 import { TerminalQuickActions } from '@/client/components/workspace/terminal-panel/QuickActions';
@@ -18,7 +18,8 @@ const encoder = new TextEncoder();
 export function TerminalPanel({ className = '', enabled = true, rootPath, showHeader = true }: TerminalPanelProps) {
   const xtermRef = useRef<RealtimeXtermHandle>(null);
   const { isDark } = useTheme();
-  const [activeRepo, setActiveRepo] = useSessionState<string>('terminal.activeRepo', '.');
+  const { activeRepo, setActiveRepo } = useRepoScope(rootPath, 'terminal.activeRepo');
+  const { repos, scanning: reposScanning, rescan: rescanRepos } = useRepoList(rootPath, enabled);
   const gridRef = useRef<{ cols: number; rows: number } | null>(null);
 
   const handleOutput = useCallback((bytes: Uint8Array) => {
@@ -105,6 +106,9 @@ export function TerminalPanel({ className = '', enabled = true, rootPath, showHe
           rootPath={rootPath}
           activeRepo={activeRepo}
           onSelectRepo={setActiveRepo}
+          repos={repos}
+          reposScanning={reposScanning}
+          onRefreshRepos={rescanRepos}
           cwd={cwd}
           shell={shell}
           gitBranch={systemInfo.gitBranch}
