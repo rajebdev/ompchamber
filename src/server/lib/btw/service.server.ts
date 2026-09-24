@@ -42,6 +42,21 @@ import type { BtwModel, BtwState } from '@/shared/types';
 /** Longest a topic label may be, matching the sidebar's session-title length. */
 const TOPIC_TITLE_CHARS = 60;
 
+/**
+ * Marks a session that was promoted out of a side question, in the sidebar list
+ * the user reads. Applied to the PROMOTED SESSION only — the topic's own label
+ * in the panel keeps the plain question.
+ *
+ * It lives in the session title because that is what the sidebar renders, and
+ * the title slot (line 1) is authoritative over the header. omp's auto-title
+ * cannot overwrite it: its latch is `autoTitlePending = messageCount === 0`, and
+ * a promoted transcript always carries the parent's history.
+ *
+ * Note the sidebar capitalizes the first character (`SessionItem`), so this
+ * renders as `Btw: …`.
+ */
+const PROMOTED_TITLE_PREFIX = 'btw: ';
+
 function topicTitle(question: string): string {
   const firstLine = question.trim().split('\n')[0].trim();
   return firstLine.slice(0, TOPIC_TITLE_CHARS);
@@ -231,7 +246,7 @@ export async function promoteBtw(sessionId: string, topicId: string): Promise<{ 
   }
 
   const paths = await resolveBtwWorkspacePaths(sessionId, topicId);
-  const title = topicTitle(topic.turns[0].question);
+  const title = `${PROMOTED_TITLE_PREFIX}${topicTitle(topic.turns[0].question)}`;
   const created = await materializePromotedTopic({
     parentSessionFile: parent.sessionFile,
     topicSessionFile: paths.sessionFile,
