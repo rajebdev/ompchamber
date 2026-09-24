@@ -88,9 +88,14 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
 
   // Ask dialogs render on their own tool card; anything else omp is blocked on
   // (an approval gate, an extension picker) has no card and keeps the modal.
+  // The modal also waits for the session's committed history: a dialog replayed
+  // on open (the agent probe answers from local flags, long before the JSONL
+  // fetch lands) has no card to be matched against yet, so deciding "no card
+  // owns this" during that window painted the ask modal and then took it back —
+  // the flash on switching to a session parked on a question.
   const { framesByTool, modalRequest } = useMemo(
-    () => splitAskFrames(localMessages, extensionDialogs),
-    [localMessages, extensionDialogs],
+    () => splitAskFrames(localMessages, extensionDialogs, !sessionLoading),
+    [localMessages, extensionDialogs, sessionLoading],
   );
   const respondToFrame = useCallback((request: ExtensionUiDialogRequest, response: ExtensionDialogResponse) => {
     void respondToExtensionUi(request, response);

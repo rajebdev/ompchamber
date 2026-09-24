@@ -18,6 +18,17 @@
  * Any frame left over is modal material — including an ask-shaped frame whose
  * tool call the timeline has not seen, which must stay answerable rather than
  * silently vanish.
+ *
+ * That fallback must wait for the session's own history, though. Ownership is
+ * decided against the ask tool calls in `messages`, and on session open the
+ * pending dialogs are replayed from the agent-state probe — which answers out
+ * of the wrapper's local flags — long before the JSONL fetch lands. Every
+ * replayed frame therefore looks unowned for that window, and rendering one as
+ * a modal painted the question on screen and yanked it away the instant the
+ * timeline arrived and its card claimed it: the flash seen when switching to a
+ * session parked on an ask. `historyLoaded` holds the modal — never the card
+ * claim — until there is a timeline to decide against; a frame no card claims
+ * after that still gets its modal.
  */
 
 import { createContext, useContext } from 'preact/compat';
@@ -51,6 +62,9 @@ export function useAskFrames(): AskFramesHandle {
 export function splitAskFrames(
   messages: ChatMessageData[],
   pending: ExtensionUiDialogRequest[],
+  /** Whether `messages` is the session's committed history yet (see the module
+   *  note). False holds the modal back; it never blocks a card from claiming. */
+  historyLoaded: boolean,
 ): AskFramesSplit {
   const framesByTool = new Map<string, ExtensionUiDialogRequest[][]>();
   if (pending.length === 0) return { framesByTool, modalRequest: null };
@@ -98,5 +112,10 @@ export function splitAskFrames(
     framesByTool.set(toolId, groupAskFrames(openAsks.get(toolId) ?? [], frames));
   }
 
-  return { framesByTool, modalRequest: pending.find((request) => !claimed.has(request)) ?? null };
+  // The frame stays queued either way — only the modal waits for the history,
+  // so nothing is dropped and nothing flashes.
+  return {
+    framesByTool,
+    modalRequest: historyLoaded ? pending.find((request) => !claimed.has(request)) ?? null : null,
+  };
 }
