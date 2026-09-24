@@ -19,9 +19,14 @@
  * Every entry point tolerates failure: a PID that vanished between two calls
  * makes the syscall report zero bytes, which is "not alive", and a sandbox that
  * denies the call degrades to signal 0 rather than throwing.
+ *
+ * The libraries are opened on the FIRST CALL rather than at module load, so
+ * merely importing this module — which happens on every platform, whatever
+ * `index.ts` dispatches to — cannot fail. See `bindLibs`.
  */
 
 import { dlopen, FFIType, ptr } from 'bun:ffi';
+import type { FFIFunction, Library } from 'bun:ffi';
 
 import type { ProcessProbe } from '@/server/lib/lifecycle/proc/types';
 
@@ -46,14 +51,50 @@ const SZOMB_LIKE = new Set([SZOMB, 6 /* SDEAD */]);
 const ARGV_BUFFER_BYTES = 262_144;
 const PATH_BUFFER_BYTES = 4096;
 
-const libc = dlopen('libc.dylib', {
+/**
+ * The two Darwin libraries and their symbols, opened on the first probe call.
+ *
+ * `dlopen` at module scope runs on EVERY platform that imports this module —
+ * `index.ts` picks a probe at load, but the import itself is what executes the
+ * call, so the dispatch cannot prevent it. On Linux the Darwin dylibs do not
+ * exist, so the import threw (`Failed to open library "libc.dylib"`) and took
+ * down every module transitively importing the probe, tests included. Opening
+ * them on first use keeps this module importable everywhere, and a host that
+ * cannot open them gets the `null` degradation every method here promises.
+ */
+const LIBC_SYMBOLS = {
   sysctl: { args: [FFIType.ptr, FFIType.u32, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.u64], returns: FFIType.i32 },
-});
+} satisfies Record<string, FFIFunction>;
 
-const libproc = dlopen('/usr/lib/libproc.dylib', {
+const LIBPROC_SYMBOLS = {
   proc_pidpath: { args: [FFIType.i32, FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
   proc_pidinfo: { args: [FFIType.i32, FFIType.i32, FFIType.u64, FFIType.ptr, FFIType.i32], returns: FFIType.i32 },
-});
+} satisfies Record<string, FFIFunction>;
+
+/** The opened Darwin libraries, as used by the probe below. */
+interface DarwinLibs {
+  libc: Library<typeof LIBC_SYMBOLS>;
+  libproc: Library<typeof LIBPROC_SYMBOLS>;
+}
+
+let libs: DarwinLibs | null = null;
+let libsAttempted = false;
+
+/** Open the libraries once, and remember a host that cannot as unavailable. */
+function bindLibs(): DarwinLibs | null {
+  if (!libsAttempted) {
+    libsAttempted = true;
+    try {
+      libs = {
+        libc: dlopen('libc.dylib', LIBC_SYMBOLS),
+        libproc: dlopen('/usr/lib/libproc.dylib', LIBPROC_SYMBOLS),
+      };
+    } catch {
+      libs = null;
+    }
+  }
+  return libs;
+}
 
 /** `PROC_PIDTBSDINFO` — the flavor whose reply is a `struct proc_bsdinfo`. */
 const PROC_PIDTBSDINFO = 3;
@@ -71,11 +112,13 @@ const BSDINFO_TPGID_OFFSET = 112;
  * failing (rc !== 0) is reported as null too, and callers then fall back.
  */
 function procStatus(pid: number): number | null {
+  const bound = bindLibs();
+  if (bound === null) return null;
   const mib = new Int32Array([CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]);
   const size = new BigUint64Array([BigInt(KINFO_PROC_BYTES)]);
   const buffer = new Uint8Array(KINFO_PROC_BYTES);
   try {
-    if (libc.symbols.sysctl(ptr(mib), 4, ptr(buffer), ptr(size), null, 0) !== 0) return null;
+    if (bound.libc.symbols.sysctl(ptr(mib), 4, ptr(buffer), ptr(size), null, 0) !== 0) return null;
   } catch {
     return null;
   }
@@ -96,9 +139,11 @@ const bsdInfoView = new DataView(bsdInfo.buffer);
  * denied.
  */
 function executablePath(pid: number): string | null {
+  const bound = bindLibs();
+  if (bound === null) return null;
   const buffer = new Uint8Array(PATH_BUFFER_BYTES);
   try {
-    const written = libproc.symbols.proc_pidpath(pid, ptr(buffer), buffer.length);
+    const written = bound.libproc.symbols.proc_pidpath(pid, ptr(buffer), buffer.length);
     return written > 0 ? new TextDecoder().decode(buffer.subarray(0, written)) : null;
   } catch {
     return null;
@@ -113,11 +158,13 @@ function executablePath(pid: number): string | null {
  * PIDs, which is why `commandLine` also consults the executable path.
  */
 function argvOf(pid: number): string[] | null {
+  const bound = bindLibs();
+  if (bound === null) return null;
   const mib = new Int32Array([CTL_KERN, KERN_PROCARGS2, pid]);
   const size = new BigUint64Array([BigInt(ARGV_BUFFER_BYTES)]);
   const buffer = new Uint8Array(ARGV_BUFFER_BYTES);
   try {
-    if (libc.symbols.sysctl(ptr(mib), 3, ptr(buffer), ptr(size), null, 0) !== 0) return null;
+    if (bound.libc.symbols.sysctl(ptr(mib), 3, ptr(buffer), ptr(size), null, 0) !== 0) return null;
   } catch {
     return null;
   }
@@ -176,9 +223,11 @@ export const darwinProbe: ProcessProbe = {
    * terminal cap refuse an attach. Returning null keeps the caller on `ps`.
    */
   foregroundGroup(pid) {
+    const bound = bindLibs();
+    if (bound === null) return null;
     let written = 0;
     try {
-      written = libproc.symbols.proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, ptr(bsdInfo), BSDINFO_BYTES);
+      written = bound.libproc.symbols.proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, ptr(bsdInfo), BSDINFO_BYTES);
     } catch {
       return null;
     }
