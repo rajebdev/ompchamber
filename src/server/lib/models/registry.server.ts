@@ -15,7 +15,7 @@
 import { getDb } from '@/server/db.server';
 import { PROVIDERS_SETTINGS_KEY } from '@/server/lib/models/provider-registry.server';
 import { readSettingsJson } from '@/server/lib/db/settings-store';
-import { readDisabledProviders } from '@/server/lib/omp/config/roles';
+import { readDisabledProviders } from '@/server/lib/omp/config/disabled-providers';
 import { runUtilityCommand, type OmpModel } from '@/server/lib/omp/rpc/utility';
 import { invalidateModelsCaches } from '@/shared/lib/models/server-cache';
 import type { ModelsData, ProviderItem } from '@/shared/types';

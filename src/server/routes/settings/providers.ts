@@ -7,6 +7,7 @@ import { isMockMode } from '@/server/mock.server';
 import type { ProviderItem } from '@/shared/types';
 import { createSettingsListStore } from '@/server/lib/db/settings-store';
 import { disableNativeProvider, enableNativeProvider } from '@/server/lib/omp/config/disabled-providers';
+import { removeOmpProvider } from '@/server/lib/omp/config/providers';
 import { PROVIDERS_SETTINGS_KEY as SETTINGS_KEY, deduplicateProviderItems, mergeProviders } from '@/server/lib/models/provider-registry.server';
 import { invalidateModelsCaches } from '@/shared/lib/models/server-cache';
 
@@ -111,8 +112,37 @@ export async function action({ request, params }: ActionFunctionArgs) {
       const id = url.searchParams.get('id');
       if (!id) return json({ error: 'id is required' }, { status: 400 });
 
+      const stored = await readStoredProviders();
+      const target = stored.find((provider) => provider.id === id);
       const list = await providersStore.remove(db, id, { absent: DEFAULT_PROVIDERS_LIST, empty: DEFAULT_PROVIDERS_LIST });
-      return respondWithProviders(list);
+
+      // Removing the overlay row alone left the provider registered in
+      // models.yml, so omp kept serving it and the next load merged it straight
+      // back into this list — a delete that visibly did nothing. Unregister it
+      // from the agent's own registry too.
+      let removedFromOmp = false;
+      if (target?.slug && !isMockMode()) {
+        try {
+          removedFromOmp = (await removeOmpProvider(target.slug)).removed;
+          // A provider omp still holds in disabledProviders would linger as a
+          // "disconnected" ghost entry after its models are gone.
+          await enableNativeProvider(target.slug);
+        } catch (error) {
+          // The overlay row is already gone; report the native failure instead
+          // of failing the whole request, so the UI can tell the user the entry
+          // is still in models.yml.
+          const merged = await mergeProviders(list).catch(() => null);
+          return json({
+            success: true,
+            providers: merged?.providers ?? list,
+            removedFromOmp: false,
+            warning: error instanceof Error ? error.message : 'models.yml cleanup failed',
+          });
+        }
+      }
+      invalidateModelsCaches();
+      const merged = await mergeProviders(list);
+      return json({ success: true, providers: merged.providers, removedFromOmp });
     }
 
     if (request.method === 'POST' || request.method === 'PUT') {

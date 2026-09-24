@@ -19,8 +19,8 @@
  * composer's access control), not here.
  */
 
-import { writeFileAtomic } from '@/server/lib/fs/atomic-write';
-import { asMapping, getOmpConfigPath } from '@/server/lib/omp/config/yaml';
+import { withOmpYamlDocument } from '@/server/lib/omp/config/document';
+import { getOmpConfigPath } from '@/server/lib/omp/config/yaml';
 import { isRecord } from '@/shared/lib/util/guards';
 
 export type ApprovalValue = 'allow' | 'deny' | 'prompt';
@@ -90,24 +90,24 @@ export function parseApprovalRules(text: string): ApprovalFields | null {
 export async function writeToolsApproval(fields: ApprovalFields): Promise<void> {
   if (Object.keys(fields).length === 0) return;
   const path = getOmpConfigPath();
-  const source = (await Bun.file(path).exists()) ? await Bun.file(path).text() : '';
-  const doc = asMapping(Bun.YAML.parse(source), path);
-  const tools = doc.tools;
-  if (tools !== undefined && !isRecord(tools)) {
-    throw new Error(`${path} tools section must be a mapping`);
-  }
-  if (isRecord(tools)) {
-    const approval = tools.approval;
+  await withOmpYamlDocument(path, (doc) => {
+    const tools = doc.get('tools');
+    if (tools !== undefined && !isRecord(tools)) {
+      throw new Error(`${path} tools section must be a mapping`);
+    }
+    const approval = isRecord(tools) ? tools.approval : undefined;
     if (approval !== undefined && !isRecord(approval)) {
       throw new Error(`${path} tools.approval must be a mapping`);
     }
-    if (isRecord(approval)) {
-      Object.assign(approval, fields);
+    // Assign through the document so comments on untouched keys survive; a
+    // plain object replacement would drop the whole subtree's annotations.
+    if (isRecord(tools) && isRecord(approval)) {
+      for (const [key, value] of Object.entries(fields)) doc.setIn(['tools', 'approval', key], value);
+    } else if (isRecord(tools)) {
+      doc.setIn(['tools', 'approval'], fields);
     } else {
-      tools.approval = fields;
+      doc.set('tools', { approval: fields });
     }
-  } else {
-    doc.tools = { approval: fields };
-  }
-  await writeFileAtomic(path, Bun.YAML.stringify(doc, null, 2));
+    return { result: undefined, changed: true };
+  });
 }

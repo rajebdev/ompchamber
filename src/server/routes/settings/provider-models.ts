@@ -125,9 +125,25 @@ async function fetchRemoteModels(baseUrl: string, apiKey?: string): Promise<Fetc
 }
 
 /**
+ * omp's `api` for a custom provider, inferred from its endpoint. omp accepts
+ * eleven `api` values and there is no way to ask a gateway which one it speaks,
+ * so the chamber only claims the two dialects it can recognise by URL; every
+ * other endpoint gets the OpenAI-compatible default, which is what the
+ * model-listing probe already assumes. A gateway that speaks something else
+ * (Azure, Bedrock, Vertex, …) needs its `api` set by hand in models.yml.
+ */
+function inferProviderApi(baseUrl: string): 'openai-completions' | 'anthropic-messages' | 'google-generative-ai' {
+  if (/anthropic\./i.test(baseUrl)) return 'anthropic-messages';
+  if (/generativelanguage\.googleapis\.com/i.test(baseUrl)) return 'google-generative-ai';
+  return 'openai-completions';
+}
+
+/**
  * omp's models.yml schema requires all four cost fields when cost is present,
  * so a price is only seeded when both sides are known; missing ones default
  * to 0. Context/output labels ("128K ctx · 16K out") parse back to tokens.
+ * Cache prices come from the catalog and are kept when known — dropping them
+ * makes every cached turn look free in omp's usage accounting.
  */
 function toOmpSeed(model: ProviderModel): {
   id: string;
@@ -148,7 +164,14 @@ function toOmpSeed(model: ProviderModel): {
   };
   const contextWindow = parseTokens(model.contextWindow, 'ctx');
   const outTokens = parseTokens(model.contextWindow, 'out');
-  const hasCost = typeof model.priceInput === 'number' && typeof model.priceOutput === 'number';
+  // omp rejects the whole file on a non-finite number, so a price has to be a
+  // real finite value before it may be written at all.
+  const price = (value: unknown): number | undefined => (
+    typeof value === 'number' && Number.isFinite(value) ? value : undefined
+  );
+  const priceInput = price(model.priceInput);
+  const priceOutput = price(model.priceOutput);
+  const hasCost = priceInput !== undefined && priceOutput !== undefined;
   return {
     id: model.id,
     ...(model.name && model.name !== model.id ? { name: model.name } : {}),
@@ -158,10 +181,10 @@ function toOmpSeed(model: ProviderModel): {
     ...(outTokens && outTokens > 0 ? { maxTokens: Math.round(outTokens) } : {}),
     ...(hasCost ? {
       cost: {
-        input: model.priceInput as number,
-        output: model.priceOutput as number,
-        cacheRead: 0,
-        cacheWrite: 0,
+        input: priceInput,
+        output: priceOutput,
+        cacheRead: price(model.priceCacheRead) ?? 0,
+        cacheWrite: price(model.priceCacheWrite) ?? 0,
       },
     } : {}),
   };
@@ -170,8 +193,8 @@ function toOmpSeed(model: ProviderModel): {
 /**
  * Fill in metadata the listing endpoint did not provide from the models.dev
  * catalog: vision/reasoning/tool flags, context + output window, and
- * per-1M-token pricing. Only empty fields are filled — anything the provider
- * reported itself is kept.
+ * per-1M-token pricing (cache rates included). Only empty fields are filled —
+ * anything the provider reported itself is kept.
  */
 async function enrichFromCatalog(
   models: ProviderModel[],
@@ -201,6 +224,10 @@ async function enrichFromCatalog(
       hasTools: model.hasTools || info.tool_call === true,
       priceInput: model.priceInput ?? (typeof info.cost?.input === 'number' ? info.cost.input : undefined),
       priceOutput: model.priceOutput ?? (typeof info.cost?.output === 'number' ? info.cost.output : undefined),
+      priceCacheRead: model.priceCacheRead
+        ?? (typeof info.cost?.cache_read === 'number' ? info.cost.cache_read : undefined),
+      priceCacheWrite: model.priceCacheWrite
+        ?? (typeof info.cost?.cache_write === 'number' ? info.cost.cache_write : undefined),
     };
   });
 }
@@ -244,11 +271,7 @@ export async function action({ request }: ActionFunctionArgs) {
         const upsert = await upsertOmpProviderModels(providerSlug, {
           baseUrl,
           apiKey,
-          api: /anthropic\.com/i.test(baseUrl)
-            ? 'anthropic-messages'
-            : /generativelanguage\.googleapis\.com/i.test(baseUrl)
-              ? 'google-generative-ai'
-              : 'openai-completions',
+          api: inferProviderApi(baseUrl),
           models: enriched.map(toOmpSeed),
         });
         if (upsert.written) invalidateModelsCaches();

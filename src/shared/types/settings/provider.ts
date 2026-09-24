@@ -9,6 +9,9 @@ export interface ProviderModel {
   /** USD per 1M tokens (unit of measure not obvious from the name alone). */
   priceInput?: number;
   priceOutput?: number;
+  /** Cache read/write rates, from the models.dev catalog only. */
+  priceCacheRead?: number;
+  priceCacheWrite?: number;
   temperature?: number;
   maxTokens?: number;
   topP?: number;

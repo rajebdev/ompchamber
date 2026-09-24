@@ -11,13 +11,24 @@ interface AddProviderModalProps {
   onClose: () => void;
   onAddProvider: (newProvider: ProviderItem, options: { fetchedCount: number }) => void;
   presets: PresetProviderOption[];
+  /**
+   * Slugs already present in the omp registry. A new provider's slug becomes a
+   * `models.yml` key, so reusing one silently overwrites that provider's
+   * `baseUrl`, `apiKey`, `api` and per-model metadata — the entry is written
+   * under the same key, not merged into it.
+   */
+  existingSlugs: string[];
 }
+
+/** Slug shape omp accepts as a `models.yml` provider key. */
+const SLUG_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
 export function AddProviderModal({
   isOpen,
   onClose,
   onAddProvider,
   presets,
+  existingSlugs,
 }: AddProviderModalProps) {
   const presetList = presets;
   const initialPreset = presetList[0];
@@ -42,19 +53,35 @@ export function AddProviderModal({
 
   if (!isOpen) return null;
 
+  const selectedPreset = presetList.find((p) => p.id === selectedPresetId);
+  const trimmedName = name.trim();
+  // Prefer the preset's own slug so a provider lands under the id omp knows it
+  // by; only a renamed provider gets one derived from its display name.
+  const slug = (trimmedName && selectedPreset && trimmedName === selectedPreset.name
+    ? selectedPreset.slug
+    : trimmedName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  ).toLowerCase();
+  const takenSlugs = new Set(existingSlugs.map((value) => value.trim().toLowerCase()));
+  const slugError = !slug
+    ? 'Enter a provider name to derive an id.'
+    : !SLUG_PATTERN.test(slug)
+      ? 'The derived id must start with a letter or digit.'
+      : takenSlugs.has(slug)
+        ? `"${slug}" is already registered in models.yml — connecting it would overwrite that provider. Pick another name.`
+        : '';
+
   const handleSubmit = async (e: { preventDefault: () => void }) => {
     e.preventDefault();
-    if (!name.trim() || presetList.length === 0 || isSubmitting) return;
+    if (!trimmedName || presetList.length === 0 || isSubmitting || slugError) return;
     setIsSubmitting(true);
 
     try {
-      const preset = presetList.find((p) => p.id === selectedPresetId);
       const timestamp = Date.now();
       const newProvider: ProviderItem = {
         id: `provider-${timestamp}`,
-        name: name.trim(),
-        slug: name.toLowerCase().replace(/[^a-z0-9]/g, '-') || `provider-${timestamp}`,
-        icon: preset?.icon || 'custom',
+        name: trimmedName,
+        slug,
+        icon: selectedPreset?.icon || 'custom',
         status: 'connected',
         configuredIn: 'auth credentials',
         baseUrl: baseUrl.trim(),
@@ -97,7 +124,7 @@ export function AddProviderModal({
           </button>
           <button
             type="submit"
-            disabled={isSubmitting || presetList.length === 0}
+            disabled={isSubmitting || presetList.length === 0 || Boolean(slugError)}
             className="px-3.5 py-1.5 rounded-md bg-ink text-canvas text-xs font-medium hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
           >
             {isSubmitting ? (
@@ -160,6 +187,16 @@ export function AddProviderModal({
           placeholder="e.g. My Provider"
           className="w-full bg-paper border border-ink/20 rounded-md px-3 py-1.5 text-xs text-ink outline-none focus:border-ink/60"
         />
+        {slug && (
+          <p className="text-[10px] text-ink/40 mt-1 font-mono">
+            models.yml id: {slug}
+          </p>
+        )}
+        {slugError && (
+          <p className="text-[11px] text-error mt-1">
+            {slugError}
+          </p>
+        )}
       </div>
 
       {/* Base URL */}

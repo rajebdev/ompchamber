@@ -14,7 +14,7 @@
 import { join } from 'path';
 import { Database } from 'bun:sqlite';
 import { getAgentDir } from '@/server/lib/omp/core/paths';
-import { getModelsConfigPath } from '@/server/lib/omp/config/providers';
+import { getModelsConfigPath } from '@/server/lib/omp/config/models-config';
 import { isRecord } from '@/shared/lib/util/guards';
 
 const AUTH_CREDENTIALS_TABLE = 'auth_credentials';

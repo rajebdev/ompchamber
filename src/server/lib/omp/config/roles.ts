@@ -10,8 +10,8 @@
  * omp-web/lib/omp/model-roles.ts.
  */
 
-import { writeFileAtomic } from '@/server/lib/fs/atomic-write';
-import { asMapping, getOmpConfigPath } from '@/server/lib/omp/config/yaml';
+import { getOmpConfigPath } from '@/server/lib/omp/config/yaml';
+import { withOmpYamlDocument } from '@/server/lib/omp/config/document';
 import { isRecord } from '@/shared/lib/util/guards';
 
 export type ModelRoles = Record<string, string>;
@@ -31,16 +31,8 @@ export async function readModelRoles(): Promise<{ path: string; roles: ModelRole
 /** Updates only modelRoles, preserving the user's remaining native OMP config. */
 export async function writeModelRoles(roles: ModelRoles): Promise<void> {
   const path = getOmpConfigPath();
-  const source = (await Bun.file(path).exists()) ? await Bun.file(path).text() : '';
-  const doc = asMapping(Bun.YAML.parse(source), path);
-  doc.modelRoles = roles;
-  await writeFileAtomic(path, Bun.YAML.stringify(doc, null, 2));
-}
-
-export async function readDisabledProviders(): Promise<Set<string>> {
-  const path = getOmpConfigPath();
-  if (!(await Bun.file(path).exists())) return new Set();
-  const data = Bun.YAML.parse(await Bun.file(path).text());
-  if (!isRecord(data) || !Array.isArray(data.disabledProviders)) return new Set();
-  return new Set(data.disabledProviders.filter((provider): provider is string => typeof provider === 'string'));
+  await withOmpYamlDocument(path, (doc) => {
+    doc.set('modelRoles', roles);
+    return { result: undefined, changed: true };
+  });
 }

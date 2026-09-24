@@ -11,8 +11,8 @@
  * files and drives the shared utility RPC process.
  */
 
-import { readDisabledProviders } from '@/server/lib/omp/config/roles';
-import { getModelsConfigPath, readNativeProviders } from '@/server/lib/omp/config/providers';
+import { readDisabledProviders } from '@/server/lib/omp/config/disabled-providers';
+import { getModelsConfigPath, readNativeProviders } from '@/server/lib/omp/config/models-config';
 import { runUtilityCommand, type OmpModel } from '@/server/lib/omp/rpc/utility';
 import { isKenariProvider, removeLegacyKenariModels } from '@/shared/lib/models/provider-cleanup';
 import { formatContextWindow } from '@/shared/lib/code/format';

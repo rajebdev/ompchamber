@@ -20,6 +20,7 @@ export function ProviderSettings({
   onAddModalClose,
 }: ProviderSettingsProps) {
   const {
+    providers,
     connectedProviders,
     availablePresetProviders,
     selectedProvider,
@@ -107,6 +108,7 @@ export function ProviderSettings({
         }}
         onAddProvider={handleAddProvider}
         presets={availablePresetProviders}
+        existingSlugs={providers.map((provider) => provider.slug)}
       />
 
       {selectedProvider && (

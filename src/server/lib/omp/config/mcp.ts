@@ -16,10 +16,10 @@
  * never exposed to the browser and are preserved when an edit omits them.
  */
 
-import fs from 'fs';
-import { dirname, join, resolve } from 'path';
+import { join, resolve } from 'path';
 import { getAgentDir, pathExists } from '@/server/lib/omp/core/paths';
 import { writeFileAtomic } from '@/server/lib/fs/atomic-write';
+import { withConfigLock } from '@/server/lib/fs/config-lock';
 import { isRecord } from '@/shared/lib/util/guards';
 
 const MAX_MCP_CONFIG_BYTES = 512 * 1024;
@@ -86,59 +86,6 @@ export async function readProjectMcpConfig(projectRoot: string): Promise<McpUser
   return readMcpFile((await resolveProjectMcpConfig(projectRoot)).path);
 }
 
-// Two writers (e.g. the dev server and the installed app) editing the same
-// mcp.json would otherwise silently lose the earlier mutation when the later
-// rename wins. A lockfile with exclusive create (`wx`) is atomic on every
-// platform; the holder writes its PID and deletes the file on completion.
-// Stale locks (writer crashed) are broken after a grace period.
-const MCP_LOCK_TIMEOUT_MS = 3_000;
-const MCP_LOCK_STALE_MS = 10_000;
-const MCP_LOCK_RETRY_MS = 25;
-
-export async function withMcpConfigLock<T>(configPath: string, fn: () => T | Promise<T>): Promise<T> {
-  const lockPath = `${configPath}.lock`;
-  // The config file may not exist yet (first write) — the lockfile needs its
-  // parent dir to exist before exclusive-create can succeed.
-  await fs.promises.mkdir(dirname(lockPath), { recursive: true });
-  const deadline = Date.now() + MCP_LOCK_TIMEOUT_MS;
-  for (;;) {
-    let handle: fs.promises.FileHandle | null = null;
-    try {
-      handle = await fs.promises.open(lockPath, 'wx');
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      // Held by another process — break it if stale, otherwise wait and retry.
-      try {
-        if (Date.now() - (await fs.promises.stat(lockPath)).mtimeMs > MCP_LOCK_STALE_MS) {
-          await fs.promises.unlink(lockPath);
-          continue;
-        }
-      } catch {
-        continue;
-      }
-      if (Date.now() >= deadline) {
-        throw new Error(`Timed out waiting for ${lockPath} (another process holds the MCP config lock)`);
-      }
-      await Bun.sleep(MCP_LOCK_RETRY_MS);
-      continue;
-    }
-    try {
-      await handle.writeFile(String(process.pid));
-    } finally {
-      await handle.close();
-    }
-    try {
-      return await fn();
-    } finally {
-      try {
-        await fs.promises.unlink(lockPath);
-      } catch {
-        // Already removed (e.g. by cleanup) — the critical section is done.
-      }
-    }
-  }
-}
-
 async function readConfigFile(path: string): Promise<McpFile> {
   if (!(await Bun.file(path).exists())) return { mcpServers: {} };
   const parsed: unknown = JSON.parse(await Bun.file(path).text());
@@ -152,7 +99,7 @@ async function writeConfigFile(path: string, config: McpFile): Promise<void> {
 }
 
 async function writeServerAt(path: string, name: string, server: McpServer, previousName?: string): Promise<{ path: string }> {
-  return withMcpConfigLock(path, async () => {
+  return withConfigLock(path, async () => {
     const config = await readConfigFile(path);
     const servers = { ...(config.mcpServers ?? {}) };
     // Capture the old entry before any rename: a rename must retain
@@ -173,7 +120,7 @@ async function writeServerAt(path: string, name: string, server: McpServer, prev
 
 async function deleteServerAt(path: string, name: string): Promise<{ path: string }> {
   if (!(await Bun.file(path).exists())) throw new Error('MCP server was not found');
-  return withMcpConfigLock(path, async () => {
+  return withConfigLock(path, async () => {
     const config = await readConfigFile(path);
     const servers = { ...(config.mcpServers ?? {}) };
     if (!(name in servers)) throw new Error('MCP server was not found');

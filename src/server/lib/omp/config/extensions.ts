@@ -11,8 +11,8 @@
 
 import { join } from 'path';
 import { getAgentDir, pathExists } from '@/server/lib/omp/core/paths';
-import { writeFileAtomic } from '@/server/lib/fs/atomic-write';
-import { asMapping, getOmpConfigPath } from '@/server/lib/omp/config/yaml';
+import { getOmpConfigPath } from '@/server/lib/omp/config/yaml';
+import { withOmpYamlDocument } from '@/server/lib/omp/config/document';
 import { isRecord } from '@/shared/lib/util/guards';
 
 export interface DiscoveredExtension {
@@ -79,12 +79,13 @@ export async function readDisabledExtensions(): Promise<Set<string>> {
 export async function setExtensionDisabled(id: string, disabled: boolean): Promise<boolean> {
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(id)) throw new Error('Invalid extension id');
   const path = getOmpConfigPath();
-  const doc = asMapping(Bun.YAML.parse((await Bun.file(path).exists()) ? await Bun.file(path).text() : ''), path);
-  const already = (await readDisabledExtensions()).has(id);
-  if (disabled === already) return false;
-  const list = [...(await readDisabledExtensions())];
-  const next = disabled ? [...list, id] : list.filter((item) => item !== id);
-  doc.disabledExtensions = next;
-  await writeFileAtomic(path, Bun.YAML.stringify(doc, null, 2));
-  return true;
+  return withOmpYamlDocument(path, (doc) => {
+    const current = doc.get('disabledExtensions');
+    const list = Array.isArray(current)
+      ? current.filter((item): item is string => typeof item === 'string')
+      : [];
+    if (disabled === list.includes(id)) return { result: false, changed: false };
+    doc.set('disabledExtensions', disabled ? [...list, id] : list.filter((item) => item !== id));
+    return { result: true, changed: true };
+  });
 }

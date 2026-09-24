@@ -4,96 +4,20 @@
  */
 
 /**
- * Native OMP provider access — models.yml discovery + config.yml
- * disabledProviders writes. Faithful adaptation of omp-web/lib/omp/models-config.ts
- * and omp-web/app/api/providers/enable/route.ts.
+ * Write side of the native OMP provider registry — `models.yml`.
+ *
+ * omp never writes this file itself (its `ModelsConfigFile` is load-only), so
+ * the chamber is the only automated author and every write is a
+ * read-modify-write of a user-editable document: comments, formatting, and
+ * unrelated keys all have to survive, and the result has to pass omp's own
+ * schema before it reaches disk. Reading lives in `./models-config.ts`.
  */
 
-import { join } from 'path';
-import { getAgentDir } from '@/server/lib/omp/core/paths';
-import { writeFileAtomic } from '@/server/lib/fs/atomic-write';
-import { asMapping } from '@/server/lib/omp/config/yaml';
+import { isMap, isSeq, type Document, type YAMLMap } from 'yaml';
+import { getModelsConfigPath } from '@/server/lib/omp/config/models-config';
+import { plainOf, withOmpYamlDocument, OmpConfigError } from '@/server/lib/omp/config/document';
+import { validateModelsDocument, sanitizeModelEntry } from '@/server/lib/omp/config/models-validation';
 import { isRecord } from '@/shared/lib/util/guards';
-
-/** Path of the native OMP models config (~/.omp/agent/models.yml). */
-export async function getModelsConfigPath(): Promise<string> {
-  const yml = join(getAgentDir(), 'models.yml');
-  return (await Bun.file(yml).exists()) ? yml : join(getAgentDir(), 'models.yaml');
-}
-
-export interface NativeProviderInfo {
-  /** Provider slug, e.g. "deepseek" or "custom/my-gateway". */
-  slug: string;
-  /** Base URL of the provider API, when configured. */
-  baseUrl?: string;
-  /** Model ids registered under this provider in models.yml. */
-  modelIds: string[];
-  models: NativeModelInfo[];
-}
-
-export interface NativeModelInfo {
-  id: string;
-  name?: string;
-  contextWindow?: number;
-  maxTokens?: number;
-  reasoning?: boolean;
-  imageInput?: boolean;
-}
-
-/**
- * Read custom providers/models registered in models.yml. Returns [] when the
- * file is missing or has no providers — never throws for absent files.
- */
-export async function readNativeProviders(): Promise<NativeProviderInfo[]> {
-  const path = await getModelsConfigPath();
-  if (!(await Bun.file(path).exists())) return [];
-  try {
-    const data = Bun.YAML.parse(await Bun.file(path).text());
-    if (!isRecord(data)) return [];
-    const providers = data.providers;
-    if (typeof providers !== 'object' || providers === null || Array.isArray(providers)) return [];
-    return Object.entries(providers as Record<string, unknown>).map(([slug, value]) => {
-      const info: NativeProviderInfo = { slug, modelIds: [], models: [] };
-      if (isRecord(value)) {
-        const record = value as Record<string, unknown>;
-        if (typeof record.baseUrl === 'string') info.baseUrl = record.baseUrl;
-        if (isRecord(record.models)) {
-          info.models = Object.entries(record.models as Record<string, unknown>).flatMap(([id, model]) => {
-            if (typeof model !== 'object' || model === null || Array.isArray(model)) return [{ id }];
-            const value = model as Record<string, unknown>;
-            return [{
-              id,
-              ...(typeof value.name === 'string' ? { name: value.name } : {}),
-              ...(typeof value.contextWindow === 'number' ? { contextWindow: value.contextWindow } : {}),
-              ...(typeof value.maxTokens === 'number' ? { maxTokens: value.maxTokens } : {}),
-              ...(value.reasoning === true ? { reasoning: true } : {}),
-              ...(Array.isArray(value.input) && value.input.includes('image') ? { imageInput: true } : {}),
-            }];
-          });
-        } else if (Array.isArray(record.models)) {
-          info.models = record.models.flatMap((model) => {
-            if (typeof model === 'string') return [{ id: model }];
-            if (typeof model !== 'object' || model === null || Array.isArray(model)) return [];
-            const value = model as Record<string, unknown>;
-            if (typeof value.id !== 'string') return [];
-            return [{
-              id: value.id,
-              ...(typeof value.name === 'string' ? { name: value.name } : {}),
-              ...(typeof value.contextWindow === 'number' ? { contextWindow: value.contextWindow } : {}),
-              ...(typeof value.maxTokens === 'number' ? { maxTokens: value.maxTokens } : {}),
-              ...(value.reasoning === true ? { reasoning: true } : {}),
-              ...(Array.isArray(value.input) && value.input.includes('image') ? { imageInput: true } : {}),
-            }];
-          });
-        }
-        info.modelIds = info.models.map((model) => model.id);
-      }
-      return info;
-    });
-  } catch {
-    return [];
-  }
-}
 
 /** One model entry destined for models.yml (cost numbers are USD per 1M tokens). */
 export interface OmpProviderModelSeed {
@@ -122,155 +46,261 @@ export interface OmpProviderUpsertResult {
   reason?: string;
 }
 
+/** Masks a stored credential echoed back by the UI; not a value to persist. */
+const MASKED_KEY_PATTERN = /•{3,}/;
+
+/** True when `value` is a credential the UI masked rather than a real key. */
+export function isMaskedApiKey(value: unknown): boolean {
+  return typeof value === 'string' && MASKED_KEY_PATTERN.test(value);
+}
+
+/** The model ids already registered under `provider`, array form only. */
+function knownModelIds(provider: Record<string, unknown> | undefined): Set<string> {
+  if (!Array.isArray(provider?.models)) return new Set();
+  return new Set(
+    provider.models
+      .map((model) => (isRecord(model) && typeof model.id === 'string' ? model.id : ''))
+      .filter(Boolean),
+  );
+}
+
+/** The model entry as omp expects it, omitting anything omp would reject. */
+function toModelEntry(model: OmpProviderModelSeed): Record<string, unknown> {
+  return sanitizeModelEntry({
+    id: model.id,
+    ...(model.name ? { name: model.name } : {}),
+    ...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {}),
+    ...(model.imageInput ? { input: ['text', 'image'] } : { input: ['text'] }),
+    ...(model.contextWindow && model.contextWindow > 0 ? { contextWindow: model.contextWindow } : {}),
+    ...(model.maxTokens && model.maxTokens > 0 ? { maxTokens: model.maxTokens } : {}),
+    ...(model.cost ? { cost: model.cost } : {}),
+  });
+}
+
+/**
+ * Metadata a bare existing entry is missing, taken from the freshly fetched
+ * seed. Values already present are never touched. Writes through the YAML node
+ * so the entry's own comments and key order stay as the user wrote them.
+ */
+function backfillEntry(doc: Document, entry: YAMLMap, seed: OmpProviderModelSeed): void {
+  if (seed.name && !entry.has('name')) entry.set('name', seed.name);
+  if (seed.reasoning !== undefined && !entry.has('reasoning')) {
+    entry.set('reasoning', seed.reasoning);
+  }
+  const currentInput = plainOf<string[]>(doc, entry.get('input'));
+  if (seed.imageInput && (!Array.isArray(currentInput) || !currentInput.includes('image'))) {
+    entry.set('input', ['text', 'image']);
+  }
+  if (seed.contextWindow && seed.contextWindow > 0 && !plainOf(doc, entry.get('contextWindow'))) {
+    entry.set('contextWindow', seed.contextWindow);
+  }
+  if (seed.maxTokens && seed.maxTokens > 0 && !plainOf(doc, entry.get('maxTokens'))) {
+    entry.set('maxTokens', seed.maxTokens);
+  }
+  if (seed.cost && !entry.has('cost')) {
+    entry.set('cost', seed.cost);
+  }
+}
+
 /**
  * Add-only upsert of a provider (and its models) into the native omp
  * models.yml — the agent's own registry, where per-model cost feeds usage
  * tracking. Existing provider fields (apiKey, baseUrl) and existing model
  * entries are never modified; only models whose id is not yet registered are
- * appended. Merges use an atomic temp-file write preserving unrelated keys
- * (full-document Bun.YAML round-trip). Provider creation requires an
- * apiKey — omp rejects models-cfg providers without one unless auth is "none"
- * or "oauth"; existing providers keep whatever credential they already have.
+ * appended. Merges preserve unrelated keys, comments and formatting (document
+ * model), and the write is atomic and mode-preserving.
+ *
+ * Provider creation requires an apiKey — omp rejects models-cfg providers
+ * without one unless auth is "none" or "oauth"; existing providers keep
+ * whatever credential they already have. The finished document is validated
+ * against omp's own rules before the write: a schema violation anywhere in the
+ * file makes omp disable every custom provider at once.
  */
 export async function upsertOmpProviderModels(
   slug: string,
   input: OmpProviderUpsertInput,
 ): Promise<OmpProviderUpsertResult> {
   const path = await getModelsConfigPath();
-  const doc: Record<string, unknown> = (await Bun.file(path).exists())
-    ? asMapping(Bun.YAML.parse(await Bun.file(path).text()), path)
-    : {};
-  let providers: Record<string, unknown> | undefined = isRecord(doc.providers) ? doc.providers : undefined;
-  if (!providers) {
-    providers = {};
-    doc.providers = providers;
-  }
+  return withOmpYamlDocument<OmpProviderUpsertResult>(path, (doc) => {
+    const original = doc.toJS() as Record<string, unknown> | null;
+    const providersNode = doc.get('providers');
+    if (providersNode !== undefined && !isMap(providersNode)) {
+      throw new OmpConfigError(`${path} providers must be a mapping`);
+    }
+    // `doc.get`/`getIn` hand back YAML nodes, never plain values: an existing
+    // provider has to be read through the node (`get`), or it reads as absent
+    // and the "add-only" upsert overwrites the user's credentials.
+    const providerNode = providersNode === undefined ? undefined : (providersNode as YAMLMap).get(slug);
+    const existing = isMap(providerNode)
+      ? (providerNode.toJS(doc) as Record<string, unknown>)
+      : undefined;
+    // omp requires `models` to be an ARRAY. A map-form entry makes omp reject
+    // the entire file ("custom providers disabled"), so rewriting it as an
+    // array would silently delete every model the user had registered there.
+    // Refuse and say what is wrong instead — the file is theirs to fix.
+    if (existing?.models !== undefined && !Array.isArray(existing.models)) {
+      throw new OmpConfigError(
+        `${path}: provider "${slug}" has a map-form "models" — omp requires an array. `
+        + 'Fix that entry before adding models; omp currently disables every custom provider because of it.',
+      );
+    }
+    const known = knownModelIds(existing);
+    const incomingById = new Map(input.models.map((model) => [model.id, model]));
+    const additions = input.models.filter((model) => model.id && !known.has(model.id));
 
-  const existingPojo = isRecord(providers[slug]) ? (providers[slug] as Record<string, unknown>) : undefined;
-  const existingModels = Array.isArray(existingPojo?.models) ? existingPojo.models : [];
-  const knownIds = new Set<string>(
-    existingModels.map((m) => (isRecord(m) && typeof m.id === 'string' ? m.id : '')).filter(Boolean),
-  );
-
-  const incomingById = new Map(input.models.map((m) => [m.id, m]));
-  const additions = input.models.filter((m) => m.id && !knownIds.has(m.id));
-  // Existing entries with bare ids (no context, no capabilities) get the
-  // fetched metadata filled in — values already present are never touched.
-  const backfillIds: string[] = existingPojo
-    ? existingModels
-      .filter((m) => {
-        const entry = isRecord(m) ? m : {};
-        const seed = incomingById.get(String(entry.id));
-        if (!seed) return false;
-        const missingContext = typeof entry.contextWindow !== 'number' || !entry.contextWindow;
-        const missingCost = !entry.cost;
-        return Boolean(
-          (missingContext && (seed.contextWindow || seed.maxTokens))
-          || (missingCost && seed.cost)
-          || (seed.reasoning !== undefined && entry.reasoning === undefined)
-          || (typeof entry.input !== 'object' && seed.imageInput),
-        );
-      })
-      .map((m) => String((isRecord(m) ? m : {}).id ?? ''))
-      .filter(Boolean)
-    : [];
-  if (additions.length === 0 && backfillIds.length === 0) {
-    return {
-      written: false,
-      addedModels: [],
-      backfilledModels: [],
-      skippedModels: input.models.map((m) => m.id),
-      reason: existingPojo ? 'all models already registered' : undefined,
-    };
-  }
-
-  let targetApiValue: string | undefined;
-
-  if (!existingPojo && !input.apiKey) {
-    return {
-      written: false,
-      addedModels: [],
-      backfilledModels: [],
-      skippedModels: input.models.map((m) => m.id),
-      reason: 'provider not yet in models.yml and no api key available to register it',
-    };
-  }
-
-  if (!existingPojo) {
-    providers[slug] = {
-      baseUrl: input.baseUrl,
-      apiKey: input.apiKey,
-      // omp disables every custom provider when a models-carrying provider
-      // lacks "api" (provider or model level) — always set one.
-      api: input.api ?? 'openai-completions',
-      models: [] as unknown[],
-    };
-  } else if (!existingPojo.api) {
-    // Existing provider without an api: adding models without one would make
-    // the whole models.yml fail omp validation, so fill it.
-    targetApiValue = input.api ?? 'openai-completions';
-  }
-
-  const target = providers[slug] as Record<string, unknown>;
-  if (targetApiValue) target.api = targetApiValue;
-  if (!Array.isArray(target.models)) target.models = [];
-  const targetModels = target.models as Record<string, unknown>[];
-  for (const model of additions) {
-    targetModels.push({
-      id: model.id,
-      ...(model.name ? { name: model.name } : {}),
-      ...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {}),
-      ...(model.imageInput ? { input: ['text', 'image'] } : { input: ['text'] }),
-      ...(model.contextWindow && model.contextWindow > 0 ? { contextWindow: model.contextWindow } : {}),
-      ...(model.maxTokens && model.maxTokens > 0 ? { maxTokens: model.maxTokens } : {}),
-      ...(model.cost ? {
-        cost: {
-          input: model.cost.input,
-          output: model.cost.output,
-          cacheRead: model.cost.cacheRead,
-          cacheWrite: model.cost.cacheWrite,
+    if (!existing && !input.apiKey) {
+      return {
+        result: {
+          written: false,
+          addedModels: [],
+          backfilledModels: [],
+          skippedModels: input.models.map((model) => model.id),
+          reason: 'provider not yet in models.yml and no api key available to register it',
         },
-      } : {}),
-    });
-  }
-
-  for (const entry of targetModels) {
-    const entryId = typeof entry?.id === 'string' ? entry.id : '';
-    if (!entryId || !backfillIds.includes(entryId)) continue;
-    const seed = incomingById.get(entryId);
-    if (!seed) continue;
-    if (seed.name && !entry.name) entry.name = seed.name;
-    if (seed.reasoning !== undefined && entry.reasoning === undefined) {
-      entry.reasoning = seed.reasoning;
-    }
-    const currentInput = entry.input;
-    if (seed.imageInput && !Array.isArray(currentInput)) {
-      entry.input = ['text', 'image'];
-    } else if (seed.imageInput && Array.isArray(currentInput) && !(currentInput as unknown[]).includes('image')) {
-      entry.input = ['text', 'image'];
-    }
-    if (seed.contextWindow && seed.contextWindow > 0 && !entry.contextWindow) {
-      entry.contextWindow = seed.contextWindow;
-    }
-    if (seed.maxTokens && seed.maxTokens > 0 && !entry.maxTokens) {
-      entry.maxTokens = seed.maxTokens;
-    }
-    if (seed.cost && !entry.cost) {
-      entry.cost = {
-        input: seed.cost.input,
-        output: seed.cost.output,
-        cacheRead: seed.cost.cacheRead,
-        cacheWrite: seed.cost.cacheWrite,
+        changed: false,
       };
     }
-  }
+    // The UI echoes stored credentials back masked ("sk-••••…"), and this
+    // writer is the last gate before a file omp will authenticate with — a
+    // masked placeholder persisted here would look like a configured provider
+    // that cannot authenticate.
+    if (!existing && isMaskedApiKey(input.apiKey)) {
+      return {
+        result: {
+          written: false,
+          addedModels: [],
+          backfilledModels: [],
+          skippedModels: input.models.map((model) => model.id),
+          reason: 'the supplied API key is a masked placeholder, not a credential',
+        },
+        changed: false,
+      };
+    }
 
-  await writeFileAtomic(path, Bun.YAML.stringify(doc, null, 2));
+    // Existing entries with bare ids (no context, no capabilities) get the
+    // fetched metadata filled in — values already present are never touched.
+    const backfillIds = (Array.isArray(existing?.models) ? existing.models : [])
+      .filter((model): model is Record<string, unknown> => {
+        if (!isRecord(model) || typeof model.id !== 'string') return false;
+        const seed = incomingById.get(model.id);
+        if (!seed) return false;
+        const missingContext = typeof model.contextWindow !== 'number' || !model.contextWindow;
+        return Boolean(
+          (missingContext && (seed.contextWindow || seed.maxTokens))
+          || (!model.cost && seed.cost)
+          || (seed.reasoning !== undefined && model.reasoning === undefined)
+          || (!Array.isArray(model.input) && seed.imageInput),
+        );
+      })
+      .map((model) => String(model.id));
 
-  return {
-    written: true,
-    addedModels: additions.map((m) => m.id),
-    backfilledModels: backfillIds,
-    skippedModels: input.models.filter((m) => knownIds.has(m.id)).map((m) => m.id),
-  };
+    if (additions.length === 0 && backfillIds.length === 0) {
+      return {
+        result: {
+          written: false,
+          addedModels: [],
+          backfilledModels: [],
+          skippedModels: input.models.map((model) => model.id),
+          reason: existing ? 'all models already registered' : undefined,
+        },
+        changed: false,
+      };
+    }
+
+    // `doc.createNode` (not a plain object) — a bare object stored via `setIn`
+    // stays a JS object, so a later `getIn(...).add()` throws "Expected YAML
+    // collection" instead of appending.
+    if (!existing) {
+      doc.setIn(['providers', slug], doc.createNode({
+        baseUrl: input.baseUrl,
+        apiKey: input.apiKey,
+        // omp disables every custom provider when a models-carrying provider
+        // lacks "api" (provider or model level) — always set one.
+        api: input.api ?? 'openai-completions',
+        models: [],
+      }));
+    } else if (!existing.api) {
+      // Existing provider without an api: adding models without one would make
+      // the whole models.yml fail omp validation, so fill it.
+      doc.setIn(['providers', slug, 'api'], input.api ?? 'openai-completions');
+    }
+
+    // `addIn` on a missing key creates a MAP, not a sequence — exactly the
+    // `models: must be an array` shape omp rejects. Append through the existing
+    // sequence, or seed a new one.
+    const modelSeq = doc.getIn(['providers', slug, 'models']);
+    if (additions.length > 0) {
+      if (isSeq(modelSeq)) {
+        for (const model of additions) modelSeq.add(doc.createNode(toModelEntry(model)));
+      } else {
+        doc.setIn(['providers', slug, 'models'], doc.createNode(additions.map(toModelEntry)));
+      }
+    }
+
+    const targetModels = doc.getIn(['providers', slug, 'models']);
+    if (isSeq(targetModels)) {
+      for (const entry of targetModels.items) {
+        if (!isMap(entry)) continue;
+        const id = entry.get('id');
+        if (typeof id !== 'string' || !backfillIds.includes(id)) continue;
+        const seed = incomingById.get(id);
+        if (seed) backfillEntry(doc, entry, seed);
+      }
+    }
+
+    // Validate the RESULT against omp's rules, but only refuse over problems
+    // this edit introduced: a pre-existing violation elsewhere in the file
+    // (which already has omp rejecting every custom provider) must not block an
+    // unrelated provider from being added — that would make a broken file
+    // unrepairable from the UI.
+    const errorsAfter = validateModelsDocument(doc.toJS() as Record<string, unknown>);
+    const preExisting = new Set(validateModelsDocument(original));
+    const introduced = errorsAfter.filter((error) => !preExisting.has(error));
+    if (introduced.length > 0) {
+      throw new OmpConfigError(`Refusing to write an invalid models.yml: ${introduced[0]}`);
+    }
+
+    return {
+      result: {
+        written: true,
+        addedModels: additions.map((model) => model.id),
+        backfilledModels: backfillIds,
+        skippedModels: input.models.filter((model) => known.has(model.id)).map((model) => model.id),
+      },
+      changed: true,
+    };
+  });
+}
+
+export interface OmpProviderRemovalResult {
+  removed: boolean;
+  removedModels: number;
+}
+
+/**
+ * Remove a provider from models.yml.
+ *
+ * The whole entry goes, `modelOverrides` included: leaving the overrides behind
+ * keeps a provider entry that still carries `baseUrl`/`apiKey`, so omp goes on
+ * listing it as a configured provider whose models no longer exist — a ghost
+ * that reappears in the chamber on the next load. Removing the entry is what
+ * "delete this provider" means; overrides for a bundled provider live under
+ * that bundled provider's own name and are untouched by this call.
+ */
+export async function removeOmpProvider(slug: string): Promise<OmpProviderRemovalResult> {
+  const path = await getModelsConfigPath();
+  return withOmpYamlDocument<OmpProviderRemovalResult>(path, (doc) => {
+    const providersNode = doc.get('providers');
+    if (!isMap(providersNode)) {
+      return { result: { removed: false, removedModels: 0 }, changed: false };
+    }
+    const providerNode = providersNode.get(slug);
+    if (!isMap(providerNode)) {
+      return { result: { removed: false, removedModels: 0 }, changed: false };
+    }
+    const models = plainOf(doc, providerNode.get('models'));
+    const removedModels = Array.isArray(models) ? models.length : 0;
+    providersNode.delete(slug);
+    return { result: { removed: true, removedModels }, changed: true };
+  });
 }
