@@ -46,7 +46,18 @@ export function AskPanel({ tool }: { tool: ToolCallData }) {
     return tool.output ? <FallbackOutput text={tool.output} /> : null;
   }
 
-  const waiting = groups.some((frames, index) => frames.length > 0 && !recorded[index]);
+  // An ask whose tool call failed or was aborted is OVER: omp cancels the live
+  // dialog on abort (the client drops it on that `cancel` frame) and the result
+  // records no answer, so after the queue empties every unanswered question
+  // falls out of the "passed" branch with nothing left to say it was
+  // abandoned — the card read "Waiting for the previous answer…" over a run the
+  // user had already stopped. Only a terminal status counts: a session reloaded
+  // mid-ask reads its still-blocking tool call back from the JSONL as
+  // `success` (omp writes no result until the question is answered), and that
+  // question must stay answerable.
+  const settled =
+    tool.status === 'error' || tool.status === 'aborted' || tool.status === 'skipped';
+  const waiting = !settled && groups.some((frames, index) => frames.length > 0 && !recorded[index]);
   // omp asks in order and blocks on each, so the earliest question holding a
   // dialog is the only open one: everything before it is answered, whether or
   // not this client still has the text.
@@ -71,6 +82,7 @@ export function AskPanel({ tool }: { tool: ToolCallData }) {
           recorded={recorded[index] ?? null}
           draft={drafts[index]}
           passed={askingIndex !== -1 && index < askingIndex}
+          settled={settled}
           multiSelected={multiSelected[index] ?? NO_LABELS}
           onAnswer={(value) => commit(index, value)}
           onToggle={(label) => toggleMulti(index, label)}

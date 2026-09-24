@@ -4,13 +4,14 @@
  */
 
 /**
- * One question of an `ask` call, in whichever of its three states it is in:
- * answered (omp already recorded it), asking (its dialog is live) or still
- * queued behind an earlier question — omp asks them strictly in order, so the
- * later ones can only be previewed until their turn comes.
+ * One question of an `ask` call, in whichever of its four states it is in:
+ * answered (omp already recorded it), asking (its dialog is live), still queued
+ * behind an earlier question (omp asks them strictly in order, so the later
+ * ones can only be previewed until their turn comes) or abandoned — the ask
+ * ended without reaching it, so no dialog can arrive again.
  */
 
-import { CheckCircle2, Clock } from 'lucide-preact';
+import { Ban, CheckCircle2, Clock } from 'lucide-preact';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 import type { ExtensionUiDialogRequest } from '@/shared/types/omp/agent';
 import type { AskAnswer, AskQuestion } from '@/shared/lib/chat/ask-questions';
@@ -28,6 +29,12 @@ interface QuestionBlockProps {
   draft?: string;
   /** Unanswered, but omp has already moved past it — its dialog is gone. */
   passed: boolean;
+  /**
+   * The ask's tool call already failed or was aborted: omp withdrew its dialog
+   * and cannot raise another, so an unanswered question is not queued behind
+   * anything.
+   */
+  settled: boolean;
   /** Labels toggled locally on a multi-select question. */
   multiSelected: string[];
   onAnswer: (value: string) => void;
@@ -49,14 +56,24 @@ export function QuestionBlock({
   recorded,
   draft,
   passed,
+  settled,
   multiSelected,
   onAnswer,
   onToggle,
   onRespond,
 }: QuestionBlockProps) {
   const live = frames.length > 0 ? frames[frames.length - 1] : null;
-  const answered = recorded ? answerParts(recorded) : draft ? [draft] : multiSelected;
-  const asking = Boolean(live) && !recorded && (question.multi || !draft);
+  // A recorded answer with no labels is still an answer — omp accepts an empty
+  // multi-select as "select none" — so presence, never the rendered part count,
+  // decides whether a question is answered. Reading the parts made such a
+  // question fall through to the queued state and claim a dialog was live.
+  const hasAnswer = recorded !== null || draft !== undefined || multiSelected.length > 0;
+  const parts = recorded ? answerParts(recorded) : draft ? [draft] : multiSelected;
+  const chips = parts.length > 0 ? parts : ['none selected'];
+  // A settled ask has no live dialog by construction, even if a frame this
+  // client never saw withdrawn is still in its queue: answering it would post
+  // a response for a tool call omp has already finished.
+  const asking = !settled && Boolean(live) && !recorded && (question.multi || !draft);
 
   return (
     <div className="rounded-lg border border-ink/10 bg-paper p-2.5 shadow-xs">
@@ -94,10 +111,10 @@ export function QuestionBlock({
             />
           )}
 
-          {answered.length > 0 && (
+          {hasAnswer && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <CheckCircle2 size={11} className="shrink-0 text-success" />
-              {answered.map((part) => (
+              {chips.map((part) => (
                 <span
                   key={part}
                   className="rounded-md border border-ink/12 bg-canvas/40 px-2 py-0.5 text-[11.5px] font-medium text-ink select-text"
@@ -113,14 +130,14 @@ export function QuestionBlock({
             </div>
           )}
 
-          {!asking && answered.length === 0 && passed && (
+          {!asking && !hasAnswer && passed && (
             <div className="mt-2 flex items-center gap-1.5 text-[10.5px] text-ink/45">
               <CheckCircle2 size={11} className="shrink-0 text-ink/35" />
               <span>Answered earlier in this run.</span>
             </div>
           )}
 
-          {!asking && answered.length === 0 && !passed && (
+          {!asking && !hasAnswer && !passed && (
             <div className="mt-2 space-y-1 border-t border-ink/6 pt-2">
               {question.options.map((option, optionIndex) => (
                 <div key={option.label} className="flex items-start gap-2 px-0.5 text-[11.5px] text-ink/45">
@@ -142,10 +159,20 @@ export function QuestionBlock({
                   </span>
                 </div>
               ))}
-              <div className="flex items-center gap-1.5 pt-0.5 text-[10.5px] text-ink/40">
-                <Clock size={10} className="shrink-0" />
-                <span>Waiting for the previous answer…</span>
-              </div>
+              {/* "Waiting for the previous answer" is only true while the ask
+                  is still running: once it settles nothing is being asked, and
+                  the question was abandoned unanswered. */}
+              {settled ? (
+                <div className="flex items-center gap-1.5 pt-0.5 text-[10.5px] text-ink/40">
+                  <Ban size={10} className="shrink-0" />
+                  <span>Not answered — the ask was cut short.</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 pt-0.5 text-[10.5px] text-ink/40">
+                  <Clock size={10} className="shrink-0" />
+                  <span>Waiting for the previous answer…</span>
+                </div>
+              )}
             </div>
           )}
         </div>
