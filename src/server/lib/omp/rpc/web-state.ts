@@ -14,7 +14,6 @@
  * rpc-manager.ts stays under the repo's per-file size ceiling.
  */
 
-import { notifyRunningChange } from '@/server/lib/omp/rpc/session-registry';
 import type { RpcSessionState, WebSessionState } from '@/server/lib/omp/rpc/constants';
 
 /** Wrapper state the reconciliation reads and writes. */
@@ -34,8 +33,6 @@ export interface WebStateHost {
 }
 
 export function buildWebState(host: WebStateHost, state: RpcSessionState): WebSessionState {
-  const wasRunning = host.isRunning();
-
   host.streaming = state.isStreaming;
   host.compacting = state.isCompacting;
   host.adoptSessionIdentity(state);
@@ -56,9 +53,6 @@ export function buildWebState(host: WebStateHost, state: RpcSessionState): WebSe
     host.awaitingAgentStartDeadline = 0;
   }
 
-  if (wasRunning && !host.isRunning()) {
-    notifyRunningChange();
-  }
   return {
     sessionId: state.sessionId,
     sessionFile: state.sessionFile ?? '',

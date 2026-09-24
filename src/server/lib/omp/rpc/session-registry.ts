@@ -4,12 +4,11 @@
  */
 
 /**
- * Global omp session registry: keeps one AgentSessionWrapper per session id,
- * exposes lookups, and broadcasts running-session changes to subscribers.
- * Split out of rpc-manager.ts so each file stays under the repo's per-file
- * size ceiling. Importing AgentSessionWrapper here is a runtime-only circular
- * reference with rpc-manager (the wrapper calls notifyRunningChange) — both
- * usages happen inside functions, never at module init.
+ * Global omp session registry: keeps one AgentSessionWrapper per session id and
+ * exposes lookups. Split out of rpc-manager.ts so each file stays under the
+ * repo's per-file size ceiling. Importing AgentSessionWrapper here is a
+ * runtime-only circular reference with rpc-manager — every usage happens inside
+ * a function, never at module init.
  */
 
 import { RpcProcess } from '@/server/lib/omp/rpc/process';
@@ -17,24 +16,11 @@ import { buildSessionSpawnArgs } from '@/server/lib/omp/rpc/constants';
 import { AgentSessionWrapper } from '@/server/lib/omp/rpc/manager';
 import { DEFAULT_APPROVAL_MODE, type ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 
-export interface RunningRpcSession {
-  id: string;
-  cwd: string;
-}
-
-export interface RunningSessionUpdate {
-  ids: string[];
-  runningSessions: RunningRpcSession[];
-  refreshSessionList: boolean;
-}
-
 declare global {
   // eslint-disable-next-line no-var
   var __ompSessions: Map<string, AgentSessionWrapper> | undefined;
   // eslint-disable-next-line no-var
   var __ompStartLocks: Map<string, Promise<{ session: AgentSessionWrapper; realSessionId: string }>> | undefined;
-  // eslint-disable-next-line no-var
-  var __ompRunningListeners: Set<(update: RunningSessionUpdate) => void> | undefined;
 }
 
 function getRegistry(): Map<string, AgentSessionWrapper> {
@@ -57,21 +43,6 @@ export function getRpcSession(sessionId: string): AgentSessionWrapper | undefine
   return getRegistry().get(sessionId);
 }
 
-export function getRunningRpcSessions(): RunningRpcSession[] {
-  const map = new Map<string, string>();
-  for (const [sessionId, session] of getRegistry()) {
-    if (session.isRunning()) {
-      const realId = session.sessionId || sessionId;
-      map.set(realId, session.cwd);
-    }
-  }
-  return [...map.entries()].map(([id, cwd]) => ({ id, cwd }));
-}
-
-export function getRunningRpcSessionIds(): string[] {
-  return getRunningRpcSessions().map((s) => s.id);
-}
-
 /**
  * Sessions whose omp process is parked on a dialog only the user can release —
  * an `ask` question or an approval gate. Deliberately independent of
@@ -88,38 +59,6 @@ export function getAwaitingInputSessionIds(): string[] {
     }
   }
   return [...ids];
-}
-
-function getRunningListeners(): Set<(update: RunningSessionUpdate) => void> {
-  if (!globalThis.__ompRunningListeners) globalThis.__ompRunningListeners = new Set();
-  return globalThis.__ompRunningListeners;
-}
-
-/** Subscribe to running-session-id changes and session-list refreshes. */
-export function subscribeRunningSessions(listener: (update: RunningSessionUpdate) => void): () => void {
-  const listeners = getRunningListeners();
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
-}
-
-let lastRunningSnapshot = '';
-
-/**
- * Recompute the running-session-id set and, when it changes, broadcast it.
- * A session file may first appear after its id starts running, so callers can
- * force one otherwise-identical update to refresh sidebar session metadata.
- */
-export function notifyRunningChange({ refreshSessionList = false }: { refreshSessionList?: boolean } = {}): void {
-  const runningSessions = getRunningRpcSessions();
-  const ids = runningSessions.map((s) => s.id);
-  if (runningSessions.length === 0 && lastRunningSnapshot === '[]' && !refreshSessionList) return;
-  const snapshot = JSON.stringify(runningSessions.slice().sort((a, b) => a.id.localeCompare(b.id)));
-  if (snapshot === lastRunningSnapshot && !refreshSessionList) return;
-  lastRunningSnapshot = snapshot;
-  const update: RunningSessionUpdate = { ids, runningSessions, refreshSessionList };
-  for (const listener of getRunningListeners()) {
-    try { listener(update); } catch { /* ignore listener errors */ }
-  }
 }
 
 // The approval mode each wrapper's omp child was actually spawned with. omp has

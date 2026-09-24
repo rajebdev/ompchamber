@@ -12,7 +12,6 @@
 import { RpcCommandTimeoutError, type RpcProcess } from '@/server/lib/omp/rpc/process';
 import { AWAITING_AGENT_START_TIMEOUT_MS, GET_STATE_TIMEOUT_MS, IMAGE_BEARING_COMMANDS, PASSTHROUGH_COMMANDS, PROMPT_ACK_TIMEOUT_MS, RESTARTING_MESSAGE, SESSION_BUSY_MESSAGE, WebRpcError, toImageContents, type AgentEvent, type RpcSessionState, validateAgentImages } from '@/server/lib/omp/rpc/constants';
 import { clearSessionFileCaches } from '@/server/lib/omp/session/files';
-import { notifyRunningChange } from '@/server/lib/omp/rpc/session-registry';
 import { scheduleQueueDelivery } from '@/server/lib/queue/delivery.server';
 import { clearStreamStatus, markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
 import { buildWebState, type WebStateHost } from '@/server/lib/omp/rpc/web-state';
@@ -34,7 +33,6 @@ export interface SessionCommandHost extends WebStateHost {
   resetIdleTimer(force?: boolean): void;
   /** Forget a pending ask/approval dialog once its response is sent. */
   resolvePendingUiDialog(id: string): void;
-  withFinalRunningNotification<T>(operation: () => Promise<T>): Promise<T>;
   destroyAndWait(): Promise<void>;
 }
 
@@ -87,7 +85,6 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
         host.awaitingAgentStartDeadline = 0;
         host.continuationGraceUntil = 0;
         if (ownsStreamRow) void markStreamStatus(host.sessionId, 'stream');
-        notifyRunningChange();
       }
       try {
         const ack = await host.proc.sendCommand<{ agentInvoked?: boolean } | undefined>({
@@ -102,7 +99,6 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
           host.awaitingAgentStartDeadline = 0;
           releaseStreamRow();
           host.emit({ type: 'prompt_result', agentInvoked: false });
-          notifyRunningChange();
           // Nothing ran (agent was idle and declined) — the queue may hold the
           // next item; give it the same delivery window a run end would.
           scheduleQueueDelivery(host);
@@ -115,7 +111,6 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
         host.awaitingAgentStart = false;
         host.awaitingAgentStartDeadline = 0;
         releaseStreamRow();
-        notifyRunningChange();
         // The ack may simply be queued behind a running turn: omp accepts the
         // prompt before the turn it starts. No reset, and the client must not
         // resend — a duplicate prompt would run twice.
@@ -130,14 +125,12 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
     }
 
     case 'abort':
-      await host.withFinalRunningNotification(async () => {
-        await host.proc.sendCommand({ type: 'abort' });
-        host.promptRunning = false;
-        host.awaitingAgentStart = false;
-        host.awaitingAgentStartDeadline = 0;
-        host.continuationGraceUntil = 0;
-        if (host.sessionId) void markStreamStatus(host.sessionId, 'abort');
-      });
+      await host.proc.sendCommand({ type: 'abort' });
+      host.promptRunning = false;
+      host.awaitingAgentStart = false;
+      host.awaitingAgentStartDeadline = 0;
+      host.continuationGraceUntil = 0;
+      if (host.sessionId) void markStreamStatus(host.sessionId, 'abort');
       return null;
 
     // Escape hatch behind the Stop button: `abort` resolves only once the turn
@@ -173,26 +166,23 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
 
     case 'compact': {
       try {
-        return await host.withFinalRunningNotification(async () => {
-          host.compacting = true;
-          notifyRunningChange();
-          try {
-            const result = await host.proc.sendCommand<{ summary?: string; tokensBefore?: number; estimatedTokensAfter?: number }>({
-              type: 'compact',
-              ...(command.customInstructions ? { customInstructions: command.customInstructions } : {}),
-            });
-            return result;
-          } finally {
-            host.compacting = false;
-          }
-        });
+        host.compacting = true;
+        try {
+          const result = await host.proc.sendCommand<{ summary?: string; tokensBefore?: number; estimatedTokensAfter?: number }>({
+            type: 'compact',
+            ...(command.customInstructions ? { customInstructions: command.customInstructions } : {}),
+          });
+          return result;
+        } finally {
+          host.compacting = false;
+        }
       } finally {
         clearSessionFileCaches();
       }
     }
 
     case 'abort_compaction':
-      await host.withFinalRunningNotification(() => host.proc.sendCommand({ type: 'abort' }));
+      await host.proc.sendCommand({ type: 'abort' });
       return null;
 
     case 'set_session_name': {
@@ -215,13 +205,11 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
         throw new Error('Cannot run a shell command while the session is busy');
       }
       host.bashRunning = true;
-      notifyRunningChange();
       try {
         return await host.proc.sendCommand<{ output?: string; exitCode?: number }>({ type: 'bash', command: command.command as string });
       } finally {
         host.bashRunning = false;
         clearSessionFileCaches();
-        notifyRunningChange();
       }
     }
 

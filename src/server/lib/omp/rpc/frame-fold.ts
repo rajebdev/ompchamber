@@ -51,8 +51,6 @@ export interface SessionFrameHost extends AutoTitleHost, QueueDeliveryHost {
 
 /** What the caller must do after the fold. */
 export interface FrameFoldResult {
-  /** The session list is stale and needs a rebuild. */
-  refreshSessionList: boolean;
   /** The fold already handled this frame's user-visible effect and the caller
    *  must NOT forward it: a failed `prompt` response has emitted its own
    *  `prompt_error`, and a `command_output` belonging to the chamber's own
@@ -88,7 +86,7 @@ async function markEndStatus(sessionId: string, messages: unknown): Promise<void
 
 /** Apply one frame to the wrapper's runtime state. */
 export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): FrameFoldResult {
-  const result: FrameFoldResult = { refreshSessionList: false, suppressForward: false };
+  const result: FrameFoldResult = { suppressForward: false };
 
   switch (event.type) {
     case 'agent_start':
@@ -98,7 +96,6 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
       host.awaitingAgentStartDeadline = 0;
       host.continuationGraceUntil = 0;
       clearSessionFileCaches();
-      result.refreshSessionList = true;
       if (host.sessionId) void markStreamStatus(host.sessionId, 'stream');
       break;
     case 'turn_start':
@@ -113,19 +110,12 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
       // status sits there (upsert overwrites any terminal badge).
       if (host.sessionId) void markStreamStatus(host.sessionId, 'stream');
       break;
-    case 'turn_end': {
-      // A multi-turn run emits turn_end for EVERY turn — intermediates end with
-      // `toolUse`/`stop` while the run keeps going (verified against omp
-      // 18.2.8: agent_start → turn_start → turn_end('toolUse') → turn_start →
-      // turn_end('stop') → agent_end, and the frame carries no isTerminal
-      // field). Only `aborted` is unambiguous here: the run is over, so the
-      // abort badge can be written before agent_end arrives. Everything else
-      // waits for agent_end, which knows isTerminal.
-      if (!host.sessionId) break;
-      const turn = event.message as Record<string, unknown> | undefined;
-      if (turn?.stopReason === 'aborted') void markStreamStatus(host.sessionId, 'abort');
-      break;
-    }
+    // `turn_end` is deliberately NOT handled here: a multi-turn run emits it for
+    // EVERY turn (verified against omp 18.2.8: agent_start → turn_start →
+    // turn_end('toolUse') → turn_start → turn_end('stop') → agent_end) and the
+    // frame carries no isTerminal field, so no turn-level stopReason can be read
+    // as "the run is over". The terminal badge is written from `agent_end`
+    // alone (markEndStatus), which is the only frame that knows.
     case 'agent_end':
       if (event.isTerminal !== false) {
         host.streaming = false;
@@ -176,7 +166,6 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
       // keyed on file mtime, which that write cannot move, so the list must be
       // rebuilt explicitly.
       clearSessionFileCaches();
-      result.refreshSessionList = true;
       break;
     case 'extension_ui_request':
       host.trackUiDialog(event);

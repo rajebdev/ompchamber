@@ -18,7 +18,6 @@
 import { RpcProcess, type RpcFrame } from '@/server/lib/omp/rpc/process';
 import { PendingUiDialogs } from '@/server/lib/omp/rpc/pending-ui-dialogs';
 import { foldSessionFrame } from '@/server/lib/omp/rpc/frame-fold';
-import { notifyRunningChange } from '@/server/lib/omp/rpc/session-registry';
 import { dispatchSessionCommand } from '@/server/lib/omp/rpc/session-commands';
 import { SubagentLiveness } from '@/server/lib/omp/rpc/subagent-liveness';
 import { markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
@@ -134,7 +133,6 @@ export class AgentSessionWrapper {
   start(): void {
     this.unsubscribeFrames = this.proc.onFrame((frame) => this.handleFrame(frame));
     this.resetIdleTimer();
-    notifyRunningChange();
   }
 
   /** Resolves once the child announced readiness and identity is known. */
@@ -205,14 +203,11 @@ export class AgentSessionWrapper {
     const event = frame as AgentEvent;
     // The state machine and its settle-time side effects live in frame-fold.ts;
     // this method owns only the wrapper's own bookkeeping around it.
-    const { refreshSessionList, suppressForward } = foldSessionFrame(this, event);
+    const { suppressForward } = foldSessionFrame(this, event);
     // `suppressForward` withholds only the FRAME — a failed prompt response
     // already emitted its own `prompt_error`, and the chamber's own background
-    // rename must not surface its diagnostics. The running-state notification
-    // still fires: the fold just cleared `promptRunning`, and that flip is what
-    // releases the sidebar's spinner.
+    // rename must not surface its diagnostics.
     if (!suppressForward) this.emit(event);
-    notifyRunningChange({ refreshSessionList });
   }
 
   emit(event: AgentEvent): void {
@@ -266,14 +261,6 @@ export class AgentSessionWrapper {
     this.onDestroyCallback = cb;
   }
 
-  async withFinalRunningNotification<T>(operation: () => Promise<T>): Promise<T> {
-    try {
-      return await operation();
-    } finally {
-      notifyRunningChange();
-    }
-  }
-
   /** Persist the session identity omp reports in a get_state payload. */
   adoptSessionIdentity(state: RpcSessionState): void {
     if (!state.sessionId) return;
@@ -309,11 +296,9 @@ export class AgentSessionWrapper {
     this.continuationGraceUntil = 0;
     const disposed = this.proc.dispose().catch(() => {});
     this.destroyPromise = disposed;
-    notifyRunningChange();
     await disposed;
     this.onDestroyCallback?.();
   }
 }
 
-export type { RunningRpcSession, RunningSessionUpdate } from '@/server/lib/omp/rpc/session-registry';
-export { getRpcSession, getRunningRpcSessions, getRunningRpcSessionIds, subscribeRunningSessions, notifyRunningChange, startRpcSession, prewarmRpcSession, startNewRpcSession } from '@/server/lib/omp/rpc/session-registry';
+export { getRpcSession, startRpcSession, prewarmRpcSession, startNewRpcSession } from '@/server/lib/omp/rpc/session-registry';
