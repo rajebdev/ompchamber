@@ -23,6 +23,24 @@ import { useSessionState } from '@/client/hooks/workspace/session-state';
 
 const STEERING_STATE_KEY = 'chat.steeringQueue';
 
+/**
+ * How often a mounted session with a non-empty queue re-offers a delivery slot.
+ *
+ * This is the safety net for a server whose own timers have stopped firing: a
+ * long-lived `bun --hot` process can stop running `setTimeout` callbacks
+ * entirely while still answering HTTP normally (observed live — a 4-hour dev
+ * server whose SSE heartbeat never fired and whose queued follow-ups never
+ * drained, while every request returned in 0.01s). Auto-delivery is timer-driven
+ * server-side, so it dies with those timers; a client poll runs in a different
+ * process and is immune.
+ *
+ * Only armed while something is actually queued, and each tick is one POST that
+ * doubles as the panel's reconcile, so an idle session costs nothing. 3s is a
+ * deliberate compromise: slow enough to be invisible on the wire, fast enough
+ * that a stranded item lands before the user wonders about it.
+ */
+const QUEUE_POLL_INTERVAL_MS = 3_000;
+
 function queueUrl(sessionId: string): string {
   return `/api/sessions/${encodeURIComponent(sessionId)}/queue`;
 }
@@ -74,25 +92,64 @@ export function useChatTimelineQueue(sessionId: string | null): ChatTimelineQueu
       })
       .catch(() => {});
   }, [sessionId]);
+  // Offer the server a delivery slot for this session. The server-side claim
+  // makes this harmless when a run is active or another tab already took the
+  // head — this used to be the client auto-delivery effect, which fired into
+  // whatever session was open at the time.
+  //
+  // The response carries the canonical queue, so this doubles as a reconcile.
+  const nudgeDelivery = useCallback(() => {
+    if (!sessionId) return;
+    const epoch = hydrateEpochRef.current;
+    fetch(`${queueUrl(sessionId)}/deliver`, { method: 'POST' })
+      .then((res) => readQueueResponse(res))
+      .then((queue) => {
+        // Only reconcile when this is still the session on screen: the poll can
+        // outlive a switch, and writing another session's queue here is the
+        // exact cross-session bug the server-owned store was built to stop.
+        if (cancelledRef.current || hydrateEpochRef.current !== epoch) return;
+        if (queue) setMessageQueueState(queue);
+      })
+      .catch(() => {});
+  }, [sessionId]);
+
   useEffect(() => {
     cancelledRef.current = false;
     refresh();
-    const onFocus = () => refresh();
+    // Mount and every focus regain offer a delivery slot. Focus is the trigger
+    // the recovery path depends on, so it must re-nudge even when the queue
+    // length is unchanged: keying this on `messageQueue.length > 0` (a boolean
+    // that stays true while the item is stranded) meant the effect never re-ran
+    // and a stuck queue stayed stuck.
+    nudgeDelivery();
+    const onFocus = () => {
+      refresh();
+      nudgeDelivery();
+    };
     window.addEventListener('focus', onFocus);
     return () => {
       cancelledRef.current = true;
       window.removeEventListener('focus', onFocus);
     };
-  }, [refresh]);
+  }, [refresh, nudgeDelivery]);
 
-  // Mounted session with queued items: offer the server a delivery slot. The
-  // server-side claim makes this harmless when a run is active or another tab
-  // already took the head — this used to be the client auto-delivery effect,
-  // which fired into whatever session was open at the time.
+  // Items appearing while the session is already mounted (a send while
+  // streaming, or another tab's write): offer a slot without waiting for focus.
   useEffect(() => {
-    if (!sessionId || messageQueue.length === 0) return;
-    fetch(`${queueUrl(sessionId)}/deliver`, { method: 'POST' }).catch(() => {});
-  }, [sessionId, messageQueue.length > 0]);
+    if (messageQueue.length > 0) nudgeDelivery();
+  }, [messageQueue.length, nudgeDelivery]);
+
+  // Safety net: while anything is queued, keep offering a slot on an interval.
+  // Server-side auto-delivery is timer-driven and a long-lived `--hot` server
+  // can lose that capability silently; this poll lives in the browser and is
+  // unaffected. The effect is torn down the moment the queue empties, so a
+  // session with nothing queued never polls.
+  const hasQueued = messageQueue.length > 0;
+  useEffect(() => {
+    if (!sessionId || !hasQueued) return;
+    const timer = setInterval(nudgeDelivery, QUEUE_POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [sessionId, hasQueued, nudgeDelivery]);
 
   const enqueueMessage = useCallback((item: Omit<QueuedMessage, 'id'>) => {
     if (!sessionId) return;

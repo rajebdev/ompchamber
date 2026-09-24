@@ -22,7 +22,7 @@ import {
   reorderQueue,
 } from '@/server/lib/queue/store.server';
 import { getRpcSession } from '@/server/lib/omp/rpc/manager';
-import { scheduleQueueDelivery } from '@/server/lib/queue/delivery.server';
+import { deliverQueueNow } from '@/server/lib/queue/delivery.server';
 
 /** GET — the session's queued follow-ups in delivery order. */
 export async function getQueue({ params }: LoaderFunctionArgs) {
@@ -108,6 +108,17 @@ export async function reorderQueueItems({ request, params }: ActionFunctionArgs)
  * the server a delivery slot. The server-side claim makes this a no-op when a
  * run is active or the head was already claimed; an idle session with queued
  * items gets its head delivered exactly once.
+ *
+ * The attempt runs IMMEDIATELY rather than arming the usual settle timer. This
+ * is the recovery path, and the failure it recovers from is a lost timer — a
+ * long-lived `--hot` dev server whose `setTimeout` callbacks stop firing leaves
+ * `scheduleQueueDelivery` scheduling into the void, so a nudge that merely
+ * re-armed another timer would fail exactly like the delivery it was meant to
+ * rescue. The 500ms settle exists to let omp's own turn-end bookkeeping finish;
+ * by the time a client nudges, that window has long passed.
+ *
+ * The response carries the CANONICAL queue, so a client polling this as a
+ * safety net gets its panel reconciled in the same round trip.
  */
 export async function nudgeQueueDelivery({ request, params }: ActionFunctionArgs) {
   const sessionId = requireParam(params, 'sessionId');
@@ -115,7 +126,9 @@ export async function nudgeQueueDelivery({ request, params }: ActionFunctionArgs
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, { status: 405 });
 
   const session = getRpcSession(sessionId);
-  if (!session?.isAlive()) return json({ success: true, delivered: false, reason: 'session-not-live' });
-  scheduleQueueDelivery(session);
-  return json({ success: true });
+  if (!session?.isAlive()) {
+    return json({ success: true, delivered: false, reason: 'session-not-live', queue: await listQueue(sessionId) });
+  }
+  const delivered = await deliverQueueNow(session);
+  return json({ success: true, delivered, queue: await listQueue(sessionId) });
 }

@@ -30,10 +30,11 @@ import type { QueueDeliveryHost } from '@/server/lib/queue/delivery.server';
 const queue = new Map<string, QueuedMessage[]>();
 
 mock.module('@/server/lib/queue/store.server', () => ({
-  claimHeadQueueItem: (sessionId: string): QueuedMessage | null => {
+  claimHeadQueueItem: async (sessionId: string): Promise<QueuedMessage | null> => {
     const items = queue.get(sessionId);
     return items?.shift() ?? null;
   },
+  hasQueuedItem: async (sessionId: string): Promise<boolean> => (queue.get(sessionId)?.length ?? 0) > 0,
   requeueHeadQueueItem: async (sessionId: string, item: QueuedMessage): Promise<void> => {
     const items = queue.get(sessionId) ?? [];
     items.unshift(item);
@@ -41,7 +42,7 @@ mock.module('@/server/lib/queue/store.server', () => ({
   },
 }));
 
-const { scheduleQueueDelivery } = await import('@/server/lib/queue/delivery.server');
+const { scheduleQueueDelivery, deliverQueueNow } = await import('@/server/lib/queue/delivery.server');
 
 const MODEL = { provider: 'kenari', modelId: 'deepseek-v4-pro', thinkingLevel: 'max', accessMode: 'yolo' as const };
 
@@ -141,6 +142,63 @@ describe('queue delivery', () => {
     expect(queue.get(sessionId)?.length).toBe(1);
   });
 
+  // The regression this file exists for: a delivery that finds the session busy
+  // at its tick used to return and stay returned. The run-end that scheduled it
+  // is the LAST trigger that run produces, so nothing re-armed it — the queue
+  // stalled with no error, and even a manual nudge could not recover it because
+  // `scheduleQueueDelivery` early-returns while a fresh entry sits in the map.
+  test('a delivery that finds the session busy retries until it goes idle', async () => {
+    queue.set(sessionId, [queueItem('held then sent')]);
+    const { host, sent } = makeHost(sessionId);
+    let busy = true;
+    host.isBusy = () => busy;
+
+    scheduleQueueDelivery(host);
+    jest.advanceTimersByTime(600);
+    await flush();
+
+    // Held at the first tick — the item must survive untouched.
+    expect(sent).toEqual([]);
+    expect(queue.get(sessionId)?.length).toBe(1);
+
+    // Still busy across several retry intervals: the item must not be lost.
+    jest.advanceTimersByTime(6_000);
+    await flush();
+    expect(sent).toEqual([]);
+    expect(queue.get(sessionId)?.length).toBe(1);
+
+    // The session frees up on its own (the subagent finished, the dialog was
+    // answered). No new agent_end arrives; the retry is the only thing that can
+    // deliver it.
+    busy = false;
+    jest.advanceTimersByTime(2_000);
+    await flush();
+
+    expect(sent.filter((c) => c.type === 'prompt').length).toBe(1);
+    expect(queue.get(sessionId)).toEqual([]);
+  });
+
+  test('a retry stops arming once the queue has emptied elsewhere', async () => {
+    queue.set(sessionId, [queueItem('taken by another tab')]);
+    const { host, sent } = makeHost(sessionId);
+    host.isBusy = () => true;
+
+    scheduleQueueDelivery(host);
+    jest.advanceTimersByTime(600);
+    await flush();
+
+    // Another tab claimed it while this session was busy.
+    queue.set(sessionId, []);
+    jest.advanceTimersByTime(2_000);
+    await flush();
+
+    // No poll loop is left behind: the host is never asked to deliver again.
+    const probesAfterEmpty = sent.length;
+    jest.advanceTimersByTime(60_000);
+    await flush();
+    expect(sent.length).toBe(probesAfterEmpty);
+  });
+
   test('a failed dispatch returns the item to the head', async () => {
     queue.set(sessionId, [queueItem('retry me')]);
     const { host } = makeHost(sessionId);
@@ -153,6 +211,31 @@ describe('queue delivery', () => {
     await flush();
 
     expect(queue.get(sessionId)?.map((i) => i.text)).toEqual(['retry me']);
+  });
+
+  // A failed dispatch re-arms, so a transient RPC failure drains on its own
+  // rather than waiting for a run end that may never come.
+  test('a failed dispatch retries and delivers once the send recovers', async () => {
+    queue.set(sessionId, [queueItem('transient')]);
+    const { host, sent } = makeHost(sessionId);
+    let failing = true;
+    host.send = async (command) => {
+      if (failing) throw new Error('rpc down');
+      sent.push(command);
+      return {};
+    };
+
+    scheduleQueueDelivery(host);
+    jest.advanceTimersByTime(600);
+    await flush();
+    expect(sent).toEqual([]);
+
+    failing = false;
+    jest.advanceTimersByTime(2_000);
+    await flush();
+
+    expect(sent.filter((c) => c.type === 'prompt').length).toBe(1);
+    expect(queue.get(sessionId)).toEqual([]);
   });
 
   test('repeated triggers deliver the head exactly once', async () => {
@@ -224,6 +307,46 @@ describe('queue delivery', () => {
     await flush();
 
     expect(sent).toEqual([{ type: 'prompt', message: 'no payload' }]);
+  });
+
+  // The nudge is the RECOVERY path, so it must not itself depend on the
+  // mechanism it recovers from. A long-lived `--hot` dev server can stop firing
+  // `setTimeout` callbacks entirely; a nudge that merely re-armed the settle
+  // timer would fail exactly like the delivery it was meant to rescue. Here no
+  // timer is ever advanced — the delivery must complete synchronously.
+  test('a nudge delivers immediately without waiting on any timer', async () => {
+    queue.set(sessionId, [queueItem('nudged')]);
+    const { host, sent } = makeHost(sessionId);
+
+    const delivered = await deliverQueueNow(host);
+    await flush();
+
+    // The boolean is the client poll's stop signal: it is how the page knows a
+    // tick actually sent something rather than finding nothing to do.
+    expect(delivered).toBe(true);
+    expect(sent.filter((c) => c.type === 'prompt').length).toBe(1);
+    expect(queue.get(sessionId)).toEqual([]);
+  });
+
+  test('a nudge on a busy session leaves the item queued and reports no delivery', async () => {
+    queue.set(sessionId, [queueItem('busy nudge')]);
+    const { host, sent } = makeHost(sessionId);
+    host.isBusy = () => true;
+
+    const delivered = await deliverQueueNow(host);
+    await flush();
+
+    expect(delivered).toBe(false);
+    expect(sent).toEqual([]);
+    expect(queue.get(sessionId)?.length).toBe(1);
+  });
+
+  test('a nudge with an empty queue reports no delivery', async () => {
+    const { host } = makeHost(sessionId);
+
+    const delivered = await deliverQueueNow(host);
+
+    expect(delivered).toBe(false);
   });
 
   test('a lost timer delays the queue instead of wedging it', async () => {

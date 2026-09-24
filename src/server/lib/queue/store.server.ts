@@ -19,7 +19,7 @@
  * concurrent nudges. A failed send re-inserts the claimed row at the head.
  */
 
-import { getDb, getDbSync } from '@/server/db.server';
+import { getDb } from '@/server/db.server';
 import { withTransaction } from '@/shared/lib/db/transaction.server';
 import { isApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import type { QueuedMessage, QueuedMessageModel } from '@/shared/types/chat';
@@ -154,11 +154,20 @@ export async function reorderQueue(sessionId: string, orderedIds: string[]): Pro
  * Atomically claim the head for delivery: read + delete inside one
  * transaction, so a concurrent claimant (second tab, reload nudge racing a
  * run end) can never observe — and send — the same item twice. Null when the
- * queue is empty. Synchronous by construction: `bun:sqlite` is sync, so the
- * BEGIN…COMMIT block cannot interleave with another request.
+ * queue is empty.
+ *
+ * Uses the ASYNC `getDb()` handle rather than `getDbSync()`, even though the
+ * transaction block itself is synchronous (`bun:sqlite` is sync, so BEGIN…COMMIT
+ * cannot interleave with another request and the atomicity above is unaffected
+ * by the await before it). `getDbSync()` throws when its module-local resolved
+ * handle is unset, which a `bun --hot` reload of `db.server.ts` does until some
+ * other request calls `getDb()` — and the delivery path runs from a timer, so
+ * nothing else necessarily would. That throw was swallowed by a fire-and-forget
+ * call and stranded the queue silently, with nudges failing the same way.
+ * `getDb()` re-initializes instead, so a delivery heals the state it needs.
  */
-export function claimHeadQueueItem(sessionId: string): QueuedMessage | null {
-  const db = getDbSync();
+export async function claimHeadQueueItem(sessionId: string): Promise<QueuedMessage | null> {
+  const db = await getDb();
   return withTransaction(db, () => {
     const row = db.raw
       .query('SELECT * FROM queued_messages WHERE session_id = ? ORDER BY position ASC LIMIT 1')
@@ -167,6 +176,22 @@ export function claimHeadQueueItem(sessionId: string): QueuedMessage | null {
     db.raw.run('DELETE FROM queued_messages WHERE id = ?', [row.id]);
     return rowToQueuedMessage(row);
   });
+}
+
+/**
+ * Whether this session has anything queued, without claiming it.
+ *
+ * Used by the delivery retry to decide whether a retry is still worth arming:
+ * a busy session whose queue emptied (delivered elsewhere, or deleted by the
+ * user) must not leave a poll loop running. Async for the same reason the claim
+ * is — `getDb()` heals a hot-reloaded module where `getDbSync()` would throw.
+ */
+export async function hasQueuedItem(sessionId: string): Promise<boolean> {
+  const db = await getDb();
+  const row = db.raw
+    .query('SELECT 1 AS present FROM queued_messages WHERE session_id = ? LIMIT 1')
+    .get(sessionId) as { present?: number } | undefined;
+  return row?.present === 1;
 }
 
 /**
