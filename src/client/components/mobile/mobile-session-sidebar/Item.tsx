@@ -1,5 +1,5 @@
 import { useRef, useState } from 'preact/hooks';
-import { ChevronDown, ChevronRight, GitBranch, MessageSquare, MoreHorizontal } from 'lucide-preact';
+import { ChevronDown, ChevronRight, GitBranch, MessageSquare, MoreHorizontal, Plus } from 'lucide-preact';
 import { MobileSessionRow } from '@/client/components/mobile/mobile-session-sidebar/SessionRow';
 import { WorkspaceOptionsMenu } from '@/client/components/common/workspace-options-menu';
 import { useShowMore } from '@/client/hooks/ui/show-more';
@@ -14,6 +14,7 @@ interface MobileSessionCategoryProps {
   folder: WorkspaceFolderData;
   activeSessionId: number | string | null;
   onSelectSession: (id: number | string) => void;
+  onNewSessionForFolder: (folderId: number) => void;
   isExpanded: boolean;
   onToggleExpand: () => void;
   showArchived?: boolean;
@@ -24,6 +25,7 @@ export function MobileSessionCategory({
   folder,
   activeSessionId,
   onSelectSession,
+  onNewSessionForFolder,
   isExpanded,
   onToggleExpand,
   showArchived = false,
@@ -103,6 +105,19 @@ export function MobileSessionCategory({
           {folder.project_path && (
             <GitBranch size={13} className="text-ink/50 ml-1" />
           )}
+
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onNewSessionForFolder(folder.id);
+            }}
+            className="p-1.5 rounded-lg hover:bg-ink/10 active:bg-ink/15 text-ink/60 hover:text-ink"
+            title="New Session"
+            aria-label={`New session in ${folder.name}`}
+          >
+            <Plus size={15} />
+          </button>
 
           <div className="relative flex items-center" ref={menuRef} onClick={(event) => event.stopPropagation()}>
             <button

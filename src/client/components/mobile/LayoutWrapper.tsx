@@ -118,6 +118,21 @@ export function MobileLayoutWrapper({ onDesktopToggle, appSettings = {} }: Mobil
     setCurrentScreen('main');
   };
 
+  // Desktop parity: the `+` on a workspace header creates the pending session
+  // INSIDE that folder, so the prewarmed cwd and the eventual spawn cwd are the
+  // folder's — not whatever the active session resolved to.
+  const handleNewSessionForFolder = (targetFolderId: number) => {
+    const cwd = spawnCwdForNewSession(folders, sessionParam, targetFolderId);
+    if (cwd) triggerSessionPrewarm(cwd);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('sessionId', `new-${Date.now()}`);
+      next.set('folderId', targetFolderId.toString());
+      return next;
+    }, { replace: true });
+    setCurrentScreen('main');
+  };
+
   const handleCreateFolder = async (input: { name: string; path?: string }) => {
     const res = await fetch('/api/folders', {
       method: 'POST',
@@ -162,6 +177,7 @@ export function MobileLayoutWrapper({ onDesktopToggle, appSettings = {} }: Mobil
           activeSessionId={sessionId}
           onSelectSession={handleSelectSession}
           onNewSession={handleNewSession}
+          onNewSessionForFolder={handleNewSessionForFolder}
           onCreateFolder={handleCreateFolder}
           onClose={() => setCurrentScreen('main')}
           onDesktopToggle={onDesktopToggle}

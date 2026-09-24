@@ -16,6 +16,7 @@ interface MobileSessionSidebarProps {
   activeSessionId: number | string | null;
   onSelectSession: (id: number | string) => void;
   onNewSession: () => void;
+  onNewSessionForFolder: (folderId: number) => void;
   onCreateFolder: (input: { name: string; path?: string }) => Promise<void> | void;
   onClose: () => void;
   onDesktopToggle?: () => void;
@@ -26,6 +27,7 @@ export function MobileSessionSidebar({
   activeSessionId,
   onSelectSession,
   onNewSession,
+  onNewSessionForFolder,
   onCreateFolder,
   onClose,
   onDesktopToggle,
@@ -96,6 +98,13 @@ export function MobileSessionSidebar({
     onClose();
   };
 
+  // Same dismissal as the toolbar's New Session: the pending session is opened
+  // behind the drawer, so the user must land on the chat, not on the list.
+  const handleNewSessionForFolderAndClose = (folderId: number) => {
+    onNewSessionForFolder(folderId);
+    onClose();
+  };
+
   const handleToggleArchived = () => {
     setShowArchived(!showArchived);
     setOptionsOpen(false);
@@ -136,6 +145,7 @@ export function MobileSessionSidebar({
           isScrolling={isScrolling}
           onScroll={handleScroll}
           onSelectSession={handleSelectSession}
+          onNewSessionForFolder={handleNewSessionForFolderAndClose}
           onToggleFolder={toggleFolder}
         />
       )}

@@ -11,6 +11,7 @@ interface MobileSessionListProps {
   isScrolling: boolean;
   onScroll: () => void;
   onSelectSession: (id: number | string) => void;
+  onNewSessionForFolder: (folderId: number) => void;
   onToggleFolder: (folderId: number) => void;
 }
 
@@ -23,6 +24,7 @@ export function MobileSessionList({
   isScrolling,
   onScroll,
   onSelectSession,
+  onNewSessionForFolder,
   onToggleFolder,
 }: MobileSessionListProps) {
   return (
@@ -41,6 +43,7 @@ export function MobileSessionList({
             folder={folder}
             activeSessionId={activeSessionId}
             onSelectSession={onSelectSession}
+            onNewSessionForFolder={onNewSessionForFolder}
             isExpanded={expandedFolders[folder.id] ?? true}
             onToggleExpand={() => onToggleFolder(folder.id)}
             showArchived={showArchived}
