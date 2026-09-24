@@ -22,7 +22,7 @@ import { isValidSessionSortOption, sortFolders } from '@/shared/lib/workspace/si
 import { loadOmpSidebarData } from '@/server/lib/omp/session/reader';
 import { sessionHasSubagents } from '@/server/lib/omp/session/subagent-presence';
 import { healStaleStreamStatuses, loadStreamStatuses } from '@/shared/lib/omp/session/stream-state.server';
-import { getAwaitingInputSessionIds, getRunningRpcSessionIds } from '@/server/lib/omp/rpc/session-registry';
+import { getAwaitingInputSessionIds } from '@/server/lib/omp/rpc/session-registry';
 import type { SessionItemData, SessionSortOption, WorkspaceFolderData } from '@/shared/types';
 import type { OmpSession } from '@/shared/types/omp/session';
 
@@ -110,17 +110,22 @@ export async function loadSidebarData(): Promise<SessionListPayload> {
   const sidebarSort = await serverSidebarSort();
 
   // Live stream status per session (spinner / one-shot done badge), written by
-  // the RPC manager on agent_start/agent_end and by the abort command. `stream`
-  // rows whose session is no longer running are stale (restart mid-run) and heal to
-  // `finish` right here — the authoritative status travels with the same
-  // fetch that refreshes the sidebar list.
+  // the RPC manager on agent_start/agent_end and by the abort command. A
+  // `stream` row whose owning chamber process is gone is stale (that process
+  // exited mid-run) and heals to `finish` right here — the authoritative status
+  // travels with the same fetch that refreshes the sidebar list.
   const streamStatuses: Record<string, 'stream' | 'finish' | 'abort'> = {};
   // Sessions blocked on a dialog nobody has answered yet. Read live from the
   // process registry (never persisted): the child that owns the question is the
   // same thing that owns the flag, so a restart cannot leave a stale badge.
   const awaitingInput = new Set<string>();
   if (!mock) {
-    await healStaleStreamStatuses(new Set(getRunningRpcSessionIds()));
+    // The database is shared by every chamber instance on the machine, so a
+    // `stream` row may belong to a process this one cannot see. Ownership is
+    // read from the row itself (its `owner_pid`) against OS liveness — never
+    // against this process's own runtime registry, which would make two
+    // instances report different statuses for the same run.
+    await healStaleStreamStatuses();
     Object.assign(streamStatuses, await loadStreamStatuses());
     for (const id of getAwaitingInputSessionIds()) awaitingInput.add(id);
   }

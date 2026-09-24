@@ -15,6 +15,7 @@ import type { DbClient } from '@/server/lib/db/client';
 import { migrateQueueTableFk } from '@/server/lib/queue/schema-migration.server';
 import { ensureBtwSchema } from '@/server/lib/btw/schema.server';
 import { migrateWorkspaceFolderColumns } from '@/shared/lib/workspace/schema-migrations';
+import { migrateSessionStreamStateColumns } from '@/shared/lib/omp/session/schema-migrations';
 
 export async function initSchema(db: DbClient): Promise<void> {
   await db.exec(`
@@ -84,6 +85,7 @@ export async function initSchema(db: DbClient): Promise<void> {
     CREATE TABLE IF NOT EXISTS session_stream_state (
       session_id TEXT PRIMARY KEY,
       status TEXT NOT NULL,
+      owner_pid INTEGER,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
@@ -92,6 +94,8 @@ export async function initSchema(db: DbClient): Promise<void> {
   // Installs older `queued_messages` schemas carry an invalid FK (see the
   // migration module); rebuild once so real-session queue inserts work.
   await migrateQueueTableFk(db);
+  // `owner_pid` arrived after `session_stream_state` shipped; see the migration.
+  await migrateSessionStreamStateColumns(db);
   // Side-question tables live in their own module (see schema.server.ts).
   await ensureBtwSchema(db);
 
