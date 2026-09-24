@@ -5,6 +5,17 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1](https://github.com/rajebdev/ompchamber/compare/v2.0.0...v2.0.1) — 2026-09-24
+
+### Changed
+
+* document the bot contract and the contribution policy ([49d08d4](https://github.com/rajebdev/ompchamber/commit/49d08d4903726508e70bc9f716341300dc13cc80))
+
+### Fixed
+
+* **diff-panel:** size the panel from its caller so the diff is not clipped ([56deb5a](https://github.com/rajebdev/ompchamber/commit/56deb5ac3557597f8f8404aa40dc3572587519ca))
+* **editor:** keep a file's own line endings when the editor saves it ([a35804e](https://github.com/rajebdev/ompchamber/commit/a35804ebc028ec40200f88f370ce47011ff73231))
+
 ## [2.0.0](https://github.com/rajebdev/ompchamber/compare/v1.2.1...v2.0.0) — 2026-09-24
 
 ### BREAKING CHANGES
