@@ -139,8 +139,8 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
         // A settled run is the moment a session becomes nameable: omp's own
         // first-message titling is suppressed under `--mode rpc-ui`
         // (PI_NO_TITLE), so the chamber asks for the same title itself. The
-        // trigger is a no-op once the session carries a name — see
-        // triggerAutoSessionTitle for why that check is the safety property.
+        // trigger is one-shot per conversation — see triggerAutoSessionTitle
+        // for why a later turn must never re-ask.
         if (!aborted) void triggerAutoSessionTitle(host);
         // The run truly ended — the server, not the browser, decides whether a
         // queued follow-up goes out next. A user-aborted run holds the queue

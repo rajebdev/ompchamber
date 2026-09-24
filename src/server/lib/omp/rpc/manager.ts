@@ -71,6 +71,11 @@ export class AgentSessionWrapper {
   // another (queue delivery, a second prompt), and two overlapping generations
   // would race to write the same title slot.
   autoTitleInFlight = false;
+  // One-shot: the FIRST settled run of this conversation is the only moment the
+  // chamber may ask omp to name it. Seeded in applyIdentity from omp's own
+  // message count, so a session reclaimed and respawned with `--resume` (which
+  // reports the messages it restored) never re-titles from its newest turn.
+  autoTitlePending = true;
   // Epoch ms until which `command_output` frames belong to our own background
   // rename and must not reach the timeline. 0 when nothing is outstanding.
   autoTitleWindowUntil = 0;
@@ -162,6 +167,12 @@ export class AgentSessionWrapper {
     this.streaming = state.isStreaming;
     this.compacting = state.isCompacting;
     this.fastModeEnabled = state.fastModeEnabled ?? state.fastMode ?? this.fastModeEnabled;
+    // omp reports the messages it restored, so a child spawned for an EXISTING
+    // conversation (a `--resume` after the idle reclaim, or a session opened
+    // from the sidebar) already has a first turn behind it — it must never be
+    // titled from whatever the operator asks next. Only a conversation with no
+    // messages at all is eligible, which is exactly the fresh-spawn case.
+    this.autoTitlePending = state.messageCount === 0;
   }
 
   handleProcessExit(stderrTail: string): void {

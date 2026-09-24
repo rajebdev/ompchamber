@@ -24,14 +24,24 @@
  * `setSessionName(title, "user")`. omp's own guard only refuses an `"auto"`
  * write over a `"user"` title, so a `/rename` fired against an already-named
  * session would overwrite the operator's own name. The unnamed check below is
- * therefore the safety property, not a nicety — it is re-read from `get_state`
+ * therefore a safety property, not a nicety — it is re-read from `get_state`
  * on every attempt rather than cached, so a rename made in another tab is
  * respected.
  *
- * Firing after every settled run (not just the first) mirrors omp: a session
- * whose opening message was a bare greeting stays unnamed, and the next real
- * message titles it. The low-signal filter on omp's side returns no title for
- * such input, so the retry costs one tiny-model call and nothing else.
+ * ONE ATTEMPT PER CONVERSATION. The title is generated from the FIRST settled
+ * run and never re-asked. omp's `/rename` derives its title from the newest
+ * turns (and `generateRenameTitle` reserves a fresh title revision, which
+ * cancels any generation still in flight), so a second attempt after turn two
+ * would name the session after whatever the conversation had become by then —
+ * and could even discard a slow first generation. The wrapper's
+ * `autoTitlePending` latch is what enforces that: it is seeded from omp's own
+ * message count when a child is spawned, so a resumed session is ineligible
+ * from the start, and consumed by the first terminal run.
+ *
+ * A first message that omp's low-signal filter rejects ("hi") therefore leaves
+ * the session unnamed for good, which is the honest outcome: omp's own titler
+ * declines to name such a session too, and a title derived from a later turn
+ * would describe the wrong conversation.
  */
 
 import { readSettingsJson } from '@/server/lib/db/settings-store';
@@ -63,15 +73,20 @@ const GENERATE_TITLE_COMMAND = '/rename';
  */
 const AUTO_TITLE_OUTPUT_WINDOW_MS = 60_000;
 
-/** Wrapper state this module reads and writes. The in-flight flag and the
- *  output window are owned by the caller because they are per-session runtime
- *  state, not policy. */
+/** Wrapper state this module reads and writes. The in-flight flag, the
+ *  output window and the one-shot latch are owned by the caller because they
+ *  are per-session runtime state, not policy. */
 export interface AutoTitleHost {
   sessionId: string;
   autoTitleInFlight: boolean;
   /** Epoch ms until which frames belong to our own background rename; 0 when
    *  no request is outstanding. */
   autoTitleWindowUntil: number;
+  /** True only while this conversation's FIRST user message has yet to
+   *  settle. Seeded from omp's own message count when the child is spawned, so
+   *  it survives an idle reclaim (a `--resume` child reports the messages it
+   *  restored) and is consumed by the first terminal run. */
+  autoTitlePending: boolean;
   proc: {
     sendCommand<T = unknown>(command: { type: string; [key: string]: unknown }, timeoutMs?: number): Promise<T>;
   };
@@ -113,14 +128,30 @@ async function isAutoTitleEnabled(): Promise<boolean> {
 }
 
 /**
- * Generate and persist a session title when the session has none yet.
+ * Generate and persist a session title from the FIRST user message.
  *
- * Called once per settled run. Every bail-out is deliberate: a named session
- * must never be renamed by this path, and a generation already in flight must
- * not be duplicated. Failures are swallowed — an auto-title is a convenience,
- * and the next turn retries.
+ * One-shot per conversation: the latch is consumed synchronously on entry, so
+ * a second message can never re-title a session from its newest turn. That is
+ * the whole point — omp's `/rename` derives its title from the last few turns,
+ * so asking again after turn two names the session after whatever it has since
+ * become, and a slow first generation (~4s) could even lose a race with the
+ * second turn's request.
+ *
+ * The latch is only consumed once a run actually settles. An aborted first
+ * turn is not a settle (the caller skips this path), so the session is still
+ * unnamed and the next completed turn titles it — the first REAL turn, which
+ * is what the conversation's opening intent is at that point.
+ *
+ * Every other bail-out is deliberate: a named session must never be renamed by
+ * this path, and a generation already in flight must not be duplicated.
+ * Failures are swallowed — an auto-title is a convenience, and a session whose
+ * opening message was low-signal ("hi") simply keeps its placeholder, exactly
+ * as omp's own titler declines to name it.
  */
 export async function triggerAutoSessionTitle(host: AutoTitleHost): Promise<void> {
+  if (!host.autoTitlePending) return;
+  // Consumed before the first await: two settles must never both pass the gate.
+  host.autoTitlePending = false;
   if (host.autoTitleInFlight || !host.sessionId) return;
   if (!(await isAutoTitleEnabled())) return;
 

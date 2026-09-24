@@ -33,6 +33,7 @@ function makeHost(options: {
   sessionName?: string;
   sessionId?: string;
   inFlight?: boolean;
+  pending?: boolean;
 }): { host: AutoTitleHost; proc: FakeProc } {
   const proc: FakeProc = {
     commands: [],
@@ -52,6 +53,7 @@ function makeHost(options: {
       sessionId: 'sess-1',
       autoTitleInFlight: options.inFlight ?? false,
       autoTitleWindowUntil: 0,
+      autoTitlePending: options.pending ?? true,
       proc: proc as unknown as AutoTitleHost['proc'],
     },
     proc,
@@ -108,6 +110,42 @@ describe('triggerAutoSessionTitle', () => {
 
     expect(sentRenames(proc)).toHaveLength(0);
     expect(proc.commands).toHaveLength(0);
+  });
+
+  test('titles from the first settled run only', async () => {
+    // The regression this latch exists for: a second turn used to fire its own
+    // `/rename`, and omp derives that title from the NEWEST turns — so the
+    // session ended up named after message two.
+    const { host, proc } = makeHost({});
+    await triggerAutoSessionTitle(host);
+    expect(sentRenames(proc)).toHaveLength(1);
+
+    // Second and third runs settle with the latch already consumed.
+    await triggerAutoSessionTitle(host);
+    await triggerAutoSessionTitle(host);
+
+    expect(sentRenames(proc)).toHaveLength(1);
+  });
+
+  test('skips a conversation that already has a first turn behind it', async () => {
+    // A child resumed for an existing session (`--resume` after the idle
+    // reclaim) reports a non-zero message count, so its next turn must not
+    // name it — the session is either titled already or deliberately unnamed.
+    const { host, proc } = makeHost({ pending: false });
+    await triggerAutoSessionTitle(host);
+
+    expect(sentRenames(proc)).toHaveLength(0);
+    expect(host.autoTitleWindowUntil).toBe(0);
+  });
+
+  test('consumes the latch even when generation is skipped', async () => {
+    // A declined generation must not leave the door open for the next turn:
+    // otherwise a first turn whose title the provider refused gets re-asked
+    // after every later message, which is the same bug one step later.
+    const { host } = makeHost({});
+    await triggerAutoSessionTitle(host);
+
+    expect(host.autoTitlePending).toBe(false);
   });
 });
 

@@ -60,6 +60,33 @@ async function rejectionOf(operation: Promise<unknown>): Promise<WebRpcError> {
   return error as WebRpcError;
 }
 
+/** A process that completes the readiness handshake, so `waitUntilReady`
+ *  reaches the `get_state` probe whose message count seeds the title latch. */
+function makeReadyProc(messageCount: number): RpcProcess {
+  const proc = {
+    isAlive: true,
+    pid: 4243,
+    onFrame() {
+      return () => {};
+    },
+    waitReady() {
+      return Promise.resolve({ type: 'ready' });
+    },
+    negotiateProtocol() {
+      return Promise.resolve(1);
+    },
+    sendCommand(command: { type: string }) {
+      if (command.type === 'get_state') {
+        return Promise.resolve({ sessionId: 'sess-1', sessionFile: '/tmp/s.jsonl', messageCount, isStreaming: false, isCompacting: false });
+      }
+      return Promise.resolve(undefined);
+    },
+    sendFrame() {},
+    async dispose() {},
+  };
+  return proc as unknown as RpcProcess;
+}
+
 describe('AgentSessionWrapper lifecycle', () => {
   // Every command arms the wrapper's idle timer; keep the clock fake so a test
   // never schedules a real ten-minute window.
@@ -134,5 +161,19 @@ describe('AgentSessionWrapper lifecycle', () => {
     await wrapper.send({ type: 'force_reset' });
 
     expect(stub.disposeCount()).toBe(1);
+  });
+
+  test('a fresh conversation is title-eligible, a resumed one is not', async () => {
+    // omp reports the messages it restored, so `messageCount` is the only
+    // signal that separates "this session has no first turn yet" from "this
+    // child resumed a conversation that already has one". Getting it wrong
+    // re-titles an existing session from its newest turn.
+    const fresh = new AgentSessionWrapper(makeReadyProc(0), '/tmp');
+    await fresh.waitUntilReady();
+    expect(fresh.autoTitlePending).toBe(true);
+
+    const resumed = new AgentSessionWrapper(makeReadyProc(2), '/tmp');
+    await resumed.waitUntilReady();
+    expect(resumed.autoTitlePending).toBe(false);
   });
 });
