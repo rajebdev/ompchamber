@@ -1,0 +1,79 @@
+name: pr-intake
+
+# Sizes every pull request and gives the maintainer a first filter: a `size:*` label
+# computed from changed lines, with tests, lockfiles and committed evidence images
+# excluded because they do not cost review time.
+#
+# Nothing here reviews, closes or comments on a pull request beyond the size label.
+# A push to `main` that touches this workflow or the sizing script re-sizes every open
+# pull request, so the rule and its output cannot drift apart.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, edited]
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/pr-intake.yml
+      - .github/scripts/pr-size-label.sh
+      - .github/scripts/ensure-labels.sh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  # One push-triggered sweep at a time, but a new event for the same pull request
+  # supersedes the previous sizing run for it.
+  group: pr-intake-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
+
+jobs:
+  intake:
+    name: size labels
+    if: github.repository == 'rajebdev/ompchamber'
+    runs-on: ubuntu-latest
+    steps:
+      - name: App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+
+      # `pull_request_target` runs with this repository's secrets, so the base is what
+      # is checked out. The pull request head is fetched as passive git data by the
+      # sizing script — never installed, built, tested or executed.
+      - name: Checkout base repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Ensure labels
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash .github/scripts/ensure-labels.sh
+
+      - name: Apply size labels
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          case "$EVENT_NAME" in
+            pull_request_target)
+              prs="$EVENT_PR_NUMBER"
+              ;;
+            *)
+              echo "Sweeping every open pull request."
+              prs="$(gh pr list --state open --limit 200 --json number --jq '.[].number')"
+              ;;
+          esac
+
+          for pr in $prs; do
+            base_sha="$(gh pr view "$pr" --json baseRefOid --jq '.baseRefOid')"
+            bash .github/scripts/pr-size-label.sh "$pr" "$base_sha"
+          done

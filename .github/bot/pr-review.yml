@@ -1,0 +1,34 @@
+# Tool policy for the automated reviewer (`pr-review.yml`).
+#
+# The reviewer is read-only by construction: it cannot edit a file, cannot spawn a
+# helper agent, and cannot run anything except the commands it needs to read GitHub
+# and the base checkout.
+#
+# `approvalMode: yolo` is deliberate. There is no interactive UI on a runner, so a
+# `prompt` decision has nobody to answer it and the call is rejected — which reads
+# to the model as a broken tool rather than a policy. Safety comes from deny-by-name
+# plus the `*` catch-all below instead, and `--tools` in the workflow narrows the
+# surface a second time.
+tools:
+  approvalMode: yolo
+  approval:
+    edit: deny
+    write: deny
+    task: deny
+    eval: deny
+bash:
+  # First match wins, and a compound command is checked segment by segment, so a
+  # `gh pr view … && rm -rf x` cannot ride in on the allowed `gh` prefix.
+  patterns:
+    - match: "gh *"
+      approval: allow
+    - match: "git *"
+      approval: allow
+    - match: "rg *"
+      approval: allow
+    - match: "ls *"
+      approval: allow
+    - match: "cat *"
+      approval: allow
+    - match: "*"
+      approval: deny

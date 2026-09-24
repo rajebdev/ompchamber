@@ -1,0 +1,39 @@
+# Provider catalogue materialized into the runner's private omp profile by
+# `.github/scripts/run-omp-bot.sh` whenever the repository variable `BOT_API_BASEURL`
+# is set (an OpenAI-compatible gateway such as kenari, LiteLLM, or a local proxy).
+#
+# Why this file exists: omp ships no provider for an arbitrary OpenAI-compatible base
+# URL, and a `models.yml` is the only place a provider can be declared. So the bot
+# declares one for the run instead of asking for a provider that omp already knows.
+#
+# `__BASE_URL__` and `__MODEL_ID__` are substituted per run; everything else is fixed.
+#
+# The `apiKey` value is a placeholder on purpose. `--api-key "$BOT_API_KEY"` overrides
+# it — verified against a local OpenAI-compatible stub, where the override won over the
+# file's value — so the real key never lands on the runner's disk. The field itself
+# cannot be dropped: omp refuses to start with no credential at all, even when the
+# override is supplied.
+providers:
+  botgw:
+    baseUrl: __BASE_URL__
+    api: openai-completions
+    apiKey: from-runtime-override
+    models:
+      - id: __MODEL_ID__
+        # Declares the model as reasoning-capable, and it is the only thing that makes
+        # `--thinking` real on this path: without it the flag is accepted by the CLI and
+        # silently dropped — the request leaves with no reasoning field at all. Verified
+        # against a local OpenAI-compatible stub: with this line a `--thinking high` run
+        # arrives as `reasoning_effort: "high"`, without it the field is absent whatever
+        # the flag says. Delete the line only if the gateway rejects that parameter.
+        reasoning: true
+        # Optional, and worth adding only when the gateway accepts a narrower set than
+        # the default (minimal | low | medium | high | xhigh). Schema rules, verified:
+        # `efforts` may never contain `off` — rejected outright as a schema error, since
+        # "off" means "do not request reasoning" and omp instead clamps it up to the
+        # lowest effort you list. `defaultLevel` applies when no --thinking flag is
+        # passed, which the bot never does.
+        # thinking:
+        #   mode: effort
+        #   efforts: [minimal, low, medium, high]
+        #   defaultLevel: high

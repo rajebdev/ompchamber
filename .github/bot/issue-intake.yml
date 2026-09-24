@@ -1,0 +1,35 @@
+# Tool policy for the issue-intake agent (`issue-intake.yml`).
+#
+# Intake reproduces bugs, so it needs to write and run throwaway code — and that is
+# the whole reason it is allowed to write at all: it writes under /tmp, never to a
+# tracked file, and nothing here can push. A reproduction that cannot leave a scratch
+# file is a reproduction that turns into a guess.
+#
+# `bun` and `node` are allowed by name because a repro is usually a script; the `*`
+# catch-all denies everything else, and a compound command is checked segment by
+# segment, so an allowed prefix cannot smuggle a second command through.
+tools:
+  approvalMode: yolo
+  approval:
+    edit: allow
+    write: allow
+    task: deny
+    eval: deny
+bash:
+  patterns:
+    - match: "gh *"
+      approval: allow
+    - match: "git *"
+      approval: allow
+    - match: "bun *"
+      approval: allow
+    - match: "node *"
+      approval: allow
+    - match: "rg *"
+      approval: allow
+    - match: "ls *"
+      approval: allow
+    - match: "cat *"
+      approval: allow
+    - match: "*"
+      approval: deny

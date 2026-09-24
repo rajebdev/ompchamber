@@ -1,0 +1,68 @@
+name: stale
+
+# Open issues and pull requests that nobody is working on add noise to every triage
+# pass, so the list is kept honest on a schedule: 28 days without activity marks the
+# item `stale`, 7 more days with no activity closes it. A comment, a push, or an
+# explicit `pinned` / `security` / `help wanted` label keeps the item alive — the
+# label is the escape hatch for work that is deliberately waiting.
+
+on:
+  schedule:
+    - cron: "30 1 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  stale:
+    name: mark and close stale items
+    if: github.repository == 'rajebdev/ompchamber'
+    runs-on: ubuntu-latest
+    steps:
+      - name: App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+
+      # The `stale` label is owned by .github/scripts/ensure-labels.sh; a scheduled
+      # run must not depend on somebody having created it by hand.
+      - name: Checkout scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Ensure labels
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash .github/scripts/ensure-labels.sh
+
+      - name: Mark and close stale items
+        uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
+        with:
+          repo-token: ${{ steps.app-token.outputs.token }}
+          days-before-stale: 28
+          days-before-close: 7
+          stale-issue-label: stale
+          stale-pr-label: stale
+          stale-issue-message: >
+            This issue has been marked stale because it has had no activity for 28
+            days. It will be closed in 7 days unless something happens here. A comment,
+            a fix, or the `pinned`, `security` or `help wanted` label keeps it open.
+          close-issue-message: >
+            Closed after 7 more days without activity. If this still matters, comment
+            or reopen — a stale close is not a decision about the report.
+          stale-pr-message: >
+            This pull request has been marked stale because it has had no activity for
+            28 days. It will be closed in 7 days unless something happens here. Push an
+            update, reply to the review, or add the `pinned`, `security` or
+            `help wanted` label to keep it open.
+          close-pr-message: >
+            Closed after 7 more days without activity. Reopening is fine if the change
+            becomes relevant again.
+          exempt-issue-labels: "pinned,security,help wanted"
+          exempt-pr-labels: "pinned,security,help wanted"
+          remove-stale-when-updated: true
+          operations-per-run: 100

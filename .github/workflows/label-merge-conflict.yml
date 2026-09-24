@@ -1,0 +1,53 @@
+name: label-merge-conflict
+
+# A conflicted pull request is not reviewable, and GitHub knows which ones conflict —
+# so this workflow only mirrors that answer onto a label, where it is visible in the
+# pull request list instead of buried in the merge box.
+#
+# It is a sweep of every open pull request rather than a handler for the event that
+# conflicted it: one push to `main` can conflict a dozen pull requests at once, and
+# GitHub computes mergeability asynchronously, so asking once for all of them is both
+# simpler and more accurate than trying to predict which event changed the answer.
+
+on:
+  push:
+    branches: [main]
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label:
+    name: sync conflict label
+    if: github.repository == 'rajebdev/ompchamber'
+    runs-on: ubuntu-latest
+    steps:
+      - name: App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+
+      # Only the scripts are needed: this job reads GitHub's mergeability verdict and
+      # never touches pull request code, so nothing from a head branch is checked out.
+      - name: Checkout scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Ensure labels
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash .github/scripts/ensure-labels.sh
+
+      - name: Sync the conflict label
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash .github/scripts/label-merge-conflict.sh

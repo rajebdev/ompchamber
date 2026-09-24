@@ -1,0 +1,118 @@
+name: bot config check
+
+# Answers one question without spending a model call: is this repository's bot
+# configuration wired correctly, and what exactly is missing?
+#
+# It exists because the command surface is a mention (`@<name> help`), and a wrong name
+# fails silently — a mention that matches nothing looks exactly like a bot nobody
+# talked to. The App's own slug is the authority for that name, and this job is the only
+# place that can read it: the installation token knows which bot it belongs to, so the
+# check compares the two and prints the value to set.
+#
+# Run it from the Actions tab or with `gh workflow run bot-config-check.yml`, then read
+# the step summary. Nothing here writes to the repository.
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check:
+    name: configuration
+    if: github.repository == 'rajebdev/ompchamber'
+    runs-on: ubuntu-latest
+    steps:
+      - name: App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+
+      - name: Inspect configuration
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          MENTION: ${{ vars.BOT_MENTION || 'ompchamber-bot' }}
+          MENTION_SOURCE: ${{ vars.BOT_MENTION && 'repository variable BOT_MENTION' || 'built-in default' }}
+          MENTION_VAR_SET: ${{ vars.BOT_MENTION && 'yes' || 'no' }}
+          MENTION_SECRET_SET: ${{ secrets.BOT_MENTION && 'yes' || 'no' }}
+          MENTION_SECRET_VALUE: ${{ secrets.BOT_MENTION }}
+          BOT_MODEL: ${{ vars.BOT_MODEL || secrets.BOT_MODEL }}
+          BOT_API_KEY_SET: ${{ secrets.BOT_API_KEY && 'yes' || 'no' }}
+          BOT_API_BASEURL: ${{ vars.BOT_API_BASEURL || secrets.BOT_API_BASEURL }}
+          BOT_API_KEY_ENV: ${{ vars.BOT_API_KEY_ENV || secrets.BOT_API_KEY_ENV }}
+        run: |
+          # The installation token identifies its own bot, which is the name users must
+          # type. `login` is `"<slug>[bot]"`.
+          bot_login="$(gh api user --jq '.login')"
+          bot_slug="${bot_login%\[bot\]}"
+
+          repos="$(gh api /installation/repositories --jq '.total_count' 2>/dev/null || echo unknown)"
+
+          {
+            echo "### Bot configuration"
+            echo
+            echo "- app credentials: working (token minted, login \`${bot_login}\`, ${repos} repository/repositories visible to the installation)"
+            echo "- command mention in use: \`@${MENTION}\` (from ${MENTION_SOURCE})"
+            echo "- model: \`${BOT_MODEL:-<unset>}\`"
+            echo "- provider key: \`${BOT_API_KEY_SET}\`"
+            echo "- provider mode: \`$(if [ -n "$BOT_API_BASEURL" ]; then echo "openai-compatible gateway ${BOT_API_BASEURL}"; elif [ -n "$BOT_API_KEY_ENV" ]; then echo "built-in provider via ${BOT_API_KEY_ENV}"; else echo "<unset: set BOT_API_BASEURL or BOT_API_KEY_ENV>"; fi)\`"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          problems=0
+
+          # A job condition (`jobs.<id>.if`) may only read `github`, `needs`, `vars` and
+          # `inputs` — never `secrets` — and every command trigger lives in a job
+          # condition, so a `BOT_MENTION` stored as a secret is ignored. Whether that
+          # matters depends on what the ignored value says: identical to the name the
+          # workflows already use, it is only clutter; different, it is a trap, because
+          # the maintainer believes a name the bot does not answer to.
+          if [ "$MENTION_VAR_SET" != "yes" ] && [ "$MENTION_SECRET_SET" = "yes" ]; then
+            if [ "$MENTION_SECRET_VALUE" = "$MENTION" ]; then
+              echo "- note: a secret \`BOT_MENTION\` holds the same name the workflows already use (\`@${MENTION}\`). Job conditions cannot read secrets, so it is ignored — harmless, but better moved to Variables or deleted." >> "$GITHUB_STEP_SUMMARY"
+            else
+              problems=$((problems + 1))
+              {
+                echo "### BOT_MENTION is stored as a secret, where it cannot be read"
+                echo
+                echo "A secret named \`BOT_MENTION\` exists with a value the workflows never see: a job condition can only read repository **variables**, so the bot answers to \`@${MENTION}\` instead. A comment mentioning the name held in that secret triggers nothing, and nothing reports an error — it looks like nobody talked to the bot."
+                echo
+                echo "Fix: Settings → Secrets and variables → Actions → **Variables** → New repository variable, name \`BOT_MENTION\`, value \`${bot_slug}\` — then delete the secret."
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+
+          if [ "$MENTION" != "$bot_slug" ]; then
+            problems=$((problems + 1))
+            {
+              echo "### Mention mismatch"
+              echo
+              echo "The workflows answer \`@${MENTION} <command>\`, but this App's own slug is \`${bot_slug}\`."
+              echo "Either set the repository variable \`BOT_MENTION\` to \`${bot_slug}\`, or rename the App to \`${MENTION}\`."
+              echo "Until then a comment mentioning \`@${MENTION}\` triggers nothing, and one mentioning \`@${bot_slug}\` is ignored."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ -z "$BOT_MODEL" ]; then
+            problems=$((problems + 1))
+            echo "- \`BOT_MODEL\` is unset: every agent run fails before reaching a model." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ "$BOT_API_KEY_SET" != "yes" ]; then
+            problems=$((problems + 1))
+            echo "- \`BOT_API_KEY\` is unset: the agent has no provider credential." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ -z "$BOT_API_BASEURL" ] && [ -z "$BOT_API_KEY_ENV" ]; then
+            problems=$((problems + 1))
+            echo "- Neither \`BOT_API_BASEURL\` nor \`BOT_API_KEY_ENV\` is set: the runner cannot choose a provider mode." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ "$problems" -eq 0 ]; then
+            echo "- all checks passed; a mention of \`@${bot_slug}\` will reach the bot" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::${problems} configuration problem(s); see the step summary."
+            exit 1
+          fi

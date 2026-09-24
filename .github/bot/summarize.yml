@@ -1,0 +1,26 @@
+# Tool policy for the discussion summarizer (`bot-summarize.yml`).
+#
+# Summarizing is a read of the timeline plus one comment: no edits, no scratch files,
+# no reproduction. The narrower policy is the point — this agent has no reason to run
+# a project script, so it cannot.
+tools:
+  approvalMode: yolo
+  approval:
+    edit: deny
+    write: deny
+    task: deny
+    eval: deny
+bash:
+  patterns:
+    - match: "gh *"
+      approval: allow
+    - match: "git *"
+      approval: allow
+    - match: "rg *"
+      approval: allow
+    - match: "ls *"
+      approval: allow
+    - match: "cat *"
+      approval: allow
+    - match: "*"
+      approval: deny
