@@ -66,15 +66,19 @@ export class AgentSessionWrapper {
   // set in initialize(). No other flag on this wrapper can see them, and an
   // idle reclaim or a spawn-mode reconcile must never kill a running subagent.
   private readonly subagents = new SubagentLiveness();
-  // One background `/rename` at a time. A settled run may be followed by
-  // another (queue delivery, a second prompt), and two overlapping generations
-  // would race to write the same title slot.
+  // One background `/rename` at a time. The first run makes up to two attempts
+  // (the early one at the first user message, the fallback at run end), and two
+  // overlapping generations would race to write the same title slot.
   autoTitleInFlight = false;
-  // One-shot: the FIRST settled run of this conversation is the only moment the
-  // chamber may ask omp to name it. Seeded in applyIdentity from omp's own
-  // message count, so a session reclaimed and respawned with `--resume` (which
-  // reports the messages it restored) never re-titles from its newest turn.
+  // One-shot: the FIRST run of this conversation is the only one the chamber
+  // may ask omp to name it from. Seeded in applyIdentity from omp's own message
+  // count, so a session reclaimed and respawned with `--resume` (which reports
+  // the messages it restored) never re-titles from its newest turn.
   autoTitlePending = true;
+  // True once this run's early attempt (the first settled user message) has
+  // been made. Reset at each `agent_start`, so a queued steer message inside the
+  // same run cannot re-ask and cancel the generation already in flight.
+  autoTitleRequested = false;
   // Epoch ms until which `command_output` frames belong to our own background
   // rename and must not reach the timeline. 0 when nothing is outstanding.
   autoTitleWindowUntil = 0;

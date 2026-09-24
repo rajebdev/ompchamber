@@ -20,7 +20,7 @@ const OPTIONS: Array<{
     badge: 'Default',
     icon: Sparkles,
     description:
-      'After the first run settles, the session is named from the conversation using omp\'s own tiny title model. Sessions stop showing "New Session - <timestamp>" in the sidebar.',
+      'As soon as your first message lands, the session is named from it using omp\'s own tiny title model — retried once when the run ends if that first attempt came back empty. Sessions stop showing "New Session - <timestamp>" in the sidebar.',
     note: 'One small model call per session',
   },
   {

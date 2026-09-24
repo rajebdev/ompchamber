@@ -95,6 +95,11 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
       host.awaitingAgentStart = false;
       host.awaitingAgentStartDeadline = 0;
       host.continuationGraceUntil = 0;
+      // One early auto-title attempt per run, not per conversation: the flag is
+      // reset here so a run that opens after an aborted one (which skipped the
+      // settle attempt) still gets its own early try. The eligibility latch is
+      // what bounds this to the conversation's first run.
+      host.autoTitleRequested = false;
       clearSessionFileCaches();
       if (host.sessionId) void markStreamStatus(host.sessionId, 'stream');
       break;
@@ -110,6 +115,28 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
       // status sits there (upsert overwrites any terminal badge).
       if (host.sessionId) void markStreamStatus(host.sessionId, 'stream');
       break;
+    case 'message_end': {
+      // A settled USER message is the earliest point at which the transcript
+      // carries the conversation's opening intent, so it is the earliest a
+      // title can be derived from it.
+      //
+      // `agent_start` is too early, and that is not an implementation detail
+      // but a property of omp's event order: the agent loop pushes
+      // `agent_start` BEFORE the turn opens, and the user's message rides
+      // `emitInputMessages` inside that turn. Measured on omp 18.3.0: the
+      // user message lands ~120ms after `agent_start`, so a `/rename` fired
+      // there reads `messageCount: 0`, builds an empty title context, and omp
+      // answers "Could not generate a session title". `message_start` is
+      // equally too early — the message is appended to the agent's state on
+      // `message_end`, so only here does `get_state` report it.
+      //
+      // The latch makes a later user message (a queued steer) a no-op, and a
+      // session that resumed an existing conversation is ineligible from the
+      // start. `agent_end` below retries if this attempt produced nothing.
+      const message = event.message as Record<string, unknown> | undefined;
+      if (message?.role === 'user') void triggerAutoSessionTitle(host, 'opening');
+      break;
+    }
     // `turn_end` is deliberately NOT handled here: a multi-turn run emits it for
     // EVERY turn (verified against omp 18.2.8: agent_start → turn_start →
     // turn_end('toolUse') → turn_start → turn_end('stop') → agent_end) and the
@@ -126,12 +153,15 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
         clearSessionFileCaches();
         const aborted = endedAborted(event.messages);
         if (host.sessionId) void markEndStatus(host.sessionId, event.messages);
-        // A settled run is the moment a session becomes nameable: omp's own
-        // first-message titling is suppressed under `--mode rpc-ui`
-        // (PI_NO_TITLE), so the chamber asks for the same title itself. The
-        // trigger is one-shot per conversation — see triggerAutoSessionTitle
-        // for why a later turn must never re-ask.
-        if (!aborted) void triggerAutoSessionTitle(host);
+        // Fallback for the early attempt: the first user message fires `/rename`
+        // before the turn runs, and that attempt can come back empty (a provider
+        // error, a timeout, a child that went away, or the tiny model
+        // declining). The run end is the last moment a title can still be
+        // derived from this conversation's OPENING turn, so retry here.
+        //
+        // An aborted run still skips: the operator stopped the turn, and the
+        // next completed run is a better moment than a half-run transcript.
+        if (!aborted) void triggerAutoSessionTitle(host, 'settle');
         // The run truly ended — the server, not the browser, decides whether a
         // queued follow-up goes out next. A user-aborted run holds the queue
         // (stop-all semantics): the next run end or an explicit send picks it up.
@@ -154,8 +184,8 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
       break;
     case 'command_output':
       // A `command_output` for a command the OPERATOR typed renders as a notice
-      // row. But the chamber fires its own `/rename` after a settled run, and
-      // omp answers it on the same frame — "Session renamed to …", or "Could not
+      // row. But the chamber fires its own `/rename` in the background, and omp
+      // answers it on the same frame — "Session renamed to …", or "Could not
       // generate a session title" for a low-signal first message. Neither was
       // asked for, and the second would be pure noise. The frame carries no
       // correlation id, so attribution is by the request window.

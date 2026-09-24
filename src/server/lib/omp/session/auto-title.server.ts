@@ -15,10 +15,12 @@
  *
  * The generate path itself is NOT gated: `/rename` with no args reaches
  * `session.generateTitle()` through `executeAcpBuiltinSlashCommand`, which
- * rpc-mode dispatches for a `prompt` frame before any turn starts. Verified
- * against omp 18.2.10 — the ack returns `{agentInvoked:false}` immediately, the
- * generation lands ~4s later as `session_info_update` + `command_output`, and
- * no entry is written to the transcript.
+ * rpc-mode dispatches for a `prompt` frame BEFORE that frame is forwarded as a
+ * turn — so the request can be sent at any point in a run and never becomes
+ * part of the conversation. Verified against omp 18.3.0 — the ack returns
+ * `{agentInvoked:false}` immediately, the generation lands ~3-4s later as
+ * `session_info_update` + `command_output`, and no entry is written to the
+ * transcript.
  *
  * WHY THE NAME MUST BE EMPTY FIRST: `/rename` persists through
  * `setSessionName(title, "user")`. omp's own guard only refuses an `"auto"`
@@ -28,20 +30,36 @@
  * on every attempt rather than cached, so a rename made in another tab is
  * respected.
  *
- * ONE ATTEMPT PER CONVERSATION. The title is generated from the FIRST settled
- * run and never re-asked. omp's `/rename` derives its title from the newest
- * turns (and `generateRenameTitle` reserves a fresh title revision, which
- * cancels any generation still in flight), so a second attempt after turn two
- * would name the session after whatever the conversation had become by then —
- * and could even discard a slow first generation. The wrapper's
- * `autoTitlePending` latch is what enforces that: it is seeded from omp's own
- * message count when a child is spawned, so a resumed session is ineligible
- * from the start, and consumed by the first terminal run.
+ * ONE ATTEMPT PER CONVERSATION, RETRIED ONCE INSIDE THE FIRST RUN. The title
+ * is derived from the FIRST run and never re-asked after it. omp's `/rename`
+ * derives its title from the newest turns (and `generateRenameTitle` reserves a
+ * fresh title revision, which cancels any generation still in flight), so a
+ * second attempt after turn two would name the session after whatever the
+ * conversation had become by then — and could even discard a slow first
+ * generation.
+ *
+ * There are exactly two triggers, both inside that first run:
+ *
+ *   1. the first settled USER message — the earliest point at which the
+ *      transcript carries the conversation's opening intent. (`agent_start` is
+ *      too early to be usable: omp pushes it before the turn opens, so the
+ *      transcript is still empty there and the title context comes back blank.
+ *      See the `message_end` branch of frame-fold.)
+ *   2. the terminal `agent_end`, as a fallback when the early attempt produced
+ *      no title — a provider error, a timeout, a child that went away, or the
+ *      tiny model declining.
+ *
+ * The eligibility latch `autoTitlePending` is consumed by the fallback, so that
+ * is the last chance this conversation gets and a later run can never title it.
+ * `autoTitleRequested` is what keeps the early trigger from firing again on a
+ * queued steer message. A session that a skill invocation opened has no
+ * user-role message at all (omp delivers it as a `custom` message), so the
+ * early trigger never fires there and the fallback is what names it.
  *
  * A first message that omp's low-signal filter rejects ("hi") therefore leaves
- * the session unnamed for good, which is the honest outcome: omp's own titler
- * declines to name such a session too, and a title derived from a later turn
- * would describe the wrong conversation.
+ * the session unnamed for good, which is the honest outcome: the fallback does
+ * re-ask, and omp declines a second time (measured on omp 18.3.0 — the
+ * rejection is a property of the opening message, not of when it is asked).
  */
 
 import { readSettingsJson } from '@/server/lib/db/settings-store';
@@ -82,11 +100,15 @@ export interface AutoTitleHost {
   /** Epoch ms until which frames belong to our own background rename; 0 when
    *  no request is outstanding. */
   autoTitleWindowUntil: number;
-  /** True only while this conversation's FIRST user message has yet to
-   *  settle. Seeded from omp's own message count when the child is spawned, so
-   *  it survives an idle reclaim (a `--resume` child reports the messages it
-   *  restored) and is consumed by the first terminal run. */
+  /** True only while this conversation is still eligible for a title at all.
+   *  Seeded from omp's own message count when the child is spawned, so it
+   *  survives an idle reclaim (a `--resume` child reports the messages it
+   *  restored) and is consumed by the first run's terminal `agent_end` — the
+   *  fallback's last chance. */
   autoTitlePending: boolean;
+  /** True once the early attempt (the first settled user message) has been
+   *  made, so a queued steer message cannot re-ask inside the same run. */
+  autoTitleRequested: boolean;
   proc: {
     sendCommand<T = unknown>(command: { type: string; [key: string]: unknown }, timeoutMs?: number): Promise<T>;
   };
@@ -128,30 +150,49 @@ async function isAutoTitleEnabled(): Promise<boolean> {
 }
 
 /**
- * Generate and persist a session title from the FIRST user message.
+ * Which of the two attempts inside the first run is asking.
  *
- * One-shot per conversation: the latch is consumed synchronously on entry, so
- * a second message can never re-title a session from its newest turn. That is
- * the whole point — omp's `/rename` derives its title from the last few turns,
- * so asking again after turn two names the session after whatever it has since
- * become, and a slow first generation (~4s) could even lose a race with the
- * second turn's request.
- *
- * The latch is only consumed once a run actually settles. An aborted first
- * turn is not a settle (the caller skips this path), so the session is still
- * unnamed and the next completed turn titles it — the first REAL turn, which
- * is what the conversation's opening intent is at that point.
- *
- * Every other bail-out is deliberate: a named session must never be renamed by
- * this path, and a generation already in flight must not be duplicated.
- * Failures are swallowed — an auto-title is a convenience, and a session whose
- * opening message was low-signal ("hi") simply keeps its placeholder, exactly
- * as omp's own titler declines to name it.
+ * - `opening` — the first settled USER message. Earliest usable point, and it
+ *   does NOT consume the eligibility latch, so `settle` can still retry.
+ * - `settle` — the terminal `agent_end`. The fallback, and the attempt that
+ *   consumes the latch: after it, this conversation is never titled again.
  */
-export async function triggerAutoSessionTitle(host: AutoTitleHost): Promise<void> {
+export type AutoTitleStage = 'opening' | 'settle';
+
+/**
+ * Ask omp to name this session from its opening turns.
+ *
+ * Called twice at most, both inside the conversation's first run: once when the
+ * first user message settles (`opening`), and once at the terminal `agent_end`
+ * as a fallback (`settle`). A second run never gets either — see the module
+ * doc for why a title derived from a later turn is the bug this gate prevents.
+ *
+ * Every bail-out is deliberate: a named session is never renamed by this path
+ * (the name is re-read from omp, so a rename made in another tab is respected),
+ * a generation already in flight is never duplicated, and failures are
+ * swallowed — an auto-title is a convenience, and a session whose opening
+ * message was low-signal ("hi") simply keeps its placeholder.
+ */
+export async function triggerAutoSessionTitle(host: AutoTitleHost, stage: AutoTitleStage): Promise<void> {
   if (!host.autoTitlePending) return;
-  // Consumed before the first await: two settles must never both pass the gate.
-  host.autoTitlePending = false;
+  if (stage === 'opening') {
+    // One early attempt per run. A queued steer message also settles as a user
+    // message inside the same run, and re-asking on it would cancel the first
+    // generation for no gain — the context is the same turn either way.
+    if (host.autoTitleRequested) return;
+    // Consumed before the first await: two user messages settling in the same
+    // tick must not both pass the gate.
+    host.autoTitleRequested = true;
+  } else {
+    // Consumed before the first await: the fallback is this conversation's last
+    // chance, and two settles must never both pass the gate.
+    host.autoTitlePending = false;
+    // The early attempt is still generating. Its `command_output` has not
+    // arrived, so omp is mid-generation and a second `/rename` now would
+    // reserve a new title revision and cancel it — same title context, wasted
+    // model call. Leave the early attempt to finish.
+    if (host.autoTitleWindowUntil > Date.now()) return;
+  }
   if (host.autoTitleInFlight || !host.sessionId) return;
   if (!(await isAutoTitleEnabled())) return;
 
@@ -159,7 +200,9 @@ export async function triggerAutoSessionTitle(host: AutoTitleHost): Promise<void
   try {
     // Re-read the name from omp rather than trusting a cached value: a rename
     // made in another tab (or by omp's own TUI on the same session file) would
-    // otherwise be overwritten by the `"user"` write `/rename` performs.
+    // otherwise be overwritten by the `"user"` write `/rename` performs. This is
+    // also what makes the fallback a no-op when the early attempt already
+    // landed — the name is simply there by then.
     const state = await host.proc.sendCommand<RpcSessionState>({ type: 'get_state' }, GET_STATE_TIMEOUT_MS);
     if (state.sessionName?.trim()) return;
     // The session changed under us (a reset, or a `switch_session`): the name
@@ -176,7 +219,8 @@ export async function triggerAutoSessionTitle(host: AutoTitleHost): Promise<void
     markTitleRequestSent(host);
   } catch {
     // Provider error, timeout, or a child that went away — leave the session
-    // unnamed; the next settled run tries again.
+    // unnamed; the settle attempt (or the next run, for an aborted turn) tries
+    // again.
   } finally {
     host.autoTitleInFlight = false;
   }

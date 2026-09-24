@@ -34,6 +34,8 @@ function makeHost(options: {
   sessionId?: string;
   inFlight?: boolean;
   pending?: boolean;
+  requested?: boolean;
+  windowUntil?: number;
 }): { host: AutoTitleHost; proc: FakeProc } {
   const proc: FakeProc = {
     commands: [],
@@ -52,8 +54,9 @@ function makeHost(options: {
     host: {
       sessionId: 'sess-1',
       autoTitleInFlight: options.inFlight ?? false,
-      autoTitleWindowUntil: 0,
+      autoTitleWindowUntil: options.windowUntil ?? 0,
       autoTitlePending: options.pending ?? true,
+      autoTitleRequested: options.requested ?? false,
       proc: proc as unknown as AutoTitleHost['proc'],
     },
     proc,
@@ -68,7 +71,7 @@ function sentRenames(proc: FakeProc): Array<Record<string, unknown>> {
 describe('triggerAutoSessionTitle', () => {
   test('names an unnamed session through omp own /rename', async () => {
     const { host, proc } = makeHost({});
-    await triggerAutoSessionTitle(host);
+    await triggerAutoSessionTitle(host, 'opening');
 
     const renames = sentRenames(proc);
     expect(renames).toHaveLength(1);
@@ -79,17 +82,21 @@ describe('triggerAutoSessionTitle', () => {
   });
 
   test('never overwrites a name the operator set', async () => {
-    const { host, proc } = makeHost({ sessionName: 'My Deliberate Name' });
-    await triggerAutoSessionTitle(host);
+    // At either stage: the name is re-read from omp, so a rename made in
+    // another tab survives both the early attempt and the fallback.
+    for (const stage of ['opening', 'settle'] as const) {
+      const { host, proc } = makeHost({ sessionName: 'My Deliberate Name' });
+      await triggerAutoSessionTitle(host, stage);
 
-    expect(sentRenames(proc)).toHaveLength(0);
-    // No request was sent, so nothing may claim the output window either.
-    expect(host.autoTitleWindowUntil).toBe(0);
+      expect(sentRenames(proc)).toHaveLength(0);
+      // No request was sent, so nothing may claim the output window either.
+      expect(host.autoTitleWindowUntil).toBe(0);
+    }
   });
 
   test('treats a whitespace-only name as unnamed', async () => {
     const { host, proc } = makeHost({ sessionName: '   ' });
-    await triggerAutoSessionTitle(host);
+    await triggerAutoSessionTitle(host, 'opening');
 
     expect(sentRenames(proc)).toHaveLength(1);
   });
@@ -99,30 +106,82 @@ describe('triggerAutoSessionTitle', () => {
     // between the trigger and the read) — titling this session would name the
     // wrong one.
     const { host, proc } = makeHost({ sessionId: 'someone-else' });
-    await triggerAutoSessionTitle(host);
+    await triggerAutoSessionTitle(host, 'opening');
 
     expect(sentRenames(proc)).toHaveLength(0);
   });
 
   test('does not stack a second request while one is in flight', async () => {
     const { host, proc } = makeHost({ inFlight: true });
-    await triggerAutoSessionTitle(host);
+    await triggerAutoSessionTitle(host, 'opening');
 
     expect(sentRenames(proc)).toHaveLength(0);
     expect(proc.commands).toHaveLength(0);
   });
 
-  test('titles from the first settled run only', async () => {
+  test('the early attempt does not consume the eligibility latch', async () => {
+    // The fallback exists precisely because the early attempt can come back
+    // empty. If `opening` consumed the latch, a provider error at the first
+    // user message would leave the session unnamed for good.
+    const { host } = makeHost({});
+    await triggerAutoSessionTitle(host, 'opening');
+
+    expect(host.autoTitlePending).toBe(true);
+    expect(host.autoTitleRequested).toBe(true);
+  });
+
+  test('the fallback retries once the early attempt came back empty', async () => {
+    // The real sequence: the early `/rename` is accepted, omp answers
+    // `command_output` (consuming the window) with no title, and the run then
+    // ends — the fallback is what names the session.
+    const { host, proc } = makeHost({});
+    await triggerAutoSessionTitle(host, 'opening');
+    expect(consumeAutoTitleOutput(host)).toBe(true);
+
+    await triggerAutoSessionTitle(host, 'settle');
+
+    expect(sentRenames(proc)).toHaveLength(2);
+    expect(host.autoTitlePending).toBe(false);
+  });
+
+  test('the fallback stands down while the early generation is in flight', async () => {
+    // A short run can end before the tiny model answers (~4s). Re-asking there
+    // would reserve a new title revision and cancel the generation already in
+    // flight, for a title derived from the same opening turn.
+    const { host, proc } = makeHost({});
+    await triggerAutoSessionTitle(host, 'opening');
+    expect(host.autoTitleWindowUntil).toBeGreaterThan(Date.now());
+
+    await triggerAutoSessionTitle(host, 'settle');
+
+    expect(sentRenames(proc)).toHaveLength(1);
+    // The latch is still consumed: the attempt in flight owns this
+    // conversation's title from here.
+    expect(host.autoTitlePending).toBe(false);
+  });
+
+  test('fires the early attempt once per run', async () => {
+    // A queued steer message also settles as a user message inside the same
+    // run; re-asking on it would cancel the first generation for no gain.
+    const { host, proc } = makeHost({});
+    await triggerAutoSessionTitle(host, 'opening');
+    await triggerAutoSessionTitle(host, 'opening');
+
+    expect(sentRenames(proc)).toHaveLength(1);
+  });
+
+  test('titles from the first run only', async () => {
     // The regression this latch exists for: a second turn used to fire its own
     // `/rename`, and omp derives that title from the NEWEST turns — so the
     // session ended up named after message two.
     const { host, proc } = makeHost({});
-    await triggerAutoSessionTitle(host);
+    await triggerAutoSessionTitle(host, 'opening');
+    await triggerAutoSessionTitle(host, 'settle');
     expect(sentRenames(proc)).toHaveLength(1);
 
-    // Second and third runs settle with the latch already consumed.
-    await triggerAutoSessionTitle(host);
-    await triggerAutoSessionTitle(host);
+    // A later run reaches neither stage with the latch consumed.
+    await triggerAutoSessionTitle(host, 'opening');
+    await triggerAutoSessionTitle(host, 'settle');
 
     expect(sentRenames(proc)).toHaveLength(1);
   });
@@ -132,7 +191,8 @@ describe('triggerAutoSessionTitle', () => {
     // reclaim) reports a non-zero message count, so its next turn must not
     // name it — the session is either titled already or deliberately unnamed.
     const { host, proc } = makeHost({ pending: false });
-    await triggerAutoSessionTitle(host);
+    await triggerAutoSessionTitle(host, 'opening');
+    await triggerAutoSessionTitle(host, 'settle');
 
     expect(sentRenames(proc)).toHaveLength(0);
     expect(host.autoTitleWindowUntil).toBe(0);
@@ -143,7 +203,7 @@ describe('triggerAutoSessionTitle', () => {
     // otherwise a first turn whose title the provider refused gets re-asked
     // after every later message, which is the same bug one step later.
     const { host } = makeHost({});
-    await triggerAutoSessionTitle(host);
+    await triggerAutoSessionTitle(host, 'settle');
 
     expect(host.autoTitlePending).toBe(false);
   });

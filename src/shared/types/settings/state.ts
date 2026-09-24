@@ -45,11 +45,11 @@ export interface SettingsState {
   editorFont: string;
   streamResponses: boolean;
   streamTransport: StreamTransport;
-  /** Generate a session title from the first settled run. omp suppresses its
+  /** Generate a session title from the first run. omp suppresses its
    *  own auto-titling under `--mode rpc-ui` (PI_NO_TITLE), so without this a
-   *  chamber session keeps its `New Session - <timestamp>` placeholder. One
-   *  attempt per conversation — a later turn never re-titles it — and a
-   *  user-set name is never overwritten. */
+   *  chamber session keeps its `New Session - <timestamp>` placeholder. Asked
+   *  once when the first user message settles, retried once at that run's end;
+   *  a later run never re-titles it — and a user-set name is never overwritten. */
   autoSessionTitle: boolean;
   expandedThinking: boolean;
   detailedToolCalls: boolean;
