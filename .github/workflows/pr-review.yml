@@ -249,6 +249,7 @@ jobs:
         if: always() && steps.pr.outputs.draft == 'false' && steps.safety.outputs.safe == 'true' && steps.throttle.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BOT_LOGIN: ${{ format('{0}[bot]', steps.app-token.outputs.app-slug) }}
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}

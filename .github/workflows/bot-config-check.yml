@@ -33,6 +33,7 @@ jobs:
       - name: Inspect configuration
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
           MENTION: ${{ vars.BOT_MENTION || 'ompchamber-bot' }}
           MENTION_SOURCE: ${{ vars.BOT_MENTION && 'repository variable BOT_MENTION' || 'built-in default' }}
           MENTION_VAR_SET: ${{ vars.BOT_MENTION && 'yes' || 'no' }}
@@ -48,17 +49,24 @@ jobs:
           # only exists in the web UI cannot be read with `gh run view`.
           report() { tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"; }
 
-          # The installation token identifies its own bot, which is the name users must
-          # type. `login` is `"<slug>[bot]"`.
-          bot_login="$(gh api user --jq '.login')"
-          bot_slug="${bot_login%\[bot\]}"
+          # The App's own name, which is what users type after `@`. It comes from the
+          # action that minted the token, not from the API: an installation token gets
+          # `403 Resource not accessible by integration` from `GET /user`.
+          bot_slug="${APP_SLUG:-}"
+          if [ -z "$bot_slug" ]; then
+            echo "::error::the app token step reported no app-slug; cannot determine the command name." >&2
+            exit 1
+          fi
+          bot_login="${bot_slug}[bot]"
 
-          repos="$(gh api /installation/repositories --jq '.total_count' 2>/dev/null || echo unknown)"
+          # Reading this repository is the cheapest proof that the installation reaches
+          # it — the one endpoint every installation token can always use.
+          repo="$(gh api "repos/${GITHUB_REPOSITORY}" --jq '.full_name' 2>/dev/null || echo unreadable)"
 
           {
             echo "### Bot configuration"
             echo
-            echo "- app credentials: working (token minted, login \`${bot_login}\`, ${repos} repository/repositories visible to the installation)"
+            echo "- app credentials: working (token minted for \`${bot_login}\`, repository \`${repo}\` readable)"
             echo "- command mention in use: \`@${MENTION}\` (from ${MENTION_SOURCE})"
             echo "- model: \`${BOT_MODEL:-<unset>}\`"
             echo "- provider key: \`${BOT_API_KEY_SET}\`"
