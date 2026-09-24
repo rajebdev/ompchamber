@@ -77,4 +77,10 @@ export const psProbe: ProcessProbe = {
     const row = processTable().find((entry) => entry.pid === pid);
     return row ? row.state.startsWith('Z') : false;
   },
+  foregroundGroup() {
+    // The cached table has no `tpgid` column, and adding one would make every
+    // question pay for a field only this one asks. Null keeps the caller on its
+    // own `ps -o pid=,tpgid=` path, which is where the BSDs were anyway.
+    return null;
+  },
 };

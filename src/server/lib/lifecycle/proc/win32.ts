@@ -44,4 +44,10 @@ export const win32Probe: ProcessProbe = {
   isZombie() {
     return false;
   },
+  foregroundGroup() {
+    // Windows has no process group tied to a console the way a POSIX PTY has
+    // `tpgid`, and no `ps` either — the caller's own platform check keeps this
+    // from being asked, and null says "unknown" rather than guessing.
+    return null;
+  },
 };

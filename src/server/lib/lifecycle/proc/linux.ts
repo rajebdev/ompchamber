@@ -39,6 +39,9 @@ function statTail(pid: number): string[] | null {
   return raw.slice(close + 1).trim().split(/\s+/);
 }
 
+/** Field 8 of `/proc/<pid>/stat` (1-indexed): the terminal foreground group. */
+const TPGID_FIELD = 6;
+
 export const linuxProbe: ProcessProbe = {
   commandLine(pid) {
     const raw = readFile(`/proc/${pid}/cmdline`);
@@ -58,5 +61,13 @@ export const linuxProbe: ProcessProbe = {
     const fields = statTail(pid);
     if (fields === null) return false;
     return ZOMBIE_STATES.has(fields[STATE_FIELD]);
+  },
+  foregroundGroup(pid) {
+    // Already read for `isZombie` on the same question, so this costs no extra
+    // syscall beyond the file read itself.
+    const fields = statTail(pid);
+    if (fields === null) return null;
+    const tpgid = Number(fields[TPGID_FIELD]);
+    return Number.isFinite(tpgid) ? tpgid : null;
   },
 };

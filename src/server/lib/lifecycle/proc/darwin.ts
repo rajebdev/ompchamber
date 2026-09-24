@@ -52,7 +52,17 @@ const libc = dlopen('libc.dylib', {
 
 const libproc = dlopen('/usr/lib/libproc.dylib', {
   proc_pidpath: { args: [FFIType.i32, FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
+  proc_pidinfo: { args: [FFIType.i32, FFIType.i32, FFIType.u64, FFIType.ptr, FFIType.i32], returns: FFIType.i32 },
 });
+
+/** `PROC_PIDTBSDINFO` — the flavor whose reply is a `struct proc_bsdinfo`. */
+const PROC_PIDTBSDINFO = 3;
+/** `sizeof(struct proc_bsdinfo)`, verified against this platform. */
+const BSDINFO_BYTES = 136;
+/** `pbi_pid` — the identity check that guards every offset below. */
+const BSDINFO_PID_OFFSET = 12;
+/** `e_tpgid` — the field `ps -o tpgid=` prints. */
+const BSDINFO_TPGID_OFFSET = 112;
 
 /**
  * `p_stat` for a live PID, or null when the PID does not exist.
@@ -72,6 +82,13 @@ function procStatus(pid: number): number | null {
   if (Number(size[0]) === 0) return null;
   return buffer[P_STAT_OFFSET];
 }
+
+/**
+ * Scratch for `foregroundGroup` below. One module-level buffer, safe because
+ * the whole call is synchronous — no await can interleave another caller.
+ */
+const bsdInfo = new Uint8Array(BSDINFO_BYTES);
+const bsdInfoView = new DataView(bsdInfo.buffer);
 
 /**
  * Executable path, or null. Also answers for root-owned PIDs (verified: pid 1 →
@@ -148,5 +165,25 @@ export const darwinProbe: ProcessProbe = {
   isZombie(pid) {
     const status = procStatus(pid);
     return status !== null && SZOMB_LIKE.has(status);
+  },
+  /**
+   * `e_tpgid` — the field `ps -o tpgid=` prints. `proc_pidinfo` is the cheap
+   * route to it (measured ~0.9 µs against ~10 ms for the subprocess).
+   *
+   * The reply's own `pbi_pid` is checked against the requested pid before
+   * `e_tpgid` is trusted: a struct-layout drift on a future macOS would
+   * otherwise hand back a garbage group, and a wrong "busy" answer makes the
+   * terminal cap refuse an attach. Returning null keeps the caller on `ps`.
+   */
+  foregroundGroup(pid) {
+    let written = 0;
+    try {
+      written = libproc.symbols.proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, ptr(bsdInfo), BSDINFO_BYTES);
+    } catch {
+      return null;
+    }
+    if (written < BSDINFO_BYTES) return null;
+    if (bsdInfoView.getUint32(BSDINFO_PID_OFFSET, true) !== pid) return null;
+    return bsdInfoView.getUint32(BSDINFO_TPGID_OFFSET, true);
   },
 };
