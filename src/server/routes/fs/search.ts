@@ -1,8 +1,8 @@
 import { json, type ActionFunctionArgs } from '@/server/lib/remix-compat';
-import { ripgrep } from 'ripgrep';
 import { isMockMode } from '@/server/mock.server';
 import { getDefaultFsRoot, resolveRoot } from '@/server/lib/fs/root';
 import { scopeToRepo } from '@/server/lib/fs/repo-scope';
+import { runRipgrep } from '@/server/lib/fs/ripgrep';
 import { createSseStream } from '@/server/lib/sse';
 
 export interface SearchMatch {
@@ -86,38 +86,29 @@ export async function action({ request }: ActionFunctionArgs) {
     async onStart(handlers) {
       const send = (event: string, data: unknown) => handlers.send(event, data);
 
-      // WASI preopens map the guest "." onto the real target directory.
-      const preopens = { '.': targetDir };
       const decoder = new TextDecoder();
       let pending = '';
       let count = 0;
       let stderrText = '';
 
       try {
-        const { code } = await ripgrep(buildArgs(q, matchCase, wholeWord, useRegex, includeFiles), {
-          preopens,
-          // ripgrep accepts any `{ write(chunk) }` sink — feed it the raw
-          // WritableStream sink so matches flush incrementally.
-          stdout: {
-            write(chunk) {
-              pending += decoder.decode(chunk, { stream: true });
-              const lines = pending.split('\n');
-              pending = lines.pop() ?? '';
-              const batch: SearchMatch[] = [];
-              for (const line of lines) {
-                const match = parseRgLine(line);
-                if (match) batch.push(match);
-              }
-              if (batch.length) {
-                count += batch.length;
-                send('matches', batch);
-              }
-            },
+        const code = await runRipgrep(buildArgs(q, matchCase, wholeWord, useRegex, includeFiles), targetDir, {
+          onStdout(chunk) {
+            pending += decoder.decode(chunk, { stream: true });
+            const lines = pending.split('\n');
+            pending = lines.pop() ?? '';
+            const batch: SearchMatch[] = [];
+            for (const line of lines) {
+              const match = parseRgLine(line);
+              if (match) batch.push(match);
+            }
+            if (batch.length) {
+              count += batch.length;
+              send('matches', batch);
+            }
           },
-          stderr: {
-            write(chunk) {
-              stderrText += decoder.decode(chunk, { stream: true });
-            },
+          onStderr(chunk) {
+            stderrText += decoder.decode(chunk, { stream: true });
           },
         });
         // rg exit codes: 0 = matches, 1 = no matches, 2 = error (bad regex, IO failure).
