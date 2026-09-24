@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { getLanguageFromPath } from '@/shared/lib/code/syntax-highlight';
 import { getImageMimeType } from '@/shared/lib/fs/file-kind';
 import { buildFsRawUrl } from '@/shared/lib/fs/paths';
+import { detectLineEnding, toDiskText, toLf, type LineEnding } from '@/shared/lib/code/line-endings';
+import { retainKeys, saveEditorFile } from '@/client/hooks/editor/save-file';
 import { useFileTransfer } from '@/client/hooks/editor/use-file-transfer';
 
 export type FileEditorSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
@@ -82,6 +84,12 @@ export function useFileEditor(
 
   const [contents, setContents] = useState<Record<string, string>>({});
   const [baselines, setBaselines] = useState<Record<string, string>>({});
+  /**
+   * The line ending each cached file arrived with. The buffer itself can only
+   * hold LF (a textarea strips CR), so the style has to live beside it or a
+   * CRLF file would be rewritten as LF by a one-character edit.
+   */
+  const [lineEndings, setLineEndings] = useState<Record<string, LineEnding>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<FileEditorSaveStatus>('idle');
@@ -89,7 +97,9 @@ export function useFileEditor(
   const [revision, setRevision] = useState(0);
 
   const key = target ? targetKey(target) : '';
-  const content = target ? (contents[key] ?? target.content ?? '') : '';
+  // An inline `content` (attachment chip) can carry CRLF too, and the buffer it
+  // feeds is LF-only — normalizing here keeps `isDirty` comparing like with like.
+  const content = target ? (contents[key] ?? (target.content !== undefined ? toLf(target.content) : '')) : '';
   const isDirty = content !== (baselines[key] ?? content);
 
   // Extension-keyed, matching the server's own classification: an image tab
@@ -113,33 +123,34 @@ export function useFileEditor(
   contentsRef.current = contents;
   const baselinesRef = useRef(baselines);
   baselinesRef.current = baselines;
+  // `persist` is a stable callback, so the ending it writes back is read from a
+  // live mirror rather than captured in its closure.
+  const lineEndingsRef = useRef(lineEndings);
+  lineEndingsRef.current = lineEndings;
 
   const remember = useCallback((fileKey: string, text: string) => {
-    setContents((prev) => ({ ...prev, [fileKey]: text }));
-    setBaselines((prev) => ({ ...prev, [fileKey]: text }));
+    // The buffer holds LF only; the style the bytes arrived with is kept beside
+    // it so the write can put the file back the way it was found.
+    const ending = detectLineEnding(text);
+    const lf = toLf(text);
+    setContents((prev) => ({ ...prev, [fileKey]: lf }));
+    setBaselines((prev) => ({ ...prev, [fileKey]: lf }));
+    setLineEndings((prev) => ({ ...prev, [fileKey]: ending }));
   }, []);
 
   const persist = useCallback(
     async (file: FileEditorTarget, text: string) => {
       if (!file.path) return;
       setSaveStatus('saving');
-      const formData = new FormData();
-      formData.append('actionType', 'save');
-      formData.append('path', file.path);
-      formData.append('content', text);
-      if (file.root) formData.append('root', file.root);
-      if (file.repo && file.repo !== '.') formData.append('repo', file.repo);
-      try {
-        const res = await fetch('/api/fs/action', { method: 'POST', body: formData });
-        const data = await res.json().catch(() => null);
-        if (res.ok && data?.success) {
-          setSaveStatus('saved');
-          setBaselines((prev) => ({ ...prev, [targetKey(file)]: text }));
-          onFileSaved?.();
-        } else {
-          setSaveStatus(reportSaveError ? 'error' : 'idle');
-        }
-      } catch {
+      const fileKey = targetKey(file);
+      // The buffer is LF; the file's own ending is applied by the server, so an
+      // untouched CRLF file stays byte-identical and an LF file stays LF.
+      const written = await saveEditorFile(file, text, lineEndingsRef.current[fileKey] ?? 'lf');
+      if (written) {
+        setSaveStatus('saved');
+        setBaselines((prev) => ({ ...prev, [fileKey]: text }));
+        onFileSaved?.();
+      } else {
         setSaveStatus(reportSaveError ? 'error' : 'idle');
       }
     },
@@ -269,6 +280,11 @@ export function useFileEditor(
   const { copied, copy, download } = useFileTransfer({
     target,
     content,
+    // A download is the file leaving the app, so it carries the file's own line
+    // endings — the LF buffer is an artifact of the textarea, not of the file.
+    // Copy stays the buffer: it is a text selection, and CRLF in a pasted
+    // snippet is noise every destination editor would normalize anyway.
+    downloadContent: target ? toDiskText(content, lineEndings[key] ?? 'lf') : content,
     imageUrl,
     downloadMimeType,
   });
@@ -287,15 +303,8 @@ export function useFileEditor(
     for (const loaded of Array.from(loadedRef.current)) {
       if (!keep.has(loaded)) loadedRef.current.delete(loaded);
     }
-    setContents((prev) => {
-      const keys = Object.keys(prev);
-      if (keys.every((k) => keep.has(k))) return prev;
-      const next: Record<string, string> = {};
-      for (const k of keys) {
-        if (keep.has(k)) next[k] = prev[k];
-      }
-      return next;
-    });
+    setContents((prev) => retainKeys(prev, keep));
+    setLineEndings((prev) => retainKeys(prev, keep));
   }, []);
 
   useEffect(() => {

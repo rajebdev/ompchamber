@@ -5,6 +5,7 @@ import path from 'path';
 import { isMockMode } from '@/server/mock.server';
 import { getDefaultFsRoot, resolveRoot, resolveWithinRoot } from '@/server/lib/fs/root';
 import { runShell } from '@/server/lib/fs/shell';
+import { toDiskText } from '@/shared/lib/code/line-endings';
 export async function action({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
   const actionType = formData.get('actionType') as string;
@@ -24,7 +25,15 @@ export async function action({ request }: ActionFunctionArgs) {
 
   try {
     if (actionType === 'save') {
-      const content = (formData.get('content') as string) ?? '';
+      const raw = (formData.get('content') as string) ?? '';
+      const eol = formData.get('eol');
+      // The bytes are built here rather than written verbatim: `multipart/
+      // form-data` normalizes every bare LF in a field value to CRLF in transit
+      // (the HTML serializer does it on the way out, Bun's parser agrees on the
+      // way in — same result either way), so an LF file would land on disk as
+      // CRLF and show up as a full-file diff. `eol` is the ending the client
+      // read the file with; without it the payload is written untouched.
+      const content = eol === 'crlf' || eol === 'lf' ? toDiskText(raw, eol) : raw;
       await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
       await Bun.write(fullPath, content);
       return json({ success: true });

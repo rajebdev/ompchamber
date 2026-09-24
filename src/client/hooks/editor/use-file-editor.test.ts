@@ -19,7 +19,7 @@
  * bind their environment at evaluation time.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import type { h as PreactH, render as PreactRender } from 'preact';
 import type { act as PreactAct } from 'preact/test-utils';
@@ -42,17 +42,21 @@ interface FsState {
   reads: number;
   writes: number;
   body: string;
+  /** The `eol` field of the last write — the ending the server is asked to use. */
+  sentEol: string | null;
 }
 
-/** Serves `state.body` for reads and counts writes, without touching the network. */
+/** Serves `state.body` for reads and records writes, without touching the network. */
 function stubFetch(state: FsState) {
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     if (String(input).startsWith('/api/fs/read')) {
       state.reads += 1;
       return { ok: true, json: async () => ({ content: state.body }) };
     }
+    const form = init?.body as FormData;
     state.writes += 1;
-    state.body = String((init?.body as FormData).get('content'));
+    state.body = String(form.get('content'));
+    state.sentEol = form.get('eol') === null ? null : String(form.get('eol'));
     return { ok: true, json: async () => ({ success: true }) };
   }) as unknown as typeof fetch;
 }
@@ -123,9 +127,18 @@ beforeEach(() => {
   document.body.appendChild(container);
 });
 
+// Unmount while the DOM globals still exist, so the hook's effect cleanups run
+// here. A landed save arms a timer that returns the status to `idle`; an effect
+// timer that outlived this file would fire during the next file's test and, with
+// `window` already removed by `afterAll`, break its render.
+afterEach(() => {
+  render(null, container);
+  container.remove();
+});
+
 describe('useFileEditor revalidation', () => {
   test('reset re-reads from disk without blanking the open file', async () => {
-    const state: FsState = { reads: 0, writes: 0, body: DISK };
+    const state: FsState = { reads: 0, writes: 0, sentEol: null, body: DISK };
     stubFetch(state);
     await mountEditor();
     expect(mounted?.content).toBe(DISK);
@@ -142,7 +155,7 @@ describe('useFileEditor revalidation', () => {
   });
 
   test('a read that lands mid-typing does not replace the buffer', async () => {
-    const state: FsState = { reads: 0, writes: 0, body: DISK };
+    const state: FsState = { reads: 0, writes: 0, sentEol: null, body: DISK };
     stubFetch(state);
     await mountEditor();
 
@@ -154,5 +167,48 @@ describe('useFileEditor revalidation', () => {
 
     expect(state.reads).toBe(2);
     expect(mounted?.content).toBe('edited by hand');
+  });
+
+  // A textarea's API value drops every CR, so a CRLF file reaches the buffer as
+  // LF — and multipart/form-data turns a bare LF back into CRLF, so the payload
+  // cannot carry the ending. The file's own ending therefore travels as its own
+  // field, and losing it rewrote every line of the file on a one-character edit.
+  test('a CRLF file is saved as CRLF after an edit', async () => {
+    const state: FsState = { reads: 0, writes: 0, sentEol: null, body: 'const a = 1;\r\nconst b = 2;\r\n' };
+    stubFetch(state);
+    await mountEditor();
+
+    expect(mounted?.content).toBe('const a = 1;\nconst b = 2;\n');
+
+    await act(async () => {
+      mounted?.onChange('const a = 1;\nconst c = 3;\n');
+    });
+    await settleEditor();
+    await act(async () => {
+      mounted?.saveNow();
+    });
+    await settleEditor();
+
+    expect(state.writes).toBe(1);
+    expect(state.body).toBe('const a = 1;\nconst c = 3;\n');
+    expect(state.sentEol).toBe('crlf');
+  });
+
+  test('an LF file is saved as LF', async () => {
+    const state: FsState = { reads: 0, writes: 0, sentEol: null, body: DISK };
+    stubFetch(state);
+    await mountEditor();
+
+    await act(async () => {
+      mounted?.onChange('const a = 1;\n');
+    });
+    await settleEditor();
+    await act(async () => {
+      mounted?.saveNow();
+    });
+    await settleEditor();
+
+    expect(state.body).toBe('const a = 1;\n');
+    expect(state.sentEol).toBe('lf');
   });
 });

@@ -25,6 +25,8 @@ interface UseFileTransferOptions {
   target: FileTransferTarget | null;
   /** Current text buffer for `target`; ignored for images. */
   content: string;
+  /** Disk form of `content` (the file's own line endings), used by download. */
+  downloadContent: string;
   /** Raw-byte URL of the active image, else null. */
   imageUrl: string | null;
   /** MIME type used for the text Blob. */
@@ -41,6 +43,7 @@ export interface UseFileTransferResult {
 export function useFileTransfer({
   target,
   content,
+  downloadContent,
   imageUrl,
   downloadMimeType,
 }: UseFileTransferOptions): UseFileTransferResult {
@@ -71,8 +74,8 @@ export function useFileTransfer({
       void downloadUrl(imageUrl, target.name).catch(() => {});
       return;
     }
-    saveBlob(new Blob([content], { type: downloadMimeType }), target.name);
-  }, [target, content, downloadMimeType, imageUrl]);
+    saveBlob(new Blob([downloadContent], { type: downloadMimeType }), target.name);
+  }, [target, downloadContent, downloadMimeType, imageUrl]);
 
   return { copied, copy, download };
 }
