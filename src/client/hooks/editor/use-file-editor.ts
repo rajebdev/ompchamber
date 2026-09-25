@@ -19,10 +19,6 @@ export interface FileEditorTarget {
 }
 
 export interface UseFileEditorOptions {
-  /** Content substituted when a read fails (desktop). Omit to report the failure (mobile). */
-  fallback?: (name: string) => string;
-  /** Surface read failures through `loadError` instead of silently substituting `fallback`. */
-  reportLoadError?: boolean;
   /** Flush a pending debounced write on unmount so closing the editor cannot drop an edit. */
   flushOnUnmount?: boolean;
   /** Mark a failed write as `'error'`; otherwise the status returns to `'idle'`. */
@@ -74,8 +70,6 @@ export function useFileEditor(
   options: UseFileEditorOptions = {},
 ): UseFileEditorResult {
   const {
-    fallback,
-    reportLoadError = false,
     flushOnUnmount = false,
     reportSaveError = false,
     downloadMimeType = 'text/plain',
@@ -184,11 +178,9 @@ export function useFileEditor(
     }
 
     if (!target.path) {
-      if (reportLoadError) {
-        setLoadError('No file path supplied for this attachment.');
-        return;
-      }
-      remember(fileKey, fallback ? fallback(target.name) : '');
+      // An attachment chip with no path has nothing to read and nothing to
+      // save; the message is the honest outcome.
+      setLoadError('No file path supplied for this attachment.');
       return;
     }
 
@@ -203,14 +195,11 @@ export function useFileEditor(
     if (target.repo && target.repo !== '.') params.set('repo', target.repo);
     fetch(`/api/fs/read?${params.toString()}`)
       .then(async (res) => {
-        const data = await res.json().catch(() => null);
-        if (reportLoadError) {
-          if (!res.ok || !data || typeof data.content !== 'string') {
-            throw new Error((data as { error?: string } | null)?.error || `HTTP ${res.status}`);
-          }
-          return data.content as string;
+        const data = (await res.json().catch(() => null)) as { content?: unknown; error?: string } | null;
+        if (!res.ok || !data || typeof data.content !== 'string') {
+          throw new Error(data?.error || `HTTP ${res.status}`);
         }
-        return typeof data?.content === 'string' ? (data.content as string) : null;
+        return data.content;
       })
       .then((text) => {
         if (cancelled) return;
@@ -222,18 +211,16 @@ export function useFileEditor(
         if (typed !== undefined && typed !== baselinesRef.current[fileKey]) return;
         const queued = pendingRef.current;
         if (queued && targetKey(queued.file) === fileKey) return;
-        remember(fileKey, text ?? (fallback ? fallback(target.name) : ''));
+        remember(fileKey, text);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
         // A failed re-read keeps what is on screen; only a first load reports.
         if (!firstLoad) return;
-        if (reportLoadError) {
-          remember(fileKey, '');
-          setLoadError(err instanceof Error ? err.message : 'Failed to read file');
-        } else {
-          remember(fileKey, fallback ? fallback(target.name) : '');
-        }
+        // An empty buffer, never a substitute: the next save would write the
+        // substitute over the real file.
+        remember(fileKey, '');
+        setLoadError(err instanceof Error ? err.message : 'Failed to read file');
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
@@ -242,13 +229,20 @@ export function useFileEditor(
     return () => {
       cancelled = true;
     };
-  }, [key, target, fallback, reportLoadError, remember, revision, isImage]);
+  }, [key, target, remember, revision, isImage]);
 
   useEffect(() => {
     if (saveStatus !== 'saved') return;
     const timer = window.setTimeout(() => setSaveStatus('idle'), 1500);
     return () => window.clearTimeout(timer);
   }, [saveStatus]);
+
+  // The save status describes the file that was written, so it must not outlive
+  // that tab: opening another file used to keep showing the previous file's
+  // "Save failed" (and its error icon) against a file that was never saved.
+  useEffect(() => {
+    setSaveStatus('idle');
+  }, [key]);
 
   const onChange = useCallback(
     (next: string) => {
@@ -268,6 +262,9 @@ export function useFileEditor(
 
   const saveNow = useCallback(() => {
     if (!target || isImage) return;
+    // A file whose read failed has no trustworthy buffer: saving it would write
+    // the empty placeholder over the real file. The user must reopen it first.
+    if (loadError) return;
     const text = contents[targetKey(target)];
     if (text === undefined) return;
     if (pendingRef.current) {
@@ -275,7 +272,7 @@ export function useFileEditor(
       pendingRef.current = null;
     }
     void persistRef.current(target, text);
-  }, [target, contents, isImage]);
+  }, [target, contents, isImage, loadError]);
 
   const { copied, copy, download } = useFileTransfer({
     target,

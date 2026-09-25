@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import { AlertTriangle, Loader2 } from 'lucide-preact';
 import { FileIcon } from '@/client/components/common/file-icon';
 import { CodeSurface } from '@/client/components/common/code-surface';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
@@ -6,7 +7,6 @@ import { useScrollbarFade, scrollbarFadeClass } from '@/client/hooks/ui/scrollba
 import { EditorTabs } from '@/client/components/workspace/editor/Tabs';
 import { EditorToolbar } from '@/client/components/workspace/editor/Toolbar';
 import { ImageViewer } from '@/client/components/common/image-viewer';
-import { getDefaultContent } from '@/shared/lib/code/editor-utils';
 import { DiffPanel } from '@/client/components/workspace/diff-panel';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { useSessionStateContext } from '@/client/hooks/workspace/session-state/context';
@@ -45,7 +45,10 @@ export function Editor({
   const { isScrolling, handleScroll } = useScrollbarFade();
 
   const editor = useFileEditor(activeFile ?? null, {
-    fallback: getDefaultContent,
+    // A file that could not be read must report the failure, not substitute
+    // placeholder text — the mock sample used to be written straight over the
+    // real file by the next save.
+    reportSaveError: true,
     onFileSaved,
   });
 
@@ -99,7 +102,6 @@ export function Editor({
   const currentContent = editor.content;
   const isMd = activeFile?.name.endsWith('.md');
   const isPreview = activeFile ? previewMode[activeFile.id] : false;
-  const toolbarSaveStatus = editor.saveStatus === 'error' ? 'idle' : editor.saveStatus;
 
   const editorContainerClass = isMaximized 
     ? 'fixed inset-0 z-50 flex flex-col bg-canvas' 
@@ -130,11 +132,14 @@ export function Editor({
           <>
             <EditorToolbar
               path={activeFile.path}
-              saveStatus={toolbarSaveStatus}
+              saveStatus={editor.saveStatus}
               wordWrap={wordWrap}
               isMd={isMd}
               isPreview={isPreview}
+              copied={editor.copied}
               isImage={editor.isImage}
+              saveDisabled={Boolean(editor.loadError)}
+              isMaximized={isMaximized}
               onSave={editor.saveNow}
               onTogglePreview={togglePreview}
               onToggleWordWrap={() => setWordWrap(!wordWrap)}
@@ -150,6 +155,20 @@ export function Editor({
               // the scrolling text container — a wheel there would scroll the
               // pane instead of zooming the image.
               <ImageViewer src={editor.imageUrl} name={activeFile.name} className="flex-1 min-h-0" />
+            ) : editor.isLoading ? (
+              <div className="flex-1 flex items-center justify-center gap-2 text-ink/40 text-xs font-mono">
+                <Loader2 size={14} className="animate-spin" />
+                <span>Loading file content…</span>
+              </div>
+            ) : editor.loadError ? (
+              // A read that failed must say so. Without this the pane rendered
+              // an empty (or substituted) buffer, and the next save wrote it
+              // over the real file.
+              <div className="flex-1 flex flex-col items-center justify-center gap-2 px-6 text-center">
+                <AlertTriangle size={20} className="text-error" />
+                <span className="text-xs text-error font-sans">Could not read {activeFile.name}</span>
+                <span className="text-[11px] text-ink/50 font-mono break-all">{editor.loadError}</span>
+              </div>
             ) : (
               <div onScroll={handleScroll} className={`flex-1 overflow-auto bg-paper flex ${scrollbarFadeClass(isScrolling)}`}>
                 {(isMd && isPreview) ? (

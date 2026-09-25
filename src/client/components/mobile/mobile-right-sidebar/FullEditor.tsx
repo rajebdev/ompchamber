@@ -29,7 +29,6 @@ export function MobileFullEditor({ file, onClose, onFileSaved }: MobileFullEdito
   const isMd = file.name.endsWith('.md');
 
   const editor = useFileEditor(file, {
-    reportLoadError: true,
     flushOnUnmount: true,
     reportSaveError: true,
     downloadMimeType: 'text/plain;charset=utf-8',
