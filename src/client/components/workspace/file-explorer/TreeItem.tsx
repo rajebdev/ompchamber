@@ -1,14 +1,11 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
-import type { FormEvent } from 'preact/compat';
+import { useEffect, useState } from 'preact/hooks';
 import { ChevronDown, ChevronRight } from 'lucide-preact';
-import { useFetcher } from '@/client/lib/router/fetcher';
 import { FileIcon } from '@/client/components/common/file-icon';
-import { FileContextMenu, FileDeleteModal, FileHistoryModal, FileRenameModal } from '@/client/components/workspace/file-explorer/Modals';
+import { FileContextMenu, FileCreateModal, FileDeleteModal, FileHistoryModal, FileRenameModal } from '@/client/components/workspace/file-explorer/Modals';
 import { getGitStatusInfo, type FolderGitStatusInfo } from '@/shared/lib/fs/git-status';
-import { toAbsolutePath } from '@/shared/lib/fs/paths';
-import { copyToClipboard } from '@/client/hooks/ui/clipboard';
-import type { GitChange } from '@/shared/types/git';
+import { useFileActions } from '@/client/hooks/workspace/file-tree-actions';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
+import type { GitChange } from '@/shared/types/git';
 
 interface FileTreeItemProps {
   file: any;
@@ -41,16 +38,8 @@ export function FileTreeItem({
   const isFolder = file.type === 'folder';
   const [isOpen, setIsOpen] = useState(false);
   const [isLoadingChildren, setIsLoadingChildren] = useState(false);
-  const actionFetcher = useFetcher<any>();
+  /** Portals need a real document; the first client render is the gate. */
   const [mounted, setMounted] = useState(false);
-
-  const [contextMenu, setContextMenu] = useState<{ x: number, y: number } | null>(null);
-  const contextMenuRef = useRef<HTMLDivElement>(null);
-  const [showRenameModal, setShowRenameModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [showHistoryModal, setShowHistoryModal] = useState(false);
-  const [renameValue, setRenameValue] = useState(file.path);
-
   const children = Array.isArray(file.children) ? file.children : [];
 
   const normalizedPath = (file.path || '').replace(/^\/+/, '');
@@ -80,19 +69,13 @@ export function FileTreeItem({
     }
   }, [isFolder, actualIsOpen, file.children, file.path, onLoadChildren]);
 
-  useOnClickOutside(contextMenuRef, () => setContextMenu(null));
-
-  useEffect(() => {
-    if (actionFetcher.state === 'idle' && actionFetcher.data) {
-      if (actionFetcher.data.success) {
-        if (!actionFetcher.data.type) {
-          setShowRenameModal(false);
-          setShowDeleteModal(false);
-          onActionComplete();
-        }
-      }
-    }
-  }, [actionFetcher.state, actionFetcher.data]);
+  const actions = useFileActions({
+    file: { path: file.path, name: file.name, basePath, rootPath, repo },
+    diff: { staged: gitChange?.staged || (gitChange?.status ? gitChange.status[0] !== ' ' && gitChange.status[0] !== '?' : false), status: gitStatusInfo?.charStatus },
+    onOpenFile,
+    onActionComplete,
+  });
+  useOnClickOutside(actions.contextMenuRef, actions.closeContextMenu);
 
   const handleToggle = (e: globalThis.MouseEvent) => {
     e.stopPropagation();
@@ -121,72 +104,7 @@ export function FileTreeItem({
   const handleContextMenu = (e: globalThis.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setContextMenu({ x: e.clientX, y: e.clientY });
-  };
-
-  const submitAction = (formData: FormData) => {
-    if (repo && repo !== '.') formData.append('repo', repo);
-    if (rootPath) formData.append('root', rootPath);
-    actionFetcher.submit(formData, { method: 'post', action: '/api/fs/action' });
-  };
-
-  const handleAction = (actionType: string) => {
-    setContextMenu(null);
-    if (actionType === 'view') {
-      if (onOpenFile) {
-        onOpenFile({
-          ...file,
-          root: rootPath,
-          repo: repo || '.',
-        });
-      }
-    } else if (actionType === 'diff') {
-      window.dispatchEvent(new CustomEvent('omp:open-diff', {
-        detail: {
-          file: file.path,
-          staged: gitChange?.staged || (gitChange?.status && gitChange.status[0] !== ' ' && gitChange.status[0] !== '?'),
-          status: gitStatusInfo?.charStatus || 'M',
-          repo: repo || '.',
-          root: rootPath,
-        }
-      }));
-    } else if (actionType === 'explorer') {
-      const fd = new FormData();
-      fd.append('actionType', 'open_explorer');
-      fd.append('path', file.path);
-      submitAction(fd);
-    } else if (actionType === 'copy_path') {
-      void copyToClipboard(toAbsolutePath(basePath, file.path));
-    } else if (actionType === 'copy_relative') {
-      void copyToClipboard(file.path);
-    } else if (actionType === 'history') {
-      setShowHistoryModal(true);
-      const fd = new FormData();
-      fd.append('actionType', 'git_history');
-      fd.append('path', file.path);
-      submitAction(fd);
-    } else if (actionType === 'rename') {
-      setRenameValue(file.path);
-      setShowRenameModal(true);
-    } else if (actionType === 'delete') {
-      setShowDeleteModal(true);
-    }
-  };
-
-  const submitRename = (e: FormEvent) => {
-    e.preventDefault();
-    const fd = new FormData();
-    fd.append('actionType', 'rename');
-    fd.append('path', file.path);
-    fd.append('newPath', renameValue);
-    submitAction(fd);
-  };
-
-  const submitDelete = () => {
-    const fd = new FormData();
-    fd.append('actionType', 'delete');
-    fd.append('path', file.path);
-    submitAction(fd);
+    actions.openContextMenu(e.clientX, e.clientY);
   };
 
   return (
@@ -255,44 +173,56 @@ export function FileTreeItem({
         </div>
       )}
 
-      {mounted && contextMenu && (
+      {mounted && actions.contextMenu && (
         <FileContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
+          x={actions.contextMenu.x}
+          y={actions.contextMenu.y}
           isFolder={isFolder}
           hasGitStatus={hasGitStatus}
-          onAction={handleAction}
+          onAction={actions.handleAction}
         />
       )}
 
-      {mounted && showDeleteModal && (
+      {mounted && actions.showCreateModal && (
+        <FileCreateModal
+          folderPath={file.path}
+          value={actions.createName}
+          error={actions.createError}
+          isLoading={actions.busy}
+          onChange={actions.setCreateName}
+          onCancel={actions.closeCreate}
+          onSubmit={actions.submitCreate}
+        />
+      )}
+
+      {mounted && actions.showDeleteModal && (
         <FileDeleteModal
           fileName={file.name}
           isFolder={isFolder}
-          isLoading={actionFetcher.state !== 'idle'}
-          onCancel={() => setShowDeleteModal(false)}
-          onConfirm={submitDelete}
+          isLoading={actions.busy}
+          onCancel={actions.closeDelete}
+          onConfirm={actions.submitDelete}
         />
       )}
 
-      {mounted && showRenameModal && (
+      {mounted && actions.showRenameModal && (
         <FileRenameModal
           isFolder={isFolder}
-          renameValue={renameValue}
+          renameValue={actions.renameValue}
           originalPath={file.path}
-          isLoading={actionFetcher.state !== 'idle'}
-          onChange={setRenameValue}
-          onCancel={() => setShowRenameModal(false)}
-          onSubmit={submitRename}
+          isLoading={actions.busy}
+          onChange={actions.setRenameValue}
+          onCancel={actions.closeRename}
+          onSubmit={actions.submitRename}
         />
       )}
 
-      {mounted && showHistoryModal && (
+      {mounted && actions.showHistoryModal && (
         <FileHistoryModal
           filePath={file.path}
-          fetcherState={actionFetcher.state}
-          fetcherData={actionFetcher.data}
-          onClose={() => setShowHistoryModal(false)}
+          fetcherState={actions.fetcherState}
+          fetcherData={actions.fetcherData}
+          onClose={actions.closeHistory}
         />
       )}
     </div>

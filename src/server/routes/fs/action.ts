@@ -37,6 +37,29 @@ export async function action({ request }: ActionFunctionArgs) {
       await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
       await Bun.write(fullPath, content);
       return json({ success: true });
+    } else if (actionType === 'create') {
+      // The Files panel's "New file": an empty file beside the folder that was
+      // right-clicked. Only a NAME is accepted, never a path — a separator
+      // would let the panel write anywhere under the root, and the folder is
+      // already named by `path`.
+      const name = ((formData.get('name') as string) ?? '').trim();
+      if (!name || name === '.' || name === '..' || /[/\\\0]/.test(name)) {
+        return json({ error: 'Enter a file name without slashes' }, { status: 400 });
+      }
+      const target = resolveWithinRoot(scopedRoot, path.join(filePath || '.', name));
+      if (!target) {
+        return json({ error: 'Invalid path' }, { status: 403 });
+      }
+      // Creating must never overwrite: a name that already exists is reported,
+      // not truncated — the panel offers Rename for that, and an empty write
+      // here would destroy the file the user meant to keep.
+      if ((await Bun.file(target).stat().catch(() => null)) !== null) {
+        return json({ error: `${name} already exists` }, { status: 409 });
+      }
+      await fs.promises.mkdir(path.dirname(target), { recursive: true });
+      await Bun.write(target, '');
+      // Relative to the LISTED root, which is the identity the tree renders by.
+      return json({ success: true, path: path.relative(scopedRoot, target).split(path.sep).join('/') });
     } else if (actionType === 'delete') {
       await fs.promises.rm(fullPath, { recursive: true, force: true });
       return json({ success: true });

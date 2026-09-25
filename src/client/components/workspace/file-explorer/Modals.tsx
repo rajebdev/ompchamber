@@ -1,6 +1,6 @@
 import { createPortal } from 'preact/compat';
 import type { FormEvent, RefObject } from 'preact/compat';
-import { Copy, Edit2, ExternalLink, Eye, GitCompare, History, RefreshCw, Trash2, X } from 'lucide-preact';
+import { Copy, Edit2, ExternalLink, Eye, FilePlus, GitCompare, History, RefreshCw, Trash2, X } from 'lucide-preact';
 
 interface ContextMenuProps {
   x: number;
@@ -13,7 +13,9 @@ interface ContextMenuProps {
 
 export function FileContextMenu({ x, y, isFolder, hasGitStatus, onAction, menuRef }: ContextMenuProps) {
   const menuWidth = 190;
-  const menuHeight = isFolder ? 220 : hasGitStatus ? 285 : 255;
+  // The row count differs by kind, and the clamp below needs the real height —
+  // an under-estimate puts the menu's last rows off-screen at the bottom edge.
+  const menuHeight = isFolder ? 250 : hasGitStatus ? 285 : 255;
   
   const posX = typeof window !== 'undefined' ? Math.max(10, Math.min(x, window.innerWidth - menuWidth - 12)) : x;
   const posY = typeof window !== 'undefined' ? Math.max(10, Math.min(y, window.innerHeight - menuHeight - 12)) : y;
@@ -44,6 +46,15 @@ export function FileContextMenu({ x, y, isFolder, hasGitStatus, onAction, menuRe
             )}
           </>
         )}
+        {isFolder && (
+          <>
+            <button onClick={() => onAction('new_file')} className="w-full text-left px-3 py-1.5 hover:bg-ink/5 flex items-center space-x-2 transition-colors">
+              <FilePlus size={13} className="text-ink/60" />
+              <span>New File</span>
+            </button>
+            <div className="my-1 border-t border-ink/10"></div>
+          </>
+        )}
         <button onClick={() => onAction('explorer')} className="w-full text-left px-3 py-1.5 hover:bg-ink/5 flex items-center space-x-2 transition-colors">
           <ExternalLink size={13} className="text-ink/60" />
           <span>Go to Explorer</span>
@@ -72,6 +83,72 @@ export function FileContextMenu({ x, y, isFolder, hasGitStatus, onAction, menuRe
           <span>Delete</span>
         </button>
       </div>
+    </div>,
+    document.body
+  );
+}
+
+interface NewFileModalProps {
+  /** Folder the file will be created in, relative to the listed root. */
+  folderPath: string;
+  value: string;
+  /** Server's refusal (a name that already exists, a bad character), shown inline. */
+  error?: string | null;
+  isLoading: boolean;
+  onChange: (value: string) => void;
+  onCancel: () => void;
+  onSubmit: (e: FormEvent) => void;
+}
+
+/**
+ * The "New File" dialog.
+ *
+ * Only a name is asked for — the folder is the one that was right-clicked, and
+ * showing it as a fixed prefix is what makes the field's meaning unambiguous.
+ * The input starts empty (no `.txt` default): a name is what the user has in
+ * mind, and a prefilled suffix is a character to delete before every keystroke
+ * lands. The server's refusal is rendered INLINE rather than as a toast: the
+ * field is still open, and "already exists" is a message about what to type
+ * next, not a notification about something that happened.
+ */
+export function FileCreateModal({ folderPath, value, error, isLoading, onChange, onCancel, onSubmit }: NewFileModalProps) {
+  return createPortal(
+    <div className="fixed inset-0 bg-ink/20 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+      <form onSubmit={onSubmit} className="bg-paper rounded shadow-xl p-4 w-full max-w-sm border border-ink/10 font-sans">
+        <h3 className="font-semibold text-ink mb-3 text-sm">New File</h3>
+        <div className="flex items-center gap-1 mb-1 text-xs font-mono text-ink/50 min-w-0">
+          <span className="truncate" title={folderPath}>{folderPath || '.'}/</span>
+        </div>
+        <input
+          autoFocus
+          type="text"
+          value={value}
+          onChange={e => onChange(e.currentTarget.value)}
+          placeholder="file name"
+          aria-label="New file name"
+          className={`w-full bg-paper border rounded px-2 py-1.5 text-xs font-mono focus:outline-none mb-2 ${
+            error ? 'border-error' : 'border-ink/20 focus:border-ink'
+          }`}
+        />
+        {error && <p className="text-[11px] text-error mb-2">{error}</p>}
+        <div className="flex justify-end space-x-2 mt-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-3 py-1.5 text-xs text-ink hover:bg-ink/5 rounded transition-colors"
+            disabled={isLoading}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="px-3 py-1.5 text-xs bg-ink text-canvas rounded hover:bg-ink/90 transition-colors flex items-center"
+            disabled={isLoading || !value.trim()}
+          >
+            {isLoading ? 'Creating...' : 'Create'}
+          </button>
+        </div>
+      </form>
     </div>,
     document.body
   );
