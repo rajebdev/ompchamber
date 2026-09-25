@@ -4,7 +4,7 @@ import { methodNotAllowed } from '@/server/lib/route-adapter';
 import { BREAKDOWN_DATA, MOCK_CHART_SERIES, MOCK_CUSTOM_RANGE_DATA, MOCK_RANGE_DATA, TIME_RANGES } from '@/client/data/mock/token-usage';
 import { isMockMode } from '@/server/mock.server';
 import { loadModelsDevCatalog } from '@/shared/lib/models/catalog';
-import { aggregateUsage, buildChartSeries, toBreakdownRows, toMetricSet, type UsageWindow } from '@/server/lib/omp/session/usage';
+import { aggregateUsage, buildChartSeries, toBreakdownRows, toMetricSet, type UsageWindow } from '@/server/lib/omp/session/usage/aggregate';
 import type { BreakdownRow, BreakdownTab, CadenceType, ChartSeriesPoint, TimeRangeType, TokenUsageMetricSet } from '@/shared/types';
 
 const REAL_ZERO_METRIC: TokenUsageMetricSet = {

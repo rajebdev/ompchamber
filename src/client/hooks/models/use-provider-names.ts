@@ -1,5 +1,5 @@
 import type { ModelsResponse } from '@/shared/lib/models/client';
-import { providerNamesFromConnected } from '@/shared/lib/models/provider-label';
+import { providerNamesFromConnected } from '@/shared/lib/models/provider/label';
 import { useModelsCatalog } from '@/client/hooks/models/use-models-catalog';
 
 /** slug → display-name map from `connectedProviders` ({} when none connected). */

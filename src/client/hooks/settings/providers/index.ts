@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { PresetProviderOption, ProviderItem, ProviderModel } from '@/shared/types';
 import { PRESET_NEW_PROVIDERS } from '@/client/data/settings/provider';
-import { fetchProviderModelsRemote, mergeProviderModels, syncProviderModelsToCatalog } from '@/shared/lib/models/provider-models';
-import { buildAvailableProviderPresets } from '@/shared/lib/models/provider-presets';
-import { removeLegacyKenariModels } from '@/shared/lib/models/provider-cleanup';
+import { fetchProviderModelsRemote, mergeProviderModels, syncProviderModelsToCatalog } from '@/shared/lib/models/provider/models';
+import { buildAvailableProviderPresets } from '@/shared/lib/models/provider/presets';
+import { removeLegacyKenariModels } from '@/shared/lib/models/provider/cleanup';
 import { notifyModelsUpdated } from '@/shared/lib/models/client';
-import { saveProviderOverlay, setProviderEnabled } from '@/shared/lib/models/provider-connection';
+import { saveProviderOverlay, setProviderEnabled } from '@/shared/lib/models/provider/connection';
 import { useToasts } from '@/client/hooks/ui/toasts';
 
 interface UseProviderSettingsOptions {

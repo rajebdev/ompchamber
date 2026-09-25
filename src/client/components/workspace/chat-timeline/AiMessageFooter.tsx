@@ -3,7 +3,7 @@ import type { ReactNode } from 'preact/compat';
 import { Bot, Brain, Clock3, Coins, Hourglass, MessageSquarePlus, MoreHorizontal, RotateCcw, X } from 'lucide-preact';
 import { CopyButton } from '@/client/components/common/CopyButton';
 import { formatDuration } from '@/shared/lib/chat/duration';
-import { providerLabel } from '@/shared/lib/models/provider-label';
+import { providerLabel } from '@/shared/lib/models/provider/label';
 import { formatCompactTokens } from '@/shared/lib/format/number';
 
 interface AiMessageFooterProps {

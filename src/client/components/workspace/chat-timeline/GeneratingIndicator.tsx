@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { Bot } from 'lucide-preact';
-import { providerLabel } from '@/shared/lib/models/provider-label';
+import { providerLabel } from '@/shared/lib/models/provider/label';
 
 interface GeneratingIndicatorProps {
   modelName?: string;

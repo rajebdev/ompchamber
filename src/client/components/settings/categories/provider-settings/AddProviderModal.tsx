@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { Check, DownloadCloud, Globe, Key, Layers } from 'lucide-preact';
 import type { ProviderItem } from '@/shared/types';
 import type { PresetProviderOption } from '@/shared/types/settings/provider';
-import { fetchProviderModelsRemote } from '@/shared/lib/models/provider-models';
+import { fetchProviderModelsRemote } from '@/shared/lib/models/provider/models';
 import { ProviderIcon } from '@/client/components/settings/categories/provider-settings/Icons';
 import { Modal } from '@/client/components/common/Modal';
 

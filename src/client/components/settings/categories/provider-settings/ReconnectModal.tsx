@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import type { FormEvent } from 'preact/compat';
 import { AlertCircle, CheckCircle2, DownloadCloud, Globe, Key, RefreshCw } from 'lucide-preact';
 import type { ProviderItem } from '@/shared/types';
-import { fetchProviderModelsRemote } from '@/shared/lib/models/provider-models';
+import { fetchProviderModelsRemote } from '@/shared/lib/models/provider/models';
 import { ProviderIcon } from '@/client/components/settings/categories/provider-settings/Icons';
 import { Modal } from '@/client/components/common/Modal';
 
