@@ -1,7 +1,7 @@
 import { useMemo } from 'preact/hooks';
 import { CheckCircle2, ListTodo, Loader2, Square } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
-import { parseTodoData } from '@/shared/lib/chat/todo-parser';
+import { parseTodoData } from '@/shared/lib/chat/todo/parser';
 import { FallbackOutput } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/FallbackOutput';
 
 /** Panel khusus untuk tool `todo` — task list dengan progress bar, phase groups, dan status yang readable. */

@@ -1,3 +1,20 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * Renderer-side parser for one `todo` tool call: reads the human-readable
+ * checklist omp returns as the tool's text output (and the `list` argument as a
+ * fallback) into phase groups for the chat timeline's tool card.
+ *
+ * This is NOT the authoritative list — a tool card shows what that ONE call
+ * did, while the session's live list is the deepest committed snapshot on the
+ * active branch (`./snapshot.ts`, surfaced by the right-panel Todo view). The
+ * two must not be merged: a card that displayed the session-wide list would
+ * attribute every other call's work to this one.
+ */
+
 import type { ToolCallData } from '@/shared/types';
 
 export interface ParsedTask {

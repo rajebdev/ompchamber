@@ -12,7 +12,7 @@ import { toTitleCase } from '@/shared/lib/chat/title-case';
 import { FallbackOutput } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/FallbackOutput';
 import { tryParseJson } from '@/shared/lib/code/syntax-highlight';
 import { JsonCodeBlock } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/JsonCodeBlock';
-import { getTodoSummary } from '@/shared/lib/chat/todo-parser';
+import { getTodoSummary } from '@/shared/lib/chat/todo/parser';
 import { parseAskQuestions } from '@/shared/lib/chat/ask-questions';
 
 interface ToolCallCardProps {
