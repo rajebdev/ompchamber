@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { launchModeArg, resolveLaunchMode } from '@/server/lib/lifecycle/launch-mode';
+import { isCliManaged, launchModeArg, resolveLaunchMode } from '@/server/lib/lifecycle/launch-mode';
 
 const ENTRY = '/repo/src/server/index.ts';
 
@@ -28,5 +28,24 @@ describe('resolveLaunchMode', () => {
       if (previous === undefined) delete Bun.env.OMPCHAMBER_LAUNCH_MODE;
       else Bun.env.OMPCHAMBER_LAUNCH_MODE = previous;
     }
+  });
+});
+
+// Every command that would END a server decides with this predicate:
+// `restart`/`update` may replace it, and `stop` stops it by default. Guessing
+// wrong here kills a `bun run dev` the user owns — that launcher exits with its
+// child — or leaves a daemon serving the build that was just replaced.
+describe('isCliManaged', () => {
+  test('owns the instances the CLI started', () => {
+    expect(isCliManaged('daemon')).toBe(true);
+    expect(isCliManaged('foreground')).toBe(true);
+  });
+
+  test('leaves every instance OMPChamber did not start alone', () => {
+    // `bun run dev`, `bun run start`, a manual run, a systemd/pm2 unit.
+    expect(isCliManaged('direct')).toBe(false);
+    // A probed or unreadable record never authorises a kill either.
+    expect(isCliManaged('unknown')).toBe(false);
+    expect(isCliManaged(undefined)).toBe(false);
   });
 });

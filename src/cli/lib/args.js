@@ -188,7 +188,7 @@ USAGE:
 COMMANDS:
   serve          Start the OMPChamber web server (default when no command is given)
   update         Update OMPChamber to the latest GitHub release
-  stop           Stop running OMPChamber instances (every one, or --port <port>)
+  stop           Stop the instances the CLI started (--port/--all to stop any)
   restart        Stop and start again (every CLI-started instance, or --port <port>)
   status         Show running instances (every one, or --port <port>)
   logs           Print or follow server logs (every instance, or --port <port>)
@@ -201,7 +201,7 @@ OPTIONS:
   --prod                  Run the production build instead of the dev server
   --foreground            Run the server in the foreground (no daemon)
   --no-daemon             Alias for --foreground
-  --all                   Explicit form of the default for stop/restart (every instance)
+  --all                   Every instance, including ones started outside the CLI
   -c, --check             Report whether a newer release exists without installing it
   --force                 Reinstall even when already up to date
   --no-restart            Do not restart a running instance after updating
@@ -226,7 +226,8 @@ EXAMPLES:
   ompchamber serve --prod          # Serve the production build
   ompchamber update --check        # Is a newer release available?
   ompchamber update                # Update, then restart a running instance
-  ompchamber stop                  # Stop the running instance
+  ompchamber stop                  # Stop the instances the CLI started
+  ompchamber stop --port 3000      # Stop the instance on port 3000, whoever started it
   ompchamber restart               # Restart the server
   ompchamber status                # Show whether the server is running
   ompchamber logs -f -n 200        # Follow the last 200 log lines

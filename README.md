@@ -149,7 +149,7 @@ instance serving that console.
 |---|---|
 | `serve` | Start the web server (daemon by default) |
 | `update` | Install the latest GitHub release, then restart the instance it started |
-| `stop` | Stop the running instance |
+| `stop` | Stop the instances the CLI started — `--port`/`--all` to stop any |
 | `restart` | Stop, then start again — leaving servers started from source alone |
 | `status` | Report whether an instance is running |
 | `logs` | Print or follow the server log |
@@ -185,8 +185,11 @@ PORT=3001 bun run dev              # or: PORT=3001 bun run start
   prints the `lsof -nP -iTCP:<port> -sTCP:LISTEN` command to identify it.
 - `bun run dev` hot reload is unaffected: `--hot` re-evaluates the entry inside the running
   process, and a port held by that process is recognized as its own.
-- `status`, `stop`, `restart` and `logs` act on **every** live instance by default; `--port <port>`
-  narrows them to one. `restart` skips instances started from source, as `update` does.
+- `status` and `logs` report **every** live instance by default; `--port <port>` narrows them to one.
+  `stop` acts on the instances the CLI started, and `restart`/`update` skip the rest: `bun run dev`
+  is a supervisor whose only job is to mirror the script under it, so stopping that server exits
+  the dev loop with it. Name the instance — `ompchamber stop --port <port>`, or `--all` — to end
+  one anyway.
 
 The server writes `~/.ompchamber/run/<port>.json` (`pid`, `host`, `mode`, `launchMode`, `startedAt`)
 once it owns the port, which is how `status`/`stop`/`logs` also see servers started by `bun run dev`

@@ -1,22 +1,19 @@
-// `ompchamber stop` — stop one or every live OMPChamber instance.
+// `ompchamber stop` — stop OMPChamber instances.
+//
+// Scope follows OWNERSHIP, the same rule `restart` and `update` apply. By
+// default only the instances the CLI started are stopped, because a server
+// running from source is supervised by a launcher the CLI does not own and
+// that launcher exits with the child it spawned: `bun run dev` is a process
+// whose whole job is to mirror the script under it, so signalling the server
+// takes the user's dev loop down with it. `--port <port>` and `--all` are the
+// explicit forms that do end one — naming an instance is a deliberate call,
+// not a default.
 
 import { listLiveInstances, findLiveInstance, stopInstance } from '@/cli/lib/runtime.js';
 import { STOP_TIMEOUT_MS } from '@/cli/lib/process-lifecycle.js';
-import { ok, warn, printJson, isJson } from '@/cli/lib/output.js';
-
-function resolvePort(options) {
-  const raw = options?.port;
-  if (raw !== null && raw !== undefined) {
-    const parsed = Number(raw);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  const env = Bun.env.OMPCHAMBER_PORT;
-  if (typeof env === 'string' && env.trim().length > 0) {
-    const parsed = Number(env.trim());
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return 3000;
-}
+import { ok, warn, log, printJson, isJson, isQuiet } from '@/cli/lib/output.js';
+import { unmanagedReason } from '@/server/lib/lifecycle/launch-mode';
+import { partitionStopTargets } from '@/cli/lib/stop-scope.js';
 
 function explicitPort(options) {
   const raw = options?.port;
@@ -25,30 +22,40 @@ function explicitPort(options) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/** How to end an instance the default scope leaves alone. */
+function stopHint(port) {
+  return `stop it with \`ompchamber stop --port ${port}\` or \`ompchamber stop --all\``;
+}
+
 export async function run(options) {
   const json = isJson();
+  const quiet = isQuiet();
   const requested = explicitPort(options);
+  // `--all` is the explicit spelling of "every instance, whoever started it".
+  const explicitScope = requested !== null || Boolean(options?.all);
 
-  // No `--port` means every live instance: a CLI server, a dev run and a
-  // production server are three processes, and `stop` without a port is the
-  // command that clears all of them. `--all` is the explicit spelling of the
-  // same default, kept because it reads well in scripts.
-  let targets;
-  if (requested !== null) {
-    const live = await findLiveInstance(requested);
-    targets = live ? [live] : [];
-  } else {
-    targets = await listLiveInstances();
+  const live = requested !== null
+    ? [await findLiveInstance(requested)].filter(Boolean)
+    : await listLiveInstances();
+  const { targets, skipped } = partitionStopTargets(live, explicitScope);
+  const skippedReport = skipped.map((entry) => ({ port: entry.port, pid: entry.pid, launchMode: entry.launchMode }));
+
+  if (!json && !quiet) {
+    for (const entry of skipped) {
+      log(`Skipping OMPChamber on port ${entry.port} (pid ${entry.pid}): it ${unmanagedReason(entry.launchMode)} — ${stopHint(entry.port)}.`);
+    }
   }
 
   if (targets.length === 0) {
     if (json) {
-      printJson({ stopped: [] });
+      printJson({ stopped: [], skipped: skippedReport });
       return;
     }
-    warn(requested === null
-      ? 'No running OMPChamber instances found.'
-      : `No running OMPChamber instance on port ${requested}.`);
+    if (skipped.length === 0) {
+      warn(requested === null
+        ? 'No running OMPChamber instances found.'
+        : `No running OMPChamber instance on port ${requested}.`);
+    }
     return;
   }
 
@@ -64,5 +71,5 @@ export async function run(options) {
     }
   }
 
-  if (json) printJson({ stopped });
+  if (json) printJson({ stopped, skipped: skippedReport });
 }

@@ -10,7 +10,8 @@ import { color, configure, error, log, ok, warn, printJson, isJson, isQuiet } fr
 import { listLiveInstances, findLiveInstance, stopInstance } from '@/cli/lib/runtime.js';
 import { STOP_TIMEOUT_MS } from '@/cli/lib/process-lifecycle.js';
 import { run as runServe } from '@/cli/lib/commands/serve.js';
-import { isAutoRestartable, skipRestartNote } from '@/server/lib/lifecycle/restart';
+import { skipRestartNote } from '@/server/lib/lifecycle/restart';
+import { isCliManaged } from '@/server/lib/lifecycle/launch-mode';
 import { resolveInstallContext, resolveOmpChamberVersion, updateOmpChamber } from '@/server/lib/updates/install';
 
 /**
@@ -30,7 +31,7 @@ async function restartInstances(options, ctx) {
   const restarted = [];
   const skipped = [];
   for (const entry of await liveInstances(options)) {
-    if (!isAutoRestartable(entry.launchMode)) {
+    if (!isCliManaged(entry.launchMode)) {
       skipped.push({ port: entry.port, pid: entry.pid, launchMode: entry.launchMode });
       log(`Skipping OMPChamber on port ${entry.port}: ${skipRestartNote(entry.launchMode)}.`);
       continue;

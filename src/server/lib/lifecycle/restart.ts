@@ -25,7 +25,7 @@ import { join as joinPath, resolve as resolvePath } from 'node:path';
 
 import { resolveBunBin } from '@/server/lib/lifecycle/bun';
 import { listInstanceRecords } from '@/server/lib/lifecycle/instance';
-import { resolveLaunchMode } from '@/server/lib/lifecycle/launch-mode';
+import { isCliManaged, resolveLaunchMode, unmanagedReason } from '@/server/lib/lifecycle/launch-mode';
 
 /** Package root of the running copy: src/server/lib/lifecycle -> four levels up. */
 const PKG_ROOT = resolvePath(import.meta.dir, '..', '..', '..', '..');
@@ -45,20 +45,15 @@ export interface SelfRestartPlan {
 }
 
 /**
- * True when the CLI owns this instance's lifecycle and may replace it. `direct`
- * is every server OMPChamber did not start: `bun run dev`, `bun run start`, a
- * manual `bun src/server/index.ts`, or an external supervisor.
+ * One-line reason an instance is left running, shared by the CLI and console.
+ * The clause comes from `unmanagedReason` so `stop`, `restart` and `update`
+ * cannot classify the same `launchMode` differently.
  */
-export function isAutoRestartable(launchMode: string | null | undefined): boolean {
-  return launchMode === 'daemon' || launchMode === 'foreground';
-}
-
-/** One-line reason an instance is left running, shared by the CLI and console. */
 export function skipRestartNote(launchMode: string | null | undefined): string {
-  if (launchMode === 'direct') {
-    return 'this instance runs from source (`bun run dev` / `bun run start`) — start it again to apply the update';
-  }
-  return 'this instance is not managed by the ompchamber CLI — restart it yourself to apply the update';
+  const nextStep = launchMode === 'direct'
+    ? 'start it again to apply the update'
+    : 'restart it yourself to apply the update';
+  return `this instance ${unmanagedReason(launchMode)} — ${nextStep}`;
 }
 
 /** The record this process wrote for itself; falls back to the env it was launched with. */
@@ -89,7 +84,7 @@ export function scheduleSelfRestart(): SelfRestartPlan {
     return { restarting: false, message: 'This instance could not be identified — restart it yourself to apply the update.' };
   }
 
-  if (!isAutoRestartable(self.launchMode)) {
+  if (!isCliManaged(self.launchMode)) {
     return { restarting: false, message: skipRestartNote(self.launchMode) };
   }
 

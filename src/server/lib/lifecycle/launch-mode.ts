@@ -38,3 +38,29 @@ export function resolveLaunchMode(argv: readonly string[] = Bun.argv): InstanceL
   const value = flag?.slice(LAUNCH_MODE_FLAG.length);
   return value === 'daemon' || value === 'foreground' ? value : 'direct';
 }
+
+/**
+ * Whether the CLI owns this instance's lifecycle — the one question every
+ * command that would end a server asks: `restart`/`update` may replace it, and
+ * `stop` stops it by default.
+ *
+ * A `direct` server runs under a launcher the CLI does not own, and that
+ * launcher exits with its child: `bun run dev` is a supervisor process whose
+ * only job is to mirror the script it spawned, so signalling the server ends
+ * the user's dev loop with it. Leaving those alone by default is what keeps
+ * `ompchamber stop` from killing a loop it did not start; an explicit
+ * `--port <port>` (or `--all`) still ends one, deliberately.
+ */
+export function isCliManaged(launchMode: string | null | undefined): boolean {
+  return launchMode === 'daemon' || launchMode === 'foreground';
+}
+
+/**
+ * Why an instance the CLI does not own is left alone, without the action. Each
+ * command that would end a server appends its own next step, so the two cannot
+ * describe the same `launchMode` differently.
+ */
+export function unmanagedReason(launchMode: string | null | undefined): string {
+  if (launchMode === 'direct') return 'runs from source (`bun run dev` / `bun run start`)';
+  return 'is not managed by the ompchamber CLI';
+}
