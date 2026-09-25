@@ -56,6 +56,8 @@ interface WorkspacePanelsProps {
   refreshKey: number;
   onSetActiveFileId: (id: number | string | null) => void;
   onCloseFile: (id: number | string) => void;
+  /** Replace a diff tab with the plain editor tab for the same file. */
+  onConvertDiffToEditor: (id: number | string) => void;
   onOpenFile: (file: any) => void;
   onRefreshWorkspace: () => void;
   onChangeRightPanel: (panel: RightPanelType) => void;
@@ -81,6 +83,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
     refreshKey,
     onSetActiveFileId,
     onCloseFile,
+    onConvertDiffToEditor,
     onOpenFile,
     onRefreshWorkspace,
     onChangeRightPanel,
@@ -185,6 +188,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
               activeFileId={activeFileId}
               onSelectFile={onSetActiveFileId}
               onCloseFile={onCloseFile}
+              onConvertDiffToEditor={onConvertDiffToEditor}
               refreshKey={refreshKey}
               onFileSaved={onRefreshWorkspace}
             />

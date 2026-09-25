@@ -2,7 +2,17 @@ import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { useSessionStateContext } from '@/client/hooks/workspace/session-state/context';
 import { useChamberEvent } from '@/client/hooks/ui/window-event';
+import { diffTabId, diffTabName, fileTabId } from '@/shared/lib/workspace/file-tab-id';
 import type { OpenedFile } from '@/shared/types/fs';
+
+export interface OpenFileInput {
+  id?: number | string;
+  name: string;
+  path: string;
+  content?: string;
+  root?: string;
+  repo?: string;
+}
 
 export function useFileTabs(
   activeProjectPath: string | null,
@@ -25,9 +35,12 @@ export function useFileTabs(
     setActiveFileId(null);
   }, [activeProjectPath, sessionId, layoutReady, setOpenedFiles, setActiveFileId]);
 
-  const handleOpenFile = useCallback((file: any) => {
+  const handleOpenFile = useCallback((file: OpenFileInput) => {
     const fileEntry: OpenedFile = {
       ...file,
+      // One id scheme for a path, so a file opened from the explorer, a chat
+      // link and a converted diff tab all land on the same tab.
+      id: file.id ?? fileTabId(file.path),
       root: file.root ?? activeProjectPath ?? undefined,
     };
     setOpenedFiles(prev => {
@@ -52,13 +65,12 @@ export function useFileTabs(
     root?: string;
   }) => {
     const rawPath = diffInfo.file.replace(/^\/+/, '');
-    const fileName = rawPath.split('/').pop() || rawPath;
     const isStaged = Boolean(diffInfo.staged);
-    const diffId = `diff-${isStaged ? 'staged' : 'working'}-${rawPath}`;
+    const diffId = diffTabId(rawPath, isStaged);
 
     const diffEntry: OpenedFile = {
       id: diffId,
-      name: `${fileName} (Diff)`,
+      name: diffTabName(rawPath),
       path: rawPath,
       isDiff: true,
       diffStatus: diffInfo.status || 'M',
@@ -91,6 +103,50 @@ export function useFileTabs(
     });
   }, [activeFileId, setOpenedFiles, setActiveFileId]);
 
+  /**
+   * Turn a diff tab into the plain editor tab for the same file.
+   *
+   * The panel used to do this by assigning `activeFile.isDiff = false` on the
+   * object it was handed. That object is the one inside `layout.openedFiles`,
+   * so the flag was mutated in place: React never saw a change (the array
+   * identity was identical), the tab kept rendering the diff until the next
+   * unrelated render, and — because the array is what gets persisted — the
+   * mutation reached the database. After a reload the "diff" tab came back as
+   * a file tab, and re-opening that file's diff found an entry that already
+   * matched, so the diff never came back at all.
+   *
+   * The target id is `fileTabId`, so if that file already has a tab the two
+   * entries would share an id and React would render duplicate keys. The diff
+   * entry is dropped in that case and the existing tab activated instead — the
+   * user asked to see the file, and it is already open.
+   */
+  const convertDiffToEditor = useCallback((diffId: number | string) => {
+    setOpenedFiles(prev => {
+      const index = prev.findIndex(f => f.id === diffId);
+      if (index === -1) return prev;
+      const diff = prev[index];
+      const fileId = fileTabId(diff.path);
+      const alreadyOpen = prev.find(f => f.id === fileId);
+
+      if (alreadyOpen) {
+        setActiveFileId(alreadyOpen.id);
+        return prev.filter(f => f.id !== diffId);
+      }
+
+      const next = [...prev];
+      next[index] = {
+        id: fileId,
+        name: diff.path.split('/').pop() || diff.name,
+        path: diff.path,
+        root: diff.root,
+        repo: diff.repo,
+      };
+      setActiveFileId(fileId);
+      return next;
+    });
+    onOpenTab?.();
+  }, [onOpenTab, setOpenedFiles, setActiveFileId]);
+
   // Global listeners for omp:open-file and omp:open-diff
   useChamberEvent('omp:open-file', (e) => {
     const customEvent = e as CustomEvent<{ path: string; name?: string; id?: number; content?: string; root?: string; repo?: string }>;
@@ -98,15 +154,9 @@ export function useFileTabs(
 
     const rawPath = customEvent.detail.path.replace(/^\/+/, '');
     const name = customEvent.detail.name || rawPath.split('/').pop() || 'file';
-    let hash = 0;
-    for (let i = 0; i < rawPath.length; i++) {
-      hash = (hash << 5) - hash + rawPath.charCodeAt(i);
-      hash |= 0;
-    }
-    const id = customEvent.detail.id || Math.abs(hash) || Date.now();
 
     handleOpenFile({
-      id,
+      id: customEvent.detail.id || fileTabId(rawPath),
       name,
       path: rawPath,
       content: customEvent.detail.content,
@@ -136,5 +186,6 @@ export function useFileTabs(
     handleOpenFile,
     handleOpenDiff,
     handleCloseFile,
+    convertDiffToEditor,
   };
 }

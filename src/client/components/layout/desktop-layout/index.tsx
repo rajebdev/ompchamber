@@ -56,6 +56,7 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
     setActiveFileId,
     handleOpenFile,
     handleCloseFile,
+    convertDiffToEditor,
   } = useFileTabs(activeProjectPath, sessionId || '', handleOpenTab);
 
   const showEditor = openedFiles.length > 0 && (userToggledEditor ?? true);
@@ -183,6 +184,7 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
                 refreshKey={refreshKey}
                 onSetActiveFileId={setActiveFileId}
                 onCloseFile={handleCloseFile}
+                onConvertDiffToEditor={convertDiffToEditor}
                 onOpenFile={handleOpenFile}
                 onRefreshWorkspace={handleRefreshWorkspace}
                 onChangeRightPanel={handleChangeRightPanel}

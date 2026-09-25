@@ -19,6 +19,8 @@ interface EditorProps {
   activeFileId: number | string | null;
   onSelectFile: (id: number | string) => void;
   onCloseFile: (id: number | string) => void;
+  /** Replace a diff tab with the plain editor tab for the same file. */
+  onConvertDiffToEditor: (id: number | string) => void;
   refreshKey?: number;
   onFileSaved?: () => void;
 }
@@ -29,6 +31,7 @@ export function Editor({
   activeFileId, 
   onSelectFile, 
   onCloseFile, 
+  onConvertDiffToEditor,
   refreshKey = 0,
   onFileSaved 
 }: EditorProps) {
@@ -119,11 +122,7 @@ export function Editor({
             isStaged={Boolean(activeFile.diffStaged)}
             root={activeFile.root}
             repo={activeFile.repo || '.'}
-            onOpenInEditor={() => {
-              // Convert diff tab to regular editor tab
-              activeFile.isDiff = false;
-              onSelectFile(activeFile.id);
-            }}
+            onOpenInEditor={() => onConvertDiffToEditor(activeFile.id)}
             onFileSaved={onFileSaved}
             className="flex-1"
           />
