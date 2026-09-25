@@ -141,16 +141,27 @@ export function resolveBunBin() {
  * replaced by the next update.
  */
 export function buildServeInvocation({ pkgRoot, mode, port, host, launchMode = 'daemon' }) {
-  const entry = joinPath(pkgRoot, 'src', 'server', 'index.ts');
+  // Production runs the built server: `bun run build` bundles `src/server/index.ts`
+  // into `dist/client/index.js`, and that bundle carries the HTML route and the
+  // hashed assets beside it. Development runs the source, which is what gives
+  // `--hot` something to reload.
+  const entry = mode === 'prod'
+    ? joinPath(pkgRoot, 'dist', 'client', 'index.js')
+    : joinPath(pkgRoot, 'src', 'server', 'index.ts');
   if (!fs.existsSync(entry)) {
-    throw new Error(`Could not locate the server entry at ${entry}.`);
-  }
-  if (mode === 'prod' && !fs.existsSync(joinPath(pkgRoot, 'dist', 'client', 'index.html'))) {
-    throw new Error('No client build found. Run `bun run build` and retry.');
+    throw new Error(mode === 'prod'
+      ? `No production build found at ${entry}. Run \`bun run build\` and retry.`
+      : `Could not locate the server entry at ${entry}.`);
   }
   return {
     file: resolveBunBin(),
     args: [entry, '--ompchamber-server', launchModeArg(launchMode)],
+    // Both modes run from the package root. The built server's HTML bundle
+    // resolves its asset paths against the cwd, and the build emits them under
+    // `dist/client/` from that same root — while everything else the server
+    // does (the SQLite file, workspace roots, `public/`) is cwd-relative too,
+    // so moving the cwd into the output directory would relocate all of it.
+    cwd: pkgRoot,
     env: {
       ...Bun.env,
       NODE_ENV: mode === 'prod' ? 'production' : 'development',
@@ -172,13 +183,13 @@ export function spawnDetachedServer({ pkgRoot, mode, port, host, launchMode = 'd
   ensureDataDirs();
   const logFile = getLogFilePath(port);
   const fd = fs.openSync(logFile, 'a');
-  const { file, args, env } = buildServeInvocation({ pkgRoot, mode, port, host, launchMode });
+  const { file, args, env, cwd } = buildServeInvocation({ pkgRoot, mode, port, host, launchMode });
 
   let child;
   try {
     child = Bun.spawn({
       cmd: [file, ...args],
-      cwd: pkgRoot,
+      cwd,
       stdin: 'ignore',
       stdout: fd,
       stderr: fd,

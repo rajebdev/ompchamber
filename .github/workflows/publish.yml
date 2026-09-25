@@ -88,24 +88,28 @@ jobs:
         run: bun test
 
       - name: Build the client bundle
-        # NODE_ENV=production takes the production branch of rsbuild.config.ts
-        # (source maps off) — the bundle `serve --prod` is meant to serve.
+        # `scripts/build-client.ts` bundles the server plus the HTML route's
+        # assets into dist/client. `serve --prod` runs that bundle, so the build
+        # has to happen here — the server can also bundle its HTML route on the
+        # fly, but a published package must ship the assets.
         env:
           NODE_ENV: production
         run: bun run build
 
-      # The server answers 503 without dist/client, and the tarball would ship
-      # without it too — fail here rather than in a user's terminal.
-      # `bun pm pack` needs no registry credentials (unlike `bun publish
-      # --dry-run`), so this guard runs before the token is used at all, and it
-      # asserts the file is inside the tarball, not merely on disk.
+      # The tarball must carry both halves: the built server (which
+      # `serve --prod` executes) and the sources `serve` runs in dev. `bun pm
+      # pack` needs no registry credentials (unlike `bun publish --dry-run`), so
+      # this guard runs before the token is used at all, and it asserts the
+      # files are inside the tarball, not merely on disk.
       - name: Verify the publish payload
         run: |
           bun pm pack --dry-run > /tmp/pack.txt
-          grep -q 'dist/client/index.html' /tmp/pack.txt || {
-            echo "::error::dist/client/index.html is missing from the tarball"
-            exit 1
-          }
+          for required in dist/client/index.js index.html bunfig.toml src/server/index.ts; do
+            grep -q "$required" /tmp/pack.txt || {
+              echo "::error::$required is missing from the tarball"
+              exit 1
+            }
+          done
           tail -3 /tmp/pack.txt
 
       - name: Publish to npm

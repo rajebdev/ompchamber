@@ -53,12 +53,16 @@ export async function run(options, ctx) {
   if (ompError) fail(ompError);
 
   if (mode === 'prod') {
-    const serverEntry = joinPath(pkgRoot, 'dist', 'client', 'index.html');
+    const builtServer = joinPath(pkgRoot, 'dist', 'client', 'index.js');
     // Bun.file().exists() is file-only (false for directories) — correct here,
     // where the target is always a regular file. For directory guards use
     // pathExists() in src/server/lib/omp/core/paths.ts.
-    if (!(await Bun.file(serverEntry).exists())) {
-      fail(`Production build not found at ${serverEntry}.\nRun \`bun run build\` first, then retry with --prod.`);
+    //
+    // The built server, not `dist/client/index.html`: the production bundle is
+    // the server itself (its HTML route is what emits the markup), and running
+    // it is what serves the assets beside it.
+    if (!(await Bun.file(builtServer).exists())) {
+      fail(`Production build not found at ${builtServer}.\nRun \`bun run build\` first, then retry with --prod.`);
     }
   }
 
@@ -104,14 +108,14 @@ export async function run(options, ctx) {
 }
 
 function runForeground({ pkgRoot, mode, port, host, quiet }) {
-  const { file, args, env } = buildServeInvocation({ pkgRoot, mode, port, host, launchMode: 'foreground' });
+  const { file, args, env, cwd } = buildServeInvocation({ pkgRoot, mode, port, host, launchMode: 'foreground' });
   const url = `http://${probeHost(host)}:${port}`;
   if (!quiet) {
     log(`Running OMPChamber (${mode}) in the foreground on ${url} (Ctrl+C to stop)...`);
   }
   const child = Bun.spawn({
     cmd: [file, ...args],
-    cwd: pkgRoot,
+    cwd,
     stdin: 'inherit',
     stdout: 'inherit',
     stderr: 'inherit',
