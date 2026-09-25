@@ -106,8 +106,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # semantic-release writes no outputs, so the tag it cut is read back
-          # off the repository. `bumpStrict` in release.config.mjs means a push
-          # of chores/tests alone bumps nothing and ends here.
+          # off the repository. `releaseRules` in release/release-rules.js means
+          # a push of chores/tests/docs alone bumps nothing and ends here.
           before="$(git describe --tags --abbrev=0 2>/dev/null || echo none)"
           node node_modules/semantic-release/bin/semantic-release.js
           after="$(git describe --tags --abbrev=0)"

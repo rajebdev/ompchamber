@@ -1,0 +1,78 @@
+name: CI
+
+# The four gates every change is required to pass (CONTRIBUTING.md §1), on the pull
+# request and again on `main`.
+#
+# They used to run only inside `release.yml` — after a merge, on the commit that was
+# about to be tagged — so a red `main` was discovered by the release job that then
+# refused to cut a release, and the fix was another push that ran the gates again.
+# Running them here means the pull request is where a broken change is caught, and
+# the release job re-running them is what keeps a tag from being cut on a red main.
+#
+# Nothing here is a release: no tag, no version, no changelog. `release.yml` owns
+# that, and it runs the same commands because a gate that only ever ran on the pull
+# request could still be skipped by a direct push.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# A new push supersedes the run for the one before it: the answer that matters is
+# the one for the newest commit.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    name: Gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.x
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run lint
+
+      # `noUnusedLocals`/`noUnusedParameters` catch what `tsc --noEmit` alone does
+      # not: an import, prop or destructured field a change left behind. The two are
+      # separate steps so the log says which gate failed.
+      - name: Typecheck without unused code
+        run: bunx tsc --noEmit --noUnusedLocals --noUnusedParameters
+
+      - name: Test
+        run: bun test
+
+      # The production build is a gate of its own: it is the artifact `serve --prod`
+      # runs, and it is the one step that executes the CSS/Tailwind bundling plugin
+      # rather than merely typechecking it.
+      - name: Build
+        env:
+          NODE_ENV: production
+        run: bun run build
+
+      # The file-size ceiling (AGENTS.md §1) is a rule about the source tree, so it is
+      # checked against the tree rather than through the build.
+      - name: Check the file-size ceiling
+        run: |
+          over="$(find src -name '*.ts' -o -name '*.tsx' | xargs wc -l | grep -v total | awk '$1>350')"
+          if [ -n "$over" ]; then
+            echo "::error::Files over the 350-line ceiling:"
+            echo "$over"
+            exit 1
+          fi
+          echo "No file over 350 lines."
