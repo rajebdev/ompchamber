@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { forwardRef } from 'preact/compat';
 import type { CSSProperties } from 'preact';
 
-import { CodeEditor } from '@/client/components/common/code-editor';
+import { CodeEditor, type CodeEditorHandle } from '@/client/components/common/code-editor';
 import { measureRowHeight, measureWrappedLines, type WrappedLines } from '@/client/components/common/code-surface/measure';
+import { findScrollContainer } from '@/client/hooks/editor/scroll-container';
 import { useCodeWindow } from '@/client/hooks/editor/use-code-window';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 import {
@@ -12,17 +14,32 @@ import {
   type LineGeometry,
   type LineWindow,
 } from '@/shared/lib/code/lazy-window';
+import type { FindMatch } from '@/shared/lib/code/editor/find';
+import type { EditorCommand } from '@/shared/lib/code/editor/keymap';
+import { lineIndexAt } from '@/shared/lib/code/editor/lines';
+import type { TextRange } from '@/shared/lib/code/editor/commands';
+import { countLines } from '@/shared/lib/code/editor/lines';
 import { highlightCode } from '@/shared/lib/code/syntax-highlight';
 import { highlightCodeWindow } from '@/shared/lib/code/windowed-highlight';
 
 const WRAP_ON = '!whitespace-pre-wrap !break-words';
 const WRAP_OFF = '!whitespace-pre !break-normal';
 
-/** Line count without materializing every line — a 20 000-line value per render is a megabyte of strings. */
-function countLines(text: string): number {
-  let count = 1;
-  for (let index = text.indexOf('\n'); index !== -1; index = text.indexOf('\n', index + 1)) count++;
-  return count;
+export interface CodeSurfaceHandle {
+  /** Current selection offsets in the buffer, or null before the field mounts. */
+  getSelection(): { start: number; end: number } | null;
+  /** Select `[start, end)`; `focus` moves keyboard focus into the editor. */
+  select(start: number, end: number, focus?: boolean): void;
+  /** Replace the buffer as one undoable edit, caret at `[caretStart, caretEnd)`, focus unchanged. */
+  applyDocument(value: string, caretStart: number, caretEnd: number): void;
+  /** Run an editor command by name (the palette's path into the editor). */
+  runCommand(command: EditorCommand): void;
+  /**
+   * Bring the line holding `offset` into view WITHOUT moving the caret — what
+   * "step to the next match" needs: the user's focus stays in the find field
+   * while the match scrolls under it.
+   */
+  revealOffset(offset: number): void;
 }
 
 interface CodeSurfaceProps {
@@ -31,6 +48,19 @@ interface CodeSurfaceProps {
   /** Shiki language id, already resolved from the file name. */
   language: string;
   wordWrap: boolean;
+  /** Find matches (document offsets) to paint; the current one is marked. */
+  marks?: readonly FindMatch[];
+  currentMark?: number;
+  /**
+   * Extra ranges the ⌘D workflow has selected. The textarea can only hold one
+   * selection, so the surface paints the others from here — and it must, or
+   * ⌘D would look like it did nothing.
+   */
+  occurrences?: readonly TextRange[];
+  /** Commands the editor does not own (find bar chords, word wrap, save). */
+  onCommand?: (command: EditorCommand) => void;
+  /** Called with the extra ranges whenever ⌘D / ⌘⇧L change them. */
+  onOccurrencesChange?: (ranges: readonly TextRange[]) => void;
   /** Outer flex row that holds the gutter and the editor column. */
   rootClassName?: string;
   gutterClassName?: string;
@@ -71,11 +101,16 @@ function sameWrappedLines(previous: WrappedLines | null, next: WrappedLines | nu
  * 20 000-line file from spending minutes in the tokenizer, and a keystroke in it
  * from re-tokenizing the file at all.
  */
-export function CodeSurface({
+export const CodeSurface = forwardRef<CodeSurfaceHandle, CodeSurfaceProps>(function CodeSurface({
   value,
   onValueChange,
   language,
   wordWrap,
+  marks,
+  currentMark,
+  occurrences,
+  onCommand,
+  onOccurrencesChange,
   rootClassName,
   gutterClassName,
   gutterStyle,
@@ -84,10 +119,11 @@ export function CodeSurface({
   editorClassName,
   editorPadding = 0,
   editorStyle,
-}: CodeSurfaceProps) {
+}, ref) {
   const wrapClass = wordWrap ? WRAP_ON : WRAP_OFF;
   const preRef = useRef<HTMLPreElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const editorRef = useRef<CodeEditorHandle | null>(null);
   const [wrapped, setWrapped] = useState<WrappedLines | null>(null);
   const [rowHeight, setRowHeight] = useState<number | null>(null);
   /** Lines the last measurement pass described; -1 before the first one runs. */
@@ -150,10 +186,66 @@ export function CodeSurface({
     enabled: lazy && (measuredLines !== lineCount || geometry !== null),
   });
 
+  /**
+   * What the highlight layer paints: the find matches, plus every extra ⌘D
+   * range. The find widget's current match is the one the caret is aimed at, so
+   * it keeps `currentMark` — an occurrence range never claims that role.
+   */
+  const painted = useMemo<readonly FindMatch[]>(() => {
+    if (!occurrences || occurrences.length === 0) return marks ?? [];
+    return [...(marks ?? []), ...occurrences];
+  }, [marks, occurrences]);
+  /** Where the extra selections start inside `painted`; -1 when there are none. */
+  const occurrenceFrom = occurrences && occurrences.length > 0 ? (marks?.length ?? 0) : -1;
+
   const highlight = useCallback(
     (code: string, range: LineWindow | null) =>
-      range ? highlightCodeWindow(code, language, range) : highlightCode(code, language),
-    [language],
+      range
+        ? highlightCodeWindow(code, language, range, { marks: painted, currentMark, occurrenceFrom })
+        : highlightCode(code, language, { marks: painted, currentMark, occurrenceFrom }),
+    [language, painted, currentMark, occurrenceFrom],
+  );
+
+  /**
+   * Bring `offset`'s row into view without touching the caret.
+   *
+   * `scrollIntoView` cannot be used: the caret's row and the match's row are
+   * different elements (the highlighted `<pre>` is `aria-hidden` and
+   * `pointer-events: none`), and the browser's own scroll-into-view on
+   * `setSelectionRange` would fight this. Instead the row's pixel offset comes
+   * from the same geometry the window is resolved against, so the two agree by
+   * construction, and the scroll is a plain assignment on the container the
+   * window reads.
+   */
+  const revealOffset = useCallback(
+    (offset: number) => {
+      const root = rootRef.current;
+      if (!root || !geometry) return;
+      const rowTop = geometry.offsetOf(lineIndexAt(value, offset));
+      const container = findScrollContainer(root);
+      if (!container) return;
+      const frameTop = root.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
+      const band = container.clientHeight;
+      const target = frameTop + rowTop;
+      // Only scroll when the row is actually outside the band; a reveal that
+      // always re-centers would make every "next match" jump the whole view.
+      if (target < container.scrollTop + 8 || target + geometry.rowHeight > container.scrollTop + band - 8) {
+        container.scrollTop = Math.max(0, target - band / 3);
+      }
+    },
+    [geometry, value],
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      getSelection: () => editorRef.current?.getSelection() ?? null,
+      select: (start, end, focus = true) => editorRef.current?.select(start, end, focus),
+      applyDocument: (next, caretStart, caretEnd) => editorRef.current?.applyDocument(next, caretStart, caretEnd),
+      runCommand: (command) => editorRef.current?.run(command),
+      revealOffset,
+    }),
+    [revealOffset],
   );
 
   const firstLine = virtual ? virtual.start : 0;
@@ -184,13 +276,18 @@ export function CodeSurface({
           highlight={highlight}
           padding={editorPadding}
           preRef={preRef}
+          handleRef={editorRef}
           textareaClassName={`focus:outline-none ${wrapClass}`}
           preClassName={wrapClass}
           style={editorStyle}
           className={editorClassName}
           virtual={virtual}
+          language={language}
+          occurrences={occurrences}
+          onCommand={onCommand}
+          onOccurrencesChange={onOccurrencesChange}
         />
       </div>
     </div>
   );
-}
+});

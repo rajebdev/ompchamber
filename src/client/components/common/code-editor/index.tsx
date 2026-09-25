@@ -1,15 +1,14 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useImperativeHandle, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { CSSProperties, Ref, TargetedKeyboardEvent } from 'preact';
 
-import {
-  continuesTyping,
-  createHistory,
-  mergeTyping,
-  pushEdit,
-  pushRecord,
-  stepHistory,
-  type HistoryRecord,
-} from '@/client/components/common/code-editor/history';
+import { continuesTyping, mergeTyping, pushRecord } from '@/shared/lib/code/editor/history';
+import { handleEditorKeydown, runEditorCommand, type EditorKeydownDeps } from '@/client/components/common/code-editor/handler';
+import { layerStyle, layerStyles } from '@/shared/lib/code/editor/layers';
+import { CODE_EDITOR_RESET_CSS } from '@/shared/lib/code/editor/reset-css';
+import type { EditorCommand } from '@/shared/lib/code/editor/keymap';
+import { useOccurrences } from '@/client/hooks/editor/use-occurrences';
+import { useEditorHistory } from '@/client/hooks/editor/use-editor-history';
+import type { TextRange } from '@/shared/lib/code/editor/commands';
 import type { CodeWindow, LineWindow } from '@/shared/lib/code/lazy-window';
 
 /**
@@ -26,6 +25,30 @@ import type { CodeWindow, LineWindow } from '@/shared/lib/code/lazy-window';
  * untouched, while the `<pre>` carries just the visible ones and reserves the
  * rest as padding — the alignment that keeps the caret over its own row.
  */
+
+export interface CodeEditorHandle {
+  /** The `<textarea>` that owns the document — measurements and focus anchor on it. */
+  textarea(): HTMLTextAreaElement | null;
+  /** Current selection offsets, or null before the field is mounted. */
+  getSelection(): { start: number; end: number } | null;
+  /** Select a range; `focus` also moves the keyboard focus into the editor. */
+  select(start: number, end: number, focus?: boolean): void;
+  /**
+   * Replace the whole buffer as ONE undoable edit and leave the caret at
+   * `caretStart`/`caretEnd`, WITHOUT moving focus. Used by the find widget's
+   * replace, which must not look like a burst of typing to the history (⌘Z has
+   * to undo it in one step) and must not steal focus from its own field.
+   */
+  applyDocument(value: string, caretStart: number, caretEnd: number): void;
+  /** Every range a ⌘D workflow has selected, primary included — the surface paints them. */
+  occurrences(): readonly TextRange[];
+  /**
+   * Run an editor command by name — the palette's path into the editor. It goes
+   * through the same dispatcher the keyboard uses, so a command cannot work
+   * from a chord and do nothing from the palette.
+   */
+  run(command: EditorCommand): void;
+}
 
 export interface CodeEditorProps {
   value: string;
@@ -47,28 +70,27 @@ export interface CodeEditorProps {
   autoFocus?: boolean;
   /** Renders only this window of lines, with the rest reserved as space. Omit to mirror the whole value. */
   virtual?: CodeWindow | null;
+  /** Imperative surface for the find widget (selection, reveal, one-shot replace). */
+  handleRef?: Ref<CodeEditorHandle>;
+  /**
+   * Called when the extra selection ranges change, so the surface can paint
+   * them. The textarea holds only the primary selection; everything ⌘D adds
+   * lives here.
+   */
+  onOccurrencesChange?: (ranges: readonly TextRange[]) => void;
+  /** Commands this editor does not own (find bar chords, word wrap, save). */
+  onCommand?: (command: EditorCommand) => void;
+  /**
+   * The extra ⌘D ranges, held by the CALLER. The editor keeps its own copy in a
+   * ref for synchronous reads; this prop is what makes the surface a controlled
+   * view of them, so the paint and the editing model cannot disagree.
+   */
+  occurrences?: readonly TextRange[];
+  /** Shiki language id, for the comment syntax. */
+  language?: string;
 }
 
 const BASE_TEXTAREA_CLASS = 'code-editor-native-textarea';
-
-const RESET_CSS = `
-.code-editor-native-textarea {
-  -webkit-text-fill-color: transparent;
-}
-.code-editor-native-textarea::placeholder {
-  -webkit-text-fill-color: var(--theme-ink);
-  opacity: 0.45;
-}
-`;
-
-/** Shared <style> injected once per page. */
-function EditorResetStyle() {
-  return <style dangerouslySetInnerHTML={{ __html: RESET_CSS }} />;
-}
-
-function getLines(text: string, position: number): string[] {
-  return text.substring(0, position).split('\n');
-}
 
 export function CodeEditor({
   value,
@@ -84,175 +106,147 @@ export function CodeEditor({
   readOnly,
   autoFocus,
   virtual,
+  handleRef,
+  occurrences,
+  onOccurrencesChange,
+  onCommand,
+  language = 'javascript',
 }: CodeEditorProps) {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const historyRef = useRef(createHistory());
   const [captureTab, setCaptureTab] = useState(true);
+  const multi = useOccurrences({
+    controlled: occurrences,
+    onChange: (ranges) => onOccurrencesChange?.(ranges),
+  });
 
-  // Re-record when the controlled value is replaced from the outside
-  // (file switch, refresh) so undo does not jump between documents.
-  useEffect(() => {
-    const input = inputRef.current;
-    if (!input) return;
-    pushRecord(historyRef.current, {
-      value: input.value,
-      selectionStart: input.selectionStart,
-      selectionEnd: input.selectionEnd,
-      timestamp: Date.now(),
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
+  // A selection asked for before the field exists (the find widget opens and
+  // the panel re-renders in the same tick) is applied as soon as it mounts.
+  const pendingSelectionRef = useRef<{ start: number; end: number; focus: boolean } | null>(null);
 
-  const applyEdits = (record: Pick<HistoryRecord, 'value' | 'selectionStart' | 'selectionEnd'>) => {
+  /**
+   * The buffer and selection as of the last event that could precede an edit.
+   *
+   * `handleChange` has to know which range the BROWSER replaced, and the `input`
+   * event reports the state AFTER the edit — useless for locating it. Keydown,
+   * select and the component's own writes all land before the edit, so
+   * recording there is what makes the diff in `handleChange` unambiguous.
+   *
+   * The buffer that goes with it comes from the history hook (`undoStack.buffer`),
+   * NOT from the `value` prop: the prop lags a keystroke — it only moves once
+   * the panel's state has re-rendered, and the next keystroke can arrive first
+   * (measured: typing at several carets with a 30 ms gap). A stale `before`
+   * turns the diff into a replacement of the whole word, which is what made a
+   * five-letter burst take five undos.
+   */
+  const lastSelectionRef = useRef<TextRange>({ start: 0, end: 0 });
+
+  const setSelection = (start: number, end: number, focus: boolean) => {
+    lastSelectionRef.current = { start, end };
     const input = inputRef.current;
-    const last = historyRef.current.stack[historyRef.current.offset];
-    if (last && input) {
-      // The entry on top is about to be superseded: keep where its caret was,
-      // so undo returns to the selection this edit replaced.
-      historyRef.current.stack[historyRef.current.offset] = {
-        ...last,
-        selectionStart: input.selectionStart,
-        selectionEnd: input.selectionEnd,
-      };
+    if (!input) {
+      pendingSelectionRef.current = { start, end, focus };
+      return;
     }
-    pushEdit(historyRef.current, { ...record, timestamp: Date.now() });
-    onValueChange(record.value);
-    if (input) {
-      input.value = record.value;
-      input.selectionStart = record.selectionStart;
-      input.selectionEnd = record.selectionEnd;
-    }
+    input.selectionStart = start;
+    input.selectionEnd = end;
+    if (focus) input.focus();
   };
 
+  useImperativeHandle(
+    handleRef ?? null,
+    () => ({
+      textarea: () => inputRef.current,
+      getSelection: () => {
+        const input = inputRef.current;
+        return input ? { start: input.selectionStart, end: input.selectionEnd } : null;
+      },
+      select: setSelection,
+      applyDocument: (next, caretStart, caretEnd) => {
+        undoStack.commitEdit({ value: next, selectionStart: caretStart, selectionEnd: caretEnd });
+        // Focus is deliberately left where it was: the find widget's Replace
+        // button is about to be pressed again, and pulling focus into the
+        // document would eat the next keystroke.
+        setSelection(caretStart, caretEnd, false);
+      },
+      occurrences: () => multi.ranges,
+      run: (command) => {
+        const input = inputRef.current;
+        if (input) runEditorCommand(command, keydownDeps(input));
+      },
+    }),
+    // `applyEdits` closes over `onValueChange` and the history ref only, both of
+    // which are stable for the component's life.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [onValueChange],
+  );
+
+  // Runs on every render: a selection asked for while the field was not yet
+  // mounted (the find widget opens in the same tick as the panel's first
+  // render) has to land as soon as the textarea exists.
+  useLayoutEffect(() => {
+    const pending = pendingSelectionRef.current;
+    if (!pending || !inputRef.current) return;
+    pendingSelectionRef.current = null;
+    setSelection(pending.start, pending.end, pending.focus);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  });
+
+  const undoStack = useEditorHistory({ value, inputRef, onValueChange });
+
+  /** Everything the dispatcher needs, built once per call from the live refs. */
+  const keydownDeps = (input: HTMLTextAreaElement): EditorKeydownDeps => ({
+    input,
+    language,
+    captureTab,
+    toggleCaptureTab: () => setCaptureTab((prev) => !prev),
+    history: undoStack,
+    multi,
+    select: (start, end) => setSelection(start, end, true),
+    delegate: (command) => {
+      onCommand?.(command);
+    },
+  });
+
   const handleKeyDown = (e: TargetedKeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Escape') {
-      e.currentTarget.blur();
-      return;
-    }
-    const { value: text, selectionStart, selectionEnd } = e.currentTarget;
-    const tabCharacter = '  ';
-    const isMac = /(Mac|iPhone|iPod|iPad)/i.test(navigator.platform);
-    const isWindows = /Win/i.test(navigator.platform);
-
-    if (e.key === 'Tab' && captureTab) {
-      e.preventDefault();
-      if (e.shiftKey) {
-        // Unindent selected lines
-        const linesBeforeCaret = getLines(text, selectionStart);
-        const startLine = linesBeforeCaret.length - 1;
-        const endLine = getLines(text, selectionEnd).length - 1;
-        const nextValue = text
-          .split('\n')
-          .map((line, i) => (i >= startLine && i <= endLine && line.startsWith(tabCharacter) ? line.substring(tabCharacter.length) : line))
-          .join('\n');
-        if (nextValue !== text) {
-          const startLineText = linesBeforeCaret[startLine];
-          applyEdits({
-            value: nextValue,
-            selectionStart: startLineText?.startsWith(tabCharacter) ? selectionStart - tabCharacter.length : selectionStart,
-            selectionEnd: selectionEnd - (text.length - nextValue.length),
-          });
-        }
-      } else if (selectionStart !== selectionEnd) {
-        // Indent selected lines
-        const linesBeforeCaret = getLines(text, selectionStart);
-        const startLine = linesBeforeCaret.length - 1;
-        const endLine = getLines(text, selectionEnd).length - 1;
-        const startLineText = linesBeforeCaret[startLine];
-        applyEdits({
-          value: text
-            .split('\n')
-            .map((line, i) => (i >= startLine && i <= endLine ? tabCharacter + line : line))
-            .join('\n'),
-          selectionStart: startLineText && /\S/.test(startLineText) ? selectionStart + tabCharacter.length : selectionStart,
-          selectionEnd: selectionEnd + tabCharacter.length * (endLine - startLine + 1),
-        });
-      } else {
-        const updatedSelection = selectionStart + tabCharacter.length;
-        applyEdits({
-          value: text.substring(0, selectionStart) + tabCharacter + text.substring(selectionEnd),
-          selectionStart: updatedSelection,
-          selectionEnd: updatedSelection,
-        });
-      }
-      return;
-    }
-
-    if (e.key === 'Backspace' && selectionStart === selectionEnd) {
-      const textBeforeCaret = text.substring(0, selectionStart);
-      if (textBeforeCaret.endsWith(tabCharacter)) {
-        e.preventDefault();
-        const updatedSelection = selectionStart - tabCharacter.length;
-        applyEdits({
-          value: text.substring(0, selectionStart - tabCharacter.length) + text.substring(selectionEnd),
-          selectionStart: updatedSelection,
-          selectionEnd: updatedSelection,
-        });
-      }
-      return;
-    }
-
-    if (e.key === 'Enter' && selectionStart === selectionEnd) {
-      // Preserve indentation on new lines
-      const line = getLines(text, selectionStart).pop();
-      const matches = line?.match(/^\s+/);
-      if (matches?.[0]) {
-        e.preventDefault();
-        const indent = '\n' + matches[0];
-        const updatedSelection = selectionStart + indent.length;
-        applyEdits({
-          value: text.substring(0, selectionStart) + indent + text.substring(selectionEnd),
-          selectionStart: updatedSelection,
-          selectionEnd: updatedSelection,
-        });
-      }
-      return;
-    }
-
-    // Undo (⌘Z / Ctrl+Z) through the custom history: browser undo would
-    // desync the textarea from the highlighted <pre>.
-    const undoKey = isMac ? e.metaKey && e.key.toLowerCase() === 'z' : e.ctrlKey && e.key.toLowerCase() === 'z';
-    if (undoKey && !e.shiftKey && !e.altKey) {
-      e.preventDefault();
-      const record = stepHistory(historyRef.current, 'undo');
-      if (record && inputRef.current) {
-        inputRef.current.value = record.value;
-        inputRef.current.selectionStart = record.selectionStart;
-        inputRef.current.selectionEnd = record.selectionEnd;
-        onValueChange(record.value);
-      }
-      return;
-    }
-
-    const redoKey = isMac
-      ? e.metaKey && e.shiftKey && e.key.toLowerCase() === 'z'
-      : isWindows
-        ? e.ctrlKey && e.key.toLowerCase() === 'y'
-        : e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'z';
-    if (redoKey && !e.altKey) {
-      e.preventDefault();
-      const record = stepHistory(historyRef.current, 'redo');
-      if (record && inputRef.current) {
-        inputRef.current.value = record.value;
-        inputRef.current.selectionStart = record.selectionStart;
-        inputRef.current.selectionEnd = record.selectionEnd;
-        onValueChange(record.value);
-      }
-      return;
-    }
-
-    // Ctrl+M / Ctrl+Shift+M toggles Tab capture so keyboard users can leave.
-    if (e.ctrlKey && e.key.toLowerCase() === 'm' && (isMac ? e.shiftKey : true)) {
-      e.preventDefault();
-      setCaptureTab((prev) => !prev);
-    }
+    // The selection as of the last event that could precede an edit:
+    // `handleChange` needs to know which range the browser replaced, and the
+    // `input` event reports the selection AFTER the edit.
+    lastSelectionRef.current = { start: e.currentTarget.selectionStart, end: e.currentTarget.selectionEnd };
+    handleEditorKeydown(e, keydownDeps(e.currentTarget));
   };
 
   const handleChange = (e: Event) => {
     const input = e.target as HTMLTextAreaElement;
     const { value: next, selectionStart, selectionEnd } = input;
-    const history = historyRef.current;
+    const history = undoStack.history;
     const timestamp = Date.now();
+    // With extra ranges live, the browser's edit becomes a template: it is
+    // diffed out of the OLD buffer and replayed at every other range in one
+    // pass, so a keystroke, a paste and an IME composition all need no special
+    // case. The result is committed as one history entry, and the ranges
+    // collapse to carets so a second keystroke continues at all of them.
+    const replicated = multi.replicate(undoStack.buffer, next, lastSelectionRef.current);
+    if (replicated) {
+      undoStack.markApplied(replicated.value);
+      input.value = replicated.value;
+      input.selectionStart = replicated.caret;
+      input.selectionEnd = replicated.caret;
+      lastSelectionRef.current = { start: replicated.caret, end: replicated.caret };
+      multi.set(replicated.rest);
+      // The burst merge applies here too: without it each character of a word
+      // typed at several carets became its own undo entry, so ⌘Z peeled off one
+      // letter instead of the word — the exact behaviour the single-caret path
+      // had already been fixed for.
+      if (continuesTyping(history.stack[history.offset], replicated.value, replicated.caret, timestamp)) {
+        mergeTyping(history, replicated.value, replicated.caret, replicated.caret, timestamp);
+      } else {
+        pushRecord(history, { value: replicated.value, selectionStart: replicated.caret, selectionEnd: replicated.caret, timestamp });
+      }
+      onValueChange(replicated.value);
+      return;
+    }
+
+    undoStack.markApplied(next);
     // Merge typing bursts into one word-level undo entry.
     if (continuesTyping(history.stack[history.offset], next, selectionStart, timestamp)) {
       mergeTyping(history, next, selectionStart, selectionEnd, timestamp);
@@ -263,44 +257,8 @@ export function CodeEditor({
     onValueChange(next);
   };
 
-  const layerStyle: CSSProperties = {
-    margin: 0,
-    border: 0,
-    background: 'none',
-    boxSizing: 'inherit',
-    display: 'inherit',
-    fontFamily: 'inherit',
-    fontSize: 'inherit',
-    fontStyle: 'inherit',
-    fontVariantLigatures: 'inherit',
-    fontWeight: 'inherit',
-    letterSpacing: 'inherit',
-    lineHeight: 'inherit',
-    tabSize: 'inherit',
-    textIndent: 'inherit',
-    textRendering: 'inherit',
-    textTransform: 'inherit',
-    whiteSpace: 'pre-wrap',
-    wordBreak: 'keep-all',
-    overflowWrap: 'break-word',
-  };
-
-  // The textarea owns the full document, so its padding is the plain inset and
-  // its lines land exactly where the geometry says line 0 starts.
-  const contentStyle: CSSProperties = {
-    paddingTop: padding,
-    paddingRight: padding,
-    paddingBottom: padding,
-    paddingLeft: padding,
-  };
-
-  // The `<pre>` carries only the window; the lines it is not given are reserved
-  // as padding, so the aligned layers stay aligned.
-  const windowStyle: CSSProperties = {
-    ...contentStyle,
-    paddingTop: padding + (virtual?.top ?? 0),
-    paddingBottom: padding + (virtual?.bottom ?? 0),
-  };
+  const { pre: preStyle, textarea: textareaStyle } = layerStyles(padding, virtual);
+  const layer = layerStyle();
 
   const highlighted = highlight(value, virtual ?? null);
 
@@ -310,16 +268,21 @@ export function CodeEditor({
         ref={preRef}
         className={preClassName}
         aria-hidden="true"
-        style={{ ...layerStyle, ...windowStyle, position: 'relative', pointerEvents: 'none' }}
+        style={{ ...layer, ...preStyle, position: 'relative', pointerEvents: 'none' }}
         dangerouslySetInnerHTML={{ __html: highlighted + (virtual && !virtual.breakAtEnd ? '' : '<br />') }}
       />
       <textarea
         ref={inputRef}
         className={`${BASE_TEXTAREA_CLASS}${textareaClassName ? ` ${textareaClassName}` : ''}`}
-        style={{ ...layerStyle, ...contentStyle, position: 'absolute', top: 0, left: 0, height: '100%', width: '100%', resize: 'none', color: 'inherit', overflow: 'hidden', WebkitTextFillColor: 'transparent' }}
+        style={{ ...layer, ...textareaStyle, position: 'absolute', top: 0, left: 0, height: '100%', width: '100%', resize: 'none', color: 'inherit', overflow: 'hidden', WebkitTextFillColor: 'transparent' }}
         value={value}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
+        onSelect={() => {
+          const input = inputRef.current;
+          if (input) lastSelectionRef.current = { start: input.selectionStart, end: input.selectionEnd };
+        }}
+        onBlur={() => multi.clear()}
         placeholder={placeholder}
         readOnly={readOnly}
         autoFocus={autoFocus}
@@ -329,7 +292,9 @@ export function CodeEditor({
         spellcheck={false}
         data-gramm={false}
       />
-      <EditorResetStyle />
+      {/* One <style> per editor instance; the rule is a constant so the
+          duplicate elements are the same three lines the browser dedupes. */}
+      <style dangerouslySetInnerHTML={{ __html: CODE_EDITOR_RESET_CSS }} />
     </div>
   );
 }

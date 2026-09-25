@@ -16,6 +16,8 @@ import { useSidebarData } from '@/client/hooks/chat/omp/session-list';
 import { DEFAULT_LEFT_PANEL_WIDTH, MAX_LEFT_PANEL_WIDTH, MIN_LEFT_PANEL_WIDTH, type EditorWidthMode } from '@/shared/lib/workspace/panel-widths';
 import { ResizeHandle } from '@/client/components/layout/desktop-layout/ResizeHandle';
 import { useChamberEvent, useWindowEvent } from '@/client/hooks/ui/window-event';
+import { WORKSPACE_KEY_BINDINGS } from '@/shared/lib/workspace/keymap';
+import { resolveBinding } from '@/shared/lib/ui/key-binding';
 
 interface DesktopLayoutProps {
   sessionId: string | null;
@@ -84,13 +86,31 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
   const streamStatus = useAgentStreamStatus();
 
-  // Global keyboard shortcut for settings (Cmd/Ctrl + ,)
+  /**
+   * The workspace's own shortcuts, resolved from the shared keymap so the
+   * tooltips on the panel toggles name the chord that is actually bound.
+   *
+   * `⌘S` is deliberately absent here: the editor panel already owns it (it is
+   * the only surface with a buffer to save), and binding it twice would save
+   * the file twice.
+   */
   useWindowEvent('keydown', (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === ',') {
-      e.preventDefault();
+    const command = resolveBinding(WORKSPACE_KEY_BINDINGS, e);
+    if (!command) return;
+    if (command === 'saveFile') return;
+    if (command === 'toggleEditorPanel' && !showEditor) {
+      // The editor panel is only meaningful with a file open, and `showEditor`
+      // already folds in the user's own toggle.
+      if (openedFiles.length === 0) return;
+    }
+    e.preventDefault();
+    if (command === 'toggleSidebar') setShowLeftPanel((previous) => !previous);
+    else if (command === 'toggleEditorPanel') setUserToggledEditor((previous) => !(previous ?? showEditor));
+    else if (command === 'toggleRightPanel') setShowRightPanel((previous) => !previous);
+    else if (command === 'openSettings') {
       setSettingsCategory('appearance');
       setAutoOpenAddProvider(false);
-      setSettingsOpen(prev => !prev);
+      setSettingsOpen((previous) => !previous);
     }
   });
 

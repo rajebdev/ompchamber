@@ -6,6 +6,7 @@
 import { beforeAll, describe, expect, test } from 'bun:test';
 
 import { bootSyntax, onLanguageReady, requestLanguage } from '@/shared/lib/code/highlighter';
+import { findMatches } from '@/shared/lib/code/editor/find';
 import { getLanguageFromPath, highlightCode, highlightLines } from '@/shared/lib/code/syntax-highlight';
 import { highlightCodeWindow } from '@/shared/lib/code/windowed-highlight';
 
@@ -158,6 +159,80 @@ describe('highlightCodeWindow', () => {
   test('returns nothing for a window outside the document', () => {
     expect(highlightCodeWindow('const a = 1;', 'typescript', { start: 5, end: 9 })).toBe('');
     expect(highlightCodeWindow('const a = 1;', 'typescript', { start: 0, end: 0 })).toBe('');
+  });
+});
+
+describe('find marks', () => {
+  const code = 'const alpha = 1;\nconst beta = alpha + 2;\n';
+  const PLAIN = { matchCase: false, wholeWord: false, isRegex: false };
+  /** The text of every mark, in order. A match spanning tokens is several
+   *  fragments, so the assertion is on the fragments JOINED. */
+  const marked = (html: string): string[] =>
+    Array.from(html.matchAll(/<mark class="find-match"[^>]*>(.*?)<\/mark>/g), (match) => match[1]);
+
+  test('splits a match across the tokens it spans, and marks every fragment current', () => {
+    // `const alpha` is three tokens (`const`, ` `, `alpha`): each carries its
+    // own fragment of the one match, which is why the CSS may not draw a
+    // vertical edge per fragment.
+    const line = highlightLines(code, 'typescript', { marks: [{ start: 0, end: 11 }], currentMark: 0 })[0];
+
+    expect(marked(line).join('')).toBe('const alpha');
+    expect(line.match(/data-find-current/g)?.length).toBe(3);
+    expect(line.match(/<\/mark>/g)?.length).toBe(3);
+  });
+
+  test('marks every occurrence, and only the current one as current', () => {
+    const marks = findMatches(code, 'alpha', PLAIN).matches;
+    const lines = highlightLines(code, 'typescript', { marks, currentMark: 1 });
+
+    expect(marked(lines[0]).join('')).toBe('alpha');
+    expect(marked(lines[1]).join('')).toBe('alpha');
+    expect(lines[0]).not.toContain('data-find-current');
+    expect(lines[1]).toContain('data-find-current');
+  });
+
+  test('escapes the matched text it wraps', () => {
+    const line = highlightLines('a < b', 'text', { marks: [{ start: 2, end: 3 }], currentMark: 0 })[0];
+
+    expect(line).toContain('<mark class="find-match" data-find-current="">&lt;</mark>');
+  });
+
+  test('leaves the markup untouched when there are no marks', () => {
+    const plain = highlightLines(code, 'typescript')[0];
+    const empty = highlightLines(code, 'typescript', { marks: [], currentMark: -1 })[0];
+
+    expect(empty).toBe(plain);
+    expect(plain).not.toContain('<mark');
+  });
+
+  test('keeps a windowed match on its own line, re-based to the slice', () => {
+    const marks = findMatches(code, 'alpha', PLAIN).matches;
+    // The window renders line 1 only. The match on line 0 must not reappear on
+    // line 1's text, and the current index (line 0's match) must not mark
+    // anything here.
+    const window = highlightCodeWindow(code, 'typescript', { start: 1, end: 2 }, { marks, currentMark: 0 });
+
+    expect(marked(window).join('')).toBe('alpha');
+    expect(window).not.toContain('data-find-current');
+  });
+
+  test('re-bases the current index onto the marks inside the window', () => {
+    const marks = findMatches(code, 'alpha', PLAIN).matches;
+    const window = highlightCodeWindow(code, 'typescript', { start: 1, end: 2 }, { marks, currentMark: 1 });
+
+    expect(window.match(/data-find-current/g)?.length).toBe(1);
+    expect(marked(window).join('')).toBe('alpha');
+  });
+
+  test('a mark reaching past the window is clipped to it', () => {
+    // The last line has no trailing newline, so a mark that runs to the end of
+    // the slice would be clamped by the rebase.
+    const window = highlightCodeWindow(code, 'typescript', { start: 1, end: 3 }, {
+      marks: [{ start: 30, end: 999 }],
+      currentMark: 0,
+    });
+
+    expect(marked(window).join('')).toBe('alpha + 2;');
   });
 });
 

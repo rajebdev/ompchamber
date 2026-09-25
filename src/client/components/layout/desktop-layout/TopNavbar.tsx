@@ -2,6 +2,19 @@ import { LayoutTemplate, MoreHorizontal, PanelLeft, PanelRight, PanelRightClose,
 import { PWAInstallButton } from '@/client/components/common/PWAInstallButton';
 import { StreamStatusDot } from '@/client/components/common/StreamStatusDot';
 import type { AgentStreamStatus } from '@/shared/lib/chat/omp/status';
+import { WORKSPACE_KEY_BINDINGS, type WorkspaceCommand } from '@/shared/lib/workspace/keymap';
+import { describeBinding } from '@/shared/lib/ui/key-binding';
+
+/**
+ * A tooltip's text with the chord that actually invokes it. Derived from the
+ * workspace keymap rather than typed out, because a hand-written "⌘B" beside a
+ * binding that listens for something else is exactly the drift the keymap
+ * table exists to prevent.
+ */
+function withChord(command: WorkspaceCommand, label: string): string {
+  const binding = WORKSPACE_KEY_BINDINGS.find((entry) => entry.command === command);
+  return binding ? `${label} (${describeBinding(binding)})` : label;
+}
 
 interface TopNavbarProps {
   sessionTitle: string | null;
@@ -42,8 +55,8 @@ export function TopNavbar({
               type="button"
               onClick={onToggleLeftPanel}
               className="p-1.5 rounded hover:bg-ink/10 transition-colors text-ink/60 hover:text-ink cursor-pointer flex-shrink-0 titlebar-no-drag"
-              title="Expand Sidebar"
-              aria-label="Expand Sidebar"
+              title={withChord('toggleSidebar', 'Expand Sidebar')}
+              aria-label={withChord('toggleSidebar', 'Expand Sidebar')}
             >
               <PanelLeft size={16} />
             </button>
@@ -86,7 +99,9 @@ export function TopNavbar({
             type="button"
             onClick={onToggleEditor}
             className={`p-1.5 rounded hover:bg-ink/10 transition-colors cursor-pointer ${showEditor ? 'text-ink' : 'text-ink/40'}`}
-            title="Toggle Editor Layout"
+            title={withChord('toggleEditorPanel', 'Toggle Editor Layout')}
+            aria-label={withChord('toggleEditorPanel', 'Toggle Editor Layout')}
+            aria-pressed={showEditor}
           >
             <LayoutTemplate size={16} />
           </button>
@@ -94,7 +109,9 @@ export function TopNavbar({
             type="button"
             onClick={onToggleRightPanel}
             className={`p-1.5 rounded hover:bg-ink/10 transition-colors cursor-pointer ${showRightPanel ? 'text-ink' : 'text-ink/40'}`}
-            title="Toggle Right Panel"
+            title={withChord('toggleRightPanel', 'Toggle Right Panel')}
+            aria-label={withChord('toggleRightPanel', 'Toggle Right Panel')}
+            aria-pressed={showRightPanel}
           >
             {showRightPanel ? <PanelRightClose size={16} /> : <PanelRight size={16} />}
           </button>

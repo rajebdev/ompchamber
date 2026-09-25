@@ -14,7 +14,7 @@ import {
   stepHistory,
   HISTORY_TIME_GAP,
   type HistoryRecord,
-} from '@/client/components/common/code-editor/history';
+} from '@/shared/lib/code/editor/history';
 
 const NOW = 1_700_000_000_000;
 

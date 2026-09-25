@@ -4,6 +4,8 @@
  */
 
 import type { LineWindow } from '@/shared/lib/code/lazy-window';
+import type { FindMatch } from '@/shared/lib/code/editor/find';
+import { lineStartOffset } from '@/shared/lib/code/editor/lines';
 import { highlightLines } from '@/shared/lib/code/syntax-highlight';
 
 /**
@@ -28,6 +30,15 @@ export interface HighlightCodeWindowOptions {
   contextLines?: number;
   /** Length at which a line falls back to plain text. */
   maxLineLength?: number;
+  /**
+   * Find matches in DOCUMENT offsets. Only those inside the rendered window are
+   * passed on, re-based to the sliced source the tokenizer sees.
+   */
+  marks?: readonly FindMatch[];
+  /** Index of the current match within `marks`. */
+  currentMark?: number;
+  /** Marks from this index on are extra ⌘D selections rather than find matches. */
+  occurrenceFrom?: number;
 }
 
 /**
@@ -57,7 +68,47 @@ export function highlightCodeWindow(
   if (start === end) return '';
 
   const contextStart = Math.max(0, start - contextLines);
-  const rows = highlightLines(lines.slice(contextStart, end).join('\n'), language, { maxLineLength });
+  const slice = lines.slice(contextStart, end).join('\n');
+  const base = lineStartOffset(code, contextStart);
+  const sliceEnd = base + slice.length;
+  const { marks, currentMark, occurrenceFrom } = rebaseMarks(
+    options.marks,
+    options.currentMark ?? -1,
+    options.occurrenceFrom ?? -1,
+    base,
+    sliceEnd,
+  );
+  const rows = highlightLines(slice, language, { maxLineLength, marks, currentMark, occurrenceFrom });
   const offset = start - contextStart;
   return `<span class="shiki">${rows.slice(offset, offset + (end - start)).join('\n')}</span>`;
+}
+
+/**
+ * The marks inside `[base, sliceEnd)`, shifted to slice coordinates, with the
+ * current-match index remapped — the index points into the full list, so the
+ * rows below the window cannot simply reuse it.
+ */
+function rebaseMarks(
+  marks: readonly FindMatch[] | undefined,
+  currentMark: number,
+  occurrenceFrom: number,
+  base: number,
+  sliceEnd: number,
+): { marks: FindMatch[]; currentMark: number; occurrenceFrom: number } {
+  if (!marks || marks.length === 0) return { marks: [], currentMark: -1, occurrenceFrom: -1 };
+  const kept: FindMatch[] = [];
+  let remapped = -1;
+  let remappedOccurrenceFrom = -1;
+  for (let index = 0; index < marks.length; index++) {
+    const mark = marks[index];
+    if (mark.end <= base) continue;
+    if (mark.start >= sliceEnd) break;
+    if (index === currentMark) remapped = kept.length;
+    // The first surviving occurrence keeps the split, wherever it landed: a
+    // window whose opening lines held only matches still has to paint the
+    // selections below them differently.
+    if (remappedOccurrenceFrom === -1 && occurrenceFrom >= 0 && index >= occurrenceFrom) remappedOccurrenceFrom = kept.length;
+    kept.push({ start: mark.start - base, end: Math.min(mark.end, sliceEnd) - base });
+  }
+  return { marks: kept, currentMark: remapped, occurrenceFrom: remappedOccurrenceFrom };
 }

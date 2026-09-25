@@ -1,4 +1,4 @@
-import { AlertCircle, Check, Copy, Download, Eye, EyeOff, Maximize, Minimize, Save, WrapText, ZoomIn, ZoomOut } from 'lucide-preact';
+import { AlertCircle, Check, Copy, Download, Eye, EyeOff, Maximize, Minimize, Save, Search, WrapText, ZoomIn, ZoomOut } from 'lucide-preact';
 
 export type EditorSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -15,6 +15,9 @@ interface EditorToolbarProps {
   /** A read failure left no trustworthy buffer, so there is nothing to save. */
   saveDisabled?: boolean;
   isMaximized?: boolean;
+  /** Find/replace is open — the button reflects it and toggles the bar. */
+  findOpen?: boolean;
+  onToggleFind: () => void;
   onSave: () => void;
   onTogglePreview: () => void;
   onToggleWordWrap: () => void;
@@ -44,6 +47,8 @@ export function EditorToolbar({
   isImage = false,
   saveDisabled = false,
   isMaximized = false,
+  findOpen = false,
+  onToggleFind,
   onSave,
   onTogglePreview,
   onToggleWordWrap,
@@ -111,6 +116,19 @@ export function EditorToolbar({
 
         {!isImage && (
           <>
+            <div className="flex items-center pr-2 mr-1 border-r border-ink/10">
+              <button
+                type="button"
+                onClick={onToggleFind}
+                className={`${ACTION_CLASS} hover:bg-ink/5 ${findOpen ? 'text-ink' : 'hover:text-ink'}`}
+                title="Find and replace (Ctrl+F)"
+                aria-label="Find and replace"
+                aria-pressed={findOpen}
+              >
+                <Search size={14} />
+              </button>
+            </div>
+
             <div className="flex items-center pr-2 mr-1 border-r border-ink/10">
               <button
                 type="button"

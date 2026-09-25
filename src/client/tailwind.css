@@ -246,6 +246,36 @@
  * The selector keys off the variant attribute, not a list of theme ids. */
 .shiki span { color: var(--shiki-light); }
 html[data-theme-variant="dark"] .shiki span { color: var(--shiki-dark); }
+
+/* Find matches, painted inside the token spans the highlighter emits. An
+ * inline <mark> colours a background without moving a glyph, which is what
+ * keeps the transparent <textarea> above aligned with this layer — a block or
+ * a padding would shift the text under the caret. `color: inherit` is required:
+ * a <mark> would otherwise take the UA's own black-on-yellow, ignoring the
+ * dual-theme token colour it sits inside.
+ *
+ * No `border-radius`, and the current match is marked with TOP/BOTTOM borders
+ * rather than an outline: a match spanning several tokens (`const alpha` is
+ * three) is emitted as one <mark> per token, so any per-fragment decoration
+ * that draws vertical edges — radius, outline, left/right border — paints a
+ * seam in the middle of the match. Horizontal edges join seamlessly. */
+.shiki .find-match {
+  color: inherit;
+  background: color-mix(in srgb, var(--theme-warning) 32%, transparent);
+}
+/* An extra ⌘D selection: same geometry as a find match, different ink. The
+ * caret can only live in the primary range, so the two must not look alike —
+ * the user has to see where their keystrokes will land. */
+.shiki .find-match[data-occurrence] {
+  background: color-mix(in srgb, var(--theme-info) 30%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--theme-info) 55%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-info) 55%, transparent);
+}
+.shiki .find-match[data-find-current] {
+  background: color-mix(in srgb, var(--theme-warning) 55%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--theme-warning) 75%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-warning) 75%, transparent);
+}
 .prose-content .katex-display { overflow-x: auto; overflow-y: hidden; }
 
 /* Math placeholder: `marked.ts` emits a `.math-pending` span and KaTeX is

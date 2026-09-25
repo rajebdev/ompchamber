@@ -1,15 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { RefObject } from 'preact';
 
-import {
-  codeWindow,
-  firstWindow,
-  resolveWindow,
-  sameWindow,
-  type CodeWindow,
-  type LineGeometry,
-  type LineWindow,
-} from '@/shared/lib/code/lazy-window';
+import { codeWindow, firstWindow, resolveWindow, sameWindow, type CodeWindow, type LineGeometry, type LineWindow } from '@/shared/lib/code/lazy-window';
+import { findScrollContainer } from '@/client/hooks/editor/scroll-container';
 
 export interface UseCodeWindowOptions {
   /** The surface's root box: the frame every line offset in `geometry` is measured from. */
@@ -20,17 +13,6 @@ export interface UseCodeWindowOptions {
   geometry: LineGeometry | null;
   /** False for short documents (they render whole) and when geometry cannot be measured. */
   enabled: boolean;
-}
-
-/** Nearest ancestor the document scrolls inside, or null when the page itself scrolls. */
-function findScrollContainer(element: HTMLElement): HTMLElement | null {
-  for (let node = element.parentElement; node; node = node.parentElement) {
-    const overflowY = getComputedStyle(node).overflowY;
-    if ((overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') && node.scrollHeight > node.clientHeight) {
-      return node;
-    }
-  }
-  return null;
 }
 
 /**

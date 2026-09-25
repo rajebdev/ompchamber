@@ -1,7 +1,11 @@
 import type { HighlighterCore } from 'shiki/core';
 
 import { escapeCode, getHighlighterSync, requestLanguage } from '@/shared/lib/code/highlighter';
+import { tokenMarkup, type HighlightLinesOptions } from '@/shared/lib/code/editor/marks';
+import { lineStartOffset } from '@/shared/lib/code/editor/lines';
 import { SHIKI_THEMES } from '@/shared/lib/code/shiki-themes';
+
+export type { HighlightLinesOptions };
 
 /** Map file extension to Shiki language id */
 export function getLanguageFromPath(filePath?: string): string {
@@ -139,8 +143,13 @@ function resolveReadyLang(hl: HighlighterCore, language: string): string {
 }
 
 /** Syntax highlight code string safely with fallback */
-export function highlightCode(code: string, language = 'javascript'): string {
+export function highlightCode(code: string, language = 'javascript', options: HighlightLinesOptions = {}): string {
   if (!code) return '';
+  // A find in progress needs the match markup, which only the line-based path
+  // emits; without it the fast `codeToHtml` path is left exactly as it was.
+  if (options.marks && options.marks.length > 0) {
+    return `<span class="shiki">${highlightLines(code, language, options).join('\n')}</span>`;
+  }
   const hl = getHighlighterSync();
   if (!hl) return escapeCode(code);
   const lang = resolveReadyLang(hl, language);
@@ -268,14 +277,6 @@ export function highlightJson(code: string): string {
   return highlightCode(code, 'json');
 }
 
-export interface HighlightLinesOptions {
-  /**
-   * Lines at or above this length are emitted as plain text instead of being
-   * tokenized — the guard a minified bundle (one line of hundreds of KB) needs.
-   */
-  maxLineLength?: number;
-}
-
 /**
  * Highlight code and return one HTML fragment per line, aligned 1:1 with
  * `code.split('\n')`. Tokenizes the whole input at once so multi-line grammar
@@ -287,9 +288,18 @@ export function highlightLines(
   options: HighlightLinesOptions = {},
 ): string[] {
   const rawLines = code.split('\n');
+  const marks = options.marks;
+  const currentMark = options.currentMark ?? -1;
+  const occurrenceFrom = options.occurrenceFrom ?? -1;
+  // A grammar that has not arrived yet, or a highlighter that failed to boot,
+  // still gets the find marks: the widget's feedback must not depend on Shiki.
+  const plain = (lineIndex: number): string => {
+    if (!marks || marks.length === 0) return escapeCode(rawLines[lineIndex]);
+    return tokenMarkup(rawLines[lineIndex], lineStartOffset(code, lineIndex), marks, currentMark, occurrenceFrom);
+  };
   if (!code) return rawLines;
   const hl = getHighlighterSync();
-  if (!hl) return rawLines.map(escapeCode);
+  if (!hl) return rawLines.map((_line, index) => plain(index));
   const lang = resolveReadyLang(hl, language);
   try {
     const { tokens } = hl.codeToTokens(code, {
@@ -298,20 +308,22 @@ export function highlightLines(
       defaultColor: false,
       tokenizeMaxLineLength: options.maxLineLength ?? 0,
     });
-    if (tokens.length !== rawLines.length) return rawLines.map(escapeCode);
-    return tokens.map((lineTokens) =>
-      lineTokens
+    if (tokens.length !== rawLines.length) return rawLines.map((_line, index) => plain(index));
+    return tokens.map((lineTokens, lineIndex) => {
+      let offset = lineStartOffset(code, lineIndex);
+      return lineTokens
         .map((tok) => {
-          const content = escapeCode(tok.content);
+          const content = tokenMarkup(tok.content, offset, marks, currentMark, occurrenceFrom);
+          offset += tok.content.length;
           if (!tok.htmlStyle) return content;
           const style = Object.entries(tok.htmlStyle)
             .map(([key, value]) => `${key}:${value}`)
             .join(';');
           return style ? `<span style="${style}">${content}</span>` : content;
         })
-        .join('')
-    );
+        .join('');
+    });
   } catch {
-    return rawLines.map(escapeCode);
+    return rawLines.map((_line, index) => plain(index));
   }
 }
