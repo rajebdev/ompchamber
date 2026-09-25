@@ -74,7 +74,7 @@ export const otherTools: ToolCallData[] = [
   "type": "module",
   "scripts": {
     "dev": "bun run --watch src/server/index.ts",
-    "build": "rsbuild build"
+    "build": "bun run scripts/build-client.ts"
   }
 }`,
     status: 'success',

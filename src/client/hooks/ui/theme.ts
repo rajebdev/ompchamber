@@ -35,9 +35,9 @@ export function currentThemeId(): string {
  * Put the catalog on the document before the first render.
  *
  * The SSR shell already inlines the stylesheet and both attributes; this is the
- * guard for a document that predates them — a cached page, or `dist/client/
- * index.html` left over from an older build while only the server was restarted.
- * Without it the page keeps `:root`'s default palette and no variant attribute,
+ * guard for a document that predates them — a cached page, or markup rendered
+ * before the server restarted. Without it the page keeps `:root`'s default
+ * palette and no variant attribute,
  * which is a wrong palette, not merely a stale one.
  *
  * Called once from `main.tsx` rather than from a hook: the only components that

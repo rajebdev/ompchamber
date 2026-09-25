@@ -1,13 +1,16 @@
 import { Elysia } from 'elysia';
 import pkg from '@/../package.json';
+import shell from '@/../index.html';
 import { apiRoutes } from '@/server/routes';
 import { ssrRoutes } from '@/server/plugins/ssr';
+import { setShellSource } from '@/server/plugins/shell.server';
 import { getDatabasePath } from '@/server/db.server';
 import { fetchOmpRegistrySnapshot } from '@/server/lib/models/provider-registry.server';
 import { ompStartupError, ompStartupLogLines } from '@/server/lib/omp/core/startup';
 import { readInstanceRecord, removeInstanceRecord, writeInstanceRecord } from '@/server/lib/lifecycle/instance';
 import { resolveLaunchMode } from '@/server/lib/lifecycle/launch-mode';
 import { acquirePortLock, claimPort, PortInUseError } from '@/server/lib/lifecycle/port-guard';
+import { SHELL_ROUTE } from '@/server/lib/lifecycle/shell-route';
 import { isMockMode } from '@/server/mock.server';
 
 // Refuse to run without a resolvable omp binary — before the listener opens and
@@ -39,7 +42,15 @@ if (!lock) {
   process.exit(1);
 }
 
-const app = new Elysia().use(apiRoutes).use(ssrRoutes);
+// `serve.routes` is where the HTML shell lives. Elysia merges its own static
+// routes into that same table (its Bun adapter passes `serve` straight to
+// `Bun.serve`), and Bun's table wins for the paths it declares — so `/_shell`
+// renders the bundle while every other path falls through to `fetch`. The
+// WebSocket routes keep working: Elysia composes its `websocket` handler
+// alongside this object.
+const app = new Elysia({ serve: { routes: { [SHELL_ROUTE]: shell } } })
+  .use(apiRoutes)
+  .use(ssrRoutes);
 
 try {
   await claimPort({
@@ -50,7 +61,14 @@ try {
       // `reusePort: true`, which lets a second server bind a port already in
       // use and then sit invisible while the first-bound socket takes every
       // connection.
-      await app.listen({ port, hostname: host, reusePort: false });
+      app.listen({ port, hostname: host, reusePort: false });
+      if (!app.server) throw new Error('Bun.serve returned no listener');
+      // The shell is rendered by asking this same listener for it: Bun renders
+      // an HTML route only while serving, and there is no in-process API for an
+      // `HTMLBundle` (`new Response(bundle)` is "[object HTMLBundle]",
+      // `app.handle` answers 404). Handing the listener over is what makes
+      // `renderShell()` possible.
+      setShellSource(app.server);
     },
   });
 } catch (error) {

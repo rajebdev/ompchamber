@@ -4,7 +4,12 @@
  */
 
 /**
- * Browser replacement for `elkjs`, aliased in `rsbuild.config.ts`.
+ * Browser replacement for `elkjs`, aliased through `tsconfig.json` `paths`.
+ *
+ * The alias moved there when the client build moved to Bun: Bun's bundler does
+ * not read an `alias` option (it is absent from `Bun.build`'s config and from
+ * `bun-types`; passing one is silently ignored — verified), while `paths` it
+ * honours for both internal aliases and package specifiers.
  *
  * Mermaid 12 changed the global `layout` default from `dagre` to `elk`, so every
  * flowchart pulled in `elkjs/lib/elk.bundled.js` whether the diagram asked for

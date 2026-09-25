@@ -42,8 +42,9 @@ const HEADER = `/**
 /**
  * Path prefix from `src/shared/lib/markdown/` to the vendored font directory.
  * The source stylesheet relies on `url(fonts/…)` resolving next to itself; the
- * generated file lives in `src/`, so the path has to be explicit. rsbuild
- * resolves these at build time and fingerprints the emitted asset.
+ * generated file lives in `src/`, so the path has to be explicit. The bundler's
+ * CSS loader (`src/server/lib/bundler/css.ts`) resolves these to a served
+ * `/fonts/<basename>` url — Bun's own CSS loader would inline them as base64.
  */
 const FONT_URL_PREFIX = '../../../../node_modules/katex/dist/fonts/';
 

@@ -1,42 +1,26 @@
 import { Elysia } from 'elysia';
-import { join } from 'path';
 import { getDb } from '@/server/db.server';
 import { tryServeStatic } from '@/server/plugins/static';
-import { tryProxyDevAsset } from '@/server/plugins/dev-assets';
+import { renderShell } from '@/server/plugins/shell.server';
+import { FONT_STYLESHEET_ROUTE } from '@/server/lib/assets/font-css.server';
 import { resolveTheme } from '@/shared/lib/theme/catalog';
 import { THEME_STYLE_ELEMENT_ID, themeStyleSheet } from '@/shared/lib/theme/css';
 
-const CLIENT_INDEX = join(process.cwd(), 'dist/client/index.html');
-
-let cachedTemplate: string | null = null;
-let cachedMtimeMs = 0;
-
 /**
- * Cached, but invalidated on mtime so `rsbuild build --watch` (the dev loop)
- * picks up a new asset manifest without restarting the server.
+ * Actionable message instead of a bare 500 when the shell cannot be rendered.
+ *
+ * The shell is a Bun HTML route now, not a file on disk, so "not found" is no
+ * longer the failure mode — a bundle error is, and Bun renders its own error
+ * page for that. This covers the remaining path: the bundle is fine but the
+ * markup could not be read back.
  */
-async function readTemplate(): Promise<string> {
-  const file = Bun.file(CLIENT_INDEX);
-  if (!(await file.exists())) {
-    throw new Error(`Client build not found at ${CLIENT_INDEX}. Run \`bun run build\` first.`);
-  }
-  const { mtimeMs } = await file.stat();
-  if (cachedTemplate !== null && mtimeMs === cachedMtimeMs) return cachedTemplate;
-  cachedTemplate = await file.text();
-  cachedMtimeMs = mtimeMs;
-  return cachedTemplate;
-}
-
-/** Actionable message instead of a bare 500 when the client build is absent. */
-function missingBuildResponse(): Response {
+function shellUnavailableResponse(reason: string): Response {
   return new Response(
     `<!doctype html><meta charset="utf-8"><title>OMPChamber</title>
 <body style="font:14px/1.6 ui-monospace,monospace;padding:2rem">
-<h1 style="font-size:1.1rem">Client build not found</h1>
-<p>The server needs <code>dist/client</code> before it can render pages.</p>
-<pre style="background:#f4f1ea;padding:1rem;border-radius:6px">bun run build</pre>
-<p>For a rebuild-on-change loop while developing:</p>
-<pre style="background:#f4f1ea;padding:1rem;border-radius:6px">bunx rsbuild build --watch</pre>
+<h1 style="font-size:1.1rem">Shell not available</h1>
+<p>The server could not render its HTML shell.</p>
+<pre style="background:#f4f1ea;padding:1rem;border-radius:6px">${reason}</pre>
 </body>`,
     { status: 503, headers: HTML_HEADERS },
   );
@@ -102,11 +86,6 @@ export const ssrRoutes = new Elysia({ name: 'ssr' }).get('*', async ({ request }
   const asset = await tryServeStatic(pathname);
   if (asset) return asset;
 
-  const devAsset = await tryProxyDevAsset(request, pathname);
-  if (devAsset) return devAsset;
-
-  if (!(await Bun.file(CLIENT_INDEX).exists())) return missingBuildResponse();
-
   const settings = await readSettings();
   const chamberSettings = (settings.omp_chamber_settings ?? {}) as { theme?: string };
   // Resolved through the catalog: an id this build no longer ships (a
@@ -115,19 +94,28 @@ export const ssrRoutes = new Elysia({ name: 'ssr' }).get('*', async ({ request }
   const theme = resolveTheme(chamberSettings.theme);
   const initialIsMobile = MOBILE_UA.test(request.headers.get('user-agent') ?? '');
 
-  const template = await readTemplate();
+  const rendered = await renderShell();
+  if (!rendered.ok) return shellUnavailableResponse(rendered.reason);
+
   const bootstrap = JSON.stringify({ initialIsMobile, appSettings: settings }).replace(/</g, '\\u003c');
   // The template's own `<meta name="theme-color">` is REWRITTEN, not joined by
   // a second tag: with both present Chrome reads the first one, so an appended
   // tag would leave a dark theme painting light browser chrome.
   const themeStyle = `<style id="${THEME_STYLE_ELEMENT_ID}">${themeStyleSheet()}</style>`;
+  // The font faces are a stylesheet the bundler cannot carry: Bun resolves every
+  // local `url()` in CSS, so a bundled face is either base64 or an absolute
+  // filesystem path. `lib/bundler/css.ts` lifts the blocks out and the route
+  // below serves them, which is why the link is injected here — a
+  // `<link href="/fonts.css">` in index.html would be resolved by the HTML
+  // loader and fail the same way.
+  const fontLink = `<link rel="stylesheet" href="${FONT_STYLESHEET_ROUTE}">`;
 
   return new Response(
-    template
+    rendered.html
       .replace('data-theme="paper"', `data-theme="${theme.id}"`)
       .replace('data-theme-variant="light"', `data-theme-variant="${theme.variant}"`)
       .replace('<meta name="theme-color" content="#faf8f3" />', `<meta name="theme-color" content="${theme.canvas}" />`)
-      .replace('<!--app-head-->', themeStyle)
+      .replace('<!--app-head-->', themeStyle + fontLink)
       .replace('<!--app-bootstrap-->', `<script>window.__OMP_BOOTSTRAP__=${bootstrap}</script>`),
     { headers: HTML_HEADERS },
   );

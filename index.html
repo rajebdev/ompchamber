@@ -15,10 +15,17 @@
       content="A light e-ink paper developer dashboard and AI Oh-My-Pi web view chamber for CI/CD deployments."
     />
     <title>OMPChamber</title>
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="icon" type="image/svg+xml" href="/icon.svg" sizes="any" />
-    <link rel="icon" type="image/png" href="/icon-192x192.png" sizes="192x192" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- Relative, not absolute: Bun's HTML loader resolves every local `href`
+         against this file and emits a content-hashed copy, so `./public/icon.svg`
+         becomes `/icon-<hash>.svg`. An absolute `/icon.svg` is read as a module
+         specifier and fails the whole build with "Could not resolve". The
+         manifest's OWN icon entries stay absolute — Bun does not rewrite inside
+         a copied JSON file, and `public/` is served directly, so `/icon.svg`
+         resolves there. -->
+    <link rel="manifest" href="./public/manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="./public/icon.svg" sizes="any" />
+    <link rel="icon" type="image/png" href="./public/icon-192x192.png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="./public/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -30,6 +37,10 @@
   <body>
     <div id="app"></div>
     <!--app-bootstrap-->
+    <!-- The client entry. rsbuild injected this tag into its own output; Bun's
+         HTML loader takes it from the source, which is why the file is now a
+         bundler entry rather than only a template the server reads. -->
+    <script type="module" src="./src/client/main.tsx"></script>
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {

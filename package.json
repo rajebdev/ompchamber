@@ -1,7 +1,7 @@
 {
   "name": "ompchamber",
   "version": "2.0.2",
-  "description": "Developer web console and diagnostic chamber for AI Oh-My-Pi — Elysia + Preact on Bun.",
+  "description": "Developer web console and diagnostic chamber for AI Oh-My-Pi \u2014 Elysia + Preact on Bun.",
   "license": "UNLICENSED",
   "author": "Wijanarko Putra Rajeb <wijanarko.rajeb@gmail.com>",
   "type": "module",
@@ -30,15 +30,16 @@
   ],
   "files": [
     "src",
-    "dist/client",
-    "tsconfig.json"
+    "index.html",
+    "bunfig.toml",
+    "public",
+    "tsconfig.json",
+    "dist/client"
   ],
   "scripts": {
-    "dev:server": "NODE_ENV=development bun run --hot src/server/index.ts --ompchamber-server",
-    "dev:client": "rsbuild build --watch",
-    "dev": "bun run dev:server & bun run dev:client; wait",
-    "dev:lan": "HOST=0.0.0.0 bun run dev:server & bun run dev:client; wait",
-    "build": "rsbuild build",
+    "dev": "bun run --hot src/server/index.ts --ompchamber-server",
+    "dev:lan": "HOST=0.0.0.0 bun run --hot src/server/index.ts --ompchamber-server",
+    "build": "bun run scripts/build-client.ts",
     "start": "NODE_ENV=production bun run src/server/index.ts --ompchamber-server",
     "typecheck": "tsc",
     "clean": "rm -rf dist",
@@ -66,8 +67,6 @@
     "yaml": "^2.9.1"
   },
   "devDependencies": {
-    "@rsbuild/core": "^2.2.7",
-    "@rsbuild/plugin-preact": "^2.1.0",
     "@semantic-release/changelog": "^7.0.0",
     "@semantic-release/commit-analyzer": "^13.0.1",
     "@semantic-release/git": "^11.0.1",

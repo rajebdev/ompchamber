@@ -16,7 +16,9 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "elkjs/lib/elk.bundled.js": ["./src/client/stubs/elkjs.ts"],
+      "elkjs": ["./src/client/stubs/elkjs.ts"]
     },
     "types": ["bun-types"],
     "skipLibCheck": true,

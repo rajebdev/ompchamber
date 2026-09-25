@@ -1,0 +1,11 @@
+# Bun-specific configuration. `package.json` and `tsconfig.json` keep everything
+# they already own; this file only holds what has no home there.
+#
+# `[serve.static]` is what Bun.serve reads when it bundles an HTML route — the
+# dev loop and `development: false` production both go through it. The same
+# plugin file is passed explicitly to `Bun.build` by scripts/build-client.ts,
+# because the AOT CLI does NOT read this section (verified: `bun build
+# --target=bun` emitted Tailwind's `@theme` verbatim and a stylesheet with zero
+# utility classes).
+[serve.static]
+plugins = ["./src/server/lib/bundler/css.ts"]

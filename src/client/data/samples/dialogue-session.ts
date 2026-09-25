@@ -42,7 +42,7 @@ export function getSampleDialogueSession(): {
         id: '1a6cb095',
         role: 'ai',
         content:
-          'Elysia + Bun app (OMPChamber). Top-level contents:\n\n- **App source** — `src/` (client, server, shared)\n- **Config** — `package.json`, `tsconfig.json`, `rsbuild.config.ts`, `postcss.config.mjs`, `bun.lock`, `AGENTS.md`, `DESIGN.md`\n- **Static/PWA** — `public/` (icons, manifest, service worker)\n- **DB** — `workspace.db` (112 KB)\n- **Misc** — `notes/` (2 planning docs)\n\nRoot has no stray source files; project is cleanly under `src/`.',
+          'Elysia + Bun app (OMPChamber). Top-level contents:\n\n- **App source** — `src/` (client, server, shared)\n- **Config** — `package.json`, `tsconfig.json`, `bunfig.toml`, `bun.lock`, `AGENTS.md`, `DESIGN.md`\n- **Static/PWA** — `public/` (icons, manifest, service worker)\n- **DB** — `workspace.db` (112 KB)\n- **Misc** — `notes/` (2 planning docs)\n\nRoot has no stray source files; project is cleanly under `src/`.',
         date: 'Sep 9, 04:33 AM',
         thinking: {
           thought: 'Brief listing.',
