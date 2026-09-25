@@ -36,6 +36,10 @@ All four verification gates are mandatory for every change:
 3. `find src -name "*.ts" -o -name "*.tsx" | xargs wc -l | grep -v total | awk '$1>350'` prints nothing.
 4. `bun run build` succeeds.
 
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs all four on every pull request and on
+`main`, so a red change is caught at the pull request rather than by the release job that would
+otherwise tag it.
+
 Never write a skip marker (`[skip ci]`, `[ci skip]`, `[no ci]`) into a commit message pushed to
 `main`: it silently skips the release run. `CHANGELOG.md` is written by the release pipeline only,
 never by hand.
@@ -45,7 +49,10 @@ never by hand.
 **Commits.** Conventional Commits, with the type chosen from what the diff does to observable
 behavior rather than from its size. `feat` is new user-visible behavior, `fix` corrects behavior that
 was demonstrably wrong, and `refactor` / `perf` / `style` / `test` / `build` / `ci` / `chore` / `docs`
-cover the rest; a change that requires callers to act appends `!` and a `BREAKING CHANGE` footer.
+cover the rest. A change that requires callers to act appends `!` and a `BREAKING CHANGE:` footer —
+written in uppercase, and only on `feat`, `feature`, `fix`, `perf` or `refactor`, which are the types
+[`release/release-rules.js`](release/release-rules.js) lets release a major version. On any other type
+`!` releases nothing, and a lowercase `breaking-change` in prose is not a footer at all.
 
 **Template.** `.github/PULL_REQUEST_TEMPLATE.md` defines the sections the reviewer checks for
 completeness. Its headings are the Handoff checklist: `## What changed`, `## Why`, `## Surface`,

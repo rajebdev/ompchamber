@@ -280,18 +280,37 @@ A push to `main` cuts the release — there is no manual version bump
 
 1. `semantic-release` reads the Conventional Commits since the last tag, decides the next
    version, writes it into `package.json` and a `## [x.y.z]` section of `CHANGELOG.md`, commits
-   both, then creates the tag and the GitHub Release. Only `feat`, `fix`, `perf`, `refactor`, `docs`
-   and `revert` can move a version (`bumpStrict` in [`release.config.mjs`](release.config.mjs));
-   `chore`, `style`, `test`, `build` and `ci` are hidden and bump nothing on their own.
+   both, then creates the tag and the GitHub Release.
 2. The same run dispatches [`publish.yml`](.github/workflows/publish.yml), which checks out the tag,
    verifies it against `package.json`, typechecks, runs `bun test`, builds `dist/client`, packs a
-   dry run, and runs `bun publish` behind the **`npm` environment** approval gate.
+   dry run, and runs `bun publish`.
+
+What a commit does to the version is one table, in
+[`release/release-rules.js`](release/release-rules.js), and `release/bump.test.js` asserts it:
+
+| Commit | Version |
+| --- | --- |
+| `feat` | minor |
+| `fix`, `perf`, `revert` | patch |
+| `feat!` / `fix!` / `perf!` / `refactor!`, or a `BREAKING CHANGE:` footer | major |
+| `docs`, `refactor`, `chore`, `style`, `test`, `build`, `ci` | no release |
+
+Two of those rows exist because the toolchain's own defaults are wrong here: a `!` on a type that
+cannot carry a breaking change (`chore!`, `docs!`, an unknown `foo!`) used to cut a major version
+through the analyzer's built-in `{ breaking: true }` fallback, and the parser's note regex is
+case-insensitive, so any body line starting with `breaking change` — colon optional — counted as a
+breaking note. The second one is not hypothetical: a `docs` commit whose body wrapped onto
+`breaking-change (!) footer` cut **v1.0.0** where the `feat`s in the range asked for v0.9.0, and the
+changelog printed that prose as its breaking note. Both are fixed in `release/release-rules.js`, and
+both are locked by `release/bump.test.js`.
+
+A `BREAKING CHANGE:` footer is therefore read only in uppercase, and only where the type allows it.
 
 Two things to set up once and one to never do:
 
 - GitHub environment **`npm`** with a secret `NPM_TOKEN`: a granular npm token with read/write on
   `ompchamber`, 2FA bypass enabled and the `publish and stage` action (a stage-only token is
-  rejected — Bun has no `npm stage publish`). Add required reviewers there to gate a publish.
+  rejected — Bun has no `npm stage publish`).
 - A failed publish is retried with `gh workflow run publish.yml -f tag=vX.Y.Z`, which leaves the
   release itself untouched.
 - **Never** write a skip marker (`[skip ci]`, `[ci skip]`, `[no ci]`) into a message pushed to
