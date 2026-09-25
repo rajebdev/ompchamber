@@ -9,6 +9,10 @@ import { ReconnectModal } from '@/client/components/settings/categories/provider
 import { LoginModal } from '@/client/components/settings/categories/provider-settings/LoginModal';
 import { ModelConfigModal } from '@/client/components/settings/categories/provider-settings/ModelConfigModal';
 import { ModelCapabilitiesModal } from '@/client/components/settings/categories/provider-settings/ModelCapabilitiesModal';
+import { AddModelModal } from '@/client/components/settings/categories/provider-settings/AddModelModal';
+import { DeleteProviderModal } from '@/client/components/settings/categories/provider-settings/DeleteProviderModal';
+import { providerEmptyReason } from '@/shared/lib/models/provider/dialect';
+import { configuredProviderSlugs } from '@/shared/lib/models/provider/presets';
 
 interface ProviderSettingsProps {
   autoOpenAdd?: boolean;
@@ -28,7 +32,15 @@ export function ProviderSettings({
     setCurrentProject,
     isFetchingModels,
     toasts,
+    pushToast,
     dismissToast,
+    isAddModelModalOpen,
+    setIsAddModelModalOpen,
+    handleModelAdded,
+    isDeleteModalOpen,
+    setIsDeleteModalOpen,
+    isDeletingProvider,
+    handleDeleteProvider,
     isAddModalOpen,
     setIsAddModalOpen,
     isReconnectModalOpen,
@@ -72,19 +84,31 @@ export function ProviderSettings({
             <ProviderAuthSection
               provider={selectedProvider}
               onOpenReconnectModal={() => {
-                if (selectedProvider.id.startsWith('omp-auth-')) setIsLoginModalOpen(true);
-                else setIsReconnectModalOpen(true);
+                // A provider omp signs in through `/login` needs the OAuth
+                // dialog; one whose endpoint and key live in models.yml (or the
+                // chamber overlay) is edited in place. Testing the provider ID
+                // for `omp-auth-` was wrong: a native models.yml entry shares
+                // that ID prefix once merged, and a keyless local server has no
+                // login flow to complete at all.
+                if (selectedProvider.credentialSource === 'omp-auth' && selectedProvider.auth !== 'none') {
+                  setIsLoginModalOpen(true);
+                } else {
+                  setIsReconnectModalOpen(true);
+                }
               }}
               onToggleDisconnect={handleToggleDisconnect}
               onToggleDisabled={handleToggleProviderDisabled}
+              onDelete={() => setIsDeleteModalOpen(true)}
             />
 
             <ProviderModelsList
               models={selectedProvider.models}
+              emptyReason={providerEmptyReason(selectedProvider)}
               onToggleModelVisibility={handleToggleModelVisibility}
               onHideAll={handleHideAll}
               onShowAll={handleShowAll}
               onFetchModels={handleFetchModelsFromList}
+              onAddModel={() => setIsAddModelModalOpen(true)}
               canFetchModels={Boolean(selectedProvider.baseUrl)}
               isFetchingModels={isFetchingModels}
               onOpenModelConfig={(model) => setConfigModel(model)}
@@ -108,7 +132,7 @@ export function ProviderSettings({
         }}
         onAddProvider={handleAddProvider}
         presets={availablePresetProviders}
-        existingSlugs={providers.map((provider) => provider.slug)}
+        existingSlugs={configuredProviderSlugs(providers)}
       />
 
       {selectedProvider && (
@@ -131,13 +155,30 @@ export function ProviderSettings({
         />
       )}
 
+      {selectedProvider && (
+        <AddModelModal
+          isOpen={isAddModelModalOpen}
+          provider={selectedProvider}
+          onClose={() => setIsAddModelModalOpen(false)}
+          onAdded={(modelId) => void handleModelAdded(modelId)}
+          onError={(message) => pushToast(message, 'error')}
+        />
+      )}
+
+      <DeleteProviderModal
+        isOpen={isDeleteModalOpen}
+        provider={selectedProvider ?? null}
+        isDeleting={isDeletingProvider}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={() => void handleDeleteProvider()}
+      />
+
       <ModelConfigModal
         isOpen={!!configModel}
         model={configModel}
         onClose={() => setConfigModel(null)}
         onSaveModelConfig={handleSaveModelConfig}
       />
-
       <ModelCapabilitiesModal
         isOpen={!!capabilitiesModel}
         model={capabilitiesModel}

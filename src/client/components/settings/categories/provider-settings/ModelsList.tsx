@@ -1,15 +1,19 @@
 import { useState } from 'preact/hooks';
-import { Eye, EyeOff, Image as ImageIcon, RefreshCw, Search, Settings2, SlidersHorizontal } from 'lucide-preact';
+import { Eye, EyeOff, Image as ImageIcon, Plus, RefreshCw, Search, Settings2, SlidersHorizontal } from 'lucide-preact';
 import type { ProviderModel } from '@/shared/types';
 import { formatContextWindow } from '@/shared/lib/code/format';
 import { formatPrice } from '@/shared/lib/format/number';
 
 interface ProviderModelsListProps {
   models: ProviderModel[];
+  /** Why the list is empty, when it legitimately is — never a generic excuse. */
+  emptyReason?: string;
   onToggleModelVisibility: (modelId: string) => void;
   onHideAll: () => void;
   onShowAll: () => void;
   onFetchModels: () => Promise<void>;
+  /** Opens the manual "Add Model" dialog. */
+  onAddModel: () => void;
   canFetchModels: boolean;
   isFetchingModels: boolean;
   onOpenModelConfig: (model: ProviderModel) => void;
@@ -18,10 +22,12 @@ interface ProviderModelsListProps {
 
 export function ProviderModelsList({
   models,
+  emptyReason,
   onToggleModelVisibility,
   onHideAll,
   onShowAll,
   onFetchModels,
+  onAddModel,
   canFetchModels,
   isFetchingModels,
   onOpenModelConfig,
@@ -51,6 +57,18 @@ export function ProviderModelsList({
           >
             <RefreshCw size={12} className={isFetchingModels ? 'animate-spin' : ''} />
             <span>{isFetchingModels ? 'fetching...' : 'fetch models'}</span>
+          </button>
+          {/* Manual registration, for the ids no listing endpoint reports:
+              a gateway model its /models omits, an Azure deployment name, a
+              provider with no listing route at all (Bedrock, Vertex). */}
+          <button
+            type="button"
+            onClick={onAddModel}
+            title="Register a model by hand"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-ink/5 hover:bg-ink/10 text-[11px] font-medium text-ink/80 hover:text-ink transition-colors cursor-pointer border border-ink/10"
+          >
+            <Plus size={12} />
+            <span>add model</span>
           </button>
           <button
             type="button"
@@ -94,7 +112,9 @@ export function ProviderModelsList({
       <div className="space-y-1 pt-1">
         {filteredModels.length === 0 ? (
           <div className="py-8 text-center text-xs text-ink/40">
-            No models found matching "{searchQuery}"
+            {searchQuery
+              ? `No models found matching "${searchQuery}"`
+              : emptyReason || 'No models registered for this provider yet.'}
           </div>
         ) : (
           filteredModels.map((model) => (

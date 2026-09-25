@@ -15,6 +15,11 @@ import { readDisabledProviders } from '@/server/lib/omp/config/disabled-provider
 import { getModelsConfigPath, readNativeProviders } from '@/server/lib/omp/config/models-config';
 import { runUtilityCommand, type OmpModel } from '@/server/lib/omp/rpc/utility';
 import { isKenariProvider, removeLegacyKenariModels } from '@/shared/lib/models/provider/cleanup';
+import {
+  isOmpProviderApi,
+  isProviderAuthMode,
+  isProviderDiscoveryType,
+} from '@/shared/lib/models/provider/dialect';
 import { formatContextWindow } from '@/shared/lib/code/format';
 import type { ProviderItem } from '@/shared/types';
 
@@ -90,10 +95,11 @@ async function loadRpcProviderItems(): Promise<ProviderItem[]> {
         id: `omp-auth-${provider.id}`,
         name: provider.name,
         slug: provider.id,
-        icon: 'plug',
+        icon: provider.id,
         status: (provider.authenticated && !isDisabled ? 'connected' : 'disconnected') as ProviderItem['status'],
         disabled: isDisabled,
         configuredIn: 'omp auth credentials',
+        credentialSource: 'omp-auth' as const,
         models: providerModels.map((model) => ({
           id: model.id,
           name: typeof model.name === 'string' && model.name.length > 0 ? model.name : model.id,
@@ -122,7 +128,7 @@ function disabledProviderItem(slug: string): ProviderItem {
     id: `omp-disabled-${slug}`,
     name: slug,
     slug,
-    icon: 'plug',
+    icon: slug,
     status: 'disconnected',
     disabled: true,
     configuredIn: 'omp disabledProviders',
@@ -135,19 +141,25 @@ function disabledProviderItem(slug: string): ProviderItem {
  * omp's own stores — chamber only surfaces registration info.
  */
 function nativeProviderItem(
-  slug: string,
-  baseUrl: string | undefined,
-  nativeModels: Array<{
-    id: string;
-    name?: string;
-    contextWindow?: number;
-    maxTokens?: number;
-    reasoning?: boolean;
-    imageInput?: boolean;
-  }>,
+  info: {
+    slug: string;
+    baseUrl?: string;
+    api?: string;
+    auth?: string;
+    discovery?: string;
+    models: Array<{
+      id: string;
+      name?: string;
+      contextWindow?: number;
+      maxTokens?: number;
+      reasoning?: boolean;
+      imageInput?: boolean;
+    }>;
+  },
   isDisabled = false,
 ): ProviderItem {
-  const models = nativeModels.map((model) => ({
+  const { slug, baseUrl } = info;
+  const models = info.models.map((model) => ({
     id: model.id,
     name: model.name || model.id,
     contextWindow: model.contextWindow
@@ -163,10 +175,27 @@ function nativeProviderItem(
     id: `omp-native-${slug}`,
     name: slug,
     slug,
-    icon: 'plug',
+    icon: slug,
     status: isDisabled ? 'disconnected' : 'connected',
     disabled: isDisabled,
     configuredIn: baseUrl ? `models.yml · ${baseUrl}` : 'models.yml',
+    credentialSource: 'models.yml' as const,
+    // This entry was built FROM models.yml, so the file holds it by definition.
+    inModelsYml: true,
+    // The dialect is what makes a native entry legible in the settings UI: an
+    // Anthropic-shaped proxy and an OpenAI one look identical without it, and
+    // the keyless/auth choice decides whether a missing credential is a bug.
+    ...(isOmpProviderApi(info.api) ? { api: info.api } : {}),
+    ...(isProviderAuthMode(info.auth) ? { auth: info.auth } : {}),
+    ...(isProviderDiscoveryType(info.discovery) ? { discovery: info.discovery } : {}),
+    // The registry can tell the two shapes apart without guessing: a
+    // discovery block means omp owns the list, and no models at all under a
+    // configured endpoint means this is an override for a bundled provider.
+    modelSource: isProviderDiscoveryType(info.discovery)
+      ? 'discovery'
+      : info.models.length === 0 && Boolean(baseUrl)
+        ? 'override'
+        : 'fetch',
     models: removeLegacyKenariModels({ name: slug, slug, baseUrl }, models),
   };
 }
@@ -209,6 +238,22 @@ function mergeProviderItems(existing: ProviderItem, incoming: ProviderItem): Pro
     disabled,
     baseUrl: primary.baseUrl || secondary.baseUrl,
     apiKey: primary.apiKey || secondary.apiKey,
+    // A models.yml entry means the endpoint and key live in that file, so the
+    // provider is edited in place; the login-provider half of the merge only
+    // says omp KNOWS the id. Preferring `omp-auth` here is what sent a keyless
+    // local server into an OAuth flow it can never complete.
+    credentialSource: primary.credentialSource === 'models.yml' || secondary.credentialSource === 'models.yml'
+      ? 'models.yml'
+      : primary.credentialSource ?? secondary.credentialSource,
+    // A union, not a winner-takes-all: the two halves see different files
+    // (auth sees login providers, native sees models.yml), and the flag decides
+    // whether the delete button may appear at all.
+    inModelsYml: primary.inModelsYml === true || secondary.inModelsYml === true,
+    // Dialect fields come from whichever side knows them: the auth source
+    // never carries them, the native models.yml source always does.
+    api: primary.api ?? secondary.api,
+    auth: primary.auth ?? secondary.auth,
+    discovery: primary.discovery ?? secondary.discovery,
     configuredIn: primary.apiKey || primary.baseUrl ? primary.configuredIn : secondary.configuredIn,
     models,
   };
@@ -269,12 +314,7 @@ export async function mergeProviders(custom: ProviderItem[]): Promise<{ provider
   const disabled = await readDisabledProviders().catch(() => new Set<string>());
   const authItems = await loadRpcProviderItems();
   const native = await readNativeProviders();
-  const nativeItems = native.map((info) => nativeProviderItem(
-    info.slug,
-    info.baseUrl,
-    info.models,
-    disabled.has(info.slug),
-  ));
+  const nativeItems = native.map((info) => nativeProviderItem(info, disabled.has(info.slug)));
   const disabledItems = [...disabled]
     .filter((slug) => !nativeItems.some((n) => n.slug === slug) && !authItems.some((a) => a.slug === slug))
     .map(disabledProviderItem);
@@ -283,11 +323,22 @@ export async function mergeProviders(custom: ProviderItem[]): Promise<{ provider
     custom,
   );
   const nativeSlugs = new Set(registryItems.map((provider) => provider.slug.toLowerCase()));
+  // `inModelsYml` is stamped from the FILE's own slug set, not from whichever
+  // source supplied the entry. A provider can be described by the auth half or
+  // by a stale overlay row while its models.yml entry is what a delete would
+  // remove — deriving the flag from the supplying half left those entries with
+  // no delete button even though the file held them.
+  const modelsYmlSlugs = new Set(native.map((info) => info.slug.toLowerCase()));
+  const providers = deduplicateProviderItems([
+    ...registryItems,
+    ...custom.filter((p) => !nativeSlugs.has(p.slug.toLowerCase())),
+  ]).map((provider) => (
+    modelsYmlSlugs.has(provider.slug.trim().toLowerCase())
+      ? { ...provider, inModelsYml: true }
+      : provider
+  ));
   return {
-    providers: deduplicateProviderItems([
-      ...registryItems,
-      ...custom.filter((p) => !nativeSlugs.has(p.slug.toLowerCase())),
-    ]),
+    providers,
     modelsConfigPath: await getModelsConfigPath(),
   };
 }

@@ -13,27 +13,48 @@
  * schema before it reaches disk. Reading lives in `./models-config.ts`.
  */
 
-import { isMap, isSeq, type Document, type YAMLMap } from 'yaml';
+import { isMap, isSeq, type YAMLMap } from 'yaml';
 import { getModelsConfigPath } from '@/server/lib/omp/config/models-config';
 import { plainOf, withOmpYamlDocument, OmpConfigError } from '@/server/lib/omp/config/document';
-import { validateModelsDocument, sanitizeModelEntry } from '@/server/lib/omp/config/models-validation';
-import { isRecord } from '@/shared/lib/util/guards';
+import { validateModelsDocument } from '@/server/lib/omp/config/models-validation';
+import {
+  backfillableIds,
+  backfillEntry,
+  knownModelIds,
+  toModelEntry,
+  type OmpProviderModelSeed,
+} from '@/server/lib/omp/config/provider-seeds';
+import { isMaskedApiKey } from '@/shared/lib/models/provider/dialect';
+import type {
+  OmpProviderApi,
+  ProviderAuthMode,
+  ProviderDiscoveryType,
+} from '@/shared/types/settings/provider';
 
-/** One model entry destined for models.yml (cost numbers are USD per 1M tokens). */
-export interface OmpProviderModelSeed {
-  id: string;
-  name?: string;
-  reasoning?: boolean;
-  imageInput?: boolean;
-  contextWindow?: number;
-  maxTokens?: number;
-  cost?: { input: number; output: number; cacheRead: number; cacheWrite: number };
-}
+export type { OmpProviderModelSeed } from '@/server/lib/omp/config/provider-seeds';
 
 export interface OmpProviderUpsertInput {
   baseUrl: string;
   apiKey?: string;
-  api?: 'openai-completions' | 'anthropic-messages' | 'google-generative-ai';
+  api?: OmpProviderApi;
+  /**
+   * omp's auth mode. `none` is what registers a keyless local server: without
+   * it omp demands an `apiKey` and rejects the provider as unconfigured.
+   */
+  auth?: ProviderAuthMode;
+  /**
+   * Let OMP list this provider's models live instead of the chamber writing a
+   * snapshot of ids. A discovery provider is legitimately registered with an
+   * empty `models` array.
+   */
+  discovery?: ProviderDiscoveryType;
+  /**
+   * Register/override the provider WITHOUT writing any model ids — the shape
+   * omp documents as an "override-only provider". Used when the provider is one
+   * omp already bundles (its own catalog supplies the models) or when its
+   * model list is owned by discovery.
+   */
+  overrideOnly?: boolean;
   models: OmpProviderModelSeed[];
 }
 
@@ -46,75 +67,30 @@ export interface OmpProviderUpsertResult {
   reason?: string;
 }
 
-/** Masks a stored credential echoed back by the UI; not a value to persist. */
-const MASKED_KEY_PATTERN = /•{3,}/;
-
-/** True when `value` is a credential the UI masked rather than a real key. */
-export function isMaskedApiKey(value: unknown): boolean {
-  return typeof value === 'string' && MASKED_KEY_PATTERN.test(value);
-}
-
-/** The model ids already registered under `provider`, array form only. */
-function knownModelIds(provider: Record<string, unknown> | undefined): Set<string> {
-  if (!Array.isArray(provider?.models)) return new Set();
-  return new Set(
-    provider.models
-      .map((model) => (isRecord(model) && typeof model.id === 'string' ? model.id : ''))
-      .filter(Boolean),
-  );
-}
-
-/** The model entry as omp expects it, omitting anything omp would reject. */
-function toModelEntry(model: OmpProviderModelSeed): Record<string, unknown> {
-  return sanitizeModelEntry({
-    id: model.id,
-    ...(model.name ? { name: model.name } : {}),
-    ...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {}),
-    ...(model.imageInput ? { input: ['text', 'image'] } : { input: ['text'] }),
-    ...(model.contextWindow && model.contextWindow > 0 ? { contextWindow: model.contextWindow } : {}),
-    ...(model.maxTokens && model.maxTokens > 0 ? { maxTokens: model.maxTokens } : {}),
-    ...(model.cost ? { cost: model.cost } : {}),
-  });
-}
-
-/**
- * Metadata a bare existing entry is missing, taken from the freshly fetched
- * seed. Values already present are never touched. Writes through the YAML node
- * so the entry's own comments and key order stay as the user wrote them.
- */
-function backfillEntry(doc: Document, entry: YAMLMap, seed: OmpProviderModelSeed): void {
-  if (seed.name && !entry.has('name')) entry.set('name', seed.name);
-  if (seed.reasoning !== undefined && !entry.has('reasoning')) {
-    entry.set('reasoning', seed.reasoning);
-  }
-  const currentInput = plainOf<string[]>(doc, entry.get('input'));
-  if (seed.imageInput && (!Array.isArray(currentInput) || !currentInput.includes('image'))) {
-    entry.set('input', ['text', 'image']);
-  }
-  if (seed.contextWindow && seed.contextWindow > 0 && !plainOf(doc, entry.get('contextWindow'))) {
-    entry.set('contextWindow', seed.contextWindow);
-  }
-  if (seed.maxTokens && seed.maxTokens > 0 && !plainOf(doc, entry.get('maxTokens'))) {
-    entry.set('maxTokens', seed.maxTokens);
-  }
-  if (seed.cost && !entry.has('cost')) {
-    entry.set('cost', seed.cost);
-  }
-}
-
 /**
  * Add-only upsert of a provider (and its models) into the native omp
  * models.yml — the agent's own registry, where per-model cost feeds usage
- * tracking. Existing provider fields (apiKey, baseUrl) and existing model
+ * tracking. Existing provider fields (apiKey, baseUrl, api) and existing model
  * entries are never modified; only models whose id is not yet registered are
- * appended. Merges preserve unrelated keys, comments and formatting (document
- * model), and the write is atomic and mode-preserving.
+ * appended, and only fields the entry is MISSING are filled. Merges preserve
+ * unrelated keys, comments and formatting (document model), and the write is
+ * atomic and mode-preserving.
  *
- * Provider creation requires an apiKey — omp rejects models-cfg providers
- * without one unless auth is "none" or "oauth"; existing providers keep
- * whatever credential they already have. The finished document is validated
- * against omp's own rules before the write: a schema violation anywhere in the
- * file makes omp disable every custom provider at once.
+ * Three provider shapes are written here, and omp's rules differ for each:
+ *
+ * - **full** (`models` non-empty): `baseUrl` plus an `apiKey` unless
+ *   `auth: none`/`oauth`.
+ * - **discovery** (`discovery` set): a shell omp lists models from itself. The
+ *   model list stays empty — writing ids as well would freeze a snapshot omp
+ *   would then serve alongside its live discovery.
+ * - **override** (`overrideOnly`, or an empty model list for a provider omp
+ *   already bundles): keep omp's own catalog models and only change the
+ *   endpoint. A provider with neither models nor any config field is rejected
+ *   by omp, so one of `baseUrl`/`apiKey`/`auth: none`/`discovery` must be set.
+ *
+ * The finished document is validated against omp's own rules before the write:
+ * a schema violation anywhere in the file makes omp disable every custom
+ * provider at once.
  */
 export async function upsertOmpProviderModels(
   slug: string,
@@ -144,11 +120,18 @@ export async function upsertOmpProviderModels(
         + 'Fix that entry before adding models; omp currently disables every custom provider because of it.',
       );
     }
+    // omp demands an `apiKey` only when a provider carries MODELS: an
+    // override-only entry (baseUrl/discovery/auth) is valid without one, which
+    // is how a proxy override for a bundled provider keeps using `/login`
+    // credentials, and how a keyless local server is declared.
+    const overrideOnly = input.overrideOnly === true || input.discovery !== undefined;
+    const writesModels = !overrideOnly && input.models.length > 0;
+    const keyless = input.auth === 'none' || input.auth === 'oauth';
     const known = knownModelIds(existing);
     const incomingById = new Map(input.models.map((model) => [model.id, model]));
     const additions = input.models.filter((model) => model.id && !known.has(model.id));
 
-    if (!existing && !input.apiKey) {
+    if (!existing && writesModels && !input.apiKey && !keyless) {
       return {
         result: {
           written: false,
@@ -164,7 +147,7 @@ export async function upsertOmpProviderModels(
     // writer is the last gate before a file omp will authenticate with — a
     // masked placeholder persisted here would look like a configured provider
     // that cannot authenticate.
-    if (!existing && isMaskedApiKey(input.apiKey)) {
+    if (!existing && writesModels && isMaskedApiKey(input.apiKey)) {
       return {
         result: {
           written: false,
@@ -179,22 +162,21 @@ export async function upsertOmpProviderModels(
 
     // Existing entries with bare ids (no context, no capabilities) get the
     // fetched metadata filled in — values already present are never touched.
-    const backfillIds = (Array.isArray(existing?.models) ? existing.models : [])
-      .filter((model): model is Record<string, unknown> => {
-        if (!isRecord(model) || typeof model.id !== 'string') return false;
-        const seed = incomingById.get(model.id);
-        if (!seed) return false;
-        const missingContext = typeof model.contextWindow !== 'number' || !model.contextWindow;
-        return Boolean(
-          (missingContext && (seed.contextWindow || seed.maxTokens))
-          || (!model.cost && seed.cost)
-          || (seed.reasoning !== undefined && model.reasoning === undefined)
-          || (!Array.isArray(model.input) && seed.imageInput),
-        );
-      })
-      .map((model) => String(model.id));
+    // A discovery provider keeps its empty list: omp owns those models.
+    const backfillIds = overrideOnly ? [] : backfillableIds(existing?.models, incomingById);
 
-    if (additions.length === 0 && backfillIds.length === 0) {
+    // A provider the user re-saves without any new model and without a dialect
+    // change has nothing to write — reporting `written: true` there would claim
+    // a file edit that never happened. A provider that does NOT exist yet is
+    // always a change: the entry itself is the write, which is the whole point
+    // of a discovery or override registration that carries no model ids.
+    const providerChanged = !existing || Boolean(
+      (input.api && !existing.api)
+      || (input.auth && input.auth !== 'apiKey' && !existing.auth)
+      || (input.discovery && !existing.discovery),
+    );
+
+    if (additions.length === 0 && backfillIds.length === 0 && !providerChanged) {
       return {
         result: {
           written: false,
@@ -213,16 +195,28 @@ export async function upsertOmpProviderModels(
     if (!existing) {
       doc.setIn(['providers', slug], doc.createNode({
         baseUrl: input.baseUrl,
-        apiKey: input.apiKey,
+        // `auth: none` makes an apiKey optional, so a keyless shell omits it
+        // rather than writing an empty string omp rejects.
+        ...(input.apiKey ? { apiKey: input.apiKey } : {}),
         // omp disables every custom provider when a models-carrying provider
         // lacks "api" (provider or model level) — always set one.
         api: input.api ?? 'openai-completions',
+        ...(input.auth && input.auth !== 'apiKey' ? { auth: input.auth } : {}),
+        ...(input.discovery ? { discovery: { type: input.discovery } } : {}),
         models: [],
       }));
-    } else if (!existing.api) {
-      // Existing provider without an api: adding models without one would make
-      // the whole models.yml fail omp validation, so fill it.
-      doc.setIn(['providers', slug, 'api'], input.api ?? 'openai-completions');
+    } else {
+      // Add-only: a field the entry already carries belongs to the user, and
+      // rewriting it would discard a credential or endpoint they pinned.
+      if (!existing.api) {
+        doc.setIn(['providers', slug, 'api'], input.api ?? 'openai-completions');
+      }
+      if (input.auth && input.auth !== 'apiKey' && !existing.auth) {
+        doc.setIn(['providers', slug, 'auth'], input.auth);
+      }
+      if (input.discovery && !existing.discovery) {
+        doc.setIn(['providers', slug, 'discovery'], doc.createNode({ type: input.discovery }));
+      }
     }
 
     // `addIn` on a missing key creates a MAP, not a sequence — exactly the

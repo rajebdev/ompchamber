@@ -9,6 +9,7 @@ import * as settingsMcpTest from '@/server/routes/settings/mcp-test';
 import * as settingsOmpConfig from '@/server/routes/settings/omp-config';
 import * as settingsProjects from '@/server/routes/settings/projects';
 import * as settingsProviderModels from '@/server/routes/settings/provider-models';
+import * as settingsProviderModel from '@/server/routes/settings/provider-model';
 import * as settingsProviders from '@/server/routes/settings/providers';
 import * as settingsSkills from '@/server/routes/settings/skills';
 import * as settingsUsage from '@/server/routes/settings/usage';
@@ -24,6 +25,7 @@ export const settingsBindings: HandlerBinding[] = [
   ...bindingsFor(settingsOmpConfig, '/api/settings/omp-config'),
   ...bindingsFor(settingsProjects, '/api/settings/projects'),
   ...bindingsFor(settingsProviderModels, '/api/settings/provider-models'),
+  ...bindingsFor(settingsProviderModel, '/api/settings/provider-model'),
   ...bindingsFor(settingsProviders, '/api/settings/providers'),
   ...bindingsFor(settingsSkills, '/api/settings/skills'),
   ...bindingsFor(settingsUsage, '/api/settings/usage'),

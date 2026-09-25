@@ -113,17 +113,32 @@ export async function action({ request, params }: ActionFunctionArgs) {
       if (!id) return json({ error: 'id is required' }, { status: 400 });
 
       const stored = await readStoredProviders();
-      const target = stored.find((provider) => provider.id === id);
-      const list = await providersStore.remove(db, id, { absent: DEFAULT_PROVIDERS_LIST, empty: DEFAULT_PROVIDERS_LIST });
+      // The target is looked up in the MERGED registry, not just the overlay.
+      // A provider that exists only in models.yml has no overlay row at all, so
+      // an overlay-only lookup found nothing, skipped the `removeOmpProvider`
+      // call below, and reported a delete that had removed no file entry — the
+      // provider came straight back on the next load.
+      const merged = await mergeProviders(stored).catch(() => null);
+      const target = merged?.providers.find((provider) => provider.id === id)
+        ?? stored.find((provider) => provider.id === id);
+      // The fallback list is MOCK-only demo data: seeding it in real mode would
+      // write shipped sample providers into a user's overlay on the first
+      // delete. Real mode starts from an empty overlay, which is what
+      // `providersStore.read` already does for the loader.
+      const fallback = isMockMode() ? DEFAULT_PROVIDERS_LIST : [];
+      const list = await providersStore.remove(db, id, { absent: fallback, empty: fallback });
 
       // Removing the overlay row alone left the provider registered in
       // models.yml, so omp kept serving it and the next load merged it straight
       // back into this list — a delete that visibly did nothing. Unregister it
       // from the agent's own registry too.
       let removedFromOmp = false;
+      let modelsRemoved = 0;
       if (target?.slug && !isMockMode()) {
         try {
-          removedFromOmp = (await removeOmpProvider(target.slug)).removed;
+          const removal = await removeOmpProvider(target.slug);
+          removedFromOmp = removal.removed;
+          modelsRemoved = removal.removedModels;
           // A provider omp still holds in disabledProviders would linger as a
           // "disconnected" ghost entry after its models are gone.
           await enableNativeProvider(target.slug);
@@ -131,18 +146,18 @@ export async function action({ request, params }: ActionFunctionArgs) {
           // The overlay row is already gone; report the native failure instead
           // of failing the whole request, so the UI can tell the user the entry
           // is still in models.yml.
-          const merged = await mergeProviders(list).catch(() => null);
+          const afterFailure = await mergeProviders(list).catch(() => null);
           return json({
             success: true,
-            providers: merged?.providers ?? list,
+            providers: afterFailure?.providers ?? list,
             removedFromOmp: false,
             warning: error instanceof Error ? error.message : 'models.yml cleanup failed',
           });
         }
       }
       invalidateModelsCaches();
-      const merged = await mergeProviders(list);
-      return json({ success: true, providers: merged.providers, removedFromOmp });
+      const after = await mergeProviders(list);
+      return json({ success: true, providers: after.providers, removedFromOmp, modelsRemoved });
     }
 
     if (request.method === 'POST' || request.method === 'PUT') {

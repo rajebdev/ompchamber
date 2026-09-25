@@ -36,6 +36,12 @@ export interface NativeProviderInfo {
   slug: string;
   /** Base URL of the provider API, when configured. */
   baseUrl?: string;
+  /** Wire dialect from the entry's `api`, when it declares one. */
+  api?: string;
+  /** Auth mode from the entry's `auth`; `none` means keyless. */
+  auth?: string;
+  /** Discovery type from the entry's `discovery`, when omp lists its models. */
+  discovery?: string;
   /** Model ids registered under this provider in models.yml. */
   modelIds: string[];
   models: NativeModelInfo[];
@@ -69,6 +75,11 @@ export async function readNativeProviders(): Promise<NativeProviderInfo[]> {
       const info: NativeProviderInfo = { slug, modelIds: [], models: [] };
       if (isRecord(value)) {
         if (typeof value.baseUrl === 'string') info.baseUrl = value.baseUrl;
+        if (typeof value.api === 'string') info.api = value.api;
+        if (typeof value.auth === 'string') info.auth = value.auth;
+        if (isRecord(value.discovery) && typeof value.discovery.type === 'string') {
+          info.discovery = value.discovery.type;
+        }
         if (Array.isArray(value.models)) {
           info.models = value.models.flatMap((model) => {
             if (!isRecord(model) || typeof model.id !== 'string') return [];

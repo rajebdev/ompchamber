@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import type { FormEvent } from 'preact/compat';
-import { AlertCircle, CheckCircle2, DownloadCloud, Globe, Key, RefreshCw } from 'lucide-preact';
+import { AlertCircle, CheckCircle2, DownloadCloud, Globe, Info, Key, RefreshCw } from 'lucide-preact';
 import type { ProviderItem } from '@/shared/types';
 import { fetchProviderModelsRemote } from '@/shared/lib/models/provider/models';
 import { ProviderIcon } from '@/client/components/common/provider-icon';
@@ -23,6 +23,7 @@ export function ReconnectModal({
   onReconnect,
   onFetchModels,
 }: ReconnectModalProps) {
+  const isKeyless = provider.auth === 'none';
   const [apiKey, setApiKey] = useState(provider.apiKey || 'sk-••••••••••••••••••••••••');
   const [baseUrl, setBaseUrl] = useState(provider.baseUrl || 'https://api.openai.com/v1');
   const [isTesting, setIsTesting] = useState(false);
@@ -39,7 +40,11 @@ export function ReconnectModal({
   const handleTestConnection = async () => {
     setIsTesting(true);
     setTestResult(null);
-    const result = await fetchProviderModelsRemote(baseUrl, draftCredentials.apiKey);
+    const result = await fetchProviderModelsRemote({
+      baseUrl,
+      ...(draftCredentials.apiKey ? { apiKey: draftCredentials.apiKey } : {}),
+      ...(provider.api ? { api: provider.api } : {}),
+    });
     setIsTesting(false);
     setTestResult(result.ok ? 'success' : 'failed');
   };
@@ -47,7 +52,10 @@ export function ReconnectModal({
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
     onReconnect({
-      apiKey,
+      // A keyless provider is configured by `auth: none`; storing the masked
+      // placeholder as its credential would show a key that authenticates
+      // nothing.
+      ...(isKeyless ? {} : { apiKey }),
       baseUrl,
       status: 'connected',
     });
@@ -108,21 +116,33 @@ export function ReconnectModal({
         </div>
       </div>
 
-      {/* API Key */}
-      <div>
-        <label className="block text-xs font-semibold text-ink mb-1">
-          API Key / Auth Token
-        </label>
-        <div className="relative flex items-center">
-          <Key size={13} className="absolute left-2.5 text-ink/40 pointer-events-none" />
-          <input
-            type="text"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.currentTarget.value)}
-            className="w-full bg-paper border border-ink/20 rounded-md pl-8 pr-3 py-1.5 text-xs text-ink outline-none focus:border-ink/60 font-mono"
-          />
+      {/* API Key — omitted for a keyless provider, which omp configures by
+          `auth: none` and which has no credential to store. */}
+      {isKeyless ? (
+        <div className="flex items-start gap-2 px-3 py-2 rounded-md bg-ink/5 border border-ink/10 text-[11px] text-ink/60">
+          <Info size={13} className="mt-0.5 flex-shrink-0 text-ink/50" />
+          <span>
+            This provider is registered with <span className="font-mono">auth: none</span>, so omp
+            sends no credential. Set Auth to “API key” in the provider’s own entry if the endpoint
+            starts requiring one.
+          </span>
         </div>
-      </div>
+      ) : (
+        <div>
+          <label className="block text-xs font-semibold text-ink mb-1">
+            API Key / Auth Token
+          </label>
+          <div className="relative flex items-center">
+            <Key size={13} className="absolute left-2.5 text-ink/40 pointer-events-none" />
+            <input
+              type="text"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.currentTarget.value)}
+              className="w-full bg-paper border border-ink/20 rounded-md pl-8 pr-3 py-1.5 text-xs text-ink outline-none focus:border-ink/60 font-mono"
+            />
+          </div>
+        </div>
+      )}
 
       {/* Test connection indicator */}
       <div className="flex items-center justify-between pt-1">
@@ -154,8 +174,9 @@ export function ReconnectModal({
       <div className="flex items-start gap-2 px-3 py-2 rounded-md bg-ink/5 border border-ink/10 text-[11px] text-ink/60">
         <DownloadCloud size={13} className="mt-0.5 flex-shrink-0 text-ink/50" />
         <span>
-          On save, models are fetched from the endpoint and merged into the
-          list below — existing models are kept, only new ones are added.
+          {isKeyless
+            ? 'On save, models are fetched from the endpoint and merged into the list below — a keyless server needs none to answer.'
+            : 'On save, models are fetched from the endpoint and merged into the list below — existing models are kept, only new ones are added.'}
         </span>
       </div>
     </Modal>

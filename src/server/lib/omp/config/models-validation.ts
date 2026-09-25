@@ -38,6 +38,70 @@ const API_VALUES = new Set([
 /** Auth modes that make an `apiKey` optional (omp: `ProviderAuthSchema`). */
 const KEYLESS_AUTH = new Set(['none', 'oauth']);
 
+/** Every value omp's `ProviderAuthSchema` accepts. */
+const AUTH_VALUES = new Set(['apiKey', 'none', 'oauth']);
+
+/** Every value omp's `ProviderDiscoverySchema.type` accepts. */
+const DISCOVERY_TYPES = new Set([
+  'ollama',
+  'llama.cpp',
+  'lm-studio',
+  'openai-models-list',
+  'proxy',
+  'litellm',
+  'apple-foundation-models',
+]);
+
+/** Every value omp's `ThinkingControlModeSchema` accepts. */
+const THINKING_MODES = new Set([
+  'effort',
+  'budget',
+  'google-level',
+  'anthropic-adaptive',
+  'anthropic-budget-effort',
+]);
+
+/** Every value omp's `EffortSchema` accepts. `off` is NOT one of them. */
+const EFFORT_VALUES = new Set(['minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
+
+/**
+ * Every reason a `thinking` block would fail omp's `ModelThinkingSchema`.
+ *
+ * The block is written by the chamber whenever a user ticks an effort ladder,
+ * and omp's failure mode is unforgiving: a missing `mode` or an effort outside
+ * the vocabulary makes it disable EVERY custom provider in the file.
+ */
+function thinkingErrors(label: string, thinking: unknown): string[] {
+  const errors: string[] = [];
+  if (!isRecord(thinking)) return [`${label}: "thinking" must be a mapping`];
+  if (thinking.mode === undefined) {
+    errors.push(`${label}: "thinking.mode" is required`);
+  } else if (!THINKING_MODES.has(String(thinking.mode))) {
+    errors.push(`${label}: unknown thinking mode ${JSON.stringify(thinking.mode)}`);
+  }
+  const efforts = thinking.efforts;
+  if (efforts !== undefined) {
+    if (!Array.isArray(efforts)) {
+      errors.push(`${label}: "thinking.efforts" must be an array`);
+    } else {
+      for (const effort of efforts) {
+        if (!EFFORT_VALUES.has(String(effort))) {
+          errors.push(`${label}: unknown thinking effort ${JSON.stringify(effort)}`);
+        }
+      }
+    }
+  }
+  // `efforts` is what makes the ladder meaningful; omp requires one of the
+  // three vocabularies, so a block carrying none of them is rejected on load.
+  const hasLadder = Array.isArray(efforts)
+    || Array.isArray(thinking.levels)
+    || (thinking.minLevel !== undefined && thinking.maxLevel !== undefined);
+  if (!hasLadder) {
+    errors.push(`${label}: "thinking" needs "efforts" (or legacy "levels"/"minLevel"+"maxLevel")`);
+  }
+  return errors;
+}
+
 /** A finite number, which is what omp's `"number"` type means — `NaN` and `Infinity` are rejected. */
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
@@ -75,6 +139,28 @@ export function validateModelsDocument(doc: Record<string, unknown> | null | und
     if (typeof value.apiKey === 'string' && value.apiKey.length === 0) {
       errors.push(`Provider ${slug}: "apiKey" must be a non-empty string`);
     }
+    if (value.auth !== undefined && !AUTH_VALUES.has(String(value.auth))) {
+      errors.push(`Provider ${slug}: unknown "auth" value ${JSON.stringify(value.auth)}`);
+    }
+    const discovery = value.discovery;
+    if (discovery !== undefined) {
+      if (!isRecord(discovery)) {
+        errors.push(`Provider ${slug}: "discovery" must be a mapping`);
+      } else {
+        const type = String(discovery.type);
+        if (!DISCOVERY_TYPES.has(type)) {
+          errors.push(`Provider ${slug}: unknown discovery type ${JSON.stringify(discovery.type)}`);
+        }
+        // omp needs a dialect to interpret the discovered entries; a proxy
+        // reports one per model instead, so it is the documented exception.
+        if (providerApi === undefined && type !== 'proxy') {
+          errors.push(`Provider ${slug}: "api" is required when discovery is enabled at provider level.`);
+        }
+        if (discovery.injectV1 !== undefined && type !== 'openai-models-list') {
+          errors.push(`Provider ${slug}: injectV1 only on openai-models-list discovery`);
+        }
+      }
+    }
 
     const models = value.models;
     if (models !== undefined && !Array.isArray(models)) {
@@ -94,8 +180,21 @@ export function validateModelsDocument(doc: Record<string, unknown> | null | und
       if (typeof value.apiKey !== 'string' && !KEYLESS_AUTH.has(auth)) {
         errors.push(`Provider ${slug}: "apiKey" is required when defining custom models unless auth is "none" or "oauth".`);
       }
-    } else if (!value.baseUrl && !value.apiKey && !value.discovery && value.auth !== 'none' && !value.modelOverrides) {
-      errors.push(`Provider ${slug}: must specify "baseUrl", "apiKey", "auth: none", "discovery", "modelOverrides", or "models"`);
+    } else if (
+      !value.baseUrl
+      && !value.apiKey
+      && !value.headers
+      && !value.compat
+      && !value.discovery
+      && !value.remoteCompaction
+      && !value.disableStrictTools
+      && !value.modelOverrides
+      && value.auth !== 'none'
+    ) {
+      errors.push(
+        `Provider ${slug}: must specify "baseUrl", "apiKey", "auth: none", "headers", "compat", `
+        + '"discovery", "remoteCompaction", "modelOverrides", or "models"',
+      );
     }
 
     for (const [index, model] of modelList.entries()) {
@@ -110,6 +209,9 @@ export function validateModelsDocument(doc: Record<string, unknown> | null | und
       }
       if (model.api !== undefined && !API_VALUES.has(String(model.api))) {
         errors.push(`Provider ${slug}, model ${id}: unknown "api" value ${JSON.stringify(model.api)}`);
+      }
+      if (model.thinking !== undefined) {
+        errors.push(...thinkingErrors(`Provider ${slug}, model ${id}`, model.thinking));
       }
       if (providerApi === undefined && model.api === undefined) {
         errors.push(`Provider ${slug}, model ${id}: no "api" specified. Set at provider or model level.`);
@@ -152,6 +254,13 @@ export function sanitizeModelEntry(model: Record<string, unknown>): Record<strin
     } else {
       delete next.cost;
     }
+  }
+  // An unusable ladder is dropped rather than written: a `thinking` block with
+  // no mode, or with an effort omp does not know, takes EVERY custom provider
+  // down with it. Dropping it leaves the model with omp's default ladder, which
+  // is the honest repair — the model still runs.
+  if (next.thinking !== undefined && thinkingErrors('model', next.thinking).length > 0) {
+    delete next.thinking;
   }
   if (!isOptionalPositive(next.contextWindow)) delete next.contextWindow;
   if (!isOptionalPositive(next.maxTokens)) delete next.maxTokens;

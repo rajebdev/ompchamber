@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { PresetProviderOption, ProviderItem, ProviderModel } from '@/shared/types';
 import { PRESET_NEW_PROVIDERS } from '@/client/data/settings/provider';
-import { fetchProviderModelsRemote, mergeProviderModels, syncProviderModelsToCatalog } from '@/shared/lib/models/provider/models';
 import { buildAvailableProviderPresets } from '@/shared/lib/models/provider/presets';
-import { removeLegacyKenariModels } from '@/shared/lib/models/provider/cleanup';
-import { notifyModelsUpdated } from '@/shared/lib/models/client';
-import { saveProviderOverlay, setProviderEnabled } from '@/shared/lib/models/provider/connection';
 import { useToasts } from '@/client/hooks/ui/toasts';
+import { loadProvidersFromApi } from '@/client/hooks/settings/providers/api';
+import { createProviderActions } from '@/client/hooks/settings/providers/actions';
 
 interface UseProviderSettingsOptions {
   autoOpenAdd?: boolean;
@@ -14,11 +12,18 @@ interface UseProviderSettingsOptions {
 }
 
 /**
- * State and actions behind Settings → Providers. Every mutation lands in one of
- * two stores: the chamber-local overlay (per-model visibility and sampling
- * config) or omp's own config.yml disabledProviders (connect / disconnect).
- * Disconnect has to use the latter — the overlay is re-merged away on load,
- * which is why a disconnected provider used to come back as connected.
+ * State wiring behind Settings → Providers.
+ *
+ * The mutations themselves live in `providers/actions.ts`, which receives this
+ * hook's setters as one `deps` record — the split keeps both files under the
+ * repo's size ceiling without changing closure semantics, since every action
+ * still closes over the same state.
+ *
+ * Every mutation lands in one of two stores: the chamber-local overlay (per-model
+ * visibility and sampling config) or omp's own config.yml `disabledProviders`
+ * (connect / disconnect). Disconnect has to use the latter — the overlay is
+ * re-merged away on load, which is why a disconnected provider used to come back
+ * as connected.
  */
 export function useProviderSettings({
   autoOpenAdd = false,
@@ -32,6 +37,9 @@ export function useProviderSettings({
   const { toasts, pushToast, dismissToast } = useToasts();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(autoOpenAdd);
+  const [isAddModelModalOpen, setIsAddModelModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeletingProvider, setIsDeletingProvider] = useState(false);
   const [isReconnectModalOpen, setIsReconnectModalOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [configModel, setConfigModel] = useState<ProviderModel | null>(null);
@@ -43,18 +51,13 @@ export function useProviderSettings({
 
   useEffect(() => {
     let active = true;
-    fetch('/api/settings/providers')
-      .then(res => res.json())
-      .then(data => {
-        if (!active) return;
-        if (data?.providers && Array.isArray(data.providers)) {
-          setProviders(data.providers);
-          const connected = data.providers.filter((p: ProviderItem) => p.status === 'connected');
-          setSelectedProviderId(connected.length > 0 ? connected[0].id : '');
-        }
-        if (data?.presetProviders) setPresetProviders(data.presetProviders);
-      })
-      .catch(err => console.error('Failed to load providers from API:', err));
+    void loadProvidersFromApi().then((data) => {
+      if (!active || !data) return;
+      setProviders(data.providers);
+      const connected = data.providers.filter((provider) => provider.status === 'connected');
+      setSelectedProviderId(connected.length > 0 ? connected[0].id : '');
+      if (data.presetProviders) setPresetProviders(data.presetProviders);
+    });
     return () => { active = false; };
   }, []);
 
@@ -73,220 +76,33 @@ export function useProviderSettings({
   );
   const selectedProvider = connectedProviders.find((p) => p.id === selectedProviderId) || connectedProviders[0];
 
-  const persistProviders = async (updated: ProviderItem[]) => {
-    setProviders(updated);
-    try {
-      const merged = await saveProviderOverlay(updated);
-      if (merged) setProviders(merged);
-    } catch (err) {
-      console.error('Failed to save providers via API:', err);
-      pushToast('Failed to save provider settings.', 'error');
-    }
-  };
-
-  const toggleProviderEnabled = async (
-    slug: string,
-    enabled: boolean,
-  ): Promise<ProviderItem[] | null> => {
-    try {
-      const merged = await setProviderEnabled(slug, enabled);
-      if (merged) setProviders(merged);
-      return merged;
-    } catch (err) {
-      console.error('Failed to update provider connection:', err);
-      pushToast('Failed to update the provider connection.', 'error');
-      return null;
-    }
-  };
-
-  const handleAddProvider = async (newProvider: ProviderItem, options: { fetchedCount: number }) => {
-    await persistProviders([...providers, newProvider]);
-    const merged = await toggleProviderEnabled(newProvider.slug, true);
-    const registered = merged?.find(
-      (provider) => provider.slug.trim().toLowerCase() === newProvider.slug.trim().toLowerCase(),
-    );
-    setSelectedProviderId(registered?.id || newProvider.id);
-    setIsAddModalOpen(false);
-    onAddModalClose?.();
-
-    if (options.fetchedCount > 0) {
-      pushToast(
-        `Fetched ${options.fetchedCount} new model${options.fetchedCount === 1 ? '' : 's'} from the provider.`,
-        'success',
-      );
-    } else if (options.fetchedCount === -1) {
-      pushToast('Auto-fetch models failed — provider added with default models.', 'error');
-    }
-
-    void syncProviderModelsToCatalog(newProvider.name, newProvider.models);
-  };
-
-  const handleReconnect = async (updates: Partial<ProviderItem>) => {
-    if (!selectedProvider) return;
-    const target = selectedProvider;
-    await persistProviders(providers.map((p) => (
-      p.id === target.id ? { ...p, ...updates, status: 'connected' as const } : p
-    )));
-    if (target.status !== 'connected') {
-      await toggleProviderEnabled(target.slug, true);
-    }
-  };
-
-  const handleFetchModels = async (credentials: { apiKey?: string; baseUrl?: string }) => {
-    if (!selectedProvider || isFetchingModels) return;
-    const baseUrl = credentials.baseUrl || selectedProvider.baseUrl;
-    if (!baseUrl) {
-      pushToast('Base URL is required to fetch models.', 'error');
-      return;
-    }
-    setIsFetchingModels(true);
-    try {
-      const result = await fetchProviderModelsRemote(
-        baseUrl,
-        credentials.apiKey || selectedProvider.apiKey,
-        selectedProvider.slug,
-        true,
-      );
-      if (!result.ok || !result.models) {
-        pushToast(result.error || 'Failed to fetch models from the provider.', 'error');
-        return;
-      }
-      const cleanedExistingModels = removeLegacyKenariModels(selectedProvider, selectedProvider.models);
-      const removedCount = selectedProvider.models.length - cleanedExistingModels.length;
-      const { merged, addedCount } = mergeProviderModels(cleanedExistingModels, result.models);
-      if (addedCount > 0 || removedCount > 0) {
-        await handleReconnect({ models: merged });
-      }
-      if (result.omp?.written) {
-        notifyModelsUpdated();
-      }
-      if (addedCount > 0) {
-        pushToast(`Fetched ${addedCount} new model${addedCount === 1 ? '' : 's'} from the provider.`, 'success');
-      } else if (removedCount > 0) {
-        pushToast('Removed legacy fallback models from the provider.', 'success');
-      } else {
-        pushToast('No new models found — all fetched models already exist.', 'success');
-      }
-      if (result.omp?.written) {
-        const parts: string[] = [];
-        if (result.omp.addedCount > 0) parts.push(`${result.omp.addedCount} new model${result.omp.addedCount === 1 ? '' : 's'} registered`);
-        if (result.omp.backfilledCount > 0) parts.push(`${result.omp.backfilledCount} model${result.omp.backfilledCount === 1 ? '' : 's'} enriched`);
-        pushToast(`omp models.yml updated${parts.length > 0 ? `: ${parts.join(', ')}` : ''}.`, 'success');
-      } else if (result.omp && !result.omp.written && result.omp.reason) {
-        pushToast(`omp models.yml not updated: ${result.omp.reason}`, 'error');
-      }
-    } finally {
-      setIsFetchingModels(false);
-    }
-  };
-
-  const handleFetchModelsFromList = async () => {
-    if (!selectedProvider) return;
-    await handleFetchModels({
-      apiKey: selectedProvider.apiKey,
-      baseUrl: selectedProvider.baseUrl,
-    });
-  };
-
-  const handleOmpAuthSuccess = () => {
-    if (!selectedProvider) return;
-    const target = selectedProvider;
-    void persistProviders(providers.map((p) => (
-      p.id === target.id ? { ...p, status: 'connected' as const } : p
-    )));
-    void toggleProviderEnabled(target.slug, true);
-  };
-
-  const handleToggleDisconnect = async () => {
-    if (!selectedProvider) return;
-    const target = selectedProvider;
-    const disconnecting = target.status === 'connected';
-    if (disconnecting) {
-      setSelectedProviderId(
-        connectedProviders.find((provider) => provider.id !== target.id)?.id || '',
-      );
-    }
-    const merged = await toggleProviderEnabled(target.slug, !disconnecting);
-    if (!merged) return;
-    pushToast(
-      disconnecting
-        ? `${target.name} disconnected — its models are no longer offered in the chat picker.`
-        : `${target.name} reconnected.`,
-      'success',
-    );
-  };
-
-  const updateSelectedModels = (transform: (models: ProviderModel[]) => ProviderModel[]) => {
-    if (!selectedProvider) return;
-    void persistProviders(providers.map((p) => (
-      p.id === selectedProvider.id ? { ...p, models: transform(p.models) } : p
-    )));
-  };
+  const actions = createProviderActions({
+    providers,
+    selectedProvider,
+    connectedProviders,
+    isFetchingModels,
+    isDeletingProvider,
+    pushToast,
+    setProviders,
+    setSelectedProviderId,
+    setIsAddModalOpen,
+    setIsDeleteModalOpen,
+    setIsDeletingProvider,
+    setIsFetchingModels,
+    ...(onAddModalClose ? { onAddModalClose } : {}),
+  });
 
   /**
-   * Disable/enable from omp's own config.yml `disabledProviders`. This is the
-   * coarse switch that removes the provider — and every model it serves — from
-   * the chat picker; the per-model eye toggle is the fine-grained one.
+   * After a hand-registered model lands in models.yml, the registry has to be
+   * re-read: the new row exists only in omp's file, so nothing in the chamber's
+   * own overlay knows about it yet. Re-fetching the MERGED list (rather than
+   * re-saving the overlay, whose response is the overlay alone) is what puts
+   * the model in the sidebar count and the chat picker.
    */
-  const handleToggleProviderDisabled = async () => {
-    if (!selectedProvider) return;
-    const target = selectedProvider;
-    const disabling = target.disabled !== true;
-    const merged = await toggleProviderEnabled(target.slug, !disabling);
-    if (!merged) return;
-    pushToast(
-      disabling
-        ? `${target.name} disabled — it no longer appears in the model list.`
-        : `${target.name} enabled — its models are offered again.`,
-      'success',
-    );
-  };
-
-  const handleHideAll = () => updateSelectedModels(
-    (models) => models.map((m) => ({ ...m, isVisible: false })),
-  );
-
-  const handleShowAll = () => updateSelectedModels(
-    (models) => models.map((m) => ({ ...m, isVisible: true })),
-  );
-
-  const handleToggleModelVisibility = (modelId: string) => updateSelectedModels(
-    (models) => models.map((m) => (m.id === modelId ? { ...m, isVisible: !m.isVisible } : m)),
-  );
-
-  /**
-   * Save the per-model knobs omp honours (`models.yml` modelOverrides). The
-   * overlay still stores the display value so the dialog reopens where the user
-   * left it, but omp only reads the override — writing just the overlay was the
-   * bug that made these controls inert.
-   */
-  const handleSaveModelConfig = async (modelId: string, updates: Partial<ProviderModel>) => {
-    if (!selectedProvider) return;
-    const provider = selectedProvider;
-    updateSelectedModels((models) => models.map((m) => (m.id === modelId ? { ...m, ...updates } : m)));
-
-    const body: Record<string, unknown> = { provider: provider.slug, modelId };
-    if ('maxTokens' in updates) body.maxTokens = updates.maxTokens ?? null;
-    if ('reasoningEffort' in updates) body.reasoningEffort = updates.reasoningEffort ?? null;
-    if (Object.keys(body).length === 2) return;
-
-    try {
-      const response = await fetch('/api/settings/model-override', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await response.json() as { success?: boolean; written?: boolean; reason?: string; error?: string };
-      if (!response.ok) {
-        pushToast(data.error || 'Failed to save the model configuration.', 'error');
-        return;
-      }
-      if (data.written) notifyModelsUpdated();
-      else if (data.reason) pushToast(data.reason, 'error');
-    } catch (error) {
-      console.error('Failed to save model override:', error);
-      pushToast('Failed to save the model configuration.', 'error');
-    }
+  const handleModelAdded = async (modelId: string) => {
+    pushToast(`${modelId} registered in models.yml.`, 'success');
+    const data = await loadProvidersFromApi();
+    if (data) setProviders(data.providers);
   };
 
   return {
@@ -300,6 +116,12 @@ export function useProviderSettings({
     toasts,
     pushToast,
     dismissToast,
+    isAddModelModalOpen,
+    setIsAddModelModalOpen,
+    handleModelAdded,
+    isDeleteModalOpen,
+    setIsDeleteModalOpen,
+    isDeletingProvider,
     isAddModalOpen,
     setIsAddModalOpen,
     isReconnectModalOpen,
@@ -311,16 +133,6 @@ export function useProviderSettings({
     capabilitiesModel,
     setCapabilitiesModel,
     setSelectedProviderId,
-    handleAddProvider,
-    handleReconnect,
-    handleFetchModels,
-    handleFetchModelsFromList,
-    handleOmpAuthSuccess,
-    handleToggleDisconnect,
-    handleToggleProviderDisabled,
-    handleHideAll,
-    handleShowAll,
-    handleToggleModelVisibility,
-    handleSaveModelConfig,
+    ...actions,
   };
 }

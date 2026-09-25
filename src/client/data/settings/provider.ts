@@ -1,4 +1,4 @@
-import type { ProviderItem } from '@/shared/types';
+import type { PresetProviderOption, ProviderItem } from '@/shared/types/settings/provider';
 
 export const DEFAULT_PROVIDERS_LIST: ProviderItem[] = [
   {
@@ -8,6 +8,7 @@ export const DEFAULT_PROVIDERS_LIST: ProviderItem[] = [
     icon: 'deepseek',
     status: 'connected',
     configuredIn: 'auth credentials',
+    credentialSource: 'chamber',
     apiKey: 'sk-ds-••••••••••••••••••••38f1',
     baseUrl: 'https://api.deepseek.com/v1',
     models: [
@@ -59,6 +60,7 @@ export const DEFAULT_PROVIDERS_LIST: ProviderItem[] = [
     icon: 'agentrouter',
     status: 'connected',
     configuredIn: 'auth credentials',
+    credentialSource: 'chamber',
     apiKey: 'ar-live-•••••••••••••••••••89c2',
     baseUrl: 'https://router.agent.ai/v1',
     models: [
@@ -104,6 +106,7 @@ export const DEFAULT_PROVIDERS_LIST: ProviderItem[] = [
     icon: 'commandcode',
     status: 'connected',
     configuredIn: 'auth credentials',
+    credentialSource: 'chamber',
     apiKey: 'cc-key-••••••••••••••••••••7a12',
     baseUrl: 'https://api.commandcode.dev/v1',
     models: Array.from({ length: 41 }, (_, i) => {
@@ -142,6 +145,7 @@ export const DEFAULT_PROVIDERS_LIST: ProviderItem[] = [
     icon: 'opencode',
     status: 'connected',
     configuredIn: 'auth credentials',
+    credentialSource: 'chamber',
     apiKey: 'zen-live-•••••••••••••••••••44fa',
     baseUrl: 'https://zen.opencode.ai/v1',
     models: [
@@ -161,6 +165,7 @@ export const DEFAULT_PROVIDERS_LIST: ProviderItem[] = [
     icon: 'claude',
     status: 'connected',
     configuredIn: 'auth credentials',
+    credentialSource: 'chamber',
     apiKey: 'sk-ant-•••••••••••••••••••••991c',
     baseUrl: 'https://api.anthropic.com/v1',
     models: [
@@ -174,12 +179,139 @@ export const DEFAULT_PROVIDERS_LIST: ProviderItem[] = [
   },
 ];
 
-export const PRESET_NEW_PROVIDERS = [
-  { id: 'openai', name: 'OpenAI', slug: 'openai', icon: 'openai', defaultUrl: 'https://api.openai.com/v1' },
-  { id: 'anthropic', name: 'Anthropic', slug: 'anthropic', icon: 'claude', defaultUrl: 'https://api.anthropic.com/v1' },
-  { id: 'google', name: 'Google Gemini', slug: 'google', icon: 'gemini', defaultUrl: 'https://generativelanguage.googleapis.com/v1beta' },
-  { id: 'groq', name: 'Groq Cloud', slug: 'groq', icon: 'groq', defaultUrl: 'https://api.groq.com/openai/v1' },
-  { id: 'mistral', name: 'Mistral AI', slug: 'mistral', icon: 'mistral', defaultUrl: 'https://api.mistral.ai/v1' },
-  { id: 'ollama', name: 'Ollama (Local)', slug: 'ollama', icon: 'ollama', defaultUrl: 'http://localhost:11434/v1' },
-  { id: 'custom', name: 'Custom OpenAI-Compatible', slug: 'custom', icon: 'custom', defaultUrl: 'https://' },
+/**
+ * Providers offered by the Add Provider picker. `group` is the section the
+ * picker renders; `api`/`auth`/`discovery` are the `models.yml` fields the
+ * preset seeds, so a choice that omp understands is made once here rather than
+ * re-derived from the URL at write time.
+ *
+ * A preset whose id names a provider omp already bundles (`bundled: true`) is
+ * an OVERRIDE entry: omp keeps serving its own model list for that provider and
+ * only the endpoint changes. That is the documented way to point a bundled
+ * provider at a proxy, and it is deliberately not offered for providers whose
+ * models the chamber would then have to duplicate.
+ */
+export const PRESET_NEW_PROVIDERS: PresetProviderOption[] = [
+  {
+    id: 'openai', name: 'OpenAI', slug: 'openai', icon: 'openai',
+    defaultUrl: 'https://api.openai.com/v1', api: 'openai-responses', group: 'Frontier APIs',
+  },
+  {
+    id: 'anthropic', name: 'Anthropic', slug: 'anthropic', icon: 'claude',
+    defaultUrl: 'https://api.anthropic.com/v1', api: 'anthropic-messages', group: 'Frontier APIs',
+  },
+  {
+    id: 'google', name: 'Google Gemini', slug: 'google', icon: 'gemini',
+    defaultUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    api: 'google-generative-ai', group: 'Frontier APIs',
+  },
+  {
+    id: 'groq', name: 'Groq Cloud', slug: 'groq', icon: 'groq',
+    defaultUrl: 'https://api.groq.com/openai/v1', api: 'openai-completions', group: 'Frontier APIs',
+  },
+  {
+    id: 'mistral', name: 'Mistral AI', slug: 'mistral', icon: 'mistral',
+    defaultUrl: 'https://api.mistral.ai/v1', api: 'openai-completions', group: 'Frontier APIs',
+  },
+  {
+    id: 'xai', name: 'xAI', slug: 'xai', icon: 'xai',
+    defaultUrl: 'https://api.x.ai/v1', api: 'openai-completions', group: 'Frontier APIs',
+  },
+  {
+    id: 'cerebras', name: 'Cerebras', slug: 'cerebras', icon: 'cerebras',
+    defaultUrl: 'https://api.cerebras.ai/v1', api: 'openai-completions', group: 'Frontier APIs',
+  },
+  {
+    id: 'deepseek', name: 'DeepSeek', slug: 'deepseek', icon: 'deepseek',
+    defaultUrl: 'https://api.deepseek.com/v1', api: 'openai-completions', group: 'Frontier APIs',
+  },
+  {
+    id: 'openrouter', name: 'OpenRouter', slug: 'openrouter', icon: 'openrouter',
+    defaultUrl: 'https://openrouter.ai/api/v1', api: 'openai-completions', group: 'Gateways',
+  },
+  {
+    id: 'together', name: 'Together AI', slug: 'together', icon: 'together',
+    defaultUrl: 'https://api.together.xyz/v1', api: 'openai-completions', group: 'Gateways',
+  },
+  {
+    id: 'fireworks', name: 'Fireworks', slug: 'fireworks', icon: 'fireworks',
+    defaultUrl: 'https://api.fireworks.ai/inference/v1', api: 'openai-completions', group: 'Gateways',
+  },
+  {
+    id: 'deepinfra', name: 'DeepInfra', slug: 'deepinfra', icon: 'deepinfra',
+    defaultUrl: 'https://api.deepinfra.com/v1/openai', api: 'openai-completions', group: 'Gateways',
+  },
+  {
+    id: 'siliconflow', name: 'SiliconFlow', slug: 'siliconflow', icon: 'siliconflow',
+    defaultUrl: 'https://api.siliconflow.com/v1', api: 'openai-completions', group: 'Gateways',
+  },
+  {
+    id: 'nvidia', name: 'NVIDIA NIM', slug: 'nvidia', icon: 'nvidia',
+    defaultUrl: 'https://integrate.api.nvidia.com/v1', api: 'openai-completions', group: 'Gateways',
+  },
+  {
+    id: 'novita', name: 'Novita AI', slug: 'novita', icon: 'novita',
+    defaultUrl: 'https://api.novita.ai/v3/openai', api: 'openai-completions', group: 'Gateways',
+  },
+  {
+    id: 'vercel-ai-gateway', name: 'Vercel AI Gateway', slug: 'vercel-ai-gateway', icon: 'vercel',
+    defaultUrl: 'https://ai-gateway.vercel.sh/v1', api: 'openai-completions', group: 'Gateways',
+  },
+  {
+    id: 'ollama', name: 'Ollama (Local)', slug: 'ollama', icon: 'ollama',
+    defaultUrl: 'http://127.0.0.1:11434', api: 'openai-responses',
+    auth: 'none', discovery: 'ollama', group: 'Local & self-hosted',
+  },
+  {
+    id: 'lm-studio', name: 'LM Studio (Local)', slug: 'lm-studio', icon: 'lmstudio',
+    defaultUrl: 'http://127.0.0.1:1234/v1', api: 'openai-completions',
+    auth: 'none', discovery: 'lm-studio', group: 'Local & self-hosted',
+  },
+  {
+    id: 'llama-cpp', name: 'llama.cpp (Local)', slug: 'llama.cpp', icon: 'llamacpp',
+    defaultUrl: 'http://127.0.0.1:8080', api: 'openai-responses',
+    auth: 'none', discovery: 'llama.cpp', group: 'Local & self-hosted',
+  },
+  {
+    id: 'vllm', name: 'vLLM (Local)', slug: 'vllm', icon: 'vllm',
+    defaultUrl: 'http://127.0.0.1:8000/v1', api: 'openai-completions',
+    auth: 'none', discovery: 'openai-models-list', group: 'Local & self-hosted',
+  },
+  {
+    id: 'litellm', name: 'LiteLLM Proxy', slug: 'litellm', icon: 'litellm',
+    defaultUrl: 'http://localhost:4000/v1', api: 'openai-completions',
+    discovery: 'litellm', group: 'Local & self-hosted',
+  },
+  {
+    id: 'azure', name: 'Azure OpenAI', slug: 'azure', icon: 'azure',
+    defaultUrl: 'https://YOUR-RESOURCE.openai.azure.com/openai/v1',
+    api: 'azure-openai-responses', bundled: true, group: 'Other dialects',
+  },
+  {
+    id: 'amazon-bedrock', name: 'Amazon Bedrock', slug: 'amazon-bedrock', icon: 'amazon',
+    defaultUrl: 'https://bedrock-runtime.us-east-1.amazonaws.com',
+    api: 'bedrock-converse-stream', bundled: true, group: 'Other dialects',
+  },
+  {
+    id: 'google-vertex', name: 'Google Vertex AI', slug: 'google-vertex', icon: 'vertexai',
+    defaultUrl: 'https://us-central1-aiplatform.googleapis.com/v1',
+    api: 'google-vertex', bundled: true, group: 'Other dialects',
+  },
+  {
+    id: 'openai-codex', name: 'OpenAI Codex', slug: 'openai-codex', icon: 'codex',
+    defaultUrl: 'https://chatgpt.com/backend-api/codex',
+    api: 'openai-codex-responses', bundled: true, group: 'Other dialects',
+  },
+  {
+    id: 'anthropic-custom', name: 'Anthropic-Compatible Proxy', slug: 'anthropic-custom', icon: 'claude',
+    defaultUrl: 'https://', api: 'anthropic-messages', group: 'Custom',
+  },
+  {
+    id: 'openai-custom', name: 'OpenAI-Compatible Gateway', slug: 'openai-custom', icon: 'openai',
+    defaultUrl: 'https://', api: 'openai-completions', group: 'Custom',
+  },
+  {
+    id: 'custom', name: 'Custom OpenAI-Compatible', slug: 'custom', icon: 'custom',
+    defaultUrl: 'https://', api: 'openai-completions', group: 'Custom',
+  },
 ];

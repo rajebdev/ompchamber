@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { AlertCircle, Ban, Check, Info } from 'lucide-preact';
+import { AlertCircle, Ban, Check, Info, Trash2 } from 'lucide-preact';
 import type { ProviderItem } from '@/shared/types';
 
 interface ProviderAuthSectionProps {
@@ -8,6 +8,8 @@ interface ProviderAuthSectionProps {
   onToggleDisconnect: () => void;
   /** Adds/removes the provider in omp's config.yml `disabledProviders`. */
   onToggleDisabled: () => void;
+  /** Opens the delete confirmation for a provider registered in models.yml. */
+  onDelete: () => void;
 }
 
 export function ProviderAuthSection({
@@ -15,6 +17,7 @@ export function ProviderAuthSection({
   onOpenReconnectModal,
   onToggleDisconnect,
   onToggleDisabled,
+  onDelete,
 }: ProviderAuthSectionProps) {
   const [showInfoTooltip, setShowInfoTooltip] = useState(false);
   const isConnected = provider.status === 'connected';
@@ -82,6 +85,22 @@ export function ProviderAuthSection({
             >
               {isConnected ? 'reconnect' : 'connect'}
             </button>
+
+            {/* Delete only exists for a provider that HAS a models.yml entry:
+                there is nothing in the file to remove otherwise, and the button
+                would promise an action it cannot perform. A login provider's
+                credential is never touched by this. */}
+            {provider.inModelsYml && (
+              <button
+                type="button"
+                onClick={onDelete}
+                title="Remove this provider's models.yml entry"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-error/10 hover:bg-error/20 text-error text-xs font-medium transition-colors cursor-pointer border border-error/30"
+              >
+                <Trash2 size={12} />
+                <span>delete</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -113,6 +132,38 @@ export function ProviderAuthSection({
             </span>
           )}
         </div>
+
+        {/* Dialect: the wire api and auth mode omp will use. A provider whose
+            endpoint is right but whose dialect is wrong fails on every request,
+            so it belongs next to the connection status rather than in a log. */}
+        {(provider.api || provider.auth || provider.discovery) && (
+          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+            {provider.api && (
+              <span
+                className="px-1.5 py-0.5 rounded border border-ink/15 text-[10px] font-mono text-ink/70"
+                title="Wire API omp uses for this provider"
+              >
+                {provider.api}
+              </span>
+            )}
+            {provider.auth && provider.auth !== 'apiKey' && (
+              <span
+                className="px-1.5 py-0.5 rounded border border-ink/15 text-[10px] font-mono text-ink/70"
+                title="Auth mode from models.yml"
+              >
+                auth: {provider.auth}
+              </span>
+            )}
+            {provider.discovery && (
+              <span
+                className="px-1.5 py-0.5 rounded border border-ink/15 text-[10px] font-mono text-ink/70"
+                title="omp lists this provider's models live"
+              >
+                discovery: {provider.discovery}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="border-b border-ink/10" />
