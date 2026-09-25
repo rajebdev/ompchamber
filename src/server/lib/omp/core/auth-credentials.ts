@@ -85,3 +85,48 @@ export async function readOmpProviderApiKey(slug: string): Promise<string | null
   if (fromYml) return fromYml;
   return readAgentDbApiKey(slug);
 }
+
+/**
+ * Slugs holding a live (non-disabled) credential in omp's agent.db. Used to
+ * decide which providers a usage surface may list — a provider with no
+ * credential must not be shown at all. Returns slugs only, never key material.
+ */
+export async function listAgentDbCredentialSlugs(): Promise<string[]> {
+  const dbPath = join(getAgentDir(), 'agent.db');
+  if (!(await Bun.file(dbPath).exists())) return [];
+  let db: Database | null = null;
+  try {
+    db = new Database(dbPath, { readonly: true });
+    const rows = db
+      .query<{ provider: string }, []>(
+        `SELECT DISTINCT provider FROM ${AUTH_CREDENTIALS_TABLE} WHERE disabled_cause IS NULL`,
+      )
+      .all();
+    return rows
+      .map((row) => (typeof row.provider === 'string' ? row.provider.trim().toLowerCase() : ''))
+      .filter(Boolean);
+  } catch {
+    return []; // no-excuse-ok: catch — best-effort read of an external store
+  } finally {
+    db?.close();
+  }
+}
+
+/** Slugs carrying an `apiKey` in models.yml. Returns slugs only. */
+export async function listModelsYmlCredentialSlugs(): Promise<string[]> {
+  const path = await getModelsConfigPath();
+  if (!(await Bun.file(path).exists())) return [];
+  try {
+    const data = Bun.YAML.parse(await Bun.file(path).text());
+    if (!isRecord(data) || !isRecord(data.providers)) return [];
+    const slugs: string[] = [];
+    for (const [slug, value] of Object.entries(data.providers)) {
+      if (!isRecord(value)) continue;
+      const key = typeof value.apiKey === 'string' ? value.apiKey.trim() : '';
+      if (key.length > 0) slugs.push(slug.trim().toLowerCase());
+    }
+    return slugs;
+  } catch {
+    return []; // no-excuse-ok: catch — a malformed models.yml is a soft miss
+  }
+}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'preact/compat';
 import { Check, ChevronDown, Search } from 'lucide-preact';
 import { statusLabel, type ProviderEntry, type UsageProviderId } from '@/client/components/settings/categories/usage-settings/providers';
+import { ProviderIcon } from '@/client/components/common/provider-icon';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 
 interface ProviderSelectProps {
@@ -120,7 +121,8 @@ export function ProviderSelect({ providers, value, onChange }: ProviderSelectPro
         title="Select usage provider"
         className="flex w-full min-w-0 items-center justify-between gap-2 bg-paper border border-ink/15 rounded-lg px-3 py-1.5 text-xs text-ink hover:bg-ink/5 transition-colors"
       >
-        <span className="flex min-w-0 items-baseline gap-2">
+        <span className="flex min-w-0 items-center gap-2">
+          {selected && <ProviderIcon slug={selected.id} name={selected.name} size={13} className="text-ink/60" />}
           <span className="truncate font-medium">{selected?.name ?? 'Select provider'}</span>
           {selected && (
             <span className="truncate text-[10px] text-ink/50">{statusLabel(selected)}</span>
@@ -190,10 +192,13 @@ export function ProviderSelect({ providers, value, onChange }: ProviderSelectPro
                     index === activeIndex ? 'bg-ink/5' : 'hover:bg-ink/5'
                   }`}
                 >
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium text-ink">{provider.name}</span>
-                    <span className="block truncate text-[10px] text-ink/50">
-                      {statusLabel(provider)} · {provider.hint}
+                  <span className="flex min-w-0 items-center gap-2">
+                    <ProviderIcon slug={provider.id} name={provider.name} size={14} className="text-ink/60" />
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium text-ink">{provider.name}</span>
+                      <span className="block truncate text-[10px] text-ink/50">
+                        {statusLabel(provider)} · {provider.hint}
+                      </span>
                     </span>
                   </span>
                   {provider.id === value && <Check size={12} className="flex-shrink-0 text-ink" />}

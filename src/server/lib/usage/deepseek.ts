@@ -44,15 +44,14 @@ async function fetchDeepSeekBalance(apiKey: string): Promise<DeepSeekBalance> {
   return mapBalance(await response.json());
 }
 
-/** Build the DeepSeek usage report; a missing key yields `configured: false`. */
-export async function buildDeepSeekReport(): Promise<DeepSeekUsageReport> {
+/** Build the DeepSeek usage report, or `null` when DeepSeek has no credential. */
+export async function buildDeepSeekReport(): Promise<DeepSeekUsageReport | null> {
   const apiKey = await resolveDeepSeekApiKey();
-  if (!apiKey) return { configured: false };
+  if (!apiKey) return null;
   try {
-    return { configured: true, balance: await fetchDeepSeekBalance(apiKey) };
+    return { balance: await fetchDeepSeekBalance(apiKey) };
   } catch (error) {
     return {
-      configured: true,
       error: error instanceof Error ? error.message : 'Failed to load DeepSeek balance',
     };
   }

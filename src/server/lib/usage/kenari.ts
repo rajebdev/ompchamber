@@ -215,15 +215,16 @@ function errorMessage(error: unknown, fallback: string): string {
 }
 
 /**
- * Build the Kenari usage report. The three upstream calls (quota REST + two
- * MCP tools) run independently so a failure in one does not lose the others;
- * failures are folded into the report's `error` field.
+ * Build the Kenari usage report, or `null` when kenari has no credential —
+ * the caller then omits kenari from the provider list entirely. The three
+ * upstream calls (quota REST + two MCP tools) run independently so a failure in
+ * one does not lose the others; failures are folded into the report's `error`.
  */
-export async function buildKenariReport(): Promise<KenariUsageReport> {
+export async function buildKenariReport(): Promise<KenariUsageReport | null> {
   const apiKey = await resolveKenariApiKey();
-  if (!apiKey) return { configured: false };
+  if (!apiKey) return null;
 
-  const report: KenariUsageReport = { configured: true };
+  const report: KenariUsageReport = {};
   const [quota, balance, usage] = await Promise.allSettled([
     fetchKenariQuota(apiKey),
     fetchKenariBalance(apiKey),

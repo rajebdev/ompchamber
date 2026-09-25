@@ -1,15 +1,24 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { AlertCircle, RefreshCw } from 'lucide-preact';
 import { UsageSidebarList } from '@/client/components/settings/categories/usage-settings/SidebarList';
-import type { UsageProviderId } from '@/client/components/settings/categories/usage-settings/providers';
+import { buildProviders, type UsageProviderId } from '@/client/components/settings/categories/usage-settings/providers';
 import { ProviderDetail } from '@/client/components/settings/categories/usage-settings/ProviderDetail';
 import { formatDateTime } from '@/client/components/settings/categories/usage-settings/format';
 import { useUsageReport } from '@/client/hooks/settings/useUsageReport';
 
-/** Settings → Usage: provider balances, quota, and 30-day spend. */
+/** Settings → Usage: provider quota, balances, and locally recorded burn. */
 export function UsageSettings() {
   const { report, isLoading, error, reload } = useUsageReport();
-  const [selectedProviderId, setSelectedProviderId] = useState<UsageProviderId>('kenari');
+  const [selectedProviderId, setSelectedProviderId] = useState<UsageProviderId>('');
+
+  const providers = report ? buildProviders(report) : [];
+  const selected = providers.find((provider) => provider.id === selectedProviderId) ?? providers[0];
+
+  // The report can arrive with a different provider set (a key was added or
+  // removed); keep the selection pointing at something that exists.
+  useEffect(() => {
+    if (selected && selected.id !== selectedProviderId) setSelectedProviderId(selected.id);
+  }, [selected, selectedProviderId]);
 
   if (error && !report) {
     return (
@@ -39,7 +48,7 @@ export function UsageSettings() {
     <div className="flex h-full w-full overflow-hidden bg-paper text-xs text-ink">
       <UsageSidebarList
         report={report}
-        selectedProviderId={selectedProviderId}
+        selectedProviderId={selected?.id ?? ''}
         onSelectProvider={setSelectedProviderId}
       />
 
@@ -57,7 +66,7 @@ export function UsageSettings() {
           </div>
           <button
             type="button"
-            onClick={() => reload()}
+            onClick={() => reload({ force: true })}
             disabled={isLoading}
             className="p-1.5 bg-paper border border-ink/15 rounded-md hover:bg-ink/5 text-ink/80 transition-colors disabled:opacity-50 flex-shrink-0"
             title="Refresh usage"
@@ -69,7 +78,13 @@ export function UsageSettings() {
         <div className="flex-1 overflow-y-auto scrollbar-overlay-container scrollbar-overlay-static p-3.5 space-y-4">
           {error && <p className="text-error text-xs">{error}</p>}
 
-          <ProviderDetail providerId={selectedProviderId} report={report} />
+          {selected ? (
+            <ProviderDetail summary={selected.summary} />
+          ) : (
+            <p className="text-[11px] text-ink/50 leading-relaxed">
+              No provider credentials detected. Add an API key in Settings → Providers and it will appear here.
+            </p>
+          )}
         </div>
       </div>
     </div>

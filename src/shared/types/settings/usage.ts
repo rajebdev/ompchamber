@@ -1,17 +1,14 @@
 /**
  * Usage / balance contracts for the Settings → Usage panel.
  *
- * Served by `GET /api/settings/usage`. Both provider reports are always
- * present; `configured` is false when the matching provider key is missing
- * from Settings → Providers, and `error` carries a human-readable failure
- * when the upstream call could not be completed.
+ * Served by `GET /api/settings/usage`. `providers` lists every provider whose
+ * credential omp can resolve — a provider with no API key is omitted, never
+ * shown as an empty row. Each entry carries the provider's own quota windows
+ * (`omp usage --json`), the token/cost burn omp recorded locally for the
+ * trailing 30 days, and — for kenari and DeepSeek — the richer provider-specific
+ * report described below. `error` carries a human-readable failure when an
+ * upstream call could not be completed.
  */
-
-/** Fields shared by every provider report. */
-export interface UsageProviderStatus {
-  configured: boolean;
-  error?: string;
-}
 
 /** A single rolling quota window from kenari's plan (week / month / 5 hours). */
 export interface KenariQuotaWindow {
@@ -66,10 +63,16 @@ export interface KenariBalance {
   raw: string;
 }
 
-export interface KenariUsageReport extends UsageProviderStatus {
+/**
+ * kenari wallet, plan quota, and 30-day usage. Present only when kenari has a
+ * credential; the builder returns `null` otherwise, so no `configured` flag is
+ * needed on the report itself.
+ */
+export interface KenariUsageReport {
   balance?: KenariBalance;
   usage?: KenariUsage;
   quota?: KenariQuota;
+  error?: string;
 }
 
 /** One currency bucket from DeepSeek's balance response. */
@@ -86,14 +89,85 @@ export interface DeepSeekBalance {
   entries: DeepSeekBalanceEntry[];
 }
 
-export interface DeepSeekUsageReport extends UsageProviderStatus {
+/** DeepSeek prepaid balance; present only when DeepSeek has a credential. */
+export interface DeepSeekUsageReport {
   balance?: DeepSeekBalance;
+  error?: string;
+}
+
+/** Unit of a provider-reported quota amount (mirrors omp's `UsageUnit`). */
+export type UsageUnit = 'percent' | 'tokens' | 'requests' | 'credits' | 'usd' | 'minutes' | 'bytes' | 'unknown';
+
+/** Coarse state of one quota window. */
+export type UsageWindowStatus = 'ok' | 'warning' | 'exhausted' | 'unknown';
+
+/**
+ * One quota window reported by a provider's own usage endpoint, flattened from
+ * omp's `UsageLimit` (`omp usage --json`). Every amount is optional: providers
+ * populate different subsets (`used`/`limit`, `usedFraction`, or
+ * `remainingFraction`), and `usedFraction` is pre-resolved here with omp's own
+ * precedence so the UI never has to re-derive it.
+ */
+export interface UsageLimitWindow {
+  id: string;
+  label: string;
+  /** Compact window label from omp, e.g. "5h" or "7d". */
+  windowLabel?: string;
+  /** Model/account scope when the provider reports per-model windows. */
+  modelId?: string;
+  accountId?: string;
+  used?: number;
+  limit?: number;
+  remaining?: number;
+  /** Fraction used, 0..1; values above 1 mean overage. */
+  usedFraction?: number;
+  unit: UsageUnit;
+  status: UsageWindowStatus;
+  /** Epoch ms when the window rolls over. */
+  resetsAt?: number;
+  notes?: string[];
+}
+
+/**
+ * One provider row in the Usage surfaces. Only providers whose credentials
+ * were actually detected are present — a provider with no key is absent from
+ * `UsageReport.providers` entirely rather than shown as "not configured".
+ */
+export interface UsageProviderSummary {
+  /** Stable id (provider slug, lowercased) used for selection + persistence. */
+  id: string;
+  name: string;
+  /** Where the credential was found ("models.yml", "agent.db", "app DB"). */
+  credentialSources: string[];
+  /**
+   * Whether omp ships a usage adapter for this provider. False means omp has no
+   * quota endpoint for it at all (kenari, DeepSeek, arbitrary OpenAI-compatible
+   * gateways), which is different from an adapter that returned nothing — see
+   * `limitsUnavailable`.
+   */
+  tracked: boolean;
+  /**
+   * True when omp DOES track this provider but its endpoint produced no data
+   * (invalid or expired credential, unreachable endpoint, or a plan exposing no
+   * quota). Distinguishes "nothing to report" from "not supported".
+   */
+  limitsUnavailable?: boolean;
+  /** Provider-wide caveats from its usage report (e.g. spend is omp-observed). */
+  notes?: string[];
+  /** Human-readable failure from the provider's usage endpoint, when it failed. */
+  error?: string;
+  /** Native quota windows; empty when the provider exposes no usage endpoint. */
+  limits: UsageLimitWindow[];
+  /** Rich kenari report (wallet, Rupiah plan windows, MCP usage table). */
+  kenari?: KenariUsageReport;
+  /** Rich DeepSeek report (prepaid balance). */
+  deepseek?: DeepSeekUsageReport;
 }
 
 /** Response body of `GET /api/settings/usage`. */
 export interface UsageReport {
   isMock: boolean;
   generatedAt: string;
-  kenari: KenariUsageReport;
-  deepseek: DeepSeekUsageReport;
+  /** Every provider with a detected credential, ordered by display name. */
+  providers: UsageProviderSummary[];
 }

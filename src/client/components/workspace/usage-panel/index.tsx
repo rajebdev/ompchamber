@@ -1,3 +1,4 @@
+import { useEffect } from 'preact/hooks';
 import { AlertCircle, RefreshCw } from 'lucide-preact';
 import { ProviderDetail } from '@/client/components/settings/categories/usage-settings/ProviderDetail';
 import { buildProviders, type UsageProviderId } from '@/client/components/settings/categories/usage-settings/providers';
@@ -14,18 +15,29 @@ interface UsagePanelProps {
   active?: boolean;
 }
 
-/** Right-panel Usage: the selected provider's balance/quota via a dropdown. */
+/** Right-panel Usage: the selected provider's quota and balance via a dropdown. */
 export function UsagePanel({ className = '', active = true }: UsagePanelProps) {
   const { report, isLoading, error, reload } = useUsageReport();
   const [selectedProviderId, setSelectedProviderId] = useSessionState<UsageProviderId>(
     'usage.selectedProviderId',
-    'kenari',
+    '',
   );
 
-  // Auto refresh: keep balance/quota current without a manual reload. Silent —
-  // the spinner stays reserved for the user's own refresh button. Polls only
-  // while the panel is actually visible.
+  // Derived before every early return: a hook must not sit behind a conditional
+  // return, or the hook count changes between the loading and loaded renders.
+  const providers = report ? buildProviders(report) : [];
+  const selected = providers.find((provider) => provider.id === selectedProviderId) ?? providers[0];
+
+  // Auto refresh: keep quota current without a manual reload. Silent — the
+  // spinner stays reserved for the user's own refresh button. Polls only while
+  // the panel is actually visible.
   usePanelRefresh(() => reload({ silent: true }), active);
+
+  // A provider can disappear from the report (its key was removed) or a new one
+  // can take the first slot; keep the persisted selection valid.
+  useEffect(() => {
+    if (selected && selected.id !== selectedProviderId) setSelectedProviderId(selected.id);
+  }, [selected, selectedProviderId, setSelectedProviderId]);
 
   if (error && !report) {
     return (
@@ -51,8 +63,6 @@ export function UsagePanel({ className = '', active = true }: UsagePanelProps) {
     );
   }
 
-  const providers = buildProviders(report);
-
   return (
     <div className={`flex h-full w-full min-w-0 min-h-0 flex-col overflow-hidden bg-paper text-xs text-ink ${className}`}>
       <div className="px-3.5 py-2.5 border-b border-ink/10 flex items-center justify-between gap-3 flex-shrink-0 min-w-0">
@@ -69,7 +79,7 @@ export function UsagePanel({ className = '', active = true }: UsagePanelProps) {
         </div>
         <button
           type="button"
-          onClick={() => reload()}
+          onClick={() => reload({ force: true })}
           disabled={isLoading}
           className="p-1.5 bg-paper border border-ink/15 rounded-md hover:bg-ink/5 text-ink/80 transition-colors disabled:opacity-50 flex-shrink-0"
           title="Refresh usage"
@@ -78,20 +88,28 @@ export function UsagePanel({ className = '', active = true }: UsagePanelProps) {
         </button>
       </div>
 
-      <div className="px-3.5 py-2.5 border-b border-ink/10 flex-shrink-0 min-w-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-[11px] font-semibold text-ink/60 flex-shrink-0">Provider</span>
-          <ProviderSelect
-            providers={providers}
-            value={selectedProviderId}
-            onChange={setSelectedProviderId}
-          />
+      {providers.length > 0 && (
+        <div className="px-3.5 py-2.5 border-b border-ink/10 flex-shrink-0 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[11px] font-semibold text-ink/60 flex-shrink-0">Provider</span>
+            <ProviderSelect
+              providers={providers}
+              value={selected?.id ?? ''}
+              onChange={setSelectedProviderId}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex-1 min-w-0 min-h-0 w-full overflow-y-auto scrollbar-overlay-container scrollbar-overlay-static p-3.5 space-y-4">
         {error && <p className="text-error text-xs">{error}</p>}
-        <ProviderDetail providerId={selectedProviderId} report={report} />
+        {selected ? (
+          <ProviderDetail summary={selected.summary} />
+        ) : (
+          <p className="text-[11px] text-ink/50 leading-relaxed">
+            No provider credentials detected. Add an API key in Settings → Providers and it will appear here.
+          </p>
+        )}
       </div>
     </div>
   );

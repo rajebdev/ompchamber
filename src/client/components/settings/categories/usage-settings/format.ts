@@ -61,3 +61,39 @@ export function formatAmount(value: string): string {
   if (value.trim() === '' || !Number.isFinite(parsed)) return value;
   return formatNumber(parsed);
 }
+
+const usdFormatter = new Intl.NumberFormat('id-ID', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/** USD amounts from provider reports and local cost records. */
+export function formatUsd(value: number): string {
+  if (!Number.isFinite(value)) return '$0,00';
+  return `$${usdFormatter.format(value)}`;
+}
+
+/**
+ * Render one quota amount in its own unit. `percent` amounts arrive as 0..100
+ * (omp's `used`/`limit` for percent units), everything else as a raw count.
+ */
+export function formatUsageAmount(value: number, unit: string): string {
+  if (!Number.isFinite(value)) return '—';
+  switch (unit) {
+    case 'percent':
+      return `${new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 }).format(value)}%`;
+    case 'usd':
+      return formatUsd(value);
+    case 'tokens':
+    case 'bytes':
+      return formatCompactTokens(value);
+    default:
+      return formatNumber(value);
+  }
+}
+
+/** Fraction (0..1) rendered as a whole-percent string. */
+export function formatFractionPercent(fraction: number): string {
+  if (!Number.isFinite(fraction)) return '0%';
+  return `${new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 }).format(fraction * 100)}%`;
+}
