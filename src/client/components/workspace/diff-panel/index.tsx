@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useState } from 'preact/hooks';
-import { useFetcher } from '@/client/lib/router/fetcher';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { useSessionUiState } from '@/client/hooks/workspace/session-state';
 import { parseUnifiedDiff } from '@/shared/lib/fs/diff-parser';
 import { getLanguageFromPath } from '@/shared/lib/code/syntax-highlight';
-import { DiffToolbar } from '@/client/components/workspace/diff-panel/Toolbar';
+import { DiffToolbar, type DiffViewMode } from '@/client/components/workspace/diff-panel/Toolbar';
 import { UnifiedView } from '@/client/components/workspace/diff-panel/UnifiedView';
 import { SplitView } from '@/client/components/workspace/diff-panel/SplitView';
 import { AlertCircle, RefreshCw } from 'lucide-preact';
@@ -30,62 +29,94 @@ export function DiffPanel({
   className = '',
 }: DiffPanelProps) {
   // Read and persist view mode & whitespace preference in session_ui_state
-  const [viewMode, setViewMode] = useSessionUiState<'unified' | 'split'>('diff.viewMode', 'unified');
+  const [viewMode, setViewMode] = useSessionUiState<DiffViewMode>('diff.viewMode', 'unified');
   const [ignoreWhitespace, setIgnoreWhitespace] = useSessionUiState<boolean>('diff.ignoreWhitespace', false);
 
   const [rawDiff, setRawDiff] = useState<string>('');
   const [currentStatus, setCurrentStatus] = useState<string>(status);
   const [currentStaged, setCurrentStaged] = useState<boolean>(isStaged);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isBusy, setIsBusy] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState<boolean>(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState<boolean>(false);
 
-  const fetcher = useFetcher();
+  /**
+   * The staged flag / status the next fetch must ask for. The state copies lag
+   * a click by a render, and keeping them in `fetchDiff`'s dependency list made
+   * every response re-key the callback and fire another fetch. Refs keep the
+   * callback stable and always read the post-action value.
+   */
+  const stagedRef = useRef<boolean>(isStaged);
+  const statusRef = useRef<string>(status);
+  const fetchSeqRef = useRef(0);
 
-  const fetchDiff = useCallback(async () => {
+  const fetchDiff = useCallback(async (overrides: { staged?: boolean; status?: string } = {}) => {
     if (!filePath) return;
+    const seq = ++fetchSeqRef.current;
     setIsLoading(true);
     setErrorMessage(null);
     try {
+      const staged = overrides.staged ?? stagedRef.current;
+      const statusForFetch = overrides.status ?? statusRef.current;
       const params = new URLSearchParams({
         fileDiff: '1',
         file: filePath,
-        staged: currentStaged ? '1' : '0',
+        staged: staged ? '1' : '0',
         repo: repo || '.',
       });
-      if (status || currentStatus) params.set('status', status || currentStatus);
+      if (statusForFetch) params.set('status', statusForFetch);
       if (root) params.set('root', root);
 
       const res = await fetch(`/api/fs/git?${params.toString()}`);
-      const data = await res.json();
-      if (data.success) {
+      const data = (await res.json().catch(() => null)) as {
+        success?: boolean;
+        diff?: string;
+        status?: string;
+        staged?: boolean;
+        error?: string;
+      } | null;
+      // A slower earlier read must not overwrite a newer one (the action path
+      // fires a fetch of its own while the initial one is still in flight).
+      if (seq !== fetchSeqRef.current) return;
+      if (data?.success) {
         setRawDiff(data.diff || '');
-        if (data.status) setCurrentStatus(data.status);
+        if (data.status) {
+          statusRef.current = data.status;
+          setCurrentStatus(data.status);
+        }
+        if (typeof data.staged === 'boolean') {
+          stagedRef.current = data.staged;
+          setCurrentStaged(data.staged);
+        }
       } else {
-        setErrorMessage(data.error || 'Failed to load file diff');
+        setErrorMessage(data?.error || `Failed to load file diff (HTTP ${res.status})`);
       }
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Error fetching diff');
+    } catch (err: unknown) {
+      if (seq !== fetchSeqRef.current) return;
+      setErrorMessage(err instanceof Error ? err.message : 'Error fetching diff');
     } finally {
-      setIsLoading(false);
+      if (seq === fetchSeqRef.current) setIsLoading(false);
     }
-  }, [filePath, currentStaged, repo, root]);
+  }, [filePath, repo, root]);
 
   useEffect(() => {
     setCurrentStatus(status);
     setCurrentStaged(isStaged);
+    stagedRef.current = isStaged;
+    statusRef.current = status;
   }, [status, isStaged, filePath]);
 
   useEffect(() => {
-    fetchDiff();
+    void fetchDiff();
   }, [fetchDiff]);
 
   const parsed = parseUnifiedDiff(rawDiff, ignoreWhitespace);
   const language = getLanguageFromPath(filePath);
 
-  const handleToggleViewMode = () => {
-    setViewMode(viewMode === 'unified' ? 'split' : 'unified');
+  const handleSetViewMode = (mode: DiffViewMode) => {
+    setViewMode(mode);
   };
 
   const handleToggleWhitespace = () => {
@@ -94,44 +125,82 @@ export function DiffPanel({
 
   const handleCopyDiff = () => {
     if (!rawDiff) return;
-    navigator.clipboard.writeText(rawDiff);
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000);
+    void navigator.clipboard.writeText(rawDiff).then(
+      () => {
+        setIsCopied(true);
+        setTimeout(() => setIsCopied(false), 2000);
+      },
+      () => setActionError('Clipboard write was refused by the browser'),
+    );
   };
 
-  const handleStageUnstage = () => {
-    const actionType = currentStaged ? 'unstage' : 'stage';
-    const fd = new FormData();
-    fd.set('actionType', actionType);
-    fd.set('file', filePath);
-    fd.set('repo', repo || '.');
-    if (root) fd.set('root', root);
+  /**
+   * POST one git action and report whether it landed. The panel used to fire
+   * and forget (`fetcher.submit` + an optimistic flip + a 300ms timer), which
+   * made a rejected action indistinguishable from a successful one: the badge
+   * flipped and the diff silently stayed put.
+   */
+  const runGitAction = useCallback(
+    async (fields: Record<string, string>): Promise<boolean> => {
+      const fd = new FormData();
+      for (const [key, value] of Object.entries(fields)) fd.set(key, value);
+      fd.set('repo', repo || '.');
+      if (root) fd.set('root', root);
+      try {
+        const res = await fetch('/api/fs/git', { method: 'POST', body: fd });
+        const data = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+        if (!res.ok || !data?.success) {
+          setActionError(data?.error || `Request failed (HTTP ${res.status})`);
+          return false;
+        }
+        setActionError(null);
+        return true;
+      } catch (err: unknown) {
+        setActionError(err instanceof Error ? err.message : 'Request failed');
+        return false;
+      }
+    },
+    [repo, root],
+  );
 
-    fetcher.submit(fd, { method: 'POST', action: '/api/fs/git' });
-    setCurrentStaged(!currentStaged);
-    setTimeout(() => {
-      fetchDiff();
+  const handleStageUnstage = async () => {
+    if (isBusy) return;
+    const nextStaged = !currentStaged;
+    setIsBusy(true);
+    try {
+      const ok = await runGitAction({
+        actionType: currentStaged ? 'unstage' : 'stage',
+        file: filePath,
+      });
+      if (!ok) return;
+      stagedRef.current = nextStaged;
+      setCurrentStaged(nextStaged);
       onFileSaved?.();
-    }, 300);
+      await fetchDiff({ staged: nextStaged });
+    } finally {
+      setIsBusy(false);
+    }
   };
 
   const handleDiscard = () => {
     setShowDiscardConfirm(true);
   };
 
-  const confirmDiscard = () => {
+  const confirmDiscard = async () => {
     setShowDiscardConfirm(false);
-    const fd = new FormData();
-    fd.set('actionType', 'discard');
-    fd.set('file', filePath);
-    fd.set('repo', repo || '.');
-    if (root) fd.set('root', root);
-
-    fetcher.submit(fd, { method: 'POST', action: '/api/fs/git' });
-    setTimeout(() => {
-      fetchDiff();
+    setIsBusy(true);
+    try {
+      // `revert` is the server's own name for "restore this file from the index",
+      // and it is the one that handles the untracked case (there the file is
+      // removed). Sending `discard` — which no handler matched — returned
+      // `{success:true}` for doing nothing at all.
+      const ok = await runGitAction({ actionType: 'revert', file: filePath });
+      if (!ok) return;
       onFileSaved?.();
-    }, 300);
+      await fetchDiff();
+    } finally {
+      setIsBusy(false);
+    }
   };
 
   return (
@@ -154,14 +223,31 @@ export function DiffPanel({
         deletions={parsed.deletions}
         isLoading={isLoading}
         isCopied={isCopied}
-        onToggleViewMode={handleToggleViewMode}
+        isBusy={isBusy}
+        onSetViewMode={handleSetViewMode}
         onToggleWhitespace={handleToggleWhitespace}
         onStageUnstage={handleStageUnstage}
         onDiscard={handleDiscard}
         onOpenInEditor={onOpenInEditor}
-        onRefresh={fetchDiff}
+        onRefresh={() => void fetchDiff()}
         onCopyDiff={handleCopyDiff}
       />
+
+      {actionError && (
+        <div className="flex items-center gap-2 border-b border-error/25 bg-error/10 px-3 py-1.5 text-[11px] text-error flex-shrink-0">
+          <AlertCircle size={13} className="flex-shrink-0" />
+          <span className="min-w-0 flex-1 truncate" title={actionError}>{actionError}</span>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            className="px-1.5 rounded hover:bg-error/15 cursor-pointer"
+            title="Dismiss"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Main Diff Content Area */}
       <div className="flex-1 overflow-hidden relative flex flex-col bg-paper">
@@ -175,8 +261,8 @@ export function DiffPanel({
             <AlertCircle size={20} className="text-error" />
             <p className="text-xs text-error font-medium">{errorMessage}</p>
             <button
-              onClick={fetchDiff}
-              className="px-3 py-1 text-xs bg-ink/10 hover:bg-ink/15 text-ink rounded font-sans transition-colors"
+              onClick={() => void fetchDiff()}
+              className="px-3 py-1 text-xs bg-ink/10 hover:bg-ink/15 text-ink rounded font-sans transition-colors cursor-pointer"
             >
               Retry
             </button>
@@ -200,14 +286,14 @@ export function DiffPanel({
               <button
                 type="button"
                 onClick={() => setShowDiscardConfirm(false)}
-                className="px-3 py-1.5 text-xs text-ink hover:bg-ink/5 rounded transition-colors"
+                className="px-3 py-1.5 text-xs text-ink hover:bg-ink/5 rounded transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={confirmDiscard}
-                className="px-3 py-1.5 text-xs bg-error text-white rounded hover:bg-error/90 font-medium transition-colors"
+                onClick={() => void confirmDiscard()}
+                className="px-3 py-1.5 text-xs bg-error text-white rounded hover:bg-error/90 font-medium transition-colors cursor-pointer"
               >
                 Discard Changes
               </button>
