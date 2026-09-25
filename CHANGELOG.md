@@ -5,6 +5,13 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.1](https://github.com/rajebdev/ompchamber/compare/v3.1.0...v3.1.1) — 2026-09-25
+
+### Fixed
+
+* **build:** flatten nested at-rules so Chrome keeps the refinements ([dfa0739](https://github.com/rajebdev/ompchamber/commit/dfa0739e32c73bbd8e1cac92350fe1a55257ab47))
+* **cli:** stop only the instances the CLI started ([05f4248](https://github.com/rajebdev/ompchamber/commit/05f424807f343f681f6b37a9781b778b31fd47c2))
+
 ## [3.1.0](https://github.com/rajebdev/ompchamber/compare/v3.0.0...v3.1.0) — 2026-09-25
 
 ### Added
