@@ -249,15 +249,16 @@ panels, the BTW subsystem, the PTY terminal and the build/dev loop.
 ## Development
 
 ```bash
-bun run dev            # watched server + client rebuild
+bun run dev            # watched server; the client bundle is built on demand
 bun run dev:lan        # same, bound to the LAN
-bun run dev:server     # server only (bun --hot)
-bun run dev:client     # client only (rsbuild build --watch)
 ```
 
-There is no HMR: the server reloads on save, the client bundle rebuilds, refresh the page.
-`dist/client/index.html` is the shell for both dev and prod, so run `dev:client` at least once after
-a clean checkout.
+One process. Bun serves the HTML shell and bundles its assets itself, so there is no separate
+client watcher to run and no build step before the first request: saving a server file restarts the
+server, saving a client file is pushed to the browser over HMR (`import.meta.hot`, wired by Bun).
+
+`bun run build` is only needed to produce the production bundle — `scripts/build-client.ts` writes
+`dist/client`, which `serve --prod` runs.
 
 Verification gates, all mandatory:
 

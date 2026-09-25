@@ -12,15 +12,18 @@ Bun is the only runtime. Bun 1.4 or newer (`engines.bun`); no `npm`, `npx`, `yar
 
 ```bash
 bun install
-bun run dev            # watched server + rsbuild build --watch for the client, both at once
-bun run build          # rsbuild -> dist/client, the only build artifact
+bun run dev            # watched server; it bundles the client itself
+bun run build          # scripts/build-client.ts -> dist/client (the production bundle)
 bun run start          # NODE_ENV=production bun run src/server/index.ts
 bun run lint           # tsc --noEmit
 bun test               # bun test
 ```
 
-`dist/client/index.html` is the shell the server reads, so the client must have been built at least
-once (`bun run build`, or the watch in `bun run dev`) before the server can serve a page.
+The server is the only entry point. It imports `index.html`, so Bun bundles that page's script,
+styles and assets on demand in development (with HMR) and serves them from its own routing table —
+there is no separate client watcher, and no build needed before the first request. `bun run build`
+exists for the production artifact: it bundles the server together with the page's assets into
+`dist/client`, which is what `serve --prod` executes.
 
 For UI work that does not need a real agent, `MOCK=true bun run dev` starts the same server against
 simulated data — no `omp` install required. With `MOCK=false` (the default) `serve` refuses to start

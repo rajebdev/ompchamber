@@ -11,7 +11,7 @@
 
 - **Server** (`src/server/**`) imports `bun:sqlite` and resolves the `@/` path alias — Node fails on both with `ERR_MODULE_NOT_FOUND`. Run it with `bun run src/server/index.ts` (dev, watched) or `NODE_ENV=production bun run src/server/index.ts` (prod). `bun run start` and `ompchamber serve --prod` both do the latter.
 - **Tests** run under `bun test`; do not add a Node test runner.
-- **CLI** (`src/cli/**`) is Bun too: `#!/usr/bin/env bun` shebang and `@/cli/...` imports, so it needs Bun on `PATH`. It resolves the Bun binary via `resolveBunBin()` and spawns the server with it. **`rsbuild` is the only piece that still runs under Node** — it is a build tool and never ships.
+- **CLI** (`src/cli/**`) is Bun too: `#!/usr/bin/env bun` shebang and `@/cli/...` imports, so it needs Bun on `PATH`. It resolves the Bun binary via `resolveBunBin()` and spawns the server with it. **Nothing in the toolchain runs under Node any more** — the client build is `Bun.build` (see Build & Dev Loop).
 - **Practical rules:** never swap `bun:sqlite` for a Node driver; never add a `node:` import to `src/client/**` or `src/shared/lib/**`; keep `.ts`/`.tsx` execution in Bun's hands (no `tsx`/`ts-node`).
 
 ### Bun-Native APIs vs `node:*` Imports
@@ -49,7 +49,7 @@ Bun implements `node:*` builtins natively — they do **not** shell out to a Nod
 |---|---|
 | `npm install` / `npm i <pkg>` / `npm uninstall <pkg>` | `bun install` / `bun add <pkg>` / `bun remove <pkg>` (add `-d` for dev deps) |
 | `npm run <script>` | `bun run <script>` (or bare `bun <script>` when it is unambiguous) |
-| `npx <bin>` / `npx -y <pkg>` | `bunx <bin>` — e.g. `bunx tsc --noEmit`, `bunx rsbuild build` |
+| `npx <bin>` / `npx -y <pkg>` | `bunx <bin>` — e.g. `bunx tsc --noEmit` |
 | `node <entry>` / `tsx` / `ts-node` | `bun run <entry.ts>` — Bun executes TypeScript directly |
 | `npx jest` / `npx vitest` / `npx mocha` | `bun test` |
 
@@ -165,9 +165,17 @@ Bun implements `node:*` builtins natively — they do **not** shell out to a Nod
 - **Adding a provider** is one row in `PROVIDER_GLYPH_ALIASES` when the brand mark already exists, or one new glyph plus its row when it does not — never a new `if` in a renderer. `provider-glyph.test.ts` walks omp's whole `KnownProvider` census and fails if a provider resolves to neither a mark nor initials, so an upstream provider addition surfaces as a test failure rather than a blank badge.
 
 ### Build & Dev Loop
-- **`bun run build`** produces `dist/client` (the only build artifact). There is **no `dist/server`**: Bun executes `src/server/index.ts` as TypeScript directly, so the server is never bundled. `bun run start` and `ompchamber serve --prod` both run that same entry with `NODE_ENV=production`.
-- **`bun run dev`** watches the server. The HTML shell is read from `dist/client/index.html`, so run **`bun run dev:client`** (`rsbuild build --watch`) alongside it for a rebuild-on-change loop. There is no HMR/prefresh: the server reloads on save and the client bundle rebuilds; refresh the page to pick it up.
-- If `dist/client` is missing the server answers **503** with the exact command to run — not a bare 500.
+- **The server is the only entry point, and it is the bundler's entry too.** `src/server/index.ts` imports `index.html`; Bun bundles that page's script, styles and assets and serves them from its own routing table (`/_bun/asset/*` and `/_bun/client/*` in dev, `/chunk-*` in production). `bun run dev` is therefore ONE process — there is no client watcher, no `dist/client` to have been built first, and no second port.
+- **HMR is real and Bun owns it.** `Bun.serve({ development: true })` injects its own client and pushes updates over `import.meta.hot`; saving a client file is applied in the browser, saving a server file restarts the process (`bun run --hot`). The `dev-assets.ts` proxy that forwarded rsbuild's hot-update chunks is gone with rsbuild.
+- **`development` is derived, not configured**: Elysia's Bun adapter passes `development: !isProduction` to `Bun.serve` from `NODE_ENV`, so `bun run dev` and `bun run start` differ by that one variable and nothing else.
+- **`bun run build`** (`scripts/build-client.ts`) bundles the SERVER plus the page's assets into `dist/client`, and that bundle is what `serve --prod` executes (from `dist/client` as its cwd). It exists for the published tarball and for CI; production does not need it — `development: false` makes the server bundle its HTML route on the fly and cache it in memory. **`Bun.build` via the JS API, never `bun build`**: the CLI does not read `bunfig.toml`'s `[serve.static]` plugins (verified: `bun build --target=bun --production` emitted Tailwind's `@theme` verbatim, zero utility classes).
+- **`bunfig.toml`'s `[serve.static].plugins` is the dev and prod plugin list.** One entry, `src/server/lib/bundler/css.ts`, which both expands Tailwind v4 (`@theme`/`@import "tailwindcss"` are PostCSS syntax Bun's CSS parser rejects) and lifts `@font-face` blocks out of the bundle. `scripts/build-client.ts` passes that same module to `Bun.build` explicitly.
+- **Font faces cannot be bundled.** Bun's CSS loader resolves EVERY local `url()`: with `file` it inlines the font as base64 (592 kB stylesheet, ~377 kB gzipped, every face downloaded whether or not a formula renders) and with `dataurl` it writes the ABSOLUTE FILESYSTEM PATH into the CSS. A same-origin path is not an escape hatch — `url("/fonts/x.woff2")` fails the build with "Could not resolve"; measured against Bun 1.4.2, only `data:`, `http(s):` and protocol-relative urls are left alone. So the faces leave the bundle: the plugin rewrites them to `/fonts/<basename>` and writes them to `.ompchamber-build/font-faces/`, and the server serves that directory as `/fonts.css` while `lib/assets/fonts.server.ts` resolves each basename back to the installed package. The shell links it through `app-head` — a `<link href="/fonts.css">` in `index.html` would be resolved by the HTML loader and fail the same way.
+- **`index.html`'s own asset references are relative** (`./public/icon.svg`), because the HTML loader resolves them and emits hashed copies; an absolute `/icon.svg` fails the whole build. The manifest's OWN icon entries stay absolute (`/icon.svg`): Bun does not rewrite inside a copied JSON file, and `public/` is served directly.
+- **`public/sw.js` is served by a route, not by the bundler** — it is referenced only from an inline `<script>`, which the HTML loader does not scan, so it is never copied. `tryServeStatic` answers it from `public/`.
+- **Asset roots are resolved from the package root**, not the cwd (`lib/assets/fonts.server.ts` walks up from `import.meta.dir` for the first directory holding `node_modules`). An installed package runs the AOT bundle with `dist/client` as its cwd, where a cwd-relative `public/` or `node_modules/` does not exist.
+- **The shell is rendered by fetching the server's own `/_shell` route.** Bun renders an HTML route only while serving, and there is no in-process API for an `HTMLBundle` — `new Response(bundle)` yields the string "[object HTMLBundle]" and `app.handle('/_shell')` answers 404, because the route lives in `Bun.serve`'s routing table rather than Elysia's. `index.ts` hands its listener to `plugins/shell.server.ts` for exactly this.
+- **`serve.routes` and Elysia's routes coexist**: `new Elysia({ serve: { routes: { '/_shell': shell } } })` — Bun's table wins for the paths it declares, everything else reaches `app.fetch`, and Elysia's `websocket` handler is composed alongside.
 
 ### Route Method Contract
 - Route modules keep the ported Remix shape: an exported `loader` (GET) and/or `action` (mutating verbs). **`action` owns method dispatch** — it branches on `request.method` and returns its own `405 { error: 'Method not allowed' }`.
@@ -206,7 +214,7 @@ Every commit uses Conventional Commits — pick the type from what the diff actu
 - **`perf`** — the primary intent is a measurable performance improvement, with behavior unchanged.
 - **`style`** — formatting/whitespace/import order only; no logic change. (`hidden` in `release.config.mjs`.)
 - **`test`** — adds or repairs tests only; no production code change. (`hidden`.)
-- **`build`** — toolchain, dependencies, build scripts (`package.json`, `rsbuild.config.ts`, `bun.lock`). (`hidden`.)
+- **`build`** — toolchain, dependencies, build scripts (`package.json`, `bunfig.toml`, `scripts/build-client.ts`, `bun.lock`). (`hidden`.)
 - **`ci`** — pipeline config only (`.github/workflows/`, `release.config.mjs`). (`hidden`.)
 - **`chore`** — maintenance that fits none of the above (ignore files, secondary scripts). (`hidden`.)
 - **`docs`** — documentation only (README, AGENTS.md, comments).
@@ -277,7 +285,7 @@ Mixed change in one commit: split into separate commits when the files are separ
 - The only intentional barrel is `src/shared/types/index.ts` (the central type barrel).
 
 ### 4. Absolute Imports via `@/` Alias (No Relative Imports)
-- **All** internal imports MUST use the `@/` path alias (mapped to `./src/*` in both `tsconfig.json` and `rsbuild.config.ts`). Relative imports (`./`, `../`) are **forbidden** in application code.
+- **All** internal imports MUST use the `@/` path alias (mapped to `./src/*` in `tsconfig.json`, which Bun's bundler reads directly). Relative imports (`./`, `../`) are **forbidden** in application code.
 - This applies to every import form: `import`, `import type`, `export ... from`, and side-effect imports.
 - Examples:
   - `import { ChatTimeline } from '@/client/components/workspace/chat-timeline';`
@@ -295,7 +303,7 @@ Mixed change in one commit: split into separate commits when the files are separ
   - Hooks → `import { useState, useEffect, useRef } from 'preact/hooks';`
   - Components, context, portals, and React-shaped types → `import { memo, Suspense, lazy, createContext, createPortal } from 'preact/compat';`
   - Generic element/event types → `import type { TargetedMouseEvent, TargetedKeyboardEvent } from 'preact';`
-- **Zero-react state:** package.json contains no React packages and `tsconfig.json`/`rsbuild.config.ts` carry no `react*` alias. The three former shim consumers were replaced: `react-icons` → `lucide-preact` + static brand SVGs (`src/client/components/common/file-icon/`), `react-simple-code-editor` → the hand-rolled editor in `src/client/components/common/code-editor/`, `react-resizable-panels` → the hand-rolled group/panel/separator trio in `src/client/components/layout/desktop-layout/resizer/`.
+- **Zero-react state:** package.json contains no React packages and `tsconfig.json` carries no `react*` alias. The three former shim consumers were replaced: `react-icons` → `lucide-preact` + static brand SVGs (`src/client/components/common/file-icon/`), `react-simple-code-editor` → the hand-rolled editor in `src/client/components/common/code-editor/`, `react-resizable-panels` → the hand-rolled group/panel/separator trio in `src/client/components/layout/desktop-layout/resizer/`.
 - **Adding dependencies:** if a package imports `'react'` in its published code, either pick a Preact-native alternative or hand-port the small surface you need — never re-introduce a react→preact alias to accommodate it.
 - **Event types:** Preact's `MouseEvent`/`KeyboardEvent` from `preact/compat` are generics requiring one type argument. Use `TargetedMouseEvent<HTMLElement>` for JSX handlers, and the DOM's own `globalThis.MouseEvent`/`globalThis.KeyboardEvent` for native `addEventListener` callbacks and xterm handlers.
 
