@@ -1,7 +1,6 @@
 import { Globe, Loader2, Radio } from 'lucide-preact';
 import { ActivityToasts } from '@/client/components/workspace/browser-panel/ActivityToasts';
-import { VIEWPORT_CLASSES } from '@/client/components/common/viewport';
-import type { BrowserPanelAction, BrowserTabInfo, BrowserViewStatus, ViewportMode } from '@/shared/types';
+import type { BrowserPanelAction, BrowserTabInfo, BrowserViewStatus } from '@/shared/types';
 
 interface BrowserScreencastProps {
   status: BrowserViewStatus;
@@ -11,7 +10,6 @@ interface BrowserScreencastProps {
   frameSrc?: string;
   actions: BrowserPanelAction[];
   onSelectTarget: (targetId: string) => void;
-  viewportMode: ViewportMode;
   zoomLevel: number;
 }
 
@@ -38,7 +36,6 @@ export function BrowserScreencast({
   frameSrc,
   actions,
   onSelectTarget,
-  viewportMode,
   zoomLevel,
 }: BrowserScreencastProps) {
   const isLive = status === 'live';
@@ -73,8 +70,10 @@ export function BrowserScreencast({
 
       <div className="flex-1 flex items-center justify-center p-2 min-h-0 overflow-auto">
         {isLive ? (
+          // Always fills the panel: the surface is a fixed-resolution JPEG, so
+          // there is no device box to frame it in — only the zoom scale.
           <div
-            className={`relative flex flex-col bg-paper ${VIEWPORT_CLASSES[viewportMode]} transition-all duration-200`}
+            className="relative flex flex-col bg-paper w-full h-full transition-all duration-200"
             style={{
               zoom: zoomLevel !== 100 ? `${zoomLevel}%` : undefined,
               transformOrigin: 'top center',

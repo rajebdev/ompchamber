@@ -4,7 +4,6 @@ import { BrowserScreencast } from '@/client/components/workspace/browser-panel/S
 import { useScreencast } from '@/client/hooks/browser/use-screencast';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { emitBrowserPageContext } from '@/shared/lib/browser/page-context';
-import type { ViewportMode } from '@/shared/types';
 
 interface BrowserPanelProps {
   className?: string;
@@ -18,9 +17,14 @@ interface BrowserPanelProps {
  *
  * This panel only mirrors what the agent does. Interactive browsing belongs to
  * the separate user-browser panel, which runs its own private Chromium.
+ *
+ * There is deliberately NO device/viewport selector here: the surface is a
+ * fixed-resolution screencast JPEG, so a preset could only letterbox the image
+ * while claiming to emulate a device. Emulation belongs to the agent itself
+ * (`tab.emulate()` / `browser.open({ viewport })`); the user-browser panel,
+ * whose iframe's layout viewport *is* its CSS box, keeps the selector.
  */
 export function BrowserPanel({ className = '', active = true }: BrowserPanelProps) {
-  const [viewportMode, setViewportMode] = useSessionState<ViewportMode>('browser.viewportMode', 'responsive');
   const [zoomLevel, setZoomLevel] = useSessionState<number>('browser.zoomLevel', 100);
   const { status, url, title, tabs, targetId, frameSrc, actions, selectTarget, reconnect } = useScreencast(active);
 
@@ -41,16 +45,13 @@ export function BrowserPanel({ className = '', active = true }: BrowserPanelProp
       <BrowserAddressBar
         url={url}
         status={status}
-        viewportMode={viewportMode}
         zoomLevel={zoomLevel}
         onIncludeInChat={handleIncludeInChat}
         onReconnect={reconnect}
         onOpenExternal={handleOpenExternal}
-        onChangeViewport={setViewportMode}
         onZoomIn={() => setZoomLevel((prev) => Math.min(200, prev + 10))}
         onZoomOut={() => setZoomLevel((prev) => Math.max(50, prev - 10))}
         onResetZoom={() => setZoomLevel(100)}
-        onSetZoom={setZoomLevel}
       />
 
       <BrowserScreencast
@@ -61,7 +62,6 @@ export function BrowserPanel({ className = '', active = true }: BrowserPanelProp
         frameSrc={frameSrc}
         actions={actions}
         onSelectTarget={selectTarget}
-        viewportMode={viewportMode}
         zoomLevel={zoomLevel}
       />
     </div>

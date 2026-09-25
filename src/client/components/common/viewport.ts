@@ -4,9 +4,11 @@
  */
 
 /**
- * Device-viewport presets shared by both browser panels. The agent viewer and
- * the user iframe must frame a page with identical geometry, so the preset
- * classes live here instead of in either panel.
+ * Device-viewport presets for the USER browser panel's iframe. There the box
+ * *is* the layout viewport, so a preset re-runs the page's media queries for
+ * real. The AGENT panel does not use these: its surface is a fixed-resolution
+ * screencast JPEG, which a preset could only letterbox while claiming to
+ * emulate a device (emulation belongs to the agent: `tab.emulate()`).
  */
 
 import type { ViewportMode } from '@/shared/types';

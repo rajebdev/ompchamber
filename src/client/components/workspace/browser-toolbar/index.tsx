@@ -13,15 +13,22 @@ export interface BrowserToolbarProps {
   /** Status dot class plus its label — the only per-panel difference. */
   statusDotClass: string;
   statusLabel: string;
-  viewportMode: ViewportMode;
   zoomLevel: number;
-  onChangeViewport: (mode: ViewportMode) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onResetZoom: () => void;
-  onSetZoom: (zoom: number) => void;
   onIncludeInChat: () => void;
   onOpenExternal: () => void;
+  /**
+   * Device-testing cluster, rendered only when both are supplied. The USER
+   * panel passes them: its iframe's layout viewport *is* its CSS box, so a
+   * preset genuinely re-runs the page's media queries. The AGENT panel omits
+   * them — its surface is a fixed-resolution screencast JPEG, so a preset
+   * could only letterbox the image while claiming to emulate a device.
+   */
+  viewportMode?: ViewportMode;
+  onChangeViewport?: (mode: ViewportMode) => void;
+  onSetZoom?: (zoom: number) => void;
   /** Shown after the include/copy buttons — the agent panel's reconnect button. */
   trailingControls?: ComponentChildren;
   /** Open-external button label/title, differing between the two panels. */
@@ -34,9 +41,10 @@ export interface BrowserToolbarProps {
 /**
  * Shared address bar for both browser panels. The two panels differ only in
  * their status semantics, the middle slot (read-only URL vs editable form),
- * and the agent panel's reconnect button; everything else — the include,
- * copy, open-external buttons and the zoom cluster — lives here so the two
- * toolbars cannot drift.
+ * the agent panel's reconnect button, and whether the device-testing cluster
+ * is offered at all (user panel yes, agent panel no — see `viewportMode`);
+ * everything else — the include, copy, open-external buttons and the zoom
+ * cluster — lives here so the two toolbars cannot drift.
  */
 export function BrowserToolbar({
   url,
@@ -86,12 +94,14 @@ export function BrowserToolbar({
       {children}
 
       <div className="flex items-center space-x-1.5 flex-shrink-0">
-        <BrowserViewportSelector
-          viewportMode={viewportMode}
-          onChangeViewport={onChangeViewport}
-          zoomLevel={zoomLevel}
-          onSetZoom={onSetZoom}
-        />
+        {viewportMode && onChangeViewport && (
+          <BrowserViewportSelector
+            viewportMode={viewportMode}
+            onChangeViewport={onChangeViewport}
+            zoomLevel={zoomLevel}
+            onSetZoom={onSetZoom}
+          />
+        )}
 
         <ZoomControls
           zoomLevel={zoomLevel}

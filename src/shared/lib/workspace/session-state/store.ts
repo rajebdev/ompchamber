@@ -23,7 +23,6 @@
  * - files.expandedPaths       string[]
  * - files.searchQuery         string
  * - files.activeRepo          string
- * - browser.viewportMode      string
  * - browser.zoomLevel         number
  * - userBrowser.history       string[]
  * - userBrowser.historyIndex  number

@@ -1,20 +1,17 @@
 import { Globe, RotateCw } from 'lucide-preact';
 import { BrowserToolbar, ICON_BUTTON } from '@/client/components/workspace/browser-toolbar/index';
-import type { BrowserViewStatus, ViewportMode } from '@/shared/types';
+import type { BrowserViewStatus } from '@/shared/types';
 
 interface BrowserAddressBarProps {
   url?: string;
   status: BrowserViewStatus;
-  viewportMode: ViewportMode;
   zoomLevel?: number;
   onIncludeInChat: () => void;
   onReconnect: () => void;
   onOpenExternal: () => void;
-  onChangeViewport: (mode: ViewportMode) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onResetZoom: () => void;
-  onSetZoom: (zoom: number) => void;
 }
 
 const STATUS_LABEL: Record<BrowserViewStatus, string> = {
@@ -32,16 +29,13 @@ const STATUS_LABEL: Record<BrowserViewStatus, string> = {
 export function BrowserAddressBar({
   url,
   status,
-  viewportMode,
   zoomLevel = 100,
   onIncludeInChat,
   onReconnect,
   onOpenExternal,
-  onChangeViewport,
   onZoomIn,
   onZoomOut,
   onResetZoom,
-  onSetZoom,
 }: BrowserAddressBarProps) {
   const isLive = status === 'live';
 
@@ -50,13 +44,10 @@ export function BrowserAddressBar({
       url={url ?? ''}
       statusDotClass={isLive ? 'bg-success animate-pulse' : 'bg-ink/25'}
       statusLabel={STATUS_LABEL[status]}
-      viewportMode={viewportMode}
       zoomLevel={zoomLevel}
-      onChangeViewport={onChangeViewport}
       onZoomIn={onZoomIn}
       onZoomOut={onZoomOut}
       onResetZoom={onResetZoom}
-      onSetZoom={onSetZoom}
       onIncludeInChat={onIncludeInChat}
       onOpenExternal={onOpenExternal}
       openExternalLabel="Buka di jendela baru"
