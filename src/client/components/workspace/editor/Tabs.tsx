@@ -74,7 +74,7 @@ export function EditorTabs({ openedFiles, activeFileId, onSelectFile, onCloseFil
               title={file.path}
             >
               {isDiff ? (
-                <GitCompare size={14} className={isActive ? 'text-blue-600 dark:text-blue-400 flex-shrink-0' : 'opacity-60 flex-shrink-0'} />
+                <GitCompare size={14} className={isActive ? 'text-info flex-shrink-0' : 'text-info/70 flex-shrink-0'} />
               ) : (
                 <FileIcon name={file.name} size={14} className={isActive ? 'flex-shrink-0' : 'opacity-60 flex-shrink-0'} />
               )}
@@ -123,7 +123,7 @@ export function EditorTabs({ openedFiles, activeFileId, onSelectFile, onCloseFil
                   className="flex items-center space-x-2 px-3 py-1.5 hover:bg-ink/5 cursor-pointer group"
                 >
                   {file.isDiff ? (
-                    <GitCompare size={14} className="text-blue-600 opacity-70" />
+                    <GitCompare size={14} className="text-info/80" />
                   ) : (
                     <FileIcon name={file.name} size={14} className="opacity-60" />
                   )}
