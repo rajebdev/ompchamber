@@ -42,6 +42,15 @@
  *    never does), so there is no "build finished" moment to flush at. Writing
  *    each source's faces as its `onLoad` returns is order-independent and works
  *    identically under both entry points.
+ *
+ * 3. **Nested at-rules are flattened** (`flattenNestedAtRules`, registered
+ *    AFTER Tailwind so it sees the expanded tree). Bun's CSS minifier keeps the
+ *    nesting it is handed and, for `target: 'bun'`, re-nests a rule's nested
+ *    at-rule as `@supports (…) { & { … } }` — and Chrome drops a nested rule
+ *    whose parent selector names a pseudo-element. Tailwind emits its colour
+ *    fallbacks in exactly that shape, so the whole app's placeholder and
+ *    scrollbar colours silently collapsed to their fallback. See that module for
+ *    the measurement; this one only has to run it.
  */
 
 import { basename, dirname, isAbsolute, join, resolve as resolvePath } from 'path';
@@ -51,6 +60,7 @@ import type { BunPlugin } from 'bun';
 
 import { FONT_FACE_DIR } from '@/server/lib/assets/font-css.server';
 import { FONT_ROUTE_PREFIX, packageRoot } from '@/server/lib/assets/fonts.server';
+import { flattenNestedAtRules } from '@/server/lib/bundler/nested-at-rules';
 
 /** A `url(...)` whose target is a font file. */
 const URL_FUNCTION = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
@@ -100,8 +110,13 @@ const plugin: BunPlugin = {
     build.onLoad({ filter: /\.css$/ }, async (args) => {
       const source = await Bun.file(args.path).text();
       // Tailwind first: it parses `@import "tailwindcss"` and `@theme`, and the
-      // urls it emits are the ones the extraction below has to recognise.
-      const expanded = await postcss([tailwind()]).process(source, { from: args.path });
+      // urls it emits are the ones the extraction below has to recognise. The
+      // flattener runs after it, because the nesting it removes is Tailwind's
+      // own output — and before the font extraction, so a hoisted face is still
+      // recognised as a face.
+      const expanded = await postcss([tailwind(), flattenNestedAtRules()]).process(source, {
+        from: args.path,
+      });
       const { rest, faces } = splitFontFaces(expanded.css, dirname(args.path));
       if (faces.length > 0) {
         const target = join(packageRoot(), FONT_FACE_DIR, `${basename(args.path)}`);
