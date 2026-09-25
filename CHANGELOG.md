@@ -5,6 +5,26 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0](https://github.com/rajebdev/ompchamber/compare/v3.0.0...v3.1.0) — 2026-09-25
+
+### Added
+
+* **editor:** add find/replace, VS Code keybindings and a command palette ([7913168](https://github.com/rajebdev/ompchamber/commit/791316832cad69f5951e55816412820168bc0599))
+* **files:** create a file from a folder's context menu ([6688093](https://github.com/rajebdev/ompchamber/commit/668809399318cafd0ba97287245996326992acc1))
+* **todo:** add a right-panel view of the session's live todo list ([7b9750e](https://github.com/rajebdev/ompchamber/commit/7b9750e578d03464ce1ea39a0b5d894c981437ad))
+
+### Changed
+
+* **agents:** record the Todo panel and its read path ([07bbcca](https://github.com/rajebdev/ompchamber/commit/07bbcca85cd67a986a64bdac27cc395a36cdcf21))
+* **chat:** group the todo readers under chat/todo/ ([41f4ac7](https://github.com/rajebdev/ompchamber/commit/41f4ac7a063ac648cce90e63f081abe0cbbc6d0c))
+* **release:** drop the inert bumpStrict and wire the rules module ([58f9da7](https://github.com/rajebdev/ompchamber/commit/58f9da7d2da9c9d3a55c39bd966d5e25c38ee167))
+* state the version rules that actually run ([46b2708](https://github.com/rajebdev/ompchamber/commit/46b270806abbe38479301115125be923d142e741))
+
+### Fixed
+
+* **browser:** drop the agent panel's non-functional device selector ([8a84e56](https://github.com/rajebdev/ompchamber/commit/8a84e56a2d01e7f4f94dfe1faf331eaa6a2b75f6))
+* **release:** decide a version from the rules the repository means ([5b61621](https://github.com/rajebdev/ompchamber/commit/5b616214d3df9bd2b2a1f8c2a556db29df61a2ee))
+
 ## [3.0.0](https://github.com/rajebdev/ompchamber/compare/v2.0.2...v3.0.0) — 2026-09-25
 
 ### BREAKING CHANGES
