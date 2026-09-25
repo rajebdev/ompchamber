@@ -5,6 +5,43 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0](https://github.com/rajebdev/ompchamber/compare/v2.0.2...v3.0.0) — 2026-09-25
+
+### BREAKING CHANGES
+
+* **build:** `bun run dev:client` and `bun run dev:server` are gone —
+`bun run dev` runs the single process that replaces both. `dist/client` is
+no longer a client-only artifact: it is the production server bundle, and
+`dist/client/index.html` is no longer the file the server reads.
+`ompchamber serve --prod` runs `dist/client/index.js` and requires
+`bun run build` to have produced it. `postcss.config.mjs` is removed (the
+Tailwind plugin is configured explicitly) and so is `rsbuild.config.ts`.
+
+### Added
+
+* **build:** bundle the client with Bun instead of rsbuild ([e73d552](https://github.com/rajebdev/ompchamber/commit/e73d552526fb0d143ead71da81155c17626e89fb))
+* **mobile:** add per-workspace new-session button to the session drawer ([20546a4](https://github.com/rajebdev/ompchamber/commit/20546a4569309e014c2d9ed6691413c08e65249d))
+* **providers:** draw every provider mark from one shared component ([87a2f47](https://github.com/rajebdev/ompchamber/commit/87a2f47346473045052ccb5c922aa09bb7bae526))
+* **providers:** register a provider's wire dialect, and add models by hand ([5c5758f](https://github.com/rajebdev/ompchamber/commit/5c5758f3da959172846be4bef8c936f192058057))
+* **usage:** report every credentialed provider's quota, not just kenari and DeepSeek ([bac35df](https://github.com/rajebdev/ompchamber/commit/bac35df86b8ed5b046b714859e4cfa984c4ba4ae))
+
+### Changed
+
+* **agents:** record the editor and diff toolbar contracts ([3a5a4cc](https://github.com/rajebdev/ompchamber/commit/3a5a4cc3a01fa6cbf0c5f6ec75724cbab74c7080))
+* **agents:** record the provider dialect, usage, and mark contracts ([e466aa1](https://github.com/rajebdev/ompchamber/commit/e466aa1dd81b8b4862092a356288593e87023782))
+* describe the Bun bundler dev loop and its constraints ([549945a](https://github.com/rajebdev/ompchamber/commit/549945a981ae62f63ba51718597ee6311e463353))
+* **editor:** theme the diff tab icon instead of hardcoding blue ([e1caaa1](https://github.com/rajebdev/ompchamber/commit/e1caaa15a607966f0ea99f33732f69e366cf88c1))
+* list the variables the server reads in .env.example ([590fb6c](https://github.com/rajebdev/ompchamber/commit/590fb6c037607e2248d04f10fc68f9d22de76c54))
+* **models:** group the provider modules into provider/ folders ([3e4a73b](https://github.com/rajebdev/ompchamber/commit/3e4a73b156918227b9f69c007bfd901728b27d83))
+
+### Fixed
+
+* **cli:** run the production server from its own bundle ([33eb64c](https://github.com/rajebdev/ompchamber/commit/33eb64ccf81e50860cfc75ff269e971bb90b9d61))
+* **diff-panel:** make the toolbar's actions actually act, and fit the panel ([ba0796a](https://github.com/rajebdev/ompchamber/commit/ba0796a28fe03106f1d3c1e975d706f2664fc2fe))
+* **diff:** hide whitespace-only changes instead of trimming their text ([a0c29ed](https://github.com/rajebdev/ompchamber/commit/a0c29edc5f092b397085eee58f18fda0c3de8267))
+* **editor:** convert a diff tab without mutating persisted session state ([69dcf95](https://github.com/rajebdev/ompchamber/commit/69dcf9592faf352d0ddab6efe3df640c5038f686))
+* **editor:** report failed reads and failed saves instead of faking success ([39c1784](https://github.com/rajebdev/ompchamber/commit/39c17849e3d451a126a24f53d76cf3c0b4ac2894))
+
 ## [2.0.2](https://github.com/rajebdev/ompchamber/compare/v2.0.1...v2.0.2) — 2026-09-24
 
 ### Fixed
