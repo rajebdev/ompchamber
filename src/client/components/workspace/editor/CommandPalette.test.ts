@@ -20,7 +20,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } fr
 import { Window } from 'happy-dom';
 import type { ComponentChildren, h as PreactH, render as PreactRender } from 'preact';
 import type { act as PreactAct } from 'preact/test-utils';
-import type { EditorCommand } from '@/shared/lib/code/editor/keymap';
+import { EDITOR_KEY_BINDINGS, type EditorCommand } from '@/shared/lib/code/editor/keymap';
+import { buildPaletteEntries } from '@/shared/lib/code/editor/palette';
 import { isMacPlatform } from '@/shared/lib/util/platform';
 
 let CommandPalette: (props: { onRun: (command: EditorCommand) => void; onClose: () => void }) => ComponentChildren;
@@ -130,9 +131,23 @@ describe('CommandPalette', () => {
     const text = rows().join('\n');
 
     expect(text).toContain('Add selection to next find match');
-    // The chord is the platform's own — happy-dom reports a non-Apple platform,
-    // which is exactly the branch a Mac-only assertion would have missed.
-    expect(text).toContain(isMacPlatform() ? '⌘D' : 'Ctrl+D');
+    // The chord is the platform's own. Asserted through the palette's own
+    // builder so the expectation is the platform's real answer rather than a
+    // guess at which machine the suite is running on — the runner is Linux and a
+    // developer's laptop is a Mac, and a Mac-only literal passes on exactly one
+    // of them.
+    expect(text).toContain(buildPaletteEntries(isMacPlatform()).find((entry) => entry.command === 'selectNextOccurrence')!.chord);
+    expect(rows().length).toBeGreaterThan(20);
+  });
+
+  test('every command it lists is one the keymap binds', async () => {
+    await mount();
+
+    // The palette is a VIEW of the keymap; an entry with no binding would be a
+    // command that does nothing when it is run.
+    for (const entry of buildPaletteEntries(true)) {
+      expect(EDITOR_KEY_BINDINGS.some((binding) => binding.command === entry.command)).toBe(true);
+    }
     expect(rows().length).toBeGreaterThan(20);
   });
 

@@ -11,6 +11,11 @@
  * all silent — a chord that reaches the browser's own find bar, an Escape that
  * throws away a multi-selection instead of dropping it, a Tab that escapes the
  * editor mid-line.
+ *
+ * The platform is PINNED rather than detected. The dispatcher resolves chords
+ * through `isMacPlatform()`, so a test written with ⌘ chords passes on a
+ * developer's Mac and fails on the Linux CI runner — which is exactly what
+ * happened. `usePlatform()` below makes each case state the platform it means.
  */
 
 import { describe, expect, test } from 'bun:test';
@@ -21,7 +26,6 @@ import type { EditorHistory } from '@/client/hooks/editor/use-editor-history';
 import type { OccurrencesApi } from '@/client/hooks/editor/use-occurrences';
 import type { EditorCommand } from '@/shared/lib/code/editor/keymap';
 import type { TextRange } from '@/shared/lib/code/editor/commands';
-import { isMacPlatform } from '@/shared/lib/util/platform';
 
 /** A textarea stand-in: the dispatcher only reads value/selection and calls blur. */
 function fakeInput(value: string, start: number, end = start) {
@@ -115,6 +119,19 @@ function harness(options: { value: string; start?: number; end?: number; ranges?
   } as Harness;
 }
 
+/** Run `body` with `navigator.platform` reporting `platform`. */
+function usePlatform<T>(platform: string, body: () => T): T {
+  const globals = globalThis as Record<string, unknown>;
+  const previous = globals.navigator;
+  globals.navigator = { platform };
+  try {
+    return body();
+  } finally {
+    if (previous === undefined) delete globals.navigator;
+    else globals.navigator = previous;
+  }
+}
+
 /** A keydown event with only the fields the dispatcher reads. */
 function press(key: string, code: string, modifiers: Partial<{ metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }> = {}) {
   const prevented = { value: false };
@@ -162,7 +179,7 @@ describe('handleEditorKeydown', () => {
 
   test('undo and redo step the history and drop the extra ranges', () => {
     const h = harness({ value: 'abc', ranges: [{ start: 1, end: 2 }] });
-    handleEditorKeydown(press('z', 'KeyZ', { metaKey: true }).event, h.deps);
+    usePlatform('MacIntel', () => handleEditorKeydown(press('z', 'KeyZ', { metaKey: true }).event, h.deps));
 
     expect(h.steps).toEqual(['undo']);
     expect(h.cleared).toBe(1);
@@ -178,7 +195,7 @@ describe('handleEditorKeydown', () => {
 
   test('⌘D routes to the occurrence grower with the editor’s own select', () => {
     const h = harness({ value: 'alpha', start: 0, end: 5 });
-    handleEditorKeydown(press('d', 'KeyD', { metaKey: true }).event, h.deps);
+    usePlatform('MacIntel', () => handleEditorKeydown(press('d', 'KeyD', { metaKey: true }).event, h.deps));
 
     expect(h.selected).toEqual([[0, 6]]);
   });
@@ -189,7 +206,7 @@ describe('handleEditorKeydown', () => {
     // whatever the panel does with it.
     const h = harness({ value: 'abc' });
     const { event, prevented } = press('f', 'KeyF', { metaKey: true });
-    handleEditorKeydown(event, h.deps);
+    usePlatform('MacIntel', () => handleEditorKeydown(event, h.deps));
 
     expect(h.delegated).toEqual(['find']);
     expect(prevented.value).toBe(true);
@@ -215,7 +232,7 @@ describe('handleEditorKeydown', () => {
     // ⌘⏎ is `insertLineBelow`; the plain-Enter auto-indent branch used to catch
     // it first and do nothing on an unindented line, making the command dead.
     const h = harness({ value: 'const a = 1;\nconst b = 2;', start: 20 });
-    handleEditorKeydown(press('Enter', 'Enter', { metaKey: true }).event, h.deps);
+    usePlatform('MacIntel', () => handleEditorKeydown(press('Enter', 'Enter', { metaKey: true }).event, h.deps));
 
     expect(h.committed[0].value).toBe('const a = 1;\nconst b = 2;\n');
   });
@@ -229,7 +246,7 @@ describe('handleEditorKeydown', () => {
 
   test('⌘[ outdents the line the caret is on, with nothing selected', () => {
     const h = harness({ value: '  one', start: 2 });
-    handleEditorKeydown(press('[', 'BracketLeft', { metaKey: true }).event, h.deps);
+    usePlatform('MacIntel', () => handleEditorKeydown(press('[', 'BracketLeft', { metaKey: true }).event, h.deps));
 
     expect(h.committed[0].value).toBe('one');
     expect(h.committed[0].selectionStart).toBe(0);
@@ -238,11 +255,13 @@ describe('handleEditorKeydown', () => {
   test('Ctrl+M still toggles Tab capture', () => {
     const h = harness({ value: 'abc' });
     // On macOS the chord needs Shift (Ctrl+M alone is Return in the terminal's
-    // own vocabulary), which is what the handler encodes.
-    const modifiers = isMacPlatform() ? { ctrlKey: true, shiftKey: true } : { ctrlKey: true };
-    handleEditorKeydown(press('m', 'KeyM', modifiers).event, h.deps);
-
+    // own vocabulary), which is what the handler encodes. Both platforms are
+    // exercised explicitly rather than detected.
+    usePlatform('Win32', () => handleEditorKeydown(press('m', 'KeyM', { ctrlKey: true }).event, h.deps));
     expect(h.captureToggles).toBe(1);
+
+    usePlatform('MacIntel', () => handleEditorKeydown(press('m', 'KeyM', { ctrlKey: true, shiftKey: true }).event, h.deps));
+    expect(h.captureToggles).toBe(2);
   });
 });
 
