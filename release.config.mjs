@@ -3,10 +3,12 @@
  * every push to `main`.
  *
  * The pipeline keeps the two promises `CHANGELOG.md` already made by hand: the
- * version comes from Conventional Commits (`feat` -> minor, `!` / `BREAKING
- * CHANGE` -> breaking, anything else -> patch), and each released section keeps
- * its shape — `## [x.y.z] — YYYY-MM-DD` over the Added / Changed / Fixed /
- * Removed categories, newest first, under an untouched intro block.
+ * version comes from Conventional Commits, and each released section keeps its
+ * shape — `## [x.y.z] — YYYY-MM-DD` over the Added / Changed / Fixed / Removed
+ * categories, newest first, under an untouched intro block. Which type moves
+ * the version is not decided here: `release/release-rules.js` holds that
+ * contract, including the two places where the toolchain's own defaults would
+ * release something this repository does not mean.
  *
  * A bullet credits the contributor who wrote it, unless that contributor is the
  * repository owner: `release/contributors.js` reads GitHub's privacy addresses
@@ -34,6 +36,7 @@
 import { readFileSync } from 'node:fs';
 import conventionalcommits from 'conventional-changelog-conventionalcommits';
 import { attachThanks, withThanksClause } from './release/contributors.js';
+import { parserOpts, releaseRules } from './release/release-rules.js';
 
 const changelog = 'CHANGELOG.md';
 
@@ -54,8 +57,10 @@ const changelogIntro = (() => {
 /**
  * `commitGroupsSort` ranks sections by their first appearance in this list, so
  * the order below is the changelog's order. A hidden type is hidden from the
- * section list *and* — because the commit analyzer runs `bumpStrict` — from the
- * release itself: a push carrying only chores, CI or tests cuts no version.
+ * section list; what decides whether a commit releases anything is
+ * `releaseRules` in `release/release-rules.js`, where every type this
+ * repository uses carries `release: false` — a push of chores, docs, CI or
+ * tests alone cuts no version, with or without a `!` on the type.
  */
 const commitTypes = [
   { type: 'feat', section: 'Added' },
@@ -148,11 +153,11 @@ export default {
   plugins: [
     [
       '@semantic-release/commit-analyzer',
-      { preset: 'conventionalcommits', presetConfig: { types: commitTypes, bumpStrict: true } },
+      { preset: 'conventionalcommits', presetConfig: { types: commitTypes }, parserOpts, releaseRules },
     ],
     [
       '@semantic-release/release-notes-generator',
-      { preset: 'conventionalcommits', presetConfig: { types: commitTypes }, writerOpts: { commitPartial, headerPartial, mainTemplate, finalizeContext } },
+      { preset: 'conventionalcommits', presetConfig: { types: commitTypes }, parserOpts, writerOpts: { commitPartial, headerPartial, mainTemplate, finalizeContext } },
     ],
     ['@semantic-release/changelog', { changelogFile: changelog, changelogTitle: changelogIntro }],
     ['@semantic-release/npm', { npmPublish: false }],
