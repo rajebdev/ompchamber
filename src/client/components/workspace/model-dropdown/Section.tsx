@@ -1,13 +1,14 @@
 import type { TargetedMouseEvent } from 'preact';
-import { ChevronDown, ChevronUp, GripVertical, History, Star } from 'lucide-preact';
+import { ChevronDown, ChevronUp, History, Star } from 'lucide-preact';
 import type { AIModelOption } from '@/shared/types';
 import { ModelDropdownItem } from '@/client/components/workspace/model-dropdown/Item';
+import { ProviderIcon } from '@/client/components/common/provider-icon';
 import { modelKey } from '@/shared/lib/models/identity';
 
 interface ModelDropdownSectionProps {
   id: string;
   title: string;
-  iconType?: 'star' | 'recent' | 'provider' | 'whale';
+  iconType?: 'star' | 'recent' | 'provider';
   models: AIModelOption[];
   isCollapsed: boolean;
   onToggleCollapse: (id: string) => void;
@@ -49,8 +50,16 @@ export function ModelDropdownSection({
         <div className="flex items-center space-x-1.5">
           {iconType === 'star' && <Star size={12} className="fill-sky-400 text-sky-400" />}
           {iconType === 'recent' && <History size={12} className="text-ink/60" />}
-          {iconType === 'whale' && <span>🐋</span>}
-          {iconType === 'provider' && <GripVertical size={11} className="text-ink/25" />}
+          {iconType === 'provider' && (
+            // The section's own provider, taken from a row rather than the
+            // uppercased group key, so the mark resolves off the real slug.
+            <ProviderIcon
+              icon={models[0]?.providerIcon}
+              slug={models[0]?.provider ?? id}
+              name={models[0]?.provider ?? id}
+              size={12}
+            />
+          )}
           <span>{title}</span>
         </div>
         {isCollapsed ? (

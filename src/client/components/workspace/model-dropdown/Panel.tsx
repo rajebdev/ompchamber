@@ -115,7 +115,7 @@ export function ModelDropdownPanel({
                   key={provider}
                   id={provider}
                   title={provider}
-                  iconType={provider === 'DEEPSEEK' ? 'whale' : 'provider'}
+                  iconType="provider"
                   models={pModels}
                   isCollapsed={!!collapsedSections[provider]}
                   onToggleCollapse={onToggleCollapse}

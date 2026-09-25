@@ -3,7 +3,7 @@ import { Check, DownloadCloud, Globe, Key, Layers } from 'lucide-preact';
 import type { ProviderItem } from '@/shared/types';
 import type { PresetProviderOption } from '@/shared/types/settings/provider';
 import { fetchProviderModelsRemote } from '@/shared/lib/models/provider/models';
-import { ProviderIcon } from '@/client/components/settings/categories/provider-settings/Icons';
+import { ProviderIcon } from '@/client/components/common/provider-icon';
 import { Modal } from '@/client/components/common/Modal';
 
 interface AddProviderModalProps {
@@ -166,7 +166,7 @@ export function AddProviderModal({
                     : 'border-ink/15 hover:border-ink/30 text-ink/70'
                 }`}
               >
-                <ProviderIcon icon={preset.icon} size={14} />
+                <ProviderIcon icon={preset.icon} slug={preset.slug} name={preset.name} size={14} />
                 <span className="truncate">{preset.name}</span>
               </button>
             );

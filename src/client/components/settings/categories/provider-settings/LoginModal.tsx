@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { AlertCircle, CheckCircle2, Globe, Key, Loader2 } from 'lucide-preact';
 import type { ProviderItem } from '@/shared/types';
-import { ProviderIcon } from '@/client/components/settings/categories/provider-settings/Icons';
+import { ProviderIcon } from '@/client/components/common/provider-icon';
 import { Modal } from '@/client/components/common/Modal';
 
 interface LoginModalProps {
@@ -132,7 +132,7 @@ export function LoginModal({ isOpen, provider, onClose, onAuthenticated }: Login
       onClose={onClose}
       header={
         <div className="flex items-center gap-2.5">
-          <ProviderIcon icon={provider.icon} size={18} />
+          <ProviderIcon icon={provider.icon} slug={provider.slug} name={provider.name} size={18} />
           <div>
             <h3 className="text-sm font-semibold text-ink">Sign in to {provider.name}</h3>
             <p className="text-[11px] text-ink/50 font-mono">{provider.slug}</p>

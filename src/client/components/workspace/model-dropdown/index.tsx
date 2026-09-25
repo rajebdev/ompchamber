@@ -5,6 +5,7 @@ import type { AIModelOption, ModelPreferences } from '@/shared/types';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 import { invalidateModelsCache } from '@/shared/lib/models/client';
 import { ModelDropdownPanel } from '@/client/components/workspace/model-dropdown/Panel';
+import { ProviderIcon } from '@/client/components/common/provider-icon';
 import { useModelCatalog } from '@/client/components/workspace/model-dropdown/use-catalog';
 import { buildPickerGroups } from '@/client/components/workspace/model-dropdown/groups';
 import { modelKey } from '@/shared/lib/models/identity';
@@ -229,10 +230,13 @@ export function ModelDropdown({
             <span className="text-ink/60 flex-shrink-0">
               {selectedModel.isCmdAgent ? (
                 <span className="font-mono text-[10px] font-bold text-ink/70">⌘</span>
-              ) : selectedModel.provider.toLowerCase() === 'deepseek' ? (
-                <span>🐋</span>
               ) : (
-                <Sparkles size={12} className="text-ink/60" />
+                <ProviderIcon
+                  icon={selectedModel.providerIcon}
+                  slug={selectedModel.provider}
+                  name={selectedModel.provider}
+                  size={12}
+                />
               )}
             </span>
             <span className="flex items-center space-x-1 min-w-0 max-w-[280px]">

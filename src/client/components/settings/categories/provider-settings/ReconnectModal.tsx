@@ -3,7 +3,7 @@ import type { FormEvent } from 'preact/compat';
 import { AlertCircle, CheckCircle2, DownloadCloud, Globe, Key, RefreshCw } from 'lucide-preact';
 import type { ProviderItem } from '@/shared/types';
 import { fetchProviderModelsRemote } from '@/shared/lib/models/provider/models';
-import { ProviderIcon } from '@/client/components/settings/categories/provider-settings/Icons';
+import { ProviderIcon } from '@/client/components/common/provider-icon';
 import { Modal } from '@/client/components/common/Modal';
 
 interface ReconnectModalProps {
@@ -60,7 +60,7 @@ export function ReconnectModal({
       onClose={onClose}
       header={
         <div className="flex items-center gap-2.5">
-          <ProviderIcon icon={provider.icon} size={18} />
+          <ProviderIcon icon={provider.icon} slug={provider.slug} name={provider.name} size={18} />
           <div>
             <h3 className="text-sm font-semibold text-ink">
               Authentication & Credentials

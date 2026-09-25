@@ -2,7 +2,7 @@
 import { useRef, useState } from 'preact/hooks';
 import { Check, ChevronDown, Folder, Plus } from 'lucide-preact';
 import type { ProviderItem } from '@/shared/types';
-import { ProviderIcon } from '@/client/components/settings/categories/provider-settings/Icons';
+import { ProviderIcon } from '@/client/components/common/provider-icon';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 
 interface ProviderSidebarListProps {
@@ -115,7 +115,7 @@ export function ProviderSidebarList({
               }`}
             >
               <div className="flex items-center gap-2.5 min-w-0">
-                <ProviderIcon icon={item.icon} size={15} className="flex-shrink-0" />
+                <ProviderIcon icon={item.icon} slug={item.slug} name={item.name} size={15} className="flex-shrink-0" />
                 <span className="text-[12px] truncate">{item.name}</span>
               </div>
 

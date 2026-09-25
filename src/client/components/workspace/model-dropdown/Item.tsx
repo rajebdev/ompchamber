@@ -1,7 +1,8 @@
 import type { TargetedMouseEvent } from 'preact';
-import { Bot, Boxes, Brain, Check, Command, Globe, GripVertical, Sparkles, Star, Zap } from 'lucide-preact';
+import { Brain, Check, Command, GripVertical, Star } from 'lucide-preact';
 import type { AIModelOption } from '@/shared/types';
 import { formatContextWindow } from '@/shared/lib/code/format';
+import { ProviderIcon } from '@/client/components/common/provider-icon';
 
 interface ModelDropdownItemProps {
   model: AIModelOption;
@@ -35,28 +36,17 @@ export function ModelDropdownItem({
       );
     }
 
-    switch (model.providerIcon || model.provider.toLowerCase()) {
-      case 'deepseek':
-        return (
-          <span className="text-[12px] leading-none flex-shrink-0" title="DeepSeek">
-            🐋
-          </span>
-        );
-      case 'anthropic':
-      case 'claude':
-        return <Bot size={13} className="text-orange-400 flex-shrink-0" />;
-      case 'openai':
-        return <Boxes size={13} className="text-emerald-500 flex-shrink-0" />;
-      case 'google':
-      case 'gemini':
-        return <Sparkles size={13} className="text-blue-400 flex-shrink-0" />;
-      case 'opencode':
-        return <Zap size={13} className="text-violet-400 flex-shrink-0" />;
-      case 'mistral':
-        return <Globe size={13} className="text-rose-400 flex-shrink-0" />;
-      default:
-        return <Sparkles size={13} className="text-ink/60 flex-shrink-0" />;
-    }
+    // The provider's own mark, keyed on the catalog's `providerIcon` first so a
+    // legacy key still resolves; unknown providers fall back to their initials.
+    return (
+      <ProviderIcon
+        icon={model.providerIcon}
+        slug={model.provider}
+        name={model.provider}
+        size={13}
+        className="text-ink/70"
+      />
+    );
   };
 
   return (
