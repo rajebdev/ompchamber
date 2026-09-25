@@ -1,4 +1,4 @@
-import { BarChart3, Bot, Files, GitBranch, Globe, Layers, Search, Terminal } from 'lucide-preact';
+import { BarChart3, Bot, Files, GitBranch, Globe, Layers, ListTodo, Search, Terminal } from 'lucide-preact';
 import type { ReactNode } from 'preact/compat';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
 import { GIT_STATUS_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
@@ -27,6 +27,7 @@ const PANEL_META: Record<RightPanelType, { title: string; icon: ReactNode }> = {
   'user-browser': { title: 'Browser (Anda)', icon: <Globe size={16} /> },
   browser: { title: 'Browser Agent', icon: <Bot size={16} /> },
   usage: { title: 'Usage', icon: <BarChart3 size={16} /> },
+  todo: { title: 'Todos', icon: <ListTodo size={16} /> },
 };
 
 export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen, hasActiveContext, activeProjectPath, refreshKey }: RightActivityBarProps) {

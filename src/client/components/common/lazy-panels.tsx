@@ -32,6 +32,9 @@ export const LazyUserBrowserPanel = lazy(() =>
 export const LazyUsagePanel = lazy(() =>
   import('@/client/components/workspace/usage-panel/index').then((m) => ({ default: m.UsagePanel }))
 );
+export const LazyTodoPanel = lazy(() =>
+  import('@/client/components/workspace/todo-panel/index').then((m) => ({ default: m.TodoPanel }))
+);
 
 /**
  * One cached lazy per right-panel view for the desktop layout.
@@ -67,7 +70,8 @@ export function getDesktopPanelView(scope: object, view: RightPanelType): Compon
       : view === 'context' ? LazyContextPanel
       : view === 'user-browser' ? LazyUserBrowserPanel
       : view === 'browser' ? LazyBrowserPanel
-      : LazyUsagePanel;
+      : view === 'usage' ? LazyUsagePanel
+      : LazyTodoPanel;
     const Cached: ComponentType<Record<string, unknown>> = ({ className, ...rest }) => (
       <div className={`w-full h-full ${typeof className === 'string' ? className : ''}`}>
         <Source {...rest} className="w-full h-full" />

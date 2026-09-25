@@ -22,4 +22,5 @@ export * from '@/shared/types/omp/instructions';
 export * from '@/shared/types/omp/subagent';
 export * from '@/shared/types/browser';
 export * from '@/shared/types/updates';
+export * from '@/shared/types/todo';
 export type { RightPanelType } from '@/shared/lib/workspace/right-panels';

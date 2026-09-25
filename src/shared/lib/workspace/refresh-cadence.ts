@@ -94,6 +94,15 @@ export const GIT_STATUS_EVENT_THROTTLE_MS = 1_000;
 export const REPO_DISCOVERY_POLL_MS = 1_500;
 
 /**
+ * Coalescing window for the todo panel's event-driven re-read. A run emits
+ * `omp:session-updated` at every turn boundary (which is what follows each tool
+ * call), so this collapses the several signals around one `todo` call into one
+ * request. Tighter than the git window on purpose: the server answers an
+ * unchanged read from a stat, and the panel is watched while the agent works.
+ */
+export const TODO_REFRESH_EVENT_THROTTLE_MS = 400;
+
+/**
  * CDP state/screencast poll. Latency-sensitive — the browser panel streams a
  * live page, so this one stays tight on purpose.
  */
