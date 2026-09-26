@@ -81,6 +81,8 @@ export function parseSubagentProgress(value: unknown): SubagentProgress | undefi
   if (modelRole !== undefined) out.modelRole = modelRole;
   const resolvedModel = asString(value.resolvedModel);
   if (resolvedModel !== undefined) out.resolvedModel = resolvedModel;
+  const resolvedThinkingLevel = asString(value.resolvedThinkingLevel);
+  if (resolvedThinkingLevel !== undefined) out.resolvedThinkingLevel = resolvedThinkingLevel;
   if (typeof value.resolvedModelIsFallback === 'boolean') out.resolvedModelIsFallback = value.resolvedModelIsFallback;
   if (isRecord(value.retryState)) {
     const attempt = asNumber(value.retryState.attempt);
@@ -178,6 +180,21 @@ export function parseSubagentLifecycle(value: unknown): SubagentInfo | undefined
   if (parentToolCallId !== undefined) info.parentToolCallId = parentToolCallId;
   if (typeof value.detached === 'boolean') info.detached = value.detached;
   return info;
+}
+
+/**
+ * Read a progress frame's payload: `SubagentProgressPayload` nests the
+ * AgentProgress it reports under `progress`, while a bare AgentProgress (and a
+ * `get_subagents` snapshot's own field) is the object itself. Both shapes reach
+ * the same listeners, so unwrap here rather than at each call site — the outer
+ * wrapper's `id`/`index` fill in what the nested snapshot omits.
+ */
+export function readSubagentProgressFrame(payload: unknown): SubagentProgress | undefined {
+  const direct = parseSubagentProgress(payload);
+  if (!isRecord(payload) || !isRecord(payload.progress)) return direct;
+  const nested = parseSubagentProgress(payload.progress);
+  if (!nested) return direct;
+  return { ...nested, id: nested.id ?? direct?.id, index: nested.index ?? direct?.index };
 }
 
 /** Extract a compact live-activity entry from a subagent_event payload. */

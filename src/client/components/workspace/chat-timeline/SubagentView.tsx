@@ -18,6 +18,8 @@ interface SubagentViewProps {
   onBack: () => void;
   provider?: string;
   providerNames?: Record<string, string>;
+  /** Mobile renders the chat's compact footer variant (three-dot menu). */
+  isMobile?: boolean;
   className?: string;
 }
 
@@ -30,7 +32,7 @@ const STATUS_LABEL: Record<SubagentInfo['status'], string> = {
 
 /** Read-only subagent transcript: compact banner, live-growing message list,
  *  and a notice row where the main timeline's composer would be. */
-export function SubagentView({ sessionId, subagent, onBack, provider, providerNames, className = '' }: SubagentViewProps) {
+export function SubagentView({ sessionId, subagent, onBack, provider, providerNames, isMobile = false, className = '' }: SubagentViewProps) {
   const { messages, isLoading, status, isActive } = useSubagentTranscript(sessionId, subagent, onBack);
   const modelNames = useModelNames();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -133,6 +135,7 @@ export function SubagentView({ sessionId, subagent, onBack, provider, providerNa
                     msg={msg}
                     isStreaming={isLoading}
                     isPrevAssistant={isPrevAssistant}
+                    userActions={false}
                     className={isNoticeRow(msg) ? 'mt-3 mb-1' : isPrevAssistant ? 'mt-1' : 'mt-3'}
                   />
                   {footer && (
@@ -142,7 +145,10 @@ export function SubagentView({ sessionId, subagent, onBack, provider, providerNa
                       providerNames={providerNames}
                       modelName={modelName}
                       modelNames={modelNames}
+                      thinkingLevel={progress?.resolvedThinkingLevel}
                       durationMs={footer.durationMs}
+                      isMobile={isMobile}
+                      showActions={false}
                     />
                   )}
                 </Fragment>

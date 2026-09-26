@@ -4,7 +4,7 @@ import { SubagentStatusIcon } from '@/client/components/common/SubagentStatusIco
 import { isRecord } from '@/shared/lib/util/guards';
 import { fetchSubagentHistory, historyEntryToSubagentInfo } from '@/shared/lib/omp/subagent/history/client';
 import { subagentRowLabel } from '@/shared/lib/omp/subagent/label';
-import { mergeSubagentRoster, parseSubagentLifecycle, parseSubagentProgress, parseSubagentRosterResponse } from '@/shared/lib/omp/subagent/parse';
+import { mergeSubagentRoster, parseSubagentLifecycle, parseSubagentRosterResponse, readSubagentProgressFrame } from '@/shared/lib/omp/subagent/parse';
 import type { SubagentInfo, SubagentProgress } from '@/shared/types';
 
 type SubagentListProps = {
@@ -17,14 +17,6 @@ type SubagentFrameDetail = { sessionId?: string; payload?: unknown };
 const PROGRESS_STATUS: Record<NonNullable<SubagentProgress['status']>, SubagentInfo['status']> = {
   pending: 'started', running: 'started', completed: 'completed', failed: 'failed', aborted: 'aborted',
 };
-
-/** Progress frames arrive AgentProgress-shaped; some wrappers nest the snapshot. */
-function readProgress(payload: unknown): SubagentProgress | undefined {
-  const direct = parseSubagentProgress(payload);
-  if (!isRecord(payload) || !isRecord(payload.progress)) return direct;
-  const nested = parseSubagentProgress(payload.progress);
-  return nested ? { ...nested, id: nested.id ?? direct?.id, index: nested.index ?? direct?.index } : direct;
-}
 
 /** Fold one progress frame into the roster entry it names (id, else index). */
 function applyProgress(roster: SubagentInfo[], progress: SubagentProgress): SubagentInfo[] {
@@ -87,7 +79,7 @@ export function SubagentList({ sessionId, isActiveSession }: SubagentListProps) 
       }
     };
     const onProgress = (event: Event) => {
-      const progress = readProgress(detailOf(event)?.payload);
+      const progress = readSubagentProgressFrame(detailOf(event)?.payload);
       if (progress) setSubagents((prev) => applyProgress(prev, progress));
     };
 

@@ -13,6 +13,7 @@
 import type { ChatMessageData, SubagentMessagesPage } from '@/shared/types';
 import { toChatMessage } from '@/shared/lib/omp/session/mapper';
 import { extractText } from '@/shared/lib/omp/session/parse-message-blocks';
+import { normalizeThinkingLevel } from '@/shared/lib/models/thinking-levels';
 import { isRecord } from '@/shared/lib/util/guards';
 
 /** Normalize one wire message: the RPC may hand back bare omp AgentMessages
@@ -29,9 +30,20 @@ function normalizeRawMessage(value: unknown): Record<string, unknown> | null {
 
 export function convertMessages(raw: unknown[], streaming: boolean): ChatMessageData[] {
   const out: ChatMessageData[] = [];
+  // omp records the thinking level as its own `thinking_level_change` entry
+  // (session state), not as a per-message field. Walk the records in order and
+  // stamp the level in effect onto each non-user turn, so a subagent footer
+  // shows the level that served that turn — the child's own level, never the
+  // parent session's. Mirrors the server's main-session loader
+  // (`loadSessionMessages`).
+  let currentLevel: string | undefined;
   for (const item of raw) {
     if (isRecord(item)) {
       const entryType = typeof item.type === 'string' ? item.type : '';
+      if (entryType === 'thinking_level_change') {
+        currentLevel = normalizeThinkingLevel(item.thinkingLevel);
+        continue;
+      }
       if (entryType === 'custom' || entryType === 'custom_message') {
         const customType = typeof item.customType === 'string' ? item.customType : '';
         if (customType === 'session_exit') {
@@ -77,7 +89,11 @@ export function convertMessages(raw: unknown[], streaming: boolean): ChatMessage
     }
 
     const converted = toChatMessage(record, streaming);
-    if (converted) out.push(converted);
+    if (!converted) continue;
+    if (currentLevel !== undefined && converted.role !== 'user') {
+      converted.thinkingLevel = currentLevel;
+    }
+    out.push(converted);
   }
   return out;
 }

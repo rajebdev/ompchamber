@@ -211,6 +211,7 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
                   onBack={handleSubagentBack}
                   provider={sessionProvider}
                   providerNames={providerNames}
+                  isMobile={isMobile}
                 />
               ) : (
                 <TimelineBody

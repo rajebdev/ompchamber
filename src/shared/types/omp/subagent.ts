@@ -49,6 +49,12 @@ export interface SubagentProgress {
   modelOverride?: string | string[];
   modelRole?: string;
   resolvedModel?: string;
+  /**
+   * Thinking level the child's own model resolved to. Never inferred from the
+   * parent session: the child may run at a different level than the chat that
+   * spawned it, so the footer must read this one or show nothing.
+   */
+  resolvedThinkingLevel?: string;
   resolvedModelIsFallback?: boolean;
   retryState?: SubagentRetryState;
   retryFailure?: { attempt: number; errorMessage: string };

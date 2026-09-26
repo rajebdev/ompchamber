@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { ChatMessageData, SubagentInfo } from '@/shared/types';
 import { isRecord } from '@/shared/lib/util/guards';
-import { parseSubagentLifecycle, parseSubagentProgress } from '@/shared/lib/omp/subagent/parse';
+import { parseSubagentLifecycle, readSubagentProgressFrame } from '@/shared/lib/omp/subagent/parse';
 import { convertMessages, mergeMessages, requestHistoryPage, requestSubagentPage } from '@/shared/lib/omp/subagent/transcript-client';
 
 /**
@@ -236,15 +236,18 @@ export function useSubagentTranscript(
       if (!detail) return;
       const payload = isRecord(detail.payload) ? detail.payload : null;
       if (!payload) return;
-      const payloadId = typeof payload.id === 'string' ? payload.id : null;
-      if (payloadId && payloadId !== subagentId) return;
-      if (!payloadId) {
-        const payloadIndex = typeof payload.index === 'number' ? payload.index : null;
-        // Index is only unique within a spawning batch — require the exact match.
-        if (payloadIndex === null || payloadIndex !== (subagentRef.current?.index ?? -1)) return;
-      }
-      const progress = parseSubagentProgress(payload);
+      // `subagent_progress` nests the child's AgentProgress under `progress`
+      // (SubagentProgressPayload), and only the NESTED snapshot carries the id
+      // plus the resolved model/thinking level — reading the wrapper alone
+      // dropped every field it reports.
+      const progress = readSubagentProgressFrame(payload);
       if (!progress) return;
+      if (progress.id !== undefined) {
+        if (progress.id !== subagentId) return;
+      } else {
+        // Index is only unique within a spawning batch — require the exact match.
+        if (progress.index === undefined || progress.index !== (subagentRef.current?.index ?? -1)) return;
+      }
       setStatus(prev => {
         if (!prev || prev.id !== subagentId) return prev;
         const next: SubagentInfo = { ...prev, progress: { ...prev.progress, ...progress } };

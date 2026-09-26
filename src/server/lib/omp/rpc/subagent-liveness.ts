@@ -21,21 +21,11 @@
  * goes stale).
  */
 
-import { parseSubagentLifecycle, parseSubagentProgress } from '@/shared/lib/omp/subagent/parse';
-import { isRecord } from '@/shared/lib/util/guards';
-import type { SubagentProgress } from '@/shared/types/omp/subagent';
+import { parseSubagentLifecycle, readSubagentProgressFrame } from '@/shared/lib/omp/subagent/parse';
 
 /** Statuses that end a subagent. Mirrors omp's own registry, which deletes an
  *  entry the moment a non-`started` lifecycle arrives. */
 const TERMINAL_STATUS: Record<string, true> = { completed: true, failed: true, aborted: true };
-
-/** Progress frames arrive AgentProgress-shaped; some wrappers nest the snapshot. */
-function readProgress(payload: unknown): SubagentProgress | undefined {
-  const direct = parseSubagentProgress(payload);
-  if (!isRecord(payload) || !isRecord(payload.progress)) return direct;
-  const nested = parseSubagentProgress(payload.progress);
-  return nested ? { ...nested, id: nested.id ?? direct?.id, index: nested.index ?? direct?.index } : direct;
-}
 
 export class SubagentLiveness {
   private readonly lastSeen = new Map<string, number>();
@@ -54,7 +44,7 @@ export class SubagentLiveness {
     }
 
     if (frame.type === 'subagent_progress') {
-      const progress = readProgress(frame.payload);
+      const progress = readSubagentProgressFrame(frame.payload);
       if (!progress) return;
       const index = progress.index !== undefined && progress.index >= 0 ? progress.index : undefined;
       const key = progress.id ?? (index !== undefined ? this.keyByIndex.get(index) ?? `idx:${index}` : undefined);
