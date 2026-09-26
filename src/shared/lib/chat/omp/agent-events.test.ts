@@ -27,12 +27,14 @@ function makeDeps() {
   const activity: string[] = [];
   const commandOutputs: string[] = [];
   let settledCount = 0;
+  let runEnds = 0;
   let state: OmpAgentState = { isGenerating: false, connected: true, error: null };
   const callbacks: OmpAgentCallbacks = {
     onMessageEnd: (msg) => ended.push(msg),
     onActivity: (verb) => activity.push(verb),
     onPromptSettled: () => { settledCount += 1; },
     onCommandOutput: (text) => commandOutputs.push(text),
+    onAgentEnd: () => { runEnds += 1; },
   };
   const deps: OmpAgentFoldDeps = {
     sessionId: 's1',
@@ -47,7 +49,7 @@ function makeDeps() {
     currentThinkingLevelRef: { current: undefined },
     fileMutatingCallsRef: { current: new Set<string>() },
   };
-  return { deps, ended, activity, commandOutputs, settled: () => settledCount, state: () => state };
+  return { deps, ended, activity, commandOutputs, settled: () => settledCount, runEnds: () => runEnds, state: () => state };
 }
 
 describe('toChatMessage error derivation', () => {
@@ -184,5 +186,35 @@ describe('foldAgentEvent agent_end', () => {
     const { deps, ended } = makeDeps();
     foldAgentEvent({ type: 'agent_end', messages: [{ ...ABORTED_TURN, stopReason: 'end_turn' }] }, deps);
     expect(ended).toHaveLength(0);
+  });
+
+  test('a non-terminal agent_end keeps the run generating and does not fire onAgentEnd', () => {
+    // omp's shape when the turn yields with work still alive — a detached
+    // subagent, a compaction, a background job. Measured on omp 18.3.2: with an
+    // async subagent, this frame lands ~14s BEFORE the subagent finishes, and
+    // treating it as the run end blanked the generating indicator for the whole
+    // stretch the roster was still showing a live child.
+    const { deps, state, runEnds } = makeDeps();
+    foldAgentEvent({ type: 'agent_start' }, deps);
+    expect(state().isGenerating).toBe(true);
+
+    foldAgentEvent({ type: 'agent_end', isTerminal: false, messages: [] }, deps);
+    expect(state().isGenerating).toBe(true);
+    expect(runEnds()).toBe(0);
+
+    // The continuation ends the run for real; only now may the UI settle.
+    foldAgentEvent({ type: 'agent_start' }, deps);
+    foldAgentEvent({ type: 'agent_end', isTerminal: true, messages: [] }, deps);
+    expect(state().isGenerating).toBe(false);
+    expect(runEnds()).toBe(1);
+  });
+
+  test('an agent_end with no isTerminal field is treated as terminal', () => {
+    // The field is optional: a frame that omits it is a normal run end.
+    const { deps, state, runEnds } = makeDeps();
+    foldAgentEvent({ type: 'agent_start' }, deps);
+    foldAgentEvent({ type: 'agent_end', messages: [] }, deps);
+    expect(state().isGenerating).toBe(false);
+    expect(runEnds()).toBe(1);
   });
 });

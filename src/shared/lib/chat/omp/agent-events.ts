@@ -225,6 +225,16 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
     }
 
     case 'agent_end': {
+      // A NON-TERMINAL `agent_end` is not the end of the run: omp emits it when
+      // the turn yields but work is still alive — a detached subagent, a
+      // compaction, a background job, or a stop-time reminder — and a later
+      // `agent_start` opens the continuation. Measured on omp 18.3.2: with an
+      // async subagent, `agent_end isTerminal=false` arrives ~13s BEFORE the
+      // subagent's terminal frame, and clearing the generating state there
+      // blanked the indicator for the whole stretch the roster was still
+      // showing a live child. The server's own fold gates on the same field
+      // (frame-fold.ts), so the two ends now agree.
+      if (data.isTerminal === false) break;
       deps.setState((prev) => ({ ...prev, isGenerating: false }));
       deps.activityRef.current = '';
       const terminal = materializeTerminalMessages(data, deps, callbacks ?? undefined);
