@@ -40,6 +40,11 @@ export const win32Probe: ProcessProbe = {
   commandLine() {
     return null;
   },
+  liveness(pid) {
+    // No zombie state is observable on Windows (a process object lives until
+    // its last handle closes), so signal 0 is the whole answer.
+    return signalAlive(pid) ? 'alive' : 'dead';
+  },
   isAlive: signalAlive,
   isZombie() {
     return false;

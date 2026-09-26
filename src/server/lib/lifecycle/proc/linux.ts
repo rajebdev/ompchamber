@@ -49,6 +49,20 @@ function statTail(pid: number): string[] | null {
  */
 const TPGID_FIELD = 5;
 
+/**
+ * `{ state, tpgid }` from ONE `/proc/<pid>/stat` read.
+ *
+ * `isZombie` and `foregroundGroup` both need this file, and the terminal cap
+ * asks both about the same shell; reading it once per question instead of twice
+ * is why the two are resolved together.
+ */
+function procStat(pid: number): { state: string; tpgid: number } | null {
+  const fields = statTail(pid);
+  if (fields === null) return null;
+  const tpgid = Number(fields[TPGID_FIELD]);
+  return { state: fields[STATE_FIELD], tpgid: Number.isFinite(tpgid) ? tpgid : 0 };
+}
+
 export const linuxProbe: ProcessProbe = {
   commandLine(pid) {
     const raw = readFile(`/proc/${pid}/cmdline`);
@@ -59,22 +73,30 @@ export const linuxProbe: ProcessProbe = {
     // Kernel threads have no argv — `comm` is all the identity there is.
     return readFile(`/proc/${pid}/comm`)?.trim() || null;
   },
+  liveness(pid) {
+    // A `/proc` entry exists for a zombie too, so the state field is what
+    // separates a corpse from a running process.
+    const stat = procStat(pid);
+    if (stat === null) {
+      // No `stat` file: either the PID is gone or the read failed. `existsSync`
+      // keeps the previous answer for a process with no readable stat.
+      return fs.existsSync(`/proc/${pid}`) ? 'unknown' : 'dead';
+    }
+    return ZOMBIE_STATES.has(stat.state) ? 'zombie' : 'alive';
+  },
   isAlive(pid) {
     // A `/proc` entry exists for a zombie too, so liveness is "the directory is
     // there"; `isZombie` is what separates a corpse from a running process.
     return fs.existsSync(`/proc/${pid}`);
   },
   isZombie(pid) {
-    const fields = statTail(pid);
-    if (fields === null) return false;
-    return ZOMBIE_STATES.has(fields[STATE_FIELD]);
+    const stat = procStat(pid);
+    return stat !== null && ZOMBIE_STATES.has(stat.state);
   },
   foregroundGroup(pid) {
     // Already read for `isZombie` on the same question, so this costs no extra
     // syscall beyond the file read itself.
-    const fields = statTail(pid);
-    if (fields === null) return null;
-    const tpgid = Number(fields[TPGID_FIELD]);
-    return Number.isFinite(tpgid) ? tpgid : null;
+    const stat = procStat(pid);
+    return stat === null ? null : stat.tpgid;
   },
 };

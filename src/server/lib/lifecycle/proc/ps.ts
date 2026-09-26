@@ -67,6 +67,13 @@ export const psProbe: ProcessProbe = {
     const row = processTable().find((entry) => entry.pid === pid);
     return row && row.command.length > 0 ? row.command : null;
   },
+  liveness(pid) {
+    // The table already carries the state column, so liveness and zombie-ness
+    // are one lookup; the signal check stays for the no-`ps` case.
+    const row = processTable().find((entry) => entry.pid === pid);
+    if (row) return row.state.startsWith('Z') ? 'zombie' : 'alive';
+    return signalAlive(pid) ? 'unknown' : 'dead';
+  },
   isAlive(pid) {
     if (!signalAlive(pid)) return false;
     const row = processTable().find((entry) => entry.pid === pid);

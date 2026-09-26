@@ -37,7 +37,11 @@ export type ProcessState = 'dead' | 'matched' | 'mismatched' | 'unknown';
  */
 export function isProcessAlive(pid: number): boolean {
   if (!Number.isFinite(pid) || pid <= 0) return false;
-  return processProbe.isAlive(pid) && !processProbe.isZombie(pid);
+  const liveness = processProbe.liveness(pid);
+  // A zombie is NOT alive: it holds no port and will never run again. An
+  // `unknown` (a probe that could not answer) keeps the previous bias and
+  // counts as alive, so a sandboxed host cannot make a live server look dead.
+  return liveness === 'alive' || liveness === 'unknown';
 }
 
 /**

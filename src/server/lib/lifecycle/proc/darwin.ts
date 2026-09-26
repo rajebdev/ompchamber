@@ -28,7 +28,7 @@
 import { dlopen, FFIType, ptr } from 'bun:ffi';
 import type { FFIFunction, Library } from 'bun:ffi';
 
-import type { ProcessProbe } from '@/server/lib/lifecycle/proc/types';
+import type { ProcessLiveness, ProcessProbe } from '@/server/lib/lifecycle/proc/types';
 
 /** `sysctl` MIB pieces. */
 const CTL_KERN = 1;
@@ -45,7 +45,20 @@ const KINFO_PROC_BYTES = 648;
 const P_STAT_OFFSET = 36;
 /** Darwin `p_stat` values. */
 const SZOMB = 5;
+/** `p_stat` values that mean "exited but not yet reaped". */
 const SZOMB_LIKE = new Set([SZOMB, 6 /* SDEAD */]);
+
+/**
+ * Scratch for the `sysctl(KERN_PROC_PID)` call below, at module scope.
+ *
+ * One `isProcessAlive` asks this question twice (liveness then zombie), and
+ * `getProcessState` asks it twice more — so the buffers are reused rather than
+ * reallocated per call, the same reasoning as `bsdInfo` further down. Safe
+ * because the whole probe is synchronous: no `await` can interleave a caller.
+ */
+const procMib = new Int32Array([CTL_KERN, KERN_PROC, KERN_PROC_PID, 0]);
+const procSize = new BigUint64Array([BigInt(KINFO_PROC_BYTES)]);
+const procBuffer = new Uint8Array(KINFO_PROC_BYTES);
 
 /** Upper bound on a command line block; the kernel truncates instead. */
 const ARGV_BUFFER_BYTES = 262_144;
@@ -106,24 +119,27 @@ const BSDINFO_PID_OFFSET = 12;
 const BSDINFO_TPGID_OFFSET = 112;
 
 /**
- * `p_stat` for a live PID, or null when the PID does not exist.
+ * `p_stat` for a PID, `'absent'` when the kernel says no such process, or null
+ * when the call itself failed.
  *
- * A zero-length result is the kernel saying "no such process"; the call itself
- * failing (rc !== 0) is reported as null too, and callers then fall back.
+ * The two failure modes are NOT the same question and callers must not merge
+ * them: `sysctl(KERN_PROC_PID)` answers rc=0 with a zero-length reply for a PID
+ * that does not exist (verified: 999999 → rc 0, size 0), while a sandbox denies
+ * the call with a non-zero rc. Reading the second as "dead" would let a sandbox
+ * report a live server as gone.
  */
-function procStatus(pid: number): number | null {
+function procStatus(pid: number): number | 'absent' | null {
   const bound = bindLibs();
   if (bound === null) return null;
-  const mib = new Int32Array([CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]);
-  const size = new BigUint64Array([BigInt(KINFO_PROC_BYTES)]);
-  const buffer = new Uint8Array(KINFO_PROC_BYTES);
+  procMib[3] = pid;
+  procSize[0] = BigInt(KINFO_PROC_BYTES);
   try {
-    if (bound.libc.symbols.sysctl(ptr(mib), 4, ptr(buffer), ptr(size), null, 0) !== 0) return null;
+    if (bound.libc.symbols.sysctl(ptr(procMib), 4, ptr(procBuffer), ptr(procSize), null, 0) !== 0) return null;
   } catch {
     return null;
   }
-  if (Number(size[0]) === 0) return null;
-  return buffer[P_STAT_OFFSET];
+  if (Number(procSize[0]) === 0) return 'absent';
+  return procBuffer[P_STAT_OFFSET];
 }
 
 /**
@@ -197,21 +213,40 @@ function signalAlive(pid: number): boolean {
   }
 }
 
+/**
+ * Liveness in one lookup, for both the probe and its own `isAlive`/`isZombie`
+ * shims. A method calling `this` would break the moment a caller destructured
+ * the probe, and the session registry does pass probes around by reference.
+ */
+function darwinLiveness(pid: number): ProcessLiveness {
+  const status = procStatus(pid);
+  if (status === 'absent') return 'dead';
+  if (status !== null) return SZOMB_LIKE.has(status) ? 'zombie' : 'alive';
+  // The syscall itself failed (sandbox). A path or a signal still separates
+  // "exists" from "gone" — a path read answers for root-owned PIDs, and signal
+  // 0 answers for the rest — so only a PID that fails both is reported dead.
+  // Anything else is `unknown`, which callers treat as alive-but-unverified.
+  if (executablePath(pid) !== null || signalAlive(pid)) return 'alive';
+  return 'unknown';
+}
+
 export const darwinProbe: ProcessProbe = {
   commandLine(pid) {
     const args = argvOf(pid);
     if (args && args.length > 0) return args.join(' ');
     return executablePath(pid);
   },
+  liveness: darwinLiveness,
   isAlive(pid) {
-    const status = procStatus(pid);
-    if (status !== null) return !SZOMB_LIKE.has(status);
-    // The syscall itself failed (sandbox) — liveness alone is all that is left.
-    return executablePath(pid) !== null || signalAlive(pid);
+    // `procStatus` already reports a zombie as not-alive, so the old
+    // `isAlive && !isZombie` pair asked it twice for one answer.
+    const liveness = darwinLiveness(pid);
+    // `unknown` keeps the previous fallback's bias: a sandboxed host must not
+    // make a live server look dead.
+    return liveness === 'alive' || liveness === 'unknown';
   },
   isZombie(pid) {
-    const status = procStatus(pid);
-    return status !== null && SZOMB_LIKE.has(status);
+    return darwinLiveness(pid) === 'zombie';
   },
   /**
    * `e_tpgid` — the field `ps -o tpgid=` prints. `proc_pidinfo` is the cheap

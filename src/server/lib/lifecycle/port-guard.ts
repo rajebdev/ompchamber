@@ -22,6 +22,7 @@
 
 import fs from 'fs';
 
+import { flockAvailable, tryFlock } from '@/server/lib/lifecycle/flock';
 import { getProcessState } from '@/server/lib/lifecycle/identity';
 import { describeOccupant, findOccupant } from '@/server/lib/lifecycle/occupant';
 import { getLockPath } from '@/server/lib/lifecycle/paths';
@@ -48,13 +49,27 @@ export interface PortLock {
  * Two starters racing on one free port would each probe it as free and then
  * fight over the bind, with the loser reporting a bare `EADDRINUSE` against a
  * process it cannot identify yet. Holding the lock across probe-and-bind makes
- * the loser fail with a message that names the actual situation. A lock whose
- * holder is dead (or is not OMPChamber, i.e. a recycled PID) is reclaimed.
+ * the loser fail with a message that names the actual situation.
  *
- * Returns null when another starter holds the lock through the wait window.
+ * The mechanism is `flock(2)` when the host has it (see `flock.ts`): the kernel
+ * releases it on process death, so there is no stale-holder case to detect and
+ * no polling loop. The PID-file path below stays as the fallback for a host
+ * without `flock` (Windows, a filesystem answering `ENOLCK`); it needs the
+ * extra machinery — PID readback, `getProcessState` classification, and
+ * reclaiming a lock whose holder died or whose PID was recycled.
  */
 export async function acquirePortLock(port: number, waitMs = LOCK_WAIT_MS): Promise<PortLock | null> {
   const lockPath = getLockPath(port);
+  if (flockAvailable()) {
+    const deadline = Date.now() + waitMs;
+    for (;;) {
+      const handle = tryFlock(lockPath);
+      if (handle) return handle;
+      if (Date.now() >= deadline) return null;
+      await Bun.sleep(150);
+    }
+  }
+
   const deadline = Date.now() + waitMs;
   for (;;) {
     try {
