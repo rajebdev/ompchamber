@@ -44,6 +44,8 @@ function applyProgress(roster: SubagentInfo[], progress: SubagentProgress): Suba
 /**
  * Subagent roster nested under a session row: renders clean, readable subagent
  * items matching the minimalist sidebar layout while preserving interactive inspection.
+ * Shared by the desktop sidebar's `CategoryItem` and the mobile drawer's
+ * `MobileSessionCategory`, so both list the same roster.
  */
 export function SubagentList({ sessionId, isActiveSession }: SubagentListProps) {
   const [searchParams] = useSearchParams();

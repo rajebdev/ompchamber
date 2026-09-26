@@ -74,6 +74,12 @@ export function MobileLayoutWrapper({ onDesktopToggle, appSettings = {} }: Mobil
     });
   });
 
+  // A roster row opens a subagent transcript in the chat timeline (the
+  // `omp:view-subagent` listener there owns the URL). On the phone the chat is
+  // a separate screen, so the tap must also bring it forward — otherwise the
+  // transcript opens behind the drawer and the tap reads as a no-op.
+  useChamberEvent('omp:view-subagent', () => setCurrentScreen('main'));
+
   // Settings requests (e.g. the model dropdown asking for Settings → Providers
   // when no provider is configured) arrive on the same global channel the
   // desktop layout listens on. SettingsModal itself only reads the payload and

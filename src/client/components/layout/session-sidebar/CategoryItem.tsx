@@ -6,9 +6,9 @@ import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 import { useShowMore } from '@/client/hooks/ui/show-more';
 import { useWorkspaceFolderActions } from '@/client/hooks/workspace/workspace-folder-actions';
 import { SessionItem } from '@/client/components/layout/session-sidebar/SessionItem';
-import { SubagentList } from '@/client/components/layout/session-sidebar/SubagentList';
+import { SubagentList } from '@/client/components/common/subagent-list';
 import { WorkspaceOptionsMenu } from '@/client/components/common/workspace-options-menu';
-import { loadExpandedSessionIds, saveExpandedSessionIds } from '@/shared/lib/workspace/sidebar-expanded';
+import { useExpandedSessions } from '@/client/hooks/workspace/expanded-sessions';
 import { getProjectIcon } from '@/shared/lib/workspace/project-icon';
 import { useSidebarData } from '@/client/hooks/chat/omp/session-list';
 
@@ -37,32 +37,14 @@ export function Category({
   const [searchParams] = useSearchParams();
   const urlSubagentId = searchParams.get('subagent');
   const urlSessionId = searchParams.get('sessionId');
-  
-  // Sidebar-level expanded session set
-  const [expandedSessionIds, setExpandedSessionIds] = useState<Set<string>>(() => new Set());
 
-  useEffect(() => {
-    const saved = loadExpandedSessionIds();
-    if (saved && saved.size > 0) {
-      setExpandedSessionIds(saved);
-    }
-  }, []);
+  // Roster expansion is shared with the mobile drawer: one persisted set, so a
+  // row expanded on the phone is expanded here too.
+  const { expandedSessionIds, toggleSession } = useExpandedSessions();
 
   useEffect(() => {
     if (typeof folder.isExpanded === 'boolean') setIsOpen(folder.isExpanded);
   }, [folder.isExpanded]);
-
-  // A deep-linked transcript (?sessionId=…&subagent=…) auto-expands its
-  // session row so the viewed roster entry is visible after a reload.
-  useEffect(() => {
-    if (!urlSubagentId || !urlSessionId) return;
-    setExpandedSessionIds(prev => {
-      if (prev.has(urlSessionId)) return prev;
-      const next = new Set(prev);
-      next.add(urlSessionId);
-      return next;
-    });
-  }, [urlSubagentId, urlSessionId]);
   
   const menuRef = useRef<HTMLDivElement>(null);
   const { refresh } = useSidebarData();
@@ -106,13 +88,7 @@ export function Category({
   };
 
   const handleToggleSessionExpand = (sessionId: string) => {
-    setExpandedSessionIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(sessionId)) next.delete(sessionId);
-      else next.add(sessionId);
-      saveExpandedSessionIds(next);
-      return next;
-    });
+    toggleSession(sessionId);
   };
 
   const onPin = () => {

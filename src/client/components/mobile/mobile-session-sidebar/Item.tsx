@@ -1,8 +1,11 @@
 import { useRef, useState } from 'preact/hooks';
 import { ChevronDown, ChevronRight, GitBranch, MessageSquare, MoreHorizontal, Plus } from 'lucide-preact';
+import { useSearchParams } from '@/client/lib/router/search-params';
 import { MobileSessionRow } from '@/client/components/mobile/mobile-session-sidebar/SessionRow';
+import { SubagentList } from '@/client/components/common/subagent-list';
 import { WorkspaceOptionsMenu } from '@/client/components/common/workspace-options-menu';
 import { useShowMore } from '@/client/hooks/ui/show-more';
+import { useExpandedSessions } from '@/client/hooks/workspace/expanded-sessions';
 import { useWorkspaceFolderActions } from '@/client/hooks/workspace/workspace-folder-actions';
 import { getProjectIcon } from '@/shared/lib/workspace/project-icon';
 import { relativeTimeAgo } from '@/shared/lib/workspace/relative-time';
@@ -33,6 +36,12 @@ export function MobileSessionCategory({
 }: MobileSessionCategoryProps) {
   const { visibleCount, showMore } = useShowMore();
   const { refresh } = useSidebarData();
+  const { expandedSessionIds, toggleSession } = useExpandedSessions();
+  // The viewed transcript, so its session row dims while a roster entry is
+  // open (desktop parity — same params, same rule).
+  const [searchParams] = useSearchParams();
+  const urlSubagentId = searchParams.get('subagent');
+  const urlSessionId = searchParams.get('sessionId');
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const {
@@ -153,18 +162,39 @@ export function MobileSessionCategory({
 
       {isExpanded && (
         <div className="mt-0.5 space-y-0.5 pl-2">
-          {visibleSessions.map((session) => (
-            <MobileSessionRow
-              key={session.id}
-              session={session}
-              isActive={String(activeSessionId) === String(session.id)}
-              status={sessionStatus[String(session.id)]}
-              timeAgo={relativeTimeAgo(session.updated_at ?? session.created_at)}
-              onSelect={() => onSelectSession(session.id)}
-              onArchive={() => handleArchive(session)}
-              onRename={String(session.id).startsWith('new-') ? undefined : (name) => void handleRename(session, name)}
-            />
-          ))}
+          {visibleSessions.map((session) => {
+            const sessionKey = String(session.id);
+            const isSessionActive = String(activeSessionId) === sessionKey;
+            // While one of its subagents is being viewed, the parent session
+            // row dims so the highlighted roster entry reads as the active one
+            // (desktop parity).
+            const isViewingSubagent = isSessionActive && urlSessionId === sessionKey && Boolean(urlSubagentId);
+            // Same gate as desktop: the omp-side loader flag is authoritative,
+            // so a session whose roster exists on disk can be opened without a
+            // live process.
+            const hasSubagents = Boolean(session.hasSubagents);
+            const isRosterOpen = hasSubagents && expandedSessionIds.has(sessionKey);
+
+            return (
+              <div key={session.id} className="space-y-0.5">
+                <MobileSessionRow
+                  session={session}
+                  isActive={isSessionActive && !isViewingSubagent}
+                  status={sessionStatus[sessionKey]}
+                  timeAgo={relativeTimeAgo(session.updated_at ?? session.created_at)}
+                  hasSubagents={hasSubagents}
+                  isExpanded={isRosterOpen}
+                  onToggleExpand={() => toggleSession(sessionKey)}
+                  onSelect={() => onSelectSession(session.id)}
+                  onArchive={() => handleArchive(session)}
+                  onRename={sessionKey.startsWith('new-') ? undefined : (name) => void handleRename(session, name)}
+                />
+                {isRosterOpen && (
+                  <SubagentList sessionId={session.id} isActiveSession={isSessionActive} />
+                )}
+              </div>
+            );
+          })}
 
           {filteredSessions.length > visibleCount && (
             <button
