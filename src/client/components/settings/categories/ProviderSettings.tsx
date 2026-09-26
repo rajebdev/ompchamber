@@ -13,6 +13,8 @@ import { AddModelModal } from '@/client/components/settings/categories/provider-
 import { DeleteProviderModal } from '@/client/components/settings/categories/provider-settings/DeleteProviderModal';
 import { providerEmptyReason } from '@/shared/lib/models/provider/dialect';
 import { configuredProviderSlugs } from '@/shared/lib/models/provider/presets';
+import { useSettingsMasterDetail } from '@/client/hooks/settings/master-detail';
+import { SettingsMasterDetail } from '@/client/components/settings/master-detail';
 
 interface ProviderSettingsProps {
   autoOpenAdd?: boolean;
@@ -23,6 +25,7 @@ export function ProviderSettings({
   autoOpenAdd = false,
   onAddModalClose,
 }: ProviderSettingsProps) {
+  const masterDetail = useSettingsMasterDetail();
   const {
     providers,
     connectedProviders,
@@ -66,61 +69,76 @@ export function ProviderSettings({
   } = useProviderSettings({ autoOpenAdd, onAddModalClose });
 
   return (
-    <div className="w-full h-full flex flex-col md:flex-row overflow-hidden bg-paper text-ink">
-      <ProviderSidebarList
-        providers={connectedProviders}
-        selectedProviderId={selectedProvider?.id || ''}
-        onSelectProvider={setSelectedProviderId}
-        onOpenAddModal={() => setIsAddModalOpen(true)}
-        currentProject={currentProject}
-        onSelectProject={setCurrentProject}
-      />
+    <div className="w-full h-full flex flex-col overflow-hidden bg-paper text-ink">
+      <SettingsMasterDetail
+        // The "add provider" dialog lives inside the detail pane, so a hidden
+        // pane would hide the dialog with it — and `autoOpenAdd` (the model
+        // dropdown's "no provider configured" path) opens it without any row
+        // having been tapped. While that dialog is open the pane stays up.
+        pane={isAddModalOpen ? 'detail' : masterDetail.pane}
+        onBack={masterDetail.back}
+        listLabel="Providers"
+        list={
+          <ProviderSidebarList
+            providers={connectedProviders}
+            selectedProviderId={selectedProvider?.id || ''}
+            onSelectProvider={(id) => {
+              setSelectedProviderId(id);
+              masterDetail.openDetail();
+            }}
+            onOpenAddModal={() => setIsAddModalOpen(true)}
+            currentProject={currentProject}
+            onSelectProject={setCurrentProject}
+          />
+        }
+        detail={
+          <div className="flex-1 scrollbar-overlay-container scrollbar-overlay-static p-6 md:p-8 space-y-6">
+            {selectedProvider ? (
+              <>
+                <ProviderHeader provider={selectedProvider} />
 
-      <div className="flex-1 scrollbar-overlay-container scrollbar-overlay-static p-6 md:p-8 space-y-6">
-        {selectedProvider ? (
-          <>
-            <ProviderHeader provider={selectedProvider} />
+                <ProviderAuthSection
+                  provider={selectedProvider}
+                  onOpenReconnectModal={() => {
+                    // A provider omp signs in through `/login` needs the OAuth
+                    // dialog; one whose endpoint and key live in models.yml (or the
+                    // chamber overlay) is edited in place. Testing the provider ID
+                    // for `omp-auth-` was wrong: a native models.yml entry shares
+                    // that ID prefix once merged, and a keyless local server has no
+                    // login flow to complete at all.
+                    if (selectedProvider.credentialSource === 'omp-auth' && selectedProvider.auth !== 'none') {
+                      setIsLoginModalOpen(true);
+                    } else {
+                      setIsReconnectModalOpen(true);
+                    }
+                  }}
+                  onToggleDisconnect={handleToggleDisconnect}
+                  onToggleDisabled={handleToggleProviderDisabled}
+                  onDelete={() => setIsDeleteModalOpen(true)}
+                />
 
-            <ProviderAuthSection
-              provider={selectedProvider}
-              onOpenReconnectModal={() => {
-                // A provider omp signs in through `/login` needs the OAuth
-                // dialog; one whose endpoint and key live in models.yml (or the
-                // chamber overlay) is edited in place. Testing the provider ID
-                // for `omp-auth-` was wrong: a native models.yml entry shares
-                // that ID prefix once merged, and a keyless local server has no
-                // login flow to complete at all.
-                if (selectedProvider.credentialSource === 'omp-auth' && selectedProvider.auth !== 'none') {
-                  setIsLoginModalOpen(true);
-                } else {
-                  setIsReconnectModalOpen(true);
-                }
-              }}
-              onToggleDisconnect={handleToggleDisconnect}
-              onToggleDisabled={handleToggleProviderDisabled}
-              onDelete={() => setIsDeleteModalOpen(true)}
-            />
-
-            <ProviderModelsList
-              models={selectedProvider.models}
-              emptyReason={providerEmptyReason(selectedProvider)}
-              onToggleModelVisibility={handleToggleModelVisibility}
-              onHideAll={handleHideAll}
-              onShowAll={handleShowAll}
-              onFetchModels={handleFetchModelsFromList}
-              onAddModel={() => setIsAddModelModalOpen(true)}
-              canFetchModels={Boolean(selectedProvider.baseUrl)}
-              isFetchingModels={isFetchingModels}
-              onOpenModelConfig={(model) => setConfigModel(model)}
-              onOpenModelCapabilities={(model) => setCapabilitiesModel(model)}
-            />
-          </>
-        ) : (
-          <div className="py-12 text-center text-xs text-ink/40">
-            Select a provider from the sidebar to view connection details
+                <ProviderModelsList
+                  models={selectedProvider.models}
+                  emptyReason={providerEmptyReason(selectedProvider)}
+                  onToggleModelVisibility={handleToggleModelVisibility}
+                  onHideAll={handleHideAll}
+                  onShowAll={handleShowAll}
+                  onFetchModels={handleFetchModelsFromList}
+                  onAddModel={() => setIsAddModelModalOpen(true)}
+                  canFetchModels={Boolean(selectedProvider.baseUrl)}
+                  isFetchingModels={isFetchingModels}
+                  onOpenModelConfig={(model) => setConfigModel(model)}
+                  onOpenModelCapabilities={(model) => setCapabilitiesModel(model)}
+                />
+              </>
+            ) : (
+              <div className="py-12 text-center text-xs text-ink/40">
+                Select a provider from the sidebar to view connection details
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        }
+      />
 
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
 
@@ -130,7 +148,13 @@ export function ProviderSettings({
           setIsAddModalOpen(false);
           onAddModalClose?.();
         }}
-        onAddProvider={handleAddProvider}
+        onAddProvider={async (provider, options) => {
+          await handleAddProvider(provider, options);
+          // The row now exists in the list; on a phone the newly registered
+          // provider is what the user came to configure, so land on its detail
+          // rather than dropping them back on the list.
+          masterDetail.openDetail();
+        }}
         presets={availablePresetProviders}
         existingSlugs={configuredProviderSlugs(providers)}
       />

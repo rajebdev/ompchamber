@@ -84,7 +84,11 @@ export function SettingsModal({
     if (isOpen) {
       setActiveCategory(initialCategory);
       setAutoOpenAdd(autoOpenAddProvider);
-      setIsMobileDrilled(false);
+      // `autoOpenAdd` asks for the provider dialog, which a category renders
+      // inside its own detail pane. On a phone the modal would otherwise open
+      // inside a `display: none` subtree and never be seen, so the request also
+      // lands the user on the category screen it belongs to.
+      setIsMobileDrilled(autoOpenAddProvider);
       setSearchQuery('');
     }
   }, [isOpen, initialCategory, autoOpenAddProvider]);
@@ -206,8 +210,19 @@ export function SettingsModal({
 
         {/* DESKTOP & MOBILE DETAIL VIEW */}
         <div className={`flex-1 flex-col h-full bg-paper overflow-hidden ${isMobileDrilled ? 'flex' : 'hidden md:flex'}`}>
-          {/* Header Bar */}
-          <div className="h-16 px-6 border-b border-ink/10 flex items-center justify-between flex-shrink-0 bg-paper">
+          {/* Header Bar. The height and padding carry the safe-area insets on a
+              phone: the modal is full-screen below `md`, so without them the
+              back button and the title sit under the status bar / notch, the
+              same way the mobile chrome (header, editor, diff) already avoids. */}
+          <div
+            className="px-6 border-b border-ink/10 flex items-center justify-between flex-shrink-0 bg-paper"
+            style={{
+              height: 'calc(4rem + env(safe-area-inset-top, 0px))',
+              paddingTop: 'env(safe-area-inset-top, 0px)',
+              paddingLeft: 'max(1.5rem, env(safe-area-inset-left, 0px))',
+              paddingRight: 'max(1.5rem, env(safe-area-inset-right, 0px))',
+            }}
+          >
             <div className="flex items-center space-x-3 min-w-0">
               {/* Mobile Back Button */}
               <button
@@ -241,7 +256,10 @@ export function SettingsModal({
           </div>
 
           {/* Scrollable Settings Body - Full Width across all categories */}
-          <div className={`flex-1 scrollbar-overlay-container scrollbar-overlay-static w-full ${['projects', 'providers', 'agents', 'behavior', 'commands', 'mcp', 'skills', 'skills-catalog', 'usage'].includes(activeCategory) ? 'p-0 flex flex-col' : 'p-6 md:p-8 flex flex-col'}`}>
+          <div
+            className={`flex-1 scrollbar-overlay-container scrollbar-overlay-static w-full ${['projects', 'providers', 'agents', 'behavior', 'commands', 'mcp', 'skills', 'skills-catalog', 'usage'].includes(activeCategory) ? 'p-0 flex flex-col' : 'p-6 md:p-8 flex flex-col'}`}
+            style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+          >
             <div className="w-full h-full flex-1 flex flex-col">
               {renderCategoryContent()}
             </div>
@@ -250,7 +268,15 @@ export function SettingsModal({
 
         {/* MOBILE CATEGORY LIST VIEW (When not drilled into detail) */}
         <div className={`flex-1 flex-col h-full bg-canvas md:hidden ${isMobileDrilled ? 'hidden' : 'flex'}`}>
-          <div className="h-14 px-4 border-b border-ink/10 flex items-center justify-between flex-shrink-0 bg-canvas">
+          <div
+            className="px-4 border-b border-ink/10 flex items-center justify-between flex-shrink-0 bg-canvas"
+            style={{
+              height: 'calc(3.5rem + env(safe-area-inset-top, 0px))',
+              paddingTop: 'env(safe-area-inset-top, 0px)',
+              paddingLeft: 'max(1rem, env(safe-area-inset-left, 0px))',
+              paddingRight: 'max(1rem, env(safe-area-inset-right, 0px))',
+            }}
+          >
             <span className="font-bold text-sm tracking-tight text-ink">Settings</span>
             <button
               type="button"
@@ -262,7 +288,10 @@ export function SettingsModal({
             </button>
           </div>
 
-          <div className="flex-1 overflow-hidden">
+          <div
+            className="flex-1 overflow-hidden"
+            style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+          >
             <SettingsSidebar
               activeCategory={activeCategory}
               onSelectCategory={handleSelectCategory}

@@ -105,24 +105,24 @@ export const BehaviorEditor: FunctionComponent<BehaviorEditorProps> = ({
   return (
     <div className="flex-1 flex flex-col h-full bg-paper text-ink p-6 md:p-8 overflow-hidden">
       {/* Header Bar */}
-      <div className="flex items-center justify-between pb-4 border-b border-ink/10">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pb-4 border-b border-ink/10">
+        <div className="flex items-center gap-2 min-w-0">
           <h2 className="text-sm font-bold tracking-tight text-ink flex items-center gap-2">
-            <span>{copy.title}</span>
-            <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-ink/15 text-ink/50 font-medium">
+            <span className="truncate">{copy.title}</span>
+            <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-ink/15 text-ink/50 font-medium flex-shrink-0">
               {copy.badge}
             </span>
           </h2>
-          <div className="group relative">
+          <div className="group relative flex-shrink-0">
             <Info className="w-4 h-4 text-ink/40 cursor-help" />
-            <div className="absolute left-0 top-6 hidden group-hover:block w-80 p-2.5 rounded-lg bg-ink text-paper text-xs shadow-lg z-20 leading-relaxed pointer-events-none">
+            <div className="absolute left-0 top-6 hidden group-hover:block w-80 max-w-[80vw] p-2.5 rounded-lg bg-ink text-paper text-xs shadow-lg z-20 leading-relaxed pointer-events-none">
               {copy.tooltip}
             </div>
           </div>
         </div>
 
         {/* Action Buttons Top */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <button
             type="button"
             onClick={handleCopy}

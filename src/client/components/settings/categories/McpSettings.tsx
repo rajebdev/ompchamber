@@ -8,6 +8,8 @@ import { McpImportModal } from '@/client/components/settings/categories/mcp-sett
 import { LoadingState } from '@/client/components/settings/LoadingState';
 import { useSidebarData } from '@/client/hooks/chat/omp/session-list';
 import { useCrudList } from '@/client/hooks/settings/crud-list';
+import { useSettingsMasterDetail } from '@/client/hooks/settings/master-detail';
+import { SettingsMasterDetail } from '@/client/components/settings/master-detail';
 
 interface McpSettingsProps {
   settings: SettingsState;
@@ -17,6 +19,7 @@ interface McpSettingsProps {
 const GLOBAL_PROJECT: McpProjectOption = { id: 'global', name: 'Global (all projects)', path: '' };
 
 export const McpSettings: FunctionComponent<McpSettingsProps> = () => {
+  const masterDetail = useSettingsMasterDetail();
   const { folders } = useSidebarData();
   const projects = useMemo<McpProjectOption[]>(() => {
     const bound = folders.flatMap<McpProjectOption>((folder) =>
@@ -98,39 +101,53 @@ export const McpSettings: FunctionComponent<McpSettingsProps> = () => {
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-paper">
-      <McpSidebarList
-        servers={servers}
-        projects={projects}
-        selectedServerId={isCreatingNew ? null : selectedId}
-        onSelectServer={select}
-        onAddNewServer={startCreate}
-        selectedProject={selectedProject}
-        onChangeProject={setSelectedProject}
-      />
-
-      <div className="flex-1 h-full overflow-hidden flex flex-col">
-        {isCreatingNew ? (
-          <McpDetailPane
-            server={emptyServerTemplate}
-            isNew={true}
-            onSave={save}
-            onOpenImportModal={() => setIsImportModalOpen(true)}
+      <SettingsMasterDetail
+        pane={masterDetail.pane}
+        onBack={masterDetail.back}
+        listLabel="MCP Servers"
+        list={
+          <McpSidebarList
+            servers={servers}
+            projects={projects}
+            selectedServerId={isCreatingNew ? null : selectedId}
+            onSelectServer={(id) => {
+              select(id);
+              masterDetail.openDetail();
+            }}
+            onAddNewServer={() => {
+              startCreate();
+              masterDetail.openDetail();
+            }}
+            selectedProject={selectedProject}
+            onChangeProject={setSelectedProject}
           />
-        ) : selectedServer ? (
-          <McpDetailPane
-            key={selectedServer.id}
-            server={selectedServer}
-            isNew={false}
-            onSave={save}
-            onDelete={remove}
-            onOpenImportModal={() => setIsImportModalOpen(true)}
-          />
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-xs font-mono text-ink/40">
-            Select an MCP server or click + to configure one
+        }
+        detail={
+          <div className="flex-1 h-full overflow-hidden flex flex-col">
+            {isCreatingNew ? (
+              <McpDetailPane
+                server={emptyServerTemplate}
+                isNew={true}
+                onSave={save}
+                onOpenImportModal={() => setIsImportModalOpen(true)}
+              />
+            ) : selectedServer ? (
+              <McpDetailPane
+                key={selectedServer.id}
+                server={selectedServer}
+                isNew={false}
+                onSave={save}
+                onDelete={remove}
+                onOpenImportModal={() => setIsImportModalOpen(true)}
+              />
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-xs font-mono text-ink/40">
+                Select an MCP server or click + to configure one
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        }
+      />
 
       <McpImportModal
         isOpen={isImportModalOpen}

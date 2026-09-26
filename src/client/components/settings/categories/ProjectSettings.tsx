@@ -4,8 +4,11 @@ import { ProjectSidebarList } from '@/client/components/settings/categories/proj
 import { ProjectDetailsForm } from '@/client/components/settings/categories/project-settings/DetailsForm';
 import { LoadingState } from '@/client/components/settings/LoadingState';
 import { useChamberEvent } from '@/client/hooks/ui/window-event';
+import { useSettingsMasterDetail } from '@/client/hooks/settings/master-detail';
+import { SettingsMasterDetail } from '@/client/components/settings/master-detail';
 
 export function ProjectSettings() {
+  const masterDetail = useSettingsMasterDetail();
   const [projects, setProjects] = useState<ProjectConfigItem[]>([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [accentColorOptions, setAccentColorOptions] = useState<AccentColorOption[]>([]);
@@ -94,6 +97,9 @@ export function ProjectSettings() {
       };
       setProjects((current) => [...current, newProject]);
       setSelectedProjectId(newProject.id);
+      // On a phone the new project's details are the point of adding it; the
+      // list pane would hide the row that was just created.
+      masterDetail.openDetail();
       window.dispatchEvent(new CustomEvent('omp:workspace-updated', { detail: { folderId } }));
     } catch (error) {
       console.error('Failed to add project:', error);
@@ -151,26 +157,35 @@ export function ProjectSettings() {
   }
 
   return (
-    <div className="w-full h-full flex flex-col md:flex-row overflow-hidden bg-paper text-ink">
-      {/* Left Column: Project list with counter & Add button */}
-      <ProjectSidebarList
-        projects={projects}
-        selectedProjectId={selectedProject?.id || ''}
-        onSelectProject={setSelectedProjectId}
-        onAddProject={handleAddProject}
+    <div className="w-full h-full flex flex-col overflow-hidden bg-paper text-ink">
+      <SettingsMasterDetail
+        pane={masterDetail.pane}
+        onBack={masterDetail.back}
+        listLabel="Projects"
+        list={
+          <ProjectSidebarList
+            projects={projects}
+            selectedProjectId={selectedProject?.id || ''}
+            onSelectProject={(id) => {
+              setSelectedProjectId(id);
+              masterDetail.openDetail();
+            }}
+            onAddProject={handleAddProject}
+          />
+        }
+        detail={
+          selectedProject ? (
+            <ProjectDetailsForm
+              project={selectedProject}
+              canDelete={projects.length > 1}
+              onUpdateField={handleUpdateField}
+              onDeleteProject={handleDeleteProject}
+              availableModels={availableModels}
+              accentColorOptions={accentColorOptions}
+            />
+          ) : null
+        }
       />
-
-      {/* Right Column: Project details & controls */}
-      {selectedProject && (
-        <ProjectDetailsForm
-          project={selectedProject}
-          canDelete={projects.length > 1}
-          onUpdateField={handleUpdateField}
-          onDeleteProject={handleDeleteProject}
-          availableModels={availableModels}
-          accentColorOptions={accentColorOptions}
-        />
-      )}
     </div>
   );
 }

@@ -45,13 +45,19 @@ export function Modal({
   return (
     <div
       className={`fixed inset-0 bg-ink/40 backdrop-blur-[2px] ${zClass} flex items-center justify-center p-4`}
+      style={{
+        paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))',
+        paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 0px))',
+        paddingLeft: 'max(1rem, env(safe-area-inset-left, 0px))',
+        paddingRight: 'max(1rem, env(safe-area-inset-right, 0px))',
+      }}
       onClick={onClose}
     >
       <div
-        className={`bg-paper border border-ink/15 rounded-xl shadow-2xl w-full ${maxWidthClass} overflow-hidden text-ink`}
+        className={`bg-paper border border-ink/15 rounded-xl shadow-2xl w-full ${maxWidthClass} max-h-full flex flex-col overflow-hidden text-ink`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-4 border-b border-ink/10 flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-ink/10 flex items-center justify-between flex-shrink-0">
           {header}
           <button
             type="button"
@@ -63,11 +69,15 @@ export function Modal({
         </div>
 
         {form ? (
-          <form onSubmit={form.onSubmit} className={form.className}>
+          // The body scrolls, not the panel: a long form (the add-provider
+          // dialog is 832px of fields) is taller than a phone viewport, and
+          // without a bounded, scrollable body its footer sat below the screen
+          // with no way to reach it — the dialog could not be submitted.
+          <form onSubmit={form.onSubmit} className={`${form.className} min-h-0 overflow-y-auto scrollbar-overlay-container scrollbar-overlay-static`}>
             {body}
           </form>
         ) : (
-          body
+          <div className="min-h-0 overflow-y-auto scrollbar-overlay-container scrollbar-overlay-static">{body}</div>
         )}
       </div>
     </div>

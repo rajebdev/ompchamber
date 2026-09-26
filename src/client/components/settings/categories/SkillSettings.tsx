@@ -4,6 +4,8 @@ import { SkillSidebarList } from '@/client/components/settings/categories/skill-
 import { SkillDetailPane } from '@/client/components/settings/categories/skill-settings/DetailPane';
 import { LoadingState } from '@/client/components/settings/LoadingState';
 import { useCrudList } from '@/client/hooks/settings/crud-list';
+import { useSettingsMasterDetail } from '@/client/hooks/settings/master-detail';
+import { SettingsMasterDetail } from '@/client/components/settings/master-detail';
 
 interface SkillSettingsProps {
   settings?: SettingsState;
@@ -12,6 +14,7 @@ interface SkillSettingsProps {
 }
 
 export function SkillSettings({ onNavigateToCatalog }: SkillSettingsProps) {
+  const masterDetail = useSettingsMasterDetail();
   const [selectedProjectId, setSelectedProjectId] = useState('ompchamber');
   const { items: skills, selectedId, selected: selectedSkill, isCreatingNew, isLoading, select, startCreate, save, remove } =
     useCrudList<SkillItem, Partial<SkillItem>>({
@@ -46,23 +49,37 @@ export function SkillSettings({ onNavigateToCatalog }: SkillSettingsProps) {
   }
 
   return (
-    <div className="flex-1 flex flex-col md:flex-row h-full w-full overflow-hidden bg-paper">
-      <SkillSidebarList
-        skills={skills}
-        selectedSkillId={selectedId}
-        isCreatingNew={isCreatingNew}
-        onSelectSkill={select}
-        onAddNewSkill={startCreate}
-        selectedProject={selectedProjectId}
-        onSelectProject={setSelectedProjectId}
-      />
-
-      <SkillDetailPane
-        skill={selectedSkill ?? null}
-        isCreatingNew={isCreatingNew}
-        onSave={save}
-        onDelete={remove}
-        onOpenCatalog={onNavigateToCatalog}
+    <div className="flex-1 flex flex-col h-full w-full overflow-hidden bg-paper">
+      <SettingsMasterDetail
+        pane={masterDetail.pane}
+        onBack={masterDetail.back}
+        listLabel="Skills"
+        list={
+          <SkillSidebarList
+            skills={skills}
+            selectedSkillId={selectedId}
+            isCreatingNew={isCreatingNew}
+            onSelectSkill={(id) => {
+              select(id);
+              masterDetail.openDetail();
+            }}
+            onAddNewSkill={() => {
+              startCreate();
+              masterDetail.openDetail();
+            }}
+            selectedProject={selectedProjectId}
+            onSelectProject={setSelectedProjectId}
+          />
+        }
+        detail={
+          <SkillDetailPane
+            skill={selectedSkill ?? null}
+            isCreatingNew={isCreatingNew}
+            onSave={save}
+            onDelete={remove}
+            onOpenCatalog={onNavigateToCatalog}
+          />
+        }
       />
     </div>
   );

@@ -31,7 +31,7 @@ export const McpSidebarList: FunctionComponent<McpSidebarListProps> = ({
   const activeProjectName = projects.find((proj) => proj.path === selectedProject)?.name ?? 'Global (all projects)';
 
   return (
-    <div className="w-56 sm:w-64 border-r border-ink/10 h-full flex flex-col bg-paper/50 flex-shrink-0 select-none">
+    <div className="w-full md:w-64 md:border-r border-ink/10 h-full flex flex-col bg-paper/50 flex-shrink-0 select-none">
       <ProjectSelectorDropdown
         selectedProject={selectedProject}
         onChangeProject={onChangeProject}

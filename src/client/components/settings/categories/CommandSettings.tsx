@@ -5,6 +5,8 @@ import { CommandSidebarList } from '@/client/components/settings/categories/comm
 import { CommandDetailPane } from '@/client/components/settings/categories/command-settings/DetailPane';
 import { LoadingState } from '@/client/components/settings/LoadingState';
 import { useCrudList } from '@/client/hooks/settings/crud-list';
+import { useSettingsMasterDetail } from '@/client/hooks/settings/master-detail';
+import { SettingsMasterDetail } from '@/client/components/settings/master-detail';
 
 interface CommandSettingsProps {
   settings: SettingsState;
@@ -12,6 +14,7 @@ interface CommandSettingsProps {
 }
 
 export const CommandSettings: FunctionComponent<CommandSettingsProps> = () => {
+  const masterDetail = useSettingsMasterDetail();
   const [selectedProject, setSelectedProject] = useState('ompchamber');
   const { items: commands, selectedId, selected: selectedCommand, isCreatingNew, isLoading, select, startCreate, save, remove } =
     useCrudList<CommandItem>({
@@ -46,36 +49,50 @@ export const CommandSettings: FunctionComponent<CommandSettingsProps> = () => {
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-paper">
-      <CommandSidebarList
-        commands={commands}
-        selectedCommandId={isCreatingNew ? null : selectedId}
-        onSelectCommand={select}
-        onAddNewCommand={startCreate}
-        selectedProject={selectedProject}
-        onChangeProject={setSelectedProject}
-      />
-
-      <div className="flex-1 h-full overflow-hidden flex flex-col">
-        {isCreatingNew ? (
-          <CommandDetailPane
-            command={emptyCommandTemplate}
-            isNew={true}
-            onSave={save}
+      <SettingsMasterDetail
+        pane={masterDetail.pane}
+        onBack={masterDetail.back}
+        listLabel="Commands"
+        list={
+          <CommandSidebarList
+            commands={commands}
+            selectedCommandId={isCreatingNew ? null : selectedId}
+            onSelectCommand={(id) => {
+              select(id);
+              masterDetail.openDetail();
+            }}
+            onAddNewCommand={() => {
+              startCreate();
+              masterDetail.openDetail();
+            }}
+            selectedProject={selectedProject}
+            onChangeProject={setSelectedProject}
           />
-        ) : selectedCommand ? (
-          <CommandDetailPane
-            key={selectedCommand.id}
-            command={selectedCommand}
-            isNew={false}
-            onSave={save}
-            onDelete={remove}
-          />
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-xs font-mono text-ink/40">
-            Select a command or click + to create one
+        }
+        detail={
+          <div className="flex-1 h-full overflow-hidden flex flex-col">
+            {isCreatingNew ? (
+              <CommandDetailPane
+                command={emptyCommandTemplate}
+                isNew={true}
+                onSave={save}
+              />
+            ) : selectedCommand ? (
+              <CommandDetailPane
+                key={selectedCommand.id}
+                command={selectedCommand}
+                isNew={false}
+                onSave={save}
+                onDelete={remove}
+              />
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-xs font-mono text-ink/40">
+                Select a command or click + to create one
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        }
+      />
     </div>
   );
 };

@@ -39,7 +39,7 @@ export function ProjectSidebarList({
   onAddProject,
 }: ProjectSidebarListProps) {
   return (
-    <div className="w-56 sm:w-64 border-r border-ink/10 h-full flex flex-col bg-paper/50 flex-shrink-0">
+    <div className="w-full md:w-64 md:border-r border-ink/10 h-full flex flex-col bg-paper/50 flex-shrink-0">
       {/* List Header */}
       <div className="px-3.5 py-3 border-b border-ink/10 flex items-center justify-between">
         <span className="text-xs font-semibold text-ink">

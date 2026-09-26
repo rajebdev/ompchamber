@@ -5,6 +5,8 @@ import { AgentSidebarList } from '@/client/components/settings/categories/agent-
 import { AgentDetailPane } from '@/client/components/settings/categories/agent-settings/DetailPane';
 import { LoadingState } from '@/client/components/settings/LoadingState';
 import { useCrudList } from '@/client/hooks/settings/crud-list';
+import { useSettingsMasterDetail } from '@/client/hooks/settings/master-detail';
+import { SettingsMasterDetail } from '@/client/components/settings/master-detail';
 
 interface AgentSettingsProps {
   settings: SettingsState;
@@ -12,6 +14,7 @@ interface AgentSettingsProps {
 }
 
 export const AgentSettings: FunctionComponent<AgentSettingsProps> = () => {
+  const masterDetail = useSettingsMasterDetail();
   const [selectedProject, setSelectedProject] = useState('ompchamber');
   const { items: agents, selectedId, selected: selectedAgent, isCreatingNew, isLoading, select, startCreate, save, remove } =
     useCrudList<AgentItem>({
@@ -49,36 +52,50 @@ export const AgentSettings: FunctionComponent<AgentSettingsProps> = () => {
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-paper">
-      <AgentSidebarList
-        agents={agents}
-        selectedAgentId={isCreatingNew ? null : selectedId}
-        onSelectAgent={select}
-        onAddNewAgent={startCreate}
-        selectedProject={selectedProject}
-        onChangeProject={setSelectedProject}
-      />
-
-      <div className="flex-1 h-full overflow-hidden flex flex-col">
-        {isCreatingNew ? (
-          <AgentDetailPane
-            agent={emptyAgentTemplate}
-            isNew={true}
-            onSave={save}
+      <SettingsMasterDetail
+        pane={masterDetail.pane}
+        onBack={masterDetail.back}
+        listLabel="Agents"
+        list={
+          <AgentSidebarList
+            agents={agents}
+            selectedAgentId={isCreatingNew ? null : selectedId}
+            onSelectAgent={(id) => {
+              select(id);
+              masterDetail.openDetail();
+            }}
+            onAddNewAgent={() => {
+              startCreate();
+              masterDetail.openDetail();
+            }}
+            selectedProject={selectedProject}
+            onChangeProject={setSelectedProject}
           />
-        ) : selectedAgent ? (
-          <AgentDetailPane
-            key={selectedAgent.id}
-            agent={selectedAgent}
-            isNew={false}
-            onSave={save}
-            onDelete={remove}
-          />
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-xs font-mono text-ink/40">
-            Select an agent or click + to create one
+        }
+        detail={
+          <div className="flex-1 h-full overflow-hidden flex flex-col">
+            {isCreatingNew ? (
+              <AgentDetailPane
+                agent={emptyAgentTemplate}
+                isNew={true}
+                onSave={save}
+              />
+            ) : selectedAgent ? (
+              <AgentDetailPane
+                key={selectedAgent.id}
+                agent={selectedAgent}
+                isNew={false}
+                onSave={save}
+                onDelete={remove}
+              />
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-xs font-mono text-ink/40">
+                Select an agent or click + to create one
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        }
+      />
     </div>
   );
 };

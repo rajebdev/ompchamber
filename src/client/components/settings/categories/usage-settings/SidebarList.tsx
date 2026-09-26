@@ -24,7 +24,7 @@ export function UsageSidebarList({
   const providers = buildProviders(report);
 
   return (
-    <div className="w-56 sm:w-64 border-r border-ink/10 h-full flex flex-col bg-paper/50 flex-shrink-0 select-none">
+    <div className="w-full md:w-64 md:border-r border-ink/10 h-full flex flex-col bg-paper/50 flex-shrink-0 select-none">
       <div className="px-3.5 py-2.5 border-b border-ink/10 flex items-center justify-between">
         <span className="text-xs font-semibold text-ink">
           {providers.length} provider{providers.length === 1 ? '' : 's'} with keys

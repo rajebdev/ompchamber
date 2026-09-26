@@ -31,8 +31,13 @@ export function ProviderAuthSection({
           Authentication
         </div>
 
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
+        {/* Wraps instead of overflowing: this row is a status group plus three
+            action buttons, which needs ~330px, while the detail pane is 206px
+            at a 768px window (the modal's own two-pane split). Without the wrap
+            the buttons ran past the panel and were clipped by the modal's
+            `overflow-hidden`. */}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <div className="flex items-center gap-2 min-w-0">
             {isDisabled ? (
               <>
                 <Ban size={15} className="text-ink/50 flex-shrink-0" strokeWidth={2.4} />
@@ -68,7 +73,7 @@ export function ProviderAuthSection({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={onToggleDisabled}

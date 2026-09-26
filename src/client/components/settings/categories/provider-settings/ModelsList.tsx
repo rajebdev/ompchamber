@@ -42,12 +42,14 @@ export function ProviderModelsList({
   return (
     <div className="space-y-3.5">
       {/* 1. Header with count & hide all / show all */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="text-xs font-semibold text-ink">
           Available Models <span className="font-normal text-ink/60">({models.length})</span>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Wraps: four action chips need ~330px, which the detail pane does not
+            have in a two-pane modal at a 768-900px window. */}
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={onFetchModels}
@@ -133,8 +135,11 @@ export function ProviderModelsList({
                 </span>
               </div>
 
-              {/* Right: Price & Context Badge & Action Icons */}
-              <div className="flex items-center gap-2 flex-shrink-0">
+              {/* Right: Price & Context Badge & Action Icons. Wraps rather than
+                  running past the pane: a long price plus a context badge plus
+                  three icons exceeds the detail pane's width in a two-pane
+                  modal on a ~768px window. */}
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 {/* Pricing Badge (per 1M tokens) */}
                 {(model.priceInput !== undefined || model.priceOutput !== undefined) && (
                   <span

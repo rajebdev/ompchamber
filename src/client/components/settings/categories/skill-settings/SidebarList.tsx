@@ -49,7 +49,7 @@ export function SkillSidebarList({
   const totalCount = skills.length;
 
   return (
-    <div className="w-56 sm:w-64 border-r border-ink/10 h-full flex flex-col bg-paper/50 flex-shrink-0">
+    <div className="w-full md:w-64 md:border-r border-ink/10 h-full flex flex-col bg-paper/50 flex-shrink-0">
       {/* Project Selector Dropdown */}
       <ProjectSelectorDropdown
         variant="compact"
