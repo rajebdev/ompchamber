@@ -22,7 +22,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const resolved = await resolveSessionFileOr404(sessionId);
   if ('response' in resolved) return resolved.response;
   const { filePath } = resolved;
-  const stats = readSessionStats(filePath);
+  const stats = await readSessionStats(filePath);
   if (!stats) {
     return json({ error: 'Session could not be parsed' }, { status: 500 });
   }

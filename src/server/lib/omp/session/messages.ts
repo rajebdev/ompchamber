@@ -161,13 +161,13 @@ async function resolveImageBlobs(messages: ChatMessageData[]): Promise<void> {
 /** Derive the display title from the JSONL header/title slot (cheap read). */
 export async function loadSessionTitle(filePath: string): Promise<string | undefined> {
   try {
-    const file = Bun.file(filePath);
-    if ((await file.stat()).size > 10 * 1024 * 1024) return undefined; // only need the head
-  } catch {
-    return undefined;
-  }
-  try {
-    const head = (await Bun.file(filePath).text()).slice(0, 32 * 1024);
+    // A bounded Blob slice, and deliberately NO size guard. The title slot and
+    // the session header live in the first few hundred bytes, so the 32 KiB
+    // window is what makes the read cheap — a file-size refusal on top of it
+    // only discarded titles that were sitting right there (measured: an 11 MB
+    // session reported `title: undefined` while its title slot held
+    // "Debug file attachment read failure").
+    const head = await Bun.file(filePath).slice(0, 32 * 1024).text();
     const records = parseJsonlLenient<Record<string, unknown>>(head);
     const first = records[0];
     if (first?.type === 'title' && typeof first.title === 'string' && first.title.trim()) {
