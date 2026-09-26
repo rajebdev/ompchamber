@@ -81,25 +81,32 @@ export function MobileSessionCategory({
     <div className="mb-4">
       <div
         onClick={onToggleExpand}
-        className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-ink/5 rounded-lg select-none transition-colors"
+        className="flex items-center justify-between pl-4 pr-3 py-2 cursor-pointer hover:bg-ink/5 rounded-lg select-none transition-colors"
       >
         <div className="flex items-center space-x-2 min-w-0">
-          {folder.customIconUrl ? (
-            <img
-              src={folder.customIconUrl}
-              alt=""
-              className="w-[15px] h-[15px] rounded-xs object-contain flex-shrink-0"
-              referrerPolicy="no-referrer"
-            />
-          ) : folder.iconType === 'chat' ? (
-            <MessageSquare size={15} className="text-ink/80 flex-shrink-0" />
-          ) : (
-            <ProjectIcon
-              size={15}
-              className="text-ink/80 flex-shrink-0"
-              style={{ color: folder.accentColor || undefined }}
-            />
-          )}
+          {/* The folder glyph occupies the same 16px left slot the session rows
+              give their roster toggle, so the two columns line up down the
+              drawer — the icon, the chevron and every row's status glyph share
+              one x. Desktop gets this from one shared slot; the drawer's
+              padding is what differs, hence the matching `pl-4`. */}
+          <span className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+            {folder.customIconUrl ? (
+              <img
+                src={folder.customIconUrl}
+                alt=""
+                className="w-[15px] h-[15px] rounded-xs object-contain"
+                referrerPolicy="no-referrer"
+              />
+            ) : folder.iconType === 'chat' ? (
+              <MessageSquare size={15} className="text-ink/80" />
+            ) : (
+              <ProjectIcon
+                size={15}
+                className="text-ink/80"
+                style={{ color: folder.accentColor || undefined }}
+              />
+            )}
+          </span>
 
           <span className="text-sm font-semibold text-ink truncate">
             {folder.name}
