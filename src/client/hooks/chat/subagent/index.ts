@@ -86,6 +86,9 @@ export function useSubagentTranscript(
   const nextByteRef = useRef(0);
   const sessionFileRef = useRef<string | undefined>(undefined);
   const readyRef = useRef(false);
+  /** False once the live RPC has refused this subagent (its process is gone).
+   *  Later tail fetches then read the on-disk transcript directly. */
+  const rpcAvailableRef = useRef(true);
   const flushingRef = useRef(false);
   const queuedRef = useRef(false);
   const flushTimerRef = useRef<number | null>(null);
@@ -103,8 +106,25 @@ export function useSubagentTranscript(
     flushingRef.current = true;
     const generation = generationRef.current;
     try {
-      const page = await requestSubagentPage(sid, active.id, sessionFileRef.current, nextByteRef.current);
-      if (generation !== generationRef.current || !page) return;
+      const fromByte = nextByteRef.current;
+      // Once the RPC has answered "not managed", stop probing it: the child is
+      // gone for the rest of this view's life, and every later tail would pay a
+      // refused round-trip before falling back anyway. The disk path below is
+      // the same transcript file the RPC was reading.
+      let page = rpcAvailableRef.current
+        ? await requestSubagentPage(sid, active.id, sessionFileRef.current, fromByte)
+        : null;
+      if (generation !== generationRef.current) return;
+      if (!page) {
+        // The session's omp process is gone (the child finished, the idle
+        // reclaim took it, or the chamber restarted) — the RPC is refused for
+        // an unmanaged session rather than respawning one for a read. Continue
+        // on disk; without this the view froze on whatever the last live page
+        // held, which is exactly the final turns of a just-finished subagent.
+        rpcAvailableRef.current = false;
+        page = await requestHistoryPage(sid, active.id, fromByte);
+        if (generation !== generationRef.current || !page) return;
+      }
       sessionFileRef.current = page.sessionFile || sessionFileRef.current;
       const converted = convertMessages(page.messages, true);
       if (page.reset) {
@@ -163,6 +183,7 @@ export function useSubagentTranscript(
     nextByteRef.current = 0;
     sessionFileRef.current = initial?.sessionFile;
     readyRef.current = false;
+    rpcAvailableRef.current = true;
 
     const scheduleTail = () => {
       if (flushTimerRef.current !== null) return;
@@ -188,8 +209,10 @@ export function useSubagentTranscript(
         if (!isCurrent()) return;
         if (!result && !viaHistory && fromByte === 0) {
           // The parent RPC dropped this subagent (already finished) — the
-          // on-disk transcript is authoritative from here on.
+          // on-disk transcript is authoritative from here on, and the tail
+          // fetch must not keep probing a refused RPC.
           viaHistory = true;
+          rpcAvailableRef.current = false;
           result = await requestHistoryPage(sessionId, subagentId, 0);
           if (!isCurrent()) return;
         }
