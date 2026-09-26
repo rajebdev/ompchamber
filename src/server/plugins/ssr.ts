@@ -100,7 +100,7 @@ export const ssrRoutes = new Elysia({ name: 'ssr' }).get('*', async ({ request }
     }
   }
 
-  const asset = await tryServeStatic(pathname);
+  const asset = await tryServeStatic(pathname, request);
   if (asset) return asset;
 
   const settings = await readSettings();

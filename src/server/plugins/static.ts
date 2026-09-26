@@ -1,5 +1,6 @@
 import { extname, join, normalize, resolve, sep } from 'path';
 
+import { notModified } from '@/server/lib/assets/conditional.server';
 import { FONT_STYLESHEET_ROUTE, serveFontFile, serveFontStylesheet } from '@/server/lib/assets/font-css.server';
 import { FONT_ROUTE_PREFIX, packageRoot } from '@/server/lib/assets/fonts.server';
 
@@ -65,7 +66,17 @@ function resolveWithin(root: string, pathname: string): string | null {
   return candidate;
 }
 
-async function serveFile(filePath: string, cacheControl: string): Promise<Response | null> {
+/**
+ * The file's own bytes, or null when it cannot be read.
+ *
+ * `If-None-Match` is answered from a weak validator derived from the file's
+ * size and mtime. A content hash would be stronger, but it would mean reading
+ * every asset on every request to compute it — the opposite of the point.
+ * Size+mtime is what `plugins/static.ts` can produce from the `stat` it already
+ * performs, and a wrong `304` from it needs both a same-size edit and a
+ * preserved mtime, which is not something a build or an editor does.
+ */
+async function serveFile(filePath: string, cacheControl: string, request?: Request): Promise<Response | null> {
   let stat;
   try {
     stat = await Bun.file(filePath).stat();
@@ -75,14 +86,24 @@ async function serveFile(filePath: string, cacheControl: string): Promise<Respon
   if (!stat.isFile()) return null;
 
   const type = MIME[extname(filePath).toLowerCase()] ?? 'application/octet-stream';
-  const stream = Bun.file(filePath).stream();
-  return new Response(stream, {
-    headers: {
-      'content-type': type,
-      'content-length': String(stat.size),
-      'cache-control': cacheControl,
-      'last-modified': stat.mtime.toUTCString(),
-    },
+  const lastModified = stat.mtime.toUTCString();
+  // Weak on purpose: the validator identifies the file as the same version, and
+  // byte equality is not what it promises.
+  const etag = `W/"${stat.size}-${Math.floor(stat.mtimeMs / 1000)}"`;
+  const headers = {
+    'content-type': type,
+    'cache-control': cacheControl,
+    'last-modified': lastModified,
+    etag,
+  };
+
+  if (request && notModified(request, etag, stat.mtimeMs)) {
+    // No `content-length`: a 304 describes the validator, not a body.
+    return new Response(null, { status: 304, headers });
+  }
+
+  return new Response(Bun.file(filePath).stream(), {
+    headers: { ...headers, 'content-length': String(stat.size) },
   });
 }
 
@@ -94,18 +115,22 @@ async function serveFile(filePath: string, cacheControl: string): Promise<Respon
  * going through the SSR route that injects the theme and bootstrap, and the
  * cache stays short because these filenames carry no content hash.
  */
-export async function servePublicAsset(pathname: string, roots: readonly string[]): Promise<Response | null> {
+export async function servePublicAsset(
+  pathname: string,
+  roots: readonly string[],
+  request?: Request,
+): Promise<Response | null> {
   for (const root of roots) {
     const filePath = resolveWithin(root, pathname);
     if (!filePath || filePath.endsWith('.html')) continue;
-    const response = await serveFile(filePath, SHORT);
+    const response = await serveFile(filePath, SHORT, request);
     if (response) return response;
   }
   return null;
 }
 
 /** A file for `pathname`, or null when the request should reach the app. */
-export async function tryServeStatic(pathname: string): Promise<Response | null> {
+export async function tryServeStatic(pathname: string, request?: Request): Promise<Response | null> {
   // The production bundle's own assets. `scripts/build-client.ts` emits the
   // server into `dist/client` with its chunks under `dist/client/static`, and
   // the generated HTML references them as `./static/...` — a page URL of `/`
@@ -114,7 +139,7 @@ export async function tryServeStatic(pathname: string): Promise<Response | null>
   // `/_bun/client/*`) and never reach here.
   if (pathname.startsWith('/static/')) {
     const filePath = resolveWithin(CLIENT_ROOT, pathname);
-    return filePath ? serveFile(filePath, ASSET_CACHE) : null;
+    return filePath ? serveFile(filePath, ASSET_CACHE, request) : null;
   }
   // The extracted `@font-face` stylesheet and the files it names. Bun's CSS
   // loader cannot carry either — every local `url()` is resolved, so a bundled
@@ -122,9 +147,13 @@ export async function tryServeStatic(pathname: string): Promise<Response | null>
   // than emitted. Both live outside `public/`: the stylesheet is assembled from
   // the faces `lib/bundler/css.ts` wrote, and the files come from the installed
   // packages.
+  //
+  // Neither is given a conditional here: the stylesheet is `no-store` (nothing
+  // is ever stored to revalidate) and a font file is `immutable` (the browser
+  // does not ask again). A validator on either would be dead code.
   if (pathname === FONT_STYLESHEET_ROUTE) return serveFontStylesheet();
   if (pathname.startsWith(FONT_ROUTE_PREFIX)) {
     return serveFontFile(decodeURIComponent(pathname.slice(FONT_ROUTE_PREFIX.length)));
   }
-  return servePublicAsset(pathname, [PUBLIC_ROOT]);
+  return servePublicAsset(pathname, [PUBLIC_ROOT], request);
 }

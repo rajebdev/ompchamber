@@ -36,6 +36,7 @@
  * by `plugins/static.ts` from a build — so neither needs this.
  */
 
+import { notModified } from '@/server/lib/assets/conditional.server';
 import { maybeCompress } from '@/server/plugins/compress';
 
 /** Whether the proxy is active at all. See the module comment. */
@@ -100,10 +101,10 @@ export async function serveDevAsset(request: Request, pathname: string, base: UR
 
   const bytes = new Uint8Array(await response.arrayBuffer());
   const etag = `"${Bun.hash(bytes).toString(16)}"`;
-  const conditional = request.headers.get('if-none-match');
-  // A validator survives a `W/` prefix and arrives as a candidate list.
-  const wanted = conditional?.split(',').some((candidate) => candidate.trim().replace(/^W\//, '') === etag);
-  if (wanted) {
+  // The same decision the file route makes, so a dev asset and a built one
+  // revalidate identically. `lastModifiedMs` is null: there is no file behind
+  // these bytes, only the hash above, so the date branch does not apply.
+  if (notModified(request, etag, null)) {
     return new Response(null, { status: 304, headers: { etag, 'cache-control': DEV_ASSET_CACHE } });
   }
 
