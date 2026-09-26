@@ -39,17 +39,17 @@ export function MobileSessionRow({
     handleBlur,
   } = useInlineRename(session.title, onRename);
 
-  // Desktop's order: the roster toggle leads the row in the LEFT slot, ahead of
-  // the run status. Desktop can reveal a hover-only chevron because a mouse has
-  // hover; a touch screen does not, so the toggle is pinned whenever the row
-  // has a roster — a hidden chevron would make the roster unreachable. A live
-  // run therefore keeps its spinner in a second cell rather than displacing the
-  // toggle.
+  // The roster toggle is the row's LAST element, so its glyph lands in the same
+  // column as the folder header's expand chevron — one vertical line of
+  // disclosure controls down the drawer. The toggle is a SIBLING of the select
+  // button, never a child: a button inside a button is invalid and the browser
+  // reparents it.
   //
-  // The toggle is a SIBLING of the select button, never a child: a button
-  // inside a button is invalid and the browser reparents it.
+  // Touch has no hover to reveal a hidden toggle the way desktop does, so it is
+  // pinned whenever the row has a roster; a hidden one would leave the roster
+  // unreachable on a phone.
   const showChevron = hasSubagents && Boolean(onToggleExpand);
-  const showStatus = Boolean(status) && (!showChevron || status === 'stream');
+  const showStatus = Boolean(status);
   const title = session.title.charAt(0).toUpperCase() + session.title.slice(1);
 
   if (isEditing) {
@@ -74,36 +74,19 @@ export function MobileSessionRow({
         isActive ? 'bg-ink/10 font-medium text-ink' : 'hover:bg-ink/5 text-ink/85'
       }`}
     >
-      {/* Left slot, always 16px so every title starts at the same x. It holds
-          the roster toggle ahead of the run status, desktop's order; the toggle
-          is a SIBLING of the select button, never a child (a button inside a
-          button is invalid and the browser reparents it). */}
-      <span className="w-4 h-4 ml-2 flex-shrink-0 flex items-center justify-center">
-        {showChevron && (
-          <button
-            type="button"
-            onClick={onToggleExpand}
-            title={isExpanded ? 'Collapse subagents' : 'Expand subagents'}
-            aria-expanded={isExpanded}
-            aria-label={isExpanded ? 'Collapse subagents' : 'Expand subagents'}
-            className="w-4 h-4 flex items-center justify-center text-ink/60 hover:text-ink rounded cursor-pointer"
-          >
-            {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-          </button>
-        )}
-      </span>
-
       <button
         type="button"
         onClick={onSelect}
-        className="flex-1 text-left pl-1.5 pr-3 py-2 flex items-center justify-between min-w-0"
+        className="flex-1 text-left pl-2 pr-3 py-2 flex items-center justify-between min-w-0"
       >
         <div className="flex items-center min-w-0 pr-2">
+          {/* Status slot, 16px at the same x as the folder header's icon slot,
+              so the left column reads as one line. */}
           <span className="w-4 flex-shrink-0 flex items-center justify-center">
             {showStatus && status === 'stream' && <Loader2 size={13} className="text-ink/50 animate-spin" />}
             {showStatus && (status === 'finish' || status === 'abort') && <Check size={13} className="text-ink/50" />}
           </span>
-          <span className="text-xs truncate leading-snug ml-1.5">{title}</span>
+          <span className="text-xs truncate leading-snug ml-2">{title}</span>
         </div>
 
         <span className="text-[11px] text-ink/45 font-mono flex-shrink-0 ml-2">{timeAgo ?? ''}</span>
@@ -124,10 +107,26 @@ export function MobileSessionRow({
         type="button"
         onClick={onArchive}
         title={session.is_archived === 1 ? 'Unarchive session' : 'Archive session'}
-        className="flex-shrink-0 p-2 mr-1 text-ink/35 hover:text-ink rounded-lg cursor-pointer"
+        className="flex-shrink-0 p-2 text-ink/35 hover:text-ink rounded-lg cursor-pointer"
       >
         {session.is_archived === 1 ? <ArchiveRestore size={14} /> : <Archive size={14} />}
       </button>
+
+      {/* Last element, so its glyph sits in the folder header's chevron column.
+          `p-1.5 mr-1.5` centres a 14px glyph on that column while keeping a
+          touch-sized tap target. */}
+      {showChevron && (
+        <button
+          type="button"
+          onClick={onToggleExpand}
+          title={isExpanded ? 'Collapse subagents' : 'Expand subagents'}
+          aria-expanded={isExpanded}
+          aria-label={isExpanded ? 'Collapse subagents' : 'Expand subagents'}
+          className="flex-shrink-0 p-1.5 mr-1.5 flex items-center justify-center text-ink/50 hover:text-ink rounded-lg cursor-pointer"
+        >
+          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </button>
+      )}
     </div>
   );
 }
