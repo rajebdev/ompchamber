@@ -4,106 +4,32 @@
  */
 
 /**
- * Read-only session-file scanner for oh-my-pi (format v3).
+ * The session-file CACHE layer: which files exist, what each one's summary is,
+ * and how to resolve an id to a path without re-reading the tree.
  *
- * Faithful, trimmed port of omp-web/lib/omp/session-files.ts (itself a port of
- * oh-my-pi packages/coding-agent/src/session/session-listing.ts): it lists the
- * per-project session directories under ~/.omp/agent/sessions and derives a
- * compact summary per session from a small 4 KiB prefix window of each file —
- * enough for a sidebar list without ever loading a full session into memory.
+ * Three caches, all keyed so they invalidate for free:
  *
- * File layout: optional fixed-width 256-byte title-slot line, then the
- * {"type":"session"} header line, then message entries. Legacy pi v1/v2
- * shapes parse leniently (raw-text scans); nothing here mutates on-disk data.
- * The lenient JSONL + header parsing lives in
- * `@/shared/lib/omp/session/jsonl`; the bounded window readers (head prefix
- * plus escalating tail) live in ./file-scan.ts.
+ *   - the file list, on the sessions root's per-project directory mtimes (a new
+ *     session bumps its project dir, so add/remove invalidates it);
+ *   - the per-file summary, on that file's `(size, mtimeMs)`;
+ *   - the `id → path` index, rebuilt from the file list.
+ *
+ * The mtime key is the RAW `stat.mtimeMs`, never a `Date`: `getTime()`
+ * truncates the fractional millisecond APFS reports, which made the summary
+ * cache miss on every call (measured: 451 of 452 files).
+ *
+ * The read itself lives in `./scan`; `clearSessionFileCaches()` is the one
+ * invalidation point every mutation path already calls.
  */
 
 import fs from 'fs';
 import * as path from 'path';
 import { getSessionsDir } from '@/server/lib/omp/core/paths';
-import { readLastEntryTimestamp, readTextPrefix, SESSION_LIST_PREFIX_BYTES } from '@/server/lib/omp/session/file-scan';
-import { countMessageMarkers, extractFirstDisplayMessageFromPrefix, extractTextFromContent, parseJsonlLenient, parseSessionListHeader } from '@/shared/lib/omp/session/jsonl';
 import { isRecord } from '@/shared/lib/util/guards';
+import { SESSION_TITLE_SLOT_BYTES, scanSessionInfo, type OmpSessionInfo } from '@/server/lib/omp/session/scan';
 
-export const SESSION_TITLE_SLOT_BYTES = 256;
-
-/** Compact summary of one session file — the sidebar list row. */
-export interface OmpSessionInfo {
-  /** Absolute path of the .jsonl file. */
-  path: string;
-  id: string;
-  /** Working directory the session ran in (from the header). */
-  cwd: string;
-  /** User-facing title (title slot wins; falls back to header title). */
-  title?: string;
-  parentSessionPath?: string;
-  created: Date;
-  /** Last activity: the newest JSONL entry's own `timestamp`, falling back to
-   *  the file mtime for a file the tail window cannot date. */
-  modified: Date;
-  /** Filesystem mtime. Scan-cache version only — never user-visible, and never
-   *  an ordering key (see readLastEntryTimestamp for why). */
-  fileMtime: Date;
-  messageCount: number;
-  size: number;
-  firstMessage: string;
-}
-
-/**
- * Scan a single session file into an OmpSessionInfo from a 4 KiB prefix window
- * (header, title, first message) plus a bounded tail window (last activity).
- * Faithful port of omp's scanSessionFile except for `modified`, which is the
- * last entry's timestamp rather than the file mtime. Missing/unreadable/
- * header-less files yield undefined instead of throwing.
- */
-export async function scanSessionInfo(filePath: string): Promise<OmpSessionInfo | undefined> {
-  try {
-    const { text: prefix, size, mtime } = await readTextPrefix(filePath, SESSION_LIST_PREFIX_BYTES);
-    const lastEntryAt = await readLastEntryTimestamp(filePath, size, prefix);
-    const entries = parseJsonlLenient<Record<string, unknown>>(prefix);
-    const header = parseSessionListHeader(prefix, entries);
-    if (!header) return undefined;
-
-    let parsedMessageCount = 0;
-    let firstMessage = '';
-    let shortSummary: string | undefined;
-    for (let i = 1; i < entries.length; i++) {
-      const entry = entries[i] as {
-        type?: string;
-        message?: { role?: string; content?: unknown };
-        shortSummary?: string;
-      };
-      if (entry.type === 'compaction' && typeof entry.shortSummary === 'string') {
-        shortSummary = entry.shortSummary;
-      }
-      if (entry.type === 'message' && entry.message) {
-        parsedMessageCount++;
-        if (entry.message.role === 'user' && !firstMessage) {
-          firstMessage = extractTextFromContent(entry.message.content);
-        }
-      }
-    }
-
-    firstMessage ||= extractFirstDisplayMessageFromPrefix(prefix) ?? '';
-    return {
-      path: filePath,
-      id: header.id,
-      cwd: header.cwd ?? '',
-      title: header.title ?? shortSummary,
-      parentSessionPath: header.parentSession,
-      created: new Date(header.timestamp ?? ''),
-      modified: lastEntryAt ?? mtime,
-      fileMtime: mtime,
-      messageCount: Math.max(parsedMessageCount, countMessageMarkers(prefix)),
-      size,
-      firstMessage: firstMessage || '(no messages)',
-    };
-  } catch {
-    return undefined;
-  }
-}
+export { SESSION_TITLE_SLOT_BYTES, scanSessionInfo };
+export type { OmpSessionInfo };
 
 // ============================================================================
 // File-list walk + per-file memo, both mtime-keyed
@@ -125,7 +51,7 @@ interface SessionFileListCacheEntry {
  * missing a scan. Bump this whenever OmpSessionInfo changes; the cache is
  * discarded instead of misread.
  */
-const SESSION_SCAN_CACHE_VERSION = 2;
+const SESSION_SCAN_CACHE_VERSION = 3;
 
 interface SessionScanCache {
   version: number;
@@ -205,6 +131,10 @@ export async function listSessionFiles(sessionsRoot: string = getSessionsDir()):
   }
 
   cache.set(sessionsRoot, { dirMtimes, files });
+  // A rebuilt list means the directory moved (a session was added or removed),
+  // which is exactly when the `id → path` index is stale — it is derived from
+  // this list, and its own mtime key cannot see a file that is not in it yet.
+  globalThis.__ompChamberSessionIdIndex?.delete(sessionsRoot);
   return files;
 }
 
@@ -235,7 +165,11 @@ export async function scanSessionInfoCached(filePath: string): Promise<OmpSessio
     // `modified` — the latter is now an entry timestamp, and a title-slot
     // rewrite that bumps the file without appending an entry must still be
     // picked up (it can change the title the row displays).
-    if (info.size === stat.size && info.fileMtime.getTime() === stat.mtimeMs) {
+    //
+    // The comparison is against the RAW `stat.mtimeMs`: `Date.getTime()`
+    // truncates the fractional millisecond APFS reports, so a Date comparison
+    // never matched and this cache never hit (measured: 451 of 452 files).
+    if (info.size === stat.size && info.fileMtimeMs === stat.mtimeMs) {
       cache.delete(filePath);
       cache.set(filePath, info);
       return info;
@@ -257,19 +191,80 @@ export async function scanSessionInfoCached(filePath: string): Promise<OmpSessio
 }
 
 /**
+ * Map `items` through an async `worker`, at most `limit` in flight.
+ *
+ * The session scans are I/O-bound, so a sequential loop serializes round trips
+ * the filesystem answers in parallel (measured 36 ms sequential against 12 ms
+ * for the same warm work over 452 files). The bound is what keeps an unbounded
+ * `Promise.all` from opening one descriptor per session file on a host with a
+ * low soft limit.
+ */
+async function mapBounded<T, R>(items: readonly T[], limit: number, worker: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const runners = new Array(Math.min(limit, items.length)).fill(null).map(async () => {
+    for (;;) {
+      const index = next++;
+      if (index >= items.length) return;
+      out[index] = await worker(items[index]);
+    }
+  });
+  await Promise.all(runners);
+  return out;
+}
+
+/** Concurrent per-file scans; each holds one descriptor while it stats/reads. */
+const SESSION_SCAN_CONCURRENCY = 32;
+
+/**
  * List every session across all project subdirectories of the sessions root,
  * newest-modified first. Invalidates are automatic via mtime keys; callers
  * that mutate sessions may clear caches via clearSessionFileCaches().
  */
 export async function listAllSessionInfos(sessionsRoot: string = getSessionsDir()): Promise<OmpSessionInfo[]> {
   const files = await listSessionFiles(sessionsRoot);
+  const scanned = await mapBounded(files, SESSION_SCAN_CONCURRENCY, (file) => scanSessionInfoCached(file));
   const sessions: OmpSessionInfo[] = [];
-  for (const file of files) {
-    const info = await scanSessionInfoCached(file);
+  for (const info of scanned) {
     if (info) sessions.push(info);
   }
   sessions.sort((a, b) => b.modified.getTime() - a.modified.getTime());
   return sessions;
+}
+
+/**
+ * `id → path` for every session file under `sessionsRoot`, built from the same
+ * mtime-keyed scan cache the sidebar list fills.
+ *
+ * Resolving one id used to mean scanning every file until it matched —
+ * measured 34.8 ms for the 452 files on this machine, on the hot path of eight
+ * routes. The index is derived from `listAllSessionInfos`' own results, so it
+ * costs one map build and invalidates with the caches it reads.
+ *
+ * Cached per root on `globalThis` (a `bun --hot` reload keeps it) and dropped
+ * by `clearSessionFileCaches()`, which every mutation path already calls.
+ */
+interface SessionIdIndex {
+  entries: Map<string, string>;
+}
+
+declare global {
+  var __ompChamberSessionIdIndex: Map<string, SessionIdIndex> | undefined;
+}
+
+/** The `id → path` index for `sessionsRoot`, building it on first use. */
+export async function sessionIdIndex(sessionsRoot: string = getSessionsDir()): Promise<Map<string, string>> {
+  const host = (globalThis.__ompChamberSessionIdIndex ??= new Map());
+  const cached = host.get(sessionsRoot);
+  if (cached) return cached.entries;
+  const entries = new Map<string, string>();
+  for (const info of await listAllSessionInfos(sessionsRoot)) {
+    // A duplicate id cannot happen (omp ids are UUIDs), but first-wins keeps
+    // the answer stable if a copied session file ever appears.
+    if (!entries.has(info.id)) entries.set(info.id, info.path);
+  }
+  host.set(sessionsRoot, { entries });
+  return entries;
 }
 
 /** Clear in-memory file-list and per-file scan caches (e.g. after a mutation
@@ -277,12 +272,16 @@ export async function listAllSessionInfos(sessionsRoot: string = getSessionsDir(
 export function clearSessionFileCaches(): void {
   globalThis.__ompChamberSessionFileListCache?.clear();
   globalThis.__ompChamberSessionScanCache?.entries.clear();
+  globalThis.__ompChamberSessionIdIndex?.clear();
 }
 
 /** Exported for tests/spot-checks: read a raw JSONL session header directly. */
 export async function readRawHeaderLine(filePath: string): Promise<Record<string, unknown> | undefined> {
   try {
-    const head = (await Bun.file(filePath).text()).slice(0, SESSION_TITLE_SLOT_BYTES + 4096);
+    // A bounded Blob slice, not `.text().slice(0, n)`: the header lives in the
+    // first few hundred bytes, and decoding a whole session to look at them
+    // cost 4.9 ms on an 11 MB file against 0.1 ms for the slice.
+    const head = await Bun.file(filePath).slice(0, SESSION_TITLE_SLOT_BYTES + 4096).text();
     const lines = head.split('\n').filter(Boolean);
     for (const line of lines) {
       try {

@@ -9,8 +9,7 @@
  * jsonl file (v3 format — see docs in lib/omp/session).
  */
 
-import { parseJsonlLenient } from '@/shared/lib/omp/session/jsonl';
-import type { OmpMessageEntry } from '@/shared/types/omp/session';
+import { loadSessionEntries } from '@/server/lib/omp/session/telemetry/scan';
 
 export interface SessionStats {
   /** Model switch history (most settings tabs show only the latest). */
@@ -29,57 +28,58 @@ export interface SessionStats {
 const MAX_SESSION_BYTES = 64 * 1024 * 1024;
 
 export async function readSessionStats(filePath: string): Promise<SessionStats | undefined> {
+  let size: number;
   try {
-    const file = Bun.file(filePath);
-    if ((await file.stat()).size > MAX_SESSION_BYTES) return undefined;
-    const entries = parseJsonlLenient<OmpMessageEntry>(await file.text());
-    const stats: SessionStats = {
-      models: [],
-      thinkingLevels: [],
-      compactions: 0,
-      messageCount: 0,
-      assistantMessageCount: 0,
-      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 },
-      cost: { total: 0 },
-    };
-    for (const entry of entries) {
-      const ts = typeof entry.timestamp === 'string' ? entry.timestamp : undefined;
-      if (ts) {
-        stats.startedAt ??= ts;
-        stats.lastActivityAt = ts;
-      }
-      switch (entry.type) {
-        case 'model_change':
-          if (typeof entry.model === 'string' && ts) stats.models.push({ model: entry.model, at: ts });
-          break;
-        case 'thinking_level_change':
-          if (typeof entry.thinkingLevel === 'string' && ts) stats.thinkingLevels.push({ level: entry.thinkingLevel, at: ts });
-          break;
-        case 'compaction':
-          stats.compactions++;
-          break;
-        case 'message': {
-          const message = entry.message;
-          if (!message) break;
-          stats.messageCount++;
-          if (message.role === 'assistant') stats.assistantMessageCount++;
-          const usage = message.usage;
-          if (usage) {
-            stats.tokens.input += usage.input ?? 0;
-            stats.tokens.output += usage.output ?? 0;
-            stats.tokens.cacheRead += usage.cacheRead ?? 0;
-            stats.tokens.cacheWrite += usage.cacheWrite ?? 0;
-            stats.tokens.reasoning += usage.reasoningTokens ?? 0;
-            stats.cost.total += usage.cost?.total ?? 0;
-          }
-          break;
-        }
-        default:
-          break;
-      }
-    }
-    return stats;
+    size = (await Bun.file(filePath).stat()).size;
   } catch {
     return undefined;
   }
+  if (size > MAX_SESSION_BYTES) return undefined;
+  const entries = await loadSessionEntries(filePath);
+  const stats: SessionStats = {
+    models: [],
+    thinkingLevels: [],
+    compactions: 0,
+    messageCount: 0,
+    assistantMessageCount: 0,
+    tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 },
+    cost: { total: 0 },
+  };
+  for (const entry of entries) {
+    const ts = typeof entry.timestamp === 'string' ? entry.timestamp : undefined;
+    if (ts) {
+      stats.startedAt ??= ts;
+      stats.lastActivityAt = ts;
+    }
+    switch (entry.type) {
+      case 'model_change':
+        if (typeof entry.model === 'string' && ts) stats.models.push({ model: entry.model, at: ts });
+        break;
+      case 'thinking_level_change':
+        if (typeof entry.thinkingLevel === 'string' && ts) stats.thinkingLevels.push({ level: entry.thinkingLevel, at: ts });
+        break;
+      case 'compaction':
+        stats.compactions++;
+        break;
+      case 'message': {
+        const message = entry.message;
+        if (!message) break;
+        stats.messageCount++;
+        if (message.role === 'assistant') stats.assistantMessageCount++;
+        const usage = message.usage;
+        if (usage) {
+          stats.tokens.input += usage.input ?? 0;
+          stats.tokens.output += usage.output ?? 0;
+          stats.tokens.cacheRead += usage.cacheRead ?? 0;
+          stats.tokens.cacheWrite += usage.cacheWrite ?? 0;
+          stats.tokens.reasoning += usage.reasoningTokens ?? 0;
+          stats.cost.total += usage.cost?.total ?? 0;
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return stats;
 }

@@ -37,6 +37,12 @@ export interface SessionFilePrefix {
   text: string;
   size: number;
   mtime: Date;
+  /**
+   * The same mtime as a raw `stat.mtimeMs`, for callers that key a cache on it.
+   * `Date.getTime()` truncates the fractional millisecond APFS reports, so a
+   * Date comparison never matches a fresh stat.
+   */
+  mtimeMs: number;
 }
 
 export async function readTextPrefix(filePath: string, prefixBytes: number): Promise<SessionFilePrefix> {
@@ -44,7 +50,7 @@ export async function readTextPrefix(filePath: string, prefixBytes: number): Pro
   const stat = await file.stat();
   const prefixLength = Math.min(prefixBytes, stat.size);
   const text = prefixLength > 0 ? await file.slice(0, prefixLength).text() : '';
-  return { text, size: stat.size, mtime: new Date(stat.mtimeMs) };
+  return { text, size: stat.size, mtime: new Date(stat.mtimeMs), mtimeMs: stat.mtimeMs };
 }
 
 /**
