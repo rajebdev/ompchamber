@@ -5,6 +5,37 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0](https://github.com/rajebdev/ompchamber/compare/v3.1.1...v3.2.0) — 2026-09-26
+
+### Added
+
+* **diff:** add full-code and diff-only modes plus a word-wrap toggle ([3e3a64c](https://github.com/rajebdev/ompchamber/commit/3e3a64c86b900bb3b73514eea3b2668358466769))
+* **sidebar:** refresh the session list from the mobile toolbar ([69ccf9a](https://github.com/rajebdev/ompchamber/commit/69ccf9aed23b8971907ae839f96351e7ac81d6f5))
+
+### Changed
+
+* **code:** stop re-deriving line offsets and skip the view nobody draws ([e045ccf](https://github.com/rajebdev/ompchamber/commit/e045ccf685cc5f4983032f7c5f9aa39c1f744b1d))
+* **native:** hold the port lock with flock and read p_stat once ([1ea7f7b](https://github.com/rajebdev/ompchamber/commit/1ea7f7be3ece5b520924a7cf50957599b45bf8da))
+* **routes:** one git ref listing, in-process versions, real backpressure ([313d732](https://github.com/rajebdev/ompchamber/commit/313d7323ba476c6b66830fd0c9103ab31e5494ac))
+* **session:** read the session tree once and cache what is parsed ([ae097f6](https://github.com/rajebdev/ompchamber/commit/ae097f672dde81a46e3a20c5007ca3e6034d976b))
+
+### Fixed
+
+* **agent:** refuse an observer read instead of spawning a process for it ([e69bccb](https://github.com/rajebdev/ompchamber/commit/e69bccb5a7e1a4e319e60dff81ddd90ee5552e27))
+* **chat:** stop a non-terminal agent_end from clearing the generating state ([128293c](https://github.com/rajebdev/ompchamber/commit/128293cfbbb12da1dcdbb3f2ea2f688a106544e9))
+* **editor:** keep both toolbars usable on a narrow panel ([9961798](https://github.com/rajebdev/ompchamber/commit/9961798b0fe2e3c14ffc24573ff8f6e58c9a95fd))
+* **mobile:** drop the roster indent and hold the archive column ([2ad825d](https://github.com/rajebdev/ompchamber/commit/2ad825d708a93dd987df163a77ec5750d0426fa6))
+* **mobile:** indent the subagent roster in the session drawer ([21d271b](https://github.com/rajebdev/ompchamber/commit/21d271b08380a790aa52af13f7d8157a0e61b81b))
+* **mobile:** lead the session row with the roster toggle, like desktop ([547f359](https://github.com/rajebdev/ompchamber/commit/547f359a7273428ee74fb58e877b2fb8ec1d6b6c))
+* **mobile:** line the folder glyph up with the roster toggle ([fcf170b](https://github.com/rajebdev/ompchamber/commit/fcf170b167816ecaf1e617a8e5e24e5cb360e67d))
+* **mobile:** move the roster toggle beside the folder's chevron ([60d3fb2](https://github.com/rajebdev/ompchamber/commit/60d3fb2d8b74179449a61f850d668022b2376215))
+* **mobile:** render the subagent roster in the session drawer ([7798d9b](https://github.com/rajebdev/ompchamber/commit/7798d9b235f5cdb7db3becd64cdcb44f98b8ae27))
+* **session:** return the parsed stats and keep titles on large sessions ([fe9ca78](https://github.com/rajebdev/ompchamber/commit/fe9ca783867b5c2ceb13847fdfb54e6640661a5d))
+* **settings:** make every settings view usable on a phone ([faf6d3c](https://github.com/rajebdev/ompchamber/commit/faf6d3c693323a2cc2a353becca1566b5ce5a44b))
+* **stream:** keep the observer WebSocket alive past its first pong ([2e67d4f](https://github.com/rajebdev/ompchamber/commit/2e67d4f45469afc7df5c357d2e70c12bf96cf80a))
+* **subagent:** keep the transcript tailing from disk once the process is gone ([579b787](https://github.com/rajebdev/ompchamber/commit/579b787caff9c1290442e662c8505c28a25365b6))
+* **subagent:** render the mobile footer variant in the subagent view ([d930b16](https://github.com/rajebdev/ompchamber/commit/d930b168a0ca7476bbc2c37412f91ae652a3272d))
+
 ## [3.1.1](https://github.com/rajebdev/ompchamber/compare/v3.1.0...v3.1.1) — 2026-09-25
 
 ### Fixed
