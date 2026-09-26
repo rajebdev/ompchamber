@@ -10,6 +10,13 @@ import type { SubagentInfo, SubagentProgress } from '@/shared/types';
 type SubagentListProps = {
   sessionId: string | number;
   isActiveSession: boolean;
+  /**
+   * Extra root classes. The mobile drawer passes a little left margin: its
+   * session rows are indented differently from desktop's, so the roster's
+   * fixed `pl-6` lands closer to the row edge there and the items read as
+   * flush with the row above them.
+   */
+  className?: string;
 };
 
 type SubagentFrameDetail = { sessionId?: string; payload?: unknown };
@@ -47,7 +54,7 @@ function applyProgress(roster: SubagentInfo[], progress: SubagentProgress): Suba
  * Shared by the desktop sidebar's `CategoryItem` and the mobile drawer's
  * `MobileSessionCategory`, so both list the same roster.
  */
-export function SubagentList({ sessionId, isActiveSession }: SubagentListProps) {
+export function SubagentList({ sessionId, isActiveSession, className = '' }: SubagentListProps) {
   const [searchParams] = useSearchParams();
   const viewedSubagentId = searchParams.get('subagent');
   const [subagents, setSubagents] = useState<SubagentInfo[]>([]);
@@ -117,7 +124,7 @@ export function SubagentList({ sessionId, isActiveSession }: SubagentListProps) 
   const hint = isLoading ? 'Loading subagents…' : subagents.length === 0 ? 'No subagent activity' : null;
 
   return (
-    <div className="pl-6 pr-0 space-y-0.5 py-0.5">
+    <div className={`pl-6 pr-0 space-y-0.5 py-0.5 ${className}`}>
       {hint ? (
         <div className="px-2 py-1 text-xs italic text-ink/40 flex items-center">
           <span className="w-4 h-4 shrink-0" />
