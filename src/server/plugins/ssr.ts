@@ -2,6 +2,13 @@ import { Elysia } from 'elysia';
 import { getDb } from '@/server/db.server';
 import { tryServeStatic } from '@/server/plugins/static';
 import { renderShell } from '@/server/plugins/shell.server';
+import {
+  DEV_ASSETS_ENABLED,
+  devAssetUpstreamPath,
+  rewriteDevAssetUrls,
+  serveDevAsset,
+} from '@/server/lib/assets/dev-assets.server';
+import { listenerUrl } from '@/server/lib/lifecycle/listener';
 import { FONT_STYLESHEET_ROUTE } from '@/server/lib/assets/font-css.server';
 import { resolveTheme } from '@/shared/lib/theme/catalog';
 import { THEME_STYLE_ELEMENT_ID, themeStyleSheet } from '@/shared/lib/theme/css';
@@ -83,6 +90,16 @@ export const ssrRoutes = new Elysia({ name: 'ssr' }).get('*', async ({ request }
     });
   }
 
+  // The dev asset proxy, before the static lookup: its prefix is this server's
+  // own, and Bun's table never sees it. See `lib/assets/dev-assets.server`.
+  if (DEV_ASSETS_ENABLED && devAssetUpstreamPath(pathname)) {
+    const base = listenerUrl();
+    if (base) {
+      const proxied = await serveDevAsset(request, pathname, base);
+      if (proxied) return proxied;
+    }
+  }
+
   const asset = await tryServeStatic(pathname);
   if (asset) return asset;
 
@@ -110,8 +127,13 @@ export const ssrRoutes = new Elysia({ name: 'ssr' }).get('*', async ({ request }
   // loader and fail the same way.
   const fontLink = `<link rel="stylesheet" href="${FONT_STYLESHEET_ROUTE}">`;
 
+  // Bun's dev asset URLs move to this server's prefix so the proxy above can add
+  // the caching headers Bun omits. Rewritten BEFORE the bootstrap is injected,
+  // so a `/_bun/` string inside the settings payload is left alone.
+  const shellHtml = DEV_ASSETS_ENABLED ? rewriteDevAssetUrls(rendered.html) : rendered.html;
+
   return new Response(
-    rendered.html
+    shellHtml
       .replace('data-theme="paper"', `data-theme="${theme.id}"`)
       .replace('data-theme-variant="light"', `data-theme-variant="${theme.variant}"`)
       .replace('<meta name="theme-color" content="#faf8f3" />', `<meta name="theme-color" content="${theme.canvas}" />`)

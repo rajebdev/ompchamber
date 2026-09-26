@@ -6,10 +6,14 @@ import { FONT_ROUTE_PREFIX, packageRoot } from '@/server/lib/assets/fonts.server
 /**
  * File serving for `public/` and the font routes.
  *
- * The client bundle is NOT served from here any more. Bun's own routing owns
- * the assets it emits — `/_bun/asset/*` and `/_bun/client/*` in development,
- * `/chunk-*` in production — and answers them from its bundle table before a
- * request reaches Elysia. `dist/client` no longer exists, so the `/static/`
+ * The client bundle is NOT served from here. Bun's own routing owns the assets
+ * it emits — `/_bun/asset/*` and `/_bun/client/*` in development, `/chunk-*` in
+ * production — and answers them from its bundle table before a request reaches
+ * Elysia. In development those responses are reached a second way, through
+ * `lib/assets/dev-assets.server.ts`: Bun's table wins for the paths it declares,
+ * so the shell points at `/_dev-assets/*` and that module fetches the bytes back
+ * from the listener to add the `Cache-Control` and `ETag`/`304` handling Bun's
+ * dev asset routes lack. `dist/client` no longer exists, so the `/static/`
  * branch and its content-hashed caching went with it.
  *
  * Hand-rolled rather than `@elysiajs/static`: that plugin registers its own

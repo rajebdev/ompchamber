@@ -3,7 +3,7 @@ import pkg from '@/../package.json';
 import shell from '@/../index.html';
 import { apiRoutes } from '@/server/routes';
 import { ssrRoutes } from '@/server/plugins/ssr';
-import { setShellSource } from '@/server/plugins/shell.server';
+import { setListener } from '@/server/lib/lifecycle/listener';
 import { getDatabasePath } from '@/server/db.server';
 import { fetchOmpRegistrySnapshot } from '@/server/lib/models/provider-registry.server';
 import { ompStartupError, ompStartupLogLines } from '@/server/lib/omp/core/startup';
@@ -67,8 +67,9 @@ try {
       // an HTML route only while serving, and there is no in-process API for an
       // `HTMLBundle` (`new Response(bundle)` is "[object HTMLBundle]",
       // `app.handle` answers 404). Handing the listener over is what makes
-      // `renderShell()` possible.
-      setShellSource(app.server);
+      // `renderShell()` possible — and the dev asset proxy reaches Bun's own
+      // asset routes through it for the same reason.
+      setListener(app.server);
     },
   });
 } catch (error) {

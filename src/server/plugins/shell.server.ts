@@ -19,20 +19,12 @@
  * own routing table rather than Elysia's (verified against Bun 1.4.2). Fetching
  * our own listener is the supported way to obtain the markup.
  *
- * The server reference is injected rather than imported to avoid a cycle:
- * `index.ts` owns the listener and imports `ssrRoutes`, which reaches here.
+ * The listener reference is shared with the dev asset proxy, which needs the
+ * same URL to reach the routes Bun's own table owns — see `lifecycle/listener`.
  */
 
 import { SHELL_ROUTE } from '@/server/lib/lifecycle/shell-route';
-
-type ShellSource = { url: URL } | null;
-
-let source: ShellSource = null;
-
-/** Called by the server entry once its listener is up. */
-export function setShellSource(server: { url: URL }): void {
-  source = server;
-}
+import { listenerUrl } from '@/server/lib/lifecycle/listener';
 
 export type ShellRender = { ok: true; html: string } | { ok: false; reason: string };
 
@@ -44,9 +36,10 @@ export type ShellRender = { ok: true; html: string } | { ok: false; reason: stri
  * thing that could serve markup pointing at a previous build's asset hashes.
  */
 export async function renderShell(): Promise<ShellRender> {
-  if (!source) return { ok: false, reason: 'The HTTP listener is not up yet.' };
+  const base = listenerUrl();
+  if (!base) return { ok: false, reason: 'The HTTP listener is not up yet.' };
   try {
-    const response = await fetch(new URL(SHELL_ROUTE, source.url));
+    const response = await fetch(new URL(SHELL_ROUTE, base));
     if (!response.ok) return { ok: false, reason: `Shell route answered ${response.status}.` };
     return { ok: true, html: await response.text() };
   } catch (error) {
