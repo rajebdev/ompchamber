@@ -68,14 +68,21 @@ export function EditorToolbar({
           : 'Save file (Ctrl+S)';
 
   return (
-    <div className="flex items-center justify-between px-3 py-2 border-b border-ink/10 bg-paper flex-shrink-0">
+    // `@container`: the path below hides on a NARROW PANEL, not a narrow
+    // viewport. At the editor panel's 320px floor the action strip is 273px of
+    // `flex-shrink-0`, which left the path a measured 23px — a truncated
+    // fragment of a filename is not information, and the tab above already
+    // carries it.
+    <div className="@container flex items-center justify-between px-3 py-2 border-b border-ink/10 bg-paper flex-shrink-0">
       {/* Left status */}
-      <div className="flex items-center space-x-2 text-xs font-mono text-ink/40 min-w-0">
+      <div className="hidden @[420px]:flex items-center space-x-2 text-xs font-mono text-ink/40 min-w-0">
         <span className="truncate max-w-[300px]" title={path}>{path}</span>
       </div>
 
-      {/* Right actions */}
-      <div className="flex items-center space-x-1 text-ink/40 flex-shrink-0">
+      {/* Right actions. `ml-auto` keeps them right-aligned once the path block
+          above is hidden, which `justify-between` alone would not do (a single
+          child sits at the start). */}
+      <div className="flex items-center space-x-1 text-ink/40 flex-shrink-0 ml-auto">
         {!isImage && (
           <div className="flex items-center pr-2 mr-1 border-r border-ink/10">
             <button

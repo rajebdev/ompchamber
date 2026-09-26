@@ -89,11 +89,15 @@ export function DiffToolbar({
       </div>
 
       {/* Right: Controls & actions. `ml-auto` keeps them right-aligned where the
-          identity block is hidden. This strip scrolls on its own when the panel
-          is too narrow, so no action is ever clipped out of reach. Each segment
-          sets its OWN mode — toggling meant clicking the already-active segment
-          flipped the view to the other one. */}
-      <div className="flex items-center space-x-0.5 @[440px]:space-x-1 text-ink/70 ml-auto min-w-0 overflow-x-auto no-scrollbar">
+          identity block is hidden. This strip WRAPS rather than scrolls: a
+          320px panel cannot hold ten actions in one row, and the previous
+          `overflow-x-auto no-scrollbar` clipped the overflow invisibly —
+          measured 361px of content in a 296px box, with `Stage` entirely
+          outside it and no scrollbar to say so. Wrapping costs one extra row on
+          a narrow panel and keeps every action reachable. Each segment sets its
+          OWN mode — toggling meant clicking the already-active segment flipped
+          the view to the other one. */}
+      <div className="flex flex-wrap items-center justify-end gap-x-0.5 @[440px]:gap-x-1 gap-y-1 text-ink/70 ml-auto">
         {/* Change counts live here, not in the identity block: the editor tab
             carries the file name but never the counts, so this is the one piece
             of the header that must survive a narrow panel. */}
