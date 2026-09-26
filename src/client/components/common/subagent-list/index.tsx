@@ -86,6 +86,10 @@ export function SubagentList({ sessionId, isActiveSession }: SubagentListProps) 
     window.addEventListener('subagent_lifecycle', onLifecycle);
     window.addEventListener('subagent_progress', onProgress);
 
+    // Snapshot the LIVE registry. This POST is the spawn path, so the server
+    // refuses it (409) for a session it does not manage — an observer read must
+    // never boot an omp child. The history pass above already covers a finished
+    // session from disk, so nothing is missing when this comes back empty.
     fetch(`/api/agent/${encodeURIComponent(sid)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

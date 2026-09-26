@@ -5,6 +5,7 @@ import { WebRpcError, getRpcSession, resolveSpawnCwd, startRpcSession, type Agen
 import { getSpawnApprovalMode, reconcileSpawnApprovalMode } from '@/server/lib/omp/rpc/session-registry';
 import { isApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { loadPersistedAccessMode } from '@/shared/lib/omp/config/access-mode.server';
+import { OBSERVER_ONLY_COMMANDS } from '@/server/lib/omp/rpc/constants';
 import { rpcErrorResponse } from '@/server/lib/omp/rpc/errors';
 
 // POST /api/agent/:sessionId — send a command to an existing session (or spawn
@@ -37,6 +38,19 @@ export async function sendCommand({ params, request }: ActionFunctionArgs) {
         const result = await existing.send(body);
         return json({ success: true, data: result });
       }
+    }
+
+    // Observer-only reads must never boot an omp child. This route is the spawn
+    // path, so a roster snapshot (`get_subagents`) or a transcript page
+    // (`get_subagent_messages`) posted for a session the chamber is not
+    // managing would start a whole process just to answer a read — measured:
+    // opening a FINISHED session's roster row grew the omp process count, and
+    // the sidebar renders those rows for every session in the list. Both reads
+    // have RPC-free on-disk equivalents (`GET /api/sessions/:id/subagents[/:sub]`),
+    // which is what a dead session is served from; the live registry is only
+    // consulted while a process exists to answer for.
+    if (OBSERVER_ONLY_COMMANDS.has(body.type)) {
+      return json({ error: 'Session is not managed by the chamber', code: 'session_not_running' }, { status: 409 });
     }
 
     const resolved = await resolveSessionPathOr404(sessionId);

@@ -125,6 +125,15 @@ export const PASSTHROUGH_COMMANDS = new Set([
   'login',
 ]);
 
+// Commands that only READ live process state, with an RPC-free on-disk
+// equivalent. A live session answers them on the fast path; for one the chamber
+// does not manage, the spawn path must refuse them (409) rather than boot an
+// omp child to answer a read. The sidebar renders a roster row for every
+// session in the list, so an unconditional probe started a process per finished
+// session merely looked at (measured: the omp process count grew on a session
+// whose liveness probe had just reported `running: false`).
+export const OBSERVER_ONLY_COMMANDS = new Set(['get_subagents', 'get_subagent_messages']);
+
 // Commands that can carry user-attached images to the model. All of them must
 // pass the same server-side per-image/count/aggregate validation before the
 // payload reaches omp — a client is free to POST any of them directly.
