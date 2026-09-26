@@ -6,9 +6,11 @@ import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 interface UnifiedViewProps {
   lines: DiffLine[];
   language: string;
+  /** Wrap long lines instead of scrolling horizontally. */
+  wordWrap: boolean;
 }
 
-export function UnifiedView({ lines, language }: UnifiedViewProps) {
+export function UnifiedView({ lines, language, wordWrap }: UnifiedViewProps) {
   const syntaxReady = useSyntaxReady();
 
   const htmlByIndex = useMemo(() => {
@@ -41,8 +43,13 @@ export function UnifiedView({ lines, language }: UnifiedViewProps) {
       {/* The room under the last row belongs to the content, not the scroller:
           a scroll container's own bottom padding is not part of its scrollable
           overflow, so the padding has to sit inside it to have any effect. */}
-      <div className="pb-4">
-        <table className="w-max min-w-full border-collapse">
+      <div className={`pb-4 ${wordWrap ? 'w-full' : 'w-max min-w-full'}`}>
+        {/* Wrap needs `table-fixed`: auto layout sizes a column by its widest
+            cell's UNAMBIGUOUS minimum (`overflow-wrap: break-word` does not
+            lower it), so a long line would still widen the table and scroll
+            instead of wrapping. Fixed layout takes the width from the row's
+            own box, which is what makes the cell's wrap rule effective. */}
+        <table className={`border-collapse ${wordWrap ? 'table-fixed w-full' : 'w-max min-w-full'}`}>
           <tbody>
             {lines.map((line, idx) => {
               if (line.type === 'meta') {
@@ -69,9 +76,13 @@ export function UnifiedView({ lines, language }: UnifiedViewProps) {
                       : 'hover:bg-ink/[0.03]'
                   }`}
                 >
-                  {/* Old line number */}
+                  {/* Old line number. Top-aligned when the row wraps, or the
+                      number would float to the middle of a multi-line cell
+                      instead of naming its first line. */}
                   <td
                     className={`w-12 py-0.5 px-2 text-right text-[10px] select-none border-r border-ink/10 font-mono ${
+                      wordWrap ? 'align-top' : ''
+                    } ${
                       isDel
                         ? 'bg-error/15 text-error font-semibold'
                         : isAdd
@@ -85,6 +96,8 @@ export function UnifiedView({ lines, language }: UnifiedViewProps) {
                   {/* New line number */}
                   <td
                     className={`w-12 py-0.5 px-2 text-right text-[10px] select-none border-r border-ink/10 font-mono ${
+                      wordWrap ? 'align-top' : ''
+                    } ${
                       isAdd
                         ? 'bg-success/15 text-success font-semibold'
                         : isDel
@@ -96,7 +109,7 @@ export function UnifiedView({ lines, language }: UnifiedViewProps) {
                   </td>
 
                   {/* Change prefix & code text */}
-                  <td className="py-0.5 px-3 whitespace-pre text-ink pr-6">
+                  <td className={`py-0.5 px-3 text-ink pr-6 ${wordWrap ? 'whitespace-pre-wrap break-words align-top' : 'whitespace-pre'}`}>
                     <span
                       className={`inline-block w-4 text-center select-none font-bold ${
                         isAdd ? 'text-success' : isDel ? 'text-error' : 'opacity-0'

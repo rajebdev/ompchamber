@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useSessionUiState } from '@/client/hooks/workspace/session-state';
 import { parseUnifiedDiff } from '@/shared/lib/fs/diff-parser';
 import { getLanguageFromPath } from '@/shared/lib/code/syntax-highlight';
-import { DiffToolbar, type DiffViewMode } from '@/client/components/workspace/diff-panel/Toolbar';
+import { DiffToolbar, type DiffContentMode, type DiffViewMode } from '@/client/components/workspace/diff-panel/Toolbar';
 import { UnifiedView } from '@/client/components/workspace/diff-panel/UnifiedView';
 import { SplitView } from '@/client/components/workspace/diff-panel/SplitView';
 import { AlertCircle, RefreshCw } from 'lucide-preact';
@@ -30,6 +30,8 @@ export function DiffPanel({
 }: DiffPanelProps) {
   // Read and persist view mode & whitespace preference in session_ui_state
   const [viewMode, setViewMode] = useSessionUiState<DiffViewMode>('diff.viewMode', 'unified');
+  const [contentMode, setContentMode] = useSessionUiState<DiffContentMode>('diff.contentMode', 'full');
+  const [wordWrap, setWordWrap] = useSessionUiState<boolean>('diff.wordWrap', true);
   const [ignoreWhitespace, setIgnoreWhitespace] = useSessionUiState<boolean>('diff.ignoreWhitespace', false);
 
   const [rawDiff, setRawDiff] = useState<string>('');
@@ -66,6 +68,11 @@ export function DiffPanel({
         staged: staged ? '1' : '0',
         repo: repo || '.',
       });
+      // `fullContext=1` makes git emit the whole file rather than the hunks.
+      // Only the user's own toggle changes it, so it is safe as a callback
+      // dependency (unlike the staged/status copies above, which the action
+      // path updates while a fetch of its own is already in flight).
+      if (contentMode === 'full') params.set('fullContext', '1');
       if (statusForFetch) params.set('status', statusForFetch);
       if (root) params.set('root', root);
 
@@ -99,7 +106,7 @@ export function DiffPanel({
     } finally {
       if (seq === fetchSeqRef.current) setIsLoading(false);
     }
-  }, [filePath, repo, root]);
+  }, [filePath, repo, root, contentMode]);
 
   useEffect(() => {
     setCurrentStatus(status);
@@ -112,11 +119,23 @@ export function DiffPanel({
     void fetchDiff();
   }, [fetchDiff]);
 
-  const parsed = parseUnifiedDiff(rawDiff, ignoreWhitespace);
+  // Full-code mode parses the whole file, not the hunks, so the parse is keyed
+  // to its inputs: every render used to re-walk the diff (measured 21 ms on an
+  // 80k-line file), for a result that only changes when the diff or the
+  // whitespace toggle does.
+  const parsed = useMemo(() => parseUnifiedDiff(rawDiff, ignoreWhitespace), [rawDiff, ignoreWhitespace]);
   const language = getLanguageFromPath(filePath);
 
   const handleSetViewMode = (mode: DiffViewMode) => {
     setViewMode(mode);
+  };
+
+  const handleSetContentMode = (mode: DiffContentMode) => {
+    setContentMode(mode);
+  };
+
+  const handleToggleWordWrap = () => {
+    setWordWrap(!wordWrap);
   };
 
   const handleToggleWhitespace = () => {
@@ -218,6 +237,8 @@ export function DiffPanel({
         status={currentStatus}
         isStaged={currentStaged}
         viewMode={viewMode}
+        contentMode={contentMode}
+        wordWrap={wordWrap}
         ignoreWhitespace={ignoreWhitespace}
         additions={parsed.additions}
         deletions={parsed.deletions}
@@ -225,6 +246,8 @@ export function DiffPanel({
         isCopied={isCopied}
         isBusy={isBusy}
         onSetViewMode={handleSetViewMode}
+        onSetContentMode={handleSetContentMode}
+        onToggleWordWrap={handleToggleWordWrap}
         onToggleWhitespace={handleToggleWhitespace}
         onStageUnstage={handleStageUnstage}
         onDiscard={handleDiscard}
@@ -268,9 +291,9 @@ export function DiffPanel({
             </button>
           </div>
         ) : viewMode === 'split' ? (
-          <SplitView rows={parsed.splitRows} language={language} />
+          <SplitView rows={parsed.splitRows} language={language} wordWrap={wordWrap} />
         ) : (
-          <UnifiedView lines={parsed.lines} language={language} />
+          <UnifiedView lines={parsed.lines} language={language} wordWrap={wordWrap} />
         )}
       </div>
 

@@ -6,9 +6,11 @@ import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 interface SplitViewProps {
   rows: SplitDiffRow[];
   language: string;
+  /** Wrap long lines instead of scrolling horizontally. */
+  wordWrap: boolean;
 }
 
-export function SplitView({ rows, language }: SplitViewProps) {
+export function SplitView({ rows, language, wordWrap }: SplitViewProps) {
   const syntaxReady = useSyntaxReady();
 
   const htmlByIndex = useMemo(() => {
@@ -47,7 +49,7 @@ export function SplitView({ rows, language }: SplitViewProps) {
       {/* The room under the last row belongs to the content, not the scroller:
           a scroll container's own bottom padding is not part of its scrollable
           overflow, so the padding has to sit inside it to have any effect. */}
-      <div className="w-max min-w-full min-w-[700px] pb-4">
+      <div className={`pb-4 ${wordWrap ? 'w-full' : 'w-max min-w-full min-w-[700px]'}`}>
         <div className="grid grid-cols-2 sticky top-0 z-10 bg-canvas border-b border-ink/10 text-[11px] text-ink/70 font-sans select-none shadow-xs">
           <div className="px-3 py-1 font-medium border-r border-ink/10 flex items-center justify-between">
             <span>Original (HEAD / Base)</span>
@@ -57,7 +59,23 @@ export function SplitView({ rows, language }: SplitViewProps) {
           </div>
         </div>
 
-        <table className="w-full border-collapse">
+        {/* Wrap needs `table-fixed`: auto layout sizes a column by its widest
+            cell's UNAMBIGUOUS minimum (`overflow-wrap: break-word` does not
+            lower it), so a long line would widen the table and scroll instead of
+            wrapping. Fixed layout takes its widths from the FIRST row — which
+            here is the `colSpan={4}` meta row, so every column came out equal
+            (measured 99px) and the line-number gutters grew to the width of a
+            code column. The colgroup states them instead: two 48px gutters and
+            the two content columns sharing the rest. */}
+        <table className={`border-collapse ${wordWrap ? 'table-fixed w-full' : 'w-full'}`}>
+          {wordWrap && (
+            <colgroup>
+              <col className="w-12" />
+              <col />
+              <col className="w-12" />
+              <col />
+            </colgroup>
+          )}
           <tbody>
             {rows.map((row, idx) => {
               if (row.isMeta) {
@@ -81,6 +99,8 @@ export function SplitView({ rows, language }: SplitViewProps) {
                   {/* Left Line Number */}
                   <td
                     className={`w-12 py-0.5 px-2 text-right text-[10px] select-none border-r border-ink/10 font-mono ${
+                      wordWrap ? 'align-top' : ''
+                    } ${
                       isLeftDel
                         ? 'bg-error/15 text-error font-semibold'
                         : left
@@ -93,7 +113,9 @@ export function SplitView({ rows, language }: SplitViewProps) {
 
                   {/* Left Content (Original) */}
                   <td
-                    className={`min-w-[320px] py-0.5 px-2 whitespace-pre border-r border-ink/10 text-ink ${
+                    className={`py-0.5 px-2 border-r border-ink/10 text-ink ${
+                      wordWrap ? 'whitespace-pre-wrap break-words align-top' : 'min-w-[320px] whitespace-pre'
+                    } ${
                       isLeftDel
                         ? 'bg-error/10'
                         : left
@@ -121,6 +143,8 @@ export function SplitView({ rows, language }: SplitViewProps) {
                   {/* Right Line Number */}
                   <td
                     className={`w-12 py-0.5 px-2 text-right text-[10px] select-none border-r border-ink/10 font-mono ${
+                      wordWrap ? 'align-top' : ''
+                    } ${
                       isRightAdd
                         ? 'bg-success/15 text-success font-semibold'
                         : right
@@ -133,7 +157,9 @@ export function SplitView({ rows, language }: SplitViewProps) {
 
                   {/* Right Content (Modified) */}
                   <td
-                    className={`min-w-[320px] py-0.5 px-2 whitespace-pre text-ink ${
+                    className={`py-0.5 px-2 text-ink ${
+                      wordWrap ? 'whitespace-pre-wrap break-words align-top' : 'min-w-[320px] whitespace-pre'
+                    } ${
                       isRightAdd
                         ? 'bg-success/10'
                         : right

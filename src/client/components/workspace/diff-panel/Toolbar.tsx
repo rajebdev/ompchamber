@@ -1,14 +1,24 @@
-import { AlignJustify, Check, Code2, Columns, Copy, Minus, Plus, RefreshCw, Space, Undo2 } from 'lucide-preact';
+import { AlignJustify, Check, Code2, Columns, Copy, Diff, FileCode, Minus, Plus, RefreshCw, Space, Undo2, WrapText } from 'lucide-preact';
 import { FileIcon } from '@/client/components/common/file-icon';
 import { getGitStatusInfo } from '@/shared/lib/fs/git-status';
 
 export type DiffViewMode = 'unified' | 'split';
+
+/**
+ * How much of the file the diff shows. `full` is the default: the whole file
+ * with the changes marked inside it, which is what a reader wants when the
+ * hunks alone leave the edit without context. `diff` asks git for its own
+ * default context and shows only the changed regions.
+ */
+export type DiffContentMode = 'full' | 'diff';
 
 interface DiffToolbarProps {
   filePath: string;
   status: string;
   isStaged: boolean;
   viewMode: DiffViewMode;
+  contentMode: DiffContentMode;
+  wordWrap: boolean;
   ignoreWhitespace: boolean;
   additions: number;
   deletions: number;
@@ -17,6 +27,8 @@ interface DiffToolbarProps {
   /** A stage/unstage/discard write is in flight; the toolbar locks its actions. */
   isBusy?: boolean;
   onSetViewMode: (mode: DiffViewMode) => void;
+  onSetContentMode: (mode: DiffContentMode) => void;
+  onToggleWordWrap: () => void;
   onToggleWhitespace: () => void;
   onStageUnstage: () => void;
   onDiscard: () => void;
@@ -33,6 +45,8 @@ export function DiffToolbar({
   status,
   isStaged,
   viewMode,
+  contentMode,
+  wordWrap,
   ignoreWhitespace,
   additions,
   deletions,
@@ -40,6 +54,8 @@ export function DiffToolbar({
   isCopied,
   isBusy = false,
   onSetViewMode,
+  onSetContentMode,
+  onToggleWordWrap,
   onToggleWhitespace,
   onStageUnstage,
   onDiscard,
@@ -117,6 +133,57 @@ export function DiffToolbar({
             <span className="hidden @[420px]:inline">Unified</span>
           </button>
         </div>
+
+        {/* Content scope toggle (Full Code vs Diff Only). A separate group from
+            the view-mode toggle because the two are orthogonal: Unified/Split is
+            the shape of the rows, Full/Diff is how many of them there are. Each
+            segment SETS its mode — clicking the active one must not flip the
+            other, which is what a toggle would do. */}
+        <div className="flex items-center bg-canvas rounded border border-ink/15 p-0.5 mr-0.5 @[440px]:mr-1 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => onSetContentMode('full')}
+            className={`px-2 py-0.5 rounded text-[11px] font-medium flex items-center space-x-1 transition-colors cursor-pointer flex-shrink-0 ${
+              contentMode === 'full' ? 'bg-paper text-ink shadow-xs' : 'text-ink/60 hover:text-ink'
+            }`}
+            title="Full code (whole file, changes marked)"
+            aria-label="Full code (whole file, changes marked)"
+            aria-pressed={contentMode === 'full'}
+          >
+            <FileCode size={12} />
+            <span className="hidden @[420px]:inline">Full Code</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onSetContentMode('diff')}
+            className={`px-2 py-0.5 rounded text-[11px] font-medium flex items-center space-x-1 transition-colors cursor-pointer flex-shrink-0 ${
+              contentMode === 'diff' ? 'bg-paper text-ink shadow-xs' : 'text-ink/60 hover:text-ink'
+            }`}
+            title="Diff only (changed hunks)"
+            aria-label="Diff only (changed hunks)"
+            aria-pressed={contentMode === 'diff'}
+          >
+            <Diff size={12} />
+            <span className="hidden @[420px]:inline">Diff Only</span>
+          </button>
+        </div>
+
+        {/* Word wrap. On by default: a diff of a minified file or a long line
+            is unreadable when it runs off the panel, and horizontal scrolling
+            hides the change the reader opened the diff to see. Off keeps one
+            line = one row, which is what a column-aligned comparison needs. */}
+        <button
+          type="button"
+          onClick={onToggleWordWrap}
+          className={`p-1.5 rounded transition-colors cursor-pointer flex-shrink-0 ${
+            wordWrap ? 'bg-ink/10 text-ink' : 'text-ink/50 hover:text-ink hover:bg-ink/5'
+          }`}
+          title={wordWrap ? 'Word wrap on' : 'Word wrap off'}
+          aria-label={wordWrap ? 'Word wrap on' : 'Word wrap off'}
+          aria-pressed={wordWrap}
+        >
+          <WrapText size={13} />
+        </button>
 
         {/* Ignore whitespace toggle */}
         <button

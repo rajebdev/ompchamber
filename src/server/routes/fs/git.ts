@@ -98,7 +98,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     if (targetFile) {
       const staged = url.searchParams.get('staged') === '1' || url.searchParams.get('staged') === 'true';
       const statusParam = url.searchParams.get('status') || undefined;
-      const diffData = await fetchWorkingFileDiff(targetDir, targetFile, staged, statusParam);
+      const fullContext = url.searchParams.get('fullContext') === '1';
+      const diffData = await fetchWorkingFileDiff(targetDir, targetFile, staged, statusParam, fullContext);
       return json({ success: true, ...diffData });
     }
   }
