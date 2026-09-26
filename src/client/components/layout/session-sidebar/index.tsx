@@ -17,7 +17,8 @@ export function SessionSidebar({ className = '', onClose, appSettings = {} }: { 
   const {
     folders,
     initializing,
-    refresh,
+    refreshNow,
+    refreshing,
     activeSessionId,
     sessionParam,
     searchQuery,
@@ -105,7 +106,8 @@ export function SessionSidebar({ className = '', onClose, appSettings = {} }: { 
           onSortChange={handleSortChange}
           onNewWorkspace={() => setNewWorkspaceOpen(true)}
           onScheduler={() => setSchedulerOpen(true)}
-          onRefresh={refresh}
+          onRefresh={refreshNow}
+          refreshing={refreshing}
           onClose={onClose}
         />
 

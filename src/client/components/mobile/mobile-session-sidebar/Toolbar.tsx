@@ -1,5 +1,5 @@
 import type { RefObject } from 'preact/compat';
-import { Archive, ArrowUpDown, Calendar, Check, FolderPlus, Plus, Search, X } from 'lucide-preact';
+import { Archive, ArrowUpDown, Calendar, Check, FolderPlus, Plus, RefreshCw, Search, X } from 'lucide-preact';
 import type { SessionSortOption } from '@/shared/types';
 import { SortMenu } from '@/client/components/common/sort-menu';
 
@@ -12,6 +12,9 @@ interface MobileSessionToolbarProps {
   onNewSession: () => void;
   onNewWorkspace: () => void;
   onScheduler: () => void;
+  onRefresh: () => void;
+  /** True while the user-initiated refresh is in flight — spins the icon. */
+  refreshing: boolean;
   onToggleOptions: () => void;
   onSortChange: (opt: SessionSortOption) => void;
   onResetSort: () => void;
@@ -30,6 +33,8 @@ export function MobileSessionToolbar({
   onNewSession,
   onNewWorkspace,
   onScheduler,
+  onRefresh,
+  refreshing,
   onToggleOptions,
   onSortChange,
   onResetSort,
@@ -72,6 +77,21 @@ export function MobileSessionToolbar({
           aria-label="Schedule Task"
         >
           <Calendar size={16} strokeWidth={1.8} />
+        </button>
+
+        {/* Refresh sessions button — same action the desktop toolbar's
+            RefreshCw performs: refetch the session list from the server.
+            The icon spins for the duration of that fetch, so the click has a
+            visible end; `refreshing` is raised only by this button's own load. */}
+        <button
+          type="button"
+          onClick={onRefresh}
+          className="w-9.5 h-9.5 rounded-xl border border-ink/15 bg-paper hover:bg-ink/5 active:scale-95 text-ink/80 hover:text-ink flex items-center justify-center transition-all flex-shrink-0 cursor-pointer shadow-xs"
+          title="Refresh sessions"
+          aria-label="Refresh sessions"
+          aria-busy={refreshing}
+        >
+          <RefreshCw size={15} strokeWidth={1.8} className={refreshing ? 'animate-spin' : undefined} />
         </button>
 
         {/* Sort & Filter Dropdown */}

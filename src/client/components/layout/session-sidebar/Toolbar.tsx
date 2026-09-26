@@ -18,6 +18,8 @@ interface SessionSidebarToolbarProps {
   onNewWorkspace: () => void;
   onScheduler: () => void;
   onRefresh: () => void;
+  /** True while the user-initiated refresh is in flight — spins the icon. */
+  refreshing: boolean;
   onClose?: () => void;
 }
 
@@ -37,6 +39,7 @@ export function SessionSidebarToolbar({
   onNewWorkspace,
   onScheduler,
   onRefresh,
+  refreshing,
   onClose,
 }: SessionSidebarToolbarProps) {
   return (
@@ -45,16 +48,19 @@ export function SessionSidebarToolbar({
         <div className="flex space-x-3 items-center">
           <FolderPlus size={14} className="hover:text-ink cursor-pointer"  onClick={onNewWorkspace} />
           <Calendar size={14} className="hover:text-ink cursor-pointer" onClick={onScheduler} />
-          <span 
-            title="Refresh sessions" 
+          <button
+            type="button"
+            title="Refresh sessions"
             onClick={onRefresh}
-            className="inline-flex cursor-pointer"
+            className="inline-flex cursor-pointer bg-transparent border-0 p-0 text-ink/60"
+            aria-label="Refresh sessions"
+            aria-busy={refreshing}
           >
             <RefreshCw 
               size={14} 
-              className="hover:text-ink" 
+              className={`hover:text-ink ${refreshing ? 'animate-spin' : ''}`} 
             />
-          </span>
+          </button>
         </div>
         <div className="flex space-x-3 items-center relative">
           <Search 

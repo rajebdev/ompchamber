@@ -36,6 +36,8 @@ export function MobileSessionSidebar({
   const {
     folders,
     initializing,
+    refreshNow,
+    refreshing,
     searchQuery,
     setSearchQuery,
     showArchived,
@@ -124,6 +126,8 @@ export function MobileSessionSidebar({
         onNewSession={handleNewSessionAndClose}
         onNewWorkspace={() => setNewWorkspaceOpen(true)}
         onScheduler={() => setSchedulerOpen(true)}
+        onRefresh={refreshNow}
+        refreshing={refreshing}
         onToggleOptions={() => setOptionsOpen(!optionsOpen)}
         onSortChange={handleSortChange}
         onResetSort={() => handleSortChange('A-Z')}

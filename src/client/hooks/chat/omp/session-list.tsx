@@ -33,6 +33,16 @@ export interface SidebarDataHandle {
   /** Fire a refresh (dedup: while a load is in flight this is a no-op). */
   refresh: () => void;
   /**
+   * User-initiated refresh: the same load as `refresh`, but it also raises
+   * `refreshing` until THAT load settles, so a toolbar button can spin while
+   * it runs. The background paths (idle poll, stream events, status ack) go
+   * through `refresh` and deliberately never raise the flag — a spinner that
+   * turns on by itself every 30s reads as a broken list.
+   */
+  refreshNow: () => void;
+  /** True while a `refreshNow` load is in flight. */
+  refreshing: boolean;
+  /**
    * Mark a session's one-shot terminal badge as seen NOW: strips the check
    * optimistically for this mount and POSTs the server ack. No-op unless the
    * session currently carries a terminal (`finish`/`abort`/`error`) status.
@@ -72,6 +82,22 @@ export function SidebarDataProvider({ children, initialFolders = [] }: { childre
       // throttled upstream (1s trailing) so dropping the overlap is safe.
       if (fetcher.state === 'idle') void fetcher.load('/api/sessions/list');
     };
+  }, [fetcher]);
+
+  // User-initiated refresh. Unlike `refresh` it does NOT skip an in-flight
+  // load — a click is an explicit "read it again now", and the fetcher aborts
+  // the superseded request rather than letting two answer. The spinner follows
+  // THIS load only: a token marks the newest click, so a background poll
+  // settling in between cannot stop a spin that is still running, and a
+  // superseded click cannot stop the newer one's.
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshTokenRef = useRef(0);
+  const refreshNow = useCallback(() => {
+    const token = ++refreshTokenRef.current;
+    setRefreshing(true);
+    void fetcher.load('/api/sessions/list').finally(() => {
+      if (refreshTokenRef.current === token) setRefreshing(false);
+    });
   }, [fetcher]);
 
   // Idle keep-alive: the throttled stream-event hook and useStreamPoll only
@@ -142,10 +168,12 @@ export function SidebarDataProvider({ children, initialFolders = [] }: { childre
       isMock: data?.isMock ?? false,
       initializing: !hasLoaded,
       refresh,
+      refreshNow,
+      refreshing,
       markSeen,
       hasSeen: (id) => seen.has(String(id)),
     };
-  }, [fetcher.data, initialFolders, hasLoaded, refresh, markSeen]);
+  }, [fetcher.data, initialFolders, hasLoaded, refresh, refreshNow, refreshing, markSeen]);
 
   return <SidebarDataContext.Provider value={value}>{children}</SidebarDataContext.Provider>;
 }
@@ -163,6 +191,8 @@ export function useSidebarData(): SidebarDataHandle {
     isMock: false,
     initializing: true,
     refresh: () => {},
+    refreshNow: () => {},
+    refreshing: false,
     markSeen: () => {},
     hasSeen: () => false,
   };

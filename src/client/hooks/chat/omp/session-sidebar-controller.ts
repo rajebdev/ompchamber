@@ -51,6 +51,10 @@ export interface SessionSidebarController {
   folders: WorkspaceFolderData[];
   initializing: boolean;
   refresh: () => void;
+  /** User-initiated refresh — raises `refreshing` until that load settles. */
+  refreshNow: () => void;
+  /** True while a `refreshNow` load is in flight (drives the toolbar spinner). */
+  refreshing: boolean;
   activeSessionId: number | string | null;
   sessionParam: string | null;
   searchQuery: string;
@@ -71,7 +75,7 @@ export function useSessionSidebarController(
   options: SessionSidebarControllerOptions = {},
 ): SessionSidebarController {
   const { includePendingSessions = false, onSelectSession, onAfterSelect } = options;
-  const { folders, initializing, refresh, markSeen, hasSeen } = useSidebarData();
+  const { folders, initializing, refresh, refreshNow, refreshing, markSeen, hasSeen } = useSidebarData();
   const [searchParams, setSearchParams] = useSearchParams();
   const sessionParam = searchParams.get('sessionId');
   const activeSessionId = sessionParam
@@ -232,6 +236,8 @@ export function useSessionSidebarController(
     folders,
     initializing,
     refresh: revalidate,
+    refreshNow,
+    refreshing,
     activeSessionId,
     sessionParam,
     searchQuery,
