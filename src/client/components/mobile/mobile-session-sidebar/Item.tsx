@@ -197,11 +197,7 @@ export function MobileSessionCategory({
                   onRename={sessionKey.startsWith('new-') ? undefined : (name) => void handleRename(session, name)}
                 />
                 {isRosterOpen && (
-                  <SubagentList
-                    sessionId={session.id}
-                    isActiveSession={isSessionActive}
-                    className="ml-2"
-                  />
+                  <SubagentList sessionId={session.id} isActiveSession={isSessionActive} />
                 )}
               </div>
             );

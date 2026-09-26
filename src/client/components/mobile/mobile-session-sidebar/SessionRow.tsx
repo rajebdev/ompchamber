@@ -103,11 +103,16 @@ export function MobileSessionRow({
         </button>
       )}
 
+      {/* A row WITHOUT a roster toggle still has to keep the toggle's column
+          empty, or its archive glyph would sit where the toggle is and the
+          trailing icons would step in and out row to row. This `mr-1` is what
+          reserves that column: it moves the 14px glyph's centre from x=363 to
+          x=359, the exact x the toggle uses on a row that has one. */}
       <button
         type="button"
         onClick={onArchive}
         title={session.is_archived === 1 ? 'Unarchive session' : 'Archive session'}
-        className="flex-shrink-0 p-2 text-ink/35 hover:text-ink rounded-lg cursor-pointer"
+        className={`flex-shrink-0 p-2 text-ink/35 hover:text-ink rounded-lg cursor-pointer ${showChevron ? '' : 'mr-1'}`}
       >
         {session.is_archived === 1 ? <ArchiveRestore size={14} /> : <Archive size={14} />}
       </button>
