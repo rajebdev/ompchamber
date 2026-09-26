@@ -39,10 +39,18 @@ export function MobileSessionRow({
     handleBlur,
   } = useInlineRename(session.title, onRename);
 
-  // The toggle is a sibling of the select button, never a child: a button
-  // inside a button is invalid and the browser reparents it. Only a row whose
-  // session actually has a roster gets one.
+  // Desktop's order: the roster toggle leads the row in the LEFT slot, ahead of
+  // the run status. Desktop can reveal a hover-only chevron because a mouse has
+  // hover; a touch screen does not, so the toggle is pinned whenever the row
+  // has a roster — a hidden chevron would make the roster unreachable. A live
+  // run therefore keeps its spinner in a second cell rather than displacing the
+  // toggle.
+  //
+  // The toggle is a SIBLING of the select button, never a child: a button
+  // inside a button is invalid and the browser reparents it.
   const showChevron = hasSubagents && Boolean(onToggleExpand);
+  const showStatus = Boolean(status) && (!showChevron || status === 'stream');
+  const title = session.title.charAt(0).toUpperCase() + session.title.slice(1);
 
   if (isEditing) {
     return (
@@ -66,36 +74,40 @@ export function MobileSessionRow({
         isActive ? 'bg-ink/10 font-medium text-ink' : 'hover:bg-ink/5 text-ink/85'
       }`}
     >
+      {/* Left slot, always 16px so every title starts at the same x. It holds
+          the roster toggle ahead of the run status, desktop's order; the toggle
+          is a SIBLING of the select button, never a child (a button inside a
+          button is invalid and the browser reparents it). */}
+      <span className="w-4 h-4 ml-2 flex-shrink-0 flex items-center justify-center">
+        {showChevron && (
+          <button
+            type="button"
+            onClick={onToggleExpand}
+            title={isExpanded ? 'Collapse subagents' : 'Expand subagents'}
+            aria-expanded={isExpanded}
+            aria-label={isExpanded ? 'Collapse subagents' : 'Expand subagents'}
+            className="w-4 h-4 flex items-center justify-center text-ink/60 hover:text-ink rounded cursor-pointer"
+          >
+            {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+          </button>
+        )}
+      </span>
+
       <button
         type="button"
         onClick={onSelect}
-        className="flex-1 text-left px-3 py-2 flex items-center justify-between min-w-0"
+        className="flex-1 text-left pl-1.5 pr-3 py-2 flex items-center justify-between min-w-0"
       >
-        <div className="flex items-center space-x-1.5 min-w-0 pr-2">
+        <div className="flex items-center min-w-0 pr-2">
           <span className="w-4 flex-shrink-0 flex items-center justify-center">
-            {status === 'stream' && <Loader2 size={13} className="text-ink/50 animate-spin" />}
-            {(status === 'finish' || status === 'abort') && <Check size={13} className="text-ink/50" />}
+            {showStatus && status === 'stream' && <Loader2 size={13} className="text-ink/50 animate-spin" />}
+            {showStatus && (status === 'finish' || status === 'abort') && <Check size={13} className="text-ink/50" />}
           </span>
-          <span className="text-xs truncate leading-snug">
-            {session.title.charAt(0).toUpperCase() + session.title.slice(1)}
-          </span>
+          <span className="text-xs truncate leading-snug ml-1.5">{title}</span>
         </div>
 
         <span className="text-[11px] text-ink/45 font-mono flex-shrink-0 ml-2">{timeAgo ?? ''}</span>
       </button>
-
-      {showChevron && (
-        <button
-          type="button"
-          onClick={onToggleExpand}
-          title={isExpanded ? 'Collapse subagents' : 'Expand subagents'}
-          aria-expanded={isExpanded}
-          aria-label={isExpanded ? 'Collapse subagents' : 'Expand subagents'}
-          className="flex-shrink-0 p-2 -ml-1 text-ink/45 hover:text-ink rounded-lg cursor-pointer"
-        >
-          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </button>
-      )}
 
       {onRename && (
         <button
