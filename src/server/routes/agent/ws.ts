@@ -9,7 +9,7 @@
  *
  * Same frame vocabulary (JSON objects with a `type`, first frame `connected`),
  * same backpressure policy (replaceable `message_update` frames collapse to the
- * latest one while the client is behind) — the policy itself now lives in
+ * latest one while the client is behind) — the policy itself lives in
  * `createEventCoalescer`, shared with the SSE route — but carried by one duplex
  * socket: no per-event HTTP framing, no browser reconnect storm, and
  * protocol-level ping/pong keepalive instead of a comment frame every 30s.
@@ -17,18 +17,18 @@
  * Transport-only by design. It reads the live session registry off `globalThis`
  * (the map the server build populates) and duck-types the wrapper, so the
  * registry contract survives any HTTP framework owning the port.
+ *
+ * **Per-connection state lives on `ws.data`, not in a `WeakMap` keyed by the
+ * `ws` object.** Elysia's Bun adapter builds a fresh wrapper per callback and
+ * hands `pong` the raw socket, so a WeakMap lookup always missed: the pong
+ * never cleared `awaitingPong` and the second heartbeat closed a healthy
+ * socket at 60s, while `close` leaked the interval and the session
+ * subscription. `attachObserverStream` owns the lifecycle; see
+ * `@/server/lib/observer-ws` for the measurements.
  */
 
 import { Elysia, t } from 'elysia';
-import { createEventCoalescer, type EventCoalescer } from '@/server/lib/sse';
-import { STREAM_HEARTBEAT_MS } from '@/shared/lib/workspace/refresh-cadence';
-
-/** Coalesce `message_update` frames once this many bytes sit unsent. */
-const HIGH_WATER_BYTES = 256 * 1024;
-
-/** Longest a coalesced frame may wait before it is flushed anyway, so a burst
- *  that ends while the socket is still busy never strands the newest update. */
-const FLUSH_DELAY_MS = 50;
+import { attachObserverStream, createObserverState, type ObserverConnectionState } from '@/server/lib/observer-ws';
 
 interface AgentEventSession {
   isAlive?: () => boolean;
@@ -48,15 +48,8 @@ function findAgentSession(sessionId: string): AgentEventSession | null {
   return session;
 }
 
-interface ConnectionState {
-  closed: boolean;
-  unsubscribe: (() => void) | null;
-  heartbeat: ReturnType<typeof setInterval> | null;
-  awaitingPong: boolean;
-  coalescer: EventCoalescer | null;
-}
-
-const connections = new WeakMap<object, ConnectionState>();
+/** Elysia's ws context, narrowed to the per-connection store this route adds. */
+type AgentWsData = { params: { sessionId: string }; observer?: ObserverConnectionState };
 
 export const agentWsRoutes = new Elysia({ prefix: '/api/agent' }).ws('/:sessionId/ws', {
   params: t.Object({ sessionId: t.String() }),
@@ -68,81 +61,24 @@ export const agentWsRoutes = new Elysia({ prefix: '/api/agent' }).ws('/:sessionI
   },
 
   open(ws) {
-    const sessionId = ws.data.params.sessionId;
+    const data = ws.data as unknown as AgentWsData;
+    const sessionId = data.params.sessionId;
     const session = findAgentSession(sessionId);
     if (!session) {
       ws.close();
       return;
     }
 
-    const state: ConnectionState = {
-      closed: false,
-      unsubscribe: null,
-      heartbeat: null,
-      awaitingPong: false,
-      coalescer: null,
-    };
-    connections.set(ws, state);
+    const state = createObserverState();
+    data.observer = state;
+    const { push } = attachObserverStream(state, ws);
 
-    const teardown = () => {
-      if (state.closed) return;
-      state.closed = true;
-      state.coalescer?.dispose();
-      state.coalescer = null;
-      if (state.heartbeat !== null) {
-        clearInterval(state.heartbeat);
-        state.heartbeat = null;
-      }
-      if (state.unsubscribe) {
-        try {
-          state.unsubscribe();
-        } catch {
-          // Subscriber cleanup is best-effort.
-        }
-        state.unsubscribe = null;
-      }
-      try {
-        ws.close();
-      } catch {
-        // Already gone.
-      }
-    };
-
-    state.coalescer = createEventCoalescer({
-      send: (_event, data) => {
-        try {
-          ws.send(JSON.stringify(data));
-        } catch {
-          teardown();
-        }
-      },
-      isBackpressured: () => ((ws.raw as { bufferedAmount?: number }).bufferedAmount ?? 0) > HIGH_WATER_BYTES,
-      flushDelayMs: FLUSH_DELAY_MS,
-    });
-
-    // Protocol-level keepalive: a client that misses a full ping cycle is gone,
-    // and a live one answers without any application-level traffic.
-    state.heartbeat = setInterval(() => {
-      if (state.closed) return;
-      if (state.awaitingPong) {
-        teardown();
-        return;
-      }
-      state.awaitingPong = true;
-      if (!state.coalescer?.flush()) return;
-      try {
-        (ws.raw as { ping?: () => void }).ping?.();
-      } catch {
-        teardown();
-      }
-    }, STREAM_HEARTBEAT_MS);
-
-    state.unsubscribe = session.onEvent((event) => state.coalescer?.push('', event));
-    state.coalescer.push('', { type: 'connected', sessionId });
+    state.unsubscribe = session.onEvent((event) => push('', event));
+    push('', { type: 'connected', sessionId });
   },
 
   pong(ws) {
-    const state = connections.get(ws);
+    const state = (ws.data as unknown as AgentWsData).observer;
     if (state) state.awaitingPong = false;
   },
 
@@ -151,18 +87,7 @@ export const agentWsRoutes = new Elysia({ prefix: '/api/agent' }).ws('/:sessionI
   },
 
   close(ws) {
-    const state = connections.get(ws);
-    if (!state || state.closed) return;
-    state.closed = true;
-    state.coalescer?.dispose();
-    state.coalescer = null;
-    if (state.heartbeat !== null) clearInterval(state.heartbeat);
-    if (state.unsubscribe) {
-      try {
-        state.unsubscribe();
-      } catch {
-        // Subscriber cleanup is best-effort.
-      }
-    }
+    const state = (ws.data as unknown as AgentWsData).observer;
+    if (state) state.teardown();
   },
 });
