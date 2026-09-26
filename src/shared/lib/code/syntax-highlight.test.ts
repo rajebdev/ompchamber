@@ -7,7 +7,8 @@ import { beforeAll, describe, expect, test } from 'bun:test';
 
 import { bootSyntax, onLanguageReady, requestLanguage } from '@/shared/lib/code/highlighter';
 import { findMatches } from '@/shared/lib/code/editor/find';
-import { getLanguageFromPath, highlightCode, highlightLines } from '@/shared/lib/code/syntax-highlight';
+import { getLanguageFromPath } from '@/shared/lib/code/language';
+import { highlightCode, highlightLines } from '@/shared/lib/code/syntax-highlight';
 import { highlightCodeWindow } from '@/shared/lib/code/windowed-highlight';
 
 /** Shiki emits `<span class="shiki">…` with dual-theme CSS variables per token. */

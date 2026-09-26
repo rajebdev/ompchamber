@@ -3,7 +3,8 @@ import { AlignLeft, Code, Eye, FileCode, FileText, Layers, Terminal } from 'luci
 import type { ParsedTaskNotice } from '@/shared/lib/chat/task-result-parser';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 import { CopyButton } from '@/client/components/common/CopyButton';
-import { highlightCode, isCodeLike } from '@/shared/lib/code/syntax-highlight';
+import { isCodeLike } from '@/shared/lib/code/language';
+import { highlightCode } from '@/shared/lib/code/syntax-highlight';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 
 interface TaskResultContentProps {

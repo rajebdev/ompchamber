@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { FileCode, FileImage, FileText, Folder, FolderOpen, Info, Loader2 } from 'lucide-preact';
 import { CopyButton } from '@/client/components/common/CopyButton';
-import { getLanguageFromPath, highlightCode } from '@/shared/lib/code/syntax-highlight';
+import { getLanguageFromPath } from '@/shared/lib/code/language';
+import { highlightCode } from '@/shared/lib/code/syntax-highlight';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 import { parseDirListing, parseNumberedCode } from '@/shared/lib/code/parser';
 import { getImageMimeType } from '@/shared/lib/fs/file-kind';

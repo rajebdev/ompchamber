@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useSessionUiState } from '@/client/hooks/workspace/session-state';
 import { parseUnifiedDiff } from '@/shared/lib/fs/diff-parser';
-import { getLanguageFromPath } from '@/shared/lib/code/syntax-highlight';
+import { getLanguageFromPath } from '@/shared/lib/code/language';
 import { DiffToolbar, type DiffContentMode, type DiffViewMode } from '@/client/components/workspace/diff-panel/Toolbar';
 import { UnifiedView } from '@/client/components/workspace/diff-panel/UnifiedView';
 import { SplitView } from '@/client/components/workspace/diff-panel/SplitView';
@@ -123,7 +123,13 @@ export function DiffPanel({
   // to its inputs: every render used to re-walk the diff (measured 21 ms on an
   // 80k-line file), for a result that only changes when the diff or the
   // whitespace toggle does.
-  const parsed = useMemo(() => parseUnifiedDiff(rawDiff, ignoreWhitespace), [rawDiff, ignoreWhitespace]);
+  // Only the rendered view is built: `views` keeps the shared flush (so the
+  // whitespace decision and the counts cannot diverge) while skipping the
+  // object graph nobody draws.
+  const parsed = useMemo(
+    () => parseUnifiedDiff(rawDiff, { ignoreWhitespace, views: viewMode === 'split' ? 'split' : 'unified' }),
+    [rawDiff, ignoreWhitespace, viewMode],
+  );
   const language = getLanguageFromPath(filePath);
 
   const handleSetViewMode = (mode: DiffViewMode) => {

@@ -61,7 +61,7 @@ describe('parseUnifiedDiff', () => {
   });
 
   test('folds a whitespace-only rewrite into context when ignoring whitespace', () => {
-    const { lines, splitRows, additions, deletions } = parseUnifiedDiff(WHITESPACE_ONLY, true);
+    const { lines, splitRows, additions, deletions } = parseUnifiedDiff(WHITESPACE_ONLY, { ignoreWhitespace: true });
 
     // The counts the toolbar renders must match what is on screen.
     expect(additions).toBe(0);
@@ -81,7 +81,7 @@ describe('parseUnifiedDiff', () => {
   });
 
   test('keeps a real change when ignoring whitespace', () => {
-    const { lines, additions, deletions } = parseUnifiedDiff(REAL_CHANGE, true);
+    const { lines, additions, deletions } = parseUnifiedDiff(REAL_CHANGE, { ignoreWhitespace: true });
 
     expect(additions).toBe(1);
     expect(deletions).toBe(1);
@@ -90,7 +90,7 @@ describe('parseUnifiedDiff', () => {
   });
 
   test('folds only the whitespace pair of a mixed hunk', () => {
-    const { lines, additions, deletions } = parseUnifiedDiff(MIXED, true);
+    const { lines, additions, deletions } = parseUnifiedDiff(MIXED, { ignoreWhitespace: true });
 
     // Line 1 differs by indentation only; line 2 is a genuine edit.
     expect(additions).toBe(1);
@@ -110,7 +110,7 @@ describe('parseUnifiedDiff', () => {
   });
 
   test('returns empty results for an empty diff', () => {
-    expect(parseUnifiedDiff('', true)).toEqual({ lines: [], splitRows: [], additions: 0, deletions: 0 });
-    expect(parseUnifiedDiff('   \n', false)).toEqual({ lines: [], splitRows: [], additions: 0, deletions: 0 });
+    expect(parseUnifiedDiff('', { ignoreWhitespace: true })).toEqual({ lines: [], splitRows: [], additions: 0, deletions: 0 });
+    expect(parseUnifiedDiff('   \n', { ignoreWhitespace: false })).toEqual({ lines: [], splitRows: [], additions: 0, deletions: 0 });
   });
 });

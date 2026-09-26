@@ -2,7 +2,8 @@ import { useMemo, useState } from 'preact/hooks';
 import { ChevronRight, FileSearch, FileText, FolderSearch } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
 import { CopyButton } from '@/client/components/common/CopyButton';
-import { getLanguageFromPath, highlightLines } from '@/shared/lib/code/syntax-highlight';
+import { getLanguageFromPath } from '@/shared/lib/code/language';
+import { highlightLines } from '@/shared/lib/code/syntax-highlight';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 import { MAX_OUTPUT_LINES, truncateTailLines } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/truncate';
 

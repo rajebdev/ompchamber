@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'preact/hooks';
 import { ChevronDown, ChevronUp } from 'lucide-preact';
-import { getLanguageFromPath, highlightLines } from '@/shared/lib/code/syntax-highlight';
+import { getLanguageFromPath } from '@/shared/lib/code/language';
+import { highlightLines } from '@/shared/lib/code/syntax-highlight';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 
 interface DiffLineItem {

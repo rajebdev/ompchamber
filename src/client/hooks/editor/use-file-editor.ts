@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import { getLanguageFromPath } from '@/shared/lib/code/syntax-highlight';
+import { getLanguageFromPath } from '@/shared/lib/code/language';
 import { getImageMimeType } from '@/shared/lib/fs/file-kind';
 import { buildFsRawUrl } from '@/shared/lib/fs/paths';
 import { detectLineEnding, toDiskText, toLf, type LineEnding } from '@/shared/lib/code/line-endings';

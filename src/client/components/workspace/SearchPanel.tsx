@@ -9,7 +9,8 @@ import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { useRepoList, useRepoScope } from '@/client/hooks/workspace/repo-scope';
 import { useSearchStream } from '@/client/hooks/workspace/search-stream';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
-import { getLanguageFromPath, highlightCode } from '@/shared/lib/code/syntax-highlight';
+import { getLanguageFromPath } from '@/shared/lib/code/language';
+import { highlightCode } from '@/shared/lib/code/syntax-highlight';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 
 export function SearchPanel({ className = '', enabled = true, rootPath }: { className?: string, enabled?: boolean, rootPath?: string }) {

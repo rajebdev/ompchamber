@@ -12,7 +12,8 @@
 
 import { useMemo } from 'preact/hooks';
 import type { HashlineSection, HashlineVerb } from '@/shared/lib/omp/session/hashline-patch';
-import { getLanguageFromPath, highlightLines } from '@/shared/lib/code/syntax-highlight';
+import { getLanguageFromPath } from '@/shared/lib/code/language';
+import { highlightLines } from '@/shared/lib/code/syntax-highlight';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 
 /** A hashline `CUT` removes lines the model already saw, so it reads as the

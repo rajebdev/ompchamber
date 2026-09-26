@@ -1,7 +1,8 @@
 import { useMemo } from 'preact/hooks';
 import { ArrowRight, CheckCircle2, Clock, Wand2 } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
-import { getLanguageFromPath, highlightLines } from '@/shared/lib/code/syntax-highlight';
+import { getLanguageFromPath } from '@/shared/lib/code/language';
+import { highlightLines } from '@/shared/lib/code/syntax-highlight';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 
 interface AstEditItem {

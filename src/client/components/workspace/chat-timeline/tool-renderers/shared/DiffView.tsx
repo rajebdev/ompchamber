@@ -1,5 +1,6 @@
 import { useMemo } from 'preact/hooks';
-import { getLanguageFromPath, highlightLines } from '@/shared/lib/code/syntax-highlight';
+import { getLanguageFromPath } from '@/shared/lib/code/language';
+import { highlightLines } from '@/shared/lib/code/syntax-highlight';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 
 interface DiffLine {

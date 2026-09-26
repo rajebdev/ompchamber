@@ -31,12 +31,29 @@ interface PendingChange {
  * which is what this used to do — left the row painted red/green and counted in
  * `+n/-n`, so the toggle changed the glyphs and nothing else.
  */
-export function parseUnifiedDiff(rawDiff: string, ignoreWhitespace: boolean = false): {
+export interface ParseDiffOptions {
+  /** Fold `-`/`+` pairs that differ only in whitespace back into context. */
+  ignoreWhitespace?: boolean;
+  /**
+   * Which view the caller renders. Both views are built from one flush so a
+   * decision cannot land in one and not the other, but building the one nobody
+   * shows doubled the allocations on a full-context diff — an 80k-line file
+   * produced ~60k discarded `SplitDiffRow` objects. `'both'` is the default so
+   * the counts and the shared flush stay exactly as they were.
+   */
+  views?: 'unified' | 'split' | 'both';
+}
+
+export function parseUnifiedDiff(rawDiff: string, options: ParseDiffOptions = {}): {
   lines: DiffLine[];
   splitRows: SplitDiffRow[];
   additions: number;
   deletions: number;
 } {
+  const ignoreWhitespace = options.ignoreWhitespace ?? false;
+  const views = options.views ?? 'both';
+  const wantUnified = views !== 'split';
+  const wantSplit = views !== 'unified';
   const lines: DiffLine[] = [];
   const splitRows: SplitDiffRow[] = [];
   let additions = 0;
@@ -73,43 +90,47 @@ export function parseUnifiedDiff(rawDiff: string, ignoreWhitespace: boolean = fa
       }
     }
 
-    for (let i = 0; i < delBuffer.length; i++) {
-      const del = delBuffer[i];
-      const add = addBuffer[i];
-      if (folded[i] && add) {
-        // Show it as unchanged on both sides: the change is still in the file,
-        // the reader asked not to be shown formatting noise.
-        lines.push({
-          type: 'context',
-          // The new form, so the row reads as the file's current state.
-          text: add.text,
-          oldLineNumber: del.lineNumber,
-          newLineNumber: add.lineNumber,
-        });
-        continue;
+    if (wantUnified) {
+      for (let i = 0; i < delBuffer.length; i++) {
+        const del = delBuffer[i];
+        const add = addBuffer[i];
+        if (folded[i] && add) {
+          // Show it as unchanged on both sides: the change is still in the file,
+          // the reader asked not to be shown formatting noise.
+          lines.push({
+            type: 'context',
+            // The new form, so the row reads as the file's current state.
+            text: add.text,
+            oldLineNumber: del.lineNumber,
+            newLineNumber: add.lineNumber,
+          });
+          continue;
+        }
+        lines.push({ type: 'del', text: del.text, oldLineNumber: del.lineNumber });
       }
-      lines.push({ type: 'del', text: del.text, oldLineNumber: del.lineNumber });
-    }
-    for (let i = 0; i < addBuffer.length; i++) {
-      const add = addBuffer[i];
-      if (folded[i]) continue;
-      lines.push({ type: 'add', text: add.text, newLineNumber: add.lineNumber });
+      for (let i = 0; i < addBuffer.length; i++) {
+        const add = addBuffer[i];
+        if (folded[i]) continue;
+        lines.push({ type: 'add', text: add.text, newLineNumber: add.lineNumber });
+      }
     }
 
-    for (let i = 0; i < maxLen; i++) {
-      const del = delBuffer[i];
-      const add = addBuffer[i];
-      if (folded[i] && del && add) {
+    if (wantSplit) {
+      for (let i = 0; i < maxLen; i++) {
+        const del = delBuffer[i];
+        const add = addBuffer[i];
+        if (folded[i] && del && add) {
+          splitRows.push({
+            left: { type: 'context', text: del.text, lineNumber: del.lineNumber },
+            right: { type: 'context', text: add.text, lineNumber: add.lineNumber },
+          });
+          continue;
+        }
         splitRows.push({
-          left: { type: 'context', text: del.text, lineNumber: del.lineNumber },
-          right: { type: 'context', text: add.text, lineNumber: add.lineNumber },
+          left: del ? { type: 'del', text: del.text, lineNumber: del.lineNumber } : undefined,
+          right: add ? { type: 'add', text: add.text, lineNumber: add.lineNumber } : undefined,
         });
-        continue;
       }
-      splitRows.push({
-        left: del ? { type: 'del', text: del.text, lineNumber: del.lineNumber } : undefined,
-        right: add ? { type: 'add', text: add.text, lineNumber: add.lineNumber } : undefined,
-      });
     }
     delBuffer = [];
     addBuffer = [];
@@ -156,16 +177,20 @@ export function parseUnifiedDiff(rawDiff: string, ignoreWhitespace: boolean = fa
     } else {
       flushBuffers();
       const text = rawLine.startsWith(' ') ? rawLine.slice(1) : rawLine;
-      lines.push({
-        type: 'context',
-        text,
-        oldLineNumber: oldCounter,
-        newLineNumber: newCounter,
-      });
-      splitRows.push({
-        left: { type: 'context', text, lineNumber: oldCounter },
-        right: { type: 'context', text, lineNumber: newCounter },
-      });
+      if (wantUnified) {
+        lines.push({
+          type: 'context',
+          text,
+          oldLineNumber: oldCounter,
+          newLineNumber: newCounter,
+        });
+      }
+      if (wantSplit) {
+        splitRows.push({
+          left: { type: 'context', text, lineNumber: oldCounter },
+          right: { type: 'context', text, lineNumber: newCounter },
+        });
+      }
       oldCounter++;
       newCounter++;
     }

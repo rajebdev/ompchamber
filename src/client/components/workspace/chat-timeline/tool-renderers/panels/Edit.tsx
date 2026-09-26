@@ -6,7 +6,8 @@ import { DiffView } from '@/client/components/workspace/chat-timeline/tool-rende
 import { HashlinePatch } from '@/client/components/workspace/chat-timeline/tool-renderers/hashline-patch';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 import { EnvelopeHeader } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/EnvelopeHeader';
-import { getLanguageFromPath, highlightCode } from '@/shared/lib/code/syntax-highlight';
+import { getLanguageFromPath } from '@/shared/lib/code/language';
+import { highlightCode } from '@/shared/lib/code/syntax-highlight';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 import { MAX_OUTPUT_LINES, truncateTailLines } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/truncate';
 import { outputMarkdown, readToolOutput } from '@/shared/lib/chat/tool-output';

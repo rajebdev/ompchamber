@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'preact/hooks';
 import { AlertCircle, Bell, Bot, CheckCircle2, ChevronDown, Clock, Info, Layers } from 'lucide-preact';
-import { highlightCode, isCodeLike } from '@/shared/lib/code/syntax-highlight';
+import { isCodeLike } from '@/shared/lib/code/language';
+import { highlightCode } from '@/shared/lib/code/syntax-highlight';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 import { parseTaskNotice } from '@/shared/lib/chat/task-result-parser';
 import { TaskResultContent } from '@/client/components/workspace/chat-timeline/TaskResultContent';
