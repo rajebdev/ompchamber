@@ -273,6 +273,9 @@ export function forgetTerminal(id: string): void {
   if (!session) return;
   sessions.delete(id);
   clearPendingResize(id);
+  // Close each viewer's socket, not just forget it: the record is going away,
+  // so a socket left open would sit on a terminal that can never answer it.
+  for (const viewer of session.viewers) viewer.drop();
   session.viewers.clear();
   if (session.status === 'running') signalGroup(session, 'SIGKILL');
   closeTerminalStream(session);

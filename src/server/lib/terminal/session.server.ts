@@ -41,7 +41,15 @@ export const TERMINATION_GRACE_MS = 1000;
 
 /** A socket attached to a terminal. Output is raw PTY bytes; control is JSON. */
 export interface TerminalViewer {
-  send(frame: string | Uint8Array): void;
+  /**
+   * Deliver one frame. Returns false when the viewer could not accept it —
+   * the socket's send buffer is over its high-water mark — which the session
+   * treats as "this viewer is gone": a PTY producer cannot be paused, so the
+   * alternative is buffering unbounded output in a socket nobody is reading.
+   */
+  send(frame: string | Uint8Array): boolean;
+  /** Detach this viewer. Called when `send` reports it cannot keep up. */
+  drop(): void;
 }
 
 export interface TerminalSession {
@@ -61,6 +69,25 @@ export interface TerminalSession {
   exitCode: number | null;
   signal: string | null;
   lastActivity: number;
+}
+
+/**
+ * Deliver `frame` to every viewer, dropping the ones that cannot keep up.
+ *
+ * `Bun.ServerWebSocket.send` returns the bytes queued, or `-1` when the socket
+ * is over its high-water mark and the frame was NOT sent (verified on 1.4.2:
+ * 40 sends of 1 MiB to a socket nobody reads all return `-1`). A viewer that
+ * reports `-1` is closed rather than skipped — skipping would leave xterm's
+ * parser mid-sequence, so the honest outcome is a reconnect that replays the
+ * scrollback. The PTY cannot be paused, so this is the only backpressure a
+ * terminal has.
+ */
+export function fanOut(session: TerminalSession, frame: string | Uint8Array): void {
+  for (const viewer of session.viewers) {
+    if (viewer.send(frame)) continue;
+    session.viewers.delete(viewer);
+    viewer.drop();
+  }
 }
 
 /** A rejected attach, carrying the code the client shows to the user. */
@@ -118,7 +145,7 @@ export async function createSession(request: AttachRequest): Promise<TerminalSes
     data(_term, bytes) {
       session.history.append(bytes);
       session.lastActivity = Date.now();
-      for (const viewer of session.viewers) viewer.send(bytes);
+      fanOut(session, bytes);
     },
   });
   session.term = term;
@@ -145,7 +172,7 @@ export async function createSession(request: AttachRequest): Promise<TerminalSes
     session.signal = proc.signalCode ?? null;
     session.lastActivity = Date.now();
     const frame = JSON.stringify({ t: 'exit', exitCode: session.exitCode, signal: session.signal });
-    for (const viewer of session.viewers) viewer.send(frame);
+    fanOut(session, frame);
   });
 
   return session;

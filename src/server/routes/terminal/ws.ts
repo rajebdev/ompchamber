@@ -66,9 +66,24 @@ export const terminalWsRoutes = new Elysia({ prefix: '/api/terminal' }).ws('/:te
       viewer: {
         send(frame) {
           try {
-            ws.send(frame);
+            // Bun returns -1 when the frame was dropped rather than queued
+            // (the socket is over its high-water mark). Reporting it lets the
+            // session close this viewer instead of buffering a PTY's output
+            // into a socket nobody is reading.
+            return ws.send(frame) !== -1;
           } catch {
             // Socket closed mid-send; the close handler detaches.
+            return false;
+          }
+        },
+        drop() {
+          // The terminal session removed this viewer; close the socket so the
+          // client reconnects and replays the scrollback rather than sitting
+          // on a stream with a hole in it.
+          try {
+            ws.close();
+          } catch {
+            // Already gone.
           }
         },
       },
@@ -114,7 +129,14 @@ export const terminalWsRoutes = new Elysia({ prefix: '/api/terminal' }).ws('/:te
       // Ordering is safe without sequence numbers: attach captured the history
       // and registered this viewer in one synchronous block, so nothing can be
       // delivered between this frame and the replay that follows it.
-      if (replay.length > 0) ws.send(replay);
+      //
+      // The replay goes through the viewer, so a socket that cannot take the
+      // scrollback is closed rather than left attached to a terminal whose
+      // first screenful was silently dropped.
+      if (replay.length > 0 && !attachment.viewer.send(replay)) {
+        detachTerminal(attachment.viewer, attachment.id);
+        attachment.viewer.drop();
+      }
     } catch (error) {
       const code = error instanceof TerminalRuntimeError ? error.code : 'unknown';
       const message = error instanceof Error ? error.message : String(error);

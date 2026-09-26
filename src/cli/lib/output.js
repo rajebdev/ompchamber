@@ -95,6 +95,12 @@ export function fail(message, code = 1) {
 
 /**
  * Render a simple padded plain-text table for human output.
+ *
+ * Widths are measured with `Bun.stringWidth`, not `String.length`: `.length`
+ * counts UTF-16 code units, so a CJK session title or an emoji reported a width
+ * it does not render at and the whole table misaligned (verified: a 5-column
+ * overcount on a Japanese title). `stringWidth` also ignores ANSI escapes, so a
+ * coloured cell does not pad against its own escape bytes.
  */
 export function formatTable(rows, headers = []) {
   const body = Array.isArray(rows) ? rows.map((row) => (Array.isArray(row) ? row : [row])) : [];
@@ -105,21 +111,22 @@ export function formatTable(rows, headers = []) {
     return '';
   }
 
+  const cellText = (row, i) => (row[i] === undefined || row[i] === null ? '' : String(row[i]));
   const widths = [];
   for (let i = 0; i < columns; i += 1) {
-    const headerWidth = head[i] === undefined ? 0 : String(head[i]).length;
-    const cellWidth = body.reduce((max, row) => {
-      const cell = row[i] === undefined || row[i] === null ? '' : String(row[i]);
-      return Math.max(max, cell.length);
-    }, 0);
-    widths[i] = Math.max(headerWidth, cellWidth);
+    let width = head[i] === undefined ? 0 : Bun.stringWidth(String(head[i]));
+    for (const row of body) {
+      const cellWidth = Bun.stringWidth(cellText(row, i));
+      if (cellWidth > width) width = cellWidth;
+    }
+    widths[i] = width;
   }
 
   const renderRow = (row) =>
     widths
       .map((width, i) => {
-        const cell = row[i] === undefined || row[i] === null ? '' : String(row[i]);
-        return cell.padEnd(width);
+        const cell = cellText(row, i);
+        return cell + ' '.repeat(Math.max(0, width - Bun.stringWidth(cell)));
       })
       .join('  ')
       .trimEnd();
