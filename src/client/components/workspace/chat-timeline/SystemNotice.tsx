@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'preact/hooks';
+import { useMemo, useRef, useState } from 'preact/hooks';
 import { AlertCircle, Bell, Bot, CheckCircle2, ChevronDown, Clock, Info, Layers } from 'lucide-preact';
 import { isCodeLike } from '@/shared/lib/code/language';
 import { highlightCode } from '@/shared/lib/code/syntax-highlight';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
+import { useIsTruncated } from '@/client/hooks/ui/text-overflow';
 import { parseTaskNotice } from '@/shared/lib/chat/task-result-parser';
 import { TaskResultContent } from '@/client/components/workspace/chat-timeline/TaskResultContent';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
@@ -60,12 +61,17 @@ export function SystemNotice({ notice }: SystemNoticeProps) {
   }, [notice]);
 
   const rawTitle = taskNotice?.intro || reminderInfo?.title || genericInfo.firstLine || notice;
-  const isTruncated = rawTitle.length > 100;
-  const displayTitle = rawTitle.slice(0, 100) + (isTruncated ? '...' : '');
+  // The subtitle is clipped by CSS at the card's own width, so the decision to
+  // offer an expander is a MEASUREMENT, not a character count: 76 characters
+  // fit a desktop timeline and are cut on a phone card. A char threshold left
+  // those rows showing an ellipsis with nothing to click (the chevron was
+  // dropped with the button disabled). Measured on the exact node that carries
+  // `truncate`, so it cannot disagree with the ellipsis the user sees.
+  const subtitleRef = useRef<HTMLSpanElement>(null);
+  const subtitleClipped = useIsTruncated(subtitleRef, rawTitle);
 
-  // If notice has only 1 line of content AND does not exceed the 100-character ellipsis limit,
-  // disable expand since the entire text is already fully visible in the sub-header.
-  // If it exceeds the ellipsis limit (>100 chars) or has multiple lines, keep expand active.
+  // Expandable when the subtitle is visually clipped, or when the body holds
+  // something the one-line header cannot show (more lines, a task-result card).
   const isExpandable = useMemo(() => {
     if (taskNotice) return true;
     const clean = notice
@@ -75,8 +81,8 @@ export function SystemNotice({ notice }: SystemNoticeProps) {
       .split(/\r?\n/)
       .map((l) => l.trim())
       .filter(Boolean);
-    return lines.length > 1 || clean.length > 100 || rawTitle.length > 100;
-  }, [taskNotice, notice, rawTitle]);
+    return lines.length > 1 || subtitleClipped;
+  }, [taskNotice, notice, subtitleClipped]);
 
   const noticeStyle = useMemo(() => {
     if (taskNotice) {
@@ -169,9 +175,9 @@ export function SystemNotice({ notice }: SystemNoticeProps) {
               </span>
             )}
           </span>
-          {!isOpen && displayTitle && (
-            <span className="truncate font-mono text-[10.5px] text-ink/45" title={rawTitle}>
-              {displayTitle}
+          {!isOpen && rawTitle && (
+            <span ref={subtitleRef} className="truncate font-mono text-[10.5px] text-ink/45" title={rawTitle}>
+              {rawTitle}
             </span>
           )}
         </span>
