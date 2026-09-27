@@ -4,7 +4,7 @@ import { diffSettings } from '@/shared/lib/settings/diff';
 
 describe('diffSettings', () => {
   test('an object patch persists only the keys it actually changed', () => {
-    const prev = { theme: 'paper', soundAlerts: true, binaryPath: '/bin/omp' };
+    const prev = { theme: 'paper', soundAlerts: true, editorFont: 'Fira Code' };
     const next = { ...prev, theme: 'nord-dark' };
     expect(diffSettings(prev, next, { theme: 'nord-dark' })).toEqual({ theme: 'nord-dark' });
   });
