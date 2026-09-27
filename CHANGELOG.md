@@ -5,6 +5,23 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.2](https://github.com/rajebdev/ompchamber/compare/v3.3.1...v3.3.2) — 2026-09-27
+
+### Changed
+
+* **code:** skip the escape pass when there is nothing to escape ([f02256e](https://github.com/rajebdev/ompchamber/commit/f02256e09f88ce8c735f1d750ca2ab1db40c28ba))
+* **fs:** drop the redundant stat behind the directory picker ([e1b07de](https://github.com/rajebdev/ompchamber/commit/e1b07de7dc2cfbebbe526c381575814ef89bb737))
+* **fs:** walk for nested repos instead of spawning find ([ed3ce5b](https://github.com/rajebdev/ompchamber/commit/ed3ce5b5c9f85b3010d121acf7c22de64300d824))
+* **lifecycle:** reuse the probe scratch buffers in argvOf and executablePath ([e57c846](https://github.com/rajebdev/ompchamber/commit/e57c846808fc7abd712c3153aa9c231e51787cdf))
+* **omp:** encode an RPC frame once and hoist the codec ([b6397ff](https://github.com/rajebdev/ompchamber/commit/b6397ff287d0b76b39179946100be4d7cc2abaf9))
+* **omp:** split NDJSON lines with a cursor instead of re-slicing the buffer ([2c3123a](https://github.com/rajebdev/ompchamber/commit/2c3123afcafb2ba12ea1445b6a36ffb0a583bd34))
+* **server:** skip entries without usage in the session usage scan ([b786012](https://github.com/rajebdev/ompchamber/commit/b786012013a66d54b9dfde9c8bd23d7100103b20))
+* **terminal:** re-acquire the controlling terminal without spawning tty ([e9a5314](https://github.com/rajebdev/ompchamber/commit/e9a531470511fb8ee31e9224c34b9431e95d35fb))
+
+### Fixed
+
+* **terminal:** use /dev/fd/0 so the PTY shim works on Linux ([229e321](https://github.com/rajebdev/ompchamber/commit/229e3210394438f3c78afd4be436b81edad92759))
+
 ## [3.3.1](https://github.com/rajebdev/ompchamber/compare/v3.3.0...v3.3.1) — 2026-09-27
 
 ### Fixed
