@@ -5,6 +5,28 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0](https://github.com/rajebdev/ompchamber/compare/v3.2.0...v3.3.0) — 2026-09-27
+
+### Added
+
+* **editor:** make the editor typeface a setting ([f90c369](https://github.com/rajebdev/ompchamber/commit/f90c369dee47219536cfef36b171f8a20547ae41))
+* **terminal:** on-screen key bar for touch devices ([2518e94](https://github.com/rajebdev/ompchamber/commit/2518e9433b3d4d5c6c5d1eecd4312dfd93af8156))
+
+### Changed
+
+* **settings:** drop the 15 fields that were never wired ([4a8ff97](https://github.com/rajebdev/ompchamber/commit/4a8ff978e558413aaa52067959782b41721a6ff3))
+
+### Fixed
+
+* **assets:** answer conditional requests instead of resending the file ([fcf3278](https://github.com/rajebdev/ompchamber/commit/fcf32783ae105c84eb1bf2f2a8dad506bbae072e))
+* **build:** declare the Tailwind toolchain as runtime dependencies ([1682533](https://github.com/rajebdev/ompchamber/commit/16825333c393b3518950b58a08fe5d7c7a954936))
+* **chat:** decide the notice expander by measured clipping, not character count ([da30a7b](https://github.com/rajebdev/ompchamber/commit/da30a7bc41fb8679f0a95d607e23f45ed0b540da))
+* **dev:** stop re-downloading the client bundle on every page load ([0ebcb76](https://github.com/rajebdev/ompchamber/commit/0ebcb768bec376926f5eedc72fddb0be62d54385))
+* **editor:** give the phone the desktop's type, from one module ([644a7ad](https://github.com/rajebdev/ompchamber/commit/644a7adba535213a61beb4ae82cd1f1dc0a0f23a))
+* **mobile:** draw the question mark on a session blocked on input ([55d0163](https://github.com/rajebdev/ompchamber/commit/55d0163fd7ddbe153e4f2070d8ab8c8aaf62c942))
+* **server:** report why the client bundle failed instead of a bare 500 ([ab4ddce](https://github.com/rajebdev/ompchamber/commit/ab4ddced2789e6060d663fbd7c386a17b550f093))
+* **terminal:** bundle the nerd symbols face so prompts survive off the laptop ([00f8992](https://github.com/rajebdev/ompchamber/commit/00f8992ab6540fb0d644f3f51160207415ae111a))
+
 ## [3.2.0](https://github.com/rajebdev/ompchamber/compare/v3.1.1...v3.2.0) — 2026-09-26
 
 ### Added
