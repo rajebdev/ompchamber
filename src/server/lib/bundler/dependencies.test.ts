@@ -35,9 +35,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { builtinModules } from 'node:module';
-import { join } from 'node:path';
-
-import { packageRoot } from '@/server/lib/assets/fonts.server';
+import { join, resolve } from 'node:path';
 
 /** Files whose imports are not part of any runtime path. */
 const EXCLUDED = /\.test\.|\.test-util\.|test-util\./;
@@ -51,11 +49,23 @@ function packageName(specifier: string): string {
 const BUILTINS = new Set(builtinModules);
 
 /**
- * Resolved from the running module, not the cwd — the same helper the bundler
- * plugin uses, so this test answers the same question whether it is run from the
- * repo root, from `dist/client`, or through `bun test <path>` elsewhere.
+ * The package root, derived from this file's own location (`src/server/lib/
+ * bundler` → four levels up) rather than the cwd.
+ *
+ * `packageRoot()` from `lib/assets/fonts.server.ts` is deliberately NOT used
+ * here: it answers "where are the dependencies installed", which is the first
+ * directory up from the module that holds `node_modules`. In a published
+ * install the package has no `node_modules` of its own — its dependencies are
+ * hoisted to the consumer's root — so that helper returns the CONSUMER's
+ * project, and the manifest it reads is the consumer's `package.json`, not
+ * this package's. Measured: run from an installed copy it resolved
+ * `/private/tmp/npmcheck/tsconfig.json` and died with `ENOENT`.
+ *
+ * The path depth is the same fact `lib/updates/install.ts` encodes in its
+ * `DEFAULT_PKG_ROOT`, for the same reason: `src/server/lib/<domain>/<file>`
+ * is always four levels below the package.
  */
-const ROOT = packageRoot();
+const ROOT = resolve(import.meta.dir, '..', '..', '..', '..');
 
 const pkg = (await Bun.file(join(ROOT, 'package.json')).json()) as {
   dependencies?: Record<string, string>;
@@ -69,6 +79,10 @@ const DEV = new Set(Object.keys(pkg.devDependencies ?? {}));
  * Bun's transpiler is the parser here, so the answer matches what the bundler
  * itself sees: `@/` aliases, relative paths and `node:`/`bun:` prefixes are
  * filtered below, and a type-only import never appears at all.
+ *
+ * `tsconfig.json` ships in the published tarball (it is in `files`, and Bun
+ * resolves the `@/` alias from the package's own copy), so it is always
+ * readable here.
  */
 const transpiler = new Bun.Transpiler({
   loader: 'tsx',
