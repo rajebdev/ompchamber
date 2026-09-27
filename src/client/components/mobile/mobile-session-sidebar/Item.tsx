@@ -188,6 +188,7 @@ export function MobileSessionCategory({
                   session={session}
                   isActive={isSessionActive && !isViewingSubagent}
                   status={sessionStatus[sessionKey]}
+                  awaitingInput={Boolean(session.awaitingInput)}
                   timeAgo={relativeTimeAgo(session.updated_at ?? session.created_at)}
                   hasSubagents={hasSubagents}
                   isExpanded={isRosterOpen}

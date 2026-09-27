@@ -1,4 +1,4 @@
-import { Archive, ArchiveRestore, Check, ChevronDown, ChevronRight, Loader2, Pencil } from 'lucide-preact';
+import { Archive, ArchiveRestore, Check, ChevronDown, ChevronRight, CircleQuestionMark, Loader2, Pencil } from 'lucide-preact';
 import type { SessionItemData } from '@/shared/types';
 import { useInlineRename } from '@/client/hooks/ui/inline-rename';
 
@@ -6,6 +6,8 @@ export interface MobileSessionRowProps {
   session: SessionItemData;
   isActive: boolean;
   status?: 'stream' | 'finish' | 'abort';
+  /** The session's agent is blocked on a question until the user answers it. */
+  awaitingInput?: boolean;
   /** Relative age of the session, or null when no usable timestamp exists. */
   timeAgo: string | null;
   /** The session has a subagent roster (on disk or live), so it can be expanded. */
@@ -21,6 +23,7 @@ export function MobileSessionRow({
   session,
   isActive,
   status,
+  awaitingInput = false,
   timeAgo,
   hasSubagents = false,
   isExpanded = false,
@@ -49,7 +52,6 @@ export function MobileSessionRow({
   // pinned whenever the row has a roster; a hidden one would leave the roster
   // unreachable on a phone.
   const showChevron = hasSubagents && Boolean(onToggleExpand);
-  const showStatus = Boolean(status);
   const title = session.title.charAt(0).toUpperCase() + session.title.slice(1);
 
   if (isEditing) {
@@ -81,10 +83,17 @@ export function MobileSessionRow({
       >
         <div className="flex items-center min-w-0 pr-2">
           {/* Status slot, 16px at the same x as the folder header's icon slot,
-              so the left column reads as one line. */}
+              so the left column reads as one line. Waiting on an answer
+              outranks the run spinner — the spinner says work is happening,
+              the question mark says it is YOUR turn (desktop parity). */}
           <span className="w-4 flex-shrink-0 flex items-center justify-center">
-            {showStatus && status === 'stream' && <Loader2 size={13} className="text-ink/50 animate-spin" />}
-            {showStatus && (status === 'finish' || status === 'abort') && <Check size={13} className="text-ink/50" />}
+            {awaitingInput ? (
+              <CircleQuestionMark size={13} className="text-ink/70 animate-pulse" />
+            ) : status === 'stream' ? (
+              <Loader2 size={13} className="text-ink/50 animate-spin" />
+            ) : status ? (
+              <Check size={13} className="text-ink/50" />
+            ) : null}
           </span>
           <span className="text-xs truncate leading-snug ml-2">{title}</span>
         </div>
