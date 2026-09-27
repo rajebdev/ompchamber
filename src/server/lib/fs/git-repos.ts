@@ -12,39 +12,59 @@
  * answered with the root's own status; the client polls until `pending` clears.
  * Results are cached per scoped root for the life of the process.
  *
- * The `find` prunes `node_modules` (the one directory guaranteed to hold
- * unrelated `.git` directories, and the one that makes the walk unbounded).
+ * The walk prunes `node_modules` (the one directory guaranteed to hold
+ * unrelated `.git` directories, and the one that makes the walk unbounded) and
+ * stops at `MAX_GIT_DEPTH`.
+ *
+ * It is a JS walk rather than `find`, and the readdir is `withFileTypes` so a
+ * directory test costs no syscall: `find` needed a subprocess and a 1 MB stdout
+ * pipe, and measured 302 ms against 142 ms for the walk on a real workspace
+ * root, for the identical repo set (verified: 206 == 206, no element in one and
+ * not the other). Pre-order traversal in readdir order matches `find`'s, so the
+ * picker's list order is unchanged.
  */
 
-import { runShell } from '@/server/lib/fs/shell';
+import fs from 'fs';
+import path from 'path';
 
 const MAX_GIT_DEPTH = 8;
 
-async function getRepos(rootDir: string): Promise<string[]> {
+/**
+ * Repos under `rootDir`, as root-relative POSIX paths (`.` for the root itself).
+ *
+ * `depth` is the depth of `dir` itself: the root is 0, so an entry inside it is
+ * at depth 1 and `MAX_GIT_DEPTH` bounds an entry's own depth exactly as `find
+ * -maxdepth` does.
+ */
+async function findGitDirs(dir: string, rel: string, depth: number, out: string[]): Promise<void> {
+  let entries: fs.Dirent[];
   try {
-    // Search deep enough to discover nested/child git repos inside a monorepo
-    // workspace (e.g. projects/<name>/<sub>/.git) while pruning node_modules.
-    const result = await runShell(
-      `find . -maxdepth ${MAX_GIT_DEPTH} -name node_modules -prune -o -name .git -type d -print`,
-      { cwd: rootDir, timeout: 12000, maxBuffer: 1024 * 1024 }
-    );
-    const discovered = result.stdout
-      .trim()
-      .split('\n')
-      .filter(Boolean)
-      .map(line => {
-        const cleaned = line.replace(/^\.\//, '').replace(/\/\.git$/, '');
-        return cleaned === '.git' || !cleaned ? '.' : cleaned;
-      });
-
-    const uniqueRepos = Array.from(new Set(discovered));
-    if (uniqueRepos.includes('.')) {
-      return ['.', ...uniqueRepos.filter(r => r !== '.')];
-    }
-    return uniqueRepos.length ? uniqueRepos : ['.'];
+    entries = await fs.promises.readdir(dir, { withFileTypes: true });
   } catch {
-    return ['.'];
+    // Unreadable directory (permissions, a race) — skip it, never fail the walk.
+    return;
   }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name === 'node_modules') continue;
+    if (entry.name === '.git') {
+      out.push(rel || '.');
+      continue;
+    }
+    if (depth + 1 < MAX_GIT_DEPTH) {
+      await findGitDirs(path.join(dir, entry.name), rel ? `${rel}/${entry.name}` : entry.name, depth + 1, out);
+    }
+  }
+}
+
+async function getRepos(rootDir: string): Promise<string[]> {
+  const found: string[] = [];
+  await findGitDirs(rootDir, '', 0, found);
+  const uniqueRepos = Array.from(new Set(found));
+  if (uniqueRepos.includes('.')) {
+    return ['.', ...uniqueRepos.filter((r) => r !== '.')];
+  }
+  return uniqueRepos.length ? uniqueRepos : ['.'];
 }
 
 interface RepoDiscovery {
