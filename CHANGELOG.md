@@ -5,6 +5,12 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.1](https://github.com/rajebdev/ompchamber/compare/v3.3.0...v3.3.1) — 2026-09-27
+
+### Fixed
+
+* **build:** anchor the dependency gate on the package, not the consumer ([5b42c75](https://github.com/rajebdev/ompchamber/commit/5b42c75c21853065c09edfd696cfa1d8e881ca47))
+
 ## [3.3.0](https://github.com/rajebdev/ompchamber/compare/v3.2.0...v3.3.0) — 2026-09-27
 
 ### Added
