@@ -49,7 +49,7 @@ export function shellArgs(platform: NodeJS.Platform = process.platform): string[
  * POSIX shells are launched through a one-line `/bin/sh` shim that re-acquires
  * the PTY as its controlling terminal before `exec`-ing the real shell:
  *
- *     if { : </dev/tty; } 2>/dev/null; then exec <shell> -i -l </dev/tty >/dev/tty 2>&1; fi; exec <shell> -i -l
+ *     if [ -t 0 ]; then exec <shell> -i -l </dev/fd/0 >/dev/fd/0 2>&1; fi; exec <shell> -i -l
  *
  * This is required, not cosmetic. The runtime must spawn with
  * `detached: true` — without it the child lands in the *server's* process
@@ -58,26 +58,34 @@ export function shellArgs(platform: NodeJS.Platform = process.platform): string[
  * controlling terminal, and a shell with no controlling tty silently disables
  * job control (`setopt monitor` fails): Ctrl+Z, `fg` and `jobs` stop working,
  * and typing while a foreground command runs goes to that command instead of
- * the shell. Opening the slave device as stdin/stdout restores it. Verified on
- * macOS: with the shim `tpgid` is the shell's own pid and Ctrl+Z suspends;
- * without it `tpgid` is 0 and Ctrl+Z is swallowed.
+ * the shell. Re-opening the terminal as stdin/stdout restores it. Verified on
+ * both macOS and Linux: with the shim `tpgid` is the shell's own pid and
+ * `setopt monitor` succeeds; without it `tpgid` is -1 and Ctrl+Z is swallowed.
  *
- * The guard is an actual OPEN of `/dev/tty`, not a test for the device node.
- * `[ -c /dev/tty ]` looks equivalent and is not: `/dev/tty` always exists, so
- * the test passes on a child that has no controlling terminal and the redirect
- * then kills the shim — `sh` exits 1 with "/dev/tty: Device not configured"
- * and the fallback never runs (verified). The braces keep the redirect's own
- * error out of the PTY: without `2>/dev/null` the failure message is written
- * into the terminal the chamber is displaying.
+ * Two details are load-bearing, and each was a real failure:
+ *
+ * - **The device is `/dev/fd/0`, not `/dev/tty`.** `/dev/tty` resolves through
+ *   the child's *controlling terminal*, and a `setsid()` child has none — so on
+ *   Linux the open fails with `ENXIO` ("no such device or address") even though
+ *   the node exists, while on macOS the same open succeeds because Darwin
+ *   tolerates it. That platform split is what took CI down: every terminal test
+ *   timed out because the shim died before the shell ever started. `/dev/fd/0`
+ *   is the PTY the parent already wired up, so it needs no controlling terminal
+ *   to resolve and is correct on both.
+ * - **The guard is `[ -t 0 ]`**, which asks whether stdin is a terminal. The
+ *   device nodes are no test at all — `/dev/tty` always exists and `/dev/fd/0`
+ *   always exists — so a guard built on them takes the redirect branch on a
+ *   child that has no terminal, and the failing redirect then kills the shim
+ *   (dash exits 2, the shell never starts) with the fallback never reached.
  *
  * This replaces `T=$(tty 2>/dev/null); … <"$T" >"$T"`, which paid a whole
  * `/usr/bin/tty` subprocess per terminal to learn a path the kernel already
- * resolves. Measured: 5.86 ms against 3.79 ms to spawn, and the same `tpgid`
- * and `Ss+` state either way.
+ * resolves. Measured to spawn: 5.37 ms -> 3.32 ms on macOS.
  *
  * `exec` keeps the pid, so the shell stays the session leader and group kill
- * still reaches everything it starts. If the open fails the shell runs
- * unredirected — stdio is already the PTY, only job control is lost.
+ * still reaches everything it starts. If stdin is not a terminal the shell runs
+ * unredirected — stdio is already wired to whatever the parent gave it, only
+ * job control is lost.
  */
 export function shellLaunch(executable: string, platform: NodeJS.Platform = process.platform): string[] {
   if (platform === 'win32') return [executable];
@@ -85,7 +93,7 @@ export function shellLaunch(executable: string, platform: NodeJS.Platform = proc
   return [
     '/bin/sh',
     '-c',
-    `if { : </dev/tty; } 2>/dev/null; then exec ${inner} </dev/tty >/dev/tty 2>&1; fi; exec ${inner}`,
+    `if [ -t 0 ]; then exec ${inner} </dev/fd/0 >/dev/fd/0 2>&1; fi; exec ${inner}`,
   ];
 }
 

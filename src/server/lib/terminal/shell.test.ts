@@ -57,16 +57,23 @@ describe('shellLaunch', () => {
     expect(argv[2].match(/exec /g)?.length).toBe(2);
   });
 
-  test('probes /dev/tty by opening it, never by testing the device node', () => {
-    // `/dev/tty` always exists, so `[ -c /dev/tty ]` passes on a child with no
-    // controlling terminal; the redirect then kills the shim (sh exits 1 with
-    // "/dev/tty: Device not configured") and the fallback never runs. The probe
-    // must be an open, and its error must not reach the PTY the user sees.
+  test('re-acquires the terminal through /dev/fd/0, guarded by [ -t 0 ]', () => {
+    // `/dev/tty` resolves through the child's CONTROLLING terminal, which a
+    // `setsid()` child does not have: on Linux the open fails with ENXIO while
+    // macOS tolerates it, so the shim died before the shell started and every
+    // terminal test timed out on CI. `/dev/fd/0` is the PTY the parent already
+    // wired up and resolves on both.
     const script = shellLaunch('/bin/zsh', 'darwin')[2];
-    expect(script).toContain('{ : </dev/tty; } 2>/dev/null');
-    expect(script).not.toContain('-c /dev/tty');
-    // A shell with no tty still starts, unredirected: job control is lost, the
-    // terminal is not.
+    expect(script).toContain('</dev/fd/0');
+    expect(script).not.toContain('/dev/tty');
+    // The device nodes are no test at all — both always exist — so the guard
+    // has to ask whether stdin is a terminal. A device-node guard takes the
+    // redirect branch on a child with no terminal, and the failing redirect
+    // then kills the shim (dash exits 2) with the fallback never reached.
+    expect(script).toContain('if [ -t 0 ]; then');
+    expect(script).not.toContain('-c /dev/fd/0');
+    // A shell with no terminal still starts, unredirected: job control is lost,
+    // the terminal is not.
     expect(script.endsWith('exec /bin/zsh -i -l')).toBe(true);
   });
 
