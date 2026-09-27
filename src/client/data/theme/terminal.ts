@@ -60,14 +60,21 @@ export function getXtermTheme(themeId: string) {
  * Material Design icons) that **no** coding webfont contains — `@fontsource/
  * fira-code`'s latin subset maps 226 codepoints and not one of them is above
  * U+FFFF — so without a face that supplies them the browser paints a hollow
- * tofu box for every prompt segment. The names below cover the Nerd Font
- * families a user is most likely to have installed (plus the *fontconfig*
- * symbol faces on Linux); a face that is absent is simply skipped by the
- * normal fallback chain, so listing many costs nothing.
+ * tofu box for every prompt segment.
  *
- * This is the same shape OpenChamber ships (`TERMINAL_GLYPH_FALLBACKS` in its
- * `ghostty/surface.ts`), which additionally bundles `SymbolsNerdFontMono` as a
- * webfont so the coverage never depends on the machine.
+ * The entries before the last one name the Nerd Font families a user is most
+ * likely to have installed (plus the *fontconfig* symbol faces on Linux); a
+ * face that is absent is simply skipped by the normal fallback chain, so
+ * listing many costs nothing.
+ *
+ * `'OMPChamber Nerd Symbols'` is the one the chamber bundles itself
+ * (`src/shared/lib/fonts/nerd-symbols.css`), and it is deliberately LAST: a
+ * machine that already has a Nerd Font renders from it and never fetches these
+ * bytes, while a phone — which has none — falls through to it instead of
+ * painting tofu. Verified: with the bundled face last and a local Nerd Font
+ * ahead of it, laying out a PUA glyph issued zero font requests; with no local
+ * family present, the face is fetched and all of the prompt's codepoints
+ * render.
  *
  * Only glyphs the text face lacks reach these entries, so Latin metrics are
  * untouched — verified: `A`/`m`/`W` keep identical advance and ink.
@@ -78,7 +85,17 @@ export const XTERM_GLYPH_FALLBACKS =
   "'MesloLGM Nerd Font', 'CaskaydiaCove Nerd Font', 'SauceCodePro Nerd Font', " +
   "'Symbols Nerd Font Mono', 'Symbols Nerd Font', 'PowerlineSymbols'";
 
-export const XTERM_FONT_FAMILY = `'Fira Code', ${XTERM_GLYPH_FALLBACKS}, Menlo, Monaco, 'Courier New', monospace`;
+/**
+ * The bundled symbols face, kept separate so `mount.ts` can await it by name.
+ *
+ * It must stay last in the stack (see above) and its family name must match the
+ * `@font-face` in `nerd-symbols.css` — the two are one contract, which is why
+ * the name is a constant rather than a literal in each file.
+ */
+export const NERD_SYMBOLS_FAMILY = 'OMPChamber Nerd Symbols';
+
+export const XTERM_FONT_FAMILY =
+  `'Fira Code', ${XTERM_GLYPH_FALLBACKS}, '${NERD_SYMBOLS_FAMILY}', Menlo, Monaco, 'Courier New', monospace`;
 
 /** xterm's private render service, read only to size-check before fitting. */
 export interface XtermCore {

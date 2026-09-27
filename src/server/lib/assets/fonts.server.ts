@@ -4,13 +4,14 @@
  */
 
 /**
- * Font files served straight from the installed packages.
+ * Font files served straight from the installed packages — plus the one the
+ * chamber vendors itself (`src/shared/lib/fonts`, the Nerd Font symbols face).
  *
  * The client stylesheet reaches its `@font-face` sources through the bundler's
  * CSS loader (`lib/bundler/css.ts`), which rewrites every one of them to
- * `<FONT_ROUTE_PREFIX><basename>`. Nothing copies them into the repository: a
- * font is addressed by its own basename, and this module resolves that basename
- * back to the package that ships it.
+ * `<FONT_ROUTE_PREFIX><basename>`. Nothing is copied at build time: a font is
+ * addressed by its own basename, and this module resolves that basename back to
+ * the directory that ships it.
  *
  * A directory index rather than a path built from the request, because the
  * request must never choose a directory. The index is built once, lazily, by
@@ -35,6 +36,10 @@ export const FONT_ROUTE_PREFIX = '/fonts/';
 const FONT_SOURCES = [
   'node_modules/katex/dist/fonts',
   'node_modules/@fontsource/fira-code/files',
+  // The one font the chamber vendors itself rather than borrowing from a
+  // package: the Nerd Font symbols face the terminal falls back to. See
+  // `src/shared/lib/fonts/nerd-symbols.css`.
+  'src/shared/lib/fonts',
 ] as const;
 
 /**

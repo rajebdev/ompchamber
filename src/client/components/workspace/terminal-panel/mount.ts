@@ -34,6 +34,7 @@ import type { FitAddon } from '@xterm/addon-fit';
 import type { WebglAddon } from '@xterm/addon-webgl';
 import {
   getXtermTheme,
+  NERD_SYMBOLS_FAMILY,
   XTERM_FONT_FAMILY,
   safePatchFitAddon,
   safePatchRenderService,
@@ -126,6 +127,11 @@ export async function mountXterm(
 
   const fitAddon = new FitAddonClass() as FitAddon;
   term.loadAddon(fitAddon);
+
+  // The bundled Nerd Font symbols face may still be in flight (a phone has no
+  // Nerd Font of its own). See the helper for why the atlas has to be dropped
+  // once it lands.
+  const stopNerdFaceWatch = refreshAtlasWhenNerdFaceLoads(term);
 
   term.attachCustomKeyEventHandler((event: globalThis.KeyboardEvent) => handleKeyNavigation(term, event));
 
@@ -228,6 +234,7 @@ export async function mountXterm(
     dispose() {
       if (frame !== null) cancelAnimationFrame(frame);
       clearTimeout(fitTimer ?? undefined);
+      stopNerdFaceWatch();
       touch();
       for (const disposable of disposables) disposable.dispose();
       resizeObserver.disconnect();
@@ -239,6 +246,46 @@ export async function mountXterm(
       } catch {}
     },
   };
+}
+
+/**
+ * Re-rasterize the terminal once the bundled symbols face has loaded.
+ *
+ * xterm has no `document.fonts` listener: it rasterizes a glyph the first time
+ * it draws it and keeps the result in a texture atlas, so a PUA glyph written
+ * before the face arrived stays whatever the fallback painted — a tofu box —
+ * for the life of the buffer. The browser does re-lay-out DOM text when a face
+ * lands late (verified on the DOM renderer), but xterm's canvas does not get
+ * that for free.
+ *
+ * `loadingdone` naming our own family is exactly the signal that this machine
+ * had no Nerd Font of its own: the face is declared last in the stack and its
+ * `unicode-range` covers only PUA, so a device with an installed Nerd Font
+ * never fetches it (verified: zero requests with a local family present). That
+ * makes this a no-op on the developer's laptop and the fix on a phone.
+ *
+ * `clearTextureAtlas()` drops the atlas and forces a full refresh, which is
+ * what re-rasterizes the glyphs. It is a public API on `Terminal`, and the
+ * atlas is small enough that a full refresh is cheap — this runs at most once
+ * per page load.
+ *
+ * Returns a disposer.
+ */
+function refreshAtlasWhenNerdFaceLoads(term: Terminal): () => void {
+  if (typeof document === 'undefined' || !document.fonts) return () => {};
+
+  const onLoadingDone = (event: FontFaceSetLoadEvent) => {
+    const loaded = [...event.fontfaces].some((face) => face.family.replace(/['"]/g, '') === NERD_SYMBOLS_FAMILY);
+    if (!loaded) return;
+    try {
+      term.clearTextureAtlas();
+    } catch {
+      // A disposed terminal has no render service; nothing to refresh.
+    }
+  };
+
+  document.fonts.addEventListener('loadingdone', onLoadingDone);
+  return () => document.fonts.removeEventListener('loadingdone', onLoadingDone);
 }
 
 /** Shift+PageUp/Home/End scroll the viewport instead of reaching the shell. */

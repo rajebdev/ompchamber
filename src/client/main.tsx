@@ -7,6 +7,7 @@ import { initDocumentTheme } from '@/client/hooks/ui/theme';
 import '@/client/tailwind.css';
 import '@/shared/lib/markdown/katex-fonts.css';
 import '@/shared/lib/markdown/fira-code-fonts.css';
+import '@/shared/lib/fonts/nerd-symbols.css';
 
 const root = document.getElementById('app');
 const bootstrap = window.__OMP_BOOTSTRAP__;
