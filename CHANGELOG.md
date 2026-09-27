@@ -5,6 +5,12 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.3](https://github.com/rajebdev/ompchamber/compare/v3.3.2...v3.3.3) — 2026-09-27
+
+### Fixed
+
+* **fonts:** serve the font faces from source so /fonts.css cannot go stale ([a63b2e0](https://github.com/rajebdev/ompchamber/commit/a63b2e097eeddbcf54cf9f7ed74dd65fe6cd2d6b))
+
 ## [3.3.2](https://github.com/rajebdev/ompchamber/compare/v3.3.1...v3.3.2) — 2026-09-27
 
 ### Changed
