@@ -150,6 +150,20 @@ const bsdInfo = new Uint8Array(BSDINFO_BYTES);
 const bsdInfoView = new DataView(bsdInfo.buffer);
 
 /**
+ * Scratch for `executablePath` and `argvOf`, for the same reason as the buffers
+ * above: `getProcessState` calls `commandLine`, which falls through argv to the
+ * executable path, and each call used to allocate a fresh 256 KiB buffer plus
+ * its views — 83 ms per 5000 probes against 24 ms reusing them. The decoder is
+ * hoisted for the same reason. Safe because the whole probe is synchronous.
+ */
+const pathBuffer = new Uint8Array(PATH_BUFFER_BYTES);
+const argvMib = new Int32Array([CTL_KERN, KERN_PROCARGS2, 0]);
+const argvSize = new BigUint64Array([BigInt(ARGV_BUFFER_BYTES)]);
+const argvBuffer = new Uint8Array(ARGV_BUFFER_BYTES);
+const argvView = new DataView(argvBuffer.buffer);
+const utf8Decoder = new TextDecoder();
+
+/**
  * Executable path, or null. Also answers for root-owned PIDs (verified: pid 1 →
  * `/sbin/launchd`), which is what makes it the identity fallback when argv is
  * denied.
@@ -157,10 +171,9 @@ const bsdInfoView = new DataView(bsdInfo.buffer);
 function executablePath(pid: number): string | null {
   const bound = bindLibs();
   if (bound === null) return null;
-  const buffer = new Uint8Array(PATH_BUFFER_BYTES);
   try {
-    const written = bound.libproc.symbols.proc_pidpath(pid, ptr(buffer), buffer.length);
-    return written > 0 ? new TextDecoder().decode(buffer.subarray(0, written)) : null;
+    const written = bound.libproc.symbols.proc_pidpath(pid, ptr(pathBuffer), pathBuffer.length);
+    return written > 0 ? utf8Decoder.decode(pathBuffer.subarray(0, written)) : null;
   } catch {
     return null;
   }
@@ -176,28 +189,26 @@ function executablePath(pid: number): string | null {
 function argvOf(pid: number): string[] | null {
   const bound = bindLibs();
   if (bound === null) return null;
-  const mib = new Int32Array([CTL_KERN, KERN_PROCARGS2, pid]);
-  const size = new BigUint64Array([BigInt(ARGV_BUFFER_BYTES)]);
-  const buffer = new Uint8Array(ARGV_BUFFER_BYTES);
+  argvMib[2] = pid;
+  argvSize[0] = BigInt(ARGV_BUFFER_BYTES);
   try {
-    if (bound.libc.symbols.sysctl(ptr(mib), 3, ptr(buffer), ptr(size), null, 0) !== 0) return null;
+    if (bound.libc.symbols.sysctl(ptr(argvMib), 3, ptr(argvBuffer), ptr(argvSize), null, 0) !== 0) return null;
   } catch {
     return null;
   }
 
-  const length = Number(size[0]);
+  const length = Number(argvSize[0]);
   if (length <= 4) return null;
-  const argc = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength).getInt32(0, true);
+  const argc = argvView.getInt32(0, true);
   let cursor = 4;
-  while (cursor < length && buffer[cursor] !== 0) cursor += 1;
-  while (cursor < length && buffer[cursor] === 0) cursor += 1;
+  while (cursor < length && argvBuffer[cursor] !== 0) cursor += 1;
+  while (cursor < length && argvBuffer[cursor] === 0) cursor += 1;
 
-  const decoder = new TextDecoder();
   const args: string[] = [];
   for (let index = 0; index < argc && cursor < length; index += 1) {
     let end = cursor;
-    while (end < length && buffer[end] !== 0) end += 1;
-    args.push(decoder.decode(buffer.subarray(cursor, end)));
+    while (end < length && argvBuffer[end] !== 0) end += 1;
+    args.push(utf8Decoder.decode(argvBuffer.subarray(cursor, end)));
     cursor = end + 1;
   }
   return args;
