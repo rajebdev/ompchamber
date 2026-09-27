@@ -77,18 +77,41 @@ let index: Record<string, string> | null = null;
 /**
  * The package root — the first search root that holds `node_modules`.
  *
- * Both ends of the build need the same answer: the plugin writes the extracted
- * face files here and the server reads them back, and an AOT bundle runs from
- * `dist/client` while a source checkout runs from the repo. Falling back to the
+ * The AOT bundle runs from `dist/client` while a source checkout runs from the
+ * repo, and both resolve their dependencies through this. Falling back to the
  * cwd keeps a checkout with no `node_modules` (a publish dry-run) working.
+ *
+ * This answers "where are the DEPENDENCIES", which is not the same question as
+ * `packageDir()` below: a hoisted install keeps the package's own files under
+ * `node_modules/ompchamber/` while its dependencies sit in the parent
+ * `node_modules/`, so the first root holding `node_modules` is the PARENT.
  */
-export function packageRoot(): string {
+function packageRoot(): string {
   for (const root of searchRoots()) {
     // `existsSync` rather than `Bun.file().exists()`: the latter is async and
     // file-only, and `node_modules` is a directory.
     if (existsSync(join(root, 'node_modules'))) return root;
   }
   return process.cwd();
+}
+
+/**
+ * The package's own directory — the first search root that holds `src/`.
+ *
+ * The source stylesheets `lib/assets/font-css.server.ts` reads for `/fonts.css`
+ * live there, and they must be found in every install shape. In a source
+ * checkout and a non-hoisted install this is the same directory
+ * `packageRoot()` returns; in a hoisted install it is the package under
+ * `node_modules/`, one level BELOW the root that holds the dependencies.
+ * Resolving the source tree through `packageRoot()` there would look for
+ * `src/` beside the hoisted packages and find nothing, which serves an empty
+ * stylesheet and silently drops every `@font-face`.
+ */
+export function packageDir(): string {
+  for (const root of searchRoots()) {
+    if (existsSync(join(root, 'src'))) return root;
+  }
+  return packageRoot();
 }
 
 async function buildIndex(): Promise<Record<string, string>> {

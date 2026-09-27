@@ -10,31 +10,43 @@
  * local `url()`, and a font is always a local file — so a bundled face is either
  * a base64 blob or an absolute filesystem path. `lib/bundler/css.ts` lifts each
  * block out of its stylesheet and rewrites the urls to `<FONT_ROUTE_PREFIX><basename>`;
- * this module serves the result.
+ * this module re-declares them on `/fonts.css`.
  *
  * Two jobs, one route each:
  *
- * - `FONT_STYLESHEET_ROUTE` (`/fonts.css`) concatenates the extracted faces.
- *   Read per request rather than cached: it is a handful of kilobytes, and a
- *   cache is what would keep a stale face alive across an edit to a stylesheet.
- *   A missing directory is an empty stylesheet, not a 404 — the shell links this
- *   unconditionally.
+ * - `FONT_STYLESHEET_ROUTE` (`/fonts.css`) concatenates the faces, read from the
+ *   source stylesheets under `src/` on every request. It is a handful of
+ *   kilobytes and four small files, and reading them is what keeps the sheet
+ *   correct for the process's whole life — the alternative, a directory the
+ *   bundler wrote, is only ever produced as a side effect of a CSS module being
+ *   bundled, so it is written once per process and can never be repaired: an
+ *   `rm -rf` while the server runs (or a fresh clone that never ran a build)
+ *   leaves `/fonts.css` empty for the rest of that process, and the terminal's
+ *   Nerd symbols face silently disappears — the glyphs become tofu boxes with no
+ *   error anywhere.
+ *
+ *   Only a face whose `src` names a local font is re-declared, so a stylesheet
+ *   carrying a remote face contributes nothing (see `font-faces.ts`). The faces
+ *   the client bundle imports all live under `src/`, which is what makes the
+ *   source tree the honest place to read them from: the same files the bundler
+ *   strips are the files the browser is served.
  *
  * - `FONT_ROUTE_PREFIX` (`/fonts/<basename>`) serves the file itself from the
  *   installed packages. The basename is the whole key, so the lookup is an index
  *   rather than a path built from the request; see `fonts.server.ts`.
  */
 
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { Glob } from 'bun';
 
-import { packageRoot, resolveFontFile } from '@/server/lib/assets/fonts.server';
-
-/** Directory holding one extracted face file per source stylesheet. */
-export const FONT_FACE_DIR = join('.ompchamber-build', 'font-faces');
+import { splitFontFaces } from '@/server/lib/assets/font-faces';
+import { packageDir, resolveFontFile } from '@/server/lib/assets/fonts.server';
 
 /** The route the assembled stylesheet is served on. */
 export const FONT_STYLESHEET_ROUTE = '/fonts.css';
+
+/** Where the stylesheets that carry faces live, relative to the package directory. */
+const STYLE_SOURCE_ROOT = 'src';
 
 const FONT_MIME: Record<string, string> = {
   '.woff2': 'font/woff2',
@@ -48,20 +60,34 @@ const STYLESHEET_HEADERS = {
   'cache-control': 'no-store',
 } as const;
 
-/** Every extracted face file, concatenated in a stable order. */
-export async function fontStylesheet(): Promise<string> {
-  const dir = join(packageRoot(), FONT_FACE_DIR);
-  const glob = new Glob('*.css');
+/** The absolute path of every stylesheet under the package's `src/`, sorted. */
+function sourceStylesheets(): string[] {
+  const root = join(packageDir(), STYLE_SOURCE_ROOT);
+  const glob = new Glob('**/*.css');
   const files: string[] = [];
   try {
-    for await (const file of glob.scan({ cwd: dir, onlyFiles: true })) files.push(file);
+    for (const file of glob.scanSync({ cwd: root, onlyFiles: true })) files.push(join(root, file));
   } catch {
-    return '';
+    return [];
   }
-  // Sorted so the stylesheet is byte-stable between builds: the browser caches
-  // on the ETag, and an unstable order would invalidate it for no change.
+  // Sorted so the stylesheet is byte-stable between requests: the browser
+  // caches on the ETag, and an unstable order would invalidate it for no change.
   files.sort();
-  const parts = await Promise.all(files.map((file) => Bun.file(join(dir, file)).text()));
+  return files;
+}
+
+/** Every `@font-face` block the source stylesheets declare, concatenated. */
+export async function fontStylesheet(): Promise<string> {
+  const parts: string[] = [];
+  for (const path of sourceStylesheets()) {
+    // A read that fails contributes nothing rather than failing the sheet: the
+    // shell links this unconditionally, and one unreadable file must not take
+    // the faces beside it down with it.
+    const css = await Bun.file(path).text().catch(() => '');
+    if (!css) continue;
+    const { faces } = splitFontFaces(css, dirname(path));
+    if (faces.length > 0) parts.push(...faces);
+  }
   return parts.join('\n');
 }
 

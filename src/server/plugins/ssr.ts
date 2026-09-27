@@ -135,10 +135,10 @@ export const ssrRoutes = new Elysia({ name: 'ssr' }).get('*', async ({ request }
   const themeStyle = `<style id="${THEME_STYLE_ELEMENT_ID}">${themeStyleSheet()}</style>`;
   // The font faces are a stylesheet the bundler cannot carry: Bun resolves every
   // local `url()` in CSS, so a bundled face is either base64 or an absolute
-  // filesystem path. `lib/bundler/css.ts` lifts the blocks out and the route
-  // below serves them, which is why the link is injected here — a
-  // `<link href="/fonts.css">` in index.html would be resolved by the HTML
-  // loader and fail the same way.
+  // filesystem path. `lib/bundler/css.ts` strips the blocks out of the bundle
+  // and `lib/assets/font-css.server.ts` re-declares them on the route below,
+  // which is why the link is injected here — a `<link href="/fonts.css">` in
+  // index.html would be resolved by the HTML loader and fail the same way.
   const fontLink = `<link rel="stylesheet" href="${FONT_STYLESHEET_ROUTE}">`;
 
   // Bun's dev asset URLs move to this server's prefix so the proxy above can add

@@ -13,4 +13,3 @@ workspace.db
 *.sqlite
 .ompchamber/
 .playwright-mcp
-.ompchamber-build/

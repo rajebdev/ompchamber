@@ -30,18 +30,17 @@
  *    rewrite inside the bundle can work.
  *
  *    The faces therefore leave the bundle. Each block is rewritten to
- *    `<FONT_ROUTE_PREFIX><basename>` and written to its own file under
- *    `FONT_FACE_DIR`, keyed by the stylesheet it came from — a document Bun
- *    never parses, which is what lets the urls survive. The server concatenates
- *    that directory into `/fonts.css` (`lib/assets/font-css.server.ts`) and the
- *    shell links it, so the layout rules stay bundled while the faces stay
+ *    `<FONT_ROUTE_PREFIX><basename>` and dropped from the module, and the server
+ *    re-declares them on `/fonts.css` from the SAME source stylesheets
+ *    (`lib/assets/font-css.server.ts`, `lib/assets/font-faces.ts`). The shell
+ *    links that route, so the layout rules stay bundled while the faces stay
  *    cacheable files.
  *
- *    Per-source files rather than one accumulated file because `onEnd` is NOT
- *    invoked by `serve.static` (verified: `onStart` and `onLoad` fire, `onEnd`
- *    never does), so there is no "build finished" moment to flush at. Writing
- *    each source's faces as its `onLoad` returns is order-independent and works
- *    identically under both entry points.
+ *    The server derives the faces from source rather than from a directory this
+ *    plugin wrote, because `onEnd` is NOT invoked by `serve.static` (verified:
+ *    `onStart` and `onLoad` fire, `onEnd` never does) and a written artifact is
+ *    produced exactly once per process — a `rm -rf` after boot, or a fresh clone
+ *    that never built, would leave `/fonts.css` empty for good.
  *
  * 3. **Nested at-rules are flattened** (`flattenNestedAtRules`, registered
  *    AFTER Tailwind so it sees the expanded tree). Bun's CSS minifier keeps the
@@ -53,56 +52,13 @@
  *    the measurement; this one only has to run it.
  */
 
-import { basename, dirname, isAbsolute, join, resolve as resolvePath } from 'path';
+import { dirname } from 'path';
 import postcss from 'postcss';
 import tailwind from '@tailwindcss/postcss';
 import type { BunPlugin } from 'bun';
 
-import { FONT_FACE_DIR } from '@/server/lib/assets/font-css.server';
-import { FONT_ROUTE_PREFIX, packageRoot } from '@/server/lib/assets/fonts.server';
+import { splitFontFaces } from '@/server/lib/assets/font-faces';
 import { flattenNestedAtRules } from '@/server/lib/bundler/nested-at-rules';
-
-/** A `url(...)` whose target is a font file. */
-const URL_FUNCTION = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
-const FONT_FILE = /\.(?:woff2?|ttf|otf)$/i;
-/** Schemes Bun leaves alone, and the prefix this plugin itself emits. */
-const EXTERNAL = /^(?:data:|https?:|blob:|\/\/)/i;
-
-/** One `@font-face` block, braces included. Faces cannot nest. */
-const FONT_FACE = /@font-face\s*\{[^{}]*\}/g;
-
-/** Absolute path of a local font url, or null when it is not one. */
-function localFont(specifier: string, cssDir: string): string | null {
-  if (EXTERNAL.test(specifier) || specifier.startsWith(FONT_ROUTE_PREFIX)) return null;
-  if (!FONT_FILE.test(specifier)) return null;
-  return isAbsolute(specifier) ? specifier : resolvePath(cssDir, specifier);
-}
-
-/** Point every font `url()` at the served path. */
-function rewriteFontUrls(css: string, cssDir: string): string {
-  return css.replace(URL_FUNCTION, (whole, quote: string, specifier: string) => {
-    const absolute = localFont(specifier, cssDir);
-    if (!absolute) return whole;
-    return `url(${quote}${FONT_ROUTE_PREFIX}${basename(absolute)}${quote})`;
-  });
-}
-
-/**
- * Split `@font-face` blocks out of a stylesheet.
- *
- * Only blocks whose `src` names a local font move: a face pointing at a remote
- * url is valid CSS the bundle can keep.
- */
-function splitFontFaces(css: string, cssDir: string): { rest: string; faces: string[] } {
-  const faces: string[] = [];
-  const rest = css.replace(FONT_FACE, (block) => {
-    const hasLocal = [...block.matchAll(URL_FUNCTION)].some(([, , spec]) => localFont(spec, cssDir));
-    if (!hasLocal) return block;
-    faces.push(rewriteFontUrls(block, cssDir));
-    return '';
-  });
-  return { rest, faces };
-}
 
 const plugin: BunPlugin = {
   name: 'ompchamber-css',
@@ -117,12 +73,7 @@ const plugin: BunPlugin = {
       const expanded = await postcss([tailwind(), flattenNestedAtRules()]).process(source, {
         from: args.path,
       });
-      const { rest, faces } = splitFontFaces(expanded.css, dirname(args.path));
-      if (faces.length > 0) {
-        const target = join(packageRoot(), FONT_FACE_DIR, `${basename(args.path)}`);
-        const header = `/* GENERATED from ${args.path} — do not edit. */\n`;
-        await Bun.write(target, header + faces.join('\n') + '\n');
-      }
+      const { rest } = splitFontFaces(expanded.css, dirname(args.path));
       return { contents: rest, loader: 'css' };
     });
   },

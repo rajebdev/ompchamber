@@ -33,9 +33,9 @@
 import { join, relative } from 'path';
 import type { BuildOutput, BunPlugin } from 'bun';
 
-import { packageRoot } from '@/server/lib/assets/fonts.server';
+import { packageDir } from '@/server/lib/assets/fonts.server';
 
-/** The shell bundle's entrypoint, relative to the package root. */
+/** The shell bundle's entrypoint, relative to the package directory. */
 const SHELL_ENTRYPOINT = 'index.html';
 
 /** Bun's own config file, and the section naming the bundle's plugins. */
@@ -109,8 +109,13 @@ function formatLog(log: BundleLog, root: string): string {
 /**
  * The bundle errors behind a shell that would not render, or null when this
  * build is not the reason (a clean bundle means the failure lies elsewhere).
+ *
+ * `root` is the PACKAGE, not `packageRoot()`: the entrypoint is `index.html`
+ * beside the source, and in a hoisted install the first root holding
+ * `node_modules` is the parent, where `index.html` does not exist — so the probe
+ * would report no failure at all and the real build error would never be shown.
  */
-export async function describeShellBuildFailure(root = packageRoot()): Promise<string | null> {
+export async function describeShellBuildFailure(root = packageDir()): Promise<string | null> {
   const entrypoint = join(root, SHELL_ENTRYPOINT);
   if (!(await Bun.file(entrypoint).exists())) return null;
 

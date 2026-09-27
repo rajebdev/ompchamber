@@ -2,7 +2,7 @@ import { extname, join, normalize, resolve, sep } from 'path';
 
 import { notModified } from '@/server/lib/assets/conditional.server';
 import { FONT_STYLESHEET_ROUTE, serveFontFile, serveFontStylesheet } from '@/server/lib/assets/font-css.server';
-import { FONT_ROUTE_PREFIX, packageRoot } from '@/server/lib/assets/fonts.server';
+import { FONT_ROUTE_PREFIX, packageDir } from '@/server/lib/assets/fonts.server';
 
 /**
  * File serving for `public/` and the font routes.
@@ -21,12 +21,16 @@ import { FONT_ROUTE_PREFIX, packageRoot } from '@/server/lib/assets/fonts.server
  * catch-all, which would shadow this app's SSR route. Exposing one lookup
  * function lets the web catch-all try a file first and fall back to the shell.
  */
-// Resolved from the package root, not the cwd: `serve --prod` may run the built
-// server from anywhere, and a cwd-relative `public` would not exist — every
-// icon, the manifest and the service worker would 404.
-const PUBLIC_ROOT = resolve(packageRoot(), 'public');
+// Resolved from the package's own directory, not the cwd: `serve --prod` may
+// run the built server from anywhere, and a cwd-relative `public` would not
+// exist — every icon, the manifest and the service worker would 404. The
+// package, NOT `packageRoot()`: in a hoisted install the first root holding
+// `node_modules` is the parent, where `public/` and `dist/client/` do not exist,
+// so the lookup would fall through to the shell and answer an image request with
+// HTML.
+const PUBLIC_ROOT = resolve(packageDir(), 'public');
 /** Where `scripts/build-client.ts` writes the production bundle and its chunks. */
-const CLIENT_ROOT = resolve(packageRoot(), 'dist', 'client');
+const CLIENT_ROOT = resolve(packageDir(), 'dist', 'client');
 
 const IMMUTABLE = 'public, max-age=31536000, immutable';
 const SHORT = 'public, max-age=3600';
@@ -141,12 +145,12 @@ export async function tryServeStatic(pathname: string, request?: Request): Promi
     const filePath = resolveWithin(CLIENT_ROOT, pathname);
     return filePath ? serveFile(filePath, ASSET_CACHE, request) : null;
   }
-  // The extracted `@font-face` stylesheet and the files it names. Bun's CSS
+  // The assembled `@font-face` stylesheet and the files it names. Bun's CSS
   // loader cannot carry either — every local `url()` is resolved, so a bundled
   // face is base64 or an absolute path — which is why they are served rather
-  // than emitted. Both live outside `public/`: the stylesheet is assembled from
-  // the faces `lib/bundler/css.ts` wrote, and the files come from the installed
-  // packages.
+  // than emitted. Both live outside `public/`: the stylesheet re-declares the
+  // faces `lib/bundler/css.ts` stripped, read from the source stylesheets, and
+  // the files come from the installed packages.
   //
   // Neither is given a conditional here: the stylesheet is `no-store` (nothing
   // is ever stored to revalidate) and a font file is `immutable` (the browser

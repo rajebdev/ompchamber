@@ -30,7 +30,6 @@ import { rm } from 'fs/promises';
 import { join } from 'path';
 
 import cssPlugin from '@/server/lib/bundler/css';
-import { FONT_FACE_DIR } from '@/server/lib/assets/font-css.server';
 
 const ROOT = join(import.meta.dir, '..');
 // Built INTO the package root, not into a subdirectory, so the generated
@@ -75,7 +74,7 @@ console.log(
   `[build] ${result.outputs.length} files, ${(total / 1048576).toFixed(2)} MB`
   + ` in ${((performance.now() - started) / 1000).toFixed(2)}s -> ${PREFIX}`,
 );
-// The extracted `@font-face` stylesheet is written beside the build, not into
-// it: the server reads it per request and serves it on `/fonts.css`, so it has
-// to survive independently of the bundle.
-console.log(`[build] font faces: ${FONT_FACE_DIR}`);
+// The `@font-face` blocks are NOT part of the bundle and no artifact is written
+// for them: the plugin strips them out and the server re-declares them on
+// `/fonts.css` from the source stylesheets under `src/`, per request. Nothing to
+// report here.
