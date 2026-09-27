@@ -1,7 +1,7 @@
 import { Elysia } from 'elysia';
 import { getDb } from '@/server/db.server';
 import { tryServeStatic } from '@/server/plugins/static';
-import { renderShell } from '@/server/plugins/shell.server';
+import { renderShell, SHELL_MARKER } from '@/server/plugins/shell.server';
 import {
   DEV_ASSETS_ENABLED,
   devAssetUpstreamPath,
@@ -13,21 +13,35 @@ import { FONT_STYLESHEET_ROUTE } from '@/server/lib/assets/font-css.server';
 import { resolveTheme } from '@/shared/lib/theme/catalog';
 import { THEME_STYLE_ELEMENT_ID, themeStyleSheet } from '@/shared/lib/theme/css';
 
+/** HTML-escape a string for interpolation into the failure page's `<pre>`. */
+function escapeHtmlText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 /**
  * Actionable message instead of a bare 500 when the shell cannot be rendered.
  *
  * The shell is a Bun HTML route now, not a file on disk, so "not found" is no
  * longer the failure mode — a bundle error is, and Bun renders its own error
- * page for that. This covers the remaining path: the bundle is fine but the
- * markup could not be read back.
+ * page for that, with the file and line locked inside a payload only the
+ * browser can decode. `plugins/shell.server.ts` rebuilds the entrypoint to get
+ * those facts in readable form and passes them here as the reason, so this page
+ * names the edit that broke the bundle rather than the status it produced.
  */
 function shellUnavailableResponse(reason: string): Response {
+  // Escaped, not interpolated raw: the reason carries the failed build's own
+  // source lines, which are arbitrary code — a `<` in one would otherwise
+  // truncate the page at the first tag.
   return new Response(
     `<!doctype html><meta charset="utf-8"><title>OMPChamber</title>
 <body style="font:14px/1.6 ui-monospace,monospace;padding:2rem">
 <h1 style="font-size:1.1rem">Shell not available</h1>
 <p>The server could not render its HTML shell.</p>
-<pre style="background:#f4f1ea;padding:1rem;border-radius:6px">${reason}</pre>
+<pre style="background:#f4f1ea;padding:1rem;border-radius:6px">${escapeHtmlText(reason)}</pre>
 </body>`,
     { status: 503, headers: HTML_HEADERS },
   );
@@ -138,7 +152,7 @@ export const ssrRoutes = new Elysia({ name: 'ssr' }).get('*', async ({ request }
       .replace('data-theme-variant="light"', `data-theme-variant="${theme.variant}"`)
       .replace('<meta name="theme-color" content="#faf8f3" />', `<meta name="theme-color" content="${theme.canvas}" />`)
       .replace('<!--app-head-->', themeStyle + fontLink)
-      .replace('<!--app-bootstrap-->', `<script>window.__OMP_BOOTSTRAP__=${bootstrap}</script>`),
+      .replace(SHELL_MARKER, `<script>window.__OMP_BOOTSTRAP__=${bootstrap}</script>`),
     { headers: HTML_HEADERS },
   );
 });
