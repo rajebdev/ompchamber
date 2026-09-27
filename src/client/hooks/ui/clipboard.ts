@@ -31,3 +31,20 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Read text from the clipboard, or null when the browser refused.
+ *
+ * There is no fallback, and there cannot be one: `execCommand('paste')` is
+ * blocked by every browser and `navigator.clipboard.readText` needs a secure
+ * context plus a permission the user grants once — so a denial is reported
+ * rather than papered over with an empty paste.
+ */
+export async function readClipboardText(): Promise<string | null> {
+  try {
+    if (!navigator.clipboard || !window.isSecureContext) return null;
+    return await navigator.clipboard.readText();
+  } catch {
+    return null;
+  }
+}

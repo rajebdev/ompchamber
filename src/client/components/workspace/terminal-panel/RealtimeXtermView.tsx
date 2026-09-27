@@ -17,6 +17,21 @@ export interface RealtimeXtermHandle {
   /** Drop the buffer and reset the cursor — used when the shell is replaced. */
   reset: () => void;
   focus: () => void;
+  /**
+   * The shell's DECCKM state, read at the moment a key bar button is pressed.
+   * A full-screen app (vim, less) sets it and then expects the SS3 spelling of
+   * the arrows, so the encoding cannot be decided once at mount.
+   */
+  applicationCursorKeys: () => boolean;
+  /** The current selection, empty when nothing is selected. */
+  getSelection: () => string;
+  /**
+   * Feed text in as a paste. Goes through xterm's own `paste`, which is what
+   * wraps it in the bracketed-paste markers when the shell asked for them —
+   * writing the bytes directly would make a multi-line paste execute line by
+   * line in an editor that expects one block.
+   */
+  paste: (text: string) => void;
 }
 
 interface RealtimeXtermViewProps {
@@ -75,6 +90,15 @@ export const RealtimeXtermView = forwardRef<RealtimeXtermHandle, RealtimeXtermVi
       },
       focus() {
         mountRef.current?.term.focus();
+      },
+      applicationCursorKeys() {
+        return mountRef.current?.term.modes.applicationCursorKeysMode ?? false;
+      },
+      getSelection() {
+        return mountRef.current?.term.getSelection() ?? '';
+      },
+      paste(text: string) {
+        mountRef.current?.term.paste(text);
       },
     }), []);
 
