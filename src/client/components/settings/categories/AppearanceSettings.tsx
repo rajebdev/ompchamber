@@ -2,6 +2,7 @@ import { Palette } from 'lucide-preact';
 import type { SettingsState } from '@/shared/types';
 import { resolveThemeId } from '@/shared/lib/theme/catalog';
 import { ThemeGrid } from '@/client/components/settings/categories/appearance-settings/ThemeGrid';
+import { EditorFontSection } from '@/client/components/settings/categories/appearance-settings/EditorFontSection';
 
 interface AppearanceSettingsProps {
   settings: SettingsState;
@@ -22,6 +23,8 @@ export function AppearanceSettings({ settings, onUpdate }: AppearanceSettingsPro
           onSelect={(theme) => onUpdate({ theme: resolveThemeId(theme) })}
         />
       </section>
+
+      <EditorFontSection settings={settings} onUpdate={onUpdate} />
     </div>
   );
 }

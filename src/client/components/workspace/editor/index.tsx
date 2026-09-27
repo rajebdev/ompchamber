@@ -12,11 +12,11 @@ import { CommandPalette } from '@/client/components/workspace/editor/CommandPale
 import { EDITOR_KEY_BINDINGS, isFindBarCommand, type EditorCommand } from '@/shared/lib/code/editor/keymap';
 import {
   EDITOR_DEFAULT_FONT_SIZE,
-  EDITOR_FONT_FAMILY,
   EDITOR_LINE_HEIGHT,
   EDITOR_MAX_FONT_SIZE,
   EDITOR_MIN_FONT_SIZE,
 } from '@/shared/lib/code/editor/typography';
+import { useEditorFontStack } from '@/client/hooks/editor/font';
 import type { TextRange } from '@/shared/lib/code/editor/commands';
 import { resolveBinding } from '@/shared/lib/ui/key-binding';
 import { ImageViewer } from '@/client/components/common/image-viewer';
@@ -61,6 +61,7 @@ export function Editor({
   const { sessionId } = useSessionStateContext();
   const { isScrolling, handleScroll } = useScrollbarFade();
   const surfaceRef = useRef<CodeSurfaceHandle | null>(null);
+  const editorFontFamily = useEditorFontStack();
 
   const editor = useFileEditor(activeFile ?? null, {
     // A file that could not be read must report the failure, not substitute
@@ -303,7 +304,7 @@ export function Editor({
                         paddingTop: 16,
                         paddingBottom: 16,
                         lineHeight: EDITOR_LINE_HEIGHT,
-                        fontFamily: EDITOR_FONT_FAMILY,
+                        fontFamily: editorFontFamily,
                       }}
                       gutterLineClassName="min-w-[1.5rem]"
                       // `min-w-max` keeps a long line intact and lets the panel
@@ -313,7 +314,7 @@ export function Editor({
                       editorPadding={16}
                       editorClassName="font-mono focus:outline-none"
                       editorStyle={{
-                        fontFamily: EDITOR_FONT_FAMILY,
+                        fontFamily: editorFontFamily,
                         fontSize: zoomLevel,
                         lineHeight: EDITOR_LINE_HEIGHT,
                         minHeight: '100%',

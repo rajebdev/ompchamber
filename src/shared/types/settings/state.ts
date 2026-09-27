@@ -37,6 +37,13 @@ export interface SettingsState {
    *  as the catalog's own id union, so a theme dropped from it breaks the build
    *  here rather than rendering unstyled at runtime. */
   theme: ThemeId;
+  /**
+   * Font family the code editors are set in (`EDITOR_FONT_FAMILIES` in
+   * `shared/lib/code/editor/typography.ts`). The value is a CSS family name the
+   * editor puts FIRST in its stack, so a face the device does not have falls
+   * through to the bundled Fira Code and then to the generic — a setting that
+   * cannot render a broken editor, only a different one.
+   */
   editorFont: string;
   streamTransport: StreamTransport;
   /** Generate a session title from the first run. omp suppresses its

@@ -6,6 +6,8 @@ import { diffSettings } from '@/shared/lib/settings/diff';
 import { useChamberSettingsWriter } from '@/client/hooks/settings/use-chamber-setting';
 import { applyDocumentTheme } from '@/client/hooks/ui/theme';
 import { DEFAULT_THEME_ID } from '@/shared/lib/theme/catalog';
+import { EDITOR_DEFAULT_FONT_FAMILY } from '@/shared/lib/code/editor/typography';
+import { EDITOR_FONT_CHANGED_EVENT } from '@/client/hooks/editor/font';
 import { useChamberEvent } from '@/client/hooks/ui/window-event';
 import { SETTINGS_CATEGORIES, SettingsSidebar } from '@/client/components/settings/Sidebar';
 import { AppearanceSettings } from '@/client/components/settings/categories/AppearanceSettings';
@@ -34,7 +36,7 @@ export interface SettingsModalProps {
 
 const DEFAULT_SETTINGS: SettingsState = {
   theme: DEFAULT_THEME_ID,
-  editorFont: 'JetBrains Mono',
+  editorFont: EDITOR_DEFAULT_FONT_FAMILY,
   streamTransport: 'websocket',
   autoSessionTitle: true,
   soundAlerts: true,
@@ -93,6 +95,13 @@ export function SettingsModal({
       const next = typeof updater === 'function' ? updater(prev) : { ...prev, ...updater };
       if (typeof document !== 'undefined' && next.theme) {
         applyDocumentTheme(next.theme);
+      }
+      // The editor font is visual, so an open editor has to hear about the
+      // change now — `appSettings` is a boot-time prop and would only show it
+      // after a reload. Announced only when the value actually moved, so a
+      // re-render of an unrelated setting does not churn every editor's stack.
+      if (typeof window !== 'undefined' && next.editorFont !== prev.editorFont) {
+        window.dispatchEvent(new CustomEvent(EDITOR_FONT_CHANGED_EVENT, { detail: next.editorFont }));
       }
       // Only the keys this update actually touched are persisted. The modal
       // holds a full `SettingsState` snapshot taken when it opened, so writing

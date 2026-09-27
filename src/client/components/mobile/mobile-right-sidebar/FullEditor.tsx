@@ -8,11 +8,11 @@ import { useScrollbarFade, scrollbarFadeClass } from '@/client/hooks/ui/scrollba
 import { useFileEditor } from '@/client/hooks/editor/use-file-editor';
 import {
   EDITOR_DEFAULT_FONT_SIZE,
-  EDITOR_FONT_FAMILY,
   EDITOR_LINE_HEIGHT,
   EDITOR_MAX_FONT_SIZE,
   EDITOR_MIN_FONT_SIZE,
 } from '@/shared/lib/code/editor/typography';
+import { useEditorFontStack } from '@/client/hooks/editor/font';
 
 interface MobileFullEditorProps {
   file: {
@@ -32,6 +32,7 @@ export function MobileFullEditor({ file, onClose, onFileSaved }: MobileFullEdito
   const [fontSize, setFontSize] = useState(EDITOR_DEFAULT_FONT_SIZE);
   const [wordWrap, setWordWrap] = useState(true);
   const { isScrolling, handleScroll } = useScrollbarFade();
+  const editorFontFamily = useEditorFontStack();
 
   const isMd = file.name.endsWith('.md');
 
@@ -112,12 +113,12 @@ export function MobileFullEditor({ file, onClose, onFileSaved }: MobileFullEdito
                 paddingTop: 12,
                 paddingBottom: 12,
                 lineHeight: EDITOR_LINE_HEIGHT,
-                fontFamily: EDITOR_FONT_FAMILY,
+                fontFamily: editorFontFamily,
               }}
               editorWrapperClassName="flex-1 p-3 overflow-x-auto min-w-0 bg-paper text-ink code-surface"
               editorClassName="focus:outline-none"
               editorStyle={{
-                fontFamily: EDITOR_FONT_FAMILY,
+                fontFamily: editorFontFamily,
                 fontSize,
                 lineHeight: EDITOR_LINE_HEIGHT,
                 backgroundColor: 'transparent',
