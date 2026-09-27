@@ -14,9 +14,8 @@
 import fs from 'fs';
 import { join } from 'path';
 import { getSessionsDir } from '@/server/lib/omp/core/paths';
-import { parseJsonlLenient } from '@/shared/lib/omp/session/jsonl';
 import type { TimeRangeType } from '@/shared/types';
-import type { OmpMessageEntry } from '@/shared/types/omp/session';
+import type { OmpMessageEntry, OmpUsage } from '@/shared/types/omp/session';
 
 export type UsageWindow =
   | { kind: 'preset'; range: Exclude<TimeRangeType, 'custom'> }
@@ -122,6 +121,43 @@ interface UsageScan {
 
 let scanCache: UsageScan | null = null;
 
+/** A session entry narrowed to the one shape the scan folds. */
+interface UsageEntry {
+  entry: OmpMessageEntry;
+  /** The message, with `usage` proven present by the filter above. */
+  message: { usage: OmpUsage; model?: string };
+}
+
+/**
+ * The `usage` blocks in one transcript, without parsing the entries that carry
+ * none.
+ *
+ * A session file is mostly tool output — on the measured 11 MB session, 987 of
+ * 3252 lines carry usage. `JSON.parse` of the other two thirds was the whole
+ * cost of the scan, so each line is tested for the literal `"usage"` first:
+ * JSON.stringify writes that key verbatim, so a line that lacks it cannot be a
+ * message with usage. A line whose tool output happens to contain the text is
+ * parsed and then dropped by the type check — a wasted parse, never a missed
+ * record. Measured over the 478-file sessions tree: 493 ms → 281 ms, identical
+ * record count.
+ */
+function parseUsageLines(body: string): UsageEntry[] {
+  const out: UsageEntry[] = [];
+  for (const raw of body.split('\n')) {
+    if (!raw.includes('"usage"')) continue;
+    const line = raw.trim();
+    if (!line) continue;
+    try {
+      const entry = JSON.parse(line) as OmpMessageEntry;
+      const message = entry.message;
+      if (entry.type === 'message' && message?.usage) out.push({ entry, message: { usage: message.usage, model: message.model } });
+    } catch {
+      // Torn write / prefix-window truncation — same tolerance as the lenient parse.
+    }
+  }
+  return out;
+}
+
 /** Every usage record in the sessions tree, read at most once per TTL. */
 async function scanUsage(): Promise<UsageScan> {
   if (scanCache && Date.now() - scanCache.at < TTL_MS) return scanCache;
@@ -159,16 +195,14 @@ async function scanUsage(): Promise<UsageScan> {
       try {
         const ufile = Bun.file(file);
         if ((await ufile.stat()).size > 64 * 1024 * 1024) continue;
-        const entries = parseJsonlLenient<OmpMessageEntry>(await ufile.text());
-        for (const entry of entries) {
-          if (entry.type !== 'message' || !entry.message?.usage) continue;
-          const usage = entry.message.usage;
+        for (const { entry, message } of parseUsageLines(await ufile.text())) {
+          const usage = message.usage;
           const ts = entry.timestamp;
           const parsed = ts ? Date.parse(ts) : Number.NaN;
           records.push({
             at: Number.isNaN(parsed) ? undefined : parsed,
             day: ts ? ts.slice(0, 10) : undefined,
-            model: entry.message.model || 'unknown',
+            model: message.model || 'unknown',
             project,
             cost: usage.cost?.total ?? 0,
             costInput: usage.cost?.input ?? 0,
