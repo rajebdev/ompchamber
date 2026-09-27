@@ -10,6 +10,13 @@ import { EditorToolbar } from '@/client/components/workspace/editor/Toolbar';
 import { FindWidget } from '@/client/components/workspace/editor/FindWidget';
 import { CommandPalette } from '@/client/components/workspace/editor/CommandPalette';
 import { EDITOR_KEY_BINDINGS, isFindBarCommand, type EditorCommand } from '@/shared/lib/code/editor/keymap';
+import {
+  EDITOR_DEFAULT_FONT_SIZE,
+  EDITOR_FONT_FAMILY,
+  EDITOR_LINE_HEIGHT,
+  EDITOR_MAX_FONT_SIZE,
+  EDITOR_MIN_FONT_SIZE,
+} from '@/shared/lib/code/editor/typography';
 import type { TextRange } from '@/shared/lib/code/editor/commands';
 import { resolveBinding } from '@/shared/lib/ui/key-binding';
 import { ImageViewer } from '@/client/components/common/image-viewer';
@@ -45,7 +52,7 @@ export function Editor({
   const activeFile = openedFiles.find(f => f.id === activeFileId);
   
   const [previewMode, setPreviewMode, previewReady] = useSessionState<Record<string | number, boolean>>('editor.previewMode', {});
-  const [zoomLevel, setZoomLevel] = useSessionState<number>('editor.zoomLevel', 12);
+  const [zoomLevel, setZoomLevel] = useSessionState<number>('editor.zoomLevel', EDITOR_DEFAULT_FONT_SIZE);
   const [isMaximized, setIsMaximized] = useState(false);
   const [wordWrap, setWordWrap] = useSessionState<boolean>('editor.wordWrap', true);
   /** Extra ⌘D ranges; the surface paints them and the editor edits them by replication. */
@@ -233,8 +240,8 @@ export function Editor({
               onSave={editor.saveNow}
               onTogglePreview={togglePreview}
               onToggleWordWrap={() => setWordWrap(!wordWrap)}
-              onZoomIn={() => setZoomLevel(z => Math.min(24, z + 1))}
-              onZoomOut={() => setZoomLevel(z => Math.max(8, z - 1))}
+              onZoomIn={() => setZoomLevel(z => Math.min(EDITOR_MAX_FONT_SIZE, z + 1))}
+              onZoomOut={() => setZoomLevel(z => Math.max(EDITOR_MIN_FONT_SIZE, z - 1))}
               onCopy={editor.copy}
               onDownload={editor.download}
               onToggleMaximize={() => setIsMaximized(!isMaximized)}
@@ -295,8 +302,8 @@ export function Editor({
                         fontSize: zoomLevel,
                         paddingTop: 16,
                         paddingBottom: 16,
-                        lineHeight: 1.5,
-                        fontFamily: '"Fira Code", "JetBrains Mono", "SF Mono", Consolas, monospace',
+                        lineHeight: EDITOR_LINE_HEIGHT,
+                        fontFamily: EDITOR_FONT_FAMILY,
                       }}
                       gutterLineClassName="min-w-[1.5rem]"
                       // `min-w-max` keeps a long line intact and lets the panel
@@ -306,9 +313,9 @@ export function Editor({
                       editorPadding={16}
                       editorClassName="font-mono focus:outline-none"
                       editorStyle={{
-                        fontFamily: '"Fira Code", "JetBrains Mono", "SF Mono", Consolas, monospace',
+                        fontFamily: EDITOR_FONT_FAMILY,
                         fontSize: zoomLevel,
-                        lineHeight: 1.5,
+                        lineHeight: EDITOR_LINE_HEIGHT,
                         minHeight: '100%',
                         // Breathing room under the last line. It has to live on the
                         // surface, not on the scroll container: a scroll container's

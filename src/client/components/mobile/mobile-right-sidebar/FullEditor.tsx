@@ -6,6 +6,13 @@ import { ImageViewer } from '@/client/components/common/image-viewer';
 import { EditorHeader } from '@/client/components/mobile/mobile-right-sidebar/Header';
 import { useScrollbarFade, scrollbarFadeClass } from '@/client/hooks/ui/scrollbar-fade';
 import { useFileEditor } from '@/client/hooks/editor/use-file-editor';
+import {
+  EDITOR_DEFAULT_FONT_SIZE,
+  EDITOR_FONT_FAMILY,
+  EDITOR_LINE_HEIGHT,
+  EDITOR_MAX_FONT_SIZE,
+  EDITOR_MIN_FONT_SIZE,
+} from '@/shared/lib/code/editor/typography';
 
 interface MobileFullEditorProps {
   file: {
@@ -22,7 +29,7 @@ interface MobileFullEditorProps {
 
 export function MobileFullEditor({ file, onClose, onFileSaved }: MobileFullEditorProps) {
   const [isPreview, setIsPreview] = useState(file.name.endsWith('.md'));
-  const [fontSize, setFontSize] = useState(12);
+  const [fontSize, setFontSize] = useState(EDITOR_DEFAULT_FONT_SIZE);
   const [wordWrap, setWordWrap] = useState(true);
   const { isScrolling, handleScroll } = useScrollbarFade();
 
@@ -52,8 +59,8 @@ export function MobileFullEditor({ file, onClose, onFileSaved }: MobileFullEdito
         onClose={onClose}
         onTogglePreview={() => setIsPreview(!isPreview)}
         onToggleWrap={() => setWordWrap(!wordWrap)}
-        onZoomOut={() => setFontSize(prev => Math.max(10, prev - 1))}
-        onZoomIn={() => setFontSize(prev => Math.min(18, prev + 1))}
+        onZoomOut={() => setFontSize(prev => Math.max(EDITOR_MIN_FONT_SIZE, prev - 1))}
+        onZoomIn={() => setFontSize(prev => Math.min(EDITOR_MAX_FONT_SIZE, prev + 1))}
         onCopy={editor.copy}
         onDownload={editor.download}
       />
@@ -80,7 +87,7 @@ export function MobileFullEditor({ file, onClose, onFileSaved }: MobileFullEdito
             /* Markdown Preview Mode — styled by `.prose-content` (the chat
                timeline's system), see the desktop editor for why there is no
                `prose` wrapper. */
-            <div className="p-4 bg-paper text-ink min-h-full font-sans">
+            <div className="p-4 bg-paper text-ink min-h-full font-sans" style={{ fontSize: `${fontSize}px` }}>
               <MarkdownRenderer
                 content={content}
                 document
@@ -95,13 +102,24 @@ export function MobileFullEditor({ file, onClose, onFileSaved }: MobileFullEdito
               language={lang}
               wordWrap={wordWrap}
               rootClassName="flex min-h-full bg-paper"
-              gutterClassName="w-10 py-3 pr-2 select-none text-right text-[10px] text-ink/30 bg-canvas border-r border-ink/10 font-mono leading-[20px] flex-shrink-0"
+              // The gutter auto-sizes to its widest number rather than taking a
+              // fixed width: the numbers scale with the zoom control, and a
+              // pinned `w-10` clipped a 3-digit line number at 18px.
+              gutterClassName="flex flex-col text-right pr-2 select-none text-ink/30 bg-canvas border-r border-ink/10 font-mono flex-shrink-0"
+              gutterLineClassName="min-w-[1.5rem]"
+              gutterStyle={{
+                fontSize,
+                paddingTop: 12,
+                paddingBottom: 12,
+                lineHeight: EDITOR_LINE_HEIGHT,
+                fontFamily: EDITOR_FONT_FAMILY,
+              }}
               editorWrapperClassName="flex-1 p-3 overflow-x-auto min-w-0 bg-paper text-ink code-surface"
               editorClassName="focus:outline-none"
               editorStyle={{
-                fontFamily: 'monospace',
-                fontSize: `${fontSize}px`,
-                lineHeight: '20px',
+                fontFamily: EDITOR_FONT_FAMILY,
+                fontSize,
+                lineHeight: EDITOR_LINE_HEIGHT,
                 backgroundColor: 'transparent',
                 minHeight: '100%',
                 color: 'var(--theme-ink)',
