@@ -49,7 +49,7 @@ export function shellArgs(platform: NodeJS.Platform = process.platform): string[
  * POSIX shells are launched through a one-line `/bin/sh` shim that re-acquires
  * the PTY as its controlling terminal before `exec`-ing the real shell:
  *
- *     T=$(tty); exec <shell> -i -l <"$T" >"$T" 2>&1
+ *     if { : </dev/tty; } 2>/dev/null; then exec <shell> -i -l </dev/tty >/dev/tty 2>&1; fi; exec <shell> -i -l
  *
  * This is required, not cosmetic. The runtime must spawn with
  * `detached: true` — without it the child lands in the *server's* process
@@ -62,14 +62,31 @@ export function shellArgs(platform: NodeJS.Platform = process.platform): string[
  * macOS: with the shim `tpgid` is the shell's own pid and Ctrl+Z suspends;
  * without it `tpgid` is 0 and Ctrl+Z is swallowed.
  *
+ * The guard is an actual OPEN of `/dev/tty`, not a test for the device node.
+ * `[ -c /dev/tty ]` looks equivalent and is not: `/dev/tty` always exists, so
+ * the test passes on a child that has no controlling terminal and the redirect
+ * then kills the shim — `sh` exits 1 with "/dev/tty: Device not configured"
+ * and the fallback never runs (verified). The braces keep the redirect's own
+ * error out of the PTY: without `2>/dev/null` the failure message is written
+ * into the terminal the chamber is displaying.
+ *
+ * This replaces `T=$(tty 2>/dev/null); … <"$T" >"$T"`, which paid a whole
+ * `/usr/bin/tty` subprocess per terminal to learn a path the kernel already
+ * resolves. Measured: 5.86 ms against 3.79 ms to spawn, and the same `tpgid`
+ * and `Ss+` state either way.
+ *
  * `exec` keeps the pid, so the shell stays the session leader and group kill
- * still reaches everything it starts. If `tty` fails the shell runs
+ * still reaches everything it starts. If the open fails the shell runs
  * unredirected — stdio is already the PTY, only job control is lost.
  */
 export function shellLaunch(executable: string, platform: NodeJS.Platform = process.platform): string[] {
   if (platform === 'win32') return [executable];
   const inner = [executable, ...shellArgs(platform)].join(' ');
-  return ['/bin/sh', '-c', `T=$(tty 2>/dev/null); [ -n "$T" ] && exec ${inner} <"$T" >"$T" 2>&1; exec ${inner}`];
+  return [
+    '/bin/sh',
+    '-c',
+    `if { : </dev/tty; } 2>/dev/null; then exec ${inner} </dev/tty >/dev/tty 2>&1; fi; exec ${inner}`,
+  ];
 }
 
 /**

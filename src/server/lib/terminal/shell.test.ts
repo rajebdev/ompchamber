@@ -51,11 +51,23 @@ describe('shellLaunch', () => {
     const argv = shellLaunch('/bin/zsh', 'darwin');
     expect(argv[0]).toBe('/bin/sh');
     expect(argv[1]).toBe('-c');
-    expect(argv[2]).toContain('tty');
     expect(argv[2]).toContain('exec /bin/zsh -i -l');
     // `exec` matters: it keeps the pid, so the shell stays the session leader
     // and a group signal still reaches everything it starts.
     expect(argv[2].match(/exec /g)?.length).toBe(2);
+  });
+
+  test('probes /dev/tty by opening it, never by testing the device node', () => {
+    // `/dev/tty` always exists, so `[ -c /dev/tty ]` passes on a child with no
+    // controlling terminal; the redirect then kills the shim (sh exits 1 with
+    // "/dev/tty: Device not configured") and the fallback never runs. The probe
+    // must be an open, and its error must not reach the PTY the user sees.
+    const script = shellLaunch('/bin/zsh', 'darwin')[2];
+    expect(script).toContain('{ : </dev/tty; } 2>/dev/null');
+    expect(script).not.toContain('-c /dev/tty');
+    // A shell with no tty still starts, unredirected: job control is lost, the
+    // terminal is not.
+    expect(script.endsWith('exec /bin/zsh -i -l')).toBe(true);
   });
 
   test('runs the shell directly on windows', () => {
