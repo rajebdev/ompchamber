@@ -10,6 +10,9 @@ export interface SessionItemProps {
   status?: 'stream' | 'finish' | 'abort';
   /** The session's agent is blocked on a question until the user answers it. */
   awaitingInput?: boolean;
+  /** Relative age of the session, or null when no usable timestamp exists.
+   *  Same column the phone's row carries, from the same helper. */
+  timeAgo?: string | null;
   onClick?: () => void;
   onArchive?: () => void;
   /** Omitted for a session that cannot be deleted yet (a pending `new-…` chat,
@@ -28,6 +31,7 @@ export function SessionItem({
   isArchived = false,
   status,
   awaitingInput = false,
+  timeAgo,
   onClick,
   onArchive,
   onDelete,
@@ -138,6 +142,12 @@ export function SessionItem({
           <span className="flex-1 min-w-0 truncate leading-snug">
             {title.charAt(0).toUpperCase() + title.slice(1)}
           </span>
+        )}
+
+        {/* Same trailing column the phone draws, from the same helper — the
+            row's age is what tells two identically-titled chats apart. */}
+        {!isEditing && timeAgo && (
+          <span className="shrink-0 ml-2 font-mono text-[10px] text-ink/40">{timeAgo}</span>
         )}
 
         {/* One trigger, whatever the row can do. The three side-by-side hover

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { MoreHorizontal, Pin, Plus } from 'lucide-preact';
+import { ChevronDown, ChevronRight, MoreHorizontal, Pin, Plus } from 'lucide-preact';
 import { useSearchParams } from '@/client/lib/router/search-params';
 import { useFetcher } from '@/client/lib/router/fetcher';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
@@ -12,6 +12,7 @@ import { SubagentList } from '@/client/components/common/subagent-list';
 import { WorkspaceOptionsMenu } from '@/client/components/common/workspace-options-menu';
 import { useExpandedSessions } from '@/client/hooks/workspace/expanded-sessions';
 import { getProjectIcon } from '@/shared/lib/workspace/project-icon';
+import { relativeTimeAgo } from '@/shared/lib/workspace/relative-time';
 import { useSidebarData } from '@/client/hooks/chat/omp/session-list';
 
 export { SessionItem };
@@ -120,21 +121,30 @@ export function Category({
         className="group flex items-center justify-between h-7 text-xs font-semibold text-ink px-2 hover:bg-ink/5 rounded-md transition-colors select-none"
       >
         <div className="flex-1 h-full flex items-center cursor-pointer min-w-0" onClick={toggleFolder}>
-          <span className="w-4 h-4 flex items-center justify-center shrink-0">
-            {folder.customIconUrl ? (
-              <img
-                src={folder.customIconUrl}
-                alt=""
-                className="w-[15px] h-[15px] rounded-xs object-contain shrink-0"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <ProjectIcon
-                size={15}
-                className="text-ink/75"
-                style={{ color: folder.accentColor || undefined }}
-              />
-            )}
+          {/* One 16px slot owns both glyphs, exactly like a session row's
+              status/chevron slot: the folder mark sits there at rest and hands
+              the slot to the disclosure chevron on hover, so the icon column
+              reads as one line AND the header says what clicking it does. */}
+          <span className="relative w-4 h-4 flex items-center justify-center shrink-0">
+            <span className="absolute inset-0 flex items-center justify-center transition-opacity group-hover:opacity-0">
+              {folder.customIconUrl ? (
+                <img
+                  src={folder.customIconUrl}
+                  alt=""
+                  className="w-[15px] h-[15px] rounded-xs object-contain shrink-0"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <ProjectIcon
+                  size={15}
+                  className="text-ink/75"
+                  style={{ color: folder.accentColor || undefined }}
+                />
+              )}
+            </span>
+            <span className="absolute inset-0 flex items-center justify-center text-ink/60 opacity-0 transition-opacity group-hover:opacity-100">
+              {isActuallyOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            </span>
           </span>
           <span className="w-2 shrink-0" />
           {folder.isPinned && <Pin size={11} className="text-ink/60 shrink-0 mr-1.5" />}
@@ -204,6 +214,7 @@ export function Category({
                   isArchived={session.is_archived === 1}
                   status={sessionStatus[sessionKey]}
                   awaitingInput={Boolean(session.awaitingInput)}
+                  timeAgo={relativeTimeAgo(session.updated_at ?? session.created_at)}
                   onClick={() => onSelectSession(session.id)}
                   onArchive={() => handleArchive(session)}
                   onDelete={
@@ -233,9 +244,17 @@ export function Category({
               onClick={showMore}
               className="flex items-center text-xs text-ink/45 hover:text-ink/80 w-full text-left py-1.5 px-2 rounded-lg hover:bg-ink/5 transition-colors cursor-pointer select-none"
             >
-              <span className="w-4 h-4 shrink-0" />
+              {/* The chevron sits in the same 16px slot the rows give their
+                  status/roster glyph, and the label starts where a row's title
+                  does — the disclosure control lines up with the list it
+                  reveals instead of floating beside it. */}
+              <span className="w-4 h-4 shrink-0 flex items-center justify-center">
+                <ChevronDown size={12} />
+              </span>
               <span className="w-2 shrink-0" />
-              <span className="truncate leading-snug">Show more sessions</span>
+              <span className="truncate leading-snug">
+                Show more sessions ({visibleSessions.length - visibleCount})
+              </span>
             </button>
           )}
 
