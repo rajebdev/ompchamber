@@ -5,6 +5,12 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.0](https://github.com/rajebdev/ompchamber/compare/v3.4.0...v3.5.0) — 2026-09-28
+
+### Added
+
+* **sessions:** delete a session from the sidebar ([e4fd65e](https://github.com/rajebdev/ompchamber/commit/e4fd65e27d3bab4a7b8ed4ede1154d7a1dadde41)) (thanks [@rayzalzero](https://github.com/rayzalzero))
+
 ## [3.4.0](https://github.com/rajebdev/ompchamber/compare/v3.3.3...v3.4.0) — 2026-09-28
 
 ### Added
