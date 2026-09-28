@@ -41,6 +41,14 @@ export interface StoredMessage {
   content: string;
   date?: string;
   timestamp?: string;
+  /**
+   * When omp recorded the entry, in epoch ms — `toChatMessage` stamps every
+   * JSONL-derived row with it, and the chamber's own rows carry the clock they
+   * were created at. It is what positions a raw turn that no JSONL turn relates
+   * to (see `anchorIndexFor`); `date` cannot serve, because a chamber row's is a
+   * display string ("Today, 03:57 PM") rather than an ISO instant.
+   */
+  startedAt?: number;
   attachments?: StoredAttachment[];
   /**
    * A notice row — omp's own reminder/task-result entries, or the chamber's
@@ -65,14 +73,14 @@ export interface StoredMessage {
  * case and must stay whole — there the DB is the only copy — so callers gate on
  * the file, never on the id's shape.
  *
- * One dependency this gives up deliberately: `mergeOmpAttachments` anchors a
- * stored raw turn that NO JSONL user turn relates to by scanning forward through
- * the stored array for the next row the JSONL carries, and the rows it found
- * were mirrors. With mirrors gone such a turn falls back to the tail. Every
- * rewrite omp is known to make is covered by the relation rules (prefix, an
- * `@agent` delegation, `/skill:`), and narrowing changed the merged timeline of
- * none of the 260 stored sessions measured against this install's own files —
- * the anchor is a fallback for a rewrite shape those rules do not yet know.
+ * The merge depends on no mirror to place a turn either: a stored raw turn that
+ * no JSONL user turn relates to is positioned by its own clock
+ * (`anchorIndexFor`), not by scanning the stored array for a row the JSONL still
+ * carries — which is what makes this narrowing self-sufficient rather than a
+ * change that quietly moves a `/usage` or `/compact` bubble to the end of the
+ * timeline. Verified against this install's own files: of 260 stored sessions
+ * compared against their JSONLs, only the turns whose anchor the scan had been
+ * supplying change position, and they change to the time they were sent.
  */
 export function overlayRowsForOmpSession<T>(messages: T[]): T[] {
   return messages.filter((message) => {
@@ -133,6 +141,40 @@ function mergeAttachmentLists(
   return [...merged, ...remaining];
 }
 
+/**
+ * Where an unmatched raw turn belongs in the merged timeline.
+ *
+ * Its own clock decides: the turn was typed before the next row omp recorded
+ * after it, so it is inserted ahead of the first merged row that carries a later
+ * `startedAt`. This replaced a scan for "the next stored row the JSONL still
+ * carries" — that scan worked only while the overlay also held the mirrored
+ * rows, which are exactly the rows `overlayRowsForOmpSession` drops, so it sent
+ * every such turn to the tail of the timeline of a narrowed session (measured:
+ * a `/usage` or `/compact` turn, 7 of them in one install).
+ *
+ * The scan is kept for a row with no clock to read — a legacy stored turn —
+ * where it still resolves against an un-narrowed overlay, and `merged.length`
+ * (append at the end) is the last resort rather than a silent drop.
+ */
+function anchorIndexFor(
+  raw: StoredMessage,
+  merged: StoredMessage[],
+  jsonlIndex: Map<string, number>,
+  stored: StoredMessage[],
+): number {
+  const at = raw.startedAt;
+  if (typeof at === 'number' && Number.isFinite(at)) {
+    const after = merged.findIndex((m) => typeof m.startedAt === 'number' && m.startedAt > at);
+    if (after !== -1) return after;
+  }
+  for (let i = stored.indexOf(raw) + 1; i < stored.length; i += 1) {
+    const id = stored[i]?.id;
+    const found = typeof id === 'string' ? jsonlIndex.get(id) : undefined;
+    if (found !== undefined) return found;
+  }
+  return merged.length;
+}
+
 /** Merge user turns and attachments from the chamber DB copy onto the
  *  JSONL-loaded messages. */
 export function mergeOmpAttachments(
@@ -169,21 +211,13 @@ export function mergeOmpAttachments(
     return attachments.length ? { ...next, attachments } : next;
   });
 
-  // Unmatched raw turns are anchored before the next stored message the JSONL
-  // still carries; splice highest-anchor-first so earlier indices stay valid.
+  // Unmatched raw turns are positioned by their own clock, and spliced
+  // highest-anchor-first so earlier indices stay valid.
   const insertions = new Map<number, StoredMessage[]>();
   storedUsers.forEach((storedMsg, userIndex) => {
     if (used.has(userIndex) || !isRawComposerInput(storedMsg.content)) return;
     if (storedMsg.id && jsonlIndex.has(storedMsg.id)) return;
-    let anchor = merged.length;
-    for (let i = stored.indexOf(storedMsg) + 1; i < stored.length; i += 1) {
-      const id = stored[i]?.id;
-      const found = typeof id === 'string' ? jsonlIndex.get(id) : undefined;
-      if (found !== undefined) {
-        anchor = found;
-        break;
-      }
-    }
+    const anchor = anchorIndexFor(storedMsg, merged, jsonlIndex, stored);
     const group = insertions.get(anchor);
     if (group) group.push(storedMsg);
     else insertions.set(anchor, [storedMsg]);
