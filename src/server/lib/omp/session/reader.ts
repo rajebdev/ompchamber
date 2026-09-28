@@ -60,6 +60,19 @@ export async function loadOmpSidebarData(): Promise<OmpSidebarData> {
   return slot.inFlight;
 }
 
+/**
+ * Drop the cached dataset so the next load re-scans disk. For a mutation the
+ * TTL cannot see: deleting a session removes a row rather than changing one, so
+ * nothing in the cached snapshot is stale — it is simply wrong, and the refresh
+ * that follows the delete would otherwise serve it back for up to the TTL.
+ */
+export function invalidateOmpSidebarData(): void {
+  const slot = globalThis.__ompChamberSidebarDataCache;
+  if (!slot) return;
+  slot.data = undefined as unknown as OmpSidebarData;
+  slot.expiresAt = 0;
+}
+
 /** Resolve each unique cwd to its project root; bounded concurrency so 100+
  *  unique cwds don't spawn 100 parallel git processes. */
 async function resolveRootsByCwd(cwds: string[]): Promise<Map<string, string>> {

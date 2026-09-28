@@ -5,6 +5,8 @@ import { useFetcher } from '@/client/lib/router/fetcher';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 import { useShowMore } from '@/client/hooks/ui/show-more';
 import { useWorkspaceFolderActions } from '@/client/hooks/workspace/workspace-folder-actions';
+import { useSessionDelete } from '@/client/hooks/workspace/session-delete';
+import { SessionDeleteModal } from '@/client/components/common/session-delete-modal';
 import { SessionItem } from '@/client/components/layout/session-sidebar/SessionItem';
 import { SubagentList } from '@/client/components/common/subagent-list';
 import { WorkspaceOptionsMenu } from '@/client/components/common/workspace-options-menu';
@@ -58,6 +60,7 @@ export function Category({
     handleArchive,
     handleRename,
   } = useWorkspaceFolderActions(folder, refresh);
+  const sessionDelete = useSessionDelete();
 
   // Desktop's expand toggle keeps its own fetcher: unlike pin/delete it
   // dispatches on the *response* (not immediately) and carries no folderId.
@@ -203,6 +206,13 @@ export function Category({
                   awaitingInput={Boolean(session.awaitingInput)}
                   onClick={() => onSelectSession(session.id)}
                   onArchive={() => handleArchive(session)}
+                  onDelete={
+                    // A pending `new-…` chat has no transcript anywhere yet —
+                    // there is nothing to delete, and the server refuses it.
+                    String(session.id).startsWith('new-')
+                      ? undefined
+                      : () => sessionDelete.requestDelete(session)
+                  }
                   onRename={String(session.id).startsWith('new-') ? undefined : (name) => void handleRename(session, name)}
                   expandable={hasSubagents}
                   hasSubagents={hasSubagents}
@@ -236,6 +246,14 @@ export function Category({
           )}
         </div>
       )}
+
+      <SessionDeleteModal
+        session={sessionDelete.pending}
+        isDeleting={sessionDelete.isDeleting}
+        error={sessionDelete.error}
+        onClose={sessionDelete.cancelDelete}
+        onConfirm={() => void sessionDelete.confirmDelete()}
+      />
     </div>
   );
 }

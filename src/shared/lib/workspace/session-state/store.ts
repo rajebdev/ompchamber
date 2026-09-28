@@ -248,6 +248,26 @@ export function getLastOpenedAt(sessionId: string): number | undefined {
 }
 
 /**
+ * Drop a session's cached UI state after it was deleted.
+ *
+ * Deliberately does NOT persist: the session no longer exists, and the persist
+ * endpoint upserts, so flushing here would write the row straight back. The
+ * pending debounce timer is cancelled for the same reason — it would fire after
+ * the delete and resurrect the state.
+ */
+export function forgetSession(sessionId: string): void {
+  const timer = persistTimers.get(sessionId);
+  if (timer) {
+    clearTimeout(timer);
+    persistTimers.delete(sessionId);
+  }
+  cache.delete(sessionId);
+  readySessions.delete(sessionId);
+  dirtySessions.delete(sessionId);
+  lastTouched.delete(sessionId);
+}
+
+/**
  * Move a pending `new-…` session's state onto the real session id adopted
  * by a spawn, then discard the transient slot.
  */
