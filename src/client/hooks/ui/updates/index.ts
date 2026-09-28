@@ -105,7 +105,13 @@ export function useUpdates(): UseUpdatesResult {
 
       if (!response.ok && !(response.headers.get('content-type') ?? '').includes('text/event-stream')) {
         const payload: unknown = await response.json().catch(() => null);
-        throw new Error(responseMessage(payload, `Update failed (HTTP ${response.status})`));
+        const message = responseMessage(payload, `Update failed (HTTP ${response.status})`);
+        // 409 is the server saying another run holds the slot. That is a state,
+        // not a failure of this request, so it is reported by toast alone: an
+        // error state would replace the update rows with a block the user
+        // cannot act on, and its Retry only re-checks.
+        if (response.status === 409) return { success: false, target, manual: false, message };
+        throw new Error(message);
       }
 
       await readSseStream(
@@ -135,8 +141,14 @@ export function useUpdates(): UseUpdatesResult {
       return result;
     } catch (cause) {
       if (controller.signal.aborted) return null;
-      setError(cause instanceof Error ? cause.message : 'Unable to apply the update.');
-      return null;
+      const message = cause instanceof Error ? cause.message : 'Unable to apply the update.';
+      setError(message);
+      // Returned rather than swallowed: the caller's toast is the only surface
+      // the user sees, and a generic "could not be completed" would hide a
+      // refusal the server explained — an update already running, in the case
+      // that matters most, because a reload has just erased this panel's own
+      // record that one was.
+      return { success: false, target, manual: false, message };
     } finally {
       if (applyAbortRef.current === controller) {
         applyAbortRef.current = null;

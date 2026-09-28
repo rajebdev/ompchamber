@@ -3,6 +3,7 @@ import { methodNotAllowed } from '@/server/lib/route-adapter';
 import { scheduleSelfRestart } from '@/server/lib/lifecycle/restart';
 import { createSseStream } from '@/server/lib/sse';
 import { applyUpdate } from '@/server/lib/updates/apply';
+import { runningUpdate, updateBusyMessage } from '@/server/lib/updates/single-flight';
 
 /** Longest a buffered output chunk waits before it is flushed anyway. */
 const FLUSH_DELAY_MS = 50;
@@ -34,6 +35,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
   if (target !== 'omp' && target !== 'ompchamber') {
     return json({ error: 'Unknown update target' }, { status: 400 });
   }
+
+  // Checked before the stream exists, because after it starts the status is
+  // already 200 and a refusal could only be reported as a failure frame. The
+  // slot itself is taken inside `applyUpdate` — this is the clean answer for
+  // the ordinary case (a reload, a second tab), not the guard.
+  const running = runningUpdate();
+  if (running) return json({ error: updateBusyMessage(running) }, { status: 409 });
 
   const stream = createSseStream({
     heartbeatMs: 15_000,

@@ -63,15 +63,12 @@ export function UpdateSection({ updates, onToast }: UpdateSectionProps) {
     const result = await updates.apply(target);
     if (!onToast) return;
 
-    if (!result) {
-      onToast('The update request could not be completed.', 'error');
-      return;
-    }
+    // A null result means the run was aborted with the panel (an unmount, a
+    // page tear-down): there is nobody left to tell.
+    if (!result) return;
 
     // `manual` means the environment cannot self-update and the message is the
-    // command to run — action required, not a success. It is checked before the
-    // success flag because a manual answer is reported as a failure by the
-    // engine, and the two need the same tone either way.
+    // command to run — action required, not a success.
     onToast(result.message, result.success && !result.manual ? 'success' : 'error');
   };
 
