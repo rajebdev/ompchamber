@@ -7,7 +7,9 @@
  * Database lifecycle for OMPChamber: resolve the SQLite path, open the
  * `bun:sqlite` client once, bootstrap the schema, and seed demo data in mock
  * mode. The DDL lives in `./db/schema`, the mock presets in `./db/seed` and
- * the workspace discovery sync in `./db/workspace-sync`.
+ * the workspace discovery sync in `./db/workspace-sync`. The one-time overlay
+ * rewrite is NOT here: it is a server-lifecycle concern (`compact-chat-overlay`)
+ * and runs from the server bootstrap, so opening a handle can never trigger it.
  */
 
 import path from 'path';

@@ -4,7 +4,8 @@ import shell from '@/../index.html';
 import { apiRoutes } from '@/server/routes';
 import { ssrRoutes } from '@/server/plugins/ssr';
 import { setListener } from '@/server/lib/lifecycle/listener';
-import { getDatabasePath } from '@/server/db.server';
+import { getDatabasePath, getDb } from '@/server/db.server';
+import { compactChatOverlayRows } from '@/server/lib/db/compact-chat-overlay';
 import { fetchOmpRegistrySnapshot } from '@/server/lib/models/provider-registry.server';
 import { ompStartupError, ompStartupLogLines } from '@/server/lib/omp/core/startup';
 import { readInstanceRecord, removeInstanceRecord, writeInstanceRecord } from '@/server/lib/lifecycle/instance';
@@ -105,6 +106,21 @@ process.on('exit', () => removeInstanceRecord(port));
 await logDetectedRegistry();
 
 console.log(`[ompchamber] listening on http://${host}:${port}`);
+
+/**
+ * One-time rewrite of the overlay rows written before `overlayRowsForOmpSession`
+ * existed — see the module. Deliberately HERE, after the banner, and NOT inside
+ * `getDb()`: the test suite and the CLI reach `getDb()` in real mode too, and
+ * merely opening the database must not be able to launch a rewrite of every
+ * mirrored conversation. (It could: a `bun test` run compacted a live database.)
+ * The pass is marker-keyed, so from the second start it is one indexed SELECT,
+ * and it reports its own per-row failures rather than throwing.
+ */
+try {
+  await compactChatOverlayRows(await getDb());
+} catch (error) {
+  console.error('[chat-overlay] compaction skipped:', error);
+}
 
 /**
  * What omp reports it can actually run. A live RPC round-trip: a cold utility

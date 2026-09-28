@@ -52,6 +52,39 @@ export interface StoredMessage {
   notice?: string;
 }
 
+/**
+ * The only rows a chamber overlay needs for a session whose transcript omp owns
+ * on disk: the user turns (the raw composer text and the attachment metadata the
+ * JSONL cannot record) and the notice rows (builtin command output, which omp
+ * writes nowhere).
+ *
+ * Every other row is a mirror of a JSONL entry: this module never reads one, and
+ * rewriting the transcript on every `message_end` is what grew the overlay to
+ * the size of the conversation it copies — measured at 165.6 MB of 167.9 MB of
+ * `ai` rows that nothing consumes. A session with NO session file is a different
+ * case and must stay whole — there the DB is the only copy — so callers gate on
+ * the file, never on the id's shape.
+ *
+ * One dependency this gives up deliberately: `mergeOmpAttachments` anchors a
+ * stored raw turn that NO JSONL user turn relates to by scanning forward through
+ * the stored array for the next row the JSONL carries, and the rows it found
+ * were mirrors. With mirrors gone such a turn falls back to the tail. Every
+ * rewrite omp is known to make is covered by the relation rules (prefix, an
+ * `@agent` delegation, `/skill:`), and narrowing changed the merged timeline of
+ * none of the 260 stored sessions measured against this install's own files —
+ * the anchor is a fallback for a rewrite shape those rules do not yet know.
+ */
+export function overlayRowsForOmpSession<T>(messages: T[]): T[] {
+  return messages.filter((message) => {
+    if (typeof message !== 'object' || message === null) return false;
+    const record = message as { role?: unknown; notice?: unknown };
+    if (record.role === 'user') return true;
+    // Whitespace-only notices are dropped by the merge anyway; keeping one would
+    // only carry bytes no renderer ever shows.
+    return typeof record.notice === 'string' && record.notice.trim().length > 0;
+  });
+}
+
 function isRawComposerInput(content: string): boolean {
   return /^\s*\//.test(content) || /(^|\s)@[A-Za-z0-9_-]+/.test(content);
 }

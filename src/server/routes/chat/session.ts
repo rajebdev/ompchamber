@@ -6,7 +6,7 @@ import { getSessionData } from '@/client/data/mock/chat';
 import { isMockMode } from '@/server/mock.server';
 import { findSessionFileById } from '@/server/lib/omp/session/locator';
 import { loadSessionMessages, loadSessionModel, loadSessionThinkingLevel, loadSessionTitle } from '@/server/lib/omp/session/messages';
-import { mergeOmpAttachments } from '@/server/lib/omp/session/merge-stored';
+import { mergeOmpAttachments, overlayRowsForOmpSession } from '@/server/lib/omp/session/merge-stored';
 import { readRawHeaderLine } from '@/server/lib/omp/session/files';
 import { formatNewSessionTitle } from '@/shared/lib/omp/session/default-title';
 
@@ -202,9 +202,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
         updatedMessages = [...currentMessages, data.message];
       }
 
+      // A session omp owns on disk has its transcript in the JSONL, so the
+      // overlay keeps only the rows omp cannot record there — the user turns
+      // (raw composer text, attachment metadata) and the notice rows. A session
+      // with no file is chamber-created: the DB is its only copy, so it stays
+      // whole. The gate is the file's existence, never the id's shape — an omp
+      // uuid whose file is gone still needs its full row.
+      const persistedMessages = (await findSessionFileById(sessionId))
+        ? overlayRowsForOmpSession(updatedMessages)
+        : updatedMessages;
+
       await db.run(
         'INSERT OR REPLACE INTO chat_sessions (session_id, title, messages, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)',
-        [sessionId, title, JSON.stringify(updatedMessages)]
+        [sessionId, title, JSON.stringify(persistedMessages)]
       );
 
       return json({
@@ -212,7 +222,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         session: {
           id: sessionId,
           title,
-          messages: updatedMessages,
+          messages: persistedMessages,
         },
       });
     }
