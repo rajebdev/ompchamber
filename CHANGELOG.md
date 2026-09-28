@@ -5,6 +5,30 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.0](https://github.com/rajebdev/ompchamber/compare/v3.5.0...v3.6.0) — 2026-09-28
+
+### Added
+
+* **diagnostics:** report descriptor pressure before spawns start failing ([ed7be43](https://github.com/rajebdev/ompchamber/commit/ed7be4378565abecee4c992c89207d97dfe15635)), closes [bun#40706](https://github.com/rajebdev/bun/issues/40706) [#4](https://github.com/rajebdev/ompchamber/issues/4) [#10](https://github.com/rajebdev/ompchamber/issues/10)
+* **settings:** scope skills and commands to the user or a workspace ([5a1c721](https://github.com/rajebdev/ompchamber/commit/5a1c72148db286a1a08124f5979e7db43cb2a4bd))
+* **skills:** discover skills through omp and scope the surfaces to a workspace ([e081204](https://github.com/rajebdev/ompchamber/commit/e0812046f40f240f97a1f1835ddb4ce7b56beedb))
+* **updates:** stream update progress to the About modal ([f2554e5](https://github.com/rajebdev/ompchamber/commit/f2554e5beecc618fc1fe67e86ac7cf82052a9b22))
+
+### Changed
+
+* **agents:** record the dev server descriptor cliff ([bc29778](https://github.com/rajebdev/ompchamber/commit/bc29778bc9554ece2112fb73fe340b82b9bb2d60))
+* **chat:** stop mirroring the whole transcript into the chat overlay ([0f0f02b](https://github.com/rajebdev/ompchamber/commit/0f0f02b932f38797d550939b86f67547ad2b8046))
+
+### Fixed
+
+* **chat:** place a raw turn by its clock, not by the rows the overlay drops ([264f2d9](https://github.com/rajebdev/ompchamber/commit/264f2d9bd7cab51993dd29a048df2e8c8fd36188))
+* **db:** hold one sqlite handle across a hot reload ([ece893f](https://github.com/rajebdev/ompchamber/commit/ece893f525289ed79ea289b5b1927e6e7f738090))
+* **db:** let a blocked writer wait instead of failing on the spot ([e62a052](https://github.com/rajebdev/ompchamber/commit/e62a05293671a4f691c2ab11c6aa746def302720))
+* **markdown:** stop a lone $ from rendering as math ([fb9c0b8](https://github.com/rajebdev/ompchamber/commit/fb9c0b82ff303278fed7137a64f18c90049616d7))
+* **sessions:** stop the sidebar probe reporting a caught ENOENT as a crash ([651a48f](https://github.com/rajebdev/ompchamber/commit/651a48f12e2840f074f71ffea1ab2072b1b3986c))
+* **terminal:** spawn one shell per id when two attaches race ([f051973](https://github.com/rajebdev/ompchamber/commit/f051973d3fcc60a377f1abb11faaa7ed4dc00b30))
+* **updates:** refuse a second update while one is running ([2aef033](https://github.com/rajebdev/ompchamber/commit/2aef03389c90572f48aed69ae34939de06ea3b40))
+
 ## [3.5.0](https://github.com/rajebdev/ompchamber/compare/v3.4.0...v3.5.0) — 2026-09-28
 
 ### Added
