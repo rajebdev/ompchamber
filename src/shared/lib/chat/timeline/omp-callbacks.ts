@@ -23,6 +23,7 @@ import {
   queueStreamingUpdate,
 } from '@/shared/lib/chat/timeline/stream-coalescer';
 import { PHASE_VERBS } from '@/shared/lib/chat/timeline/tool-phrases';
+import { appendCommandOutputNotice } from '@/shared/lib/chat/timeline/command-output';
 
 export interface OmpAgentCallbacksDeps {
   setGenerating: (v: boolean) => void;
@@ -303,24 +304,10 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
         });
       }
     },
-    // Built-in slash command output only rides the live stream — append it as
-    // a notice row before any active placeholder, exactly like omp notices.
+    // Built-in slash command output: a notice row, persisted — see the module
+    // doc for why the chamber's own copy is the only place it can survive.
     onCommandOutput: (text) => {
-      const row: ChatMessageData = {
-        id: `cmdout-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        role: 'ai',
-        content: '',
-        notice: text,
-      };
-      setLocalMessages(prev => {
-        const placeholderId = aiPlaceholderIdRef.current;
-        if (placeholderId) {
-          const pIdx = prev.findIndex(m => m.id === placeholderId);
-          if (pIdx !== -1) return [...prev.slice(0, pIdx), row, ...prev.slice(pIdx)];
-        }
-        if (prev.some(m => m.notice === text)) return prev;
-        return [...prev, row];
-      });
+      appendCommandOutputNotice(text, { setLocalMessages, aiPlaceholderIdRef, persistMessages });
     },
     // omp renamed the session — the auto-title generation the chamber asks for
     // after a settled run, a `/rename`, or an RPC set_session_name. The slot

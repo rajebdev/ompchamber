@@ -42,6 +42,14 @@ export interface StoredMessage {
   date?: string;
   timestamp?: string;
   attachments?: StoredAttachment[];
+  /**
+   * A notice row — omp's own reminder/task-result entries, or the chamber's
+   * rendering of a builtin command's output. The JSONL cannot round-trip
+   * command output at all: a `/context` or `/usage` turn writes no entry to the
+   * session file, so the notice exists ONLY in the live frame, and without this
+   * the row vanished on reload.
+   */
+  notice?: string;
 }
 
 function isRawComposerInput(content: string): boolean {
@@ -158,7 +166,7 @@ export function mergeOmpAttachments(
       byContent.set(m.content, m.attachments);
     }
   }
-  return merged.map((m) => {
+  const merged2 = merged.map((m) => {
     if (m.role !== 'user' || m.attachments?.length) return m;
     // The JSONL content may carry inlined text-file blocks appended to the
     // original prompt, so match by prefix instead of exact equality.
@@ -168,4 +176,65 @@ export function mergeOmpAttachments(
         )?.[1];
     return atts ? { ...m, attachments: atts } : m;
   });
+  return spliceStoredNotices(merged2, stored);
+}
+
+/**
+ * Re-attach notice rows the chamber stored but the JSONL cannot carry.
+ *
+ * A builtin slash command writes NOTHING to the session file — omp answers it
+ * on the command path and the output lives only in the `command_output` frame —
+ * so a `/context` or `/usage` row disappeared on reload, leaving a timeline that
+ * had forgotten a command the user just ran. The chamber's own copy keeps them.
+ *
+ * Placement is by the USER TURN that produced them, never by id: the chamber's
+ * optimistic user row carries a `msg-…-user` id while the JSONL records omp's
+ * own timestamp id, so the two never match. The stored list is walked backwards
+ * to the nearest user message, and that message is located in the merged list
+ * with the same content relation the attachment merge uses (omp rewrites the
+ * delivered prompt, so equality alone would miss it). A notice whose anchor
+ * cannot be resolved is appended at the end rather than dropped — losing it
+ * again is the bug being fixed.
+ */
+function spliceStoredNotices(merged: StoredMessage[], stored: StoredMessage[]): StoredMessage[] {
+  const storedNotices = stored
+    .map((message, index) => ({ message, index }))
+    .filter(({ message }) => message?.role !== 'user' && typeof message?.notice === 'string' && message.notice.trim());
+  if (storedNotices.length === 0) return merged;
+
+  // Already present (a notice the JSONL itself carried, e.g. a task result):
+  // matching on the text keeps the JSONL's own row authoritative.
+  const present = new Set(merged.map((m) => (typeof m.notice === 'string' ? m.notice : '')).filter(Boolean));
+
+  const mergedUsers = merged
+    .map((message, index) => ({ message, index }))
+    .filter(({ message }) => message.role === 'user');
+
+  const insertions = new Map<number, StoredMessage[]>();
+  for (const { message, index } of storedNotices) {
+    if (present.has(message.notice as string)) continue;
+    let anchor = merged.length;
+    for (let i = index - 1; i >= 0; i -= 1) {
+      const candidate = stored[i];
+      if (candidate?.role !== 'user' || typeof candidate.content !== 'string') continue;
+      const hit = mergedUsers.find(({ message: user }) =>
+        user.id !== undefined && candidate.id !== undefined && user.id === candidate.id,
+      ) ?? mergedUsers.find(({ message: user }) => userTurnsRelate(user.content, candidate.content));
+      if (hit) {
+        anchor = hit.index + 1;
+        break;
+      }
+    }
+    const group = insertions.get(anchor);
+    if (group) group.push(message);
+    else insertions.set(anchor, [message]);
+  }
+  if (insertions.size === 0) return merged;
+
+  const next = [...merged];
+  for (const anchor of [...insertions.keys()].sort((a, b) => b - a)) {
+    const group = insertions.get(anchor);
+    if (group) next.splice(anchor, 0, ...group);
+  }
+  return next;
 }
