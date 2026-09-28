@@ -20,7 +20,7 @@ import {
   toCatalogSkills,
   uninstallCatalogSkill,
 } from '@/server/lib/omp/config/skills-catalog';
-import { resolveRoot } from '@/server/lib/fs/root';
+import { resolveDiscoveryScope, type DiscoveryScope } from '@/server/lib/omp/config/scope';
 import { reloadLiveSessions } from '@/server/lib/omp/session/reload.server';
 
 const SOURCES_KEY = 'omp_catalog_sources';
@@ -39,13 +39,6 @@ const SOURCE_LABELS: Record<string, string> = {
   'opencode:user': 'User / opencode',
   'opencode:project': 'Project / .opencode',
 };
-
-/** The workspace root a request is scoped to, or the app root when unscoped.
- *  `resolveRoot` is what keeps a client-supplied path from reaching outside the
- *  app root and the registered workspaces. */
-async function scopeRoot(rawRoot: string | null): Promise<string> {
-  return resolveRoot(rawRoot, process.cwd());
-}
 
 /**
  * Convert a discovered skill into the chamber's SkillItem. A chamber-managed
@@ -75,9 +68,9 @@ async function toSkillItem(skill: DiscoveredSkill): Promise<SkillItem> {
   };
 }
 
-/** Every skill an omp session in `projectRoot` loads, newest state included. */
-async function listSkills(projectRoot: string): Promise<SkillItem[]> {
-  const discovered = await discoverSkills(projectRoot);
+/** Every skill an omp session in this scope loads, newest state included. */
+async function listSkills(scope: DiscoveryScope): Promise<SkillItem[]> {
+  const discovered = await discoverSkills(scope.cwd, scope.workspace);
   return Promise.all(discovered.map((skill) => toSkillItem(skill)));
 }
 
@@ -102,13 +95,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
     const db = await getDb();
     const url = new URL(request.url);
-    const root = await scopeRoot(url.searchParams.get('root'));
+    const scope = await resolveDiscoveryScope(url.searchParams.get('root'), url.searchParams.get('scope'));
 
     const storedSources = await readSettingsJson<typeof DEFAULT_CATALOG_SOURCES>(db, SOURCES_KEY, DEFAULT_CATALOG_SOURCES);
     const catalogSources = Array.isArray(storedSources) && storedSources.length > 0 ? storedSources : DEFAULT_CATALOG_SOURCES;
 
     const [skills, popular, curated] = await Promise.all([
-      listSkills(root),
+      listSkills(scope),
       searchSkillCatalog('popular', 18),
       searchSkillCatalog('code review', 8),
     ]);
@@ -117,7 +110,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const catalogSkills = toCatalogSkills([...popular, ...curated], catalogSources[0]?.id ?? 'skills-sh')
       .filter((item) => (seen.has(item.repoTag) ? false : (seen.add(item.repoTag), true)));
 
-    return json({ skills, catalogSources, catalogSkills, root, isMock: false });
+    return json({ skills, catalogSources, catalogSkills, root: scope.workspace, isMock: false });
   } catch (error) {
     return json({
       error: errorMessage(error),
@@ -137,15 +130,15 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const url = new URL(request.url);
 
     if (request.method === 'DELETE') {
-      const root = await scopeRoot(url.searchParams.get('root'));
+      const scope = await resolveDiscoveryScope(url.searchParams.get('root'), url.searchParams.get('scope'));
       const id = url.searchParams.get('id');
       if (!id) return json({ error: 'id is required' }, { status: 400 });
       if (mock) return json({ success: true, skills: DEFAULT_SKILLS });
 
-      const removed = await deleteSkillDir(id, root);
+      const removed = await deleteSkillDir(id, scope.workspace);
       if (!removed) return json({ error: 'Skill not found' }, { status: 404 });
       await reloadLiveSessions();
-      return json({ success: true, skills: await listSkills(root) });
+      return json({ success: true, skills: await listSkills(scope) });
     }
 
     if (request.method !== 'POST' && request.method !== 'PUT') {
@@ -155,17 +148,20 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const body = await request.json();
     // The root may ride on the query (a plain GET-shaped read) or in the body
     // (a POST that carries the draft), so a write is scoped either way.
-    const root = await scopeRoot(url.searchParams.get('root') ?? (typeof body.root === 'string' ? body.root : null));
+    const scope = await resolveDiscoveryScope(
+      url.searchParams.get('root') ?? (typeof body.root === 'string' ? body.root : null),
+      url.searchParams.get('scope') ?? (typeof body.scope === 'string' ? body.scope : null),
+    );
 
     // Toggle model invocation: the skill stays runnable, it just drops out of
     // the model's skill listing.
     if (body.type === 'toggle_model_invocation') {
       if (mock) return json({ success: false });
-      const target = (await discoverSkills(root)).find((skill) => skill.id === body.skillId);
+      const target = (await discoverSkills(scope.cwd, scope.workspace)).find((skill) => skill.id === body.skillId);
       if (!target) return json({ error: 'Skill not found' }, { status: 404 });
       const changed = await setSkillModelInvocation(target.filePath, body.disable === true);
       if (changed) await reloadLiveSessions();
-      return json({ success: changed, skills: await listSkills(root) });
+      return json({ success: changed, skills: await listSkills(scope) });
     }
 
     if (body.type === 'reload') {
@@ -195,25 +191,25 @@ export async function action({ request, params }: ActionFunctionArgs) {
         await uninstallCatalogSkill(skill.name.trim());
       }
       await reloadLiveSessions();
-      return json({ success: true, skills: await listSkills(root) });
+      return json({ success: true, skills: await listSkills(scope) });
     }
 
     // Create or update a chamber-managed SKILL.md.
     if (body.skill) {
       if (mock) return json({ success: true, skills: DEFAULT_SKILLS });
 
-      const draft = body.skill as Partial<SkillItem> & { scope?: 'user' | 'project' };
-      const scope = draft.location === 'project' ? 'project' : 'user';
+      const draft = body.skill as Partial<SkillItem>;
+      const target = draft.location === 'project' ? 'project' : 'user';
       const existing = typeof draft.id === 'string'
-        ? (await discoverSkills(root)).find((skill) => skill.id === draft.id)
+        ? (await discoverSkills(scope.cwd, scope.workspace)).find((skill) => skill.id === draft.id)
         : undefined;
       if (existing && !existing.managed) {
         return json({ error: `"${existing.name}" is managed by ${existing.source} and cannot be edited here` }, { status: 403 });
       }
 
       await writeSkillFile({
-        scope,
-        projectDir: root,
+        scope: target,
+        projectDir: scope.workspace,
         previousDir: existing?.baseDir ?? null,
         name: draft.name ?? '',
         description: draft.description ?? '',
@@ -221,7 +217,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         body: typeof draft.instructions === 'string' ? draft.instructions : '',
       });
       await reloadLiveSessions();
-      return json({ success: true, skills: await listSkills(root) });
+      return json({ success: true, skills: await listSkills(scope) });
     }
 
     return json({ error: 'Unsupported skill action' }, { status: 400 });

@@ -1,7 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import type { FunctionComponent } from 'preact/compat';
 import { Plus } from 'lucide-preact';
-import { ProjectSelectorDropdown } from '@/client/components/settings/ProjectSelectorDropdown';
+import { ProjectSelectorDropdown, type ProjectOption } from '@/client/components/settings/ProjectSelectorDropdown';
 
 export interface SettingsSidebarItem {
   id: string;
@@ -24,6 +24,8 @@ interface SettingsSidebarListProps {
   renderIcon: (isBuiltIn: boolean) => ComponentChildren;
   selectedProject: string;
   onChangeProject: (project: string) => void;
+  /** Real workspace folders; defaults to the shared placeholder list. */
+  projectOptions?: ProjectOption[];
 }
 
 /**
@@ -43,6 +45,7 @@ export const SettingsSidebarList: FunctionComponent<SettingsSidebarListProps> = 
   renderIcon,
   selectedProject,
   onChangeProject,
+  projectOptions,
 }) => {
   const builtInItems = items.filter((item) => item.isBuiltIn);
   const customItems = items.filter((item) => !item.isBuiltIn);
@@ -81,6 +84,7 @@ export const SettingsSidebarList: FunctionComponent<SettingsSidebarListProps> = 
       <ProjectSelectorDropdown
         selectedProject={selectedProject}
         onChangeProject={onChangeProject}
+        {...(projectOptions ? { options: projectOptions } : {})}
       />
 
       <div className="px-3.5 py-2.5 border-b border-ink/10 flex items-center justify-between">

@@ -10,6 +10,16 @@ interface SkillDetailPaneProps {
   onOpenCatalog?: () => void;
   onReload?: () => void;
   isReloading?: boolean;
+  /** Disabled when no workspace is selected: there is no `.omp/skills` to
+   *  write a project skill into. */
+  projectScopeDisabled?: boolean;
+  /**
+   * Root a NEW skill lands in, from the scope the panel is showing. Without
+   * this a create made while a workspace is selected wrote to the user root —
+   * the skill then appeared in a list the panel was not showing, and the
+   * workspace's own `.omp/skills` never received it.
+   */
+  defaultLocation?: 'user' | 'project';
 }
 
 export function SkillDetailPane({
@@ -20,6 +30,8 @@ export function SkillDetailPane({
   onOpenCatalog,
   onReload,
   isReloading = false,
+  projectScopeDisabled = false,
+  defaultLocation = 'user',
 }: SkillDetailPaneProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -39,8 +51,8 @@ export function SkillDetailPane({
     if (isCreatingNew || !skill) {
       setName('new-skill');
       setDescription('');
-      setLocation('user');
-      setLocationLabel('User / omp agent');
+      setLocation(defaultLocation);
+      setLocationLabel(defaultLocation === 'project' ? 'Project / .omp/skills' : 'User / omp agent');
       setInstructions(`---
 description: ""
 ---
@@ -54,7 +66,7 @@ description: ""
       setInstructions(skill.instructions);
       setHidden(skill.hidden === true);
     }
-  }, [skill, isCreatingNew]);
+  }, [skill, isCreatingNew, defaultLocation]);
 
   const handleSave = () => {
     onSave({
@@ -155,24 +167,30 @@ description: ""
             </div>
           </div>
 
-          {/* Scope selector: only a chamber-managed skill can move roots. */}
+          {/* Scope selector: only a chamber-managed skill can move roots, and
+              the project scope needs a workspace to land in. */}
           {!readOnly && (
             <div className="flex items-center gap-2 mt-2">
-              {(['user', 'project'] as const).map((scope) => (
-                <button
-                  key={scope}
-                  type="button"
-                  onClick={() => {
-                    setLocation(scope);
-                    setLocationLabel(scope === 'user' ? 'User / omp agent' : 'Project / .omp/skills');
-                  }}
-                  className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
-                    location === scope ? 'bg-ink text-paper' : 'border border-ink/20 text-ink/70 hover:bg-ink/5'
-                  }`}
-                >
-                  {scope === 'user' ? 'User scope' : 'Project scope'}
-                </button>
-              ))}
+              {(['user', 'project'] as const).map((scope) => {
+                const disabled = scope === 'project' && projectScopeDisabled;
+                return (
+                  <button
+                    key={scope}
+                    type="button"
+                    disabled={disabled}
+                    title={disabled ? 'Select a workspace folder to write a project skill' : undefined}
+                    onClick={() => {
+                      setLocation(scope);
+                      setLocationLabel(scope === 'user' ? 'User / omp agent' : 'Project / .omp/skills');
+                    }}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                      location === scope ? 'bg-ink text-paper' : 'border border-ink/20 text-ink/70 hover:bg-ink/5'
+                    }`}
+                  >
+                    {scope === 'user' ? 'User scope' : 'Project scope'}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>

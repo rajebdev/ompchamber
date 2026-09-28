@@ -22,8 +22,14 @@ export const PROJECT_OPTIONS: ProjectOption[] = [
 
 const optionValue = (option: ProjectOption): string => option.value ?? option.id;
 
-const defaultTriggerLabel = (_options: ProjectOption[], selectedProject: string): string =>
-  selectedProject;
+/**
+ * Trigger label for a selected value. A caller that stores the option's VALUE
+ * (the skills/commands panels store a project path, not an id) must still get
+ * the option's human label rather than the raw path it selected.
+ */
+const defaultTriggerLabel = (options: ProjectOption[], selectedProject: string): string =>
+  options.find((option) => option.id === selectedProject || optionValue(option) === selectedProject)?.name
+  ?? selectedProject;
 
 interface ProjectSelectorDropdownProps {
   selectedProject: string;

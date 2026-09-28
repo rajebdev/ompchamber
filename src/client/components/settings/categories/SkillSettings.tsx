@@ -14,13 +14,26 @@ interface SkillSettingsProps {
   onNavigateToCatalog?: () => void;
 }
 
+/**
+ * The Skills panel, scoped to one root at a time.
+ *
+ * The picker selects WHICH omp scope is read: a workspace root answers with the
+ * skills an omp session started there loads (its `.omp/skills`, `.claude`,
+ * `.agents`, `.github`, `.codex` entries plus the user-level ones), while the
+ * user scope answers for the agent dir alone. That is not a client-side filter
+ * — the server passes the scope's cwd to `omp skill list`, because omp's
+ * project walk-up is what decides the list.
+ *
+ * A write lands in the scope that is selected: a project skill under
+ * `<workspace>/.omp/skills`, a user skill under `~/.omp/agent/skills`.
+ */
 export function SkillSettings({ onNavigateToCatalog }: SkillSettingsProps) {
   const masterDetail = useSettingsMasterDetail();
   const roots = useWorkspaceRoots();
   const [selectedRootId, setSelectedRootId] = useState<string>(GLOBAL_SCOPE_ID);
   const [isReloading, setIsReloading] = useState(false);
-  const root = roots.rootFor(selectedRootId);
-  const query = root ? `?root=${encodeURIComponent(root)}` : '';
+  const query = roots.queryFor(selectedRootId);
+  const isWorkspaceScope = roots.isWorkspace(selectedRootId);
 
   const { items: skills, selectedId, selected: selectedSkill, isCreatingNew, isLoading, select, startCreate, save, remove } =
     useCrudList<SkillItem, Partial<SkillItem>>({
@@ -35,15 +48,19 @@ export function SkillSettings({ onNavigateToCatalog }: SkillSettingsProps) {
       },
       cacheKey: 'command',
       fallbackToFirst: false,
-      // The write carries the workspace root, because the draft's own location
-      // decides which `.omp/skills` root it lands in.
-      buildBody: (target) => ({ skill: target, root }),
+      // The write carries the scope it was made in, because the draft's own
+      // location decides which `.omp/skills` root it lands in.
+      buildBody: (target) => ({ skill: target, ...roots.scopeBodyFor(selectedRootId) }),
+      buildDeleteQuery: (id) => `?id=${encodeURIComponent(id)}&${query.slice(1)}`,
       buildNew: (skillData) => ({
         id: `skill-${Date.now()}`,
         name: skillData.name || 'new-skill',
         description: skillData.description || '',
-        location: skillData.location || 'user',
-        locationLabel: skillData.locationLabel || 'User / omp agent',
+        // A new skill defaults to the scope the panel is showing: creating a
+        // project skill while the user scope is selected would write outside
+        // the list they are looking at.
+        location: skillData.location || (isWorkspaceScope ? 'project' : 'user'),
+        locationLabel: skillData.locationLabel || (isWorkspaceScope ? 'Project / .omp/skills' : 'User / omp agent'),
         instructions: skillData.instructions || '',
         hidden: skillData.hidden === true,
         project: 'omp',
@@ -60,7 +77,7 @@ export function SkillSettings({ onNavigateToCatalog }: SkillSettingsProps) {
     fetch('/api/settings/skills', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'reload' }),
+      body: JSON.stringify({ type: 'reload', ...roots.scopeBodyFor(selectedRootId) }),
     })
       .catch((error) => console.error('Failed to reload plugins:', error))
       .finally(() => setIsReloading(false));
@@ -103,6 +120,8 @@ export function SkillSettings({ onNavigateToCatalog }: SkillSettingsProps) {
             onOpenCatalog={onNavigateToCatalog}
             onReload={reload}
             isReloading={isReloading}
+            projectScopeDisabled={!isWorkspaceScope}
+            defaultLocation={isWorkspaceScope ? 'project' : 'user'}
           />
         }
       />

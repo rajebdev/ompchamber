@@ -102,24 +102,33 @@ interface CliSkill {
 
 /**
  * Enumerate the skills an omp session in `cwd` would load, through omp itself.
+ * `projectDir` is the workspace the list is being shown for — it decides which
+ * roots count as chamber-managed, and is NOT the same thing as `cwd` for the
+ * user scope (whose cwd is the agent dir, which is not a workspace).
  * Returns [] when omp is not installed or the directory is unreadable; a
  * discovery failure must never surface as "you have no skills" being fatal.
  */
-export async function discoverSkills(cwd?: string | null): Promise<DiscoveredSkill[]> {
+export async function discoverSkills(
+  cwd?: string | null,
+  projectDir?: string | null,
+): Promise<DiscoveredSkill[]> {
   const bin = resolveOmpBin();
   if (!bin) return [];
 
+  // A missing cwd falls back to the agent dir — the user scope — because that
+  // is the only cwd whose inventory is a real scope rather than the server's
+  // own working directory.
   const target = cwd && (await pathExists(cwd)) ? cwd : getAgentDir();
   const cache = getCache();
   const cached = cache.get(target);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.skills;
 
-  const skills = await runSkillList(bin, target);
+  const skills = await runSkillList(bin, target, projectDir ?? null);
   cache.set(target, { at: Date.now(), skills });
   return skills;
 }
 
-async function runSkillList(bin: string, cwd: string): Promise<DiscoveredSkill[]> {
+async function runSkillList(bin: string, cwd: string, projectDir: string | null): Promise<DiscoveredSkill[]> {
   let stdout: string;
   try {
     const proc = Bun.spawn({
@@ -169,7 +178,7 @@ async function runSkillList(bin: string, cwd: string): Promise<DiscoveredSkill[]
       filePath,
       baseDir,
       hidden: raw.hide === true,
-      managed: isManagedSkill({ source, baseDir }, cwd),
+      managed: isManagedSkill({ source, baseDir }, projectDir),
     });
   }
   return result;
@@ -269,7 +278,9 @@ export async function writeSkillFile(input: WriteSkillInput): Promise<{ filePath
  * reach a skill another tool installed.
  */
 export async function deleteSkillDir(id: string, projectDir?: string | null): Promise<boolean> {
-  const found = (await discoverSkills(projectDir)).find((skill) => skill.id === id);
+  // A user-scope delete (no workspace) is discovered from the agent dir, which
+  // is also the only managed root that applies there.
+  const found = (await discoverSkills(projectDir ?? getAgentDir(), projectDir)).find((skill) => skill.id === id);
   if (!found) return false;
   if (!found.managed) throw new Error(`"${found.name}" is managed by ${found.source}; the chamber cannot delete it`);
 
