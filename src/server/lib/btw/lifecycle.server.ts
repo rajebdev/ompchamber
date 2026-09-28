@@ -16,14 +16,13 @@
 
 import type { RpcProcess, RpcFrame } from '@/server/lib/omp/rpc/process';
 import { GET_STATE_TIMEOUT_MS, IDLE_DESTROY_MS, PROMPT_ACK_TIMEOUT_MS } from '@/server/lib/omp/rpc/constants';
-import type { PendingUiDialogs } from '@/server/lib/omp/rpc/pending-ui-dialogs';
 import { buildBtwPrompt } from '@/server/lib/btw/prompt';
+import { boundSideReply } from '@/server/lib/btw/reply';
 import { appendBtwTurn, settleRunningBtwTurns, updateBtwTurn } from '@/server/lib/btw/store.server';
 import type { BtwRuntimeSink } from '@/server/lib/btw/runtime.server';
 import { toChatMessage } from '@/shared/lib/omp/session/mapper';
 import { describeAssistantPhase, describeToolActivity } from '@/shared/lib/chat/timeline/tool-verbs';
 import { isNoticeRow } from '@/shared/lib/chat/notice-row';
-import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import type { AgentImage, BtwTurnStatus, ChatMessageData } from '@/shared/types';
 
 /** Longest an aborted turn may stay unsettled before its child is reclaimed. */
@@ -33,8 +32,6 @@ const ABORT_GRACE_MS = 10_000;
 export interface BtwLifecycleHost {
   readonly topicId: string;
   readonly sink: BtwRuntimeSink;
-  /** Ask/approval dialogs the child is blocked on. */
-  readonly dialogs: PendingUiDialogs;
   /** A question is in flight in this topic. */
   readonly running: boolean;
   proc: RpcProcess | null;
@@ -49,8 +46,6 @@ export interface BtwLifecycleHost {
   /** Last activity phrase published, so repeats are not re-published. */
   activity: string;
   disposing: Promise<void> | null;
-  /** Approval mode the live child was spawned with. */
-  spawnedApprovalMode: ApprovalMode | undefined;
   /** Spawn (or reuse) the child. */
   start(): Promise<RpcProcess>;
   /** Drop the child and everything scoped to it. */
@@ -71,7 +66,7 @@ export async function askSideQuestion(host: BtwLifecycleHost, question: string, 
       PROMPT_ACK_TIMEOUT_MS,
     );
   } catch (error) {
-    await settleSideTurn(host, 'failed');
+    await settleSideTurn(host, 'error');
     host.sink.publish({
       type: 'btw_error',
       topicId: host.topicId,
@@ -107,23 +102,53 @@ export async function abortSideTurn(host: BtwLifecycleHost): Promise<void> {
 }
 
 /**
+ * Drop `toolCall` content blocks from a message.
+ *
+ * omp's own side turn filters them out of its final message
+ * (`agent-session.ts`: `content.filter(block => block.type !== 'toolCall')`)
+ * because the call was never executed. A model that emits one anyway — a
+ * hallucinated call against the tool catalog omp keeps attached for the prompt
+ * cache — must not surface here as a card for a tool that never ran.
+ */
+function withoutToolCalls(record: Record<string, unknown>): Record<string, unknown> {
+  const content = record.content;
+  if (!Array.isArray(content)) return record;
+  const kept = content.filter((block) => !isToolCallBlock(block));
+  if (kept.length === content.length) return record;
+  return { ...record, content: kept };
+}
+
+/** Whether a content block is a tool call — the block shape omp's own filter reads. */
+function isToolCallBlock(block: unknown): boolean {
+  if (!block || typeof block !== 'object' || !('type' in block)) return false;
+  return block.type === 'toolCall';
+}
+
+/**
  * The turn's conversation as it accumulates, in the chat's own shape.
  *
  * omp emits `message_update` per SEGMENT, each carrying that segment's full
  * accumulated content and its own message id — so a same-id frame replaces the
  * entry in place and a new id appends. That is exactly the upsert the chat
  * timeline's `onMessageUpdate` performs, and keeping it identical is what makes
- * a side answer render through the chat's own `MessageList`: a tool the side
- * child runs shows up here the same way it would in the chat.
+ * a side answer render through the chat's own `MessageList`.
+ *
+ * `streaming` is the chat stream's own distinction, and it matters in two
+ * places: a COMPLETED message is the authoritative copy (it carries the turn's
+ * real usage where the deltas report zeros), and its thinking is no longer
+ * generating — mapping it as a streaming row left every reloaded turn with an
+ * open, pulsing accordion.
  */
-export function trackTurnMessage(host: BtwLifecycleHost, frame: RpcFrame): void {
+export function trackTurnMessage(host: BtwLifecycleHost, frame: RpcFrame, streaming = true): void {
   const raw = frame.message;
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
   const record = raw as Record<string, unknown>;
+  // A side turn executes no tool (see `child.server.ts`), so omp emits no
+  // `toolResult` for it. Dropping the role keeps a stray one from becoming a row.
   if (record.role === 'toolResult') return;
   const turnIndex = host.turnIndex;
   if (turnIndex === null) return;
-  const converted = toChatMessage(record);
+  const converted = toChatMessage(withoutToolCalls(record), streaming);
   if (!converted) return;
   const existing = host.messages.findIndex((message) => message.id === converted.id);
   host.messages =
@@ -168,12 +193,9 @@ export async function settleSideTurn(host: BtwLifecycleHost, status: BtwTurnStat
   host.turnIndex = null;
   // `||`, not `??`: a turn that only ran tools has no prose, and the caller
   // passes an empty string rather than undefined — the summary must then fall
-  // through to whatever the conversation does carry.
-  const text = answer || answerText(host.messages, '');
-  // A settled turn has no dialogs left to answer; a stale modal would sit over
-  // an idle panel with nothing behind it.
-  const hadDialogs = host.dialogs.list().length > 0;
-  host.dialogs.clear();
+  // through to whatever the conversation does carry. Bounded the way omp bounds
+  // its own side replies (see `reply.ts`).
+  const text = boundSideReply(answer || answerText(host.messages, ''));
   host.settling = true;
   try {
     await updateBtwTurn(host.topicId, turnIndex, { answer: text, status, messages: host.messages });
@@ -181,7 +203,6 @@ export async function settleSideTurn(host: BtwLifecycleHost, status: BtwTurnStat
     host.settling = false;
     host.messages = [];
     host.sink.stateChanged();
-    if (hadDialogs) host.sink.stateChanged();
   }
 }
 
@@ -189,13 +210,7 @@ export async function settleSideTurn(host: BtwLifecycleHost, status: BtwTurnStat
 export function handleSideChildExit(host: BtwLifecycleHost, stderrTail: string): void {
   const wasRunning = host.running;
   host.proc = null;
-  host.spawnedApprovalMode = undefined;
-  const hadDialogs = host.dialogs.list().length > 0;
-  host.dialogs.clear();
-  if (!wasRunning) {
-    if (hadDialogs) host.sink.stateChanged();
-    return;
-  }
+  if (!wasRunning) return;
   void settleRunningBtwTurns(host.topicId, 'interrupted').then(() => {
     host.turnIndex = null;
     host.messages = [];
@@ -209,7 +224,7 @@ export function handleSideChildExit(host: BtwLifecycleHost, stderrTail: string):
   });
 }
 
-/** Clear the timers and the process, and drop the dialogs that belonged to it. */
+/** Clear the timers and drop the child. */
 export async function teardownSideChild(host: BtwLifecycleHost): Promise<void> {
   // Type-required guards: the fields are `Timeout | null`, `clearTimeout` takes
   // `Timeout | undefined`.
@@ -217,15 +232,10 @@ export async function teardownSideChild(host: BtwLifecycleHost): Promise<void> {
   if (host.abortTimer) clearTimeout(host.abortTimer);
   host.idleTimer = null;
   host.abortTimer = null;
-  const hadDialogs = host.dialogs.list().length > 0;
-  host.dialogs.clear();
-  host.spawnedApprovalMode = undefined;
   const proc = host.proc;
   host.proc = null;
   if (proc) await proc.dispose().catch(() => {});
   host.disposing = null;
-  // A modal whose process is gone must not stay on screen.
-  if (hadDialogs) host.sink.stateChanged();
 }
 
 async function disposeIfUnsettled(host: BtwLifecycleHost): Promise<void> {

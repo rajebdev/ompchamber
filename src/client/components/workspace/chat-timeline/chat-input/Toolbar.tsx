@@ -3,7 +3,7 @@ import type { AIModelOption } from '@/shared/types';
 import { ModelDropdown } from '@/client/components/workspace/model-dropdown/index';
 import { ThinkingLevelDropdown } from '@/client/components/workspace/chat-timeline/chat-input/ThinkingLevelDropdown';
 import { AccessDropdown } from '@/client/components/workspace/chat-timeline/chat-input/AccessDropdown';
-import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
+import { DEFAULT_APPROVAL_MODE, type ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 
 export interface ComposerToolbarProps {
   isMobile: boolean;
@@ -21,8 +21,12 @@ export interface ComposerToolbarProps {
   onSend: () => void;
   /** Send is blocked while no workspace context is selected or nothing is typed. */
   sendDisabled: boolean;
-  accessMode: ApprovalMode;
-  onSelectAccess: (mode: ApprovalMode) => void;
+  accessMode?: ApprovalMode;
+  onSelectAccess?: (mode: ApprovalMode) => void;
+  /** Which selectors render; all true for the chat, all false for a side question. */
+  showModel?: boolean;
+  showThinking?: boolean;
+  showAccess?: boolean;
 }
 
 /**
@@ -45,32 +49,39 @@ export function ComposerToolbar({
   onStop,
   onSend,
   sendDisabled,
-  accessMode,
+  accessMode = DEFAULT_APPROVAL_MODE,
   onSelectAccess,
+  showModel = true,
+  showThinking = true,
+  showAccess = true,
 }: ComposerToolbarProps) {
   const showStop = isGenerating && (isMobile ? Boolean(onStop) : true);
 
   return (
     <div className={`flex items-center justify-between border-t border-ink/5 bg-canvas/50 rounded-b-md ${isMobile ? 'px-2 py-2' : 'px-3 py-2'}`}>
       <div className={`flex items-center min-w-0 ${isMobile ? 'space-x-1' : 'space-x-2'}`}>
-        <ModelDropdown
-          selectedModel={selectedModel ?? undefined}
-          onSelectModel={onSelectModel}
-          onThinkingLevelChange={onThinkingLevelChange}
-          className={isMobile ? 'min-w-0 max-w-[58%]' : undefined}
-        />
+        {showModel && (
+          <ModelDropdown
+            selectedModel={selectedModel ?? undefined}
+            onSelectModel={onSelectModel}
+            onThinkingLevelChange={onThinkingLevelChange}
+            className={isMobile ? 'min-w-0 max-w-[58%]' : undefined}
+          />
+        )}
 
-        <div className="w-[1px] h-3 bg-ink/10" />
+        {showModel && showThinking && <div className="w-[1px] h-3 bg-ink/10" />}
 
-        <ThinkingLevelDropdown
-          thinkingLevels={thinkingLevels}
-          currentThinking={currentThinking}
-          onSelect={onSelectThinking}
-        />
+        {showThinking && (
+          <ThinkingLevelDropdown
+            thinkingLevels={thinkingLevels}
+            currentThinking={currentThinking}
+            onSelect={onSelectThinking}
+          />
+        )}
 
-        <div className="w-[1px] h-3 bg-ink/10" />
+        {(showModel || showThinking) && showAccess && <div className="w-[1px] h-3 bg-ink/10" />}
 
-        <AccessDropdown value={accessMode} onSelect={onSelectAccess} />
+        {showAccess && onSelectAccess && <AccessDropdown value={accessMode} onSelect={onSelectAccess} />}
       </div>
 
       <div className="flex items-center gap-1.5 flex-shrink-0">

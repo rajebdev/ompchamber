@@ -134,6 +134,16 @@ export const PASSTHROUGH_COMMANDS = new Set([
 // whose liveness probe had just reported `running: false`).
 export const OBSERVER_ONLY_COMMANDS = new Set(['get_subagents', 'get_subagent_messages']);
 
+/**
+ * Commands that MOVE the conversation: they replace the transcript the session
+ * is running on, so a side question that snapshotted the old one would be left
+ * describing a conversation the chat has already left. omp blocks the same
+ * operations while a `/btw` answer is in flight or unsaved
+ * (`BtwController.withSessionMove` / `flush`); the chamber refuses them with
+ * `btw_busy` (409) instead.
+ */
+export const CONVERSATION_MOVING_COMMANDS = new Set(['switch_session', 'branch', 'new_session', 'handoff']);
+
 // Commands that can carry user-attached images to the model. All of them must
 // pass the same server-side per-image/count/aggregate validation before the
 // payload reaches omp — a client is free to POST any of them directly.

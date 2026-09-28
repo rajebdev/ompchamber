@@ -14,25 +14,15 @@
 
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from '@/server/lib/remix-compat';
 import { toImageContents, validateAgentImages } from '@/server/lib/omp/rpc/constants';
-import { isApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import type { AttachedTextFileData } from '@/shared/lib/chat/attachments';
 import { BtwError, type BtwImages } from '@/server/lib/btw/runtime.server';
-import {
-  abortBtw,
-  askBtw,
-  getBtwState,
-  promoteBtw,
-  removeBtw,
-  respondBtwDialog,
-  setBtwApprovalMode,
-  setBtwModel,
-  setBtwThinkingLevel,
-} from '@/server/lib/btw/service.server';
+import { abortBtw, askBtw, getBtwState, promoteBtw, removeBtw } from '@/server/lib/btw/service.server';
 
 /** Actions that can reject for a reason the client should show as-is. */
 const STATUS_BY_CODE: Record<string, number> = {
   btw_busy: 409,
   btw_stale: 409,
+  btw_multi_turn: 409,
   session_not_found: 404,
   btw_topic_not_found: 404,
 };
@@ -71,20 +61,6 @@ function readTextFiles(raw: unknown): AttachedTextFileData[] {
   });
 }
 
-/**
- * The response body for one dialog, in the shape omp's RPC accepts: an answer
- * value, a confirmation, or a cancellation. Anything else is refused rather
- * than forwarded — a malformed response would leave the child blocked.
- */
-function readDialogResponse(raw: unknown): Record<string, unknown> | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const response = raw as { value?: unknown; confirmed?: unknown; cancelled?: unknown };
-  if (response.cancelled === true) return { cancelled: true };
-  if (typeof response.confirmed === 'boolean') return { confirmed: response.confirmed };
-  if (typeof response.value === 'string') return { value: response.value };
-  return null;
-}
-
 export async function action({ params, request }: ActionFunctionArgs) {
   const { sessionId } = params;
   if (!sessionId) return json({ error: 'session id is required' }, { status: 400 });
@@ -100,8 +76,6 @@ export async function action({ params, request }: ActionFunctionArgs) {
         const question = typeof body?.question === 'string' ? body.question : '';
         const parsed = readImages(body?.images);
         if ('error' in parsed) return json({ error: parsed.error, code: 'invalid_images' }, { status: 400 });
-        const provider = typeof body?.provider === 'string' ? body.provider : '';
-        const modelId = typeof body?.modelId === 'string' ? body.modelId : '';
         return json({
           success: true,
           data: await askBtw(sessionId, {
@@ -109,43 +83,12 @@ export async function action({ params, request }: ActionFunctionArgs) {
             question,
             images: parsed.images,
             textFiles: readTextFiles(body?.textFiles),
-            ...(provider && modelId ? { model: { provider, id: modelId } } : {}),
-            ...(typeof body?.thinkingLevel === 'string' ? { thinkingLevel: body.thinkingLevel } : {}),
-            ...(isApprovalMode(body?.accessMode) ? { approvalMode: body.accessMode } : {}),
           }),
         });
       }
       case 'abort': {
         if (!topicId) return json({ error: 'topicId is required', code: 'topic_required' }, { status: 400 });
         return json({ success: true, data: await abortBtw(sessionId, topicId) });
-      }
-      case 'set_model': {
-        if (!topicId) return json({ error: 'topicId is required', code: 'topic_required' }, { status: 400 });
-        const provider = typeof body?.provider === 'string' ? body.provider : '';
-        const modelId = typeof body?.modelId === 'string' ? body.modelId : '';
-        if (!provider || !modelId) return json({ error: 'provider and modelId are required', code: 'model_required' }, { status: 400 });
-        return json({ success: true, data: await setBtwModel(sessionId, topicId, provider, modelId) });
-      }
-      case 'set_thinking_level': {
-        if (!topicId) return json({ error: 'topicId is required', code: 'topic_required' }, { status: 400 });
-        const level = typeof body?.level === 'string' ? body.level : '';
-        if (!level) return json({ error: 'level is required', code: 'level_required' }, { status: 400 });
-        return json({ success: true, data: await setBtwThinkingLevel(sessionId, topicId, level) });
-      }
-      case 'set_access_mode': {
-        if (!topicId) return json({ error: 'topicId is required', code: 'topic_required' }, { status: 400 });
-        if (!isApprovalMode(body?.accessMode)) {
-          return json({ error: 'accessMode must be always-ask, write or yolo', code: 'invalid_access_mode' }, { status: 400 });
-        }
-        return json({ success: true, data: await setBtwApprovalMode(sessionId, topicId, body.accessMode) });
-      }
-      case 'dialog_response': {
-        if (!topicId) return json({ error: 'topicId is required', code: 'topic_required' }, { status: 400 });
-        const id = typeof body?.id === 'string' ? body.id : '';
-        if (!id) return json({ error: 'id is required', code: 'dialog_required' }, { status: 400 });
-        const response = readDialogResponse(body?.response);
-        if (!response) return json({ error: 'a response value is required', code: 'dialog_required' }, { status: 400 });
-        return json({ success: true, data: await respondBtwDialog(sessionId, topicId, id, response) });
       }
       case 'promote': {
         if (!topicId) return json({ error: 'topicId is required', code: 'topic_required' }, { status: 400 });

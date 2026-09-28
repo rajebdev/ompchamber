@@ -12,11 +12,14 @@
  * merge logic of its own and a reload can never disagree with the server.
  * The stream is attached only while the panel is open: a side question is a
  * deliberate action, not background traffic.
+ *
+ * There are no per-topic pickers here. A side question runs without tools and on
+ * the CHAT's model and thinking selector (the server re-reads them from the
+ * parent transcript at every ask), which is what omp's own `/btw` does.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { AgentImage, Attachment, BtwState, ChatMessageData, StreamTransport } from '@/shared/types';
-import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { attachmentImage, readTextAttachments } from '@/shared/lib/chat/attachments';
 import {
   BtwRequestError,
@@ -26,10 +29,6 @@ import {
   deleteBtwTopic,
   fetchBtwState,
   promoteBtwTopic,
-  respondBtwDialog,
-  setBtwAccessMode,
-  setBtwModel,
-  setBtwThinkingLevel,
 } from '@/shared/lib/chat/btw/client';
 import type { StreamConnection } from '@/shared/lib/chat/omp/transport';
 
@@ -40,7 +39,7 @@ export type BtwImage = AgentImage;
  * The turn streaming right now. `messages` is the turn's conversation in the
  * chat's own shape, upserted by `message.id` exactly as the chat stream does —
  * so the panel renders a live side answer through the same components the chat
- * uses, tool calls included.
+ * uses.
  */
 export interface BtwLiveAnswer {
   topicId: string;
@@ -48,17 +47,6 @@ export interface BtwLiveAnswer {
   messages: ChatMessageData[];
   /** Activity phrase for the panel's indicator, from the side child's frames. */
   activity: string;
-}
-
-/**
- * Composer picks for a topic's FIRST question. A topic that does not exist yet
- * has no row to write them to, so they ride the ask and reach the spawn; later
- * questions address an existing topic through the dedicated setters.
- */
-export interface BtwFirstQuestionPicks {
-  model?: { provider: string; id: string };
-  thinkingLevel?: string;
-  approvalMode?: ApprovalMode;
 }
 
 export interface BtwSessionHandle {
@@ -69,12 +57,8 @@ export interface BtwSessionHandle {
   busy: boolean;
   /** Resolves with the canonical state the command produced, or null when it
    *  was refused (the reason is then in `error`). */
-  ask: (question: string, attachments?: Attachment[], topicId?: string, picks?: BtwFirstQuestionPicks) => Promise<BtwState | null>;
+  ask: (question: string, attachments?: Attachment[], topicId?: string) => Promise<BtwState | null>;
   abort: (topicId: string) => Promise<void>;
-  setModel: (topicId: string, provider: string, modelId: string) => Promise<void>;
-  setThinkingLevel: (topicId: string, level: string) => Promise<void>;
-  setAccessMode: (topicId: string, mode: ApprovalMode) => Promise<void>;
-  respondToDialog: (topicId: string, id: string, response: { value: string } | { confirmed: boolean } | { cancelled: true }) => Promise<void>;
   /** Returns the new session id to open, or null when it was refused. */
   promote: (topicId: string) => Promise<string | null>;
   remove: (topicId: string) => Promise<void>;
@@ -186,7 +170,6 @@ export function useBtwSession(sessionId: string | null, options: BtwSessionOptio
       question: string,
       attachments: Attachment[] = [],
       topicId?: string,
-      picks?: BtwFirstQuestionPicks,
     ): Promise<BtwState | null> => {
       setError(null);
       // Same split the chat send path makes: images travel as provider payloads,
@@ -201,9 +184,6 @@ export function useBtwSession(sessionId: string | null, options: BtwSessionOptio
         topicId,
         ...(images.length ? { images } : {}),
         ...(textFiles.length ? { textFiles } : {}),
-        // Only a first question carries picks; a follow-up addresses a topic
-        // that already owns them.
-        ...(topicId ? {} : picks ?? {}),
       }));
       setLive(null);
       if (next && !next.runningTopicId) {
@@ -218,38 +198,6 @@ export function useBtwSession(sessionId: string | null, options: BtwSessionOptio
     async (topicId: string) => {
       setError(null);
       await run((id) => abortBtwQuestion(id, topicId));
-    },
-    [run],
-  );
-
-  const setModel = useCallback(
-    async (topicId: string, provider: string, modelId: string) => {
-      setError(null);
-      await run((id) => setBtwModel(id, topicId, provider, modelId));
-    },
-    [run],
-  );
-
-  const setThinkingLevel = useCallback(
-    async (topicId: string, level: string) => {
-      setError(null);
-      await run((id) => setBtwThinkingLevel(id, topicId, level));
-    },
-    [run],
-  );
-
-  const setAccessMode = useCallback(
-    async (topicId: string, mode: ApprovalMode) => {
-      setError(null);
-      await run((id) => setBtwAccessMode(id, topicId, mode));
-    },
-    [run],
-  );
-
-  const respondToDialog = useCallback(
-    async (topicId: string, id: string, response: { value: string } | { confirmed: boolean } | { cancelled: true }) => {
-      setError(null);
-      await run((requestId) => respondBtwDialog(requestId, topicId, id, response));
     },
     [run],
   );
@@ -283,19 +231,5 @@ export function useBtwSession(sessionId: string | null, options: BtwSessionOptio
 
   const clearError = useCallback(() => setError(null), []);
 
-  return {
-    state,
-    live,
-    error,
-    busy,
-    ask,
-    abort,
-    setModel,
-    setThinkingLevel,
-    setAccessMode,
-    respondToDialog,
-    promote,
-    remove,
-    clearError,
-  };
+  return { state, live, error, busy, ask, abort, promote, remove, clearError };
 }

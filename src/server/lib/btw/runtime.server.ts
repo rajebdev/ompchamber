@@ -12,11 +12,14 @@
  * (no re-prompting it as text, and the parent's prompt-cache prefix survives)
  * and never writes the parent file.
  *
- * The child runs WITH tools, unlike omp's TUI `/btw` (`--no-tools`). The panel
- * offers a real access-control dropdown, and an approval mode that governs
- * nothing would be a lie in the UI — so the tool surface is whatever
- * `--approval-mode` allows, and a gated call parks the turn on an
- * `extension_ui_request` the panel answers (`PendingUiDialogs`).
+ * The child runs WITHOUT tools (`--no-tools`), the same end state omp's own
+ * `/btw` reaches through `runEphemeralTurn`: the side turn answers from the
+ * context it already has, never executes a tool, and discards any tool call the
+ * model emits anyway. With no tool surface there is no approval gate to park on,
+ * so no dialog can reach this child either.
+ *
+ * Model and thinking selector come from the CHAT (see `retarget`), never from a
+ * picker of this panel's own — omp's side turn reads `request.session.model`.
  *
  * The child is disposable by design: history lives in SQLite plus the topic
  * transcript, so an idle reclaim costs a respawn, not the conversation — a
@@ -28,7 +31,6 @@
 
 import { RpcProcess, type RpcFrame } from '@/server/lib/omp/rpc/process';
 import { GET_STATE_TIMEOUT_MS, READY_TIMEOUT_MS, type RpcSessionState } from '@/server/lib/omp/rpc/constants';
-import { PendingUiDialogs } from '@/server/lib/omp/rpc/pending-ui-dialogs';
 import { resolveOmpBin } from '@/server/lib/omp/core/cli';
 import { buildBtwSpawnArgs, type BtwSpawnSettings } from '@/server/lib/btw/child.server';
 import {
@@ -42,10 +44,9 @@ import {
   trackTurnMessage,
   type BtwLifecycleHost,
 } from '@/server/lib/btw/lifecycle.server';
-import { setBtwTopicModel, setBtwTopicThinkingLevel } from '@/server/lib/btw/store.server';
+import { setBtwTopicLeaf, setBtwTopicModel } from '@/server/lib/btw/store.server';
 import { createBtwWorkspace, resolveBtwWorkspacePaths, type BtwWorkspace } from '@/server/lib/btw/session-copy.server';
-import { finalAnswer, finalStatus, isAnswerableUiMethod } from '@/server/lib/btw/frames';
-import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
+import { finalAnswer, finalStatus } from '@/server/lib/btw/frames';
 import type { AgentImage, BtwFrame, BtwLiveTurn, BtwModel, BtwTurnStatus, ChatMessageData } from '@/shared/types';
 
 /** Prompt images, validated by the route before they reach the child. */
@@ -59,7 +60,6 @@ export interface BtwRuntimeContext {
   cwd: string;
   model?: BtwModel;
   thinkingLevel?: string;
-  approvalMode?: ApprovalMode;
 }
 
 /** Where the runtime reports what happened. */
@@ -94,10 +94,10 @@ export class BtwRuntime implements BtwLifecycleHost {
   /** Last activity phrase published, so repeats are not re-published. */
   activity = '';
   disposing: Promise<void> | null = null;
-  /** Ask/approval dialogs this child is blocked on (see the module note). */
-  readonly dialogs = new PendingUiDialogs();
-  /** The approval mode the live child was actually spawned with. */
-  spawnedApprovalMode: ApprovalMode | undefined;
+  /** Model the live child reports, so a retarget only sends a real change. */
+  private reportedModel: { provider: string; id: string } | null = null;
+  /** Thinking selector the live child reports (`auto` included). */
+  private reportedThinkingLevel: string | null = null;
 
   constructor(
     private readonly context: BtwRuntimeContext,
@@ -144,41 +144,27 @@ export class BtwRuntime implements BtwLifecycleHost {
   }
 
   /**
-   * Re-target the live child's model. `set_model` applies to the RUNNING turn
-   * (omp resolves it immediately), which is exactly what the panel's dropdown
-   * promises: the answer in flight continues on the model the user just chose.
+   * Adopt the chat's current model and thinking selector before a question is
+   * asked. omp's side turn reads `request.session.model` at run time, so a chat
+   * that switched model or level is mirrored here — a live child is re-targeted
+   * over RPC (`set_model` / `set_thinking_level` apply to the running session),
+   * and a cold one simply spawns with these values.
    */
-  async setModel(provider: string, modelId: string): Promise<void> {
-    await setBtwTopicModel(this.topicId, { provider, id: modelId });
-    this.sink.stateChanged();
+  async retarget(model: BtwModel | undefined, thinkingLevel: string | undefined): Promise<void> {
+    this.context.model = model;
+    this.context.thinkingLevel = thinkingLevel;
     const proc = this.proc;
     if (!proc?.isAlive) return;
-    await proc.sendCommand({ type: 'set_model', provider, modelId }, GET_STATE_TIMEOUT_MS);
-  }
-
-  /** Re-target the live child's thinking level (`auto` leaves omp alone). */
-  async setThinkingLevel(level: string): Promise<void> {
-    const proc = this.proc;
-    if (!proc?.isAlive || level === 'auto') return;
-    await proc.sendCommand({ type: 'set_thinking_level', level }, GET_STATE_TIMEOUT_MS);
-  }
-
-  /**
-   * Adopt a new approval mode. omp has no RPC for it — the flag is spawn-time
-   * only — so an idle child is destroyed and the next question respawns it.
-   * A running turn is never killed for this (same rule as the chat session's
-   * `reconcileSpawnApprovalMode`): the mode takes effect from the next child.
-   */
-  async setApprovalMode(mode: ApprovalMode): Promise<void> {
-    this.context.approvalMode = mode;
-    if (this.spawnedApprovalMode === mode || this.running) return;
-    await this.teardownChild();
-  }
-
-  /** Answer a dialog this child is blocked on. */
-  respondToDialog(id: string, response: Record<string, unknown>): void {
-    this.proc?.sendFrame({ type: 'extension_ui_response', id, ...response });
-    if (this.dialogs.resolve(id)) this.sink.stateChanged();
+    if (model && (this.reportedModel?.provider !== model.provider || this.reportedModel.id !== model.id)) {
+      await proc.sendCommand({ type: 'set_model', provider: model.provider, modelId: model.id }, GET_STATE_TIMEOUT_MS);
+      // Remember what was sent: without this the next question re-sends the same
+      // pair, because `reportedModel` would still hold the spawn-time value.
+      this.reportedModel = { provider: model.provider, id: model.id };
+    }
+    if (thinkingLevel && thinkingLevel !== this.reportedThinkingLevel) {
+      await proc.sendCommand({ type: 'set_thinking_level', level: thinkingLevel }, GET_STATE_TIMEOUT_MS);
+      this.reportedThinkingLevel = thinkingLevel;
+    }
   }
 
   /** Reclaim the child; the topic's history survives in SQLite and on disk. */
@@ -206,20 +192,31 @@ export class BtwRuntime implements BtwLifecycleHost {
   private async openWorkspace(): Promise<BtwWorkspace> {
     const paths = await resolveBtwWorkspacePaths(this.context.sessionId, this.context.topicId);
     const existing = await Bun.file(paths.sessionFile).exists();
-    const workspace = existing
-      ? { ...paths, leafId: null }
-      : await createBtwWorkspace({
-          parentSessionId: this.context.sessionId,
-          topicId: this.context.topicId,
-          parentSessionFile: this.context.parentSessionFile,
-        });
+    if (existing) {
+      this.workspace = { ...paths, leafId: null };
+      return this.workspace;
+    }
+    const workspace = await createBtwWorkspace({
+      parentSessionId: this.context.sessionId,
+      topicId: this.context.topicId,
+      parentSessionFile: this.context.parentSessionFile,
+    });
+    // The snapshot's leaf is the promotion guard's baseline: the branch may only
+    // be cut while the parent still ENDS at the entry this copy was taken from.
+    // Written here, where the snapshot is actually taken, because a later
+    // transcript cannot reconstruct which entry that was.
+    if (workspace.leafId) await setBtwTopicLeaf(this.context.topicId, workspace.leafId);
     this.workspace = workspace;
-    // The snapshot's leaf is what a later promotion must still find in the
-    // parent; a topic resumed from disk keeps the leaf it was created with.
     return workspace;
   }
 
   start(): Promise<RpcProcess> {
+    // Reuse the live child. Without this guard every question spawns ANOTHER
+    // `omp --resume` for the same topic and abandons the previous one — measured:
+    // two live children with the same transcript, the older one holding the
+    // pre-retarget `--model`, both appending to the same file. A child that died
+    // (`proc` nulled by `handleSideChildExit`) still gets a fresh spawn.
+    if (this.proc?.isAlive) return Promise.resolve(this.proc);
     if (this.starting) return this.starting;
     const started = this.spawnChild();
     this.starting = started;
@@ -238,7 +235,6 @@ export class BtwRuntime implements BtwLifecycleHost {
     const settings: BtwSpawnSettings = {
       model: this.context.model,
       thinkingLevel: this.context.thinkingLevel,
-      approvalMode: this.context.approvalMode,
     };
     const proc = new RpcProcess({
       cwd: this.context.cwd,
@@ -247,7 +243,8 @@ export class BtwRuntime implements BtwLifecycleHost {
       onExit: (info) => handleSideChildExit(this, info.stderrTail),
     });
     this.proc = proc;
-    this.spawnedApprovalMode = this.context.approvalMode;
+    this.reportedModel = null;
+    this.reportedThinkingLevel = null;
     const ready = await proc.waitReady(READY_TIMEOUT_MS);
     await proc.negotiateProtocol(ready);
     await this.captureModel(proc);
@@ -255,22 +252,29 @@ export class BtwRuntime implements BtwLifecycleHost {
   }
 
   /**
-   * Record what the child reports about itself, for the panel's model chip and
-   * the run footer: its display name and the thinking level it actually runs at.
-   * `get_state` is the only source — the topic row holds what was REQUESTED, and
-   * omp may resolve it differently.
+   * Record what the child reports about itself: the display name of the model
+   * it resolved (for the run footer) and the model/selector it runs with, so a
+   * `retarget` before the next question only sends a real change.
+   *
+   * The THINKING LEVEL is NOT written back to the topic. `get_state` reports the
+   * level the child RESOLVED (an `auto` chat resolves to a concrete effort), and
+   * storing that would pin every later spawn to it — the side conversation would
+   * stop re-classifying per turn while the chat it mirrors keeps doing so. The
+   * chat's own recorded selector is what each ask reads instead.
    */
   private async captureModel(proc: RpcProcess): Promise<void> {
     try {
       const state = await proc.sendCommand<RpcSessionState>({ type: 'get_state' }, GET_STATE_TIMEOUT_MS);
       const reported = state.model;
-      if (reported?.provider && reported.id && reported.name) {
-        await setBtwTopicModel(this.topicId, { provider: reported.provider, id: reported.id, name: reported.name });
-        this.sink.stateChanged();
+      if (reported?.provider && reported.id) {
+        this.reportedModel = { provider: reported.provider, id: reported.id };
+        if (reported.name) {
+          await setBtwTopicModel(this.topicId, { provider: reported.provider, id: reported.id, name: reported.name });
+          this.sink.stateChanged();
+        }
       }
       if (typeof state.thinkingLevel === 'string' && state.thinkingLevel) {
-        await setBtwTopicThinkingLevel(this.topicId, state.thinkingLevel);
-        this.sink.stateChanged();
+        this.reportedThinkingLevel = state.thinkingLevel;
       }
     } catch {
       // A chip without a display name is cosmetic; the topic keeps its model.
@@ -280,37 +284,24 @@ export class BtwRuntime implements BtwLifecycleHost {
   private handleFrame(frame: RpcFrame): void {
     if (frame.type === 'message_update' || frame.type === 'message_start') {
       // The turn's conversation is accumulated in the chat's own shape (see
-      // `trackTurnMessage`): thinking, prose, tool calls and their output all
-      // reach the panel through the same mapper the chat timeline uses.
+      // `trackTurnMessage`): thinking, prose and usage reach the panel through
+      // the same mapper the chat timeline uses.
       trackTurnMessage(this, frame);
       trackTurnActivity(this, frame);
     } else if (frame.type === 'message_end') {
       // The completed message is the authoritative copy: it carries the turn's
-      // real usage, where the streaming frames report zeros. Upserting it
-      // replaces the streaming row in place (same message id), which is what
-      // puts token counts on the panel's run footer.
-      trackTurnMessage(this, frame);
-    } else if (frame.type === 'tool_execution_start') {
-      trackTurnActivity(this, frame);
+      // real usage, where the streaming frames report zeros, and its thinking is
+      // no longer generating. Upserting it replaces the streaming row in place
+      // (same message id), which is what puts token counts on the run footer
+      // without leaving a pulsing accordion behind on the next reload.
+      trackTurnMessage(this, frame, false);
     } else if (frame.type === 'agent_end') {
       // `isTerminal: false` means maintenance scheduled more work; the turn is
       // not done until a terminal end arrives (mirrors the session wrapper).
       if (frame.isTerminal === false) return;
       void settleSideTurn(this, finalStatus(frame.messages), finalAnswer(frame.messages, ''));
-    } else if (frame.type === 'extension_ui_request') {
-      this.trackDialog(frame);
     }
     resetSideIdleTimer(this);
-  }
-
-  /**
-   * Record an ask/approval dialog so the panel can render it. Unlike the TUI
-   * there is no tool card to host an `ask` inline, so every answerable request
-   * becomes a modal — and the state republish is what puts it on screen.
-   */
-  private trackDialog(frame: RpcFrame): void {
-    if (typeof frame.id !== 'string' || !isAnswerableUiMethod(frame.method)) return;
-    if (this.dialogs.track(frame)) this.sink.stateChanged();
   }
 }
 

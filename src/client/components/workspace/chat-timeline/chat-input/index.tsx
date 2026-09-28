@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ClipboardEvent, SetStateAction } from 'preact/compat';
 import { AlertTriangle, X } from 'lucide-preact';
 import type { AIModelOption, Attachment, ModelEntry } from '@/shared/types';
-import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { ComposerToolbar } from '@/client/components/workspace/chat-timeline/chat-input/Toolbar';
 import { ComposerTextarea } from '@/client/components/common/ComposerTextarea';
 import { AttachmentToolbar } from '@/client/components/workspace/chat-timeline/chat-input/AttachmentToolbar';
@@ -13,6 +12,7 @@ import { NO_PENDING_PICK } from '@/client/hooks/chat/timeline/deferred-model';
 import { primeFileReads } from '@/client/hooks/chat/composer/file-reads';
 import { useComposerPipeline } from '@/client/hooks/chat/composer/pipeline';
 import { DropOverlay } from '@/client/components/workspace/chat-timeline/chat-input/DropOverlay';
+import type { ChatInputProps } from '@/client/components/workspace/chat-timeline/chat-input/props';
 
 export function ChatInput({ 
   value, 
@@ -33,6 +33,9 @@ export function ChatInput({
   variant = 'desktop',
   accessMode,
   onAccessModeChange,
+  showModel = true,
+  showThinking = true,
+  showAccess = true,
   enablePicker = true,
   placeholder,
   /** Written on every model/thinking pick so the send path can snapshot the
@@ -44,43 +47,7 @@ export function ChatInput({
    *  by composers that never stream (the New Chat modal), where there is
    *  nothing to defer and adoption must behave as before. */
   deferredComposerPickRef = NO_PENDING_PICK,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  onSend: (attachments: Attachment[], options?: { steering?: boolean }) => void;
-  isGenerating: boolean;
-  onStop?: () => void;
-  className?: string;
-  disabled?: boolean;
-  appSettings?: Record<string, any>;
-  attachments?: Attachment[];
-  onAttachmentsChange?: (attachments: SetStateAction<Attachment[]>) => void;
-  onThinkingLevelChange?: (level: string) => void;
-  onModelChange?: (provider: string, modelId: string) => void;
-  /** Model last used by the active session (omp `model_change` entry). */
-  sessionModel?: { provider: string; modelId: string } | null;
-  /** Thinking level last used by the active session (omp `thinking_level_change` entry). */
-  sessionThinkingLevel?: string | null;
-  rootPath?: string | null;
-  accessMode: ApprovalMode;
-  onAccessModeChange: (mode: ApprovalMode) => void;
-  /**
-   * Whether the `@` / `/` / `!` / `#` autocomplete runs. Off for the
-   * side-question form, which has no file tree, commands or skills to offer —
-   * and whose text is never run through the mention translator.
-   */
-  enablePicker?: boolean;
-  /** Overrides the default hint text (the side-question form names its own). */
-  placeholder?: string;
-  /**
-   * `mobile` sizes the composer for a phone: 16px text (iOS Safari zooms the
-   * viewport when focusing an input below that), thumb-sized send/stop
-   * targets, and Enter-to-newline instead of Enter-to-send.
-   */
-  variant?: 'desktop' | 'mobile';
-  composerModelRef: { current: { provider: string; modelId: string; thinkingLevel: string } | null };
-  deferredComposerPickRef?: { current: { provider?: string; modelId?: string; thinkingLevel?: string } | null };
-}) {
+}: ChatInputProps) {
   const [internalAttachments, setInternalAttachments] = useState<Attachment[]>([]);
 
   const attachments = externalAttachments !== undefined ? externalAttachments : internalAttachments;
@@ -303,7 +270,7 @@ export function ChatInput({
         appSettings={appSettings}
         rootPath={rootPath}
         enablePicker={enablePicker}
-        placeholder={placeholder ?? (disabled ? "Please select a workspace above to start prompting..." : "@ for files/agents; / for commands and skills; ! for shell; # for snippets (Paste images/files here)")}
+        placeholder={placeholder ?? (disabled ? "Please select a workspace above to start prompting..." : "@ for files/agents; / for commands and skills (Paste images/files here)")}
         className={`w-full bg-transparent border-none focus:outline-none resize-none text-ink placeholder-ink/40 disabled:opacity-50 disabled:cursor-not-allowed ${
           isMobile ? 'px-3 py-3 text-base min-h-[68px] max-h-40' : 'px-3 py-3 text-sm min-h-[80px]'
         }`}
@@ -329,6 +296,9 @@ export function ChatInput({
         sendDisabled={disabled || (!value.trim() && attachments.length === 0)}
         accessMode={accessMode}
         onSelectAccess={onAccessModeChange}
+        showModel={showModel}
+        showThinking={showThinking}
+        showAccess={showAccess}
       />
     </div>
   );

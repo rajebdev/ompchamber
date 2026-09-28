@@ -5,8 +5,9 @@ import { WebRpcError, getRpcSession, resolveSpawnCwd, startRpcSession, type Agen
 import { getSpawnApprovalMode, reconcileSpawnApprovalMode } from '@/server/lib/omp/rpc/session-registry';
 import { isApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { loadPersistedAccessMode } from '@/shared/lib/omp/config/access-mode.server';
-import { OBSERVER_ONLY_COMMANDS } from '@/server/lib/omp/rpc/constants';
+import { CONVERSATION_MOVING_COMMANDS, OBSERVER_ONLY_COMMANDS } from '@/server/lib/omp/rpc/constants';
 import { rpcErrorResponse } from '@/server/lib/omp/rpc/errors';
+import { assertBtwIdle } from '@/server/lib/btw/service.server';
 
 // POST /api/agent/:sessionId — send a command to an existing session (or spawn
 // it lazily). Mirrors omp-web's /api/agent/[id].
@@ -27,6 +28,13 @@ export async function sendCommand({ params, request }: ActionFunctionArgs) {
     // without repeating accessMode). Only a real spawn uses the persisted
     // default. omp has no RPC to change the mode after spawn.
     const explicitMode = isApprovalMode(body.accessMode) ? body.accessMode : null;
+
+    // A command that moves the conversation is refused while a side question is
+    // in flight on this session — the question's snapshot describes the
+    // transcript this command would replace (omp blocks the same operations).
+    if (CONVERSATION_MOVING_COMMANDS.has(body.type)) {
+      await assertBtwIdle(sessionId, body.type.replace(/_/g, ' '));
+    }
 
     // Fast path: already-running session.
     const existing = getRpcSession(sessionId);

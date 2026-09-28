@@ -22,18 +22,18 @@ describe('finalStatus', () => {
     expect(finalStatus([assistant()])).toBe('complete');
   });
 
-  test('a user abort is cancelled, not failed', () => {
+  test('a user abort is cancelled, not an error', () => {
     expect(finalStatus([assistant({ stopReason: 'aborted' })])).toBe('cancelled');
   });
 
   test('a provider error is a failure, not a completed answer', () => {
-    expect(finalStatus([assistant({ stopReason: 'error' })])).toBe('failed');
+    expect(finalStatus([assistant({ stopReason: 'error' })])).toBe('error');
   });
 
   test('an error carried as flat fields is still a failure', () => {
     // omp writes abnormal stops as flat `errorStatus`/`errorMessage` on the
     // message; a bare `stopReason` check would call this one complete.
-    expect(finalStatus([assistant({ errorMessage: 'upstream 500', errorStatus: 500 })])).toBe('failed');
+    expect(finalStatus([assistant({ errorMessage: 'upstream 500', errorStatus: 500 })])).toBe('error');
   });
 
   test('the newest assistant turn decides', () => {

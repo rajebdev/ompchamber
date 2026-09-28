@@ -20,7 +20,7 @@
 
 import { listBtwTopics, settleRunningBtwTurns } from '@/server/lib/btw/store.server';
 import { BtwRuntime, type BtwRuntimeContext } from '@/server/lib/btw/runtime.server';
-import type { BtwFrame, BtwState, BtwTopic, ExtensionUiDialogRequest } from '@/shared/types';
+import type { BtwFrame, BtwState, BtwTopic } from '@/shared/types';
 
 interface BtwRegistryHost {
   runtimes: Map<string, BtwRuntime>;
@@ -132,14 +132,6 @@ export async function btwStateFor(sessionId: string): Promise<BtwState> {
     topics: repaired,
     runningTopicId: repaired.find((topic) => topic.turns.some((turn) => turn.status === 'running'))?.id ?? null,
     live: liveRuntime?.liveTurn() ?? null,
-    // Dialogs live on the runtime, not in SQLite: they belong to the child
-    // process that raised them, and a child that is gone has none.
-    dialogs: runtimes.flatMap((runtime) =>
-      runtime.dialogs
-        .list()
-        .filter((request) => typeof request.id === 'string')
-        .map((request) => ({ topicId: runtime.topicId, request: request as unknown as ExtensionUiDialogRequest })),
-    ),
   };
 }
 

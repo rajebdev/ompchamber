@@ -7,6 +7,10 @@
  * BTW schema, kept out of `db.server.ts`'s bootstrap block so that file's
  * growth stays attributable (it was already at the ceiling before this
  * feature). Called once per database open, like the other migrations there.
+ *
+ * `approval_mode` is retained for rows written while a side child ran WITH tools
+ * and an approval dropdown governed it; nothing writes or reads it now that the
+ * child runs `--no-tools`.
  */
 
 import type { DbClient } from '@/server/lib/db/client';
@@ -68,4 +72,8 @@ export async function ensureBtwSchema(db: DbClient): Promise<void> {
     if (await hasColumn(db, added.table, added.column)) continue;
     await db.exec(added.ddl);
   }
+  // A turn that ended in a provider error used to be recorded as `failed`; the
+  // vocabulary now matches omp's own (`error`). Row data, not a column, so it is
+  // an unconditional UPDATE — a second run matches nothing.
+  await db.run("UPDATE btw_turns SET status = 'error' WHERE status = 'failed'");
 }

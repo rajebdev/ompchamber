@@ -23,8 +23,11 @@
 import type { Attachment } from '@/shared/types';
 
 /** A bare `/btw` opens the form on the current history; anything after it is
- *  the first question. Case-insensitive, because omp's command tokens are. */
-const BTW_COMMAND_RE = /^\/btw(?:\s+([\s\S]*))?$/i;
+ *  the first question. Case-insensitive, because omp's command tokens are, and
+ *  the separator is whitespace OR `:` — `parseSlashCommand` splits on whichever
+ *  comes first, so `/btw:what is this` is the same invocation as `/btw what is
+ *  this` and must not be sent to the model as text. */
+const BTW_COMMAND_RE = /^\/btw(?:[\s:]+([\s\S]*))?$/i;
 
 /**
  * Hand a `/btw` draft to the side-question panel. Returns false when the text

@@ -235,6 +235,32 @@ export async function loadSessionModel(filePath: string): Promise<{ provider: st
  *  `thinking_level_change` entries (omp records the level string, e.g.
  *  "off" | "minimal" | "low" | "medium" | "high" | "max"). */
 export async function loadSessionThinkingLevel(filePath: string): Promise<string | undefined> {
+  return readThinkingSelector(filePath, (record) => normalizeThinkingLevel(record.thinkingLevel));
+}
+
+/**
+ * The thinking SELECTOR a session is configured with — `auto` when automatic
+ * per-turn classification is on, else the concrete level.
+ *
+ * omp writes both fields on one entry (`thinkingLevel` = the provisional
+ * concrete effort, `configured` = the selector) and restores with
+ * `parseConfiguredThinkingLevel(configured) ?? parseThinkingLevel(level)`, so a
+ * reader that takes `thinkingLevel` alone turns an `auto` session into a pinned
+ * one. Anything spawning a child that must classify its turns the way the
+ * session does has to read this, not the concrete level.
+ */
+export async function loadSessionThinkingSelector(filePath: string): Promise<string | undefined> {
+  return readThinkingSelector(filePath, (record) =>
+    typeof record.configured === 'string' && record.configured
+      ? record.configured
+      : normalizeThinkingLevel(record.thinkingLevel),
+  );
+}
+
+async function readThinkingSelector(
+  filePath: string,
+  read: (record: Record<string, unknown>) => string,
+): Promise<string | undefined> {
   try {
     const file = Bun.file(filePath);
     if ((await file.stat()).size > MAX_SESSION_LOAD_BYTES) return undefined;
@@ -247,8 +273,7 @@ export async function loadSessionThinkingLevel(filePath: string): Promise<string
     let last: string | undefined;
     for (const record of records) {
       if (record?.type !== 'thinking_level_change') continue;
-      // A change entry always yields a display level: null/unset → "off".
-      last = normalizeThinkingLevel(record.thinkingLevel);
+      last = read(record);
     }
     return last;
   } catch {

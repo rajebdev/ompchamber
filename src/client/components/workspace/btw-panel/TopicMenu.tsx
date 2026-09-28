@@ -24,7 +24,7 @@ const STATUS_LABEL: Record<BtwTurnStatus, string> = {
   running: 'thinking…',
   complete: 'complete',
   cancelled: 'cancelled',
-  failed: 'failed',
+  error: 'error',
   interrupted: 'interrupted',
 };
 

@@ -12,32 +12,32 @@
  *    cancel — a second question is refused, exactly like the TUI);
  *  - a new question is its own topic; only a follow-up continues one, and it
  *    sees only that topic's turns (plus the parent's context);
+ *  - the side conversation runs on the CHAT's model and thinking selector, read
+ *    from the parent transcript at every ask — the panel has no pickers of its
+ *    own, exactly like omp's `/btw`, which runs the side turn on
+ *    `request.session.model`;
  *  - promotion is refused once the parent transcript has moved past the point
- *    the topic was snapshotted at, and while a turn is still running.
+ *    the topic was snapshotted at, while a turn is still running, and for a
+ *    topic with follow-ups (a branch carries one question/answer pair).
  */
 
 import { isMockMode } from '@/server/mock.server';
 import { findSessionFileById } from '@/server/lib/omp/session/locator';
 import { readRawHeaderLine } from '@/server/lib/omp/session/files';
-import { loadSessionModel } from '@/server/lib/omp/session/messages';
-import { resolveSpawnCwd } from '@/server/lib/omp/rpc/manager';
-import { loadPersistedAccessMode } from '@/shared/lib/omp/config/access-mode.server';
-import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
+import { loadSessionModel, loadSessionThinkingSelector } from '@/server/lib/omp/session/messages';
+import { getRpcSession, resolveSpawnCwd } from '@/server/lib/omp/rpc/manager';
 import { composeMessageWithTextAttachments, type AttachedTextFileData } from '@/shared/lib/chat/attachments';
 import {
   createBtwTopic,
   deleteBtwTopic,
   getBtwTopic,
   readBtwTopicLeaf,
-  setBtwTopicApprovalMode,
-  setBtwTopicModel,
   setBtwTopicPromoted,
-  setBtwTopicThinkingLevel,
 } from '@/server/lib/btw/store.server';
 import { promoteBtwTopic as materializePromotedTopic, readTranscriptLeaf, removeBtwWorkspace, resolveBtwWorkspacePaths } from '@/server/lib/btw/session-copy.server';
 import { btwStateFor, ensureBtwRuntime, findRunningBtwRuntime, forgetBtwRuntime, getBtwRuntime, publishBtwState } from '@/server/lib/btw/registry.server';
 import { BtwError, type BtwImages } from '@/server/lib/btw/runtime.server';
-import type { BtwModel, BtwState } from '@/shared/types';
+import type { BtwState } from '@/shared/types';
 
 /** Longest a topic label may be, matching the sidebar's session-title length. */
 const TOPIC_TITLE_CHARS = 60;
@@ -93,15 +93,6 @@ export interface AskBtwInput {
    * be asked about a file the same way a chat turn can.
    */
   textFiles?: AttachedTextFileData[];
-  /**
-   * Composer picks for the FIRST question of a topic, which has no row to write
-   * them to yet. Later questions address an existing topic and are re-targeted
-   * through the dedicated `set_model` / `set_thinking_level` / `set_access_mode`
-   * actions instead.
-   */
-  model?: BtwModel;
-  thinkingLevel?: string;
-  approvalMode?: ApprovalMode;
 }
 
 export async function askBtw(sessionId: string, input: AskBtwInput): Promise<BtwState> {
@@ -119,15 +110,18 @@ export async function askBtw(sessionId: string, input: AskBtwInput): Promise<Btw
     throw new BtwError('Unknown side question.', 'btw_topic_not_found');
   }
 
-  const approvalMode = input.approvalMode ?? (await loadPersistedAccessMode());
+  // The side conversation mirrors the chat: model and thinking selector are read
+  // from the parent transcript at every ask, so a change made in the chat reaches
+  // the next side question (omp reads `request.session.model` the same way).
+  const model = await topicModel(parent.sessionFile);
+  const thinkingLevel = await loadSessionThinkingSelector(parent.sessionFile);
   const topic =
     existing ??
     (await createBtwTopic({
       sessionId,
       title: topicTitle(question),
-      model: input.model ?? (await topicModel(parent.sessionFile)),
-      thinkingLevel: input.thinkingLevel,
-      approvalMode,
+      model,
+      thinkingLevel,
     }));
 
   const runtime = ensureBtwRuntime({
@@ -135,65 +129,14 @@ export async function askBtw(sessionId: string, input: AskBtwInput): Promise<Btw
     sessionId,
     parentSessionFile: parent.sessionFile,
     cwd: parent.cwd,
-    model: topic.model,
-    thinkingLevel: topic.thinkingLevel,
-    // The topic's own mode wins once set; a fresh topic adopts the composer's.
-    approvalMode: topic.approvalMode ?? approvalMode,
+    model,
+    thinkingLevel,
   });
 
+  // A live child keeps the model it was spawned with; re-target it before the
+  // prompt so this question runs on what the chat is on NOW.
+  await runtime.retarget(model, thinkingLevel);
   await runtime.ask(composeMessageWithTextAttachments(question, input.textFiles ?? []), input.images);
-  return btwStateFor(sessionId);
-}
-
-/** One topic of this session, or a `btw_topic_not_found` refusal. */
-async function requireTopic(sessionId: string, topicId: string) {
-  const topic = await getBtwTopic(topicId);
-  if (!topic || topic.sessionId !== sessionId) throw new BtwError('Unknown side question.', 'btw_topic_not_found');
-  return topic;
-}
-
-/**
- * Re-target a topic's model. With a live child the change reaches it through
- * `set_model` (omp applies it to the running turn, which is what the dropdown
- * promises); an idle topic simply records it for the next spawn.
- */
-export async function setBtwModel(sessionId: string, topicId: string, provider: string, modelId: string): Promise<BtwState> {
-  await requireTopic(sessionId, topicId);
-  const runtime = getBtwRuntime(topicId);
-  if (runtime) {
-    await runtime.setModel(provider, modelId);
-  } else {
-    await setBtwTopicModel(topicId, { provider, id: modelId });
-    await publishBtwState(sessionId);
-  }
-  return btwStateFor(sessionId);
-}
-
-export async function setBtwThinkingLevel(sessionId: string, topicId: string, level: string): Promise<BtwState> {
-  await requireTopic(sessionId, topicId);
-  await setBtwTopicThinkingLevel(topicId, level === 'auto' ? null : level);
-  await getBtwRuntime(topicId)?.setThinkingLevel(level);
-  await publishBtwState(sessionId);
-  return btwStateFor(sessionId);
-}
-
-/**
- * Adopt a new tool-approval mode for a topic. omp has no RPC for it, so an idle
- * child is dropped and the next question respawns with the new flag; a running
- * turn keeps its child (and therefore its mode) until it settles.
- */
-export async function setBtwApprovalMode(sessionId: string, topicId: string, mode: ApprovalMode): Promise<BtwState> {
-  await requireTopic(sessionId, topicId);
-  await setBtwTopicApprovalMode(topicId, mode);
-  await getBtwRuntime(topicId)?.setApprovalMode(mode);
-  await publishBtwState(sessionId);
-  return btwStateFor(sessionId);
-}
-
-/** Answer an ask/approval dialog a side child is blocked on. */
-export async function respondBtwDialog(sessionId: string, topicId: string, id: string, response: Record<string, unknown>): Promise<BtwState> {
-  await requireTopic(sessionId, topicId);
-  getBtwRuntime(topicId)?.respondToDialog(id, response);
   return btwStateFor(sessionId);
 }
 
@@ -211,6 +154,19 @@ export async function abortBtw(sessionId: string, topicId: string): Promise<BtwS
 }
 
 /**
+ * Refuse a session operation that would move the conversation out from under a
+ * running side question. omp blocks the same operations while a `/btw` answer is
+ * in flight or unsaved (`BtwController.withSessionMove` / `flush`); a chamber
+ * chat that switched sessions mid-question would leave the answer attached to a
+ * transcript nobody is looking at.
+ */
+export async function assertBtwIdle(sessionId: string, action: string): Promise<void> {
+  if (findRunningBtwRuntime(sessionId)) {
+    throw new BtwError(`A side question is still running — wait for it, or cancel it, before you ${action}.`, 'btw_busy');
+  }
+}
+
+/**
  * Turn the topic into a session of the chat's own: a branch of the parent
  * conversation whose tip is the side answer, opened by the caller.
  */
@@ -225,8 +181,21 @@ export async function promoteBtw(sessionId: string, topicId: string): Promise<{ 
   if (topic.turns.some((turn) => turn.status === 'running')) {
     throw new BtwError('Wait for the side answer to finish, or cancel it, before promoting it.', 'btw_busy');
   }
+  // omp's branch action carries ONE question/answer pair and refuses a topic with
+  // follow-ups, so the earlier turns cannot be silently dropped from the branch.
+  if (topic.turns.length > 1) {
+    throw new BtwError(
+      'A side question with follow-ups cannot be promoted — omp branches one answer at a time.',
+      'btw_multi_turn',
+    );
+  }
 
   const parent = await resolveParent(sessionId);
+  // The branch is cut from the parent's transcript, so the chat must be idle:
+  // omp's guard refuses while `session.isStreaming`.
+  if (getRpcSession(sessionId)?.isRunning()) {
+    throw new BtwError('The chat is still running — wait for it to finish before promoting a side question.', 'btw_busy');
+  }
   const snapshotLeaf = await readBtwTopicLeaf(topicId);
   if (snapshotLeaf) {
     const currentLeaf = await readTranscriptLeaf(parent.sessionFile);

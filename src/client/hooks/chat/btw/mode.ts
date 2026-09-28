@@ -14,27 +14,23 @@
  *
  * `/btw [question]` in the main composer is the entry point; a question that
  * arrived with the command is asked immediately, which is what the TUI does.
+ *
+ * The panel has no model / thinking / access pickers: a side question runs on
+ * the chat's own model and thinking selector and without tools, so a control
+ * here would promise something the child does not read.
  */
 
 import { useCallback, useState } from 'preact/hooks';
-import type { Attachment, BtwDialog, BtwState, BtwTopic, ChatMessageData } from '@/shared/types';
-import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
-import { useBtwSession, type BtwFirstQuestionPicks, type BtwLiveAnswer } from '@/client/hooks/chat/btw';
+import type { Attachment, BtwState, BtwTopic, ChatMessageData } from '@/shared/types';
+import { useBtwSession, type BtwLiveAnswer } from '@/client/hooks/chat/btw';
 import { useChamberEvent } from '@/client/hooks/ui/window-event';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { useSearchParams } from '@/client/lib/router/search-params';
 import { readStreamTransport } from '@/shared/lib/chat/omp/transport';
-import { normalizeApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { PHASE_VERBS } from '@/shared/lib/chat/timeline/tool-phrases';
-import { readChamberSetting } from '@/shared/lib/settings/client';
 
 /** Question sent when a question arrived carrying only images. */
 const ATTACHMENT_ONLY_QUESTION = 'Describe the attached image.';
-
-/** The composer's persisted access pick, for a topic that has none yet. */
-function readAccessMode(appSettings: Record<string, unknown>): ApprovalMode {
-  return normalizeApprovalMode(readChamberSetting<unknown>('omp_access_mode', appSettings));
-}
 
 export interface BtwMode {
   open: boolean;
@@ -49,11 +45,6 @@ export interface BtwMode {
   /** What that turn is doing, for the panel's indicator (side stream's own). */
   liveVerb?: string;
   error: string | null;
-  /** Ask/approval dialogs the side child is blocked on, oldest first. */
-  dialogs: BtwDialog[];
-  /** Access mode the active topic's child runs under. */
-  accessMode: ApprovalMode;
-  thinkingLevel: string;
   askDraft: string;
   followUpDraft: string;
   setAskDraft: (value: string) => void;
@@ -68,12 +59,8 @@ export interface BtwMode {
   submitAsk: () => void;
   /** Submit the side session's composer: a follow-up to the active topic. */
   submitFollowUp: (question: string, attachments?: Attachment[]) => void;
-  abort: () => void;
-  /** Re-target the side child's model (applies to the running turn). */
-  setModel: (provider: string, modelId: string) => void;
-  setThinkingLevel: (level: string) => void;
-  setAccessMode: (mode: ApprovalMode) => void;
-  respondToDialog: (id: string, response: { value: string } | { confirmed: boolean } | { cancelled: true }) => void;
+  /** Cancel the running turn, if any. Returns whether one was running. */
+  abort: () => boolean;
   /** Returns the session id to open, or null when promotion was refused. */
   promote: () => Promise<string | null>;
   removeTopic: (topicId: string) => void;
@@ -121,16 +108,6 @@ export function useBtwMode(sessionId: string | null, appSettings: Record<string,
    */
   const liveVerb = live?.activity || (runningTopicId ? PHASE_VERBS.sideQuestion : undefined);
 
-  /**
-   * Composer picks made before a topic exists. They are per-session UI state
-   * rather than props, because the form must show what the FIRST question will
-   * actually run with — the topic that would otherwise own these values has not
-   * been created yet.
-   */
-  const [pendingModel, setPendingModel] = useSessionState<BtwFirstQuestionPicks['model'] | null>('chat.btwModel', null);
-  const [pendingThinking, setPendingThinking] = useSessionState<string>('chat.btwThinking', 'auto');
-  const [pendingAccess, setPendingAccess] = useSessionState<ApprovalMode | null>('chat.btwAccess', null);
-
   const selectNewest = useCallback(
     (next: BtwState | null) => {
       if (!next) return;
@@ -151,27 +128,12 @@ export function useBtwMode(sessionId: string | null, appSettings: Record<string,
     }
   });
 
-  /**
-   * What the next FIRST question will run with: the composer's picks until a
-   * topic exists, then that topic's own settings. Every setter below writes to
-   * the topic when there is one and to this pending slot when there is not —
-   * a pick that only reached the UI would silently not apply.
-   */
-  const firstQuestionPicks = useCallback(
-    (): BtwFirstQuestionPicks => ({
-      ...(pendingModel ? { model: pendingModel } : {}),
-      ...(pendingThinking && pendingThinking !== 'auto' ? { thinkingLevel: pendingThinking } : {}),
-      ...(pendingAccess ? { approvalMode: pendingAccess } : {}),
-    }),
-    [pendingModel, pendingThinking, pendingAccess],
-  );
-
   const submitAsk = useCallback(() => {
     const question = askDraft.trim();
     if (!question) return;
     setAskDraft('');
-    void session.ask(question, undefined, undefined, firstQuestionPicks()).then(selectNewest);
-  }, [askDraft, session, setAskDraft, selectNewest, firstQuestionPicks]);
+    void session.ask(question).then(selectNewest);
+  }, [askDraft, session, setAskDraft, selectNewest]);
 
   const submitFollowUp = useCallback(
     (question: string, attachments?: Attachment[]) => {
@@ -220,12 +182,6 @@ export function useBtwMode(sessionId: string | null, appSettings: Record<string,
     liveMessages: live ? live.messages : [],
     liveVerb,
     error: session.error,
-    dialogs: session.state?.dialogs ?? [],
-    // Before a topic exists the composer's own picks are what the next question
-    // will run with, so they are what the controls must show — and after it,
-    // the topic's own settings (which the pick was written to).
-    accessMode: activeTopic?.approvalMode ?? pendingAccess ?? readAccessMode(appSettings),
-    thinkingLevel: activeTopic?.thinkingLevel ?? pendingThinking,
     askDraft,
     followUpDraft,
     setAskDraft,
@@ -239,29 +195,13 @@ export function useBtwMode(sessionId: string | null, appSettings: Record<string,
     },
     submitAsk,
     submitFollowUp,
+    // Escape (and the composer's Stop) cancel the turn BEFORE leaving: omp's
+    // Escape handler cancels a running answer and only then closes the panel, so
+    // a stray keypress cannot abandon a question mid-flight.
     abort: () => {
-      if (runningTopicId) void session.abort(runningTopicId);
-    },
-    setModel: (provider: string, modelId: string) => {
-      if (!activeTopic) {
-        setPendingModel({ provider, id: modelId });
-        return;
-      }
-      void session.setModel(activeTopic.id, provider, modelId);
-    },
-    setThinkingLevel: (level: string) => {
-      setPendingThinking(level);
-      if (!activeTopic) return;
-      void session.setThinkingLevel(activeTopic.id, level);
-    },
-    setAccessMode: (mode: ApprovalMode) => {
-      setPendingAccess(mode);
-      if (!activeTopic) return;
-      void session.setAccessMode(activeTopic.id, mode);
-    },
-    respondToDialog: (id: string, response: { value: string } | { confirmed: boolean } | { cancelled: true }) => {
-      if (!activeTopic) return;
-      void session.respondToDialog(activeTopic.id, id, response);
+      if (!runningTopicId) return false;
+      void session.abort(runningTopicId);
+      return true;
     },
     promote,
     removeTopic,

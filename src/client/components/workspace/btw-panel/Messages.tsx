@@ -48,7 +48,7 @@ function AnswerStatus({ status }: { status: BtwTurnStatus }) {
     return <div className="text-[11px] text-ink/50">Cancelled</div>;
   }
 
-  return <div className="text-[11px] text-error">{status === 'failed' ? 'Failed' : 'Interrupted'}</div>;
+  return <div className="text-[11px] text-error">{status === 'error' ? 'Error' : 'Interrupted'}</div>;
 }
 
 /** The question row for a turn, in the chat's own user-bubble shape. */

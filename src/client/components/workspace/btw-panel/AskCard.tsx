@@ -31,6 +31,8 @@ export interface BtwAskCardProps {
   onNewQuestion: () => void;
   /** `✕` — leave the side-question form. */
   onClose: () => void;
+  /** Escape — cancel the running answer first. Returns whether one was running. */
+  onCancel: () => boolean;
   /** A side answer is streaming: starting over waits for it. */
   running: boolean;
   topics: BtwTopic[];
@@ -50,6 +52,7 @@ export function BtwAskCard({
   onSubmit,
   onNewQuestion,
   onClose,
+  onCancel,
   running,
   topics,
   activeTopicId,
@@ -72,7 +75,9 @@ export function BtwAskCard({
   const handleKeyDown = (event: TargetedKeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Escape') {
       event.preventDefault();
-      onClose();
+      // Cancel first, close only when nothing was running — omp's Escape handler
+      // does the same, so one keypress cannot abandon a question mid-flight.
+      if (!onCancel()) onClose();
       return;
     }
     if (event.key !== 'Enter' || event.shiftKey) return;

@@ -15,10 +15,14 @@
  * `leaf_id` is the parent session's transcript leaf when the topic started.
  * Promotion refuses when the parent has moved on, exactly like omp's own
  * `/btw` branch guard ("session changed since /btw started").
+ *
+ * `thinking_level` holds the chat's thinking SELECTOR (`auto` included), not the
+ * effort the side child resolved; `approval_mode` is no longer written — a side
+ * child runs `--no-tools`, so there is no approval gate to configure. Both
+ * columns stay in the schema for existing rows.
  */
 
 import { getDb } from '@/server/db.server';
-import { isApprovalMode, type ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import type { BtwModel, BtwTopic, BtwTurn, BtwTurnStatus, ChatMessageData } from '@/shared/types';
 
 interface TopicRow {
@@ -51,7 +55,7 @@ const TURN_STATUSES: Record<string, true> = {
   running: true,
   complete: true,
   cancelled: true,
-  failed: true,
+  error: true,
   interrupted: true,
 };
 
@@ -72,7 +76,6 @@ function rowToTopic(row: TopicRow): BtwTopic {
     updatedAt: row.updated_at,
     ...(model ? { model } : {}),
     ...(row.thinking_level ? { thinkingLevel: row.thinking_level } : {}),
-    ...(isApprovalMode(row.approval_mode) ? { approvalMode: row.approval_mode } : {}),
     ...(row.promoted_session_id ? { promotedSessionId: row.promoted_session_id } : {}),
     turns: [],
   };
@@ -138,10 +141,8 @@ export interface NewBtwTopicInput {
   sessionId: string;
   title: string;
   model?: BtwModel;
+  /** The chat's thinking selector, so the side child classifies like the chat. */
   thinkingLevel?: string;
-  approvalMode?: ApprovalMode;
-  /** Parent transcript leaf when the topic was created (promotion guard). */
-  leafId?: string | null;
 }
 
 export async function createBtwTopic(input: NewBtwTopicInput): Promise<BtwTopic> {
@@ -155,8 +156,8 @@ export async function createBtwTopic(input: NewBtwTopicInput): Promise<BtwTopic>
     model_id: input.model?.id ?? null,
     model_name: input.model?.name ?? null,
     thinking_level: input.thinkingLevel ?? null,
-    approval_mode: input.approvalMode ?? null,
-    leaf_id: input.leafId ?? null,
+    approval_mode: null,
+    leaf_id: null,
     promoted_session_id: null,
     created_at: now,
     updated_at: now,
@@ -260,18 +261,6 @@ export async function setBtwTopicModel(topicId: string, model: BtwModel): Promis
     Date.now(),
     topicId,
   ]);
-}
-
-/** Record the thinking level the side child runs at (`null` clears it). */
-export async function setBtwTopicThinkingLevel(topicId: string, level: string | null): Promise<void> {
-  const db = await getDb();
-  await db.run('UPDATE btw_topics SET thinking_level = ?, updated_at = ? WHERE id = ?', [level, Date.now(), topicId]);
-}
-
-/** Record the approval mode the side child was spawned with. */
-export async function setBtwTopicApprovalMode(topicId: string, mode: ApprovalMode): Promise<void> {
-  const db = await getDb();
-  await db.run('UPDATE btw_topics SET approval_mode = ?, updated_at = ? WHERE id = ?', [mode, Date.now(), topicId]);
 }
 
 export async function setBtwTopicPromoted(topicId: string, promotedSessionId: string): Promise<void> {

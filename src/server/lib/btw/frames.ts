@@ -29,7 +29,7 @@ export function finalStatus(messages: unknown): BtwTurnStatus {
       const message = messages[index];
       if (isRecord(message) && message.role === 'assistant') {
         if (!turnStoppedAbnormally(message)) return 'complete';
-        return message.stopReason === 'aborted' ? 'cancelled' : 'failed';
+        return message.stopReason === 'aborted' ? 'cancelled' : 'error';
       }
     }
   }

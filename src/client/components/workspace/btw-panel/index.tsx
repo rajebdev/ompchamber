@@ -23,11 +23,12 @@
  * question — and promotion is the one explicit action that moves an answer into
  * the chat, as a session branched from it.
  *
- * The composer card is the CHAT's own `ChatInput`, not a look-alike: a side
- * question runs a child with tools and an access mode, so it offers the same
- * model / thinking / access controls, the same attachments, drop targets and
- * keybindings. Only the autocomplete is off (`enablePicker`) — a side question
- * has no file tree, commands or skills to complete against.
+ * The composer card is the CHAT's own `ChatInput`, not a look-alike: the same
+ * attachments, drop targets and keybindings. Only the autocomplete is off
+ * (`enablePicker`) — a side question has no file tree, commands or skills to
+ * complete against — and so are the model / thinking / access controls: the side
+ * child runs on the chat's model and thinking selector, without tools, so those
+ * dropdowns would change nothing. That is exactly what omp's own `/btw` offers.
  */
 
 import { useState } from 'preact/hooks';
@@ -37,7 +38,6 @@ import { BtwAskCard } from '@/client/components/workspace/btw-panel/AskCard';
 import { BtwMessages } from '@/client/components/workspace/btw-panel/Messages';
 import { ChatInput } from '@/client/components/workspace/chat-timeline/chat-input/index';
 import { GeneratingIndicator } from '@/client/components/workspace/chat-timeline/GeneratingIndicator';
-import { ExtensionDialog } from '@/client/components/workspace/chat-timeline/tool-renderers/extension-dialog/Lazy';
 
 /** Tallest the answer card grows before its own scrollbar takes over. */
 const ANSWERS_MAX_HEIGHT_PX = 520;
@@ -70,9 +70,15 @@ export function BtwForm({
   // the same click burst would be a second request for work already running.
   // An already-promoted topic needs no second button either — its branch
   // session exists, and the server hands that id back on a repeat promote.
+  // A topic with follow-ups cannot be promoted (a branch carries one pair), so
+  // the action is offered only where the server would accept it.
   const canPromote =
-    Boolean(mode.activeTopic) && !mode.runningTopicId && !mode.busy && !mode.activeTopic?.promotedSessionId && lastTurn?.status === 'complete';
-  const dialog = mode.dialogs[0];
+    Boolean(mode.activeTopic) &&
+    mode.activeTopic!.turns.length === 1 &&
+    !mode.runningTopicId &&
+    !mode.busy &&
+    !mode.activeTopic?.promotedSessionId &&
+    lastTurn?.status === 'complete';
   const running = Boolean(mode.runningTopicId);
 
   return (
@@ -91,6 +97,7 @@ export function BtwForm({
           onSubmit={mode.submitAsk}
           onNewQuestion={mode.resetQuestion}
           onClose={mode.exit}
+          onCancel={mode.abort}
           running={running}
           topics={mode.topics}
           activeTopicId={mode.activeTopic?.id ?? null}
@@ -107,7 +114,7 @@ export function BtwForm({
           provider={mode.activeTopic?.model?.provider ?? provider}
           providerNames={providerNames}
           modelName={mode.activeTopic?.model?.name ?? modelName}
-          thinkingLevel={mode.thinkingLevel}
+          thinkingLevel={mode.activeTopic?.thinkingLevel}
           isMobile={variant === 'mobile'}
         />
 
@@ -135,33 +142,19 @@ export function BtwForm({
           setAttachments([]);
         }}
         isGenerating={running}
-        onStop={mode.abort}
+        onStop={() => void mode.abort()}
         appSettings={appSettings}
         attachments={attachments}
         onAttachmentsChange={setAttachments}
         rootPath={rootPath}
         variant={variant}
         enablePicker={false}
+        showModel={false}
+        showThinking={false}
+        showAccess={false}
         placeholder="Ask in this btw session..."
-        accessMode={mode.accessMode}
-        onAccessModeChange={mode.setAccessMode}
-        onThinkingLevelChange={mode.setThinkingLevel}
-        onModelChange={mode.setModel}
-        sessionModel={mode.activeTopic?.model ? { provider: mode.activeTopic.model.provider, modelId: mode.activeTopic.model.id } : null}
-        sessionThinkingLevel={mode.thinkingLevel}
         composerModelRef={composerModelRef}
       />
-
-      {/* A side child runs with tools, so a gated call parks its turn on an
-          approval dialog. There is no tool card here to host one inline (unlike
-          the chat's `ask`), so every answerable request is a modal — and the
-          dialog brings its own backdrop. */}
-      {dialog && (
-        <ExtensionDialog
-          request={dialog.request}
-          onRespond={(_, response) => mode.respondToDialog(dialog.request.id, response)}
-        />
-      )}
     </div>
   );
 }
