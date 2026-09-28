@@ -11,7 +11,7 @@ interface ChatSettingsProps {
 
 export function ChatSettings({ settings, onUpdate }: ChatSettingsProps) {
   return (
-    <div className="w-full space-y-7 text-xs text-ink">
+    <div className="w-full space-y-7 text-xs text-ink pb-3">
       {/* 1. Streaming Transport (WebSocket vs SSE) */}
       <ChatTransportSection settings={settings} onUpdate={onUpdate} />
 
