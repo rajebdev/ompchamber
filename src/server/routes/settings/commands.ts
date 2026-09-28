@@ -8,6 +8,11 @@ import type { CommandItem } from '@/shared/types';
 import { isRecord } from '@/shared/lib/util/guards';
 import { createSettingsListStore } from '@/server/lib/db/settings-store';
 import { runUtilityCommand } from '@/server/lib/omp/rpc/utility';
+import { resolveRoot } from '@/server/lib/fs/root';
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 const commandsStore = createSettingsListStore<CommandItem>({
   key: 'omp_commands_settings',
@@ -69,10 +74,11 @@ function toLiveCommandItem(value: unknown): CommandItem | null {
   };
 }
 
-/** Read live agent commands (builtin/skill/custom/extension/file sources) via RPC. */
-async function loadAgentCommands(): Promise<CommandItem[]> {
+/** Read live agent commands (builtin/skill/custom/extension/file sources) via
+ *  RPC, scoped to `cwd` so a workspace's own `.omp/commands` are discovered. */
+async function loadAgentCommands(cwd: string): Promise<CommandItem[]> {
   try {
-    const data = await runUtilityCommand<{ commands?: unknown }>({ type: 'get_available_commands' }, 30_000);
+    const data = await runUtilityCommand<{ commands?: unknown }>({ type: 'get_available_commands' }, 30_000, cwd);
     if (!Array.isArray(data.commands)) return [];
     return data.commands.flatMap((command) => {
       const item = toLiveCommandItem(command);
@@ -84,22 +90,27 @@ async function loadAgentCommands(): Promise<CommandItem[]> {
 }
 
 /** Merge live agent commands ahead of app-local custom commands. */
-async function mergeCommands(custom: CommandItem[]): Promise<CommandItem[]> {
-  const live = await loadAgentCommands();
+async function mergeCommands(custom: CommandItem[], cwd: string): Promise<CommandItem[]> {
+  const live = await loadAgentCommands(cwd);
   const liveNames = new Set(live.map((c) => c.name.toLowerCase()));
   return [...live, ...custom.filter((c) => !liveNames.has(c.name.toLowerCase()))];
 }
 
-export async function loader({ request: _request }: LoaderFunctionArgs) {
+export async function loader({ request }: LoaderFunctionArgs) {
   try {
     const db = await getDb();
     const mock = isMockMode();
     const commands = await commandsStore.read(db);
-    const merged = mock ? commands : await mergeCommands(commands);
-    return json({ commands: merged, isMock: mock });
-  } catch (error: any) {
+    if (mock) return json({ commands, isMock: true });
+
+    // The workspace root decides which project-scope commands/skills exist, so
+    // an unscoped read must not silently answer with $HOME's inventory.
+    const root = await resolveRoot(new URL(request.url).searchParams.get('root'), process.cwd());
+    const merged = await mergeCommands(commands, root);
+    return json({ commands: merged, isMock: false });
+  } catch (error) {
     const mock = isMockMode();
-    return json({ error: error.message, commands: mock ? DEFAULT_COMMANDS_LIST : [], isMock: mock }, { status: 500 });
+    return json({ error: errorMessage(error), commands: mock ? DEFAULT_COMMANDS_LIST : [], isMock: mock }, { status: 500 });
   }
 }
 
@@ -124,7 +135,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
 
     return methodNotAllowed({ request, params });
-  } catch (error: any) {
-    return json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    return json({ error: errorMessage(error) }, { status: 500 });
   }
 }

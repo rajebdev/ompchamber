@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { Check, Eye, EyeOff, Info, Save, Sparkles, Trash2, User } from 'lucide-preact';
+import { Check, Eye, EyeOff, Info, RefreshCw, Save, Sparkles, Trash2, User } from 'lucide-preact';
 import type { SkillItem } from '@/shared/types';
 
 interface SkillDetailPaneProps {
@@ -8,6 +8,8 @@ interface SkillDetailPaneProps {
   onSave: (skillData: Partial<SkillItem>) => void;
   onDelete?: (id: string) => void;
   onOpenCatalog?: () => void;
+  onReload?: () => void;
+  isReloading?: boolean;
 }
 
 export function SkillDetailPane({
@@ -16,31 +18,41 @@ export function SkillDetailPane({
   onSave,
   onDelete,
   onOpenCatalog,
+  onReload,
+  isReloading = false,
 }: SkillDetailPaneProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState<'user' | 'project'>('user');
-  const [locationLabel, setLocationLabel] = useState('User / OpenCode');
+  const [locationLabel, setLocationLabel] = useState('User / omp agent');
   const [instructions, setInstructions] = useState('');
+  const [hidden, setHidden] = useState(false);
   const [savedToast, setSavedToast] = useState(false);
   const [showLineNumbers, setShowLineNumbers] = useState(true);
+
+  // A skill the chamber does not own (a Claude plugin, a registry package) is
+  // shown read-only: its file belongs to another tool, and a save here would
+  // rewrite it. `managed` is absent on a brand-new draft, which is editable.
+  const readOnly = !isCreatingNew && skill != null && skill.managed !== true;
 
   useEffect(() => {
     if (isCreatingNew || !skill) {
       setName('new-skill');
       setDescription('');
       setLocation('user');
-      setLocationLabel('User / OpenCode');
+      setLocationLabel('User / omp agent');
       setInstructions(`---
 description: ""
 ---
 `);
+      setHidden(false);
     } else {
       setName(skill.name);
       setDescription(skill.description);
       setLocation(skill.location);
-      setLocationLabel(skill.locationLabel || 'User / OpenCode');
+      setLocationLabel(skill.locationLabel || 'User / omp agent');
       setInstructions(skill.instructions);
+      setHidden(skill.hidden === true);
     }
   }, [skill, isCreatingNew]);
 
@@ -51,6 +63,7 @@ description: ""
       location,
       locationLabel,
       instructions,
+      hidden,
     });
     setSavedToast(true);
     setTimeout(() => setSavedToast(false), 2000);
@@ -68,21 +81,43 @@ description: ""
             {isCreatingNew ? 'New Skill' : name}
           </h2>
           <p className="text-xs text-ink/60 mt-0.5">
-            {isCreatingNew ? 'Configure a new skill' : 'Configure skill details and prompt rules'}
+            {isCreatingNew ? 'Configure a new skill' : `Configure skill details and prompt rules · ${locationLabel}`}
           </p>
         </div>
 
-        {onOpenCatalog && (
-          <button
-            type="button"
-            onClick={onOpenCatalog}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ink/20 hover:border-ink/40 text-xs font-medium text-ink hover:bg-ink/5 transition-colors cursor-pointer"
-          >
-            <Sparkles size={14} className="text-ink/70" />
-            <span>Browse Catalog</span>
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {onReload && (
+            <button
+              type="button"
+              onClick={onReload}
+              disabled={isReloading}
+              title="Re-discover skills in the running agents"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ink/20 hover:border-ink/40 text-xs font-medium text-ink hover:bg-ink/5 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={isReloading ? 'animate-spin text-ink/70' : 'text-ink/70'} />
+              <span>Reload</span>
+            </button>
+          )}
+          {onOpenCatalog && (
+            <button
+              type="button"
+              onClick={onOpenCatalog}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-ink/20 hover:border-ink/40 text-xs font-medium text-ink hover:bg-ink/5 transition-colors cursor-pointer"
+            >
+              <Sparkles size={14} className="text-ink/70" />
+              <span>Browse Catalog</span>
+            </button>
+          )}
+        </div>
       </div>
+
+      {readOnly && (
+        <div className="rounded-lg border border-ink/15 bg-ink/5 px-3 py-2 text-[11px] text-ink/70 leading-relaxed">
+          This skill is provided by <span className="font-mono text-ink/80">{skill?.source}</span> and is read-only here.
+          Edit <span className="font-mono text-ink/80">{skill?.filePath}</span> at its source, or install a copy into
+          {' '}<span className="font-mono text-ink/80">~/.omp/agent/skills</span> to own it.
+        </div>
+      )}
 
       {/* Basic Information Section */}
       <div className="space-y-4">
@@ -99,7 +134,8 @@ description: ""
             <div className="group relative">
               <Info size={13} className="text-ink/40 cursor-help" />
               <div className="absolute left-0 top-5 hidden group-hover:block w-64 p-2 rounded-lg bg-ink text-paper text-[11px] shadow-lg z-20 pointer-events-none leading-relaxed">
-                Unique identifier and runtime execution scope for this skill.
+                Unique identifier and runtime execution scope for this skill. A project skill is written under
+                {' '}<span className="font-mono">&lt;workspace&gt;/.omp/skills</span>.
               </div>
             </div>
           </div>
@@ -109,14 +145,36 @@ description: ""
               type="text"
               value={name}
               onChange={(e) => setName(e.currentTarget.value)}
+              disabled={readOnly}
               placeholder="skill-name"
-              className="flex-1 px-3 py-2 rounded-lg border border-ink/20 hover:border-ink/40 bg-paper focus:outline-none focus:border-ink text-xs font-mono text-ink transition-colors"
+              className="flex-1 px-3 py-2 rounded-lg border border-ink/20 hover:border-ink/40 bg-paper focus:outline-none focus:border-ink text-xs font-mono text-ink transition-colors disabled:opacity-60"
             />
             <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ink/20 bg-ink/5 text-xs text-ink/80 flex-shrink-0">
               <User size={14} className="text-ink/60" />
               <span>{locationLabel}</span>
             </div>
           </div>
+
+          {/* Scope selector: only a chamber-managed skill can move roots. */}
+          {!readOnly && (
+            <div className="flex items-center gap-2 mt-2">
+              {(['user', 'project'] as const).map((scope) => (
+                <button
+                  key={scope}
+                  type="button"
+                  onClick={() => {
+                    setLocation(scope);
+                    setLocationLabel(scope === 'user' ? 'User / omp agent' : 'Project / .omp/skills');
+                  }}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                    location === scope ? 'bg-ink text-paper' : 'border border-ink/20 text-ink/70 hover:bg-ink/5'
+                  }`}
+                >
+                  {scope === 'user' ? 'User scope' : 'Project scope'}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Description */}
@@ -128,7 +186,8 @@ description: ""
             <div className="group relative">
               <Info size={13} className="text-ink/40 cursor-help" />
               <div className="absolute left-0 top-5 hidden group-hover:block w-64 p-2 rounded-lg bg-ink text-paper text-[11px] shadow-lg z-20 pointer-events-none leading-relaxed">
-                Short description helping autonomous agents decide when to invoke this skill.
+                Short description helping autonomous agents decide when to invoke this skill. Required — omp does not
+                load a SKILL.md without one.
               </div>
             </div>
           </div>
@@ -137,10 +196,29 @@ description: ""
             rows={3}
             value={description}
             onChange={(e) => setDescription(e.currentTarget.value)}
+            disabled={readOnly}
             placeholder="Brief description of what this skill does..."
-            className="w-full px-3 py-2 rounded-lg border border-ink/20 hover:border-ink/40 bg-paper focus:outline-none focus:border-ink text-xs text-ink transition-colors resize-none leading-relaxed"
+            className="w-full px-3 py-2 rounded-lg border border-ink/20 hover:border-ink/40 bg-paper focus:outline-none focus:border-ink text-xs text-ink transition-colors resize-none leading-relaxed disabled:opacity-60"
           />
         </div>
+
+        {/* Model invocation toggle */}
+        <label className="flex items-start gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={hidden}
+            disabled={readOnly}
+            onChange={(e) => setHidden(e.currentTarget.checked)}
+            className="mt-0.5 accent-ink cursor-pointer"
+          />
+          <span className="text-xs text-ink/80 leading-relaxed">
+            Hide from the model&apos;s skill listing
+            <span className="block text-[11px] text-ink/50">
+              The skill stays runnable via <span className="font-mono">/skill:{name || 'name'}</span>; it is only kept out
+              of the automatic skill catalog the model sees.
+            </span>
+          </span>
+        </label>
       </div>
 
       {/* Instructions Section */}
@@ -173,8 +251,9 @@ description: ""
               rows={Math.max(lineCount, 8)}
               value={instructions}
               onChange={(e) => setInstructions(e.currentTarget.value)}
+              disabled={readOnly}
               spellcheck={false}
-              className="flex-1 p-3 bg-transparent text-ink font-mono text-xs leading-relaxed resize-none focus:outline-none overflow-y-auto"
+              className="flex-1 p-3 bg-transparent text-ink font-mono text-xs leading-relaxed resize-none focus:outline-none overflow-y-auto disabled:opacity-60"
               placeholder="Type markdown instructions..."
             />
           </div>
@@ -183,7 +262,7 @@ description: ""
 
       {/* Footer Actions */}
       <div className="pt-4 border-t border-ink/10 flex items-center justify-between">
-        {!isCreatingNew && skill && onDelete ? (
+        {!isCreatingNew && skill && onDelete && !readOnly ? (
           <button
             type="button"
             onClick={() => onDelete(skill.id)}
@@ -196,14 +275,16 @@ description: ""
           <div />
         )}
 
-        <button
-          type="button"
-          onClick={handleSave}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-ink text-paper text-xs font-medium hover:bg-ink/90 transition-colors shadow-xs cursor-pointer"
-        >
-          {savedToast ? <Check size={14} /> : <Save size={14} />}
-          <span>{savedToast ? 'Saved' : isCreatingNew ? 'Create Skill' : 'Save Changes'}</span>
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={handleSave}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-ink text-paper text-xs font-medium hover:bg-ink/90 transition-colors shadow-xs cursor-pointer"
+          >
+            {savedToast ? <Check size={14} /> : <Save size={14} />}
+            <span>{savedToast ? 'Saved' : isCreatingNew ? 'Create Skill' : 'Save Changes'}</span>
+          </button>
+        )}
       </div>
     </div>
   );

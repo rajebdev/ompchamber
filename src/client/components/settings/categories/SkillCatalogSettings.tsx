@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import { Check, Download, ExternalLink, GitBranch, Plus, RefreshCw, Search, Star } from 'lucide-preact';
-import type { CatalogSkillItem, SkillCatalogSource, SkillItem } from '@/shared/types';
+import type { CatalogSkillItem, SkillCatalogSource } from '@/shared/types';
 import { AddSourceModal } from '@/client/components/settings/categories/skill-catalog/AddSourceModal';
 import { invalidateComposerCache } from '@/shared/lib/chat/composer/client';
 import { useSkillCatalog } from '@/client/hooks/settings/skill-catalog';
@@ -31,49 +31,29 @@ export function SkillCatalogSettings() {
   const handleInstallToggle = (skill: CatalogSkillItem) => {
     const existing = userSkills.find((s) => s.name === skill.name);
 
-    if (existing) {
-      // Uninstall via API
-      fetch(`/api/settings/skills?id=${encodeURIComponent(existing.id)}`, { method: 'DELETE' })
-        .then(res => res.json())
-        .then(data => {
-          if (data?.error) return;
-          invalidateComposerCache('command');
-          fetch('/api/settings/skills')
-            .then(r => r.json())
-            .then(d => {
-              if (d?.skills) setUserSkills(d.skills);
-            });
-          showToast(`Uninstalled skill "${skill.name}"`);
-        })
-        .catch(console.error);
-    } else {
-      // Install via API
-      const newSkill: SkillItem = {
-        id: `skill-cat-${Date.now()}`,
-        name: skill.name,
-        description: skill.description,
-        location: 'user',
-        locationLabel: 'User / OpenCode',
-        instructions: skill.instructions || `---\ndescription: "${skill.description}"\n---\n\n## Instructions\nFollow standard prompt protocol for ${skill.name}.`,
-        project: 'ompchamber',
-        isInstalledFromCatalog: true,
-        catalogSource: skill.sourceId,
-      };
-
-      fetch('/api/settings/skills', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ skill: newSkill }),
+    // Both directions go through the same endpoint: an install runs the skills
+    // CLI (which is what puts the skill where omp reads it), an uninstall runs
+    // its remove counterpart. Deleting only the chamber's own record used to
+    // leave the skill installed and running.
+    fetch('/api/settings/skills', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'install_toggle', skill, install: !existing }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.error) {
+          showToast(`Failed: ${data.error}`);
+          return;
+        }
+        if (Array.isArray(data?.skills)) setUserSkills(data.skills);
+        invalidateComposerCache('command');
+        showToast(existing ? `Uninstalled skill "${skill.name}"` : `Installed skill "${skill.name}"`);
       })
-        .then(res => res.json())
-        .then(data => {
-          if (data?.skills) setUserSkills(data.skills);
-          else setUserSkills(prev => [...prev, newSkill]);
-          showToast(`Installed skill "${skill.name}"`);
-          invalidateComposerCache('command');
-        })
-        .catch(console.error);
-    }
+      .catch((error) => {
+        console.error(error);
+        showToast(`Failed to ${existing ? 'uninstall' : 'install'} "${skill.name}"`);
+      });
   };
 
   const handleAddSource = (newSource: SkillCatalogSource) => {

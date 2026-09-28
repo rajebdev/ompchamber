@@ -5,171 +5,227 @@ import { getDb } from '@/server/db.server';
 import { DEFAULT_CATALOG_SKILLS, DEFAULT_CATALOG_SOURCES, DEFAULT_SKILLS } from '@/client/data/settings/skill';
 import { isMockMode } from '@/server/mock.server';
 import type { SkillItem } from '@/shared/types';
-import { createSettingsListStore, readSettingsJson, writeSettingsJson } from '@/server/lib/db/settings-store';
-import { discoverNativeSkills, setSkillModelInvocation, type DiscoveredSkill } from '@/server/lib/omp/config/skills';
-import { installCatalogSkill, searchSkillCatalog, toCatalogSkills } from '@/server/lib/omp/config/skills-catalog';
+import { readSettingsJson, writeSettingsJson } from '@/server/lib/db/settings-store';
+import {
+  deleteSkillDir,
+  discoverSkills,
+  readSkillFile,
+  setSkillModelInvocation,
+  writeSkillFile,
+  type DiscoveredSkill,
+} from '@/server/lib/omp/config/skills';
+import {
+  installCatalogSkill,
+  searchSkillCatalog,
+  toCatalogSkills,
+  uninstallCatalogSkill,
+} from '@/server/lib/omp/config/skills-catalog';
+import { resolveRoot } from '@/server/lib/fs/root';
+import { reloadLiveSessions } from '@/server/lib/omp/session/reload.server';
 
-const SKILLS_KEY = 'omp_skills';
 const SOURCES_KEY = 'omp_catalog_sources';
 
-const skillsStore = createSettingsListStore<SkillItem>({
-  key: SKILLS_KEY,
-  mockDefaults: DEFAULT_SKILLS,
-  idOf: (skill) => skill.id,
-  singular: 'skill',
-  plural: 'skills',
-});
+/** Human label for an omp discovery source. */
+const SOURCE_LABELS: Record<string, string> = {
+  'native:user': 'User / omp agent',
+  'native:project': 'Project / .omp/skills',
+  'agents:user': 'User / .agents',
+  'agents:project': 'Project / .agents',
+  'claude:user': 'User / .claude',
+  'claude:project': 'Project / .claude',
+  'codex:user': 'User / .codex',
+  'codex:project': 'Project / .codex',
+  'github:project': 'Project / .github/skills',
+  'opencode:user': 'User / opencode',
+  'opencode:project': 'Project / .opencode',
+};
+
+/** The workspace root a request is scoped to, or the app root when unscoped.
+ *  `resolveRoot` is what keeps a client-supplied path from reaching outside the
+ *  app root and the registered workspaces. */
+async function scopeRoot(rawRoot: string | null): Promise<string> {
+  return resolveRoot(rawRoot, process.cwd());
+}
 
 /**
- * Convert a natively discovered SKILL.md into the chamber SkillItem shape.
- * location/locationLabel reflect the real disk root the skill came from.
+ * Convert a discovered skill into the chamber's SkillItem. A chamber-managed
+ * skill carries its SKILL.md body so the pane can edit it; a read-only one
+ * carries its file path, because the pane must not offer a save that would
+ * rewrite another tool's file.
  */
-function nativeToSkillItem(skill: DiscoveredSkill): SkillItem {
+async function toSkillItem(skill: DiscoveredSkill): Promise<SkillItem> {
+  const locationLabel = SOURCE_LABELS[skill.source] ?? skill.source;
+  let instructions = skill.filePath;
+  if (skill.managed) {
+    const file = await readSkillFile(skill.filePath);
+    if (file) instructions = file.body;
+  }
   return {
     id: skill.id,
     name: skill.name,
     description: skill.description,
     location: skill.sourceRoot,
-    locationLabel: skill.sourceRoot === 'user' ? 'User / OMP agent' : 'Project / .omp/skills',
-    instructions: skill.filePath,
+    locationLabel,
+    instructions,
     project: 'omp',
+    filePath: skill.filePath,
+    source: skill.source,
+    managed: skill.managed,
+    hidden: skill.hidden,
   };
 }
 
-/** Merge native omp skills (disk scan) with app-local custom skills. */
-async function mergeSkills(custom: SkillItem[]): Promise<SkillItem[]> {
-  const native = (await discoverNativeSkills()).map(nativeToSkillItem);
-  const nativeNames = new Set(native.map((s) => s.name.toLowerCase()));
-  return [...native, ...custom.filter((s) => !nativeNames.has(s.name.toLowerCase()))];
+/** Every skill an omp session in `projectRoot` loads, newest state included. */
+async function listSkills(projectRoot: string): Promise<SkillItem[]> {
+  const discovered = await discoverSkills(projectRoot);
+  return Promise.all(discovered.map((skill) => toSkillItem(skill)));
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
+  const mock = isMockMode();
   try {
+    if (mock) {
+      const db = await getDb();
+      const storedSources = await readSettingsJson<typeof DEFAULT_CATALOG_SOURCES>(db, SOURCES_KEY, DEFAULT_CATALOG_SOURCES);
+      return json({
+        skills: DEFAULT_SKILLS,
+        catalogSources: Array.isArray(storedSources) && storedSources.length > 0 ? storedSources : DEFAULT_CATALOG_SOURCES,
+        catalogSkills: DEFAULT_CATALOG_SKILLS,
+        root: null,
+        isMock: true,
+      });
+    }
+
     const db = await getDb();
     const url = new URL(request.url);
-    const includeNative = url.searchParams.get('native') === '1' || !isMockMode();
-    const mock = isMockMode();
+    const root = await scopeRoot(url.searchParams.get('root'));
 
-    const skills = await skillsStore.read(db);
     const storedSources = await readSettingsJson<typeof DEFAULT_CATALOG_SOURCES>(db, SOURCES_KEY, DEFAULT_CATALOG_SOURCES);
     const catalogSources = Array.isArray(storedSources) && storedSources.length > 0 ? storedSources : DEFAULT_CATALOG_SOURCES;
 
-    const mergedSkills = includeNative && !mock ? await mergeSkills(skills) : skills;
+    const [skills, popular, curated] = await Promise.all([
+      listSkills(root),
+      searchSkillCatalog('popular', 18),
+      searchSkillCatalog('code review', 8),
+    ]);
 
-    let catalogSkills = DEFAULT_CATALOG_SKILLS;
-    if (!mock) {
-      const [popular, curated] = await Promise.all([
-        searchSkillCatalog('popular', 18),
-        searchSkillCatalog('code review', 8),
-      ]);
-      const seen = new Set<string>();
-      catalogSkills = toCatalogSkills([...popular, ...curated], catalogSources[0]?.id ?? 'skills-sh')
-        .filter((item) => (seen.has(item.repoTag) ? false : (seen.add(item.repoTag), true)));
-    }
+    const seen = new Set<string>();
+    const catalogSkills = toCatalogSkills([...popular, ...curated], catalogSources[0]?.id ?? 'skills-sh')
+      .filter((item) => (seen.has(item.repoTag) ? false : (seen.add(item.repoTag), true)));
 
+    return json({ skills, catalogSources, catalogSkills, root, isMock: false });
+  } catch (error) {
     return json({
-      skills: mergedSkills,
-      catalogSources,
-      catalogSkills,
-      isMock: mock,
-    });
-  } catch (error: any) {
-    const mock = isMockMode();
-    return json({
-      error: error.message,
-      skills: mock ? DEFAULT_SKILLS : [],
+      error: errorMessage(error),
+      skills: [],
       catalogSources: DEFAULT_CATALOG_SOURCES,
       catalogSkills: DEFAULT_CATALOG_SKILLS,
+      root: null,
       isMock: mock,
     }, { status: 500 });
   }
 }
 
 export async function action({ request, params }: ActionFunctionArgs) {
+  const mock = isMockMode();
   try {
     const db = await getDb();
+    const url = new URL(request.url);
 
     if (request.method === 'DELETE') {
-      const url = new URL(request.url);
+      const root = await scopeRoot(url.searchParams.get('root'));
       const id = url.searchParams.get('id');
       if (!id) return json({ error: 'id is required' }, { status: 400 });
-      if (id.startsWith('omp-')) {
-        return json({ error: 'Native omp skills are managed on disk' }, { status: 403 });
-      }
+      if (mock) return json({ success: true, skills: DEFAULT_SKILLS });
 
-      const list = await skillsStore.remove(db, id);
-      return json({ success: true, skills: list });
+      const removed = await deleteSkillDir(id, root);
+      if (!removed) return json({ error: 'Skill not found' }, { status: 404 });
+      await reloadLiveSessions();
+      return json({ success: true, skills: await listSkills(root) });
     }
 
-    if (request.method === 'POST' || request.method === 'PUT') {
-      const body = await request.json();
+    if (request.method !== 'POST' && request.method !== 'PUT') {
+      return methodNotAllowed({ request, params });
+    }
 
-      // Toggle model invocation on a native skill file (frontmatter edit).
-      if (body.type === 'toggle_model_invocation' && typeof body.skillId === 'string' && body.skillId.startsWith('omp-')) {
-        const [root, sourceRoot, ...nameParts] = body.skillId.split('-');
-        void root;
-        const skill = (await discoverNativeSkills()).find(
-          (s) => s.name === nameParts.join('-') && s.sourceRoot === sourceRoot,
-        );
-        if (!skill) return json({ error: 'Skill not found' }, { status: 404 });
-        const changed = await setSkillModelInvocation(skill.filePath, body.disable === true);
-        return json({ success: changed, disable: body.disable === true });
-      }
+    const body = await request.json();
+    // The root may ride on the query (a plain GET-shaped read) or in the body
+    // (a POST that carries the draft), so a write is scoped either way.
+    const root = await scopeRoot(url.searchParams.get('root') ?? (typeof body.root === 'string' ? body.root : null));
 
-      if (body.type === 'add_source') {
-        const sources = await readSettingsJson<typeof DEFAULT_CATALOG_SOURCES>(db, SOURCES_KEY, DEFAULT_CATALOG_SOURCES);
-        const updated = [...sources, body.source];
-        await writeSettingsJson(db, SOURCES_KEY, updated);
-        return json({ success: true, catalogSources: updated });
-      }
+    // Toggle model invocation: the skill stays runnable, it just drops out of
+    // the model's skill listing.
+    if (body.type === 'toggle_model_invocation') {
+      if (mock) return json({ success: false });
+      const target = (await discoverSkills(root)).find((skill) => skill.id === body.skillId);
+      if (!target) return json({ error: 'Skill not found' }, { status: 404 });
+      const changed = await setSkillModelInvocation(target.filePath, body.disable === true);
+      if (changed) await reloadLiveSessions();
+      return json({ success: changed, skills: await listSkills(root) });
+    }
 
-      if (body.type === 'install_toggle') {
-        const { skill, install } = body;
-        let skills = await skillsStore.read(db);
+    if (body.type === 'reload') {
+      if (mock) return json({ success: true, reloaded: [] });
+      const reloaded = await reloadLiveSessions();
+      return json({ success: true, reloaded });
+    }
 
-        if (install) {
-          // Catalog skill with a package tag installs via the real skills.sh CLI.
-          if (typeof skill.repoTag === 'string' && /^[\w.\-]+\/[\w.\-@:]+$/.test(skill.repoTag)) {
-            await installCatalogSkill(skill.repoTag);
-          }
-          if (!skills.some(s => s.name === skill.name)) {
-            skills.push({
-              id: `skill-${Date.now()}`,
-              name: skill.name,
-              description: skill.description,
-              location: 'user',
-              locationLabel: 'User / OMP agent',
-              instructions: skill.instructions || `Autonomous guidelines for ${skill.name}. Adhere strictly to skill instructions.`,
-              project: 'omp',
-              isInstalledFromCatalog: true,
-              catalogSource: skill.catalogSource ?? skill.sourceId,
-            });
-          }
-        } else {
-          skills = skills.filter(s => s.name !== skill.name);
+    if (body.type === 'add_source') {
+      const sources = await readSettingsJson<typeof DEFAULT_CATALOG_SOURCES>(db, SOURCES_KEY, DEFAULT_CATALOG_SOURCES);
+      const updated = [...sources, body.source];
+      await writeSettingsJson(db, SOURCES_KEY, updated);
+      return json({ success: true, catalogSources: updated });
+    }
+
+    // Catalog install/uninstall goes through the real skills CLI, which is what
+    // actually puts the skill where omp reads it.
+    if (body.type === 'install_toggle') {
+      const { skill, install } = body;
+      if (mock) return json({ success: true, skills: DEFAULT_SKILLS });
+
+      if (install) {
+        if (typeof skill.repoTag === 'string' && /^[\w.\-]+\/[\w.\-@:]+$/.test(skill.repoTag)) {
+          await installCatalogSkill(skill.repoTag, typeof skill.name === 'string' ? skill.name : null);
         }
-
-        await skillsStore.write(db, skills);
-        return json({ success: true, skills: isMockMode() ? skills : await mergeSkills(skills) });
+      } else if (typeof skill.name === 'string' && skill.name.trim()) {
+        await uninstallCatalogSkill(skill.name.trim());
       }
-
-      // Catalog skill POST installs via the skills.sh CLI: the component
-      // echoes the package back in instructions (and may include repoTag).
-      if (body.skill) {
-        const pkg = typeof body.skill.repoTag === 'string' && /^[\w.\-]+\/[\w.\-@:]+$/.test(body.skill.repoTag)
-          ? body.skill.repoTag
-          : (typeof body.skill.instructions === 'string' && /^[\w.\-]+\/[\w.\-@:]+$/.test(body.skill.instructions) ? body.skill.instructions : null);
-        if (!isMockMode() && pkg) await installCatalogSkill(pkg);
-      }
-
-      const updatedSkills = await skillsStore.upsert(db, body);
-      await skillsStore.write(db, updatedSkills);
-
-      return json({ success: true, skills: isMockMode() ? updatedSkills : mergeSkills(updatedSkills) });
+      await reloadLiveSessions();
+      return json({ success: true, skills: await listSkills(root) });
     }
 
-    return methodNotAllowed({ request, params });
-  } catch (error: any) {
-    return json({ error: error.message }, { status: 500 });
+    // Create or update a chamber-managed SKILL.md.
+    if (body.skill) {
+      if (mock) return json({ success: true, skills: DEFAULT_SKILLS });
+
+      const draft = body.skill as Partial<SkillItem> & { scope?: 'user' | 'project' };
+      const scope = draft.location === 'project' ? 'project' : 'user';
+      const existing = typeof draft.id === 'string'
+        ? (await discoverSkills(root)).find((skill) => skill.id === draft.id)
+        : undefined;
+      if (existing && !existing.managed) {
+        return json({ error: `"${existing.name}" is managed by ${existing.source} and cannot be edited here` }, { status: 403 });
+      }
+
+      await writeSkillFile({
+        scope,
+        projectDir: root,
+        previousDir: existing?.baseDir ?? null,
+        name: draft.name ?? '',
+        description: draft.description ?? '',
+        hidden: draft.hidden === true,
+        body: typeof draft.instructions === 'string' ? draft.instructions : '',
+      });
+      await reloadLiveSessions();
+      return json({ success: true, skills: await listSkills(root) });
+    }
+
+    return json({ error: 'Unsupported skill action' }, { status: 400 });
+  } catch (error) {
+    return json({ error: errorMessage(error) }, { status: 500 });
   }
 }

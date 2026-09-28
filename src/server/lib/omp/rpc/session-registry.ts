@@ -43,6 +43,12 @@ export function getRpcSession(sessionId: string): AgentSessionWrapper | undefine
   return getRegistry().get(sessionId);
 }
 
+/** Every live session wrapper, for operations that must reach all of them
+ *  (a plugin/skill reload) rather than one addressed id. */
+export function listRpcSessions(): AgentSessionWrapper[] {
+  return [...getRegistry().values()].filter((session) => session.isAlive());
+}
+
 /**
  * Sessions whose omp process is parked on a dialog only the user can release —
  * an `ask` question or an approval gate. Deliberately independent of

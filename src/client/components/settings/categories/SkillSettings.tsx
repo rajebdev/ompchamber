@@ -6,6 +6,7 @@ import { LoadingState } from '@/client/components/settings/LoadingState';
 import { useCrudList } from '@/client/hooks/settings/crud-list';
 import { useSettingsMasterDetail } from '@/client/hooks/settings/master-detail';
 import { SettingsMasterDetail } from '@/client/components/settings/master-detail';
+import { GLOBAL_SCOPE_ID, useWorkspaceRoots } from '@/client/hooks/settings/workspace-roots';
 
 interface SkillSettingsProps {
   settings?: SettingsState;
@@ -15,10 +16,16 @@ interface SkillSettingsProps {
 
 export function SkillSettings({ onNavigateToCatalog }: SkillSettingsProps) {
   const masterDetail = useSettingsMasterDetail();
-  const [selectedProjectId, setSelectedProjectId] = useState('ompchamber');
+  const roots = useWorkspaceRoots();
+  const [selectedRootId, setSelectedRootId] = useState<string>(GLOBAL_SCOPE_ID);
+  const [isReloading, setIsReloading] = useState(false);
+  const root = roots.rootFor(selectedRootId);
+  const query = root ? `?root=${encodeURIComponent(root)}` : '';
+
   const { items: skills, selectedId, selected: selectedSkill, isCreatingNew, isLoading, select, startCreate, save, remove } =
     useCrudList<SkillItem, Partial<SkillItem>>({
       endpoint: '/api/settings/skills',
+      query,
       listKey: 'skills',
       bodyKey: 'skill',
       messages: {
@@ -28,14 +35,18 @@ export function SkillSettings({ onNavigateToCatalog }: SkillSettingsProps) {
       },
       cacheKey: 'command',
       fallbackToFirst: false,
+      // The write carries the workspace root, because the draft's own location
+      // decides which `.omp/skills` root it lands in.
+      buildBody: (target) => ({ skill: target, root }),
       buildNew: (skillData) => ({
         id: `skill-${Date.now()}`,
         name: skillData.name || 'new-skill',
         description: skillData.description || '',
         location: skillData.location || 'user',
-        locationLabel: skillData.locationLabel || 'User / OpenCode',
+        locationLabel: skillData.locationLabel || 'User / omp agent',
         instructions: skillData.instructions || '',
-        project: selectedProjectId,
+        hidden: skillData.hidden === true,
+        project: 'omp',
       }),
       buildUpdate: (skillData, selected, selectedId) => ({
         ...(selected || { id: selectedId || `skill-${Date.now()}` }),
@@ -44,8 +55,19 @@ export function SkillSettings({ onNavigateToCatalog }: SkillSettingsProps) {
       isDeleteError: (data) => Boolean((data as { error?: string } | null)?.error),
     });
 
+  const reload = () => {
+    setIsReloading(true);
+    fetch('/api/settings/skills', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'reload' }),
+    })
+      .catch((error) => console.error('Failed to reload plugins:', error))
+      .finally(() => setIsReloading(false));
+  };
+
   if (isLoading) {
-    return <LoadingState>Loading skills from database...</LoadingState>;
+    return <LoadingState>Loading skills…</LoadingState>;
   }
 
   return (
@@ -67,8 +89,9 @@ export function SkillSettings({ onNavigateToCatalog }: SkillSettingsProps) {
               startCreate();
               masterDetail.openDetail();
             }}
-            selectedProject={selectedProjectId}
-            onSelectProject={setSelectedProjectId}
+            selectedProject={selectedRootId}
+            onSelectProject={setSelectedRootId}
+            projectOptions={roots.options}
           />
         }
         detail={
@@ -78,6 +101,8 @@ export function SkillSettings({ onNavigateToCatalog }: SkillSettingsProps) {
             onSave={save}
             onDelete={remove}
             onOpenCatalog={onNavigateToCatalog}
+            onReload={reload}
+            isReloading={isReloading}
           />
         }
       />

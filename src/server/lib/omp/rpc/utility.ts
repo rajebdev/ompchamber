@@ -72,37 +72,57 @@ interface UtilityRpcState {
 
 declare global {
   // eslint-disable-next-line no-var
-  var __ompUtilityRpcState: UtilityRpcState | undefined;
+  var __ompUtilityRpcStates: Map<string, UtilityRpcState> | undefined;
 }
 
-function getState(): UtilityRpcState {
-  if (!globalThis.__ompUtilityRpcState) {
-    globalThis.__ompUtilityRpcState = { proc: null, idleTimer: null, queue: Promise.resolve() };
-    // Dispose the shared utility omp process on server shutdown so it does not
-    // outlive the server. Idempotent and safe to call any time.
+/**
+ * Utility processes are pooled PER WORKING DIRECTORY, because a cwd is not just
+ * a spawn detail: omp resolves project-scope config from it. `.omp/commands`,
+ * `.omp/skills`, `.claude`, `.agents` and `AGENTS.md` in a workspace are only
+ * discovered by a child started in that workspace (measured: a child in $HOME
+ * reported 7 skill entries and one `file` command; the same child in a repo
+ * reported 9 and the repo's own command). One process per cwd keeps the global
+ * registry queries (`get_available_models`, `get_login_providers`) on the
+ * cheap home-scoped child while letting a workspace-scoped read see its own
+ * project config. Each pool entry is idle-killed on its own timer.
+ */
+function getState(cwd: string): UtilityRpcState {
+  if (!globalThis.__ompUtilityRpcStates) {
+    globalThis.__ompUtilityRpcStates = new Map();
+    // Dispose every pooled process on server shutdown so none outlives the
+    // server. Idempotent and safe to call any time.
     const cleanup = () => disposeUtilityRpc();
     process.once('exit', cleanup);
     process.once('SIGINT', cleanup);
     process.once('SIGTERM', cleanup);
   }
-  return globalThis.__ompUtilityRpcState;
+  const states = globalThis.__ompUtilityRpcStates;
+  let state = states.get(cwd);
+  if (!state) {
+    state = { proc: null, idleTimer: null, queue: Promise.resolve() };
+    states.set(cwd, state);
+  }
+  return state;
 }
 
 /**
- * Tear down the shared utility omp process immediately (skip the idle timer).
- * Safe to call any time — it just clears any pending idle kill and disposes
- * the live child.
+ * Tear down the shared utility omp processes immediately (skip the idle
+ * timers). Safe to call any time — it just clears any pending idle kill and
+ * disposes the live children.
  */
 export function disposeUtilityRpc(): void {
-  const state = globalThis.__ompUtilityRpcState;
-  if (!state) return;
-  if (state.idleTimer) {
-    clearTimeout(state.idleTimer);
-    state.idleTimer = null;
+  const states = globalThis.__ompUtilityRpcStates;
+  if (!states) return;
+  for (const state of states.values()) {
+    if (state.idleTimer) {
+      clearTimeout(state.idleTimer);
+      state.idleTimer = null;
+    }
+    const proc = state.proc;
+    state.proc = null;
+    if (proc) void proc.dispose();
   }
-  const proc = state.proc;
-  state.proc = null;
-  if (proc) void proc.dispose();
+  states.clear();
 }
 
 function scheduleIdleKill(state: UtilityRpcState): void {
@@ -116,9 +136,9 @@ function scheduleIdleKill(state: UtilityRpcState): void {
   state.idleTimer.unref?.();
 }
 
-async function startProcess(state: UtilityRpcState): Promise<RpcProcess> {
+async function startProcess(state: UtilityRpcState, cwd: string): Promise<RpcProcess> {
   const proc = new RpcProcess({
-    cwd: homedir(),
+    cwd,
     extraArgs: UTILITY_EXTRA_ARGS,
     onExit: () => {
       if (state.proc === proc) state.proc = null;
@@ -135,12 +155,14 @@ async function startProcess(state: UtilityRpcState): Promise<RpcProcess> {
 }
 
 /** Run one RPC command on the shared utility process (lazy start, serialized,
- * idle-killed). Rejections from earlier commands never poison the queue. */
+ * idle-killed). Rejections from earlier commands never poison the queue.
+ * `cwd` scopes discovery to a workspace; omitted, the child runs in $HOME. */
 export function runUtilityCommand<T = unknown>(
   command: { type: string; [key: string]: unknown },
   timeoutMs: number = DEFAULT_COMMAND_TIMEOUT_MS,
+  cwd: string = homedir(),
 ): Promise<T> {
-  const state = getState();
+  const state = getState(cwd);
   const run = state.queue.then(async () => {
     if (state.idleTimer) {
       clearTimeout(state.idleTimer);
@@ -148,7 +170,7 @@ export function runUtilityCommand<T = unknown>(
     }
     try {
       if (!state.proc || !state.proc.isAlive) {
-        state.proc = await startProcess(state);
+        state.proc = await startProcess(state, cwd);
       }
       return await state.proc.sendCommand<T>(command, timeoutMs);
     } finally {

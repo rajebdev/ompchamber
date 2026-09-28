@@ -77,11 +77,43 @@ async function runBunxSkills(args: string[]): Promise<string> {
   return stdout;
 }
 
-/** Install a catalog skill into the omp agent skill root. */
-export async function installCatalogSkill(pkg: string): Promise<{ output: string }> {
+/**
+ * Install a catalog skill into the omp agent skill root.
+ *
+ * `--skill` is what keeps the install scoped to the entry the user clicked:
+ * the catalog lists individual skills, and a repository can hold twenty of
+ * them, so an unscoped `skills add <repo>` installs every skill in the repo
+ * (measured: 20 directories landed for one "Install" on a single-skill row).
+ * `--agent universal` writes to `~/.agents/skills`, which is the root omp's
+ * `agents` provider reads.
+ */
+export async function installCatalogSkill(pkg: string, skillName?: string | null): Promise<{ output: string }> {
   if (!/^[\w.\-]+\/[\w.\-@:]+$/.test(pkg)) throw new Error('Invalid skill package');
   if (isMockMode()) throw new Error('Skill install is unavailable in mock mode');
-  const output = await runBunxSkills(['add', pkg, '--agent', 'universal', '-g', '-y']);
+  const name = skillName?.trim();
+  if (name && !/^[\w.\-]+$/.test(name)) throw new Error('Invalid skill name');
+  const output = await runBunxSkills([
+    'add',
+    pkg,
+    '--agent',
+    'universal',
+    ...(name ? ['--skill', name] : []),
+    '-g',
+    '-y',
+  ]);
+  return { output: output.slice(-4000) };
+}
+
+/**
+ * Uninstall a catalog skill by name. `skills remove` is the counterpart of the
+ * `skills add` above and clears the symlink/copy the install created, which is
+ * what a catalog "Uninstall" has to undo — deleting the entry from the chamber's
+ * own store would leave the skill running in omp.
+ */
+export async function uninstallCatalogSkill(name: string): Promise<{ output: string }> {
+  if (!/^[\w.\-@/]+$/.test(name)) throw new Error('Invalid skill name');
+  if (isMockMode()) throw new Error('Skill uninstall is unavailable in mock mode');
+  const output = await runBunxSkills(['remove', name, '-g', '-y']);
   return { output: output.slice(-4000) };
 }
 

@@ -3,9 +3,9 @@ import { CHAMBER_COMMANDS } from '@/shared/lib/chat/composer/trigger';
 
 const CACHE_TTL_MS = 300_000;
 
-/** Cache keys: `'agent'`, `'command'`, and `'file::<root>'` per workspace root. */
+/** Cache keys: `'agent'`, `'command::<root>'`, and `'file::<root>'` per workspace root. */
 const AGENTS_KEY = 'agent';
-const COMMANDS_KEY = 'command';
+const commandKey = (root: string): string => `command::${root}`;
 const fileKey = (root: string): string => `file::${root}`;
 
 interface CacheEntry {
@@ -161,34 +161,37 @@ async function loadFileItems(root: string | null): Promise<ComposerPickItem[]> {
 }
 
 /** Load command + skill items, deduping concurrent callers and caching 5 minutes. */
-async function loadCommandItems(): Promise<ComposerPickItem[]> {
-  const cached = cache.get(COMMANDS_KEY);
+async function loadCommandItems(root: string | null): Promise<ComposerPickItem[]> {
+  const key = commandKey(root ?? '');
+  const cached = cache.get(key);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
 
-  const existing = inFlight.get(COMMANDS_KEY);
+  const existing = inFlight.get(key);
   if (existing) return existing;
 
   const pending = (async () => {
     try {
+      const query = root ? `?root=${encodeURIComponent(root)}` : '';
       const [commands, skills] = await Promise.all([
-        fetchJson<{ commands: CommandItem[] }>('/api/settings/commands'),
-        fetchJson<{ skills: SkillItem[] }>('/api/settings/skills'),
+        fetchJson<{ commands: CommandItem[] }>(`/api/settings/commands${query}`),
+        fetchJson<{ skills: SkillItem[] }>(`/api/settings/skills${query}`),
       ]);
       const items = mergeCommandAndSkillItems(commands.commands, skills.skills);
-      cache.set(COMMANDS_KEY, { data: items, expiresAt: Date.now() + CACHE_TTL_MS });
+      cache.set(key, { data: items, expiresAt: Date.now() + CACHE_TTL_MS });
       return items;
     } finally {
-      inFlight.delete(COMMANDS_KEY);
+      inFlight.delete(key);
     }
   })();
 
-  inFlight.set(COMMANDS_KEY, pending);
+  inFlight.set(key, pending);
   return pending;
 }
 
 /**
  * Load pick items for a trigger kind. `mention` merges agents (first) and
- * workspace files; `command` merges commands and skills.
+ * workspace files; `command` merges commands and skills, both scoped to `root`
+ * so a workspace's own `.omp/commands` and `.omp/skills` are offered.
  */
 export function loadComposerItems(
   kind: ComposerPickKind,
@@ -199,7 +202,7 @@ export function loadComposerItems(
       ([agents, files]) => [...agents, ...files],
     );
   }
-  return loadCommandItems();
+  return loadCommandItems(root ?? null);
 }
 
 /** Load agent names via the shared agent cache. Never throws. */
@@ -212,13 +215,19 @@ export async function loadAgentNames(): Promise<string[]> {
   }
 }
 
-/** Clear the cache (and in-flight dedupe) for one key or all keys. */
+/** Clear the cache (and in-flight dedupe) for one key or all keys. A key with
+ *  per-root variants (`command::<root>`) is matched by its prefix, so a caller
+ *  that names the logical kind clears every workspace's copy. */
 export function invalidateComposerCache(key?: string): void {
-  if (key) {
-    cache.delete(key);
-    inFlight.delete(key);
+  if (!key) {
+    cache.clear();
+    inFlight.clear();
     return;
   }
-  cache.clear();
-  inFlight.clear();
+  for (const cacheKey of [...cache.keys()]) {
+    if (cacheKey === key || cacheKey.startsWith(`${key}::`)) cache.delete(cacheKey);
+  }
+  for (const inFlightKey of [...inFlight.keys()]) {
+    if (inFlightKey === key || inFlightKey.startsWith(`${key}::`)) inFlight.delete(inFlightKey);
+  }
 }

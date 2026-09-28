@@ -1,7 +1,7 @@
 import { useState } from 'preact/hooks';
 import { ChevronDown, ChevronRight, Plus } from 'lucide-preact';
 import type { SkillItem } from '@/shared/types';
-import { ProjectSelectorDropdown } from '@/client/components/settings/ProjectSelectorDropdown';
+import { ProjectSelectorDropdown, type ProjectOption } from '@/client/components/settings/ProjectSelectorDropdown';
 
 interface SkillSidebarListProps {
   skills: SkillItem[];
@@ -11,6 +11,8 @@ interface SkillSidebarListProps {
   onAddNewSkill: () => void;
   selectedProject: string;
   onSelectProject: (project: string) => void;
+  /** Real workspace folders; defaults to the shared placeholder list. */
+  projectOptions?: ProjectOption[];
 }
 
 export function SkillSidebarList({
@@ -21,6 +23,7 @@ export function SkillSidebarList({
   onAddNewSkill,
   selectedProject,
   onSelectProject,
+  projectOptions,
 }: SkillSidebarListProps) {
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
@@ -55,8 +58,9 @@ export function SkillSidebarList({
         variant="compact"
         selectedProject={selectedProject}
         onChangeProject={onSelectProject}
+        {...(projectOptions ? { options: projectOptions } : {})}
         getTriggerLabel={(options, value) =>
-          options.find((option) => option.id === value)?.label || value
+          options.find((option) => option.id === value || option.value === value)?.label || value
         }
       />
 
