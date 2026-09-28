@@ -29,6 +29,7 @@
 
 import { resolveRoot } from '@/server/lib/fs/root';
 import { scopeToRepo } from '@/server/lib/fs/repo-scope';
+import { describeSpawnFailure } from '@/server/lib/lifecycle/fd-pressure';
 import { createTerminalHistory, type TerminalHistory } from '@/server/lib/terminal/history';
 import { resolveShellExecutable, shellCandidates, shellLaunch, terminalEnv } from '@/server/lib/terminal/shell';
 import {
@@ -160,8 +161,10 @@ export async function createSession(request: AttachRequest): Promise<TerminalSes
     });
   } catch (error) {
     closeTerminalStream(session);
-    const message = error instanceof Error ? error.message : String(error);
-    throw new TerminalRuntimeError('spawn', `Failed to start ${executable}: ${message}`);
+    // `describeSpawnFailure` keeps Bun's own message and adds the real cause
+    // when the process is out of descriptors — the raw error argues about
+    // `/bin/sh`, which is the shim, not the thing that ran out.
+    throw new TerminalRuntimeError('spawn', `Failed to start ${executable}: ${describeSpawnFailure(error)}`);
   }
   session.proc = proc;
 

@@ -1,5 +1,6 @@
 import { json, NO_STORE_HEADERS } from '@/server/lib/remix-compat';
 import pkg from '@/../package.json';
+import { countOpenFileDescriptors } from '@/server/lib/lifecycle/fd-pressure';
 import { resolveLaunchMode } from '@/server/lib/lifecycle/launch-mode';
 import { isMockMode } from '@/server/mock.server';
 
@@ -9,6 +10,12 @@ const STARTED_ISO = new Date(STARTED_AT).toISOString();
 /**
  * GET /api/health — lightweight readiness probe for the `ompchamber status` CLI.
  * Dependency-light by design: never touches the database and never throws.
+ *
+ * It does sweep the descriptor table (`countOpenFileDescriptors`, ~1 ms): a dev
+ * server walks toward the 10,240-descriptor point where every `Bun.spawn` in
+ * the process fails, and the sweep is the only way to say so *before* the
+ * terminal panel, the omp child and git all break at once. Null where the host
+ * cannot answer.
  */
 export async function loader() {
   return json(
@@ -30,6 +37,7 @@ export async function loader() {
       launchMode: resolveLaunchMode(),
       port: Number(Bun.env.PORT) || 3000,
       host: Bun.env.HOST || 'localhost',
+      fds: countOpenFileDescriptors(),
     },
     { headers: NO_STORE_HEADERS },
   );

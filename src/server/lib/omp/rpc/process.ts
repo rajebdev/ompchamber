@@ -15,6 +15,7 @@
  */
 
 import type { Subprocess } from 'bun';
+import { describeSpawnFailure } from '@/server/lib/lifecycle/fd-pressure';
 import { resolveOmpBin } from '@/server/lib/omp/core/cli';
 import { RpcFrameDecoder, encodeRpcFrames, type RpcFrameRecord, type RpcProtocolVersion } from '@/shared/lib/omp/rpc/frame';
 import { killProcessTree } from '@/server/lib/omp/rpc/kill-tree';
@@ -57,20 +58,27 @@ export class RpcProcess {
     const childEnv = sanitizeProjectCommandEnvironment({ ...Bun.env, ...options.env });
     if (options.env?.OMP_PROFILE === undefined) delete childEnv.OMP_PROFILE;
     if (options.env?.PI_PROFILE === undefined) delete childEnv.PI_PROFILE;
-    this.child = Bun.spawn({
-      cmd: [bin, ...args],
-      cwd: options.cwd,
-      env: childEnv,
-      stdin: 'pipe',
-      stdout: 'pipe',
-      stderr: 'pipe',
-      windowsHide: true,
-      // On POSIX, omp launches grandchildren (LSP servers, extension subprocesses). Run the
-      // child in its own process group so dispose() can SIGTERM/SIGKILL the whole
-      // tree — otherwise a crashed omp would orphan its LSP children as zombies.
-      // Windows uses taskkill /t instead, so detaching would only create a console.
-      detached: process.platform !== 'win32',
-    });
+    // A spawn fails synchronously when the process is out of descriptors, and
+    // Bun's own `EBADF` names the binary rather than the cause; `status` and
+    // the terminal panel are the diagnostics, so the message has to be right.
+    try {
+      this.child = Bun.spawn({
+        cmd: [bin, ...args],
+        cwd: options.cwd,
+        env: childEnv,
+        stdin: 'pipe',
+        stdout: 'pipe',
+        stderr: 'pipe',
+        windowsHide: true,
+        // On POSIX, omp launches grandchildren (LSP servers, extension subprocesses). Run the
+        // child in its own process group so dispose() can SIGTERM/SIGKILL the whole
+        // tree — otherwise a crashed omp would orphan its LSP children as zombies.
+        // Windows uses taskkill /t instead, so detaching would only create a console.
+        detached: process.platform !== 'win32',
+      });
+    } catch (error) {
+      throw new Error(describeSpawnFailure(error));
+    }
 
     let resolveReady: (frame: RpcFrame) => void;
     let rejectReady: (error: Error) => void;

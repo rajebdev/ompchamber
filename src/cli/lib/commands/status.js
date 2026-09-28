@@ -47,6 +47,13 @@ function printInstance(entry) {
   log(`  launch:   ${entry.launchMode ?? 'unknown'}${entry.source ? ` (${entry.source})` : ''}`);
   log(`  uptime:   ${formatUptime(entry.startedAt)}`);
   log(`  health:   ${formatHealth(entry.health)}`);
+  // Descriptor pressure, when the server can measure it. A dev server climbs
+  // toward 10,240 by holding the client module graph across rebuilds, and past
+  // that point every `Bun.spawn` in the process fails at once (the terminal
+  // shell, the omp child, git) — this line is the warning that arrives before
+  // the breakage instead of after it.
+  const fds = entry.health?.fds;
+  if (fds) log(`  fds:      ${fds.open}/${fds.limit}${fds.nearCliff ? '  (near the spawn limit — restart this instance)' : ''}`);
   log(`  log:      ${entry.logFile}`);
 }
 
