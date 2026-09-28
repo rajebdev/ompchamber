@@ -5,6 +5,7 @@
  */
 
 import { invalidateOmpCliCache, resolveOmpBin } from '@/server/lib/omp/core/cli';
+import { pumpStream } from '@/server/lib/updates/install';
 import type { UpdateTargetInfo } from '@/shared/types/updates';
 
 /** Runs a command, capturing stdout/stderr separately. Non-zero exits keep the captured output. */
@@ -68,19 +69,46 @@ export async function checkOmpUpdate(): Promise<UpdateTargetInfo> {
   return { current, latest, updateAvailable, installed: true, error };
 }
 
-export async function applyOmpUpdate(): Promise<{ output: string }> {
+export interface OmpUpdateHooks {
+  /** Receives command output as it arrives (the console streams it). */
+  onLine?: (chunk: string) => void;
+}
+
+export async function applyOmpUpdate(hooks: OmpUpdateHooks = {}): Promise<{ output: string }> {
   const bin = resolveOmpBin();
   if (!bin) throw new Error('omp binary not found');
 
+  const proc = Bun.spawn({
+    cmd: [bin, 'update'],
+    stdout: 'pipe',
+    stderr: 'pipe',
+    timeout: 300_000,
+    maxBuffer: 1024 * 1024 * 4,
+    env: { ...Bun.env, PAGER: 'cat', FORCE_COLOR: '0' },
+  });
+
+  // Streamed, not buffered: `omp update` prints its stages as it goes, and the
+  // console draws them. A `new Response(proc.stdout).text()` here would hold
+  // every byte until the process exits — the spinner-blind behavior this path
+  // exists to remove. `maxBuffer` still bounds each stream, so a runaway child
+  // is capped exactly as it was under the buffered read.
+  let exitCode: number | null = null;
+  let stdout = '';
+  let stderr = '';
   try {
-    const { stdout, stderr, exitCode } = await runCapture(bin, ['update'], 300000, 1024 * 1024 * 4);
+    [stdout, stderr] = await Promise.all([
+      pumpStream(proc.stdout, hooks.onLine),
+      pumpStream(proc.stderr, hooks.onLine),
+    ]);
+    exitCode = await proc.exited;
+  } finally {
+    // The next request must re-probe the binary: `omp update` can replace its
+    // own launcher, and a cached path may no longer exist.
     invalidateOmpCliCache();
-    if (exitCode !== 0) {
-      throw new Error(combined(stdout, stderr).trim() || `omp update exited with code ${exitCode}`);
-    }
-    return { output: combined(stdout, stderr).trim() };
-  } catch (err) {
-    invalidateOmpCliCache();
-    throw err instanceof Error ? err : new Error(String(err));
   }
+
+  if (exitCode !== 0) {
+    throw new Error(combined(stdout, stderr).trim() || `omp update exited with code ${exitCode}`);
+  }
+  return { output: combined(stdout, stderr).trim() };
 }

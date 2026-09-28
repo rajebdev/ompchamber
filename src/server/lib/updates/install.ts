@@ -166,7 +166,14 @@ export function planUpdateSteps({ method, version, pkgRoot, bunBin }: { method: 
   ];
 }
 
-async function pump(stream: ReadableStream<Uint8Array>, sink?: (chunk: string) => void): Promise<string> {
+/**
+ * Drain a child's stdout/stderr, forwarding each chunk to `sink` as it arrives
+ * and returning the whole decoded text. Exported because the omp update path
+ * needs the same streaming read: buffering with `new Response(stream).text()`
+ * emits nothing until the process exits, which is exactly what makes an update
+ * look hung.
+ */
+export async function pumpStream(stream: ReadableStream<Uint8Array>, sink?: (chunk: string) => void): Promise<string> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let text = '';
@@ -191,7 +198,7 @@ async function runStep(step: UpdateStep, onLine?: (chunk: string) => void): Prom
     timeout: STEP_TIMEOUT_MS,
     env: { ...Bun.env, PAGER: 'cat', FORCE_COLOR: '0' },
   });
-  const [stdout, stderr] = await Promise.all([pump(proc.stdout, onLine), pump(proc.stderr, onLine)]);
+  const [stdout, stderr] = await Promise.all([pumpStream(proc.stdout, onLine), pumpStream(proc.stderr, onLine)]);
   const exitCode = await proc.exited;
   return { ok: exitCode === 0, exitCode, output: `${stdout}${stderr}`.trim() };
 }

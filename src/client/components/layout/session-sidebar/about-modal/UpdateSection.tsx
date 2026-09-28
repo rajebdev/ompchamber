@@ -1,6 +1,7 @@
 import { AlertCircle, Check, Download, Loader2, RefreshCw } from 'lucide-preact';
 import type { UpdateTarget, UpdateTargetInfo } from '@/shared/types/updates';
 import type { UseUpdatesResult } from '@/client/hooks/ui/updates';
+import { UpdateLog } from '@/client/components/layout/session-sidebar/about-modal/UpdateLog';
 
 interface UpdateSectionProps {
   updates: UseUpdatesResult;
@@ -67,18 +68,11 @@ export function UpdateSection({ updates, onToast }: UpdateSectionProps) {
       return;
     }
 
-    if (target === 'ompchamber') {
-      // `manual` means the environment cannot self-update and the message is
-      // the command to run — action required, not a success.
-      onToast(result.message, result.success ? 'success' : 'error');
-      return;
-    }
-
-    if (result.success) {
-      onToast(`${result.message} A restart may be needed.`, 'success');
-    } else {
-      onToast(result.message, 'error');
-    }
+    // `manual` means the environment cannot self-update and the message is the
+    // command to run — action required, not a success. It is checked before the
+    // success flag because a manual answer is reported as a failure by the
+    // engine, and the two need the same tone either way.
+    onToast(result.message, result.success && !result.manual ? 'success' : 'error');
   };
 
   const showResult = Boolean(updates.info && !updates.checking && !updates.error);
@@ -89,6 +83,10 @@ export function UpdateSection({ updates, onToast }: UpdateSectionProps) {
         <h3 id="updates-heading" className="text-xs font-semibold text-ink">Updates</h3>
         {updates.info && <span className="font-mono text-[9px] text-ink/40">checked</span>}
       </div>
+
+      {updates.progress && (
+        <UpdateLog state={updates.progress} active={updates.applying !== null} />
+      )}
 
       <div className="mt-2.5">
         {updates.checking && (
