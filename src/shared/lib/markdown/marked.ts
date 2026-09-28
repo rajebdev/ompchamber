@@ -11,7 +11,15 @@
  *   2. marked  — GFM true, breaks true, autolink via linkify-it (CJK
  *      punctuation is not swallowed into URLs, and a match carrying a backtick
  *      is left to the code-span rule — see autolink.ts), plus a KaTeX
- *      extension for \(...\) inline, \[...\] block, and $$...$$ display math
+ *      extension for \(...\) inline, \[...\] block, $$...$$ display and
+ *      $...$ inline math
+ *
+ * remend heals BLOCK math (`$$…$$`) only. Its inline healer must stay off
+ * (`inlineKatex: false`): it closes an unmatched `$` by appending one to the
+ * END OF THE TEXT, so any message with an odd `$` count — every lone `$HOME`,
+ * `$PATH`, `$1` — became one giant formula from that `$` to the end of the
+ * message, and a `$` landing on a closing ``` fence swallowed the rest of the
+ * document into that code block. `$…$` is left to marked's own flanking rules.
  *
  * The resulting HTML is NOT sanitized here — run the output through
  * DOMPurify (see sanitize.ts) before injecting. What the source's own HTML
@@ -36,18 +44,43 @@ function escapeHtml(value: string): string {
 }
 
 /**
+ * True while `renderMarkdown` parses prose it escaped itself. Set around the
+ * `marked.parse` call, read by `renderMathPlaceholder`. Synchronous by
+ * construction: `marked.parse` never awaits, so no nested `renderMarkdown`
+ * can observe the flag mid-parse.
+ */
+let proseEscaped = false;
+
+/**
  * Emit a math placeholder instead of rendering KaTeX inline.
  *
  * `katex` is ~522 kB of JS worth loading only when a message contains math, so
  * it is not imported here. The placeholder carries the TeX source and the
  * display flag; `katex.ts` swaps it for real markup once the library lands
- * (see `hydrateMathBlocks`). Both attributes are HTML-escaped, and escaping
- * `&` first keeps the entity encoding intact through the attribute round-trip.
+ * (see `hydrateMathBlocks`).
+ *
+ * Two things happen to the captured source here, and both exist because this
+ * renderer is the one place all four math extensions funnel through:
+ *
+ * 1. **Entities are reversed** when `renderMarkdown` escaped the prose itself
+ *    (`proseEscaped`). `escapeHtmlOutsideCode` rewrites the source BEFORE
+ *    marked sees it, so a tokenizer captures `x &lt; y` rather than `x < y` and
+ *    KaTeX reports a syntax error for a perfectly good formula. Only the three
+ *    entities that escaper emits are reversed, and only when it ran — a
+ *    document (`allowHtml`) whose own text legitimately holds `&amp;` is left
+ *    alone.
+ * 2. **The result is percent-encoded**, the way a mermaid block carries its
+ *    source. HTML-escaping the payload instead re-escapes what step 1 just
+ *    restored, and the attribute round-trip hides the extra layer from both
+ *    ends. An encoded payload holds no HTML-special character, so nothing
+ *    between here and `renderPlaceholder` can alter it.
  */
 function renderMathPlaceholder(tex: string, displayMode: boolean): string {
-  const escaped = escapeHtml(tex);
+  const restored = proseEscaped
+    ? tex.replace(/&(amp|lt|gt);/g, (_, name: string) => (name === 'amp' ? '&' : name === 'lt' ? '<' : '>'))
+    : tex;
   const display = displayMode ? ' data-math-display="1"' : '';
-  const span = `<span class="${MATH_PENDING_CLASS}" data-math="${escaped}"${display}></span>`;
+  const span = `<span class="${MATH_PENDING_CLASS}" data-math="${encodeURIComponent(restored)}"${display}></span>`;
   // Block math must stay inside a block element: DOMPurify drops a bare
   // `<span>` that sits at the top level of the fragment, which silently deleted
   // every `$$…$$` formula. KaTeX's own output is inline-level too, so the old
@@ -178,11 +211,25 @@ marked.use({
         return renderMathPlaceholder(token.text ?? '', true);
       },
     },
-    // $ ... $ inline math, per remark-math flanking rules: the opening $ must
-    // follow start/whitespace/punctuation (never a word char, so "$5 each" and
-    // "a$b" read as text) and must not be followed by $ or whitespace; the
-    // closing $ must not be preceded by whitespace and not be followed by $
-    // or a digit (so "$n$ =" still works but "cost $5$" does not).
+    // $ ... $ inline math. The flanking rules are the whole defence: a single
+    // `$` is the one delimiter that collides with ordinary text, and this
+    // pipeline renders shell output, currency, SQL and awk programs all day.
+    //
+    //   opening $  — not preceded by a word char (checked in `start`, the only
+    //                place the preceding character is visible), and not
+    //                followed by a digit, `$` or `{`. The digit guard is what
+    //                makes `$5`, `$1` and `$10` text; `{` keeps `${HOME}` out.
+    //   closing $  — not preceded by whitespace, and not followed by a WORD
+    //                char or `$`. That trailing guard is load-bearing twice
+    //                over: it rejects `PATH=$PATH:$HOME` (closer followed by
+    //                `H`) and `a$b$c` (followed by `c`), and it is the reason
+    //                the rule no longer depends on where `start` happened to
+    //                land — the tokenizer is anchored at `^` and cannot see
+    //                the preceding character, so `a$b$c` was math while
+    //                `ax$b$c` was text on the identical rule.
+    //
+    // `$n$ = 3` and `$x^2$ benar` still parse: a space after the closer is not
+    // a word char.
     {
       name: 'inlineMathDollar',
       level: 'inline',
@@ -191,7 +238,7 @@ marked.use({
         return match ? match.index + (match[1]?.length ?? 0) : undefined;
       },
       tokenizer(src: string) {
-        const match = /^\$(?!\$)(?!\s)((?:\\\$|[^$])*?)(?<!\s)\$(?!\$)(?!\d)/.exec(src);
+        const match = /^\$(?![\d${])((?:\\\$|[^$])*?)(?<!\s)\$(?![\w$])/.exec(src);
         return match
           ? { type: 'inlineMathDollar', raw: match[0], text: match[1] }
           : undefined;
@@ -241,9 +288,17 @@ export interface RenderMarkdownOptions {
  */
 export function renderMarkdown(markdown: string, options: RenderMarkdownOptions = {}): string {
   const source = options.allowHtml ? markdown : escapeHtmlOutsideCode(markdown);
-  const healed = remend(source, { katex: true, inlineKatex: true })
+  const healed = remend(source, { katex: true, inlineKatex: false })
     .replace(INCOMPLETE_LINK_RE, (_, text: string) => `<span class="md-incomplete-link">${text}</span>`);
-  return (marked.parse(healed) as string).trim();
+  // The math renderers need to know the prose was escaped, so they can hand
+  // KaTeX the source the author wrote instead of `x &lt; y`. `marked.parse`
+  // never awaits, so no nested render can observe this mid-parse.
+  proseEscaped = !options.allowHtml;
+  try {
+    return (marked.parse(healed) as string).trim();
+  } finally {
+    proseEscaped = false;
+  }
 }
 
 export { marked };

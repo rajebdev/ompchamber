@@ -78,7 +78,9 @@ describe('lazy math rendering', () => {
 
     const placeholder = host.querySelector('.math-pending');
     expect(placeholder).not.toBeNull();
-    expect(placeholder?.getAttribute('data-math')).toBe('E = mc^2');
+    // The payload travels percent-encoded (see `renderMathPlaceholder`), so the
+    // assertion decodes rather than reading the attribute raw.
+    expect(decodeURIComponent(placeholder?.getAttribute('data-math') ?? '')).toBe('E = mc^2');
 
     expect(await hydrateMathBlocks(host)).toEqual({ rendered: 1, failed: 0 });
 
@@ -122,5 +124,55 @@ describe('lazy math rendering', () => {
   test('escapes the tex source so it cannot break out of the attribute', () => {
     const html = renderMarkdown('a $x" onmouseover="alert(1)$ b');
     expect(html).not.toContain('onmouseover="alert');
+  });
+
+  // A lone `$` is the delimiter most likely to appear in ordinary text this
+  // app renders all day — shell output, currency, SQL placeholders, awk
+  // programs. Each of these was a formula before the flanking rules and the
+  // remend inline healer were fixed, and the failure was not cosmetic: an odd
+  // `$` count made the formula run to the END of the message.
+  test('a single $ is text, never math', () => {
+    for (const source of [
+      'Hasil: $HOME',
+      '$HOME',
+      'Path ada di $HOME.',
+      'Biaya $5.',
+      'Pakai ${HOME}/bin',
+      'SELECT * FROM t WHERE id = $1',
+      "awk '{print $1, $2}' file",
+      'PATH=$PATH:$HOME',
+      'a$b$c',
+    ]) {
+      const host = mount(source);
+      expect(host.querySelectorAll('.math-pending').length).toBe(0);
+      expect(host.textContent).toBe(source);
+    }
+  });
+
+  test('an unmatched $ does not run to the end of the message', () => {
+    // remend's inline healer used to close the `$` at the very end of the
+    // text, turning everything after it into one formula.
+    const source = 'Hasil: $HOME lalu baris kedua biasa';
+    const host = mount(source);
+    expect(host.querySelectorAll('.math-pending').length).toBe(0);
+    expect(host.textContent).toBe(source);
+  });
+
+  test('a $ in a fenced block leaves the closing fence intact', () => {
+    const host = mount('```\necho $HOME\n```');
+    const code = host.querySelector('pre code');
+    expect(code?.textContent).toBe('echo $HOME');
+    expect(host.querySelectorAll('.math-pending').length).toBe(0);
+  });
+
+  // `escapeHtmlOutsideCode` rewrites the source before marked parses it, so a
+  // formula reached KaTeX as `x &lt; y` and rendered as a syntax error.
+  test('entities in a formula reach KaTeX as the author wrote them', async () => {
+    const host = mount('rumus $x < y$ dan $a \\& b$ benar');
+    expect(host.querySelectorAll('.math-pending').length).toBe(2);
+
+    await hydrateMathBlocks(host);
+    expect(host.querySelectorAll('.katex-error').length).toBe(0);
+    expect(host.querySelectorAll('.katex').length).toBe(2);
   });
 });

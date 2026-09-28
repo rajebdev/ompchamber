@@ -62,7 +62,17 @@ export function preloadKatex(): void {
  * like every other model-authored fragment in this pipeline.
  */
 function renderPlaceholder(el: HTMLElement, katex: KatexModule['default']): void {
-  const tex = el.dataset.math ?? '';
+  // `marked.ts` percent-encodes the payload, the way a mermaid block carries
+  // its source: the TeX must survive the HTML attribute round-trip untouched,
+  // and escaping it as HTML double-encoded every formula the prose escaper had
+  // already touched. A malformed payload degrades to the raw attribute.
+  const encoded = el.dataset.math ?? '';
+  let tex = encoded;
+  try {
+    tex = decodeURIComponent(encoded);
+  } catch {
+    // Leave `tex` as the literal attribute text.
+  }
   const displayMode = el.dataset.mathDisplay === '1';
   try {
     el.innerHTML = sanitizeKatexHtml(katex.renderToString(tex, { throwOnError: false, displayMode }));
