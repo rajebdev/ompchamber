@@ -4,18 +4,16 @@
  */
 
 /**
- * The terminal registry: which shells are live, who is watching them, and when
- * they die.
+ * The terminal registry: creation, attachment, input, resize and reaping.
  *
  * One real shell per terminal id, created on the first `attach` (there is no
  * separate create endpoint to race against), kept alive while clients come and
  * go, and killed through the process group so the commands it started die with
- * it. Session mechanics live in `session.server.ts`; this module owns the map,
- * the viewer sets, the idle reaper and process-exit cleanup.
+ * it. Session mechanics live in `session.server.ts`, the process-wide state in
+ * `store.ts`, and the liveness questions in `liveness.server.ts`.
  */
 
-import path from 'path';
-import { detectBusyShells, type ShellProcess } from '@/server/lib/terminal/foreground';
+import { countLiveTerminals } from '@/server/lib/terminal/liveness.server';
 import {
   TERMINATION_GRACE_MS,
   TerminalRuntimeError,
@@ -27,6 +25,7 @@ import {
   type TerminalSession,
   type TerminalViewer,
 } from '@/server/lib/terminal/session.server';
+import { terminalStore } from '@/server/lib/terminal/store';
 import { TERMINAL_MAX_INPUT_BYTES, clampTerminalSize, type TerminalSnapshot } from '@/shared/lib/workspace/terminal/protocol';
 
 const MAX_TERMINALS = 8;
@@ -41,41 +40,10 @@ export interface TerminalAttachment {
   replay: Uint8Array;
 }
 
-/**
- * The registry lives on `globalThis`, not in a module-local binding.
- *
- * `bun run --hot` re-evaluates this module on every server-file edit, but the
- * PTY children are detached sessions that keep running. A module-local `Map`
- * would be replaced by a fresh empty one on each reload, leaving the previous
- * shells alive with nothing tracking them — unreachable from the client, never
- * counted, never reaped, and still holding their slots. Anchoring the map to
- * the process keeps a reload from orphaning anything.
- */
-declare global {
-  // eslint-disable-next-line no-var
-  var __ompChamberTerminals: Map<string, TerminalSession> | undefined;
-  // eslint-disable-next-line no-var
-  var __ompChamberTerminalSweep: ReturnType<typeof setInterval> | undefined;
-  // eslint-disable-next-line no-var
-  var __ompChamberTerminalResizes: Map<string, ReturnType<typeof setTimeout>> | undefined;
-  // eslint-disable-next-line no-var
-  var __ompChamberTerminalCleanupInstalled: boolean | undefined;
-}
-
-const sessions: Map<string, TerminalSession> = (globalThis.__ompChamberTerminals ??= new Map());
-
-function getSweepTimer() {
-  return globalThis.__ompChamberTerminalSweep;
-}
-
-function setSweepTimer(timer: ReturnType<typeof setInterval> | undefined) {
-  globalThis.__ompChamberTerminalSweep = timer;
-  return timer;
-}
-
-function getResizeTimers(): Map<string, ReturnType<typeof setTimeout>> {
-  return (globalThis.__ompChamberTerminalResizes ??= new Map());
-}
+/** The process-wide state; see `store.ts` for why it is not module-local. */
+const registry = terminalStore();
+const sessions = registry.sessions;
+const resizeTimers = registry.resizeTimers;
 
 /**
  * Attach `viewer` to `request.id`, creating the shell when the id is unknown.
@@ -83,30 +51,9 @@ function getResizeTimers(): Map<string, ReturnType<typeof setTimeout>> {
  * Registration and history capture happen in one synchronous block: Bun cannot
  * interleave a PTY `data` callback inside it, so the viewer can neither miss
  * output nor receive it twice.
- *
- * The cap counts *live* shells only. An exited shell is a corpse holding a
- * scrollback nobody is reading, and letting corpses consume the budget is how
- * a session that restarted a shell a few times hits the limit with nothing
- * running: every restart leaves its predecessor behind.
  */
 export async function attachTerminal(viewer: TerminalViewer, request: AttachRequest): Promise<TerminalAttachment> {
-  let session = sessions.get(request.id);
-  if (!session) {
-    reclaimExitedTerminals();
-    if ((await countLiveTerminals()) >= MAX_TERMINALS) {
-      throw new TerminalRuntimeError('capacity', `Terminal limit reached (${MAX_TERMINALS} busy shells)`);
-    }
-    const created = await createSession(request);
-    sessions.set(request.id, created);
-    // An exit with nobody watching is the common case for a replaced shell
-    // (restart, repo switch): reap it as soon as it lands instead of leaving
-    // the record for the sweep, which is up to a minute of holding a slot.
-    void created.proc?.exited.then(() => {
-      if (created.viewers.size === 0) forgetTerminal(created.id);
-    });
-    ensureSweeper();
-    session = created;
-  }
+  const session = await openTerminal(request);
 
   const replay = session.history.replay();
   const snapshot = snapshotOf(session);
@@ -116,22 +63,59 @@ export async function attachTerminal(viewer: TerminalViewer, request: AttachRequ
 }
 
 /**
- * Shells that are actually doing work, which is what the cap budgets.
+ * The shell for `request.id`, creating it at most once.
  *
- * Two things are deliberately excluded: an exited shell (a corpse with a
- * scrollback) and a shell sitting at its prompt — the PTY's foreground process
- * group tells them apart exactly (see `foreground.ts`). Counting idle shells
- * is how a panel that was restarted or switched a few times pins the budget
- * with nothing running, and the next attach is refused.
+ * Creation awaits — cwd resolution, the shell probe, the cap's `ps` — so two
+ * `attach` frames for the same new id both used to pass the `sessions.get`
+ * check and both spawned a shell. The map kept whichever landed last and the
+ * other became unreachable: a PTY plus a detached shell with no record, which
+ * the reaper could never reclaim and the cap never counted. Measured on this
+ * runtime: two concurrent attaches for one id left two shells for one record.
+ * A page reload racing its own reconnect is enough to produce that.
+ *
+ * Sharing the in-flight promise makes the loser await the winner's session
+ * instead of creating a rival. The map lives in `store.ts` beside the records,
+ * because a reload that dropped it would reopen the same race.
  */
-export async function countLiveTerminals(): Promise<number> {
-  const running: ShellProcess[] = [];
-  for (const session of sessions.values()) {
-    if (session.status !== 'running' || !session.proc) continue;
-    running.push({ id: session.id, pid: session.proc.pid });
+async function openTerminal(request: AttachRequest): Promise<TerminalSession> {
+  const existing = sessions.get(request.id);
+  if (existing) return existing;
+
+  const inFlight = registry.creating.get(request.id);
+  if (inFlight) return inFlight;
+
+  const entry = createTerminal(request);
+  registry.creating.set(request.id, entry);
+  const release = () => {
+    if (registry.creating.get(request.id) === entry) registry.creating.delete(request.id);
+  };
+  void entry.then(release, release);
+  return entry;
+}
+
+/**
+ * Spawn one shell, register it, and arm the reaper.
+ *
+ * The cap counts *live* shells only. An exited shell is a corpse holding a
+ * scrollback nobody is reading, and letting corpses consume the budget is how
+ * a session that restarted a shell a few times hits the limit with nothing
+ * running: every restart leaves its predecessor behind.
+ */
+async function createTerminal(request: AttachRequest): Promise<TerminalSession> {
+  reclaimExitedTerminals();
+  if ((await countLiveTerminals()) >= MAX_TERMINALS) {
+    throw new TerminalRuntimeError('capacity', `Terminal limit reached (${MAX_TERMINALS} busy shells)`);
   }
-  const busy = await detectBusyShells(running);
-  return busy.size;
+  const created = await createSession(request);
+  sessions.set(request.id, created);
+  // An exit with nobody watching is the common case for a replaced shell
+  // (restart, repo switch): reap it as soon as it lands instead of leaving
+  // the record for the sweep, which is up to a minute of holding a slot.
+  void created.proc?.exited.then(() => {
+    if (created.viewers.size === 0) forgetTerminal(created.id);
+  });
+  ensureSweeper();
+  return created;
 }
 
 /**
@@ -160,32 +144,6 @@ export function detachTerminal(viewer: TerminalViewer, id: string): void {
   // The last viewer leaving a finished shell leaves nothing behind worth
   // keeping: no process to reattach to, and a scrollback nobody will read.
   if (session.status === 'exited' && session.viewers.size === 0) forgetTerminal(id);
-}
-
-/**
- * Live terminal summaries, optionally narrowed to one scope, so a client can
- * adopt a shell it does not have an id for (a reloaded page, a second tab).
- *
- * `busy` marks a shell with a foreground command — the panel shows it as
- * running, and the cap budgets it. One `ps` for the whole list.
- */
-export async function listTerminals(root?: string | null, repo?: string | null): Promise<TerminalSnapshot[]> {
-  const scope = root ? (repo && repo !== '.' ? path.join(root, repo) : root) : null;
-  const running: ShellProcess[] = [];
-  const out: TerminalSnapshot[] = [];
-  for (const session of sessions.values()) {
-    if (scope && !isWithin(session.cwd, scope)) continue;
-    if (session.status === 'running' && session.proc) {
-      running.push({ id: session.id, pid: session.proc.pid });
-    }
-    out.push(snapshotOf(session));
-  }
-  const busy = await detectBusyShells(running);
-  return out.map((snapshot) => ({ ...snapshot, busy: busy.has(snapshot.id) }));
-}
-
-function isWithin(target: string, root: string): boolean {
-  return target === root || target.startsWith(root.endsWith(path.sep) ? root : root + path.sep);
 }
 
 export function writeTerminalInput(id: string, data: Uint8Array): void {
@@ -231,8 +189,6 @@ export function resizeTerminal(id: string, cols: number, rows: number): void {
  * and a repaint of an intermediate size is invisible work. A single timeout is
  * reused so the burst coalesces into one signal.
  */
-const resizeTimers = getResizeTimers();
-
 export function resizeTerminalDebounced(id: string, cols: number, rows: number): void {
   const pending = resizeTimers.get(id);
   if (pending) clearTimeout(pending);
@@ -295,7 +251,8 @@ function clearPendingResize(id: string): void {
  * own session and would otherwise outlive the server.
  */
 export function disposeAllTerminals(): void {
-  clearInterval(setSweepTimer(undefined));
+  clearInterval(registry.sweep);
+  registry.sweep = undefined;
   for (const [id, session] of sessions) {
     clearPendingResize(id);
     session.viewers.clear();
@@ -306,8 +263,8 @@ export function disposeAllTerminals(): void {
 }
 
 function ensureSweeper(): void {
-  if (getSweepTimer() !== undefined) return;
-  setSweepTimer(setInterval(() => {
+  if (registry.sweep !== undefined) return;
+  registry.sweep = setInterval(() => {
     // Exited shells are reaped on exit and on detach; this catches the one
     // that finished while a viewer was still attached to it.
     reclaimExitedTerminals();
@@ -319,22 +276,18 @@ function ensureSweeper(): void {
       if (now - session.lastActivity < IDLE_TIMEOUT_MS) continue;
       forgetTerminal(id);
     }
-  }, IDLE_SWEEP_MS));
-  getSweepTimer()!.unref();
+  }, IDLE_SWEEP_MS);
+  registry.sweep.unref?.();
 }
 
 /**
  * Register process-wide cleanup exactly once. A `bun --hot` reload re-evaluates
  * this module while the shells live on, so the guard keeps a reload from
- * stacking duplicate signal handlers.
+ * stacking duplicate signal handlers. It rides the same store as the registry,
+ * which is what makes it survive the reload that would otherwise reset it.
  */
-declare global {
-  // eslint-disable-next-line no-var
-  var __ompChamberTerminalCleanupInstalled: boolean | undefined;
-}
-
-if (!globalThis.__ompChamberTerminalCleanupInstalled) {
-  globalThis.__ompChamberTerminalCleanupInstalled = true;
+if (!registry.cleanupInstalled) {
+  registry.cleanupInstalled = true;
   process.once('exit', disposeAllTerminals);
   process.once('SIGINT', disposeAllTerminals);
   process.once('SIGTERM', disposeAllTerminals);

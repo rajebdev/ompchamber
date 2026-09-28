@@ -14,7 +14,7 @@
  */
 
 import { json, type LoaderFunctionArgs } from '@/server/lib/remix-compat';
-import { listTerminals } from '@/server/lib/terminal/runtime.server';
+import { listTerminals } from '@/server/lib/terminal/liveness.server';
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
