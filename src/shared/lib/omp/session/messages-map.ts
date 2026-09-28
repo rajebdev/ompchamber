@@ -6,6 +6,7 @@
 import type { ChatMessageData } from '@/shared/types/chat';
 import { extractInlinedTextAttachments, extractText, extractUserImageAttachments, parseAssistantContent, resultOutput, roleFor, stripInlinedTextAttachments, type OmpMessageEntry } from '@/shared/lib/omp/session/messages-parse';
 import { isRecord } from '@/shared/lib/util/guards';
+import { normalizeNoticeText } from '@/shared/lib/chat/notice-text';
 import { reminderPartIndex } from '@/shared/lib/chat/notice-row';
 import { deriveTurnError } from '@/shared/lib/omp/session/turn-error';
 import { toEpochMs } from '@/shared/lib/omp/session/timestamps';
@@ -180,7 +181,11 @@ export function noticeFromCustomMessage(record: Record<string, unknown>): ChatMe
           .map((b) => (isRecord(b) && b.type === 'text' && typeof b.text === 'string' ? b.text : ''))
           .join('')
       : '';
-  const notice = text.replace(/<\/?system-notice[^>]*>/g, '').trim();
+  // Same terminal-formatted text the live `command_output` frame carries: a
+  // custom entry replayed from the JSONL keeps its ANSI runs, and the notice
+  // card renders them literally. One normalizer serves both paths so a command's
+  // output looks identical whether it was just run or reloaded.
+  const notice = normalizeNoticeText(text);
   if (!notice) return null;
   return {
     id,

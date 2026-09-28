@@ -13,9 +13,11 @@
  * size ceiling.
  */
 
-import type { Dispatch, RefObject, SetStateAction } from 'preact/compat';
-import type { ChatMessageData, IncomingExtensionUiRequest, OmpAgentCallbacks, OmpAgentEvent, OmpAgentState, ToolCallData } from '@/shared/types';
+import type { IncomingExtensionUiRequest, OmpAgentCallbacks, OmpAgentEvent, ToolCallData } from '@/shared/types';
 import { extractTextFromContent, toChatMessage, toolResultText } from '@/shared/lib/omp/session/mapper';
+import { normalizeNoticeText } from '@/shared/lib/chat/notice-text';
+import { invalidateComposerCache } from '@/shared/lib/chat/composer/client';
+import { setActivity, toolHost, type OmpAgentFoldDeps } from '@/shared/lib/chat/omp/fold-deps';
 import { normalizeThinkingLevel } from '@/shared/lib/models/thinking-levels';
 import { PHASE_VERBS } from '@/shared/lib/chat/timeline/tool-phrases';
 import { describeAssistantPhase, describeToolActivity } from '@/shared/lib/chat/timeline/tool-verbs';
@@ -25,43 +27,13 @@ import {
   putToolResult,
   recordToolResult,
   refreshToolMessage,
-  type ToolResultHost,
   type ToolResultRecord,
 } from '@/shared/lib/chat/omp/tool-results';
 
 // Re-exported so stream.ts and the timeline hook keep their existing import
 // site; the implementation lives in tool-results.ts.
 export type { ToolResultRecord } from '@/shared/lib/chat/omp/tool-results';
-
-export interface OmpAgentFoldDeps extends ToolResultHost {
-  sessionId: string;
-  setState: Dispatch<SetStateAction<OmpAgentState>>;
-  callbacksRef: RefObject<OmpAgentCallbacks>;
-  toolResultsRef: RefObject<Map<string, ToolResultRecord>>;
-  lastToolMessageRef: RefObject<ChatMessageData>;
-  interruptPendingRef: RefObject<boolean>;
-  /** Last activity phrase published to the indicator; guards per-token frames
-   *  from re-setting identical state. */
-  activityRef: RefObject<string>;
-  /** Thinking level in effect for the live run (last `thinking_level_changed`
-   *  frame); stamped onto assistant turns as they stream. */
-  currentThinkingLevelRef: RefObject<string | undefined>;
-  /** toolCallIds of in-flight file-mutating calls, cleared on `agent_start`. */
-  fileMutatingCallsRef: RefObject<Set<string>>;
-}
-
-/** Publish a new indicator phrase, skipping repeats (thinking/text deltas
- *  arrive per token and would otherwise re-set state on every frame). */
-function setActivity(verb: string | undefined, deps: OmpAgentFoldDeps): void {
-  if (!verb || verb === deps.activityRef.current) return;
-  deps.activityRef.current = verb;
-  deps.callbacksRef.current?.onActivity?.(verb);
-}
-
-/** Narrow a deps record to the tool-output host, adding the re-emit sink. */
-function toolHost(deps: OmpAgentFoldDeps): ToolResultHost {
-  return { ...deps, onMessageUpdate: deps.callbacksRef.current?.onMessageUpdate };
-}
+export type { OmpAgentFoldDeps } from '@/shared/lib/chat/omp/fold-deps';
 
 /** Flush assistant turns that stopped abnormally and were never streamed as
  *  `message_end`. A user abort is the one terminal path where omp emits no
@@ -274,8 +246,10 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
 
     // Built-in slash command output (/usage, /compact result, …). Rendered as
     // a notice row — see the callback type note: this frame is the ONLY copy.
+    // `normalizeNoticeText` strips the terminal formatting omp emits here; the
+    // reload path applies the same function so both agree.
     case 'command_output': {
-      const text = typeof data.text === 'string' ? data.text.trim() : '';
+      const text = typeof data.text === 'string' ? normalizeNoticeText(data.text) : '';
       if (text) callbacks?.onCommandOutput?.(text);
       break;
     }
@@ -329,10 +303,17 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       deps.currentThinkingLevelRef.current = normalizeThinkingLevel(data.thinkingLevel);
       break;
 
-    // No chamber-side effect: config/command inventory frames and the
-    // transport's own `connected` greeting.
-    case 'config_update':
+    // omp emits this whenever the discovered command set changes — after
+    // `/reload-plugins`, `/move`, or a skill install. The composer's command
+    // pool is cached five minutes (`composer/client.ts`), so without this the
+    // popup keeps offering the pre-change list.
     case 'available_commands_update':
+      invalidateComposerCache('command');
+      break;
+
+    // No chamber-side effect: config frames and the transport's own `connected`
+    // greeting.
+    case 'config_update':
     case 'connected':
     default:
       break;
