@@ -5,6 +5,17 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.0](https://github.com/rajebdev/ompchamber/compare/v3.3.3...v3.4.0) — 2026-09-28
+
+### Added
+
+* **chat:** refuse TUI-only slash commands instead of sending them to the model ([ed01bc5](https://github.com/rajebdev/ompchamber/commit/ed01bc54f7cad316238d67ff1f8bc0825877be4b))
+
+### Fixed
+
+* **chat:** keep builtin-command output after a reload ([de7dc05](https://github.com/rajebdev/ompchamber/commit/de7dc05bc3675281ca29b1230f831b8f8178c78d))
+* **chat:** strip ANSI from command output and refetch commands when omp's set changes ([e1027f6](https://github.com/rajebdev/ompchamber/commit/e1027f6f8acc7741eac05d4881c1c7355f38507e))
+
 ## [3.3.3](https://github.com/rajebdev/ompchamber/compare/v3.3.2...v3.3.3) — 2026-09-27
 
 ### Fixed
