@@ -218,10 +218,18 @@ export function MobileSessionCategory({
             <button
               type="button"
               onClick={showMore}
-              className="w-full text-left px-3 py-2 text-xs text-ink/60 hover:text-ink flex items-center space-x-1.5"
+              className="w-full text-left pl-2 pr-3 py-2 text-xs text-ink/60 hover:text-ink flex items-center"
             >
-              <ChevronDown size={12} className="w-4 flex-shrink-0" />
-              <span>Show more sessions ({filteredSessions.length - visibleCount})</span>
+              {/* `pl-2` inside the `pl-2` list is what lands this chevron's
+                  centre on the folder header's icon column (16px + 8px), and
+                  the label then starts at 40px — the x a row's title occupies
+                  (16px slot + 8px gap). The `space-x-1.5` this replaced put
+                  both 4px left of the list they belong to. */}
+              <span className="w-4 h-4 flex-shrink-0 flex items-center justify-center">
+                <ChevronDown size={12} />
+              </span>
+              <span className="w-2 shrink-0" />
+              <span className="truncate">Show more sessions ({filteredSessions.length - visibleCount})</span>
             </button>
           )}
         </div>
