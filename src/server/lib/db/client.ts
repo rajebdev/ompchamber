@@ -21,10 +21,27 @@ export interface DbClient {
  * reusable, and the app issues thousands of small queries per request cycle
  * (sidebar scans, telemetry probes, file listings).
  */
+/**
+ * How long a blocked write waits for another connection to release the lock.
+ *
+ * The chamber database is shared: a second chamber on another port writes the
+ * same file, the CLI writes it, and a maintenance `VACUUM` takes the exclusive
+ * lock outright. Without this, a write that meets any of them fails on the spot
+ * with `SQLITE_BUSY: database is locked` — which is exactly what a server log
+ * from 2026-09-25 is full of, with no writer at fault.
+ *
+ * Deliberately modest: `bun:sqlite` is synchronous, so this wait blocks the
+ * whole event loop — every request, stream and terminal frame with it. Two
+ * seconds clears every realistic holder (a full `VACUUM` of this database
+ * measured 134 ms) without freezing the app for long when a lock is stuck.
+ */
+const BUSY_TIMEOUT_MS = 2000;
+
 export function createDb(path: string): DbClient {
   const raw = new Database(path, { create: true });
   raw.exec('PRAGMA journal_mode = WAL');
   raw.exec('PRAGMA foreign_keys = ON');
+  raw.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
 
   const stmts = new Map<string, ReturnType<Database['query']>>();
   const prep = (sql: string) => {
