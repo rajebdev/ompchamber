@@ -11,13 +11,15 @@
  * record — captured semantics are unchanged.
  */
 
-import { useCallback } from 'preact/hooks';
+import { useCallback, useMemo } from 'preact/hooks';
 import type { Dispatch, SetStateAction } from 'preact/compat';
 import type { Attachment, ChatMessageData, OmpAgentHandle, QueuedMessageModel } from '@/shared/types';
 import type { QueuedMessage } from '@/client/components/workspace/chat-timeline/QueueList';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { applyComposerPick, consumeComposerPick, stashComposerPick, type DeferredModelStore } from '@/client/hooks/chat/timeline/deferred-model';
 import { dispatchBtwCommand } from '@/client/hooks/chat/btw/intercept';
+import { blockTuiOnlySend } from '@/client/hooks/chat/timeline/tui-only-guard';
+import { createQueueActions } from '@/client/hooks/chat/timeline/queue-actions';
 import { prepareQueuedAttachments } from '@/shared/lib/chat/attachments';
 
 export interface ChatTimelineActionsDeps {
@@ -76,14 +78,12 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
   const {
     inputValue,
     setInputValue,
-    setInputAttachments,
     isGenerating,
     isOmpSession,
     sessionId,
     appSettings,
     messageQueue,
     enqueueMessage,
-    removeMessage,
     executeSend,
     steerOmpAgent,
     ompAgent,
@@ -100,6 +100,10 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     setSearchParams,
   } = deps;
 
+  // The queue's two row actions take the same slice of this deps record, so
+  // they are built once per render from it rather than re-listing every field.
+  const queueActions = useMemo(() => createQueueActions(deps), [deps]);
+
   const handleSend = useCallback(async (attachments: Attachment[], options?: { steering?: boolean }) => {
     const textToSend = inputValue.trim();
     if (!textToSend && attachments.length === 0) return;
@@ -111,10 +115,20 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     // `/btw [question]` is the side-question entry point, not chat text: the
     // panel owns it (omp's `/btw` is TUI-only, so nothing downstream would
     // understand the token). A bare `/btw` only opens the panel's history.
+    //
+    // MUST run before the TUI-only guard below: `/btw` is in that table (omp
+    // implements it in the TUI only), so the guard would refuse the very
+    // command the chamber answers with a panel.
     if (dispatchBtwCommand(textToSend, attachments)) {
       setInputValue('');
       return;
     }
+
+    // A command omp only implements in its TUI (`/plan`, `/clear`, `/login`, …)
+    // would reach the model as literal text over RPC and burn a whole turn on
+    // an improvisation. Answer it here, before it is queued or steered, and
+    // keep the draft so the user can edit or retype it.
+    if (blockTuiOnlySend(textToSend, setLocalMessages)) return;
 
     if (isGenerating) {
       if (options?.steering) {
@@ -161,37 +175,15 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
 
     setInputValue('');
     executeSend(textToSend, attachments);
-  }, [inputValue, isGenerating, executeSend, enqueueMessage, isOmpSession, appSettings, steerOmpAgent, setInputValue, abortControllerRef, setGenerating, stopHoldRef, composerModelRef, accessModeRef]);
+  }, [inputValue, isGenerating, executeSend, enqueueMessage, isOmpSession, appSettings, steerOmpAgent, setInputValue, abortControllerRef, setGenerating, stopHoldRef, composerModelRef, accessModeRef, setLocalMessages]);
 
   const handleEditQueueItem = useCallback((item: QueuedMessage) => {
-    // Lift the text into the composer and drop the row. If the user never
-    // re-submits, the delete (below) already removed it — the old flow had a
-    // dead window here where removing from the local list was the only edit.
-    setInputValue(item.text);
-    setInputAttachments(item.attachments);
-    removeMessage(item.id);
-  }, [removeMessage, setInputValue, setInputAttachments]);
+    queueActions.handleEditQueueItem(item);
+  }, [queueActions]);
 
   const handleSendNowQueueItem = useCallback(async (item: QueuedMessage) => {
-    // Explicit delivery also lifts the Stop hold (mock path).
-    stopHoldRef.current = false;
-    removeMessage(item.id);
-
-    if (isGenerating) {
-      if (isOmpSession) {
-        void steerOmpAgent(item.text, item.attachments);
-      } else {
-        if (abortControllerRef.current) {
-          abortControllerRef.current.abort();
-          abortControllerRef.current = null;
-        }
-        setGenerating(false);
-        setTimeout(() => executeSend(item.text, item.attachments, { model: item.model }), 0);
-      }
-    } else {
-      executeSend(item.text, item.attachments, { model: item.model });
-    }
-  }, [isGenerating, executeSend, removeMessage, isOmpSession, steerOmpAgent, abortControllerRef, setGenerating, stopHoldRef]);
+    await queueActions.handleSendNowQueueItem(item);
+  }, [queueActions]);
 
   const handleUndo = useCallback(async (msgId: string, content?: string): Promise<boolean> => {
     if (isGenerating) {

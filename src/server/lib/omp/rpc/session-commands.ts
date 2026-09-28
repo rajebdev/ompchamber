@@ -15,6 +15,7 @@ import { clearSessionFileCaches } from '@/server/lib/omp/session/files';
 import { scheduleQueueDelivery } from '@/server/lib/queue/delivery.server';
 import { clearStreamStatus, markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
 import { buildWebState, type WebStateHost } from '@/server/lib/omp/rpc/web-state';
+import { isTuiOnlySlashCommand, tuiOnlyCommandNotice } from '@/shared/lib/chat/composer/tui-only';
 
 /** Runtime surface AgentSessionWrapper exposes to the command dispatcher. */
 export interface SessionCommandHost extends WebStateHost {
@@ -50,6 +51,44 @@ async function settleCommandTimeout(host: SessionCommandHost): Promise<never> {
   throw new WebRpcError('The OMP session stopped responding and was reset.', 'session_unresponsive');
 }
 
+/**
+ * Refuse a prompt that invokes a command omp implements only in its TUI, and
+ * report it the way omp reports a real command result.
+ *
+ * This is the SERVER half of the guard in
+ * `client/hooks/chat/timeline/tui-only-guard.ts`. It exists because one prompt
+ * path never passes through the composer: the follow-up queue's auto-delivery
+ * calls `session.send({ type: 'prompt' })` directly from
+ * `lib/queue/delivery.server.ts`. A `/plan` queued before a run would otherwise
+ * be delivered to the model as literal text once the run ends.
+ *
+ * The refusal is framed as a real command result — a `command_output` notice
+ * plus, for a non-streaming prompt, the `agentInvoked:false` ack — so the
+ * client's existing fold renders the notice and settles the optimistic spinner
+ * with no new protocol.
+ *
+ * `streaming` is the caller's own knowledge of whether a turn is running: a
+ * steer of a refused command must not clear the flags of the turn it was aimed
+ * at (omp runs `session.steer()` with no slash handling at all, so a steer of
+ * `/plan` is exactly as meaningless as a fresh one).
+ *
+ * Returns true when the prompt was refused (the caller must not dispatch).
+ */
+function refuseTuiOnlyPrompt(host: SessionCommandHost, message: unknown, streaming: boolean): boolean {
+  if (typeof message !== 'string' || !isTuiOnlySlashCommand(message)) return false;
+  host.emit({ type: 'command_output', text: tuiOnlyCommandNotice(message) });
+  if (!streaming) {
+    host.promptRunning = false;
+    host.awaitingAgentStart = false;
+    host.awaitingAgentStartDeadline = 0;
+    host.emit({ type: 'prompt_result', agentInvoked: false });
+    // Nothing ran, so the queue may hold the next item — give it the same
+    // delivery window a real consumed builtin or a run end would.
+    scheduleQueueDelivery(host);
+  }
+  return true;
+}
+
 export async function dispatchSessionCommand(host: SessionCommandHost, command: Record<string, unknown>): Promise<unknown> {
   if (host.restarting) throw new WebRpcError(RESTARTING_MESSAGE, 'session_restarting');
   if (!host.isAlive()) throw new Error('Session is no longer running');
@@ -66,6 +105,11 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
       if (host.bashRunning) {
         throw new Error('Cannot send a prompt while a shell command is running');
       }
+      // Checked before the streaming-behavior split: a steer of a TUI-only
+      // command is just as meaningless as a fresh one. `streaming` keeps the
+      // refusal from clearing a running turn's flags when the prompt was a
+      // steer aimed at that turn.
+      if (refuseTuiOnlyPrompt(host, command.message, Boolean(command.streamingBehavior))) return null;
       const streamingBehavior = command.streamingBehavior as 'steer' | 'followUp' | undefined;
       // The live `stream` row starts with the DISPATCH, not with agent_start:
       // the spawn/ack round trip that precedes agent_start must not read as
@@ -229,6 +273,7 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
       if (!host.isRunning()) {
         throw new WebRpcError('The session is idle — start a prompt first.', 'session_idle');
       }
+      if (refuseTuiOnlyPrompt(host, command.message, true)) return null;
       await host.proc.sendCommand({
         type,
         message: command.message as string,

@@ -26,6 +26,7 @@ import {
   readTextAttachments,
 } from '@/shared/lib/chat/attachments';
 import { createMockStreamCallbacks } from '@/shared/lib/chat/timeline/stream-callbacks';
+import { blockTuiOnlySend } from '@/client/hooks/chat/timeline/tui-only-guard';
 import { PHASE_VERBS } from '@/shared/lib/chat/timeline/tool-phrases';
 import { formatClock } from '@/shared/lib/format/time';
 
@@ -135,6 +136,12 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
     attachments: Attachment[],
     options?: { model?: QueuedMessageModel | null },
   ) => {
+    // Last gate before a prompt leaves the client. `handleSend` already refuses
+    // these, but `executeSend` is also reached by a retry of a stored turn, a
+    // queued item's "Send now", and `submitNewChat` — all of which can carry a
+    // command that was typed before the guard existed, or that arrived from the
+    // queue. Nothing has been rendered yet, so no rollback is needed.
+    if (blockTuiOnlySend(text, setLocalMessages)) return;
     // A queued delivery replays the snapshot the item was queued with; a plain
     // send keeps the session's live picks. 'auto' thinking leaves omp alone.
     const modelOverride = options?.model ?? null;
@@ -304,6 +311,6 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
         scrollToBottom,
       })
     );
-  }, [appSettings, folders, isOmpSession, ompAgent, selectedFolderId, sessionId, scrollToBottom, jumpToBottom, persistMessages, seedSession, pendingComposerModelRef, pendingThinkingLevelRef, deferredComposerPickRef, accessModeRef]);
+  }, [appSettings, folders, isOmpSession, ompAgent, selectedFolderId, sessionId, scrollToBottom, jumpToBottom, persistMessages, seedSession, pendingComposerModelRef, pendingThinkingLevelRef, deferredComposerPickRef, accessModeRef, setLocalMessages]);
   return { steerOmpAgent, executeSend };
 }
