@@ -10,10 +10,15 @@ import {
   renameSession,
 } from '@/server/routes/sessions/session';
 import { listSubagents, readSubagentTranscript } from '@/server/routes/sessions/subagents';
+import { deleteSession } from '@/server/routes/sessions/delete';
 
 export const sessionsBindings: HandlerBinding[] = [
   ...bindingsFor(sessionsList, '/api/sessions/list'),
   ...bindingsFor(sessionsFolder, '/api/sessions/:sessionId'),
+  // DELETE-only on the same path the folder loader answers GET on: mounting it
+  // through `actionBindings` would register a 405 GET fallback that Elysia
+  // applies after the loader, replacing the workspace listing with it.
+  { method: 'DELETE', path: '/api/sessions/:sessionId', handler: deleteSession },
   ...actionBindings(archiveSession, '/api/sessions/:sessionId/archive'),
   // Per-item queue routes. `actionBindings` mounts ALL four mutating verbs on
   // one path, and Elysia lets a later registration override an earlier one —

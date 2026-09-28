@@ -1,6 +1,7 @@
-import { Archive, ArchiveRestore, Check, ChevronDown, ChevronRight, CircleQuestionMark, Loader2, Pencil } from 'lucide-preact';
+import { Check, ChevronDown, ChevronRight, CircleQuestionMark, Loader2, MoreHorizontal } from 'lucide-preact';
 import type { SessionItemData } from '@/shared/types';
 import { useInlineRename } from '@/client/hooks/ui/inline-rename';
+import { SessionActionsMenu, useRowMenu } from '@/client/components/common/session-actions-menu';
 
 export interface MobileSessionRowProps {
   session: SessionItemData;
@@ -16,6 +17,9 @@ export interface MobileSessionRowProps {
   onToggleExpand?: () => void;
   onSelect: () => void;
   onArchive: () => void;
+  /** Omitted for a session that cannot be deleted yet (a pending `new-…` chat,
+   *  which has no transcript anywhere). */
+  onDelete?: () => void;
   onRename?: (name: string) => void;
 }
 
@@ -30,6 +34,7 @@ export function MobileSessionRow({
   onToggleExpand,
   onSelect,
   onArchive,
+  onDelete,
   onRename,
 }: MobileSessionRowProps) {
   const {
@@ -41,6 +46,9 @@ export function MobileSessionRow({
     handleKeyDown,
     handleBlur,
   } = useInlineRename(session.title, onRename);
+  // One trigger for every row action; also reachable by long-press contextmenu.
+  const menu = useRowMenu();
+  const hasActions = Boolean(onRename || onArchive || onDelete);
 
   // The roster toggle is the row's LAST element, so its glyph lands in the same
   // column as the folder header's expand chevron — one vertical line of
@@ -71,76 +79,86 @@ export function MobileSessionRow({
   }
 
   return (
-    <div
-      className={`w-full rounded-lg flex items-center transition-colors ${
-        isActive ? 'bg-ink/10 font-medium text-ink' : 'hover:bg-ink/5 text-ink/85'
-      }`}
-    >
-      <button
-        type="button"
-        onClick={onSelect}
-        className="flex-1 text-left pl-2 pr-3 py-2 flex items-center justify-between min-w-0"
+    <>
+      <div
+        onContextMenu={hasActions ? menu.openAtCursor : undefined}
+        className={`w-full rounded-lg flex items-center transition-colors ${
+          isActive ? 'bg-ink/10 font-medium text-ink' : 'hover:bg-ink/5 text-ink/85'
+        }`}
       >
-        <div className="flex items-center min-w-0 pr-2">
-          {/* Status slot, 16px at the same x as the folder header's icon slot,
-              so the left column reads as one line. Waiting on an answer
-              outranks the run spinner — the spinner says work is happening,
-              the question mark says it is YOUR turn (desktop parity). */}
-          <span className="w-4 flex-shrink-0 flex items-center justify-center">
-            {awaitingInput ? (
-              <CircleQuestionMark size={13} className="text-ink/70 animate-pulse" />
-            ) : status === 'stream' ? (
-              <Loader2 size={13} className="text-ink/50 animate-spin" />
-            ) : status ? (
-              <Check size={13} className="text-ink/50" />
-            ) : null}
-          </span>
-          <span className="text-xs truncate leading-snug ml-2">{title}</span>
-        </div>
-
-        <span className="text-[11px] text-ink/45 font-mono flex-shrink-0 ml-2">{timeAgo ?? ''}</span>
-      </button>
-
-      {onRename && (
         <button
           type="button"
-          onClick={startRename}
-          title="Rename session"
-          className="flex-shrink-0 p-2 text-ink/35 hover:text-ink rounded-lg cursor-pointer"
+          onClick={onSelect}
+          className="flex-1 text-left pl-2 pr-3 py-2 flex items-center justify-between min-w-0"
         >
-          <Pencil size={14} />
-        </button>
-      )}
+          <div className="flex items-center min-w-0 pr-2">
+            {/* Status slot, 16px at the same x as the folder header's icon slot,
+                so the left column reads as one line. Waiting on an answer
+                outranks the run spinner — the spinner says work is happening,
+                the question mark says it is YOUR turn (desktop parity). */}
+            <span className="w-4 flex-shrink-0 flex items-center justify-center">
+              {awaitingInput ? (
+                <CircleQuestionMark size={13} className="text-ink/70 animate-pulse" />
+              ) : status === 'stream' ? (
+                <Loader2 size={13} className="text-ink/50 animate-spin" />
+              ) : status ? (
+                <Check size={13} className="text-ink/50" />
+              ) : null}
+            </span>
+            <span className="text-xs truncate leading-snug ml-2">{title}</span>
+          </div>
 
-      {/* A row WITHOUT a roster toggle still has to keep the toggle's column
-          empty, or its archive glyph would sit where the toggle is and the
-          trailing icons would step in and out row to row. This `mr-1` is what
-          reserves that column: it moves the 14px glyph's centre from x=363 to
-          x=359, the exact x the toggle uses on a row that has one. */}
-      <button
-        type="button"
-        onClick={onArchive}
-        title={session.is_archived === 1 ? 'Unarchive session' : 'Archive session'}
-        className={`flex-shrink-0 p-2 text-ink/35 hover:text-ink rounded-lg cursor-pointer ${showChevron ? '' : 'mr-1'}`}
-      >
-        {session.is_archived === 1 ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-      </button>
-
-      {/* Last element, so its glyph sits in the folder header's chevron column.
-          `p-1.5 mr-1.5` centres a 14px glyph on that column while keeping a
-          touch-sized tap target. */}
-      {showChevron && (
-        <button
-          type="button"
-          onClick={onToggleExpand}
-          title={isExpanded ? 'Collapse subagents' : 'Expand subagents'}
-          aria-expanded={isExpanded}
-          aria-label={isExpanded ? 'Collapse subagents' : 'Expand subagents'}
-          className="flex-shrink-0 p-1.5 mr-1.5 flex items-center justify-center text-ink/50 hover:text-ink rounded-lg cursor-pointer"
-        >
-          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          <span className="text-[11px] text-ink/45 font-mono flex-shrink-0 ml-2">{timeAgo ?? ''}</span>
         </button>
+
+        {/* One trigger for rename / archive / delete, always visible: a touch
+            surface has no hover, and the always-on action buttons this replaced
+            consumed a third of a phone's row width.
+            `mr-1` only when the row has NO roster toggle — it reserves that
+            column so the trailing glyph's centre stays 19px from the row's right
+            edge whether the last element is this trigger or the chevron. Without
+            it the glyphs step in and out from row to row. */}
+        {hasActions && (
+          <button
+            type="button"
+            onClick={menu.openBelow}
+            title="Session actions"
+            aria-label="Session actions"
+            aria-haspopup="menu"
+            aria-expanded={menu.anchor !== null}
+            className={`flex-shrink-0 p-2 text-ink/35 hover:text-ink rounded-lg cursor-pointer ${showChevron ? '' : 'mr-1'}`}
+          >
+            <MoreHorizontal size={16} />
+          </button>
+        )}
+
+        {/* Last element, so its glyph sits in the folder header's chevron column.
+            `p-1.5 mr-1.5` centres a 14px glyph on that column while keeping a
+            touch-sized tap target. */}
+        {showChevron && (
+          <button
+            type="button"
+            onClick={onToggleExpand}
+            title={isExpanded ? 'Collapse subagents' : 'Expand subagents'}
+            aria-expanded={isExpanded}
+            aria-label={isExpanded ? 'Collapse subagents' : 'Expand subagents'}
+            className="flex-shrink-0 p-1.5 mr-1.5 flex items-center justify-center text-ink/50 hover:text-ink rounded-lg cursor-pointer"
+          >
+            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </button>
+        )}
+      </div>
+
+      {menu.anchor && (
+        <SessionActionsMenu
+          anchor={menu.anchor}
+          isArchived={session.is_archived === 1}
+          onRename={onRename ? startRename : undefined}
+          onArchive={onArchive}
+          onDelete={onDelete}
+          onClose={menu.close}
+        />
       )}
-    </div>
+    </>
   );
 }
