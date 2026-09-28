@@ -23,10 +23,33 @@ import { isMockMode } from '@/server/mock.server';
 import { pathExists } from '@/server/lib/omp/core/paths';
 import { migrateLegacyProjectSettings } from '@/shared/lib/workspace/project-settings-migration';
 
-let dbPromise: Promise<DbClient> | null = null;
-/** Resolved handle cached by getDb(); promise callbacks never run sync, so
- *  hot paths unwrap through `getDbSync` instead of awaiting. */
-let dbResolved: DbClient | null = null;
+/**
+ * The handle and its promise live on `globalThis`, not in module bindings.
+ *
+ * `bun run --hot` re-evaluates this module on every server-file edit while the
+ * process lives on, so a module-level cache is reset each time and the previous
+ * `Database` is dropped without ever being closed: measured on Bun 1.4.2 /
+ * macOS, each reload of this file left two more descriptors behind (`db.sqlite`
+ * and `db.sqlite-wal`), which is 2 per edit toward the 10,240-descriptor point
+ * where every `Bun.spawn` in the process starts failing with `EBADF`. The slot
+ * keeps ONE handle per process — the same reason the terminal registry, the
+ * flock host and the provider cache are anchored here.
+ */
+interface DbSlot {
+  /** In-flight open, so concurrent `getDb()` callers share one handle. */
+  promise: Promise<DbClient> | null;
+  /** Resolved handle for `getDbSync`; hot paths must not await. */
+  resolved: DbClient | null;
+}
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __ompChamberDb: DbSlot | undefined;
+}
+
+function slot(): DbSlot {
+  return (globalThis.__ompChamberDb ??= { promise: null, resolved: null });
+}
 
 export async function getDatabasePath(): Promise<string> {
   if (isMockMode()) {
@@ -53,9 +76,13 @@ export async function getDatabasePath(): Promise<string> {
 }
 
 export async function getDb(): Promise<DbClient> {
-  if (dbPromise) return dbPromise;
+  const state = slot();
+  if (state.promise) return state.promise;
+  // A reload keeps the previous generation's handle: the schema was already
+  // initialized in this process, and re-opening would leak the old one.
+  if (state.resolved) return state.resolved;
 
-  dbPromise = (async () => {
+  state.promise = (async () => {
     const dbPath = await getDatabasePath();
     const db = createDb(dbPath);
 
@@ -74,11 +101,11 @@ export async function getDb(): Promise<DbClient> {
 
     await migrateLegacyProjectSettings(db);
 
-    dbResolved = db;
+    state.resolved = db;
     return db;
   })();
 
-  return dbPromise;
+  return state.promise;
 }
 
 /**
@@ -88,6 +115,7 @@ export async function getDb(): Promise<DbClient> {
  * use `getDb()`.
  */
 export function getDbSync(): DbClient {
-  if (!dbResolved) throw new Error('Database not initialized — call getDb() first');
-  return dbResolved;
+  const resolved = slot().resolved;
+  if (!resolved) throw new Error('Database not initialized — call getDb() first');
+  return resolved;
 }
