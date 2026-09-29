@@ -25,7 +25,7 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
   const fetcher = useFetcher<{ changes: GitChange[], branch: string, branches: string[], remoteBranches?: string[], syncCount?: { ahead: number, behind: number } }>();
   const actionFetcher = useFetcher<{ success: boolean, type?: string, data?: unknown[], hasMore?: boolean, total?: number, error?: string }>();
 
-  const { activeRepo: pickedRepo, setActiveRepo, ready: activeRepoReady } = useRepoScope(rootPath, 'git.activeRepo');
+  const { activeRepo: pickedRepo, setActiveRepo, ready: activeRepoReady } = useRepoScope(rootPath);
   const { repos, scanning: reposScanning, rescan: refreshRepos } = useRepoList(rootPath, enabled);
   // When the user has picked nothing and the workspace root is not itself a
   // repo, git falls back to the first repo discovery found — the same choice

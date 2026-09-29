@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { getSessionValue, hydrateSession, setSessionKey, subscribeSessionKey } from '@/shared/lib/workspace/session-state/store';
+import { getSessionValue, hydrateSession, setSessionKey } from '@/shared/lib/workspace/session-state/store';
+import { subscribeSessionKey } from '@/shared/lib/workspace/session-state/listeners';
 import { useSessionStateContext } from '@/client/hooks/workspace/session-state/context';
 
 type LoadedState = Record<string, unknown>;

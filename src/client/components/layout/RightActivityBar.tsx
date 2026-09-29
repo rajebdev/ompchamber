@@ -36,7 +36,7 @@ export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen, hasA
   // on. Reading it through the shared pick (not through a private copy) is what
   // makes this update the moment the panel's picker moves; polling the workspace
   // root instead showed the wrong repository's changes.
-  const activeRepo = useResolvedRepo(activeProjectPath ?? undefined, 'git.activeRepo', hasActiveContext);
+  const activeRepo = useResolvedRepo(activeProjectPath ?? undefined, hasActiveContext);
   const { changes } = useGitStatus(activeProjectPath ?? undefined, activeRepo, refreshKey, hasActiveContext, GIT_STATUS_POLL_MS);
   const hasGitChanges = changes.length > 0;
 

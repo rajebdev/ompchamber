@@ -46,7 +46,7 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
   const [storedExpandedPaths, setStoredExpandedPaths, expandedPathsReady] = useSessionState<string[]>('files.expandedPaths', []);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set(storedExpandedPaths));
   const childrenCacheRef = useRef<Record<string, FsNode[]>>({});
-  const { activeRepo, setActiveRepo } = useRepoScope(rootPath, 'files.activeRepo');
+  const { activeRepo, setActiveRepo } = useRepoScope(rootPath);
   const { repos, scanning: reposScanning, rescan: rescanRepos } = useRepoList(rootPath, enabled);
   const { isScrolling, handleScroll } = useScrollbarFade();
   const { fileMap: gitFileMap, folderMap: gitFolderMap, refreshGitStatus } = useGitStatus(rootPath, activeRepo, refreshKey, enabled);

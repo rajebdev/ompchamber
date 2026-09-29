@@ -10,6 +10,10 @@
  * id on spawn adoption).
  *
  * Key namespace contract (dot-prefixed by owning panel):
+ * - workspace.activeRepo      { root, repo } — the selected nested repo, shared
+ *                             by the files/search/git/terminal views. Supersedes
+ *                             the retired per-panel `<panel>.activeRepo` keys,
+ *                             which are migrated on the first open.
  * - layout.activeRightPanel   RightPanelType
  * - layout.showRightPanel     boolean
  * - layout.showLeftPanel      boolean
@@ -22,14 +26,12 @@
  * - editor.zoomLevel          number
  * - files.expandedPaths       string[]
  * - files.searchQuery         string
- * - files.activeRepo          string
  * - browser.zoomLevel         number
  * - userBrowser.history       string[]
  * - userBrowser.historyIndex  number
  * - userBrowser.inputUrl      string
  * - userBrowser.viewportMode  string
  * - userBrowser.zoomLevel     number
- * - terminal.activeRepo       string
  * - terminal.id               string (server-side PTY id; reattached on reload)
  * - git.viewMode              'flat' | 'tree'
  * - git.commitDraft           string
@@ -44,13 +46,14 @@
  * - search.useRegex           boolean
  * - search.includeFiles       string
  * - search.showIncludeField   boolean
- * - search.activeRepo         string
  * - context.rawExpandedIds    Record<string, boolean>
  * - context.rawFilterRole     'all' | 'assistant' | 'user'
  * - usage.selectedProviderId  'kenari' | 'deepseek'
  * - chat.draft                string
  * - chat.draftAttachments     attachment metadata array
  */
+
+import { notifySessionKey } from '@/shared/lib/workspace/session-state/listeners';
 
 type SessionState = Record<string, unknown>;
 
@@ -59,18 +62,6 @@ const cache = new Map<string, SessionState>();
 const lastTouched = new Map<string, number>();
 const dirtySessions = new Map<string, boolean>();
 const persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
-/**
- * Listeners per session, then per key, fed by every write to a slot —
- * `setSessionKey`, a blob arriving, a migrate, a delete.
- *
- * `useSessionState` hands every caller a private copy, so two components
- * reading the same key never see each other's writes. A surface that must
- * FOLLOW a value it does not own (the Source Control dot tracking the repo the
- * git panel picked) subscribes here and re-reads through `getSessionValue`.
- */
-const keyListeners = new Map<string, Map<string, Set<() => void>>>();
-/** Bucket name for a listener that follows every slot of a session. */
-const SESSION_SLOT_ALL = '*';
 
 const PERSIST_DEBOUNCE_MS = 600;
 
@@ -147,51 +138,6 @@ export function getSessionValue<T>(sessionId: string | null, key: string): T | u
   return cache.get(sessionId)?.[key] as T | undefined;
 }
 
-/**
- * Listen for writes to one slot of one session, from ANY component.
- *
- * `key` omitted listens to every slot of the session (what a blob arriving
- * changes at once). Returns the unsubscribe.
- */
-export function subscribeSessionKey(sessionId: string | null, key: string | null, listener: () => void): () => void {
-  if (!sessionId) return () => {};
-  const slot = key ?? SESSION_SLOT_ALL;
-  let keys = keyListeners.get(sessionId);
-  if (!keys) {
-    keys = new Map();
-    keyListeners.set(sessionId, keys);
-  }
-  let bucket = keys.get(slot);
-  if (!bucket) {
-    bucket = new Set();
-    keys.set(slot, bucket);
-  }
-  bucket.add(listener);
-  return () => {
-    bucket.delete(listener);
-    if (bucket.size === 0) keys.delete(slot);
-    if (keys.size === 0) keyListeners.delete(sessionId);
-  };
-}
-
-/** Fire one bucket, tolerating listeners that unsubscribe while notified. */
-function notifyBucket(bucket: Set<() => void> | undefined): void {
-  if (!bucket) return;
-  for (const listener of [...bucket]) listener();
-}
-
-/** Fire the listeners of one slot, or of every slot when `key` is omitted. */
-function notifySessionKey(sessionId: string, key?: string): void {
-  const keys = keyListeners.get(sessionId);
-  if (!keys) return;
-  if (key === undefined) {
-    for (const bucket of [...keys.values()]) notifyBucket(bucket);
-    return;
-  }
-  notifyBucket(keys.get(key));
-  notifyBucket(keys.get(SESSION_SLOT_ALL));
-}
-
 export function setSessionKey(sessionId: string | null, key: string, value: unknown): void {
   if (!sessionId) return;
   const state = cache.get(sessionId) ?? {};
@@ -201,6 +147,22 @@ export function setSessionKey(sessionId: string | null, key: string, value: unkn
   dirtySessions.set(sessionId, true);
   schedulePersist(sessionId);
   evictIfNeeded(sessionId);
+  notifySessionKey(sessionId, key);
+}
+
+/**
+ * Remove a slot outright — for a key a cutover retired, where leaving the old
+ * value behind would keep a stale choice visible to anything that still reads
+ * it. Absent key: no write, no persist, no notification.
+ */
+export function clearSessionKey(sessionId: string | null, key: string): void {
+  if (!sessionId) return;
+  const state = cache.get(sessionId);
+  if (!state || !(key in state)) return;
+  delete state[key];
+  touchCacheEntry(sessionId);
+  dirtySessions.set(sessionId, true);
+  schedulePersist(sessionId);
   notifySessionKey(sessionId, key);
 }
 

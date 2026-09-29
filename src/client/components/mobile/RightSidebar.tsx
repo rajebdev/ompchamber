@@ -47,7 +47,7 @@ export function MobileRightSidebar({
   // Same source the desktop activity bar uses — the Source Control view's own
   // repo pick, read shared so switching repos moves this dot too. Polls only
   // while this drawer is the mounted screen (the poll is visibility-gated).
-  const activeRepo = useResolvedRepo(rootPath, 'git.activeRepo', enabled);
+  const activeRepo = useResolvedRepo(rootPath, enabled);
   const { changes } = useGitStatus(rootPath, activeRepo, refreshKey, enabled, GIT_STATUS_POLL_MS);
   const hasGitChanges = changes.length > 0;
 

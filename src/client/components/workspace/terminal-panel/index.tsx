@@ -39,7 +39,7 @@ export function TerminalPanel({ className = '', enabled = true, rootPath, showHe
   const rootRef = useRef<HTMLDivElement>(null);
   const keyboardInset = useKeyboardInset(rootRef);
   const [modifiers, setModifiers] = useState<TerminalModifiers>(NO_MODIFIERS);
-  const { activeRepo, setActiveRepo } = useRepoScope(rootPath, 'terminal.activeRepo');
+  const { activeRepo, setActiveRepo } = useRepoScope(rootPath);
   const { repos, scanning: reposScanning, rescan: rescanRepos } = useRepoList(rootPath, enabled);
   const gridRef = useRef<{ cols: number; rows: number } | null>(null);
   // The latch is read inside `handleInput`, which xterm calls outside React's

@@ -23,10 +23,18 @@
  * with its root invalidates it by construction — no reset effect to order
  * against the per-session state restore — while a session returned to inside
  * the same workspace keeps the repo it was left on.
+ *
+ * The choice is also ONE value for all four views (`REPO_SCOPE_STATE_KEY`), not
+ * one per panel: they describe the same working tree, so a repo picked in the
+ * file explorer has to move the search scope, the Source Control view and a
+ * terminal's cwd with it. Per-panel keys meant four pickers that could silently
+ * disagree about which repository was on screen.
  */
 
-import { useCallback, useRef, useSyncExternalStore } from 'preact/compat';
+import { useCallback, useEffect, useRef, useSyncExternalStore } from 'preact/compat';
+import { useSessionStateContext } from '@/client/hooks/workspace/session-state/context';
 import { useSharedSessionState } from '@/client/hooks/workspace/session-state';
+import { clearSessionKey, getSessionValue } from '@/shared/lib/workspace/session-state/store';
 import { repoStore, UNKNOWN_LIST } from '@/client/hooks/workspace/repo-scope/store';
 
 /** A repo choice, kept next to the workspace root it was made under. */
@@ -34,6 +42,26 @@ interface RepoPick {
   root: string;
   repo: string;
 }
+
+/**
+ * The one slot the selected repo lives in, shared by every right-panel view that
+ * browses a repository (files, search, git, terminal).
+ *
+ * One slot rather than one per panel: the views all describe the same working
+ * tree, so picking a repo in any of them must move the rest — otherwise the
+ * Files tree, the search scope, the Source Control view and a terminal's cwd can
+ * disagree about which repository they are showing, with nothing on screen
+ * saying why.
+ */
+export const REPO_SCOPE_STATE_KEY = 'workspace.activeRepo';
+
+/**
+ * Keys that held the pick before the views shared one selection, in the order a
+ * session carrying several is read. The git panel's value wins: that pick is the
+ * one the repo list's root-level fallback and the Source Control indicator were
+ * built around.
+ */
+const LEGACY_REPO_STATE_KEYS = ['git.activeRepo', 'files.activeRepo', 'search.activeRepo', 'terminal.activeRepo'];
 
 /**
  * The repo a git panel works on: the user's pick, or — when they have none and
@@ -53,19 +81,21 @@ export function resolveRepoForPanel(pick: string, repos: readonly string[]): str
 }
 
 /**
- * The repo this panel operates on, restored per session but dropped the moment
+ * The repo the right panel works on, restored per session but dropped the moment
  * the active workspace root changes.
  *
  * The pick is read SHARED (`useSharedSessionState`), not from a private copy:
- * the panel that owns the picker is not always the component that must follow
- * the choice — the activity bar's Source Control dot and the phone's tab bar do
- * — and a per-instance copy would leave them on the previous repo.
+ * every view that shows a repo picker reads this one value, and a surface that
+ * only follows it — the activity bar's Source Control dot, the phone's tab bar —
+ * has no picker at all. A per-instance copy left those on the previous repo.
  */
-export function useRepoScope(
-  rootPath: string | undefined,
-  stateKey: string,
-): { activeRepo: string; setActiveRepo: (repo: string) => void; ready: boolean } {
-  const [pick, setPick, ready] = useSharedSessionState<RepoPick | null>(stateKey, null);
+export function useRepoScope(rootPath: string | undefined): {
+  activeRepo: string;
+  setActiveRepo: (repo: string) => void;
+  ready: boolean;
+} {
+  const { sessionId } = useSessionStateContext();
+  const [pick, setPick, ready] = useSharedSessionState<RepoPick | null>(REPO_SCOPE_STATE_KEY, null);
   const scope = rootPath ?? '';
 
   // Read through refs so the setter keeps ONE identity: it is handed to child
@@ -78,6 +108,21 @@ export function useRepoScope(
   const setActiveRepo = useCallback((repo: string) => {
     setPickRef.current({ root: scopeRef.current, repo });
   }, []);
+
+  // A session that picked a repo while the panels kept their own keys still has
+  // it under its own panel's: adopt it, then leave one key behind. Clearing is
+  // unconditional — a legacy value that does not match this root names a
+  // directory the shared slot could not use anyway.
+  useEffect(() => {
+    if (!ready) return;
+    if (!pick) {
+      const adopted = LEGACY_REPO_STATE_KEYS
+        .map((key) => getSessionValue<RepoPick | null>(sessionId, key))
+        .find((candidate) => candidate && candidate.root === scope && candidate.repo);
+      if (adopted) setPickRef.current(adopted);
+    }
+    for (const key of LEGACY_REPO_STATE_KEYS) clearSessionKey(sessionId, key);
+  }, [ready, pick, scope, sessionId]);
 
   // A pick made under another root (or stored before the root was recorded
   // alongside it) names a directory that need not exist here: fall back to the
@@ -92,12 +137,12 @@ export function useRepoScope(
 
 /**
  * The repo a panel's picker resolves to right now, for the surfaces that follow
- * a PANEL's scope without owning it — the Source Control dot in the activity bar
- * and the phone's tab bar. Same pick, same list, same fallback as the panel's own
- * reads, so the dot describes the repository its view would show.
+ * the shared scope without owning a picker — the Source Control dot in the
+ * activity bar and the phone's tab bar. Same pick, same list, same fallback as
+ * the panel's own reads, so the dot describes the repository its view would show.
  */
-export function useResolvedRepo(rootPath: string | undefined, stateKey: string, active: boolean): string {
-  const { activeRepo } = useRepoScope(rootPath, stateKey);
+export function useResolvedRepo(rootPath: string | undefined, active: boolean): string {
+  const { activeRepo } = useRepoScope(rootPath);
   const { repos } = useRepoList(rootPath, active);
   return resolveRepoForPanel(activeRepo, repos);
 }

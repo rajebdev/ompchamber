@@ -25,7 +25,7 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
   const [includeFiles, setIncludeFiles] = useSessionState<string>('search.includeFiles', '');
   const [showMenu, setShowMenu] = useState(false);
   const [showIncludeField, setShowIncludeField] = useSessionState<boolean>('search.showIncludeField', false);
-  const { activeRepo, setActiveRepo } = useRepoScope(rootPath, 'search.activeRepo');
+  const { activeRepo, setActiveRepo } = useRepoScope(rootPath);
   const { repos, scanning: reposScanning, rescan: rescanRepos } = useRepoList(rootPath, enabled);
   
   const menuRef = useRef<HTMLDivElement>(null);

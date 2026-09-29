@@ -30,7 +30,7 @@ const statusUrls: string[] = [];
 
 /** The picker the panel owns: writes the slot the dot follows. */
 function Picker({ repo }: { repo: string }) {
-  const { setActiveRepo } = useRepoScope(ROOT, 'git.activeRepo');
+  const { setActiveRepo } = useRepoScope(ROOT);
   return h('button', { id: 'pick', onClick: () => setActiveRepo(repo) }, 'pick');
 }
 
@@ -42,7 +42,7 @@ beforeAll(() => {
     const url = String(input);
     const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
     if (url.includes('/state')) {
-      return json({ sessionId: SESSION, state: { 'git.activeRepo': { root: ROOT, repo: 'projects/a' } } });
+      return json({ sessionId: SESSION, state: { 'workspace.activeRepo': { root: ROOT, repo: 'projects/a' } } });
     }
     if (url.includes('reposOnly')) return json({ repos: ['.', 'projects/a', 'projects/b'] });
     statusUrls.push(url);
