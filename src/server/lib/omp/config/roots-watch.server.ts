@@ -78,9 +78,9 @@ export interface DiscoveryWatchDeps {
 
 export interface DiscoveryWatch {
   /** Bring the watcher set in line with `deps.roots()`. Idempotent and
-   *  serialized, so overlapping calls cannot double a watcher. Returns the
-   *  number of roots requested. */
-  sync: () => Promise<number>;
+   *  serialized, so overlapping calls cannot double a watcher. Resolves with
+   *  the keys attached for the first time by this pass. */
+  sync: () => Promise<string[]>;
   /** Close every watcher and cancel a pending reload. */
   stop: () => void;
 }
@@ -89,30 +89,77 @@ export function createDiscoveryRootsWatch(deps: DiscoveryWatchDeps): DiscoveryWa
   /** Watchers currently held, keyed by the directory watched — a real root or
    *  the ancestor bridging to one that does not exist yet. */
   const active = new Map<string, FSWatcher>();
+  /** The subset of {@link active} that is a genuine root. Only a change inside
+   *  one of these is a change omp would see; a bridge watcher exists to notice
+   *  a root APPEARING, not to report the contents of a directory that is not a
+   *  root. */
+  const roots = new Set<string>();
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  let chain: Promise<number> = Promise.resolve(0);
+  /** A genuine root's contents moved during the pending window. */
+  let rootChangePending = false;
+  /** Roots attached since the last pass. Evaluated when the timer fires rather
+   *  than when it was armed: a root that appeared and was then dropped must not
+   *  still owe a reload. */
+  const newRoots = new Set<string>();
+  let chain: Promise<string[]> = Promise.resolve([]);
 
-  function scheduleReload(): void {
+  /**
+   * Coalesce a burst into one pass.
+   *
+   * `reason.moved` says the change was a genuine discovery change — something
+   * inside a real root moved. A BRIDGE firing (a stand-in directory for a root
+   * that does not exist yet) carries no `moved`: its directory can be
+   * `~/.omp/agent` or a whole workspace, which an editor, a build or a chat
+   * session writes to constantly. Reporting those as reloads meant a constant
+   * stream of `/reload-plugins` broadcasts (measured: 170 in 20 s on an idle
+   * machine), which is both wasteful and, worse, hides the real gaps: a skill
+   * omp had never seen appeared to be picked up by the watcher when it was only
+   * being re-read by a broadcast triggered by an unrelated file.
+   *
+   * A bridge firing still re-syncs, because the change may BE the root's
+   * creation — and if it was, the reconcile attaches that root and reports the
+   * reload itself.
+   */
+  function schedulePass(reason: { moved?: boolean } = {}): void {
+    // A root's own change must not be downgraded by a bridge firing in the same
+    // window — the timer below is shared, so an unguarded assignment lets an
+    // unrelated directory's traffic replace a pending reload with a mere
+    // reconcile (observed: the reload scheduled by a root attach was overwritten
+    // by a bridge pass before it ran, and the change it was carrying was lost).
+    //
+    // `moved` is deliberately NOT set by the attach path: an attach is only a
+    // REASON TO CHECK (the root's registration may have raced a write), not
+    // proof that anything changed. Conflating the two made a root that appeared
+    // and was dropped in the same window still owe a reload.
+    rootChangePending = rootChangePending || reason.moved === true;
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
-      // Re-sync first: a change may be the CREATION of a root that was bridged
-      // through an ancestor, and that root needs its own recursive watcher
-      // before its contents can be seen. The reconcile is idempotent, so a
-      // burst that changed nothing structural costs one pass.
-      void sync().finally(() => deps.onReload());
+      const moved = rootChangePending;
+      rootChangePending = false;
+      // A catch-up is owed only while the root it was attached for is STILL
+      // watched: a root that appeared and was dropped inside the same window has
+      // nothing to re-read. (This is what makes "a gap in a scan is not a
+      // reload" testable: without it, merely attaching a root — even one that
+      // disappears before anything writes to it — broadcast a reload.)
+      const caughtUp = [...newRoots].some((key) => roots.has(key));
+      newRoots.clear();
+      void sync().then((appeared) => {
+        if (moved || caughtUp || appeared.length > 0) deps.onReload();
+      });
     }, DEBOUNCE_MS);
     debounceTimer.unref?.();
   }
 
-  function attach(target: string, recursive: boolean, onChange: () => void): void {
+  function attach(target: string, isRoot: boolean, onChange: () => void): void {
     if (active.has(target)) return;
     try {
-      const watcher = watch(target, { recursive }, onChange);
+      const watcher = watch(target, { recursive: isRoot }, onChange);
       watcher.on('error', (error) => {
         console.error(`[discovery-watch] watcher for ${target} failed:`, error);
       });
       active.set(target, watcher);
+      if (isRoot) roots.add(target);
     } catch {
       // A root can disappear between the existence check and the watch (a scope
       // being deleted); the next sync re-establishes it.
@@ -125,14 +172,14 @@ export function createDiscoveryRootsWatch(deps: DiscoveryWatchDeps): DiscoveryWa
    * Only a genuine root is watched RECURSIVELY. An ancestor standing in for a
    * missing root is watched for its direct children alone — the nearest
    * existing ancestor of `<workspace>/.omp/skills` can be the whole workspace,
-   * and a recursive watch there would broadcast a reload for every file an
-   * editor, a build or a `git checkout` touches.
+   * and a recursive watch there would report every file an editor, a build or a
+   * `git checkout` touches.
    */
   async function ensureWatch(target: string, desired: Set<string>, isRoot: boolean, depth = 0): Promise<void> {
     const key = resolve(target);
     if (await pathExists(target)) {
       desired.add(key);
-      attach(key, isRoot, scheduleReload);
+      attach(key, isRoot, isRoot ? () => schedulePass({ moved: true }) : () => schedulePass());
       return;
     }
     if (depth >= MAX_ANCESTOR_DEPTH) return;
@@ -141,23 +188,41 @@ export function createDiscoveryRootsWatch(deps: DiscoveryWatchDeps): DiscoveryWa
     await ensureWatch(parent, desired, false, depth + 1);
   }
 
-  async function reconcile(): Promise<number> {
-    const roots = await deps.roots();
+  /** Reconcile the watcher set with the current roots. Returns the keys attached
+   *  for the first time in this pass — a bridge pass that finds the directory it
+   *  was standing in for reports it here, so the change it just saw IS a
+   *  discovery change. */
+  async function reconcile(): Promise<string[]> {
+    const wanted = await deps.roots();
     const desired = new Set<string>();
-    for (const root of roots) await ensureWatch(root, desired, true);
+    const before = new Set(roots);
+    for (const root of wanted) await ensureWatch(root, desired, true);
 
     for (const [key, watcher] of active) {
       if (desired.has(key)) continue;
       watcher.close();
       active.delete(key);
+      roots.delete(key);
     }
-    return roots.length;
+    return [...roots].filter((key) => !before.has(key));
   }
 
-  function sync(): Promise<number> {
+  function sync(): Promise<string[]> {
     // A rejection in an earlier pass must not poison the chain, or every later
     // sync would be skipped and the watcher set would freeze.
-    chain = chain.then(reconcile, reconcile);
+    chain = chain.then(reconcile, reconcile).then((appeared) => {
+      // A root attached for the FIRST time gets one delayed pass even though no
+      // event was seen. `fs.watch` registers with the OS asynchronously — the
+      // call returns before the kernel starts reporting for that directory — so
+      // a file written in the instant between the attach and the registration
+      // raises no event at all (measured: a skill written immediately after a
+      // session spawn was missed, and picked up once the attach had settled).
+      // The delayed pass re-reads through `onReload` after the registration has
+      // landed, which is what closes that window.
+      for (const key of appeared) newRoots.add(key);
+      if (appeared.length > 0) schedulePass();
+      return appeared;
+    });
     return chain;
   }
 
@@ -166,8 +231,11 @@ export function createDiscoveryRootsWatch(deps: DiscoveryWatchDeps): DiscoveryWa
       clearTimeout(debounceTimer);
       debounceTimer = null;
     }
+    rootChangePending = false;
+    newRoots.clear();
     for (const watcher of active.values()) watcher.close();
     active.clear();
+    roots.clear();
   }
 
   return { sync, stop };
@@ -252,9 +320,11 @@ function getServerWatch(): DiscoveryWatch {
 
 const serverWatch = getServerWatch();
 
-/** Bring the server's watcher set in line with the current user scope and
- *  workspace list. Called at boot and again whenever a workspace is added. */
-export function syncDiscoveryRootsWatch(): Promise<number> {
+/** Bring the server's watcher set in line with the current user scope, workspace
+ *  list and live sessions. Called at boot, on a workspace add/remove, and on a
+ *  session spawn. Resolves once the watchers are attached, with the keys
+ *  attached for the first time by this pass. */
+export function syncDiscoveryRootsWatch(): Promise<string[]> {
   return serverWatch.sync();
 }
 

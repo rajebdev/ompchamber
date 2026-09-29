@@ -16,7 +16,8 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { homedir } from 'node:os';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   commandRoots,
@@ -51,6 +52,45 @@ describe('skill roots', () => {
   test('a user-scope read has no project roots', () => {
     expect(skillRoots().every((root) => root.scope === 'user')).toBe(true);
     expect(skillRoots(PROJECT).some((root) => root.scope === 'project')).toBe(true);
+  });
+
+  test('includes the ancestor roots omp walks up to, but never manages them', async () => {
+    // omp reads project skills from every ancestor up to the enclosing git repo,
+    // so a skill in `<parent>/.omp/skills` is live for a session in a subdir.
+    const outer = await mkdtemp(join(tmpdir(), 'omp-walkup-'));
+    try {
+      const inner = join(outer, 'inner');
+      await mkdir(inner, { recursive: true });
+      const dirs = skillRoots(inner).map((root) => root.dir);
+      expect(dirs).toContain(join(inner, '.omp', 'skills'));
+      expect(dirs).toContain(join(outer, '.omp', 'skills'));
+
+      // The chamber's write/delete paths stay scoped to the cwd's own root: a
+      // save in one project must not be able to rewrite a parent's files.
+      const managed = skillRoots(inner).filter((root) => root.managed).map((root) => root.dir);
+      expect(managed).not.toContain(join(outer, '.omp', 'skills'));
+    } finally {
+      await rm(outer, { recursive: true, force: true });
+    }
+  });
+
+  test('the ancestor walk stops at a git repository boundary', async () => {
+    const outer = await mkdtemp(join(tmpdir(), 'omp-walkup-'));
+    try {
+      const repo = join(outer, 'repo');
+      const inner = join(repo, 'inner');
+      await mkdir(inner, { recursive: true });
+      // An empty `.git` is enough — omp treats the entry, dir or file, as the
+      // repository root (verified on 18.4.3).
+      await mkdir(join(repo, '.git'), { recursive: true });
+
+      const dirs = skillRoots(inner).map((root) => root.dir);
+      expect(dirs).toContain(join(repo, '.omp', 'skills'));
+      // The walk stopped at the repo, so the directory ABOVE it is not read.
+      expect(dirs).not.toContain(join(outer, '.omp', 'skills'));
+    } finally {
+      await rm(outer, { recursive: true, force: true });
+    }
   });
 });
 

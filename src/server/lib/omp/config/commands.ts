@@ -32,6 +32,7 @@
 import fs from 'fs';
 import { join, resolve } from 'path';
 import { getAgentDir, pathExists } from '@/server/lib/omp/core/paths';
+import { commandRoots, PROJECT_COMMAND_ROOTS } from '@/server/lib/omp/config/discovery-roots';
 import { writeFileAtomic } from '@/server/lib/fs/atomic-write';
 import { parseFrontmatter } from '@/server/lib/omp/config/yaml';
 
@@ -39,25 +40,14 @@ const MAX_COMMAND_MD_BYTES = 512 * 1024;
 
 /** Project-level command dirs, relative to a workspace root. `github` holds
  *  VS Code Copilot prompt files, whose names carry the `.prompt` suffix. */
-const PROJECT_COMMAND_DIRS: Array<{ dir: string; suffix: string }> = [
-  { dir: '.omp/commands', suffix: '.md' },
-  { dir: '.claude/commands', suffix: '.md' },
-  { dir: '.codex/commands', suffix: '.md' },
-  { dir: '.agents/commands', suffix: '.md' },
-  { dir: '.opencode/commands', suffix: '.md' },
-  { dir: '.github/prompts', suffix: '.prompt.md' },
-];
+const PROJECT_COMMAND_DIRS = PROJECT_COMMAND_ROOTS;
 
 /** User-level command dirs. `.omp/agent` comes from the agent dir resolution
  *  so `PI_CODING_AGENT_DIR` and profiles are honored. */
 function userCommandDirs(): Array<{ dir: string; suffix: string }> {
-  return [
-    { dir: join(getAgentDir(), 'commands'), suffix: '.md' },
-    { dir: join(Bun.env.HOME ?? '', '.claude', 'commands'), suffix: '.md' },
-    { dir: join(Bun.env.HOME ?? '', '.codex', 'commands'), suffix: '.md' },
-    { dir: join(Bun.env.HOME ?? '', '.agents', 'commands'), suffix: '.md' },
-    { dir: join(Bun.env.HOME ?? '', '.config', 'opencode', 'commands'), suffix: '.md' },
-  ];
+  return commandRoots()
+    .filter((root) => root.scope === 'user')
+    .map(({ dir, suffix }) => ({ dir, suffix }));
 }
 
 export interface CommandFileLocation {

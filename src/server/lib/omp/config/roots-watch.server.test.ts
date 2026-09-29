@@ -130,6 +130,41 @@ describe('discovery roots watch', () => {
     expect(changes).toBeGreaterThanOrEqual(1);
   });
 
+  test('unrelated activity in a BRIDGE directory reports nothing', async () => {
+    const workspace = await tempDir();
+    // The stand-in is the workspace itself — a directory an editor, a build or a
+    // chat session writes to constantly — because `.omp/skills` does not exist.
+    roots = [join(workspace, '.omp', 'skills')];
+    const watcher = start();
+    await watcher.sync();
+
+    await writeFile(join(workspace, 'README.md'), 'x');
+    await mkdir(join(workspace, 'src'), { recursive: true });
+    await writeFile(join(workspace, 'src', 'index.ts'), 'x');
+    await settleQuiet(800);
+
+    // A reload here would broadcast `/reload-plugins` for every file an editor,
+    // a build or a `git checkout` touches — measured at 170 broadcasts in 20 s
+    // on an idle machine before this was separated.
+    expect(changes).toBe(0);
+  });
+
+  test('the root APPEARING is reported even though only a bridge saw it', async () => {
+    const workspace = await tempDir();
+    const root = join(workspace, '.omp', 'skills');
+    roots = [root];
+    const watcher = start();
+    await watcher.sync();
+
+    // Only the creation of the root itself — no file inside it yet. The bridge
+    // watcher is what sees it, and the reconcile is what turns it into a reload.
+    await settleAfter(async () => {
+      await mkdir(root, { recursive: true });
+    });
+
+    expect(changes).toBeGreaterThanOrEqual(1);
+  });
+
   test('a root added after the first sync is watched', async () => {
     const first = join(await tempDir(), 'skills');
     const second = join(await tempDir(), 'skills');

@@ -155,9 +155,12 @@ export async function startRpcSession(
     registry.set(realSessionId, created);
     // A session's cwd may sit outside every registered workspace, and omp
     // resolves project skills from it all the same — so the discovery watcher
-    // has to learn this directory. Idempotent, and skipped when the cwd is
-    // already covered by a workspace root.
-    void syncDiscoveryRootsWatch();
+    // has to learn this directory. AWAITED, not fired and forgotten: the
+    // reconcile attaches its watchers asynchronously, and a caller that wrote a
+    // skill the moment the spawn returned would land it in the gap before the
+    // watch existed (measured: the write was missed on a fast follow-up and
+    // picked up once the attach had settled).
+    await syncDiscoveryRootsWatch();
     return { session: created, realSessionId };
   })().finally(() => locks.delete(sessionId));
 
@@ -266,5 +269,11 @@ export async function startNewRpcSession(
     if (registry.get(realSessionId) === wrapper) registry.delete(realSessionId);
   });
   registry.set(realSessionId, wrapper);
+  // A prewarmed process is adopted here, not in `startRpcSession`, so this is
+  // the only spawn path that sees it — a session's cwd may sit outside every
+  // registered workspace, and the discovery watcher has to learn it. Awaited
+  // for the same reason as in `startRpcSession`: the attach is asynchronous,
+  // and the caller's first write must not land before the watch exists.
+  await syncDiscoveryRootsWatch();
   return { session: wrapper, realSessionId };
 }

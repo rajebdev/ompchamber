@@ -42,8 +42,15 @@
  * there.
  */
 
-import { join } from 'path';
+import { existsSync } from 'fs';
+import { dirname, join, resolve } from 'path';
 import { getAgentDir } from '@/server/lib/omp/core/paths';
+
+/** How far up from a cwd the ancestor scan looks. omp's own walk stops at the
+ *  enclosing git repo (or the filesystem root), which is what bounds this in
+ *  practice; the cap only stops a pathological path from producing hundreds of
+ *  entries. */
+const MAX_WALK_UP_DEPTH = 24;
 
 /** A root, relative to a workspace for `project` scope, absolute for `user`. */
 export interface DiscoveryRoot {
@@ -109,12 +116,42 @@ export function skillRoots(projectDir?: string | null): DiscoveryRoot[] {
     for (const entry of PROJECT_ROOTS) {
       roots.push({ dir: join(projectDir, entry.dir), scope: 'project', managed: entry.managed });
     }
+    roots.push(...walkUpSkillRoots(projectDir));
   }
   for (const entry of userSharedRoots()) {
     // A shared root is a skills root only for its `skills` half.
     if (entry.dir.endsWith('skills')) roots.push({ dir: entry.dir, scope: 'user', managed: entry.managed });
   }
   for (const dir of userSkillOnlyRoots()) roots.push({ dir, scope: 'user', managed: false });
+  return roots;
+}
+
+/**
+ * `<ancestor>/.omp/skills` for every ancestor of `dir` up to the enclosing git
+ * repository, or to the filesystem root when there is none.
+ *
+ * omp does NOT read project skills from the cwd alone — it walks UP from it,
+ * and a `.git` entry is what stops the walk (verified on 18.4.3: from
+ * `/tmp/walk/a/b/c` with no git anywhere, `omp skill list` reported the skills
+ * of all four levels; adding an empty `.git` at `a/b` cut it to that level and
+ * below). $HOME is NOT a boundary — the walk crossed it — and a `.git` FILE
+ * (a worktree or submodule) stops it just like a directory.
+ *
+ * These roots are `managed: false`: omp reads them, but the chamber's write and
+ * delete paths are scoped to the cwd's own `.omp/skills`, and widening them
+ * would let a save in one project rewrite another's files.
+ */
+function walkUpSkillRoots(dir: string): DiscoveryRoot[] {
+  const roots: DiscoveryRoot[] = [];
+  let current = resolve(dir);
+  for (let depth = 0; depth < MAX_WALK_UP_DEPTH; depth += 1) {
+    const parent = dirname(current);
+    if (parent === current) break; // filesystem root
+    // A `.git` entry ends the walk: omp treats it as the repository boundary.
+    if (existsSync(join(current, '.git'))) break;
+    current = parent;
+    roots.push({ dir: join(current, '.omp', 'skills'), scope: 'project', managed: false });
+  }
   return roots;
 }
 
