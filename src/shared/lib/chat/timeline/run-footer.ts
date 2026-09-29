@@ -120,8 +120,16 @@ export function resolveRunFooters(
     if (!endsRun || ownerIndex < 0) continue;
 
     const owner = messages[ownerIndex];
-    // The answer is still streaming — no footer until the run settles.
-    if (isGenerating && ownerIndex === streamingIdx && owner.role === 'ai') continue;
+    // The answer is still streaming — no footer until the run settles. The
+    // streaming row is identified POSITIONALLY, never by its role spelling: a
+    // live row is `ai` (the live mapper), while `roleFor` spells the rows a
+    // JSONL load produces for omp's `developer`, `custom` and `toolResult`
+    // entries `assistant` — and a run reopened mid-flight has exactly such a
+    // row at its tail (the last entry written before the streaming answer).
+    // Gating on `ai` therefore settled the footer on the very row that was
+    // still streaming. `ownerIndex` only ever holds a non-user, non-notice
+    // row, so no role test is needed here.
+    if (isGenerating && ownerIndex === streamingIdx) continue;
 
     const runUser = runStartIndex >= 0 ? messages[runStartIndex] : null;
     footers[i] = {

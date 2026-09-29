@@ -170,6 +170,11 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
   // that never attached to the stream), so the sidebar spun while the timeline
   // showed nothing.
   const sessionStreaming = useMemo(() => isSessionStreaming(folders, sessionId), [folders, sessionId]);
+  // One "a run is in flight" state for the whole timeline: the indicator, the
+  // streaming row and the withheld run footer all read this. A local-only
+  // signal settled a run's footer while its answer was still arriving, for the
+  // same reason it hid the indicator.
+  const timelineRunning = isGenerating || sessionStreaming;
 
   // Full-panel skeleton while a session's committed history is still loading:
   // covers the whole chat timeline (body + composer) so a session switch shows
@@ -190,7 +195,7 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
         inputAttachments={inputAttachments}
         setInputAttachments={setInputAttachments}
         onSend={handleSend}
-        isGenerating={isGenerating}
+        isGenerating={timelineRunning}
         appSettings={appSettings}
         messages={localMessages}
         provider={sessionProvider}
@@ -247,7 +252,7 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
                   loadOlderError={loadOlderError}
                   loadOlder={loadOlder}
                   messages={localMessages}
-                  isGenerating={isGenerating}
+                  isGenerating={timelineRunning}
                   provider={sessionProvider}
                   providerNames={providerNames}
                   modelName={sessionModelName}
@@ -268,7 +273,7 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
                 isMobile={isMobile}
                 sessionId={sessionId}
                 isGenerating={isGenerating}
-                showGeneratingIndicator={isGenerating || sessionStreaming}
+                showGeneratingIndicator={timelineRunning}
                 modelName={sessionModelName}
                 generatingVerb={generatingVerb}
                 provider={sessionProvider}

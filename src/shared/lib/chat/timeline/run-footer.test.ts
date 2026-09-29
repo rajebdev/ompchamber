@@ -52,6 +52,19 @@ describe('resolveRunFooters', () => {
     expect(owners([user('u1'), ai('a1'), notice('n1')], true)).toEqual([null, null, null]);
   });
 
+  test('holds the footer back when the streaming row is spelled `assistant`', () => {
+    // `roleFor` spells the rows a JSONL load produces for omp's developer /
+    // custom / toolResult entries `assistant` (the live mapper says `ai`), and
+    // a run reopened mid-flight has exactly such a row at its tail — the last
+    // entry written before the streaming answer. Keying the "still streaming"
+    // guard on `ai` settled the footer on a row that was still streaming.
+    const committed = (id: string): ChatMessageData => ({ id, role: 'assistant', content: 'note' });
+    expect(owners([user('u1'), ai('a1'), committed('d1')], true)).toEqual([null, null, null]);
+    expect(owners([user('u1'), committed('t1')], true)).toEqual([null, null]);
+    // Once the run settles the footer lands on that same row.
+    expect(owners([user('u1'), ai('a1'), committed('d1')], false)).toEqual([null, null, 'd1']);
+  });
+
   test('settles the footer once the run completes', () => {
     expect(owners([user('u1'), ai('a1'), notice('n1')], false)).toEqual([null, null, 'a1']);
   });
