@@ -1,4 +1,4 @@
-import { X } from 'lucide-preact';
+import { Heart, X } from 'lucide-preact';
 import packageJson from '@/../package.json';
 import type { UseUpdatesResult } from '@/client/hooks/ui/updates';
 import { SocialLinks } from '@/client/components/layout/session-sidebar/about-modal/SocialLinks';
@@ -54,7 +54,8 @@ export function AboutModal({ isOpen, onClose, updates, onToast }: AboutModalProp
         <SocialLinks />
 
         {/* Footer */}
-        <p className="text-[11px] text-ink/50 font-normal mt-8">
+        <p className="text-[11px] text-ink/50 font-normal mt-8 flex items-center justify-center gap-1.5">
+          <Heart size={12} className="fill-current text-error shrink-0" aria-hidden="true" />
           Made with love for the community
         </p>
       </div>
