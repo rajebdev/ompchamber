@@ -5,6 +5,12 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.1](https://github.com/rajebdev/ompchamber/compare/v3.7.0...v3.7.1) — 2026-09-29
+
+### Fixed
+
+* **about:** point social links at the real project and refresh the row set ([3bac3cd](https://github.com/rajebdev/ompchamber/commit/3bac3cdf893443ffcbcfaf92add6dc7a13d40ef9))
+
 ## [3.7.0](https://github.com/rajebdev/ompchamber/compare/v3.6.0...v3.7.0) — 2026-09-29
 
 ### Added
