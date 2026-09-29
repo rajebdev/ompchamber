@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { getSessionValue, hydrateSession, setSessionKey } from '@/shared/lib/workspace/session-state/store';
+import { getSessionValue, hydrateSession, setSessionKey, subscribeSessionKey } from '@/shared/lib/workspace/session-state/store';
 import { useSessionStateContext } from '@/client/hooks/workspace/session-state/context';
 
 type LoadedState = Record<string, unknown>;
@@ -46,6 +46,26 @@ export function useSessionState<T>(key: string, fallback: T): [T, (value: T | ((
 }
 
 export const useSessionUiState = useSessionState;
+
+/**
+ * A slot read the way EVERY component sees it: the value is read from the store
+ * on each render and the hook re-renders whenever any component writes it.
+ *
+ * `useSessionState` keeps a private copy per caller, so two components reading
+ * the same key never observe each other's writes. That is right for state a
+ * component owns alone (a draft, a panel width) and wrong for state a surface
+ * must FOLLOW without owning it — the Source Control dot tracking the repo the
+ * git panel picked — which reads through here instead. Writing is the same:
+ * `setValue` persists and notifies.
+ */
+export function useSharedSessionState<T>(key: string, fallback: T): [T, (value: T | ((prev: T) => T)) => void, boolean] {
+  const { sessionId } = useSessionStateContext();
+  const [, setValue, ready] = useSessionState<T>(key, fallback);
+  const [, bump] = useState(0);
+  useEffect(() => subscribeSessionKey(sessionId, key, () => bump((n) => n + 1)), [sessionId, key]);
+  const stored = getSessionValue<T>(sessionId, key);
+  return [stored === undefined ? fallback : stored, setValue, ready];
+}
 
 /** One-shot restore helper for non-hook contexts (event handlers, stores). */
 export function useSessionStateSnapshot(): { sessionId: string; ready: boolean; read: <T>(key: string, fallback: T) => T; hydrate: (state: LoadedState) => void } {

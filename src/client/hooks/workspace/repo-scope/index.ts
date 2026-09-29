@@ -26,7 +26,7 @@
  */
 
 import { useCallback, useRef, useSyncExternalStore } from 'preact/compat';
-import { useSessionState } from '@/client/hooks/workspace/session-state';
+import { useSharedSessionState } from '@/client/hooks/workspace/session-state';
 import { repoStore, UNKNOWN_LIST } from '@/client/hooks/workspace/repo-scope/store';
 
 /** A repo choice, kept next to the workspace root it was made under. */
@@ -55,12 +55,17 @@ export function resolveRepoForPanel(pick: string, repos: readonly string[]): str
 /**
  * The repo this panel operates on, restored per session but dropped the moment
  * the active workspace root changes.
+ *
+ * The pick is read SHARED (`useSharedSessionState`), not from a private copy:
+ * the panel that owns the picker is not always the component that must follow
+ * the choice — the activity bar's Source Control dot and the phone's tab bar do
+ * — and a per-instance copy would leave them on the previous repo.
  */
 export function useRepoScope(
   rootPath: string | undefined,
   stateKey: string,
 ): { activeRepo: string; setActiveRepo: (repo: string) => void; ready: boolean } {
-  const [pick, setPick, ready] = useSessionState<RepoPick | null>(stateKey, null);
+  const [pick, setPick, ready] = useSharedSessionState<RepoPick | null>(stateKey, null);
   const scope = rootPath ?? '';
 
   // Read through refs so the setter keeps ONE identity: it is handed to child
@@ -83,6 +88,18 @@ export function useRepoScope(
       : '.';
 
   return { activeRepo, setActiveRepo, ready };
+}
+
+/**
+ * The repo a panel's picker resolves to right now, for the surfaces that follow
+ * a PANEL's scope without owning it — the Source Control dot in the activity bar
+ * and the phone's tab bar. Same pick, same list, same fallback as the panel's own
+ * reads, so the dot describes the repository its view would show.
+ */
+export function useResolvedRepo(rootPath: string | undefined, stateKey: string, active: boolean): string {
+  const { activeRepo } = useRepoScope(rootPath, stateKey);
+  const { repos } = useRepoList(rootPath, active);
+  return resolveRepoForPanel(activeRepo, repos);
 }
 
 export interface RepoListHandle {

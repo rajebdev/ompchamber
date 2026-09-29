@@ -4,6 +4,7 @@ import type { ReactNode } from 'preact/compat';
 import { BarChart3, Bot, Files, GitBranch, Globe, Layers, ListTodo, Search, Terminal, X } from 'lucide-preact';
 import { LazyBrowserPanel, LazyContextPanel, LazyFileExplorer, LazyGitPanel, LazySearchPanel, LazyTerminalPanel, LazyTodoPanel, LazyUsagePanel, LazyUserBrowserPanel } from '@/client/components/common/lazy-panels';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
+import { useResolvedRepo } from '@/client/hooks/workspace/repo-scope';
 import { GIT_STATUS_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
 import { RIGHT_PANEL_TYPES, type RightPanelType } from '@/shared/lib/workspace/right-panels';
 
@@ -43,10 +44,11 @@ export function MobileRightSidebar({
   onClose
 }: MobileRightSidebarProps) {
   const [activeTab, setActiveTab] = useState<RightPanelType>('files');
-  // Same source the desktop activity bar uses, so the "uncommitted changes"
-  // dot means the same thing on both layouts. Polls only while this drawer is
-  // the mounted screen — the poll itself is visibility-gated by the hook.
-  const { changes } = useGitStatus(rootPath, '.', refreshKey, enabled, GIT_STATUS_POLL_MS);
+  // Same source the desktop activity bar uses — the Source Control view's own
+  // repo pick, read shared so switching repos moves this dot too. Polls only
+  // while this drawer is the mounted screen (the poll is visibility-gated).
+  const activeRepo = useResolvedRepo(rootPath, 'git.activeRepo', enabled);
+  const { changes } = useGitStatus(rootPath, activeRepo, refreshKey, enabled, GIT_STATUS_POLL_MS);
   const hasGitChanges = changes.length > 0;
 
   return (

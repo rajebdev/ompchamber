@@ -59,6 +59,18 @@ const cache = new Map<string, SessionState>();
 const lastTouched = new Map<string, number>();
 const dirtySessions = new Map<string, boolean>();
 const persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/**
+ * Listeners per session, then per key, fed by every write to a slot —
+ * `setSessionKey`, a blob arriving, a migrate, a delete.
+ *
+ * `useSessionState` hands every caller a private copy, so two components
+ * reading the same key never see each other's writes. A surface that must
+ * FOLLOW a value it does not own (the Source Control dot tracking the repo the
+ * git panel picked) subscribes here and re-reads through `getSessionValue`.
+ */
+const keyListeners = new Map<string, Map<string, Set<() => void>>>();
+/** Bucket name for a listener that follows every slot of a session. */
+const SESSION_SLOT_ALL = '*';
 
 const PERSIST_DEBOUNCE_MS = 600;
 
@@ -135,6 +147,51 @@ export function getSessionValue<T>(sessionId: string | null, key: string): T | u
   return cache.get(sessionId)?.[key] as T | undefined;
 }
 
+/**
+ * Listen for writes to one slot of one session, from ANY component.
+ *
+ * `key` omitted listens to every slot of the session (what a blob arriving
+ * changes at once). Returns the unsubscribe.
+ */
+export function subscribeSessionKey(sessionId: string | null, key: string | null, listener: () => void): () => void {
+  if (!sessionId) return () => {};
+  const slot = key ?? SESSION_SLOT_ALL;
+  let keys = keyListeners.get(sessionId);
+  if (!keys) {
+    keys = new Map();
+    keyListeners.set(sessionId, keys);
+  }
+  let bucket = keys.get(slot);
+  if (!bucket) {
+    bucket = new Set();
+    keys.set(slot, bucket);
+  }
+  bucket.add(listener);
+  return () => {
+    bucket.delete(listener);
+    if (bucket.size === 0) keys.delete(slot);
+    if (keys.size === 0) keyListeners.delete(sessionId);
+  };
+}
+
+/** Fire one bucket, tolerating listeners that unsubscribe while notified. */
+function notifyBucket(bucket: Set<() => void> | undefined): void {
+  if (!bucket) return;
+  for (const listener of [...bucket]) listener();
+}
+
+/** Fire the listeners of one slot, or of every slot when `key` is omitted. */
+function notifySessionKey(sessionId: string, key?: string): void {
+  const keys = keyListeners.get(sessionId);
+  if (!keys) return;
+  if (key === undefined) {
+    for (const bucket of [...keys.values()]) notifyBucket(bucket);
+    return;
+  }
+  notifyBucket(keys.get(key));
+  notifyBucket(keys.get(SESSION_SLOT_ALL));
+}
+
 export function setSessionKey(sessionId: string | null, key: string, value: unknown): void {
   if (!sessionId) return;
   const state = cache.get(sessionId) ?? {};
@@ -144,6 +201,7 @@ export function setSessionKey(sessionId: string | null, key: string, value: unkn
   dirtySessions.set(sessionId, true);
   schedulePersist(sessionId);
   evictIfNeeded(sessionId);
+  notifySessionKey(sessionId, key);
 }
 
 function schedulePersist(sessionId: string): void {
@@ -211,6 +269,9 @@ export async function loadSession(sessionId: string): Promise<void> {
     console.warn('session-state load failed:', err);
   }
   evictIfNeeded(sessionId);
+  // The blob replaces every slot at once, so a follower that read the store
+  // before it arrived (no pick yet) has to re-read.
+  notifySessionKey(sessionId);
 }
 
 /** Seed the cache synchronously (e.g. from SSR-provided data). */
@@ -219,6 +280,7 @@ export function hydrateSession(sessionId: string | null, state: SessionState): v
   cache.set(sessionId, { ...(cache.get(sessionId) ?? {}), ...state });
   touchCacheEntry(sessionId);
   evictIfNeeded(sessionId);
+  notifySessionKey(sessionId);
 }
 
 /**
@@ -252,6 +314,7 @@ export function forgetSession(sessionId: string): void {
   cache.delete(sessionId);
   dirtySessions.delete(sessionId);
   lastTouched.delete(sessionId);
+  notifySessionKey(sessionId);
 }
 
 /**
@@ -268,4 +331,7 @@ export function migrateSessionState(fromId: string, toId: string): void {
   dirtySessions.delete(fromId);
   lastTouched.delete(fromId);
   evictIfNeeded(toId);
+  // The adopted slot gained the whole transient state; the transient one lost it.
+  notifySessionKey(toId);
+  notifySessionKey(fromId);
 }

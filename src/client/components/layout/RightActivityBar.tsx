@@ -1,6 +1,7 @@
 import { BarChart3, Bot, Files, GitBranch, Globe, Layers, ListTodo, Search, Terminal } from 'lucide-preact';
 import type { ReactNode } from 'preact/compat';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
+import { useResolvedRepo } from '@/client/hooks/workspace/repo-scope';
 import { GIT_STATUS_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
 import { RIGHT_PANEL_TYPES, type RightPanelType } from '@/shared/lib/workspace/right-panels';
 
@@ -31,7 +32,12 @@ const PANEL_META: Record<RightPanelType, { title: string; icon: ReactNode }> = {
 };
 
 export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen, hasActiveContext, activeProjectPath, refreshKey }: RightActivityBarProps) {
-  const { changes } = useGitStatus(activeProjectPath ?? undefined, '.', refreshKey, hasActiveContext, GIT_STATUS_POLL_MS);
+  // The dot is the Source Control view's, so it follows the repo that view is
+  // on. Reading it through the shared pick (not through a private copy) is what
+  // makes this update the moment the panel's picker moves; polling the workspace
+  // root instead showed the wrong repository's changes.
+  const activeRepo = useResolvedRepo(activeProjectPath ?? undefined, 'git.activeRepo', hasActiveContext);
+  const { changes } = useGitStatus(activeProjectPath ?? undefined, activeRepo, refreshKey, hasActiveContext, GIT_STATUS_POLL_MS);
   const hasGitChanges = changes.length > 0;
 
   return (
