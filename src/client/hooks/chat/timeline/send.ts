@@ -187,6 +187,10 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
 
     setLocalMessages(prev => {
       const next = [...prev, newUserMsg, initialAiMsg];
+      // Safe inside the updater: this persist is a full-array write to the same
+      // row, so re-applying it is a no-op. A side effect that must happen
+      // EXACTLY once (a send, a rewind) never belongs here — see
+      // `actions.handleRetry`.
       persistMessages(next.filter(m => m.id !== aiPlaceholderId));
       return next;
     });

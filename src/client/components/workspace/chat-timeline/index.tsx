@@ -3,6 +3,7 @@ import { useSearchParams } from '@/client/lib/router/search-params';
 import { ExtensionDialog } from '@/client/components/workspace/chat-timeline/tool-renderers/extension-dialog/Lazy';
 import { AskFramesContext, splitAskFrames, type AskFramesHandle } from '@/client/hooks/chat/timeline/ask-frames';
 import type { ExtensionUiDialogRequest } from '@/shared/types/omp/agent';
+import type { Attachment } from '@/shared/types';
 import type { UserTurnRef } from '@/shared/types/chat';
 import type { ExtensionDialogResponse } from '@/client/components/workspace/chat-timeline/tool-renderers/extension-dialog/Lazy';
 import { EmptyWorkspacePrompt } from '@/client/components/workspace/chat-timeline/EmptyWorkspacePrompt';
@@ -38,6 +39,7 @@ interface ChatTimelineProps {
 export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle, variant = 'desktop' }: ChatTimelineProps) {
   const { folders } = useSidebarData();
   const isMobile = variant === 'mobile';
+  const { toasts, pushToast, dismissToast } = useToasts();
   const {
     sessionId,
     selectedFolderId,
@@ -83,8 +85,7 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
     extensionDialogs,
     resolveExtensionDialog,
     respondToExtensionUi,
-  } = useChatTimeline({ folders, appSettings });
-  const { toasts, pushToast, dismissToast } = useToasts();
+  } = useChatTimeline({ folders, appSettings, reportActionError: pushToast });
 
   // Ask dialogs render on their own tool card; anything else omp is blocked on
   // (an approval gate, an extension picker) has no card and keeps the modal.
@@ -107,7 +108,10 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
   );
 
   const [newChatInitialContent, setNewChatInitialContent] = useState<string | null>(null);
-  const { pendingUndo, undoing, requestUndo: handleRequestUndo, closeUndoConfirm, confirmUndo } = useUndoConfirmation(handleUndo);
+  // Attachments of the row the modal was opened from: an image or inlined text
+  // file is half of the turn, and seeding the text alone dropped it.
+  const [newChatInitialAttachments, setNewChatInitialAttachments] = useState<Attachment[]>([]);
+  const { pendingUndo, undoing, error: undoError, requestUndo: handleRequestUndo, closeUndoConfirm, confirmUndo } = useUndoConfirmation(handleUndo);
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Stop-all semantics: the run stops AND the queued follow-ups stay in the
@@ -140,7 +144,10 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
     void jumpToUserTurn(turn.id, turn.index);
   }, [jumpToUserTurn]);
 
-  const handleNewChat = useCallback((content: string) => setNewChatInitialContent(content), []);
+  const handleNewChat = useCallback((content: string, attachments?: Attachment[]) => {
+    setNewChatInitialContent(content);
+    setNewChatInitialAttachments(attachments ?? []);
+  }, []);
 
   const modelNames = useModelNames();
   const providerNames = useProviderNames();
@@ -191,6 +198,9 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
         sessionThinkingLevel={sessionData?.thinkingLevel}
         generatingVerb={generatingVerb}
         variant={variant}
+        onUndo={handleRequestUndo}
+        onRetry={handleRetry}
+        onNewChat={handleNewChat}
       />
     );
   }
@@ -287,6 +297,7 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
             isOmpSession={Boolean(sessionId) && !sessionId.startsWith('new-') && Number.isNaN(Number(sessionId))}
             content={pendingUndo.content}
             undoing={undoing}
+            error={undoError}
             onClose={closeUndoConfirm}
             onConfirm={confirmUndo}
           />
@@ -294,7 +305,11 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
         {newChatInitialContent !== null && (
           <NewChatModal
             initialContent={newChatInitialContent}
-            onClose={() => setNewChatInitialContent(null)}
+            initialAttachments={newChatInitialAttachments}
+            onClose={() => {
+              setNewChatInitialContent(null);
+              setNewChatInitialAttachments([]);
+            }}
             onSend={submitNewChat}
             appSettings={appSettings}
             accessMode={accessMode}

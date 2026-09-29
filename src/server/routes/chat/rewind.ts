@@ -4,6 +4,7 @@ import { getDb } from '@/server/db.server';
 import { resolveSessionFileOr404 } from '@/server/lib/omp/session/locator';
 import { getRpcSession } from '@/server/lib/omp/rpc/session-registry';
 import { clearSessionFileCaches } from '@/server/lib/omp/session/files';
+import { pruneStoredAfterCut, survivingUserTexts, truncateSessionBody } from '@/server/lib/omp/session/rewind-file';
 import { userTurnsRelate } from '@/shared/lib/chat/timeline/turns';
 
 /**
@@ -21,63 +22,15 @@ import { userTurnsRelate } from '@/shared/lib/chat/timeline/turns';
  *  - the original file is kept as `<name>.bak-<timestamp>` (omp's session
  *    listing ignores names containing `.bak`, so it never becomes a phantom
  *    session).
+ *
+ * Which records are valid cut points is `rewind-file.ts` (a plain prompt, or
+ * the `skill-prompt` custom record omp writes instead of one).
  */
 
 interface StoredMessage {
   role?: string;
   content?: string;
   id?: string;
-}
-
-/** Extract plain text from omp user-message content (string or text blocks). */
-function userEntryText(content: unknown): string {
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((b) => (b && typeof b === 'object' && (b as { type?: unknown }).type === 'text' ? String((b as { text?: unknown }).text ?? '') : ''))
-      .join('');
-  }
-  return '';
-}
-
-/**
- * Build the truncated body: entries at/after the cut user turn are dropped;
- * header records and everything before it survive. Returns null when the cut
- * entry cannot be found or is not a user message (rewind points are turns).
- */
-function truncateJsonl(body: string, cutEntryId: string): string | null {
-  const records: Array<Record<string, unknown> | null> = body.split('\n').map((line) => {
-    const trimmed = line.trim();
-    if (!trimmed) return null;
-    try {
-      return JSON.parse(trimmed) as Record<string, unknown>;
-    } catch {
-      return null;
-    }
-  });
-
-  const cutIndex = records.findIndex((r) => r?.id === cutEntryId);
-  if (cutIndex === -1) return null;
-
-  const cutRecord = records[cutIndex];
-  const cutRole: unknown = (cutRecord as { message?: { role?: unknown } } | null)?.message?.role;
-  if (cutRole !== 'user') return null;
-
-  const outLines = records
-    .slice(0, cutIndex)
-    .filter((r): r is Record<string, unknown> => Boolean(r))
-    .map((r) => JSON.stringify(r));
-  // Header records written after the cut point (model/thinking changes during
-  // the abandoned turns) still describe the session's latest state — keep the
-  // last of each so a respawn resumes with the same model/level.
-  for (const type of ['model_change', 'thinking_level_change'] as const) {
-    const last = records
-      .slice(cutIndex)
-      .filter((r): r is Record<string, unknown> => r?.type === type)
-      .pop();
-    if (last) outLines.push(JSON.stringify(last));
-  }
-  return `${outLines.join('\n')}\n`;
 }
 
 export async function action({ params, request }: ActionFunctionArgs) {
@@ -90,6 +43,12 @@ export async function action({ params, request }: ActionFunctionArgs) {
     ? body.entryId
     : '';
   if (!entryId) return json({ error: 'entryId is required', code: 'entry_id_required' }, { status: 400 });
+  // The row's own clock, sent by the client for a turn the session FILE does
+  // not carry: a builtin command (`/usage`, `/compact`) writes no entry, so its
+  // timeline row exists only in the chamber overlay and its id is client-side.
+  const startedAt = body && typeof body === 'object' && 'startedAt' in body && typeof body.startedAt === 'number'
+    ? body.startedAt
+    : undefined;
 
   const resolved = await resolveSessionFileOr404(sessionId);
   if ('response' in resolved) return resolved.response;
@@ -105,10 +64,11 @@ export async function action({ params, request }: ActionFunctionArgs) {
   clearSessionFileCaches();
 
   const raw = await Bun.file(filePath).text();
-  const nextBody = truncateJsonl(raw, entryId);
-  if (nextBody === null) {
+  const truncated = truncateSessionBody(raw, { entryId, startedAt });
+  if (truncated === null) {
     return json({ error: 'Entry not found or not a user turn in this session', code: 'entry_not_found' }, { status: 400 });
   }
+  const { body: nextBody, overlayCutClock, droppedEntryIds } = truncated;
 
   // Backup then rewrite. `.bak` names are skipped by omp's session listing.
   const backupPath = `${filePath}.bak-${Date.now()}`;
@@ -120,8 +80,9 @@ export async function action({ params, request }: ActionFunctionArgs) {
     return json({ error: error instanceof Error ? error.message : 'Failed to rewrite session file' }, { status: 500 });
   }
 
-  // Clean the chamber DB overlay: drop stored turns that no longer survive in
-  // the truncated JSONL, otherwise mergeOmpAttachments resurrects them.
+  // Clean the chamber DB overlay: a stored turn the cut removed would otherwise
+  // be merged straight back onto the truncated file on the next load — which is
+  // exactly what made an undone turn reappear after a reload.
   try {
     const db = await getDb();
     const row = await db.get('SELECT title, messages FROM chat_sessions WHERE session_id = ?', [sessionId]);
@@ -132,19 +93,12 @@ export async function action({ params, request }: ActionFunctionArgs) {
       } catch {
         stored = [];
       }
-      // IDs still present in the truncated file survive verbatim; user turns
-      // whose stored text relates to the surviving JSONL chain also stay (the
-      // stored copy carries raw composer text, the JSONL the delivered prompt).
-      const truncatedIds = new Set(nextBody.split('\n').map((line) => JSON.parse(line).id as string | undefined));
-      const keptUserEntries = nextBody
-        .split('\n')
-        .map((line) => JSON.parse(line) as Record<string, unknown>)
-        .filter((r) => r.type === 'message' && (r as { message?: { role?: unknown } }).message?.role === 'user')
-        .map((r) => userEntryText((r as { message?: { content?: unknown } }).message?.content));
-      const next = stored.filter((m) => {
-        if (m?.id && truncatedIds.has(m.id)) return true;
-        if (m?.role !== 'user' || typeof m.content !== 'string') return false;
-        return keptUserEntries.some((text) => userTurnsRelate(text, m.content!));
+      const next = pruneStoredAfterCut(stored, {
+        requestedId: entryId,
+        droppedEntryIds,
+        cutClock: overlayCutClock,
+        keptUserTexts: survivingUserTexts(nextBody),
+        relates: userTurnsRelate,
       });
       if (next.length !== stored.length) {
         await db.run(

@@ -1,12 +1,20 @@
 import { useState } from 'preact/hooks';
 import { X } from 'lucide-preact';
 import { ChatInput } from '@/client/components/workspace/chat-timeline/chat-input/index';
+import type { Attachment } from '@/shared/types';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 
 interface NewChatModalProps {
   initialContent: string;
+  /**
+   * Attachments of the row this chat was seeded from. A committed row carries
+   * the persisted display fields (name/type/size/preview/dataBase64/content) —
+   * everything the composer chip renderer and the send path read, so an image
+   * or an inlined text file survives into the new chat.
+   */
+  initialAttachments?: Attachment[];
   onClose: () => void;
-  onSend: (text: string, attachments: any[]) => void;
+  onSend: (text: string, attachments: Attachment[]) => void;
   appSettings?: Record<string, any>;
   accessMode: ApprovalMode;
   onAccessModeChange: (mode: ApprovalMode) => void;
@@ -15,6 +23,7 @@ interface NewChatModalProps {
 
 export function NewChatModal({
   initialContent,
+  initialAttachments = [],
   onClose,
   onSend,
   appSettings,
@@ -23,9 +32,9 @@ export function NewChatModal({
   composerModelRef,
 }: NewChatModalProps) {
   const [inputValue, setInputValue] = useState(initialContent);
-  const [attachments, setAttachments] = useState<any[]>([]);
+  const [attachments, setAttachments] = useState<Attachment[]>(initialAttachments);
 
-  const handleSend = (atts: any[]) => {
+  const handleSend = (atts: Attachment[]) => {
     onSend(inputValue, atts);
     onClose();
   };

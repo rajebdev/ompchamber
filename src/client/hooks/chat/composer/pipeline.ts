@@ -28,7 +28,7 @@
 import { useCallback, useRef, useState } from 'preact/hooks';
 import type { SetStateAction } from 'preact/compat';
 import type { Attachment } from '@/shared/types';
-import { attachmentName, describeAttachmentBudget } from '@/shared/lib/chat/attachments';
+import { attachmentHasPayload, attachmentName, describeAttachmentBudget } from '@/shared/lib/chat/attachments';
 import { useComposerAttachments } from '@/client/hooks/chat/composer/attachments';
 import { useFileDrop, DROP_LIMIT_NOTICE, type FileDropProps } from '@/client/hooks/chat/composer/file-drop';
 import type { PrimedReads } from '@/client/hooks/chat/composer/file-reads';
@@ -158,7 +158,9 @@ export function useComposerPipeline({
       // "Readable" means there is something TO SEND. An attachment whose read
       // produced an empty string has a `content` field but no content, and
       // treating that as readable is how a prompt with an empty body went out.
-      const readable = outgoing.some((a) => (a.content?.length ?? 0) > 0 || a.dataBase64 !== undefined);
+      // An image is judged through either byte carrier, so one replayed from
+      // committed history (data-URL `preview`, no `dataBase64`) still sends.
+      const readable = outgoing.some(attachmentHasPayload);
       if (!value.trim() && outgoing.length > 0 && !readable) {
         setNotice(describeUnreadable(outgoing.map((a) => attachmentName(a))));
         return;

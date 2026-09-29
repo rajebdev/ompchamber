@@ -9,6 +9,8 @@ interface UndoConfirmModalProps {
   isOmpSession: boolean;
   /** True while the rewind request is in flight. */
   undoing: boolean;
+  /** Why the last attempt failed; the modal stays open when it is set. */
+  error?: string | null;
   onClose: () => void;
   onConfirm: () => void;
 }
@@ -18,7 +20,7 @@ interface UndoConfirmModalProps {
  * rewinds the session before this turn — the turn and everything after it
  * leave the timeline and the agent context — so the user should opt in.
  */
-export function UndoConfirmModal({ content, isOmpSession, undoing, onClose, onConfirm }: UndoConfirmModalProps) {
+export function UndoConfirmModal({ content, isOmpSession, undoing, error, onClose, onConfirm }: UndoConfirmModalProps) {
   useEffect(() => {
     // No dismissing mid-rewind: the modal resolves itself on success, and an
     // early close would let the user queue another undo against a stale view.
@@ -56,6 +58,11 @@ export function UndoConfirmModal({ content, isOmpSession, undoing, onClose, onCo
               ? 'The timeline and agent context rewind to before this message. Its reply and everything after it are removed; the text returns to the composer for editing.'
               : 'This message and everything after it are removed from the timeline. The text returns to the composer for editing.'}
           </p>
+          {error && (
+            <p className="rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-[11.5px] leading-relaxed text-error" role="alert">
+              {error}
+            </p>
+          )}
         </div>
         <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-ink/10">
           <button

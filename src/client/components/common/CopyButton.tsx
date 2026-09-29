@@ -24,10 +24,22 @@ export interface CopyButtonProps {
   copiedLabelClassName?: string;
   /** Native title / tooltip. */
   title?: string;
+  /**
+   * Accessible name. An icon-only button needs one — `title` alone is not a
+   * reliable accessible name across screen readers. Defaults to the title.
+   */
+  ariaLabel?: string;
   /** Extra click handler run before copying (e.g. stopPropagation). */
   onClick?: (event: TargetedMouseEvent<HTMLButtonElement>) => void;
   /** Copied-state reset delay in ms. Default 2000. */
   resetMs?: number;
+  /**
+   * Tooltip while there is nothing to copy. The button is disabled rather than
+   * silently doing nothing: an empty payload (a run whose last row is a tool
+   * call, a message whose answer landed in `notice`) used to swallow the click
+   * with no feedback at all.
+   */
+  emptyTitle?: string;
 }
 
 const DEFAULT_CLASSNAME =
@@ -45,14 +57,19 @@ export function CopyButton({
   wrapLabel = false,
   copiedLabelClassName,
   title,
+  ariaLabel,
   onClick,
   resetMs = 2000,
+  emptyTitle,
 }: CopyButtonProps) {
   const { copied, flagCopied } = useCopyFlag(resetMs);
+  // No text is not a copy — say so instead of accepting a click that does
+  // nothing (the previous `if (!text) return` left the button looking live).
+  const isEmpty = !text;
 
   const handleClick = async (event: TargetedMouseEvent<HTMLButtonElement>) => {
     onClick?.(event);
-    if (!text) return;
+    if (isEmpty) return;
     const ok = await copyToClipboard(text);
     if (ok) flagCopied();
   };
@@ -60,7 +77,14 @@ export function CopyButton({
   const labelText = copied ? copiedLabel : label;
 
   return (
-    <button type="button" onClick={handleClick} className={className} title={title}>
+    <button
+      type="button"
+      onClick={handleClick}
+      className={`${className} ${isEmpty ? 'disabled:opacity-40 disabled:cursor-not-allowed' : ''}`}
+      title={isEmpty ? emptyTitle ?? 'Nothing to copy' : title}
+      aria-label={isEmpty ? emptyTitle ?? 'Nothing to copy' : ariaLabel ?? title}
+      disabled={isEmpty}
+    >
       {copied ? (
         <Check size={iconSize} className={copiedIconClassName} />
       ) : (

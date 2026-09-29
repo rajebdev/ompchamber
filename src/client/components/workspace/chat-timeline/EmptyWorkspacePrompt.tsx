@@ -43,6 +43,15 @@ interface EmptyWorkspacePromptProps {
   deferredComposerPickRef: { current: { provider?: string; modelId?: string; thinkingLevel?: string } | null };
   generatingVerb?: string;
   variant?: 'desktop' | 'mobile';
+  /**
+   * Row actions. The pending-session view renders the same rows as the real
+   * timeline, so it must offer the same actions — without them the optimistic
+   * turn's footer and its user bubble drew Retry / Undo / New-chat buttons that
+   * did nothing until the omp session was adopted and this view was replaced.
+   */
+  onUndo?: (id: string, content?: string) => void;
+  onRetry?: (id: string) => void;
+  onNewChat?: (content: string, attachments?: Attachment[]) => void;
 }
 
 export function EmptyWorkspacePrompt({
@@ -73,6 +82,9 @@ export function EmptyWorkspacePrompt({
   deferredComposerPickRef,
   generatingVerb,
   variant = 'desktop',
+  onUndo,
+  onRetry,
+  onNewChat,
 }: EmptyWorkspacePromptProps) {
   const [showWorkspace, setShowWorkspace] = useState(false);
   const workspaceRef = useRef<HTMLDivElement>(null);
@@ -179,6 +191,8 @@ export function EmptyWorkspacePrompt({
                     <ChatMessageItem
                       msg={msg}
                       isStreaming={isLoading}
+                      onUndo={onUndo}
+                      onNewChat={onNewChat}
                       className={isAiFragment ? 'mt-1' : 'mt-8'}
                     />
                     {footer && (
@@ -190,6 +204,10 @@ export function EmptyWorkspacePrompt({
                         modelNames={modelNames}
                         thinkingLevel={sessionThinkingLevel ?? undefined}
                         durationMs={footer.durationMs}
+                        answerText={footer.answerText}
+                        retryTargetId={footer.runUserId}
+                        onRetry={onRetry}
+                        onNewChat={onNewChat}
                       />
                     )}
                   </Fragment>

@@ -6,7 +6,7 @@ import { ChatMessageItem } from '@/client/components/workspace/chat-timeline/Mes
 import { RunFooter } from '@/client/components/workspace/chat-timeline/RunFooter';
 import { isNoticeRow } from '@/shared/lib/chat/notice-row';
 import { previousNonNoticeIndex, resolveRunFooters, streamingRowIndex } from '@/shared/lib/chat/timeline/run-footer';
-import type { ChatMessageData } from '@/shared/types';
+import type { Attachment, ChatMessageData } from '@/shared/types';
 
 export interface MessageListProps {
   messages: ChatMessageData[];
@@ -19,7 +19,8 @@ export interface MessageListProps {
   thinkingLevel?: string;
   onUndo?: (id: string, content?: string) => void;
   onRetry?: (id: string) => void;
-  onNewChat?: (content: string) => void;
+  /** Seeds a new chat from a row. A user row also hands over its attachments. */
+  onNewChat?: (content: string, attachments?: Attachment[]) => void;
   isMobile?: boolean;
   /**
    * Whether chat-owning actions render: a USER row's Undo / New-chat, and the
@@ -100,6 +101,8 @@ export const MessageList = memo(function MessageList({
                 modelNames={modelNames}
                 thinkingLevel={thinkingLevel}
                 durationMs={footer.durationMs}
+                answerText={footer.answerText}
+                retryTargetId={footer.runUserId}
                 onRetry={onRetry}
                 onNewChat={onNewChat}
                 isMobile={isMobile}

@@ -21,9 +21,19 @@ import { useSessionState } from '@/client/hooks/workspace/session-state';
 interface UseChatTimelineOptions {
   folders?: any[];
   appSettings?: Record<string, any>;
+  /**
+   * Where a failed footer action (rewind refused, send rejected) is reported.
+   * Defaults to the console: the hook is also exercised headless, and a caller
+   * with a toast stack passes one in.
+   */
+  reportActionError?: (message: string) => void;
 }
 
-export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimelineOptions = {}) {
+export function useChatTimeline({
+  folders = [],
+  appSettings = {},
+  reportActionError = (message: string) => console.error(message),
+}: UseChatTimelineOptions = {}) {
   const [searchParams, setSearchParams] = useSearchParams();
   const sessionId = searchParams.get('sessionId');
   const folderId = searchParams.get('folderId');
@@ -274,12 +284,14 @@ export function useChatTimeline({ folders = [], appSettings = {} }: UseChatTimel
     stopHoldRef,
     persistMessages,
     setLocalMessages,
+    localMessagesRef,
     pendingComposerModelRef,
     pendingThinkingLevelRef,
     composerModelRef,
     deferredComposerPickRef,
     accessModeRef,
     setSearchParams,
+    reportActionError,
   });
 
   return {

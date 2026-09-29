@@ -204,15 +204,17 @@ export function AiMessageFooter({
                   copiedIconClassName="shrink-0 text-success"
                   label="Copy answer"
                   wrapLabel
+                  ariaLabel="Copy answer"
+                  emptyTitle="Nothing to copy — this run produced no text"
                   onClick={() => setIsMenuOpen(false)}
                 />
                 {showActions && (
                   <>
-                    <button type="button" onClick={handleRetry} className="flex min-h-12 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-ink transition-colors hover:bg-ink/5 cursor-pointer">
+                    <button type="button" aria-label="Retry response" onClick={handleRetry} className="flex min-h-12 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-ink transition-colors hover:bg-ink/5 cursor-pointer">
                       <RotateCcw size={20} className="shrink-0 text-ink/55" />
                       <span>Retry response</span>
                     </button>
-                    <button type="button" onClick={handleNewChat} className="flex min-h-12 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-ink transition-colors hover:bg-ink/5 cursor-pointer">
+                    <button type="button" aria-label="Start new chat from this answer" onClick={handleNewChat} className="flex min-h-12 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-ink transition-colors hover:bg-ink/5 cursor-pointer">
                       <MessageSquarePlus size={20} className="shrink-0 text-ink/55" />
                       <span>Start new chat from this answer</span>
                     </button>
@@ -245,7 +247,7 @@ export function AiMessageFooter({
 
       <div className="flex items-center space-x-1 shrink-0">
         {showActions && (
-          <button type="button" className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" title="Re-run / Retry generation" onClick={handleRetry}>
+          <button type="button" className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" title="Re-run / Retry generation" aria-label="Retry response" onClick={handleRetry}>
             <RotateCcw size={12} />
           </button>
         )}
@@ -254,9 +256,11 @@ export function AiMessageFooter({
           className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer"
           iconSize={12}
           title="Copy response"
+          ariaLabel="Copy response"
+          emptyTitle="Nothing to copy — this run produced no text"
         />
         {showActions && (
-          <button type="button" className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" title="New Chat from here" onClick={handleNewChat}>
+          <button type="button" className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" title="New Chat from here" aria-label="Start new chat from this answer" onClick={handleNewChat}>
             <MessageSquarePlus size={12} />
           </button>
         )}

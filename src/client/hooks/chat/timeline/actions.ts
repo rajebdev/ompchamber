@@ -20,6 +20,7 @@ import { applyComposerPick, consumeComposerPick, stashComposerPick, type Deferre
 import { dispatchBtwCommand } from '@/client/hooks/chat/btw/intercept';
 import { blockTuiOnlySend } from '@/client/hooks/chat/timeline/tui-only-guard';
 import { createQueueActions } from '@/client/hooks/chat/timeline/queue-actions';
+import { createRewindActions } from '@/client/hooks/chat/timeline/rewind-actions';
 import { prepareQueuedAttachments } from '@/shared/lib/chat/attachments';
 
 export interface ChatTimelineActionsDeps {
@@ -45,6 +46,10 @@ export interface ChatTimelineActionsDeps {
   stopHoldRef: { current: boolean };
   persistMessages: (messages: any[]) => void;
   setLocalMessages: Dispatch<SetStateAction<ChatMessageData[]>>;
+  /** Live mirror of the timeline: lets Undo/Retry read the current list and
+   *  compute the truncated one OUTSIDE a state updater, so the persist call
+   *  that follows cannot run twice. */
+  localMessagesRef: { current: ChatMessageData[] };
   /** Composer model picked before the omp session exists (pending "new-…"
    *  view); held here until the spawn command carries it. */
   pendingComposerModelRef: { current: { provider: string; modelId: string } | null };
@@ -59,6 +64,12 @@ export interface ChatTimelineActionsDeps {
   /** Global access-control mode, snapshotted onto queued items. */
   accessModeRef: { current: ApprovalMode };
   setSearchParams: (fn: (prev: URLSearchParams) => URLSearchParams, opts?: { replace?: boolean }) => void;
+  /**
+   * Surface a footer action that failed (rewind refused, send rejected). Undo
+   * and Retry change the agent's context, so a silent no-op leaves the user
+   * believing the timeline moved when it did not.
+   */
+  reportActionError: (message: string) => void;
 }
 
 export interface ChatTimelineActionsResult {
@@ -67,7 +78,7 @@ export interface ChatTimelineActionsResult {
   handleSendNowQueueItem: (item: QueuedMessage) => Promise<void>;
   handleUndo: (msgId: string, content?: string) => Promise<boolean>;
   handleRetry: (msgId: string) => void;
-  submitNewChat: (text: string, attachments: any[]) => void;
+  submitNewChat: (text: string, attachments: Attachment[]) => void;
   /** Stop the active run; returns the number of queue items held back. */
   stopGenerating: () => number;
   handleThinkingLevelChange: (level: string) => void;
@@ -92,12 +103,14 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     stopHoldRef,
     persistMessages,
     setLocalMessages,
+    localMessagesRef,
     pendingComposerModelRef,
     pendingThinkingLevelRef,
     composerModelRef,
     deferredComposerPickRef,
     accessModeRef,
     setSearchParams,
+    reportActionError,
   } = deps;
 
   // The queue's two row actions take the same slice of this deps record, so
@@ -185,82 +198,27 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     await queueActions.handleSendNowQueueItem(item);
   }, [queueActions]);
 
-  const handleUndo = useCallback(async (msgId: string, content?: string): Promise<boolean> => {
-    if (isGenerating) {
-      if (isOmpSession) {
-        void ompAgent.abort();
-      } else if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
-      }
-      setGenerating(false);
-    }
+  // Undo and Retry share the same three rules (rewind the JSONL first, retry
+  // from the run's own user turn, report a refusal) — see `rewind-actions.ts`.
+  const { handleUndo, handleRetry } = useMemo(
+    () => createRewindActions({
+      isGenerating,
+      isOmpSession,
+      sessionId,
+      ompAgent,
+      abortControllerRef,
+      setGenerating,
+      setInputValue,
+      setLocalMessages,
+      localMessagesRef,
+      persistMessages,
+      executeSend,
+      reportActionError,
+    }),
+    [isGenerating, isOmpSession, sessionId, ompAgent, abortControllerRef, setGenerating, setInputValue, setLocalMessages, localMessagesRef, persistMessages, executeSend, reportActionError],
+  );
 
-    if (content) {
-      setInputValue(content);
-    }
-
-    // Real omp sessions rewind in place: POST /api/chat/:sessionId/rewind
-    // truncates the session JSONL before the turn (session id unchanged) and
-    // respawns the agent on the truncated context. The chamber-side truncate
-    // below would be undone by the next reload, because the timeline loads
-    // from the omp JSONL — not from the chamber DB copy. Resolve false on
-    // failure so the confirmation modal can stop its loading state instead of
-    // closing on a no-op.
-    if (isOmpSession && sessionId) {
-      const res = await fetch(`/api/chat/${encodeURIComponent(sessionId)}/rewind`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entryId: msgId }),
-      });
-      if (!res.ok) return false;
-      const next = await fetch(`/api/chat/${encodeURIComponent(sessionId)}`).then(r => r.json()).catch(() => null);
-      const messages: ChatMessageData[] = next?.session?.messages ?? [];
-      if (messages.length > 0) setLocalMessages(messages);
-      return true;
-    }
-
-    setLocalMessages(prev => {
-      const idx = prev.findIndex(m => m.id === msgId);
-      const next = idx !== -1 ? prev.slice(0, idx) : prev;
-      persistMessages(next);
-      return next;
-    });
-    return true;
-  }, [isGenerating, isOmpSession, sessionId, persistMessages, abortControllerRef, setGenerating, setInputValue, setLocalMessages]);
-
-  const handleRetry = useCallback((msgId: string) => {
-    if (isGenerating) {
-      if (isOmpSession) {
-        void ompAgent.abort();
-      } else if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
-      }
-      setGenerating(false);
-    }
-
-    setLocalMessages(prev => {
-      const aiIdx = prev.findIndex(m => m.id === msgId);
-      if (aiIdx > 0 && prev[aiIdx - 1].role === 'user') {
-        const userMsg = prev[aiIdx - 1];
-        setTimeout(() => {
-          // Committed history attachments carry the persisted display fields
-          // only (no File); executeSend reads them defensively on replay.
-          const attachments = (Array.isArray(userMsg.attachments) ? userMsg.attachments : []) as Attachment[];
-          void executeSend(userMsg.content, attachments);
-        }, 0);
-        // Drop the user turn too — executeSend re-adds it optimistically; keeping
-        // it here would render the same user message twice on every retry.
-        const next = prev.slice(0, aiIdx - 1);
-        persistMessages(next);
-        return next;
-      }
-      return prev;
-    });
-  }, [isGenerating, executeSend, persistMessages, isOmpSession, ompAgent, abortControllerRef, setGenerating, setLocalMessages]);
-
-  const submitNewChat = useCallback((text: string, attachments: any[]) => {
+  const submitNewChat = useCallback((text: string, attachments: Attachment[]) => {
     // Client-side pending session id: the sidebar/navbar show a default title
     // immediately; the real omp session id replaces it on first send.
     const pendingId = `new-${Date.now()}`;

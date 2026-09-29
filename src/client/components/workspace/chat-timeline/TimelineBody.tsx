@@ -3,7 +3,7 @@ import { ArrowDown } from 'lucide-preact';
 import { MessageList } from '@/client/components/workspace/chat-timeline/MessageList';
 import { MinimapShortcuts } from '@/client/components/workspace/chat-timeline/MinimapShortcuts';
 import { LoadingOlderIndicator } from '@/client/components/workspace/chat-timeline/SessionSkeleton';
-import type { ChatMessageData, UserTurnRef } from '@/shared/types';
+import type { Attachment, ChatMessageData, UserTurnRef } from '@/shared/types';
 
 interface TimelineBodyProps {
   isMobile: boolean;
@@ -29,7 +29,7 @@ interface TimelineBodyProps {
   thinkingLevel?: string;
   onUndo: (id: string, content?: string) => void;
   onRetry: (id: string) => void;
-  onNewChat: (content: string) => void;
+  onNewChat: (content: string, attachments?: Attachment[]) => void;
   showScrollBottom: boolean;
   jumpToBottom: (behavior?: ScrollBehavior) => void;
 }

@@ -77,18 +77,70 @@ export function isImageAttachment(att: Pick<Attachment, 'name' | 'type' | 'file'
   return attachmentType(att).startsWith('image/');
 }
 
+/** Prefix of a `data:` URL that carries its bytes inline as base64. */
+const DATA_URL_BASE64_RE = /^data:[^;,]+;base64,/;
+
+/**
+ * Base64 payload carried by a data-URL preview, or null.
+ *
+ * A row read back from committed history or a queued item has only `preview`,
+ * and for an image that preview IS the bytes (`data:image/png;base64,…`) — the
+ * load path never sets `dataBase64`. Reading it here is what lets a replayed
+ * image still reach the model; without it `attachmentImage` returned null and
+ * the picture was silently dropped from a retry or a seeded new chat.
+ */
+function base64FromPreview(preview: string | undefined): string | null {
+  if (!preview || !DATA_URL_BASE64_RE.test(preview)) return null;
+  const payload = preview.slice(preview.indexOf(',') + 1);
+  return payload.length > 0 ? payload : null;
+}
+
 /** Base64 image payload for the omp RPC, or null when there is nothing to send. */
 export function attachmentImage(
-  att: Pick<Attachment, 'type' | 'file' | 'dataBase64'>,
+  att: Pick<Attachment, 'type' | 'file' | 'dataBase64'> & { preview?: string },
 ): AgentImage | null {
-  if (!att.dataBase64 || !isImageAttachment(att)) return null;
+  if (!isImageAttachment(att)) return null;
+  const data = att.dataBase64 ?? base64FromPreview(att.preview);
+  if (!data) return null;
   return {
     type: 'image',
-    data: att.dataBase64,
+    data,
     // A persisted attachment carries the authoritative type; the fallback keeps
     // a provider from rejecting a payload whose type the browser left empty.
     mimeType: attachmentType(att) || 'image/png',
   };
+}
+
+/**
+ * Whether an attachment carries anything the send path can deliver.
+ *
+ * The composer refuses a send whose only attachments read empty — a prompt that
+ * names a file the model never receives. An image counts through EITHER of its
+ * byte carriers: a live one has `dataBase64`, while one replayed from committed
+ * history has only the data-URL `preview`, and judging it by `dataBase64` alone
+ * refused to send a seeded or replayed image that was perfectly readable.
+ */
+export function attachmentHasPayload(att: Attachment): boolean {
+  if ((att.content?.length ?? 0) > 0) return true;
+  return attachmentImage(att) !== null;
+}
+
+/**
+ * Normalize a stored row's attachment list into the composer's `Attachment`
+ * shape. Committed history keeps DISPLAY fields only, where `id` and `preview`
+ * are optional — but the chip renderer and the send path both read them, so a
+ * replayed turn (a retry, a chat seeded from an old message) fills them in here
+ * instead of casting the list at each call site.
+ */
+export function toAttachmentList(
+  attachments: { id?: string; name: string; preview?: string; type?: string; size?: number; content?: string }[] | undefined,
+): Attachment[] {
+  if (!Array.isArray(attachments)) return [];
+  return attachments.map((att, index) => ({
+    ...att,
+    id: att.id ?? `attachment-${index + 1}`,
+    preview: att.preview ?? '',
+  }));
 }
 
 export interface AttachmentBudget {

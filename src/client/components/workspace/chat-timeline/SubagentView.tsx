@@ -147,6 +147,7 @@ export function SubagentView({ sessionId, subagent, onBack, provider, providerNa
                       modelNames={modelNames}
                       thinkingLevel={progress?.resolvedThinkingLevel}
                       durationMs={footer.durationMs}
+                      answerText={footer.answerText}
                       isMobile={isMobile}
                       showActions={false}
                     />

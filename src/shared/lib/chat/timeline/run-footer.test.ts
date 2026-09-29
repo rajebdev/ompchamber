@@ -70,6 +70,67 @@ describe('resolveRunFooters', () => {
   });
 });
 
+describe('resolveRunFooters run start', () => {
+  /** The footer's run-start fields, read off the single rendered slot. */
+  const slotFor = (messages: ChatMessageData[], isGenerating = false) => {
+    const slots = resolveRunFooters(messages, isGenerating);
+    return slots.find((slot) => slot !== null) ?? null;
+  };
+
+  test('points at the user row that opened the run, not at the row before the owner', () => {
+    // The shape a real omp run has: thinking → tool call → answer. The owner is
+    // the last AI row, so `ownerIndex - 1` is another AI row — which is exactly
+    // the check the old retry made, and why it no-opped.
+    const messages = [user('u1'), ai('a1'), ai('a2'), ai('a3'), user('u2')];
+    const slot = slotFor(messages);
+
+    expect(slot?.ownerIndex).toBe(3);
+    expect(slot?.runStartIndex).toBe(0);
+    expect(slot?.runUserId).toBe('u1');
+  });
+
+  test('keeps the run start across a notice row written mid-run', () => {
+    const messages = [user('u1'), ai('a1'), notice('n1'), ai('a2')];
+    expect(slotFor(messages)?.runUserId).toBe('u1');
+  });
+
+  test('reports no user row for a run the transcript starts in the middle of', () => {
+    const slot = slotFor([ai('a1'), ai('a2')]);
+    expect(slot?.runStartIndex).toBe(-1);
+    expect(slot?.runUserId).toBe('');
+  });
+
+  test('joins every AI row of the run into the answer, notices excluded', () => {
+    const messages = [
+      user('u1'),
+      { ...ai('a1'), content: 'first part' },
+      notice('n1'),
+      { ...ai('a2'), content: 'second part' },
+      user('u2'),
+    ];
+    expect(slotFor(messages)?.answerText).toBe('first part\n\nsecond part');
+  });
+
+  test('the answer is not the owner row alone when the owner carries no text', () => {
+    // The measured case behind the fix: the last row of the run is a tool call,
+    // so copying the owner copied nothing at all.
+    const messages = [
+      user('u1'),
+      { ...ai('a1'), content: 'the actual answer' },
+      { ...ai('a2'), content: '', toolCalls: [{ id: 't1', type: 'bash', title: 'run' }] },
+    ];
+    const slot = slotFor(messages);
+
+    expect(slot?.msg.id).toBe('a2');
+    expect(slot?.answerText).toBe('the actual answer');
+  });
+
+  test('reads the answer out of a notice when omp diverted the turn text there', () => {
+    const diverted = { ...notice('n1'), notice: 'diverted answer', model: 'deepseek-v4' };
+    expect(slotFor([user('u1'), diverted])?.answerText).toBe('diverted answer');
+  });
+});
+
 describe('streamingRowIndex', () => {
   test('skips trailing notice rows so the answer is the streaming row', () => {
     expect(streamingRowIndex([user('u1'), ai('a1'), notice('n1')])).toBe(1);

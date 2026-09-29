@@ -52,6 +52,12 @@ export function appendCommandOutputNotice(text: string, deps: CommandOutputDeps)
       // client-side bubble that `onPromptSettled` removes, and executeSend
       // filters it for the same reason. Writing it here left an empty assistant
       // row in the chamber's copy of a command-only turn.
+      //
+      // Safe inside the updater: `row` is built once, so re-applying the same
+      // updater produces the identical array — this is a full-array overwrite,
+      // not an append that could double. A side effect that must happen exactly
+      // once (a send, a rewind) never belongs in an updater; see
+      // `actions.handleRetry`.
       persistMessages(next.filter(m => m.id !== placeholderId));
       return next;
     }

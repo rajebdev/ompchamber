@@ -16,7 +16,7 @@
  */
 
 import { responseRunDurationMs } from '@/shared/lib/chat/duration';
-import { isNoticeRow } from '@/shared/lib/chat/notice-row';
+import { isNoticeRow, messageAnswerText } from '@/shared/lib/chat/notice-row';
 import type { ChatMessageData } from '@/shared/types';
 
 export interface RunFooterSlot {
@@ -26,6 +26,39 @@ export interface RunFooterSlot {
   ownerIndex: number;
   /** Measured run span, falling back to the turn's own recorded duration. */
   durationMs: number | null;
+  /**
+   * Index of the USER row that opened this run, or -1 when the run has none
+   * (a session file that starts mid-run). This is the row Retry rewinds to:
+   * a run spans several AI rows — thinking, tool calls, the answer — so the
+   * owner row is almost never the one a user turn sits in front of.
+   */
+  runStartIndex: number;
+  /** `runStartIndex`'s row id, `''` when the run has no user row. */
+  runUserId: string;
+  /**
+   * The run's WHOLE answer — every non-notice row's text, in order — which is
+   * what Copy and "new chat from this answer" act on. Reading only the owner
+   * row copied the last segment of a multi-segment run (or nothing at all when
+   * that segment carried only tool calls).
+   */
+  answerText: string;
+}
+
+/**
+ * Text of a run's answer: every non-notice row between its opening user row and
+ * its owner row. Notice rows carry reminders and command output, never the
+ * answer, so they are excluded — except one that carries the answer itself,
+ * which `isNoticeRow` already reports as an ordinary AI row.
+ */
+function runAnswerText(messages: ChatMessageData[], startIndex: number, ownerIndex: number): string {
+  const parts: string[] = [];
+  for (let i = Math.max(0, startIndex); i <= ownerIndex; i++) {
+    const msg = messages[i];
+    if (!msg || msg.role === 'user' || isNoticeRow(msg)) continue;
+    const text = messageAnswerText(msg).trim();
+    if (text) parts.push(text);
+  }
+  return parts.join('\n\n');
 }
 
 /**
@@ -69,11 +102,16 @@ export function resolveRunFooters(
   const footers: (RunFooterSlot | null)[] = new Array(count).fill(null);
   const streamingIdx = streamingRowIndex(messages);
   let ownerIndex = -1;
+  // Index of the user row that opened the current run. Notice rows never reset
+  // it: a reminder omp writes mid-run belongs to the run it interrupts, and
+  // resetting there would lose the turn Retry has to rewind to.
+  let runStartIndex = -1;
 
   for (let i = 0; i < count; i++) {
     const msg = messages[i];
     if (msg.role === 'user') {
       ownerIndex = -1;
+      runStartIndex = i;
       continue;
     }
     if (!isNoticeRow(msg)) ownerIndex = i;
@@ -85,10 +123,14 @@ export function resolveRunFooters(
     // The answer is still streaming — no footer until the run settles.
     if (isGenerating && ownerIndex === streamingIdx && owner.role === 'ai') continue;
 
+    const runUser = runStartIndex >= 0 ? messages[runStartIndex] : null;
     footers[i] = {
       msg: owner,
       ownerIndex,
       durationMs: responseRunDurationMs(messages, ownerIndex) ?? owner.durationMs ?? null,
+      runStartIndex,
+      runUserId: runUser?.id ?? '',
+      answerText: runAnswerText(messages, runStartIndex, ownerIndex),
     };
   }
 

@@ -74,12 +74,14 @@ async function mountActions(isGenerating: boolean, stashed: ComposerModelPick | 
       stopHoldRef: { current: false },
       persistMessages: () => {},
       setLocalMessages: () => {},
+      localMessagesRef: { current: [] },
       pendingComposerModelRef: { current: null },
       pendingThinkingLevelRef: { current: null },
       composerModelRef: { current: null },
       deferredComposerPickRef: deferred,
       accessModeRef: { current: 'yolo' },
       setSearchParams: () => {},
+      reportActionError: () => {},
     }));
     return null;
   };

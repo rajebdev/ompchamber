@@ -18,6 +18,7 @@ import { describe, expect, test } from 'bun:test';
 import type { Attachment } from '@/shared/types';
 import {
   applyTextAttachmentBudget,
+  attachmentHasPayload,
   attachmentImage,
   attachmentName,
   attachmentSize,
@@ -112,6 +113,37 @@ describe('image payloads', () => {
   test('an unread image yields nothing rather than a blank payload', () => {
     expect(attachmentImage({ type: 'image/png', dataBase64: '' })).toBeNull();
     expect(attachmentImage({ type: 'image/png' })).toBeNull();
+  });
+
+  test('a committed row whose preview IS the bytes still yields a payload', () => {
+    // Committed history and the session loader set `preview` to a data URL and
+    // never set `dataBase64`, so a retry or a seeded new chat had no image to
+    // send. The preview is the only copy of the bytes on that path.
+    const payload = attachmentImage({ type: 'image/png', preview: 'data:image/png;base64,QUJD' });
+    expect(payload).toEqual({ type: 'image', data: 'QUJD', mimeType: 'image/png' });
+  });
+
+  test('a non-base64 or empty preview yields nothing', () => {
+    expect(attachmentImage({ type: 'image/png', preview: 'blob:http://x/1' })).toBeNull();
+    expect(attachmentImage({ type: 'image/png', preview: 'data:image/png;base64,' })).toBeNull();
+  });
+});
+
+describe('attachmentHasPayload', () => {
+  test('a replayed image with only a data-URL preview still counts as sendable', () => {
+    // The composer used to test `content || dataBase64`, so a seeded or
+    // replayed image — whose bytes live only in the preview — was refused and
+    // the send aborted with "unreadable attachments".
+    expect(attachmentHasPayload({ id: 'i', preview: 'data:image/png;base64,QUJD', type: 'image/png' })).toBe(true);
+  });
+
+  test('an image with no bytes at all is not sendable', () => {
+    expect(attachmentHasPayload({ id: 'i', preview: 'blob:http://x/1', type: 'image/png' })).toBe(false);
+  });
+
+  test('a text file counts through its inlined content', () => {
+    expect(attachmentHasPayload({ id: 't', preview: '', name: 'a.md', type: 'text/markdown', content: '# hi' })).toBe(true);
+    expect(attachmentHasPayload({ id: 't', preview: '', name: 'a.md', type: 'text/markdown', content: '' })).toBe(false);
   });
 });
 

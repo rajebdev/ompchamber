@@ -2,7 +2,8 @@ import type { TargetedMouseEvent } from 'preact';
 import { useMemo } from 'preact/hooks';
 import { memo } from 'preact/compat';
 import { AlertCircle, Bot, Info, MessageSquarePlus, Undo2, User } from 'lucide-preact';
-import type { ChatMessageData, ToolCallData } from '@/shared/types';
+import type { Attachment, ChatMessageData, ToolCallData } from '@/shared/types';
+import { toAttachmentList } from '@/shared/lib/chat/attachments';
 import { ThinkingSection } from '@/client/components/workspace/chat-timeline/ThinkingSection';
 import { ToolCallingSection } from '@/client/components/workspace/chat-timeline/ToolCallingSection';
 import { SystemNotice } from '@/client/components/workspace/chat-timeline/SystemNotice';
@@ -17,7 +18,13 @@ interface ChatMessageItemProps {
   msg: ChatMessageData | any;
   isStreaming?: boolean;
   onUndo?: (msgId: string, content?: string) => void;
-  onNewChat?: (content: string) => void;
+  /**
+   * Start a new chat seeded with this row. A user row passes its attachments
+   * too: the prompt it carried is only half the turn — an image or an inlined
+   * text file exists nowhere else, and seeding the text alone silently dropped
+   * it from the new chat.
+   */
+  onNewChat?: (content: string, attachments?: Attachment[]) => void;
 
   /** Extra classes on the root wrapper (e.g. spacing between messages). */
   className?: string;
@@ -61,9 +68,11 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 
   const handleNewChat = (e?: TargetedMouseEvent<HTMLElement>) => {
     if (e) e.preventDefault();
-    if (onNewChat) {
-      onNewChat(msg.content);
-    }
+    if (!onNewChat) return;
+    // Committed rows carry the persisted display fields only (no `File`), which
+    // is what the composer and the send path both expect on a replay.
+    const attachments = toAttachmentList(msg.attachments);
+    onNewChat(msg.content, attachments.length ? attachments : undefined);
   };
 
   const handleUndo = () => {
@@ -119,6 +128,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                 type="button"
                 className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" 
                 title="Undo / Edit message"
+                aria-label="Undo this message"
                 onClick={handleUndo}
               >
                 <Undo2 size={12} />
@@ -131,6 +141,8 @@ export const ChatMessageItem = memo(function ChatMessageItem({
               className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer"
               iconSize={12}
               title="Copy prompt"
+              ariaLabel="Copy prompt"
+              emptyTitle="Nothing to copy — attachment-only prompt"
             />
 
             {/* New Chat Button */}
@@ -139,6 +151,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                 type="button"
                 className="flex items-center hover:text-ink transition-colors p-1 rounded hover:bg-ink/5 cursor-pointer" 
                 title="New Chat from here"
+                aria-label="Start a new chat from this message"
                 onClick={handleNewChat}
               >
                 <MessageSquarePlus size={12} />

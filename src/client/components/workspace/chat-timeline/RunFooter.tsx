@@ -1,4 +1,4 @@
-import type { ChatMessageData } from '@/shared/types';
+import type { Attachment, ChatMessageData } from '@/shared/types';
 import { AiMessageFooter } from '@/client/components/workspace/chat-timeline/AiMessageFooter';
 import { messageAnswerText } from '@/shared/lib/chat/notice-row';
 import { formatMessageStamp } from '@/shared/lib/format/time';
@@ -15,8 +15,20 @@ interface RunFooterProps {
   /** Session thinking level, used when the turn recorded none. */
   thinkingLevel?: string;
   durationMs?: number | null;
+  /**
+   * The run's whole answer (`RunFooterSlot.answerText`) — what Copy and
+   * "new chat from this answer" act on. Falls back to the owner row's own text
+   * for call sites that only have a message.
+   */
+  answerText?: string;
+  /**
+   * The user row that opened the run (`RunFooterSlot.runUserId`): the turn
+   * Retry re-runs. The owner row is the run's LAST row, so handing its id to
+   * Retry made the button a silent no-op on every multi-row run.
+   */
+  retryTargetId?: string;
   onRetry?: (msgId: string) => void;
-  onNewChat?: (content: string) => void;
+  onNewChat?: (content: string, attachments?: Attachment[]) => void;
   /** Mobile uses a compact provider/model footer with a bottom-sheet menu. */
   isMobile?: boolean;
   /**
@@ -31,7 +43,7 @@ interface RunFooterProps {
  * Boundary footer of an AI response run: the timeline renders it as the run's
  * own row — after every row the run owns, immediately before the next user
  * message — never inside the answer bubble. The slot's AI message supplies the
- * turn's model/usage/content.
+ * turn's model/usage; the answer text and retry target come from the run.
  */
 export function RunFooter({
   msg,
@@ -41,6 +53,8 @@ export function RunFooter({
   modelNames,
   thinkingLevel,
   durationMs,
+  answerText,
+  retryTargetId,
   onRetry,
   onNewChat,
   isMobile = false,
@@ -56,8 +70,8 @@ export function RunFooter({
         dateStr={formatMessageStamp(msg)}
         durationMs={durationMs ?? msg.durationMs}
         usage={msg.usage}
-        content={messageAnswerText(msg)}
-        msgId={msg.id}
+        content={answerText ?? messageAnswerText(msg)}
+        msgId={retryTargetId || msg.id}
         onRetry={onRetry}
         onNewChat={onNewChat}
         isMobile={isMobile}
