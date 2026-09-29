@@ -25,7 +25,7 @@
 
 import { describeShellBuildFailure } from '@/server/lib/bundler/build-errors.server';
 import { SHELL_ROUTE } from '@/server/lib/lifecycle/shell-route';
-import { listenerUrl } from '@/server/lib/lifecycle/listener';
+import { listenerFetchOptions, listenerUrl } from '@/server/lib/lifecycle/listener';
 
 export type ShellRender = { ok: true; html: string } | { ok: false; reason: string };
 
@@ -83,7 +83,10 @@ export async function renderShell(): Promise<ShellRender> {
   const base = listenerUrl();
   if (!base) return { ok: false, reason: 'The HTTP listener is not up yet.' };
   try {
-    const response = await fetch(new URL(SHELL_ROUTE, base));
+    // `listenerFetchOptions()` carries the TLS bypass under `--tls`: this is the
+    // process asking its own listener, and its self-signed certificate would
+    // otherwise fail the handshake and render "Shell not available" on every page.
+    const response = await fetch(new URL(SHELL_ROUTE, base), listenerFetchOptions());
     if (!response.ok) return { ok: false, reason: await shellFailureReason(response.status) };
     const html = await response.text();
     if (!html.includes(SHELL_MARKER)) return { ok: false, reason: await shellFailureReason(response.status, true) };

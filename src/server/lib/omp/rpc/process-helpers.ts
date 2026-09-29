@@ -74,7 +74,7 @@ export function sanitizeProjectCommandEnvironment(
   const environment = { ...baseEnvironment };
   for (const name of Object.keys(environment)) {
     const comparableName = platform === 'win32' ? name.toUpperCase() : name;
-    if (comparableName === 'PORT' || comparableName === 'NODE_ENV' || comparableName.startsWith('NEXT_')) {
+    if (comparableName === 'PORT' || comparableName === 'NODE_ENV' || comparableName === 'OMPCHAMBER_UI_PASSWORD' || comparableName.startsWith('NEXT_')) {
       delete environment[name];
     }
   }

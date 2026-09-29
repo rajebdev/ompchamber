@@ -10,6 +10,7 @@ const BOOLEAN_LONG = new Set([
   'prod',
   'foreground',
   'no-daemon',
+  'tls',
   'all',
   'follow',
   'check',
@@ -25,9 +26,8 @@ const BOOLEAN_LONG = new Set([
 const NEGATED_LONG = {
   'no-daemon': { key: 'foreground', value: true },
   'no-restart': { key: 'restart', value: false },
+  'no-ui-password': { key: 'noUiPassword', value: true },
 };
-
-const VALUE_LONG = new Set(['port', 'host', 'hostname', 'lines']);
 
 const SHORT_TO_LONG = {
   p: 'port',
@@ -71,6 +71,9 @@ export function parseArgs(argv) {
     lan: false,
     prod: false,
     foreground: false,
+    tls: false,
+    uiPassword: null,
+    noUiPassword: false,
     all: false,
     follow: false,
     check: false,
@@ -89,6 +92,14 @@ export function parseArgs(argv) {
     if (name === 'port') {
       const { value, nextIndex } = takeValue(tokens, index, inline);
       options.port = toNumberOrNull(value);
+      return nextIndex;
+    }
+    if (name === 'ui-password') {
+      // Optional value: `--ui-password` with nothing after it (or followed by
+      // another flag) asks for a generated one, which `serve` mints. Recorded as
+      // an empty string so `null` keeps meaning "not mentioned".
+      const { value, nextIndex } = takeValue(tokens, index, inline);
+      options.uiPassword = typeof value === 'string' && value.length > 0 ? value : '';
       return nextIndex;
     }
     if (name === 'lines') {
@@ -197,7 +208,10 @@ OPTIONS:
   -p, --port <port>       Web server port (default: 3000); scopes status/stop/restart/logs
   --host <address>        Bind address (default: 127.0.0.1)
   --hostname <address>    Alias for --host
-  --lan                   Bind to 0.0.0.0 for LAN access
+  --lan                   Bind to 0.0.0.0 for LAN access (warns when no password is set)
+  --tls                   Serve over HTTPS with a self-signed certificate (generated once)
+  --ui-password [value]   Require a password for the browser UI (generates one when omitted)
+  --no-ui-password        Disable the UI password for this start
   --prod                  Run the production build instead of the dev server
   --foreground            Run the server in the foreground (no daemon)
   --no-daemon             Alias for --foreground
@@ -216,6 +230,8 @@ ENVIRONMENT:
   OMPCHAMBER_DATA_DIR     Override the data directory (default: ~/.ompchamber)
   OMPCHAMBER_PORT         Default web server port
   OMPCHAMBER_HOST         Default bind address
+  OMPCHAMBER_UI_PASSWORD  UI password, hashed into auth.json at startup and then
+                          removed from the environment (see --ui-password)
   OMPCHAMBER_OMP_BIN      Path to the omp binary (required; falls back to PATH)
   GITHUB_TOKEN            Raise the GitHub API rate limit for update checks
 

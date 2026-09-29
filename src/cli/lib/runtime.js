@@ -14,6 +14,7 @@ import { ensureDataDirs, getLogFilePath } from '@/cli/lib/paths.js';
 import { killChildTree, STOP_TIMEOUT_MS } from '@/cli/lib/process-lifecycle.js';
 import { getProcessState, isProcessAlive } from '@/server/lib/lifecycle/identity';
 import { launchModeArg } from '@/server/lib/lifecycle/launch-mode';
+import { TLS_FLAG } from '@/server/lib/lifecycle/tls';
 import { listInstanceRecords, readInstanceRecord, removeInstanceRecord } from '@/server/lib/lifecycle/instance';
 import { fetchHealth, probeHost } from '@/server/lib/lifecycle/probe';
 import { joinPath, homeDir } from '@/cli/lib/path-utils.js';
@@ -23,6 +24,10 @@ const HEALTH_TIMEOUT_MS = 30_000;
 
 /**
  * CLI shape of a live instance, so records and probed servers print the same.
+ *
+ * No `url`: the scheme depends on whether the listener speaks TLS, which is only
+ * knowable from its health payload — so `status` builds the URL from that rather
+ * than trusting a value assembled before the probe ran.
  */
 function toLiveInstance({ pid, port, host, mode, launchMode, startedAt, source }) {
   const resolvedHost = host || 'localhost';
@@ -35,7 +40,6 @@ function toLiveInstance({ pid, port, host, mode, launchMode, startedAt, source }
     startedAt,
     source: source ?? 'registry',
     logFile: getLogFilePath(port),
-    url: `http://${probeHost(resolvedHost)}:${port}`,
   };
 }
 
@@ -140,7 +144,7 @@ export function resolveBunBin() {
  * started from an OMPChamber shell would otherwise be labelled `daemon` and
  * replaced by the next update.
  */
-export function buildServeInvocation({ pkgRoot, mode, port, host, launchMode = 'daemon' }) {
+export function buildServeInvocation({ pkgRoot, mode, port, host, launchMode = 'daemon', tls = false }) {
   // Production runs the built server: `bun run build` bundles `src/server/index.ts`
   // into `dist/client/index.js`, and that bundle carries the HTML route and the
   // hashed assets beside it. Development runs the source, which is what gives
@@ -155,7 +159,10 @@ export function buildServeInvocation({ pkgRoot, mode, port, host, launchMode = '
   }
   return {
     file: resolveBunBin(),
-    args: [entry, '--ompchamber-server', launchModeArg(launchMode)],
+    // `--tls` travels as argv, like `--launch-mode`: env is inherited by every
+    // descendant, so a server started inside the chamber's own terminal would
+    // otherwise inherit the choice.
+    args: [entry, '--ompchamber-server', launchModeArg(launchMode), ...(tls ? [TLS_FLAG] : [])],
     // Both modes run from the package root. The built server's HTML bundle
     // resolves its asset paths against the cwd, and the build emits them under
     // `dist/client/` from that same root — while everything else the server
@@ -179,11 +186,11 @@ export function buildServeInvocation({ pkgRoot, mode, port, host, launchMode = '
  * actually owns the port, so a spawn that fails (port lost to something else)
  * cannot leave a record pointing at a process that never served.
  */
-export function spawnDetachedServer({ pkgRoot, mode, port, host, launchMode = 'daemon' }) {
+export function spawnDetachedServer({ pkgRoot, mode, port, host, launchMode = 'daemon', resolvedPassword = null, tls = false }) {
   ensureDataDirs();
   const logFile = getLogFilePath(port);
   const fd = fs.openSync(logFile, 'a');
-  const { file, args, env, cwd } = buildServeInvocation({ pkgRoot, mode, port, host, launchMode });
+  const { file, args, env, cwd } = buildServeInvocation({ pkgRoot, mode, port, host, launchMode, tls });
 
   let child;
   try {
@@ -193,7 +200,11 @@ export function spawnDetachedServer({ pkgRoot, mode, port, host, launchMode = 'd
       stdin: 'ignore',
       stdout: fd,
       stderr: fd,
-      env,
+      // The password rides in the environment, never argv: a value on the command
+      // line is readable by every user on the machine through `ps`, and on Linux
+      // through `/proc/<pid>/cmdline`. The server erases the variable as it reads
+      // it, before anything it spawns can inherit it.
+      env: resolvedPassword?.password ? { ...env, OMPCHAMBER_UI_PASSWORD: resolvedPassword.password } : env,
     });
     child.unref();
   } finally {
@@ -210,7 +221,7 @@ export function spawnDetachedServer({ pkgRoot, mode, port, host, launchMode = 'd
       launchMode,
       startedAt: new Date().toISOString(),
       logFile,
-      url: `http://${probeHost(host)}:${port}`,
+      url: `${tls ? 'https' : 'http'}://${probeHost(host)}:${port}`,
     },
   };
 }
@@ -222,23 +233,16 @@ function sleep(ms) {
 /**
  * Poll `/api/health` until a 200 with a JSON body arrives, else null.
  */
-export async function waitForHealth(port, host, timeoutMs = HEALTH_TIMEOUT_MS) {
-  const url = `http://${probeHost(host)}:${port}/api/health`;
+export async function waitForHealth(port, host, timeoutMs = HEALTH_TIMEOUT_MS, tls = 'auto') {
   const deadline = Date.now() + Math.max(0, timeoutMs);
 
   while (Date.now() < deadline) {
-    try {
-      const response = await fetch(url, {
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(2000),
-      });
-      if (response.ok) {
-        const body = await response.json().catch(() => null);
-        if (body && typeof body === 'object') return body;
-      }
-    } catch {
-      // Server not up yet; keep polling until the deadline.
-    }
+    // `fetchHealth` carries the scheme: an explicit boolean when the caller knows
+    // (the CLI that just spawned the server), `'auto'` when it does not (status,
+    // discovery) — a server started with `--tls` answers nothing on HTTP, so
+    // assuming plain HTTP would report a healthy instance as never becoming ready.
+    const body = await fetchHealth(port, host, 2000, tls);
+    if (body) return body;
     if (Date.now() >= deadline) break;
     await sleep(HEALTH_INTERVAL_MS);
   }

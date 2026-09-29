@@ -2,6 +2,7 @@ import { Elysia } from 'elysia';
 import { mountBindings, type HandlerBinding } from '@/server/lib/route-adapter';
 import { agentBindings } from '@/server/routes/agent';
 import { agentWsRoutes } from '@/server/routes/agent/ws';
+import { authBindings } from '@/server/routes/auth';
 import { btwBindings } from '@/server/routes/btw';
 import { btwWsRoutes } from '@/server/routes/btw/ws';
 import { chatBindings } from '@/server/routes/chat';
@@ -21,6 +22,7 @@ import { healthBindings } from '@/server/routes/health';
 import { wellKnownBindings } from '@/server/routes/well-known';
 
 const allBindings: HandlerBinding[] = [
+  ...authBindings,
   ...agentBindings,
   ...btwBindings,
   ...chatBindings,

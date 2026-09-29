@@ -44,6 +44,19 @@ export function getInstancePath(port: number | string): string {
   return path.join(getRunDir(), `${port}.json`);
 }
 
+/**
+ * `<data>/auth.json` — the UI-auth config (argon2id password hash + session
+ * signing secret).
+ *
+ * Deliberately per-INSTALL, not per-port: the CLI hashes a password once and
+ * the server reads the hash at boot, so `restart` and `update` inherit the
+ * protection without the plaintext ever being respawned. Both the CLI and the
+ * server resolve it through this one function, so they cannot disagree.
+ */
+export function getAuthPath(): string {
+  return path.join(getDataDir(), 'auth.json');
+}
+
 /** `<data>/run/<port>.lock` — held only while a port handover is in progress. */
 export function getLockPath(port: number | string): string {
   return path.join(getRunDir(), `${port}.lock`);

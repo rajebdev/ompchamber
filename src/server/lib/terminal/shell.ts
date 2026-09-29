@@ -110,6 +110,11 @@ export function terminalEnv(
   // The chamber's own IPC descriptor is host-private and meaningless inside the
   // PTY; an inherited value makes Node CLIs fail to parse their IPC channel.
   delete env.NODE_CHANNEL_FD;
+  // Belt and braces. `lib/auth/env-password.ts` already removes this at boot, so
+  // the value should never reach here — but the shell panel is the one place a
+  // leaked password is trivially readable (`echo $OMPCHAMBER_UI_PASSWORD`), and
+  // a future refactor of the boot path must not be able to reintroduce that.
+  delete env.OMPCHAMBER_UI_PASSWORD;
   env.TERM = 'xterm-256color';
   env.COLORTERM = 'truecolor';
   env.COLORFGBG = theme === 'light' ? '0;15' : '15;0';

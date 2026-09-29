@@ -2,6 +2,8 @@ import { Elysia } from 'elysia';
 import pkg from '@/../package.json';
 import shell from '@/../index.html';
 import { apiRoutes } from '@/server/routes';
+import { authGate, initAuth } from '@/server/lib/auth/guard';
+import { resolveRunPassword } from '@/server/lib/auth/env-password';
 import { ssrRoutes } from '@/server/plugins/ssr';
 import { setListener } from '@/server/lib/lifecycle/listener';
 import { getDatabasePath, getDb } from '@/server/db.server';
@@ -11,6 +13,7 @@ import { ompStartupError, ompStartupLogLines } from '@/server/lib/omp/core/start
 import { readInstanceRecord, removeInstanceRecord, writeInstanceRecord } from '@/server/lib/lifecycle/instance';
 import { resolveLaunchMode } from '@/server/lib/lifecycle/launch-mode';
 import { acquirePortLock, claimPort, PortInUseError } from '@/server/lib/lifecycle/port-guard';
+import { ensureTlsCertificate, isTlsEnabledByArgv } from '@/server/lib/lifecycle/tls';
 import { SHELL_ROUTE } from '@/server/lib/lifecycle/shell-route';
 import { isMockMode } from '@/server/mock.server';
 
@@ -23,10 +26,24 @@ if (startupError) {
   process.exit(1);
 }
 
+// Authentication is armed here, before the listener opens and before anything
+// can spawn a child. The password comes from `--ui-password` or
+// `OMPCHAMBER_UI_PASSWORD` for THIS run only — the environment variable is
+// erased as it is read, so neither the terminal panel's PTY nor an agent-run
+// command can see it. With neither source given, the server runs open, which is
+// the default.
+const runPassword = resolveRunPassword();
+const authNotice = await initAuth(runPassword.password);
+
 // Which omp the chamber drives, which ~/.omp tree it reads and which SQLite file
 // it writes — the paths every session/agent diagnostic traces back to. The data
 // mode comes first because it changes what every later line means.
 console.log(`[ompchamber] mock mode:      ${isMockMode() ? 'true (demo presets)' : 'false (real omp data)'}`);
+// Printed with the bind address beside it, because those two facts decide the
+// risk: a network-exposed listener with no password is reachable by anyone who
+// can route to the host. The source matters too — `env` means the variable was
+// just erased, `argv` means it is still visible in this process's command line.
+console.log(`[ompchamber] ui auth:        ${authNotice}${runPassword.source === 'argv' ? ' [from argv]' : ''}`);
 for (const line of ompStartupLogLines()) console.log(`[ompchamber] ${line}`);
 console.log(`[ompchamber] db:             ${await getDatabasePath()}`);
 
@@ -36,6 +53,21 @@ const mode = Bun.env.NODE_ENV === 'production' ? 'prod' : 'dev';
 // argv, not env: see launch-mode.ts — an inherited `OMPCHAMBER_LAUNCH_MODE`
 // would label a `bun run dev` started inside an OMPChamber shell as `daemon`.
 const launchMode = resolveLaunchMode();
+
+// TLS is decided before the bind, because a certificate that cannot be produced
+// must fail here — with the port still free — rather than after the listener is
+// up and clients are connecting in cleartext.
+const tlsRequested = isTlsEnabledByArgv();
+let tlsOptions: { cert: Bun.BunFile; key: Bun.BunFile } | null = null;
+if (tlsRequested) {
+  const certificate = ensureTlsCertificate();
+  if (!certificate.ok) {
+    console.error(`[ompchamber] --tls was given but no certificate could be prepared:\n  ${certificate.error}`);
+    process.exit(1);
+  }
+  tlsOptions = { cert: Bun.file(certificate.certPath), key: Bun.file(certificate.keyPath) };
+  console.log(`[ompchamber] tls:             on (${certificate.generated ? 'certificate generated' : 'certificate reused'}) at ${certificate.certPath}`);
+}
 
 const lock = await acquirePortLock(port);
 if (!lock) {
@@ -50,6 +82,24 @@ if (!lock) {
 // WebSocket routes keep working: Elysia composes its `websocket` handler
 // alongside this object.
 const app = new Elysia({ serve: { routes: { [SHELL_ROUTE]: shell } } })
+  .onBeforeHandle((context) => {
+    // The socket address is read INLINE, and that is not a style choice.
+    // Passing this Elysia context to a helper function — however simple, even
+    // one that only reads a property — makes the request body arrive already
+    // consumed (`request.bodyUsed === true` before any handler runs), so every
+    // POST body parses as empty. Measured on Bun 1.4.2 + Elysia 1.4.30: a hook
+    // that is `authGate(c.request, clientAddressFromContext(c))` lost the body,
+    // while the identical logic written inline kept it, and the same held for a
+    // helper whose whole body was `'request' in c`.
+    //
+    // `requestIP` is the socket address, so a rate limit keyed on it cannot be
+    // evaded by a forged `x-forwarded-for`. `server` is absent in a non-Bun
+    // adapter or a test harness; the gate then runs without an address and the
+    // login route falls back to the shared unknown-client budget.
+    const requestIp = (context.server as { requestIP?: (request: Request) => { address?: string } | null } | undefined)
+      ?.requestIP?.(context.request);
+    return authGate(context.request, requestIp?.address);
+  })
   .use(apiRoutes)
   .use(ssrRoutes);
 
@@ -62,7 +112,15 @@ try {
       // `reusePort: true`, which lets a second server bind a port already in
       // use and then sit invisible while the first-bound socket takes every
       // connection.
-      app.listen({ port, hostname: host, reusePort: false });
+      app.listen({
+        port,
+        hostname: host,
+        reusePort: false,
+        // Passed through to `Bun.serve`: Elysia spreads the listen options into
+        // its serve config (verified on 1.4.30 — the listener reports
+        // `protocol: 'https'` and answers only TLS).
+        ...(tlsOptions ? { tls: tlsOptions } : {}),
+      });
       if (!app.server) throw new Error('Bun.serve returned no listener');
       // The shell is rendered by asking this same listener for it: Bun renders
       // an HTML route only while serving, and there is no in-process API for an
@@ -70,7 +128,15 @@ try {
       // `app.handle` answers 404). Handing the listener over is what makes
       // `renderShell()` possible — and the dev asset proxy reaches Bun's own
       // asset routes through it for the same reason.
-      setListener(app.server);
+      //
+      // The TLS options travel with it: this process asking its own listener must
+      // not verify the certificate it generated for itself, or every page fails
+      // to render. `tls` is Bun's own fetch option, absent from the DOM's
+      // `RequestInit` — the cast names that gap once, here.
+      setListener(
+        app.server,
+        tlsOptions ? ({ tls: { rejectUnauthorized: false } } as RequestInit) : undefined,
+      );
     },
   });
 } catch (error) {
@@ -105,7 +171,7 @@ process.on('exit', () => removeInstanceRecord(port));
 // one line that matters — the URL — at the bottom of the log.
 await logDetectedRegistry();
 
-console.log(`[ompchamber] listening on http://${host}:${port}`);
+console.log(`[ompchamber] listening on ${tlsOptions ? 'https' : 'http'}://${host}:${port}`);
 
 /**
  * One-time rewrite of the overlay rows written before `overlayRowsForOmpSession`

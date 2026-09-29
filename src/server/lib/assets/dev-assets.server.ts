@@ -83,11 +83,18 @@ export function devAssetUpstreamPath(pathname: string): string | null {
  * Bun's bundle is in memory and its routing table — not Elysia's — owns the
  * `/_bun/*` paths.
  */
-export async function serveDevAsset(request: Request, pathname: string, base: URL): Promise<Response | null> {
+export async function serveDevAsset(
+  request: Request,
+  pathname: string,
+  base: URL,
+  fetchOptions: RequestInit = {},
+): Promise<Response | null> {
   const upstream = devAssetUpstreamPath(pathname);
   if (!upstream) return null;
 
-  const response = await fetch(new URL(upstream, base));
+  // `fetchOptions` carries the TLS bypass under `--tls`: this is the server
+  // fetching from its own self-signed listener.
+  const response = await fetch(new URL(upstream, base), fetchOptions);
   const type = response.headers.get('content-type') ?? '';
   // An asset name that no longer exists falls through Bun's table to the SSR
   // catch-all and comes back as the shell markup. Serving that as JavaScript

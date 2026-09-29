@@ -10,6 +10,7 @@ import {
 import { probeHost } from '@/server/lib/lifecycle/probe';
 import { log, ok, warn, fail, printJson, isJson, isQuiet } from '@/cli/lib/output.js';
 import { wireChildProcessLifecycle } from '@/cli/lib/process-lifecycle.js';
+import { reportUiAuth, resolveUiPassword, uiPasswordEnv } from '@/cli/lib/ui-password.js';
 import { ompStartupError } from '@/server/lib/omp/core/startup';
 
 const DEFAULT_PORT = 3000;
@@ -75,21 +76,35 @@ export async function run(options, ctx) {
       `Port ${port} is already served by OMPChamber (pid ${existing.pid}, ${existing.mode}).`
       + '\n  Nothing was stopped — a starting instance never stops another one.'
       + `\n  Stop it first:  ompchamber stop --port ${port}`
-      + `\n  Or start on another port:  ompchamber serve --port <port>`,
+      + '\n  Or start on another port:  ompchamber serve --port <port>',
     );
   }
 
+  // Resolved before the spawn and handed over through the environment: a value
+  // on the command line would be readable through `ps`. The server hashes it for
+  // its own process and erases the variable, so nothing durable holds it.
+  const resolvedPassword = await resolveUiPassword(options);
+  reportUiAuth({ resolved: resolvedPassword, host, tls: options?.tls === true });
+
   if (options?.foreground) {
-    return runForeground({ pkgRoot, mode, port, host, quiet });
+    return runForeground({ pkgRoot, mode, port, host, quiet, resolvedPassword, tls: options?.tls === true });
   }
 
-  const { entry } = spawnDetachedServer({ pkgRoot, mode, port, host, launchMode: 'daemon' });
+  const { entry } = spawnDetachedServer({
+    pkgRoot,
+    mode,
+    port,
+    host,
+    launchMode: 'daemon',
+    resolvedPassword,
+    tls: options?.tls === true,
+  });
 
   if (!quiet && !json) {
     log(`Starting OMPChamber (${mode}) on ${entry.url} (pid ${entry.pid})...`);
   }
 
-  const health = await waitForHealth(port, host);
+  const health = await waitForHealth(port, host, undefined, options?.tls === true);
 
   if (json) {
     printJson(entry);
@@ -107,9 +122,9 @@ export async function run(options, ctx) {
   log(`  logs:  ${entry.logFile}`);
 }
 
-function runForeground({ pkgRoot, mode, port, host, quiet }) {
-  const { file, args, env, cwd } = buildServeInvocation({ pkgRoot, mode, port, host, launchMode: 'foreground' });
-  const url = `http://${probeHost(host)}:${port}`;
+function runForeground({ pkgRoot, mode, port, host, quiet, resolvedPassword, tls = false }) {
+  const { file, args, env, cwd } = buildServeInvocation({ pkgRoot, mode, port, host, launchMode: 'foreground', tls });
+  const url = `${tls ? 'https' : 'http'}://${probeHost(host)}:${port}`;
   if (!quiet) {
     log(`Running OMPChamber (${mode}) in the foreground on ${url} (Ctrl+C to stop)...`);
   }
@@ -119,7 +134,7 @@ function runForeground({ pkgRoot, mode, port, host, quiet }) {
     stdin: 'inherit',
     stdout: 'inherit',
     stderr: 'inherit',
-    env,
+    env: uiPasswordEnv(resolvedPassword, env),
   });
   wireChildProcessLifecycle(child, process, 5000);
   return new Promise((resolve) => {

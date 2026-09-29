@@ -8,6 +8,8 @@ import { Suspense, lazy } from 'preact/compat';
 import { useSearchParams } from '@/client/lib/router/search-params';
 import { DesktopLayout } from '@/client/components/layout/desktop-layout/index';
 import { SessionStateProvider } from '@/client/components/common/session-state-provider';
+import { LoginScreen } from '@/client/components/auth/login-screen';
+import { useAuthState } from '@/client/hooks/ui/auth';
 import { SidebarDataProvider } from '@/client/hooks/chat/omp/session-list';
 
 /**
@@ -34,6 +36,7 @@ export interface AppProps {
 export function App({ initialIsMobile = false, appSettings = {} }: AppProps) {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('sessionId') || '1';
+  const authState = useAuthState();
 
   // Initialize with server-detected User-Agent to eliminate SSR flash. The
   // device decides the layout on every load — the manual switch below is
@@ -82,6 +85,12 @@ export function App({ initialIsMobile = false, appSettings = {} }: AppProps) {
     manualOverrideRef.current = true;
     setIsMobileMode(true);
   };
+
+  // Before anything else: an unauthenticated page has no data to show and no
+  // settings to apply, so it renders the login screen alone. The providers below
+  // are not mounted either — mounting them would fire the session-list and
+  // stream requests that can only come back 401.
+  if (authState === 'required') return <LoginScreen />;
 
   if (isMobileMode) {
     return (

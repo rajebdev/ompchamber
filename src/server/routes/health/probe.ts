@@ -1,7 +1,9 @@
 import { json, NO_STORE_HEADERS } from '@/server/lib/remix-compat';
 import pkg from '@/../package.json';
+import { isAuthEnabled } from '@/server/lib/auth/guard';
 import { countOpenFileDescriptors } from '@/server/lib/lifecycle/fd-pressure';
 import { resolveLaunchMode } from '@/server/lib/lifecycle/launch-mode';
+import { isTlsEnabledByArgv } from '@/server/lib/lifecycle/tls';
 import { isMockMode } from '@/server/mock.server';
 
 const STARTED_AT = Date.now();
@@ -37,6 +39,13 @@ export async function loader() {
       launchMode: resolveLaunchMode(),
       port: Number(Bun.env.PORT) || 3000,
       host: Bun.env.HOST || 'localhost',
+      // Whether a UI password is in force. `status` prints it beside the bind
+      // address, so a LAN-bound instance with no password — reachable by anyone
+      // on the network — is visible from the CLI instead of only from a browser.
+      authEnabled: isAuthEnabled(),
+      // Reported so discovery does not have to guess the scheme: `status` and
+      // `findLiveInstance` read it to build the URL they print and probe.
+      tls: isTlsEnabledByArgv(),
       fds: countOpenFileDescriptors(),
     },
     { headers: NO_STORE_HEADERS },
