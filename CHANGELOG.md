@@ -5,6 +5,30 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0](https://github.com/rajebdev/ompchamber/compare/v3.6.0...v3.7.0) — 2026-09-29
+
+### Added
+
+* **auth:** add opt-in UI password protection with TLS and session revocation ([a81e4cf](https://github.com/rajebdev/ompchamber/commit/a81e4cf2935d433ad6fa357dad106f09056a61c8))
+* **chat-timeline:** make footer actions act on the turn they describe ([20245ae](https://github.com/rajebdev/ompchamber/commit/20245aef9b2b46ff3aacd25ce73bc77b5bc59eec))
+* **chat-timeline:** maximize the New Chat modal and grow its composer ([4bcf5c2](https://github.com/rajebdev/ompchamber/commit/4bcf5c2897940a34865bf2635e1d0969845a1dcf))
+* **chat-timeline:** separate a seeded new chat from the user's own instruction ([67ad744](https://github.com/rajebdev/ompchamber/commit/67ad74481300004c95729ba6b9475945b03e34df))
+* **sidebar:** add Go to Explorer and Rename with AI to the row menus ([f7e39e5](https://github.com/rajebdev/ompchamber/commit/f7e39e59b4b4af11223622bda146c45892c005e8))
+* **sidebar:** give desktop session rows a clock and the folder header a hover chevron ([013ac89](https://github.com/rajebdev/ompchamber/commit/013ac8956ccc43c54e8ad950964fc7f963880ffc))
+* **sidebar:** keep the desktop session and folder actions on screen ([8036a80](https://github.com/rajebdev/ompchamber/commit/8036a808d8cca98b1fd1ce4db313045984cf85af))
+* **workspace:** share one selected repo across the files, search, git and terminal views ([27b3b14](https://github.com/rajebdev/ompchamber/commit/27b3b1442a911829a7b800685fcaa983b60d3cf5))
+
+### Fixed
+
+* **chat:** drive the generating indicator from the session stream state ([c50dd52](https://github.com/rajebdev/ompchamber/commit/c50dd5212b62df7a71092865df7ee53a179b8389))
+* **chat:** withhold the run footer while the session is still streaming ([e5d5d99](https://github.com/rajebdev/ompchamber/commit/e5d5d99691b3da28db6b39b28d968e4e319f33d5))
+* **git:** make the Source Control dot follow the repo the panel is on ([edd35cc](https://github.com/rajebdev/ompchamber/commit/edd35cc49f8f9e95e0d50e40bb55683a13148afb))
+* **git:** report the branch's commit count, and stop fabricating history ([fab733f](https://github.com/rajebdev/ompchamber/commit/fab733f4703064903b13f4f90d0eba82f417d323))
+* **mobile:** line the show-more chevron and label up with the drawer's columns ([3056224](https://github.com/rajebdev/ompchamber/commit/30562244116445643ed736ba5c8b78367d1415d1))
+* **session-state:** restore a pending chat's saved UI state instead of resetting it ([3d3ad45](https://github.com/rajebdev/ompchamber/commit/3d3ad457c2368d65d747395790997ac51b1c6301))
+* **todo:** draw a recorded init-list task as its phase, and read all five omp statuses ([5fa9efc](https://github.com/rajebdev/ompchamber/commit/5fa9efcef1930fc9e9eef6ed080cd2ce4d368008))
+* **updates:** drop the update log once a run succeeds ([1bdc23a](https://github.com/rajebdev/ompchamber/commit/1bdc23a45863cabca935382a26ef1060c2af130d))
+
 ## [3.6.0](https://github.com/rajebdev/ompchamber/compare/v3.5.0...v3.6.0) — 2026-09-28
 
 ### Added
