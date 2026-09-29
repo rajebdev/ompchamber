@@ -4,19 +4,27 @@
  */
 
 /**
- * Markdown renderer for the chat timeline and editor previews.
+ * Markdown renderer for the chat timeline, editor previews and the wiki reader.
  *
  * Pipeline: remend (heal streaming) → marked (GFM, autolink, KaTeX) →
  * DOMPurify (sanitize). Renders as sanitized HTML. Raw HTML in the source is
  * escaped by DOMPurify (default profile) rather than executed. A single
  * delegated click handler manages the per-block "Copy" buttons. Mermaid
  * fences hydrate async into sanitized SVGs after mount.
+ *
+ * Three source kinds, one pipeline: agent output (default), a workspace file's
+ * preview (`document`), and a wiki page (`wikiScope`). The last two differ only
+ * in what they let through — a document's own HTML is markup, and a wiki page
+ * additionally gets gollum's `[[Page]]` links expanded and its references
+ * resolved into the wiki's own tree.
  */
 
 import type { TargetedMouseEvent } from 'preact';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { renderMarkdown } from '@/shared/lib/markdown/marked';
 import { rewriteDocumentReferences, type DocumentScope } from '@/shared/lib/markdown/document-urls';
+import { rewriteWikiReferences, type WikiRenderScope } from '@/shared/lib/wiki/document-urls';
+import { expandGollumLinks } from '@/shared/lib/wiki/pages';
 import { hydrateMathBlocks, MATH_PENDING_CLASS, preloadKatex } from '@/shared/lib/markdown/katex';
 import { sanitizeHtml } from '@/shared/lib/markdown/sanitize';
 import { hydrateMermaidBlocks } from '@/shared/lib/markdown/mermaid';
@@ -40,9 +48,17 @@ interface MarkdownRendererProps {
   document?: boolean;
   /** Where the document lives, so its relative links and images resolve. */
   scope?: DocumentScope;
+  /**
+   * Render the content as a wiki page: its own HTML is markup, its `[[Page]]`
+   * links expand, and its references resolve against the wiki's tree. Keep the
+   * object identity stable (memoize it) — a new one re-parses the page.
+   */
+  wikiScope?: WikiRenderScope;
+  /** Follow a wiki link to another page of the same wiki. */
+  onWikiNavigate?: (path: string) => void;
 }
 
-export function MarkdownRenderer({ content, className = '', document: isDocument = false, scope }: MarkdownRendererProps) {
+export function MarkdownRenderer({ content, className = '', document: isDocument = false, scope, wikiScope, onWikiNavigate }: MarkdownRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   /** Block the open viewer was read from, so a theme re-render can refresh it. */
   const diagramBlockRef = useRef<HTMLElement | null>(null);
@@ -55,19 +71,32 @@ export function MarkdownRenderer({ content, className = '', document: isDocument
   const scopePath = scope?.path;
   const scopeRoot = scope?.root;
   const scopeRepo = scope?.repo;
+  const wikiPath = wikiScope?.path;
+  const wikiEntries = wikiScope?.entries;
+  const wikiRoot = wikiScope?.root;
+  const wikiRepo = wikiScope?.repo;
+  /** Presence, not identity: this drives the click handler, never the parse. */
+  const isWiki = wikiScope !== undefined;
 
   const html = useMemo(() => {
     if (!content) return '';
-    const rendered = renderMarkdown(content, { allowHtml: isDocument });
-    const scoped = isDocument && scopePath
-      ? rewriteDocumentReferences(rendered, { path: scopePath, root: scopeRoot, repo: scopeRepo })
-      : rendered;
+    // Gollum's `[[Page]]` is invisible to a markdown parser, so it is expanded
+    // before parsing rather than patched afterwards.
+    const source = wikiPath ? expandGollumLinks(content) : content;
+    const rendered = renderMarkdown(source, { allowHtml: isDocument || isWiki });
+    const scoped = wikiPath && wikiEntries
+      ? rewriteWikiReferences(rendered, { path: wikiPath, entries: wikiEntries, root: wikiRoot, repo: wikiRepo })
+      : isDocument && scopePath
+        ? rewriteDocumentReferences(rendered, { path: scopePath, root: scopeRoot, repo: scopeRepo })
+        : rendered;
     // If the message contains math, start fetching KaTeX during parse rather
     // than waiting for the post-mount hydration effect — the request overlaps
     // sanitization and the rest of the render instead of following it.
     if (scoped.includes(MATH_PENDING_CLASS)) preloadKatex();
     return sanitizeHtml(scoped);
-  }, [content, syntaxReady, isDocument, scopePath, scopeRoot, scopeRepo]);
+    // Primitives, never the `wikiScope` object: the panel memoizes it, but a
+    // call site that builds one inline must not re-parse the page per render.
+  }, [content, syntaxReady, isDocument, scopePath, scopeRoot, scopeRepo, isWiki, wikiPath, wikiEntries, wikiRoot, wikiRepo]);
 
   const hasMermaid = html.includes('mermaid-block');
   const hasMath = html.includes(MATH_PENDING_CLASS);
@@ -185,6 +214,30 @@ export function MarkdownRenderer({ content, className = '', document: isDocument
       return;
     }
 
+    if (isWiki) {
+      // A wiki page's own links. The RAW attribute is what classifies them, not
+      // `link.href`: that property is always absolutised by the DOM, so a
+      // relative path which named no page of this wiki read as external and
+      // every such link opened a browser tab instead of doing nothing.
+      const link = (e.target as HTMLElement).closest<HTMLAnchorElement>('a[href]');
+      if (!link) return;
+      const raw = link.getAttribute('href') ?? '';
+      // An in-page anchor is the browser's own business — the heading it names
+      // carries the id the wiki's table of contents wrote. Letting the default
+      // through is the whole point; preventing it made every TOC entry inert.
+      if (raw.startsWith('#')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const target = link.dataset.wikiPath;
+      if (target && onWikiNavigate) {
+        onWikiNavigate(target);
+        return;
+      }
+      if (/^https?:/i.test(raw)) window.open(raw, '_blank', 'noopener,noreferrer');
+      // A relative href that resolved to nothing in this wiki is inert.
+      return;
+    }
+
     if (!isDocument) return;
 
     // A document's own links: a relative one is rewritten to the workspace
@@ -200,7 +253,7 @@ export function MarkdownRenderer({ content, className = '', document: isDocument
     } else if (/^https?:/i.test(link.href)) {
       window.open(link.href, '_blank', 'noopener,noreferrer');
     }
-  }, [isDocument, scopeRoot, scopeRepo]);
+  }, [isDocument, scopeRoot, scopeRepo, isWiki, onWikiNavigate]);
 
   const closeDiagram = useCallback(() => {
     diagramBlockRef.current = null;

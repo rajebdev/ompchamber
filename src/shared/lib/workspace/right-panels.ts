@@ -19,6 +19,7 @@ export const RIGHT_PANEL_TYPES = [
   'browser',
   'usage',
   'todo',
+  'wiki',
 ] as const;
 
 export type RightPanelType = (typeof RIGHT_PANEL_TYPES)[number];
@@ -39,6 +40,8 @@ export type RightPanelType = (typeof RIGHT_PANEL_TYPES)[number];
  * - `usage` has no OpenChamber counterpart; 0.48 keeps the pixel default it
  *   shipped with.
  * - `todo` has no OpenChamber counterpart either; 0.3 keeps its pixel default.
+ * - `wiki` is a reader, not a column of rows: 0.45 is a page's comfortable
+ *   measure on a 1440-class viewport, and it keeps the page list beside it.
  * - `context`, `git`, `terminal` and both browsers take OpenChamber's values.
  */
 export const DEFAULT_RIGHT_PANEL_FRACTIONS: Record<RightPanelType, number> = {
@@ -54,6 +57,7 @@ export const DEFAULT_RIGHT_PANEL_FRACTIONS: Record<RightPanelType, number> = {
   // A todo list is one column of short rows — narrower than usage, wider than
   // a file tree, because a task line is a sentence.
   todo: 0.3,
+  wiki: 0.45,
 };
 
 /**
@@ -71,6 +75,7 @@ export const DEFAULT_RIGHT_PANEL_WIDTHS: Record<RightPanelType, number> = {
   browser: 804,
   usage: 536,
   todo: 384,
+  wiki: 600,
 };
 
 /**
@@ -96,6 +101,9 @@ export const MIN_RIGHT_PANEL_WIDTHS: Record<RightPanelType, number> = {
   usage: 420,
   // Below this a task line wraps to three words a row.
   todo: 280,
+  // The page list needs its 208px beside a readable measure; under 420 the two
+  // columns collapse into a drill-down.
+  wiki: 420,
 };
 
 /** Guards a persisted or URL-provided view id before it keys a width. */

@@ -18,6 +18,7 @@ import { browserBindings } from '@/server/routes/browser';
 import { modelsBindings } from '@/server/routes/models';
 import { ompBindings } from '@/server/routes/omp';
 import { updatesBindings } from '@/server/routes/updates';
+import { wikiBindings } from '@/server/routes/wiki';
 import { healthBindings } from '@/server/routes/health';
 import { wellKnownBindings } from '@/server/routes/well-known';
 
@@ -37,6 +38,7 @@ const allBindings: HandlerBinding[] = [
   ...modelsBindings,
   ...ompBindings,
   ...updatesBindings,
+  ...wikiBindings,
   ...healthBindings,
   ...wellKnownBindings,
 ];

@@ -70,8 +70,8 @@ bun run src/server/index.ts    # API + WebSocket + static client on :3000
   the chat.
 - **Workspace sidebar** — folder → session tree off omp's project registry, with search, sort,
   archive, per-session stream status and subagent rows.
-- **Eight right-panel views** — files, search, git, terminal, context &amp; telemetry, your browser,
-  the agent browser and usage, each remembering its own width per session.
+- **Nine right-panel views** — files, search, git, terminal, context &amp; telemetry, your browser,
+  the agent browser, usage and wiki, each remembering its own width per session.
 - **Full omp settings surface** — engine config keys, providers, agents, `AGENTS.md` / `RULES.md`,
   slash commands, MCP servers with live connection tests, skills and the skills catalog, token
   usage and notifications.

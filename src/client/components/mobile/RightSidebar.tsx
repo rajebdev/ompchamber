@@ -1,8 +1,8 @@
 import { useState } from 'preact/hooks';
 import { Suspense } from 'preact/compat';
 import type { ReactNode } from 'preact/compat';
-import { BarChart3, Bot, Files, GitBranch, Globe, Layers, ListTodo, Search, Terminal, X } from 'lucide-preact';
-import { LazyBrowserPanel, LazyContextPanel, LazyFileExplorer, LazyGitPanel, LazySearchPanel, LazyTerminalPanel, LazyTodoPanel, LazyUsagePanel, LazyUserBrowserPanel } from '@/client/components/common/lazy-panels';
+import { BarChart3, BookOpen, Bot, Files, GitBranch, Globe, Layers, ListTodo, Search, Terminal, X } from 'lucide-preact';
+import { LazyBrowserPanel, LazyContextPanel, LazyFileExplorer, LazyGitPanel, LazySearchPanel, LazyTerminalPanel, LazyTodoPanel, LazyUsagePanel, LazyUserBrowserPanel, LazyWikiPanel } from '@/client/components/common/lazy-panels';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
 import { useResolvedRepo } from '@/client/hooks/workspace/repo-scope';
 import { GIT_STATUS_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
@@ -33,6 +33,7 @@ const PANEL_META: Record<RightPanelType, { title: string; label: string; icon: R
   browser: { title: 'Browser Agent', label: 'Agent', icon: <Bot size={14} className="flex-shrink-0" /> },
   usage: { title: 'Usage', label: 'Usage', icon: <BarChart3 size={14} className="flex-shrink-0" /> },
   todo: { title: 'Todos', label: 'Todos', icon: <ListTodo size={14} className="flex-shrink-0" /> },
+  wiki: { title: 'Wiki', label: 'Wiki', icon: <BookOpen size={14} className="flex-shrink-0" /> },
 };
 
 export function MobileRightSidebar({
@@ -139,6 +140,7 @@ export function MobileRightSidebar({
               {activeTab === 'browser' && <LazyBrowserPanel className="h-full w-full" active />}
               {activeTab === 'usage' && <LazyUsagePanel className="h-full w-full" />}
               {activeTab === 'todo' && <LazyTodoPanel className="h-full w-full" />}
+              {activeTab === 'wiki' && <LazyWikiPanel className="h-full w-full" rootPath={rootPath} enabled={enabled} active />}
             </Suspense>
           </>
         )}
