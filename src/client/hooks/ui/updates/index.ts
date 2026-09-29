@@ -131,7 +131,15 @@ export function useUpdates(): UseUpdatesResult {
           }
           if (event === 'result') {
             const payload: unknown = JSON.parse(data);
-            if (isUpdateApplyResult(payload)) result = payload;
+            if (isUpdateApplyResult(payload)) {
+              result = payload;
+              // A finished run's output is not a report to come back to. An
+              // update that worked said everything it had to say in its toast,
+              // and an install log left standing is noise the next time the
+              // dialog is opened. A run that FAILED keeps its output: the
+              // reason is in those lines, and the toast carries only a summary.
+              if (payload.success) setProgress(null);
+            }
           }
         },
         controller.signal,
