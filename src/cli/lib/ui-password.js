@@ -146,6 +146,7 @@ export function reportUiAuth({ resolved, host, tls = false }) {
       + ' readable by anything that can see the traffic.',
     );
     warn('  Add --tls for HTTPS, or reach it over SSH port-forwarding instead.');
+    warn('  A tunnel also works and needs no certificate: cloudflared tunnel --url http://127.0.0.1:<port>');
   } else {
     warn(
       `Warning: bound to ${host}, which your network can reach, with no UI password set —`

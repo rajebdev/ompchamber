@@ -14,6 +14,8 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test';
 
+import { authGate } from '@/server/lib/auth/guard';
+import { clientAddressFor } from '@/server/lib/auth/client-address';
 import {
   checkLoginRateLimit,
   clearLoginRateLimit,
@@ -83,5 +85,51 @@ describe('login rate limit', () => {
       expect(recordLoginFailure(UNKNOWN_CLIENT_KEY, NOW).allowed).toBe(true);
     }
     expect(recordLoginFailure(UNKNOWN_CLIENT_KEY, NOW).allowed).toBe(false);
+  });
+});
+
+describe('the rate limit cannot be evaded by a forged forwarding header', () => {
+  // Verified against a live server: 8 attempts with rotating `x-forwarded-for`
+  // and `x-real-ip` values all answered 429. This pins the REASON, against the
+  // real gate rather than a stand-in: the key is the socket address the gate
+  // records, and a caller-supplied header is never consulted. If that ever
+  // changed, a caller could present a fresh identity per attempt and walk
+  // straight through the budget — invisible until exploited.
+  const loginRequest = (forwardedFor: string) => new Request('http://127.0.0.1/api/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-forwarded-for': forwardedFor, 'x-real-ip': forwardedFor },
+  });
+
+  test('a forged forwarding header does not become the rate-limit key', async () => {
+    const request = loginRequest('10.0.0.1');
+    // The gate records the socket address it was handed…
+    await authGate(request, '127.0.0.1');
+    // …and that is what the login route throttles on, not the header.
+    expect(clientAddressFor(request)).toBe('127.0.0.1');
+    expect(clientAddressFor(request)).not.toBe('10.0.0.1');
+  });
+
+  test('rotating the header changes nothing about the key', async () => {
+    const keys = new Set<string>();
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const request = loginRequest(`10.0.0.${attempt}`);
+      await authGate(request, '127.0.0.1');
+      keys.add(clientAddressFor(request));
+    }
+    // Five different forged identities, one key.
+    expect(keys.size).toBe(1);
+    expect([...keys][0]).toBe('127.0.0.1');
+  });
+
+  test('an unidentifiable caller falls back to the shared key, not a fresh one', async () => {
+    // No address from the socket (a non-Bun adapter, a test harness). The
+    // fallback must be ONE shared key: per-request randomness would hand every
+    // attempt a new budget.
+    const first = loginRequest('10.0.0.1');
+    const second = loginRequest('10.0.0.2');
+    await authGate(first, undefined);
+    await authGate(second, undefined);
+    expect(clientAddressFor(first)).toBe(UNKNOWN_CLIENT_KEY);
+    expect(clientAddressFor(second)).toBe(UNKNOWN_CLIENT_KEY);
   });
 });

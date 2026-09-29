@@ -16,6 +16,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   clearSessionCookieHeader,
   credentialFingerprint,
+  isSecureRequest,
   issueSessionToken,
   readSessionCookie,
   sessionCookieHeader,
@@ -120,6 +121,66 @@ describe('session cookie name', () => {
       headers: { host: 'localhost:3002', cookie: 'omp_session_3000=stale' },
     });
     expect(readSessionCookie(request)).toBeNull();
+  });
+});
+
+describe('behaviour behind a reverse proxy', () => {
+  const headersOf = (entries: Record<string, string>) => new Headers(entries);
+  const requestTo = (url: string, entries: Record<string, string> = {}) => new Request(url, { headers: entries });
+
+  test('x-forwarded-proto: https makes the cookie Secure', () => {
+    // The case that decides whether a Cloudflare tunnel works at all: the
+    // browser speaks https while cloudflared forwards plain http to localhost,
+    // so the request's own URL says `http:`. Without reading the header the
+    // session cookie would be issued without `Secure` on an https site — and a
+    // `Secure`-less cookie is what a proxy stripping https would accept.
+    const request = requestTo('http://127.0.0.1:3000/login', { 'x-forwarded-proto': 'https' });
+    expect(isSecureRequest(request)).toBe(true);
+    expect(sessionCookieHeader('omp_session', 'token', SESSION_TTL_MS, isSecureRequest(request))).toContain('Secure');
+  });
+
+  test('a plain local request is not Secure', () => {
+    // Otherwise the cookie could never be set on the plain-http localhost the
+    // server normally runs on.
+    expect(isSecureRequest(requestTo('http://127.0.0.1:3000/'))).toBe(false);
+  });
+
+  test('only the first forwarded proto counts, as the chain sends it', () => {
+    // A chain appends; the client-facing hop is first. A later `http` in the
+    // list describes an internal hop, not the browser's connection.
+    expect(isSecureRequest(requestTo('http://x/', { 'x-forwarded-proto': 'https, http' }))).toBe(true);
+    expect(isSecureRequest(requestTo('http://x/', { 'x-forwarded-proto': 'http, https' }))).toBe(false);
+  });
+
+  test('a tunnel host without a port keeps the bare cookie name', () => {
+    // A trycloudflare quick tunnel is reached as
+    // `https://<name>.trycloudflare.com` — no port — so the name must not gain a
+    // suffix that nothing would read back.
+    const request = requestTo('http://127.0.0.1:3000/api/settings', {
+      host: '127.0.0.1:3000',
+      'x-forwarded-host': 'keys-mighty.trycloudflare.com',
+    });
+    expect(sessionCookieName(request.headers)).toBe('omp_session');
+  });
+
+  test('a proxied host WITH a port keeps that port in the name', () => {
+    const request = requestTo('http://127.0.0.1:3000/api/settings', {
+      host: '127.0.0.1:3000',
+      'x-forwarded-host': 'internal.example:8443',
+    });
+    expect(sessionCookieName(request.headers)).toBe('omp_session_8443');
+  });
+
+  test('the cookie is read back with the same name it was issued under', () => {
+    // Issuance and validation must agree through a proxy hop, or the browser
+    // stores a cookie no request sends.
+    const headers = headersOf({ 'x-forwarded-host': 'keys-mighty.trycloudflare.com' });
+    const name = sessionCookieName(headers);
+    const request = requestTo('http://127.0.0.1:3000/api/settings', {
+      'x-forwarded-host': 'keys-mighty.trycloudflare.com',
+      cookie: `${name}=the-token`,
+    });
+    expect(readSessionCookie(request)).toBe('the-token');
   });
 });
 
