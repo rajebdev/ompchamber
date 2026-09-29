@@ -57,7 +57,6 @@ type SessionState = Record<string, unknown>;
 const cache = new Map<string, SessionState>();
 /** Epoch ms of the last user-driven access per session (get/set/hydrate). */
 const lastTouched = new Map<string, number>();
-const readySessions = new Set<string>();
 const dirtySessions = new Map<string, boolean>();
 const persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -101,7 +100,6 @@ function evictIfNeeded(protectedId: string | null): void {
   const now = Date.now();
   const evict = (id: string): void => {
     cache.delete(id);
-    readySessions.delete(id);
     dirtySessions.delete(id);
     lastTouched.delete(id);
     const timer = persistTimers.get(id);
@@ -191,10 +189,7 @@ export function flushSession(sessionId: string | null): Promise<void> {
 /** Fetch a session's stored blob and merge it under any local writes. */
 export async function loadSession(sessionId: string): Promise<void> {
   if (!sessionId) return;
-  if (typeof window === 'undefined') {
-    readySessions.add(sessionId);
-    return;
-  }
+  if (typeof window === 'undefined') return;
   try {
     const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/state`);
     if (res.ok) {
@@ -215,7 +210,6 @@ export async function loadSession(sessionId: string): Promise<void> {
   } catch (err) {
     console.warn('session-state load failed:', err);
   }
-  readySessions.add(sessionId);
   evictIfNeeded(sessionId);
 }
 
@@ -224,13 +218,7 @@ export function hydrateSession(sessionId: string | null, state: SessionState): v
   if (!sessionId) return;
   cache.set(sessionId, { ...(cache.get(sessionId) ?? {}), ...state });
   touchCacheEntry(sessionId);
-  readySessions.add(sessionId);
   evictIfNeeded(sessionId);
-}
-
-/** Mark a session as loaded without fetching (fresh / ephemeral sessions). */
-export function markSessionReady(sessionId: string | null): void {
-  if (sessionId) readySessions.add(sessionId);
 }
 
 /**
@@ -262,7 +250,6 @@ export function forgetSession(sessionId: string): void {
     persistTimers.delete(sessionId);
   }
   cache.delete(sessionId);
-  readySessions.delete(sessionId);
   dirtySessions.delete(sessionId);
   lastTouched.delete(sessionId);
 }
@@ -275,11 +262,9 @@ export function migrateSessionState(fromId: string, toId: string): void {
   const from = cache.get(fromId);
   if (from) cache.set(toId, { ...from, ...(cache.get(toId) ?? {}) });
   touchCacheEntry(toId);
-  readySessions.add(toId);
   dirtySessions.set(toId, true);
   schedulePersist(toId);
   cache.delete(fromId);
-  readySessions.delete(fromId);
   dirtySessions.delete(fromId);
   lastTouched.delete(fromId);
   evictIfNeeded(toId);

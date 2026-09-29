@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ReactNode } from 'preact/compat';
-import { flushSession, loadSession, markSessionReady, migrateSessionState, recordSessionOpen } from '@/shared/lib/workspace/session-state/store';
+import { flushSession, loadSession, migrateSessionState, recordSessionOpen } from '@/shared/lib/workspace/session-state/store';
 import { SessionStateContext } from '@/client/hooks/workspace/session-state/context';
 
 /**
@@ -9,6 +9,14 @@ import { SessionStateContext } from '@/client/hooks/workspace/session-state/cont
  * writes before switching, and migrate a pending `new-…` chat's state onto
  * the real id adopted by a spawn. Consumers read/write through
  * `useSessionState(key, fallback)`.
+ *
+ * A pending `new-…` slot is loaded like any other, because it is PERSISTED
+ * like any other: the id is what the URL carries (`?sessionId=new-…`), so a
+ * reload of a pending chat — a dev-HMR reload, or a second tab — re-enters it
+ * with a row already on the server. Treating it as "nothing stored yet" showed
+ * every fallback there (the repo picker reset to the workspace root, the right
+ * panel jumped back to its default) and let the next write destroy the stored
+ * blob, because the persist body is the WHOLE in-memory map.
  */
 export function SessionStateProvider({ sessionId, children }: { sessionId: string | null; children: ReactNode }) {
   const effectiveSessionId = sessionId || '1';
@@ -27,14 +35,6 @@ export function SessionStateProvider({ sessionId, children }: { sessionId: strin
     // instead of loading (nothing is stored under the real id yet).
     if (prev && prev.startsWith('new-') && !effectiveSessionId.startsWith('new-')) {
       migrateSessionState(prev, effectiveSessionId);
-      setReady(true);
-      return;
-    }
-
-    if (effectiveSessionId.startsWith('new-')) {
-      // Fresh pending chat: nothing stored yet; ready immediately so the
-      // composer starts empty instead of waiting on a fetch.
-      markSessionReady(effectiveSessionId);
       setReady(true);
       return;
     }
