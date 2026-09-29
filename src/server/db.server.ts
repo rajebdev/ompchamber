@@ -94,9 +94,11 @@ export async function getDb(): Promise<DbClient> {
       await seedMockData(db);
     } else {
       // MOCK=false (Real Data Mode): when SYNC_WORKSPACE is enabled (default),
-      // auto-create workspace folders from discovered omp projects. User-made
-      // folders are never deleted; only additive sync.
-      await syncWorkspaceFoldersFromDiscovery(db);
+      // seed workspace folders from discovered omp projects — but only while
+      // the list is still empty. User-made folders are never deleted and a
+      // curated list is never appended to; the sync is a one-time bootstrap.
+      const seeded = await syncWorkspaceFoldersFromDiscovery(db);
+      if (seeded) console.log('[ompchamber] workspaces:    seeded from omp discovery (list was empty)');
     }
 
     await migrateLegacyProjectSettings(db);

@@ -212,7 +212,7 @@ Environment variables, read from `.env` (see [`.env.example`](.env.example)):
 | `PORT` | `3000` | Server port |
 | `HOST` | `localhost` | Server bind address |
 | `MOCK` | `false` | `true` = demo datasets, `false` = real SQLite + workspace only |
-| `SYNC_WORKSPACE` | `true` | Keep the workspace index in sync with disk |
+| `SYNC_WORKSPACE` | `true` | Seed the workspace list from discovered omp projects — only while the list is still empty (one-time bootstrap; a curated list is never appended to) |
 | `OMPCHAMBER_DATA_DIR` | `~/.ompchamber` | CLI registry, logs, database and TLS certificate root |
 | `OMPCHAMBER_PORT` / `OMPCHAMBER_HOST` | — | Defaults for the CLI when no flag is passed |
 | `OMPCHAMBER_UI_PASSWORD` | — | Require a UI password (see [Security](#security)); erased from the environment at boot |
