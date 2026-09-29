@@ -3,6 +3,7 @@ import type { ActionFunctionArgs } from '@/server/lib/remix-compat';
 import { methodNotAllowed } from '@/server/lib/route-adapter';
 import { getDb } from '@/server/db.server';
 import { deleteWorkspaceFolder, parseFolderSettingsPatch, updateWorkspaceFolder } from '@/shared/lib/workspace/project-settings';
+import { revealInFileManager } from '@/server/lib/fs/reveal';
 
 export async function pinFolder({ request, params }: ActionFunctionArgs) {
   if (request.method !== 'POST') {
@@ -34,6 +35,36 @@ export async function toggleFolder({ request, params }: ActionFunctionArgs) {
   await db.run('UPDATE workspace_folders SET is_expanded = ? WHERE id = ?', [isExpanded, folderId]);
 
   return json({ success: true, isExpanded });
+}
+
+/**
+ * POST /api/folders/:folderId/open — reveal the workspace's directory in the
+ * platform file manager.
+ *
+ * The path comes from the row the id names, never from the request: a client
+ * that could send one would have an arbitrary-path opener.
+ */
+export async function openFolder({ request, params }: ActionFunctionArgs) {
+  if (request.method !== 'POST') {
+    return methodNotAllowed({ request, params });
+  }
+
+  const folderId = params.folderId;
+  if (!folderId) return json({ error: 'folderId is required' }, { status: 400 });
+
+  const db = await getDb();
+  const folder = await db.get('SELECT project_path FROM workspace_folders WHERE id = ?', [folderId]);
+  if (!folder) return json({ error: 'Workspace not found' }, { status: 404 });
+  if (!folder.project_path) {
+    // An unbound folder has no directory of its own — it is a grouping, not a
+    // path — so there is nothing to open and the menu must say so.
+    return json({ error: 'This workspace is not bound to a directory' }, { status: 400 });
+  }
+
+  const result = await revealInFileManager(folder.project_path);
+  return result.ok
+    ? json({ success: true })
+    : json({ error: result.error }, { status: 500 });
 }
 
 export async function deleteFolder({ request, params }: ActionFunctionArgs) {

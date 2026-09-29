@@ -11,6 +11,8 @@ interface SessionSidebarSessionListProps {
   onScroll: () => void;
   onSelectSession: (id: number | string) => void;
   onNewSessionForFolder: (id: number) => void;
+  /** Surfaces a refused folder action (the reveal endpoint's own reason). */
+  onToast?: (message: string, type?: 'success' | 'error') => void;
 }
 
 export function SessionSidebarSessionList({
@@ -23,6 +25,7 @@ export function SessionSidebarSessionList({
   onScroll,
   onSelectSession,
   onNewSessionForFolder,
+  onToast,
 }: SessionSidebarSessionListProps) {
   return (
     <div 
@@ -44,6 +47,7 @@ export function SessionSidebarSessionList({
             forceExpanded={!!searchQuery}
             showArchived={showArchived}
             sessionStatus={sessionStatus}
+            onToast={onToast}
           />
         ))
       )}

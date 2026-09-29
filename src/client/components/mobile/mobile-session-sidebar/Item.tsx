@@ -24,6 +24,7 @@ interface MobileSessionCategoryProps {
   onToggleExpand: () => void;
   showArchived?: boolean;
   sessionStatus?: Record<string, 'stream' | 'finish' | 'abort'>;
+  onToast?: (message: string, type?: 'success' | 'error') => void;
 }
 
 export function MobileSessionCategory({
@@ -34,7 +35,8 @@ export function MobileSessionCategory({
   isExpanded,
   onToggleExpand,
   showArchived = false,
-  sessionStatus = {}
+  sessionStatus = {},
+  onToast,
 }: MobileSessionCategoryProps) {
   const { visibleCount, showMore } = useShowMore();
   const { refresh } = useSidebarData();
@@ -54,7 +56,9 @@ export function MobileSessionCategory({
     handleDelete,
     handleArchive,
     handleRename,
-  } = useWorkspaceFolderActions(folder, refresh);
+    handleRenameWithAi,
+    handleOpenFolder,
+  } = useWorkspaceFolderActions(folder, refresh, onToast);
   const sessionDelete = useSessionDelete();
 
   useOnClickOutside(menuRef, () => {
@@ -71,6 +75,15 @@ export function MobileSessionCategory({
     handleDelete();
     setShowMenu(false);
   };
+
+  // Same rule as the desktop header: reveal is an action, so the menu closes
+  // on it — otherwise the toast would render behind the menu that triggered it.
+  const onOpenFolder = handleOpenFolder
+    ? () => {
+        handleOpenFolder();
+        setShowMenu(false);
+      }
+    : undefined;
 
   // Archived rows are filtered first; the badge reports the visible set so the
   // count always matches what the list can actually show.
@@ -156,6 +169,7 @@ export function MobileSessionCategory({
                 <WorkspaceOptionsMenu
                   variant="mobile"
                   isPinned={folder.isPinned}
+                  onOpenFolder={onOpenFolder}
                   confirmDelete={confirmDelete}
                   onPin={onPin}
                   onDelete={onDelete}
@@ -206,6 +220,9 @@ export function MobileSessionCategory({
                       : () => sessionDelete.requestDelete(session)
                   }
                   onRename={sessionKey.startsWith('new-') ? undefined : (name) => void handleRename(session, name)}
+                  onRenameWithAi={
+                    sessionKey.startsWith('new-') ? undefined : () => void handleRenameWithAi(session)
+                  }
                 />
                 {isRosterOpen && (
                   <SubagentList sessionId={session.id} isActiveSession={isSessionActive} />

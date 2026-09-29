@@ -13,11 +13,14 @@
  * source of truth.
  */
 
-import { Pin, PinOff, Trash2 } from 'lucide-preact';
+import { FolderOpen, Pin, PinOff, Trash2 } from 'lucide-preact';
 
 interface WorkspaceOptionsMenuProps {
   variant: 'desktop' | 'mobile';
   isPinned?: boolean;
+  /** Reveal the workspace directory in the platform file manager. Omitted for
+   *  an unbound folder, which has no directory of its own. */
+  onOpenFolder?: () => void;
   confirmDelete: boolean;
   onPin: () => void;
   onDelete: () => void;
@@ -28,6 +31,7 @@ interface WorkspaceOptionsMenuProps {
 export function WorkspaceOptionsMenu({
   variant,
   isPinned = false,
+  onOpenFolder,
   confirmDelete,
   onPin,
   onDelete,
@@ -48,6 +52,12 @@ export function WorkspaceOptionsMenu({
       </>
     ) : (
       <>
+        {onOpenFolder && (
+          <button type="button" onClick={onOpenFolder} className="w-full text-left px-3 py-2 hover:bg-ink/5 text-ink/80 flex items-center space-x-2">
+            <FolderOpen size={13} />
+            <span>Go to Explorer</span>
+          </button>
+        )}
         <button type="button" onClick={onPin} className="w-full text-left px-3 py-2 hover:bg-ink/5 text-ink/80 flex items-center space-x-2">
           {isPinned ? <PinOff size={13} /> : <Pin size={13} />}
           <span>{isPinned ? 'Unpin Workspace' : 'Pin Workspace'}</span>
@@ -72,6 +82,11 @@ export function WorkspaceOptionsMenu({
     </>
   ) : (
     <>
+      {onOpenFolder && (
+        <div className="px-3 py-1.5 hover:bg-ink/5 cursor-pointer flex items-center space-x-2 text-ink/80" onClick={onOpenFolder}>
+          <FolderOpen size={12} /><span>Go to Explorer</span>
+        </div>
+      )}
       <div className="px-3 py-1.5 hover:bg-ink/5 cursor-pointer flex items-center space-x-2 text-ink/80" onClick={onPin}>
         {isPinned ? <PinOff size={12} /> : <Pin size={12} />}
         <span>{isPinned ? 'Unpin Workspace' : 'Pin Workspace'}</span>

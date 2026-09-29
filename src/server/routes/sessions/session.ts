@@ -8,6 +8,8 @@ import { getRpcSession } from '@/server/lib/omp/rpc/manager';
 import { clearSessionFileCaches } from '@/server/lib/omp/session/files';
 import { resolveSessionFileOr404 } from '@/server/lib/omp/session/locator';
 import { setSessionTitle } from '@/server/lib/omp/session/title-slot';
+import { renameSessionWithAi } from '@/server/lib/omp/session/rename-with-ai.server';
+import { isSinglePathSegment } from '@/server/lib/fs/path-segment';
 
 /**
  * POST /api/sessions/:sessionId/archive — toggle archive state for a session.
@@ -119,6 +121,37 @@ export async function renameSession({ request, params }: ActionFunctionArgs) {
       { status: 400 },
     );
   }
+}
+
+/**
+ * POST /api/sessions/:sessionId/rename-with-ai — let omp name the session from
+ * its own transcript ("Rename with AI" in the session row's menu).
+ *
+ * Unlike the automatic titling the chamber already does, this is an explicit
+ * request, so it renames a session that already has a name.
+ */
+export async function renameWithAi({ request, params }: ActionFunctionArgs) {
+  if (request.method !== 'POST') {
+    return methodNotAllowed({ request, params });
+  }
+
+  const sessionId = params.sessionId;
+  if (!sessionId) return json({ error: 'Missing session id' }, { status: 400 });
+  // A pending `new-…` chat has no transcript anywhere, and omp has nothing to
+  // derive a title from. The menu omits the item; this is the backstop.
+  if (sessionId.startsWith('new-')) {
+    return json({ error: 'This chat has not been created yet.', code: 'session_pending' }, { status: 400 });
+  }
+  if (!isSinglePathSegment(sessionId)) {
+    return json({ error: 'Invalid session id' }, { status: 400 });
+  }
+
+  const result = await renameSessionWithAi(sessionId);
+  if (!result.ok) return json({ error: result.error }, { status: result.status });
+
+  // The rename is a fixed-width in-place slot write, which the scan cache's
+  // mtime key cannot see — the same reason the auto-title path clears it.
+  return json({ success: true, sessionId, name: result.title });
 }
 
 /**

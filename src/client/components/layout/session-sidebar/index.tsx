@@ -124,6 +124,7 @@ export function SessionSidebar({ className = '', onClose, appSettings = {} }: { 
             onScroll={handleScroll}
             onSelectSession={handleSelectSession}
             onNewSessionForFolder={handleNewSessionForFolder}
+            onToast={pushToast}
           />
         )}
 

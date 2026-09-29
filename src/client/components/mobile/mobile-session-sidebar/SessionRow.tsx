@@ -21,6 +21,9 @@ export interface MobileSessionRowProps {
    *  which has no transcript anywhere). */
   onDelete?: () => void;
   onRename?: (name: string) => void;
+  /** Ask omp to name this session from its transcript. Omitted for a pending
+   *  `new-…` chat, which has no transcript to derive a title from. */
+  onRenameWithAi?: () => void;
 }
 
 export function MobileSessionRow({
@@ -36,6 +39,7 @@ export function MobileSessionRow({
   onArchive,
   onDelete,
   onRename,
+  onRenameWithAi,
 }: MobileSessionRowProps) {
   const {
     isEditing,
@@ -154,6 +158,7 @@ export function MobileSessionRow({
           anchor={menu.anchor}
           isArchived={session.is_archived === 1}
           onRename={onRename ? startRename : undefined}
+          onRenameWithAi={onRenameWithAi}
           onArchive={onArchive}
           onDelete={onDelete}
           onClose={menu.close}

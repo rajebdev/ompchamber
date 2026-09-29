@@ -13,6 +13,8 @@ interface MobileSessionListProps {
   onSelectSession: (id: number | string) => void;
   onNewSessionForFolder: (folderId: number) => void;
   onToggleFolder: (folderId: number) => void;
+  /** Surfaces a refused folder action (the reveal endpoint's own reason). */
+  onToast?: (message: string, type?: 'success' | 'error') => void;
 }
 
 export function MobileSessionList({
@@ -26,6 +28,7 @@ export function MobileSessionList({
   onSelectSession,
   onNewSessionForFolder,
   onToggleFolder,
+  onToast,
 }: MobileSessionListProps) {
   return (
     <div 
@@ -48,6 +51,7 @@ export function MobileSessionList({
             onToggleExpand={() => onToggleFolder(folder.id)}
             showArchived={showArchived}
             sessionStatus={sessionStatus}
+            onToast={onToast}
           />
         ))
       )}

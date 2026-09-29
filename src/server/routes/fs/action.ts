@@ -5,6 +5,7 @@ import path from 'path';
 import { isMockMode } from '@/server/mock.server';
 import { getDefaultFsRoot, resolveRoot, resolveWithinRoot } from '@/server/lib/fs/root';
 import { runShell } from '@/server/lib/fs/shell';
+import { revealInFileManager } from '@/server/lib/fs/reveal';
 import { toDiskText } from '@/shared/lib/code/line-endings';
 export async function action({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
@@ -73,17 +74,10 @@ export async function action({ request }: ActionFunctionArgs) {
       return json({ success: true });
     } else if (actionType === 'open_explorer') {
       const isDir = (await Bun.file(fullPath).stat().catch(() => null))?.isDirectory() ?? false;
-      const dirToOpen = isDir ? fullPath : path.dirname(fullPath);
-      let command = '';
-      if (process.platform === 'win32') {
-        command = `start "" "${dirToOpen}"`;
-      } else if (process.platform === 'darwin') {
-        command = `open "${dirToOpen}"`;
-      } else {
-        command = `xdg-open "${dirToOpen}"`;
-      }
-      runShell(command, { timeout: 5000 }).catch(e => console.error('Failed to open explorer:', e));
-      return json({ success: true });
+      // A file reveals its containing directory — there is no portable "select
+      // this file" — so the opener is always handed a directory.
+      const result = await revealInFileManager(isDir ? fullPath : path.dirname(fullPath));
+      return result.ok ? json({ success: true }) : json({ error: result.error }, { status: 500 });
     } else if (actionType === 'git_history') {
       const targetDir = scopedRoot;
       const history = await runShell(

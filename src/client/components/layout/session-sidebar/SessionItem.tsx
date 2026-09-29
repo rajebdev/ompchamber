@@ -19,6 +19,9 @@ export interface SessionItemProps {
    *  which has no transcript anywhere). */
   onDelete?: () => void;
   onRename?: (name: string) => void;
+  /** Ask omp to name this session from its transcript. Omitted for a pending
+   *  `new-…` chat, which has no transcript to derive a title from. */
+  onRenameWithAi?: () => void;
   expandable?: boolean;
   isExpanded?: boolean;
   hasSubagents?: boolean;
@@ -36,6 +39,7 @@ export function SessionItem({
   onArchive,
   onDelete,
   onRename,
+  onRenameWithAi,
   expandable = false,
   isExpanded = false,
   hasSubagents = false,
@@ -155,7 +159,10 @@ export function SessionItem({
             phone's row draws it: a hover-only trigger is invisible until the
             pointer happens to find the right 22px, and the row it belongs to
             gives no hint it is there. A right-click anywhere on the row opens
-            the same menu. */}
+            the same menu.
+            `ml-1` on top of the button's own `p-1` is the same 8px the title
+            keeps from the time column, so the row's two gaps read as one
+            rhythm instead of the glyph crowding the age. */}
         {!isEditing && hasActions && (
           <button
             type="button"
@@ -164,7 +171,7 @@ export function SessionItem({
             aria-label="Session actions"
             aria-haspopup="menu"
             aria-expanded={menu.anchor !== null}
-            className="shrink-0 p-1 text-ink/40 hover:text-ink hover:bg-ink/10 rounded cursor-pointer"
+            className="shrink-0 ml-1 p-1 text-ink/40 hover:text-ink hover:bg-ink/10 rounded cursor-pointer"
           >
             <MoreHorizontal size={14} />
           </button>
@@ -177,6 +184,7 @@ export function SessionItem({
           anchor={menu.anchor}
           isArchived={isArchived}
           onRename={onRename ? startRename : undefined}
+          onRenameWithAi={onRenameWithAi}
           onArchive={onArchive}
           onDelete={onDelete}
           onClose={menu.close}

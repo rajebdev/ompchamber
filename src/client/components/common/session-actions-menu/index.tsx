@@ -28,7 +28,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { TargetedMouseEvent } from 'preact';
 import { createPortal } from 'preact/compat';
-import { Archive, ArchiveRestore, Pencil, Trash2 } from 'lucide-preact';
+import { Archive, ArchiveRestore, Pencil, Trash2, WandSparkles } from 'lucide-preact';
 
 /** Viewport coordinates the menu hangs off, plus which edge it aligns to. */
 export interface MenuAnchor {
@@ -85,6 +85,9 @@ export interface SessionActionsMenuProps {
   isArchived?: boolean;
   /** Omitted when the row cannot be renamed (a pending `new-…` chat). */
   onRename?: () => void;
+  /** Ask omp to name the session from its transcript. Omitted for a pending
+   *  `new-…` chat, which has no transcript to derive a title from. */
+  onRenameWithAi?: () => void;
   onArchive?: () => void;
   onDelete?: () => void;
   onClose: () => void;
@@ -94,6 +97,7 @@ export function SessionActionsMenu({
   anchor,
   isArchived = false,
   onRename,
+  onRenameWithAi,
   onArchive,
   onDelete,
   onClose,
@@ -169,6 +173,21 @@ export function SessionActionsMenu({
             <span>Rename</span>
           </button>
         )}
+        {/* Next to Rename because it is the same intent, done for you: omp
+            reads the transcript and names the session itself. It replaces an
+            existing name, which is why it is an explicit click and never
+            something that happens on its own. */}
+        {onRenameWithAi && (
+          <button
+            type="button"
+            role="menuitem"
+            onClick={run(onRenameWithAi)}
+            className="w-full text-left px-3 py-1.5 hover:bg-ink/5 flex items-center gap-2 transition-colors cursor-pointer"
+          >
+            <WandSparkles size={12} className="text-ink/60" />
+            <span>Rename with AI</span>
+          </button>
+        )}
         {onArchive && (
           <button
             type="button"
@@ -182,7 +201,7 @@ export function SessionActionsMenu({
             <span>{isArchived ? 'Unarchive' : 'Archive'}</span>
           </button>
         )}
-        {(onRename || onArchive) && onDelete && <div className="my-1 border-t border-ink/10" />}
+        {(onRename || onRenameWithAi || onArchive) && onDelete && <div className="my-1 border-t border-ink/10" />}
         {onDelete && (
           <button
             type="button"

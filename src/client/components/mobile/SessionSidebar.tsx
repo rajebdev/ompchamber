@@ -151,6 +151,7 @@ export function MobileSessionSidebar({
           onSelectSession={handleSelectSession}
           onNewSessionForFolder={handleNewSessionForFolderAndClose}
           onToggleFolder={toggleFolder}
+          onToast={pushToast}
         />
       )}
 

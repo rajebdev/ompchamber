@@ -8,6 +8,7 @@ import {
   markSeen,
   putSessionState,
   renameSession,
+  renameWithAi,
 } from '@/server/routes/sessions/session';
 import { listSubagents, readSubagentTranscript } from '@/server/routes/sessions/subagents';
 import { deleteSession } from '@/server/routes/sessions/delete';
@@ -31,6 +32,7 @@ export const sessionsBindings: HandlerBinding[] = [
   { method: 'DELETE', path: '/api/sessions/:sessionId/queue/:itemId', handler: sessionsQueue.removeQueueItem },
   ...actionBindings(sessionsQueue.nudgeQueueDelivery, '/api/sessions/:sessionId/queue/deliver'),
   ...actionBindings(renameSession, '/api/sessions/:sessionId/rename'),
+  ...actionBindings(renameWithAi, '/api/sessions/:sessionId/rename-with-ai'),
   ...actionBindings(putSessionState, '/api/sessions/:sessionId/state', getSessionState),
   ...actionBindings(markSeen, '/api/sessions/:sessionId/stream-seen'),
   { method: 'GET', path: '/api/sessions/:sessionId/subagents', handler: listSubagents },

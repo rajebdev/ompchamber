@@ -25,6 +25,7 @@ export function Category({
   forceExpanded = false,
   showArchived = false,
   sessionStatus = {},
+  onToast,
 }: { 
   folder: any;
   activeSessionId: number | string | null;
@@ -33,6 +34,7 @@ export function Category({
   forceExpanded?: boolean;
   showArchived?: boolean;
   sessionStatus?: Record<string, 'stream' | 'finish' | 'abort'>;
+  onToast?: (message: string, type?: 'success' | 'error') => void;
 }) {
   const [isOpen, setIsOpen] = useState(folder.isExpanded || false);
   const [showMenu, setShowMenu] = useState(false);
@@ -60,7 +62,9 @@ export function Category({
     handleDelete,
     handleArchive,
     handleRename,
-  } = useWorkspaceFolderActions(folder, refresh);
+    handleRenameWithAi,
+    handleOpenFolder,
+  } = useWorkspaceFolderActions(folder, refresh, onToast);
   const sessionDelete = useSessionDelete();
 
   // Desktop's expand toggle keeps its own fetcher: unlike pin/delete it
@@ -104,6 +108,15 @@ export function Category({
     handleDelete();
     setShowMenu(false);
   };
+
+  // Reveal is an action like Pin or Delete, so the menu closes on it — leaving
+  // it standing would hide the header the toast is describing.
+  const onOpenFolder = handleOpenFolder
+    ? () => {
+        handleOpenFolder();
+        setShowMenu(false);
+      }
+    : undefined;
 
   const isActuallyOpen = forceExpanded || isOpen;
 
@@ -179,6 +192,7 @@ export function Category({
                 <WorkspaceOptionsMenu
                   variant="desktop"
                   isPinned={folder.isPinned}
+                  onOpenFolder={onOpenFolder}
                   confirmDelete={confirmDelete}
                   onPin={onPin}
                   onDelete={onDelete}
@@ -227,6 +241,9 @@ export function Category({
                       : () => sessionDelete.requestDelete(session)
                   }
                   onRename={String(session.id).startsWith('new-') ? undefined : (name) => void handleRename(session, name)}
+                  onRenameWithAi={
+                    String(session.id).startsWith('new-') ? undefined : () => void handleRenameWithAi(session)
+                  }
                   expandable={hasSubagents}
                   hasSubagents={hasSubagents}
                   isExpanded={isExpanded}
