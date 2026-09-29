@@ -14,12 +14,14 @@ export const RIGHT_PANEL_TYPES = [
   'files',
   'search',
   'git',
+  // Beside Source Control: a wiki is read off the same remote and the same
+  // repo pick, so the two are one pair in the bar rather than one at each end.
+  'wiki',
   'terminal',
   'user-browser',
   'browser',
   'usage',
   'todo',
-  'wiki',
 ] as const;
 
 export type RightPanelType = (typeof RIGHT_PANEL_TYPES)[number];
