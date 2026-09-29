@@ -5,6 +5,23 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.0](https://github.com/rajebdev/ompchamber/compare/v3.7.1...v3.8.0) — 2026-09-29
+
+### Added
+
+* **wiki:** add a right-panel wiki reader for GitHub and GitLab wikis ([e43c912](https://github.com/rajebdev/ompchamber/commit/e43c9124b2af2bc957b8f3094ac08805124e118c))
+* **wiki:** move the Wiki view beside Source Control in both bars ([3d37181](https://github.com/rajebdev/ompchamber/commit/3d3718146f66e43b5434f91daa078e9f097b4ea3))
+
+### Changed
+
+* document the opt-in UI password, TLS and session revocation ([fdd4b2f](https://github.com/rajebdev/ompchamber/commit/fdd4b2fc0ce89718c7bbdbd0288645680ddb564c))
+
+### Fixed
+
+* **skills:** load newly created skills into live sessions ([d4600c6](https://github.com/rajebdev/ompchamber/commit/d4600c6c4fec2b6b446d8ff34f76914abff66b5b))
+* **skills:** pick up skills written mid-run, by hand, or in an ancestor dir ([6c2c99a](https://github.com/rajebdev/ompchamber/commit/6c2c99ad2977c3c9a635a026371451324c8ff3ff))
+* **workspaces:** stop the omp project sync from appending to a curated list ([8d944a8](https://github.com/rajebdev/ompchamber/commit/8d944a8f3382c21edee0c452e46720d8adc93e1a))
+
 ## [3.7.1](https://github.com/rajebdev/ompchamber/compare/v3.7.0...v3.7.1) — 2026-09-29
 
 ### Fixed
