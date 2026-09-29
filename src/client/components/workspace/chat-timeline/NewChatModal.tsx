@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
 import { X } from 'lucide-preact';
 import { ChatInput } from '@/client/components/workspace/chat-timeline/chat-input/index';
+import { seedNewChatDraft } from '@/shared/lib/chat/new-chat-seed';
 import type { Attachment } from '@/shared/types';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 
@@ -31,7 +32,9 @@ export function NewChatModal({
   onAccessModeChange,
   composerModelRef,
 }: NewChatModalProps) {
-  const [inputValue, setInputValue] = useState(initialContent);
+  // The seed is a quotation, and the user's own instruction goes under it — the
+  // divider is what keeps the two apart (see `new-chat-seed.ts`).
+  const [inputValue, setInputValue] = useState(() => seedNewChatDraft(initialContent));
   const [attachments, setAttachments] = useState<Attachment[]>(initialAttachments);
 
   const handleSend = (atts: Attachment[]) => {
