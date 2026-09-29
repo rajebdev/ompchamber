@@ -151,8 +151,10 @@ export function Category({
           <span className="truncate text-[13px] font-semibold tracking-tight">{folder.name}</span>
         </div>
         
-        {/* Workspace Actions (Hover) */}
-        <div className={`items-center space-x-0.5 pl-1 ${showMenu ? 'flex' : 'hidden group-hover:flex'}`}>
+        {/* Workspace Actions — always drawn, matching the drawer's folder
+            header. They used to appear only on hover, which left the folder's
+            own affordances undiscoverable in a sidebar that has no other cue. */}
+        <div className="flex items-center space-x-0.5 pl-1">
           <button
             type="button"
             title="New Session"

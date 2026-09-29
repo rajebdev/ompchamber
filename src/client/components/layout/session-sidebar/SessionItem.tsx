@@ -150,11 +150,12 @@ export function SessionItem({
           <span className="shrink-0 ml-2 font-mono text-[10px] text-ink/40">{timeAgo}</span>
         )}
 
-        {/* One trigger, whatever the row can do. The three side-by-side hover
-            icons this replaced cost a third of the title's width in a 268px
-            sidebar, and each further action took another slice — the menu grows
-            instead. Revealed on hover/focus; a right-click anywhere on the row
-            opens the same menu. */}
+        {/* One trigger, whatever the row can do — the menu grows, so a row with
+            more actions costs no extra width. It is always drawn, the way the
+            phone's row draws it: a hover-only trigger is invisible until the
+            pointer happens to find the right 22px, and the row it belongs to
+            gives no hint it is there. A right-click anywhere on the row opens
+            the same menu. */}
         {!isEditing && hasActions && (
           <button
             type="button"
@@ -163,7 +164,7 @@ export function SessionItem({
             aria-label="Session actions"
             aria-haspopup="menu"
             aria-expanded={menu.anchor !== null}
-            className="shrink-0 p-1 text-ink/40 hover:text-ink hover:bg-ink/10 rounded cursor-pointer transition-opacity opacity-0 group-hover/item:opacity-100 focus-visible:opacity-100"
+            className="shrink-0 p-1 text-ink/40 hover:text-ink hover:bg-ink/10 rounded cursor-pointer"
           >
             <MoreHorizontal size={14} />
           </button>
