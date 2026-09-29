@@ -77,6 +77,9 @@ bun run src/server/index.ts    # API + WebSocket + static client on :3000
   usage and notifications.
 - **Self-update** — `ompchamber update` installs the latest GitHub release, and **About → Updates**
   does the same from the console, restart included.
+- **Opt-in password, HTTPS and session revocation** — the UI is open by default and locked only when
+  you ask for it (`--ui-password` / `OMPCHAMBER_UI_PASSWORD`), with `--tls` for a self-signed HTTPS
+  listener and `POST /api/auth/revoke` to end every session at once. See [Security](#security).
 
 ## Themes
 
@@ -158,7 +161,10 @@ instance serving that console.
 |---|---|
 | `-p, --port <port>` | Web server port (default `3000`); scopes `status`/`stop`/`restart`/`logs` |
 | `--host <address>` (`--hostname`) | Bind address (default `127.0.0.1`) |
-| `--lan` | Bind to `0.0.0.0` for LAN access |
+| `--lan` | Bind to `0.0.0.0` for LAN access (warns when the traffic is unencrypted) |
+| `--tls` | Serve HTTPS from a self-signed certificate, generated once into `~/.ompchamber/tls/` |
+| `--ui-password [value]` | Require a password for the browser UI; generates one when the value is omitted |
+| `--no-ui-password` | Ignore `OMPCHAMBER_UI_PASSWORD` for this start |
 | `--prod` | Serve the production build instead of the dev server |
 | `--foreground` (`--no-daemon`) | Run in the foreground (no daemon) |
 | `--all` | Apply the command to every running instance |
@@ -207,8 +213,9 @@ Environment variables, read from `.env` (see [`.env.example`](.env.example)):
 | `HOST` | `localhost` | Server bind address |
 | `MOCK` | `false` | `true` = demo datasets, `false` = real SQLite + workspace only |
 | `SYNC_WORKSPACE` | `true` | Keep the workspace index in sync with disk |
-| `OMPCHAMBER_DATA_DIR` | `~/.ompchamber` | CLI registry, logs and database root |
+| `OMPCHAMBER_DATA_DIR` | `~/.ompchamber` | CLI registry, logs, database and TLS certificate root |
 | `OMPCHAMBER_PORT` / `OMPCHAMBER_HOST` | — | Defaults for the CLI when no flag is passed |
+| `OMPCHAMBER_UI_PASSWORD` | — | Require a UI password (see [Security](#security)); erased from the environment at boot |
 | `OMPCHAMBER_DB_PATH` (`DB_PATH`) | `~/.ompchamber/db.sqlite` | SQLite database path |
 | `OMPCHAMBER_DEV_SERVER` | `http://localhost:3100` | Rsbuild asset origin used in dev |
 | `OMPCHAMBER_BUN` | — | Explicit Bun binary for the CLI to spawn |
@@ -219,6 +226,38 @@ Environment variables, read from `.env` (see [`.env.example`](.env.example)):
 
 Runtime state, sessions and settings live in SQLite (`~/.ompchamber/db.sqlite`), the single source
 of truth for persisted settings.
+
+## Security
+
+**Off by default.** A plain `bun run dev` requires no password, and no file on disk can change that:
+the password is supplied per run and hashed in memory. Only a session *signing* secret is persisted
+(`~/.ompchamber/auth.json`, mode 0600), so `bun run --hot` does not sign you out on every save while
+nothing durable can enable authentication on its own.
+
+```bash
+ompchamber serve --ui-password my-secret    # or OMPCHAMBER_UI_PASSWORD
+ompchamber serve --ui-password              # generates one and prints it once
+ompchamber serve --tls --ui-password …      # HTTPS, cookie gains Secure
+```
+
+- **Password** — argon2id, verified in constant time. Login is throttled per socket address
+  (10 per 5 minutes, then a 15-minute lockout); `x-forwarded-for` is deliberately not trusted, so a
+  forged header cannot buy a fresh budget.
+- **Sessions** — a stateless HMAC token in a cookie named per port (`omp_session_<port>`), because
+  browsers key a cookie jar by host and ignore the port. `HttpOnly`, `SameSite=Lax`, and `Secure`
+  whenever the request arrived over https — including through a proxy that sets
+  `x-forwarded-proto`. Changing the password or calling `POST /api/auth/revoke` rotates the signing
+  secret and ends every session everywhere.
+- **TLS** — `--tls` generates a self-signed certificate (SAN covering `localhost`, `127.0.0.1` and
+  the machine's LAN addresses) into `~/.ompchamber/tls/`. Your browser warns once, then the
+  connection is encrypted. Without it, a password and the session cookie cross the network in
+  cleartext, which is what `--lan` warns about.
+- **No TLS locally?** A tunnel terminates TLS at the edge and needs no certificate:
+  `cloudflared tunnel --url http://127.0.0.1:3000`. Verified end to end — login, the API gate, SSE
+  and the terminal WebSocket all work through the public URL, in dev and in the production build.
+
+Bind to loopback (the default) and reach it over SSH port-forwarding, a VPN, or a tunnel. Exposing
+the port directly is the option with the least margin for error.
 
 ## Architecture
 
