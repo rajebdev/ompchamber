@@ -13,29 +13,87 @@
  * active branch (`./snapshot.ts`, surfaced by the right-panel Todo view). The
  * two must not be merged: a card that displayed the session-wide list would
  * attribute every other call's work to this one.
+ *
+ * Two shapes the summary can carry are handled here rather than in the card:
+ *
+ *   - The status vocabulary is omp's own FIVE, not the three the card used to
+ *     know. `blocked` and `abandoned` are real (measured in the author's
+ *     sessions: 21 results mention a dropped task, 2 a blocked one), and a
+ *     parser that only understood three drew both as plain pending.
+ *   - A task whose content is an init-list entry rather than prose is recorded
+ *     that way by omp itself (see `./nested-phase`), so it is labelled by the
+ *     phase it names instead of being rendered as a JSON blob.
  */
 
 import type { ToolCallData } from '@/shared/types';
-
-export interface ParsedTask {
-  text: string;
-  status: 'done' | 'in_progress' | 'pending';
-  phase?: string;
-}
-
-export interface ParsedPhaseGroup {
-  phase: string;
-  tasks: ParsedTask[];
-}
+import type { TodoItem, TodoPhase, TodoProgress, TodoStatus } from '@/shared/types/todo';
+import { todoProgress } from '@/shared/lib/chat/todo/snapshot';
+import { todoProgressLabel } from '@/shared/lib/chat/todo/progress';
+import { parseNestedPhaseEntry, stripTrailingStatusNote } from '@/shared/lib/chat/todo/nested-phase';
 
 export interface TodoDataSummary {
-  groups: ParsedPhaseGroup[];
-  totalDone: number;
-  totalInProgress: number;
-  totalPending: number;
-  totalTasks: number;
+  groups: TodoPhase[];
+  progress: TodoProgress;
   opBadge?: string;
   summaryText: string;
+}
+
+/** Status ranking for the dedup pass — a task seen in two groups keeps the most advanced. */
+const STATUS_RANK: Record<TodoStatus, number> = {
+  pending: 0,
+  blocked: 1,
+  in_progress: 2,
+  abandoned: 3,
+  completed: 4,
+};
+
+/**
+ * The status annotation omp's summary appends to a task line, in the order it
+ * can appear. `blocked` carries the reason, which becomes the task's blocker
+ * note — the only place the transcript records WHY a task waits.
+ */
+function statusFromAnnotation(annotation: string | undefined): { status: TodoStatus; blocker?: string } {
+  if (!annotation) return { status: 'pending' };
+  const lower = annotation.toLowerCase();
+  if (lower === 'completed' || lower === 'done') return { status: 'completed' };
+  if (lower === 'in_progress' || lower === 'in progress') return { status: 'in_progress' };
+  if (lower === 'abandoned' || lower === 'dropped') return { status: 'abandoned' };
+  if (lower === 'blocked') return { status: 'blocked' };
+  if (lower.startsWith('blocked')) {
+    const reason = annotation.replace(/^blocked\s*:?\s*/i, '').trim();
+    return { status: 'blocked', ...(reason ? { blocker: reason } : {}) };
+  }
+  return { status: 'pending' };
+}
+
+/** The status + blocker a checklist line's own annotation encodes. */
+function statusFromChecklistText(text: string): { status: TodoStatus; blocker?: string } {
+  const inProgress = text.match(/\(in progress\)|\[in_progress\]/i);
+  if (inProgress) return { status: 'in_progress' };
+  const dropped = text.match(/\((?:dropped|abandoned)\)/i);
+  if (dropped) return { status: 'abandoned' };
+  const blocked = text.match(/\(blocked(?::\s*([^)]*))?\)/i);
+  if (blocked) {
+    const reason = blocked[1]?.trim();
+    return { status: 'blocked', ...(reason ? { blocker: reason } : {}) };
+  }
+  return { status: 'pending' };
+}
+
+/**
+ * One parsed task. `content` is the task text — or, when the content encoded an
+ * init-list entry, the PHASE it named, with that entry's items kept as `notes`
+ * so nothing is lost and no per-item status is invented.
+ */
+function buildTask(rawContent: string, status: TodoStatus, blocker?: string): TodoItem {
+  const clean = stripTrailingStatusNote(rawContent);
+  const nested = parseNestedPhaseEntry(clean);
+  return {
+    content: nested ? nested.phase : clean,
+    status,
+    ...(nested ? { notes: nested.items } : {}),
+    ...(blocker ? { blocker } : {}),
+  };
 }
 
 function cleanPhaseName(raw: string): string {
@@ -51,75 +109,63 @@ function cleanPhaseName(raw: string): string {
   return name.trim() || 'Tasks';
 }
 
-function mergePhaseGroups(rawGroups: ParsedPhaseGroup[]): ParsedPhaseGroup[] {
-  const map = new Map<string, ParsedPhaseGroup>();
+function mergePhaseGroups(rawGroups: TodoPhase[]): TodoPhase[] {
+  const map = new Map<string, TodoPhase>();
 
   for (const g of rawGroups) {
     if (!g.tasks.length) continue;
-    const phaseName = cleanPhaseName(g.phase);
+    const phaseName = cleanPhaseName(g.name);
     const key = phaseName.toLowerCase();
 
     const existing = map.get(key);
     if (!existing) {
-      map.set(key, { phase: phaseName, tasks: [...g.tasks] });
-    } else {
-      // Use the larger group as the base list order
-      const baseTasks = g.tasks.length >= existing.tasks.length ? g.tasks : existing.tasks;
-      const otherTasks = baseTasks === g.tasks ? existing.tasks : g.tasks;
-
-      const taskMap = new Map<string, ParsedTask>();
-      for (const t of baseTasks) {
-        taskMap.set(t.text.toLowerCase().trim(), { ...t, phase: phaseName });
-      }
-      for (const t of otherTasks) {
-        const tKey = t.text.toLowerCase().trim();
-        const prev = taskMap.get(tKey);
-        if (!prev) {
-          taskMap.set(tKey, { ...t, phase: phaseName });
-        } else {
-          // Status priority: done > in_progress > pending
-          if (t.status === 'done') {
-            prev.status = 'done';
-          } else if (t.status === 'in_progress' && prev.status !== 'done') {
-            prev.status = 'in_progress';
-          }
-        }
-      }
-
-      existing.phase = phaseName;
-      existing.tasks = Array.from(taskMap.values());
+      map.set(key, { name: phaseName, tasks: [...g.tasks] });
+      continue;
     }
+
+    // Use the larger group as the base list order
+    const baseTasks = g.tasks.length >= existing.tasks.length ? g.tasks : existing.tasks;
+    const otherTasks = baseTasks === g.tasks ? existing.tasks : g.tasks;
+
+    const taskMap = new Map<string, TodoItem>();
+    for (const t of baseTasks) {
+      taskMap.set(t.content.toLowerCase().trim(), { ...t });
+    }
+    for (const t of otherTasks) {
+      const tKey = t.content.toLowerCase().trim();
+      const prev = taskMap.get(tKey);
+      if (!prev) taskMap.set(tKey, { ...t });
+      else if (STATUS_RANK[t.status] > STATUS_RANK[prev.status]) prev.status = t.status;
+    }
+
+    existing.name = phaseName;
+    existing.tasks = Array.from(taskMap.values());
   }
 
   const groupsList = Array.from(map.values());
-  const result: ParsedPhaseGroup[] = [];
+  const result: TodoPhase[] = [];
 
   for (let i = 0; i < groupsList.length; i++) {
     const gA = groupsList[i];
-    const aTexts = gA.tasks.map((t) => t.text.toLowerCase().trim());
+    const aTexts = gA.tasks.map((t) => t.content.toLowerCase().trim());
 
     let isSubset = false;
     for (let j = 0; j < groupsList.length; j++) {
       if (i === j) continue;
       const gB = groupsList[j];
-      const bTexts = new Set(gB.tasks.map((t) => t.text.toLowerCase().trim()));
+      const bTexts = new Set(gB.tasks.map((t) => t.content.toLowerCase().trim()));
 
       if (gB.tasks.length >= gA.tasks.length && aTexts.every((txt) => bTexts.has(txt))) {
         for (const tA of gA.tasks) {
-          const tB = gB.tasks.find((t) => t.text.toLowerCase().trim() === tA.text.toLowerCase().trim());
-          if (tB) {
-            if (tA.status === 'done') tB.status = 'done';
-            else if (tA.status === 'in_progress' && tB.status !== 'done') tB.status = 'in_progress';
-          }
+          const tB = gB.tasks.find((t) => t.content.toLowerCase().trim() === tA.content.toLowerCase().trim());
+          if (tB && STATUS_RANK[tA.status] > STATUS_RANK[tB.status]) tB.status = tA.status;
         }
         isSubset = true;
         break;
       }
     }
 
-    if (!isSubset) {
-      result.push(gA);
-    }
+    if (!isSubset) result.push(gA);
   }
 
   return result;
@@ -131,15 +177,17 @@ export function parseTodoData(tool: ToolCallData): TodoDataSummary {
   const output = tool.output || '';
 
   let opBadge: string | undefined;
+  let doneRaw: string | undefined;
   if (inputObj?.op === 'done' && inputObj.task) {
-    opBadge = `Completed: ${inputObj.task}`;
+    doneRaw = String(inputObj.task);
+    opBadge = `Completed: ${parseNestedPhaseEntry(stripTrailingStatusNote(doneRaw))?.phase ?? doneRaw}`;
   } else if (inputObj?.op === 'init') {
     opBadge = 'Initialized Todo List';
   }
 
   const lines = output.split(/\r?\n/);
-  const rawGroups: ParsedPhaseGroup[] = [];
-  let currentGroup: ParsedPhaseGroup = { phase: 'Tasks', tasks: [] };
+  const rawGroups: TodoPhase[] = [];
+  let currentGroup: TodoPhase = { name: 'Tasks', tasks: [] };
   let inChecklistSection = false;
 
   for (const rawLine of lines) {
@@ -149,10 +197,8 @@ export function parseTodoData(tool: ToolCallData): TodoDataSummary {
     // Detect section start: "Active phase ...", "Coverage:", etc.
     if (trimmed.endsWith(':') && !trimmed.startsWith('Overall') && !trimmed.startsWith('Remaining')) {
       const phaseName = cleanPhaseName(trimmed);
-      if (currentGroup.tasks.length > 0) {
-        rawGroups.push(currentGroup);
-      }
-      currentGroup = { phase: phaseName, tasks: [] };
+      if (currentGroup.tasks.length > 0) rawGroups.push(currentGroup);
+      currentGroup = { name: phaseName, tasks: [] };
       inChecklistSection = true;
       continue;
     }
@@ -161,31 +207,28 @@ export function parseTodoData(tool: ToolCallData): TodoDataSummary {
     const checkMatch = trimmed.match(/^(?:[-*]\s*)?\[([ xX])\]\s*(.+)$/);
     if (checkMatch) {
       const mark = checkMatch[1].toLowerCase();
-      let text = checkMatch[2].trim();
-      let status: 'done' | 'in_progress' | 'pending' = mark === 'x' ? 'done' : 'pending';
-
-      if (text.includes('(in progress)') || text.includes('[in_progress]')) {
-        status = 'in_progress';
-        text = text.replace(/\(in progress\)/gi, '').replace(/\[in_progress\]/gi, '').trim();
-      }
-
-      currentGroup.tasks.push({ text, status, phase: currentGroup.phase });
+      const text = checkMatch[2].trim();
+      const annotated = statusFromChecklistText(text);
+      const status: TodoStatus = mark === 'x' ? 'completed' : annotated.status;
+      currentGroup.tasks.push(buildTask(text, status, annotated.blocker));
       continue;
     }
 
     // Fallback: parse lines like "  - Add Think renderer [in_progress] (Coverage)"
-    const itemMatch = trimmed.match(/^-\s*(.+?)\s*\[(in_progress|pending|done)\](?:\s*\((.+?)\))?$/);
+    const itemMatch = trimmed.match(
+      /^-\s*(.+?)\s*\[(in_progress|pending|completed|abandoned|blocked|done)\](?:\s*\((.+?)\))?$/,
+    );
     if (itemMatch && !inChecklistSection) {
       const text = itemMatch[1].trim();
-      const status = itemMatch[2] as 'done' | 'in_progress' | 'pending';
+      const { status, blocker } = statusFromAnnotation(itemMatch[2]);
       const phase = cleanPhaseName(itemMatch[3]?.trim() || 'Tasks');
 
-      let targetGrp = rawGroups.find((g) => cleanPhaseName(g.phase).toLowerCase() === phase.toLowerCase());
+      let targetGrp = rawGroups.find((g) => cleanPhaseName(g.name).toLowerCase() === phase.toLowerCase());
       if (!targetGrp) {
-        targetGrp = { phase, tasks: [] };
+        targetGrp = { name: phase, tasks: [] };
         rawGroups.push(targetGrp);
       }
-      targetGrp.tasks.push({ text, status, phase });
+      targetGrp.tasks.push(buildTask(text, status, blocker));
     }
   }
 
@@ -197,12 +240,8 @@ export function parseTodoData(tool: ToolCallData): TodoDataSummary {
   if (rawGroups.length === 0 && Array.isArray(inputObj?.list)) {
     for (const p of inputObj.list) {
       const phaseName = cleanPhaseName(p.phase || 'Tasks');
-      const tasks: ParsedTask[] = (p.items || []).map((it: string) => ({
-        text: it,
-        status: 'pending',
-        phase: phaseName,
-      }));
-      rawGroups.push({ phase: phaseName, tasks });
+      const tasks: TodoItem[] = (p.items || []).map((it: string) => ({ content: it, status: 'pending' as const }));
+      rawGroups.push({ name: phaseName, tasks });
     }
   }
 
@@ -210,65 +249,26 @@ export function parseTodoData(tool: ToolCallData): TodoDataSummary {
   const groups = mergePhaseGroups(rawGroups);
 
   // If tool was an op: 'done', ensure the task is marked as done
-  if (inputObj?.op === 'done' && inputObj.task) {
-    const doneText = String(inputObj.task).toLowerCase().trim();
+  if (doneRaw !== undefined) {
+    const doneLabel = parseNestedPhaseEntry(stripTrailingStatusNote(doneRaw))?.phase ?? doneRaw;
+    const doneText = doneLabel.toLowerCase().trim();
     for (const g of groups) {
-      const target = g.tasks.find((t) => t.text.toLowerCase().trim() === doneText);
-      if (target) {
-        target.status = 'done';
-      }
+      const target = g.tasks.find((t) => t.content.toLowerCase().trim() === doneText);
+      if (target) target.status = 'completed';
     }
   }
 
-  // Calculate totals across parsed tasks
-  let totalDone = 0;
-  let totalInProgress = 0;
-  let totalPending = 0;
-
-  for (const g of groups) {
-    for (const t of g.tasks) {
-      if (t.status === 'done') totalDone++;
-      else if (t.status === 'in_progress') totalInProgress++;
-      else totalPending++;
-    }
-  }
-
-  let totalTasks = totalDone + totalInProgress + totalPending;
-
-  // Check if output has explicit overall count
-  const overallMatch = output.match(/Overall:\s*(\d+)\/(\d+)\s*done/i)
-    || output.match(/(\d+)\s+of\s+(\d+)\s+completed/i);
-  if (overallMatch) {
-    const parsedDone = parseInt(overallMatch[1], 10);
-    const parsedTotal = parseInt(overallMatch[2], 10);
-    if (parsedTotal >= totalTasks) {
-      totalDone = parsedDone;
-      totalTasks = parsedTotal;
-      totalPending = Math.max(0, totalTasks - totalDone - totalInProgress);
-    }
-  }
-
-  const summaryParts: string[] = [];
-  if (totalDone > 0) summaryParts.push(`${totalDone} complete`);
-  if (totalInProgress > 0) summaryParts.push(`${totalInProgress} in progress`);
-  if (totalPending > 0) summaryParts.push(`${totalPending} pending`);
-  const summaryText = summaryParts.length > 0 ? summaryParts.join(' · ') : (totalTasks > 0 ? `${totalTasks} items` : '');
+  const progress = todoProgress(groups);
 
   return {
     groups,
-    totalDone,
-    totalInProgress,
-    totalPending,
-    totalTasks,
+    progress,
     opBadge,
-    summaryText,
+    summaryText: progress.total > 0 ? todoProgressLabel(progress) : '',
   };
 }
 
 export function getTodoSummary(tool: ToolCallData): string | undefined {
   const summary = parseTodoData(tool);
-  if (summary.totalTasks > 0 || summary.groups.length > 0) {
-    return summary.summaryText;
-  }
-  return undefined;
+  return summary.groups.length > 0 ? summary.summaryText : undefined;
 }
