@@ -9,6 +9,7 @@ import { selectableThinkingLevels } from '@/shared/lib/models/thinking-levels';
 import { fetchModelsData, subscribeModelsUpdated } from '@/shared/lib/models/client';
 import { resolveThinkingLevel, selectionFor } from '@/client/components/workspace/chat-timeline/chat-input/selection';
 import { NO_PENDING_PICK } from '@/client/hooks/chat/timeline/deferred-model';
+import { useAutoGrow } from '@/client/hooks/chat/composer/auto-grow';
 import { primeFileReads } from '@/client/hooks/chat/composer/file-reads';
 import { useComposerPipeline } from '@/client/hooks/chat/composer/pipeline';
 import { DropOverlay } from '@/client/components/workspace/chat-timeline/chat-input/DropOverlay';
@@ -38,6 +39,7 @@ export function ChatInput({
   showAccess = true,
   enablePicker = true,
   placeholder,
+  autoGrow,
   /** Written on every model/thinking pick so the send path can snapshot the
    *  selection into queued items without lifting ChatInput state. */
   composerModelRef,
@@ -230,6 +232,14 @@ export function ChatInput({
   });
 
   const isMobile = variant === 'mobile';
+  // A modal composer sizes itself to its content; the chat's keeps its fixed
+  // box (see `autoGrow`). The hook is unconditional — its ref is simply unused
+  // when growth is off.
+  const growRef = useAutoGrow({
+    value,
+    minHeightPx: autoGrow?.minHeightPx ?? 0,
+    maxHeightPx: autoGrow?.maxHeightPx ?? Number.POSITIVE_INFINITY,
+  });
 
   return (
     <div
@@ -276,6 +286,7 @@ export function ChatInput({
         }`}
         onPaste={handlePaste}
         variant={variant}
+        textareaRef={autoGrow ? growRef : undefined}
       />
 
       {/* Bottom Config Toolbar */}

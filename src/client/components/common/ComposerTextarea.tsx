@@ -1,5 +1,5 @@
 import { useRef } from 'preact/hooks';
-import type { ClipboardEvent, KeyboardEvent, ReactElement } from 'preact/compat';
+import type { ClipboardEvent, KeyboardEvent, ReactElement, RefObject } from 'preact/compat';
 import type { SettingsState } from '@/shared/types';
 import { useComposerTrigger } from '@/client/hooks/chat/composer';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
@@ -34,6 +34,12 @@ export interface ComposerTextareaProps {
    * the primary affordance on touch.
    */
   variant?: 'desktop' | 'mobile';
+  /**
+   * Externally owned textarea ref. The composer keeps its own for the picker,
+   * so this is an ADDITIONAL handle — a modal uses it to size the box to its
+   * content (`useAutoGrow`).
+   */
+  textareaRef?: RefObject<HTMLTextAreaElement>;
 }
 
 export function ComposerTextarea({
@@ -48,10 +54,17 @@ export function ComposerTextarea({
   rootPath,
   enablePicker = true,
   variant = 'desktop',
+  textareaRef: externalRef,
 }: ComposerTextareaProps): ReactElement {
   const isMobile = variant === 'mobile';
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  // Two owners, one node: the picker needs the element to place the caret after
+  // a completion, and a caller may need it to measure the box.
+  const setTextareaRef = (node: HTMLTextAreaElement | null) => {
+    textareaRef.current = node;
+    if (externalRef) externalRef.current = node;
+  };
   const composer = useComposerTrigger({ value, setValue: onChange, textareaRef, disabled, rootPath, enabled: enablePicker });
 
   useOnClickOutside(wrapperRef, composer.close);
@@ -100,7 +113,7 @@ export function ComposerTextarea({
   return (
     <div className="relative" ref={wrapperRef}>
       <textarea
-        ref={textareaRef}
+        ref={setTextareaRef}
         value={value}
         onChange={composer.handleChange}
         onCompositionStart={composer.handleCompositionStart}

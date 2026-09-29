@@ -57,6 +57,13 @@ export interface ChatInputProps {
    * targets, and Enter-to-newline instead of Enter-to-send.
    */
   variant?: 'desktop' | 'mobile';
+  /**
+   * Grow the textarea with its content, up to a ceiling, instead of keeping a
+   * fixed box that scrolls. On for a modal composer (the card is the only thing
+   * on screen, so growing it costs nothing); off for the chat, where a growing
+   * composer would push the conversation around under the reader.
+   */
+  autoGrow?: { minHeightPx: number; maxHeightPx: number };
   composerModelRef: { current: { provider: string; modelId: string; thinkingLevel: string } | null };
   deferredComposerPickRef?: { current: { provider?: string; modelId?: string; thinkingLevel?: string } | null };
 }
