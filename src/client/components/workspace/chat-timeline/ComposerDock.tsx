@@ -12,6 +12,15 @@ interface ComposerDockProps {
   /** Chamber session the side-question panel scopes to. */
   sessionId: string | null;
   isGenerating: boolean;
+  /**
+   * Whether the docked generating indicator renders. Wider than
+   * `isGenerating`: it also counts the server-tracked `stream` status the
+   * sidebar spinner is drawn from, so a run this client did not start (a
+   * second tab, another chamber instance) still shows as generating here.
+   * `isGenerating` stays the composer's own flag — Send-vs-queue, Stop, and
+   * the model/thinking picks held for the next prompt.
+   */
+  showGeneratingIndicator: boolean;
   modelName?: string;
   generatingVerb: string;
   provider?: string;
@@ -51,6 +60,7 @@ export function ComposerDock({
   isMobile,
   sessionId,
   isGenerating,
+  showGeneratingIndicator,
   modelName,
   generatingVerb,
   provider,
@@ -93,7 +103,7 @@ export function ComposerDock({
       {/* `relative` keeps the queue/indicator stack anchored above the input
           while the side-question form takes the composer's place. */}
       <div className="relative mx-auto w-full max-w-[970px]">
-        {isGenerating && (
+        {showGeneratingIndicator && (
           <GeneratingIndicator
             modelName={modelName}
             generatingVerb={generatingVerb}

@@ -33,6 +33,29 @@ export function buildSidebarSessionStatus(
 }
 
 /**
+ * Whether the session item for `sessionId` currently draws the run spinner —
+ * the exact `status === 'stream'` test `SessionItem` / `SessionRow` render
+ * `Loader2` from.
+ *
+ * The chat timeline's generating indicator asks THIS, so the two surfaces
+ * cannot disagree about whether a run is in flight. The status row is
+ * server-authoritative and lives in the shared database, so it is the only
+ * condition that holds for a run this client did not start: a second tab, a
+ * second chamber instance, or a page that never attached to the session's
+ * event stream (`GET /api/agent/:id` answers `running: false` for a child
+ * owned by another process, so no `onResumeStream` fires here). Local
+ * optimistic state cannot see any of those, which is what left the sidebar
+ * spinning with nothing in the timeline.
+ */
+export function isSessionStreaming(
+  folders: { sessions?: SessionItemData[] }[],
+  sessionId: string | number | null | undefined,
+): boolean {
+  if (sessionId === null || sessionId === undefined) return false;
+  return buildSidebarSessionStatus(folders)[String(sessionId)] === 'stream';
+}
+
+/**
  * Opening a session with a terminal badge acknowledges it on the server
  * (one POST per session+status) so the check shows EXACTLY ONCE: the badge
  * keeps rendering on this pass — stripping it here would suppress the paint
