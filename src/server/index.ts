@@ -16,6 +16,7 @@ import { acquirePortLock, claimPort, PortInUseError } from '@/server/lib/lifecyc
 import { ensureTlsCertificate, isTlsEnabledByArgv } from '@/server/lib/lifecycle/tls';
 import { SHELL_ROUTE } from '@/server/lib/lifecycle/shell-route';
 import { isMockMode } from '@/server/mock.server';
+import { stopDiscoveryRootsWatch, syncDiscoveryRootsWatch } from '@/server/lib/omp/config/roots-watch.server';
 
 // Refuse to run without a resolvable omp binary — before the listener opens and
 // before the first request can reach a route that shells out to it. The database
@@ -189,6 +190,18 @@ try {
 }
 
 /**
+ * Watch the skill/command roots omp reads, so a SKILL.md written by anything
+ * other than the chamber (a hand edit, `git pull`, the skills CLI, another
+ * agent) reaches the live sessions without a restart. See the module — the
+ * refresh itself is `/reload-plugins`, this only decides when.
+ */
+try {
+  await syncDiscoveryRootsWatch();
+} catch (error) {
+  console.error('[discovery-watch] watcher setup skipped:', error);
+}
+
+/**
  * What omp reports it can actually run. A live RPC round-trip: a cold utility
  * process takes seconds, which is why it runs after the listener is up. Side
  * benefit — it warms the shared utility process the model picker drives, so the
@@ -218,6 +231,7 @@ async function logDetectedRegistry(): Promise<void> {
 
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.once(signal, () => {
+    stopDiscoveryRootsWatch();
     void app.stop();
     process.exit(0);
   });

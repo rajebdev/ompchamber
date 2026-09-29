@@ -14,6 +14,7 @@
 import { RpcProcess } from '@/server/lib/omp/rpc/process';
 import { buildSessionSpawnArgs } from '@/server/lib/omp/rpc/constants';
 import { AgentSessionWrapper } from '@/server/lib/omp/rpc/manager';
+import { syncDiscoveryRootsWatch } from '@/server/lib/omp/config/roots-watch.server';
 import { DEFAULT_APPROVAL_MODE, type ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 
 declare global {
@@ -152,6 +153,11 @@ export async function startRpcSession(
       if (registry.get(realSessionId) === created) registry.delete(realSessionId);
     });
     registry.set(realSessionId, created);
+    // A session's cwd may sit outside every registered workspace, and omp
+    // resolves project skills from it all the same — so the discovery watcher
+    // has to learn this directory. Idempotent, and skipped when the cwd is
+    // already covered by a workspace root.
+    void syncDiscoveryRootsWatch();
     return { session: created, realSessionId };
   })().finally(() => locks.delete(sessionId));
 

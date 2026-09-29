@@ -25,6 +25,7 @@ import { basename, resolve } from 'path';
 import { homedir } from 'os';
 import { getDb } from '@/server/db.server';
 import { projectPathKey } from '@/server/lib/omp/core/paths';
+import { syncDiscoveryRootsWatch } from '@/server/lib/omp/config/roots-watch.server';
 
 function expandHome(value: string): string {
   if (value === '~') return homedir();
@@ -93,6 +94,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
     'INSERT INTO workspace_folders (name, is_expanded, project_path) VALUES (?, 1, ?)',
     [name, projectPath],
   );
+
+  // A new workspace brings its own `.omp/skills` into scope, so the discovery
+  // watcher set has to grow with it — otherwise a skill created there stays
+  // invisible to a live session until the server restarts.
+  void syncDiscoveryRootsWatch();
 
   return json({ success: true, folder: { id: result.lastID, name, project_path: projectPath } });
 }

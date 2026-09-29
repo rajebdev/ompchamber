@@ -4,6 +4,7 @@ import { methodNotAllowed } from '@/server/lib/route-adapter';
 import { getDb } from '@/server/db.server';
 import { deleteWorkspaceFolder, parseFolderSettingsPatch, updateWorkspaceFolder } from '@/shared/lib/workspace/project-settings';
 import { revealInFileManager } from '@/server/lib/fs/reveal';
+import { syncDiscoveryRootsWatch } from '@/server/lib/omp/config/roots-watch.server';
 
 export async function pinFolder({ request, params }: ActionFunctionArgs) {
   if (request.method !== 'POST') {
@@ -77,6 +78,11 @@ export async function deleteFolder({ request, params }: ActionFunctionArgs) {
 
   const deleted = await deleteWorkspaceFolder(db, folderId || '');
   if (!deleted) return json({ error: 'Workspace not found' }, { status: 404 });
+
+  // The removed workspace's `.omp` roots leave scope with it, so the discovery
+  // watcher set has to shrink — a lingering watcher would keep broadcasting
+  // reloads for a tree the chamber no longer reads.
+  void syncDiscoveryRootsWatch();
 
   return json({ success: true });
 }

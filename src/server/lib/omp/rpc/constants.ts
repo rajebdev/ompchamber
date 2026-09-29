@@ -78,6 +78,10 @@ export const SUBAGENT_STALE_MS = 30 * 60 * 1000;
 export const READY_TIMEOUT_MS = 120_000;
 export const GET_STATE_TIMEOUT_MS = 5_000;
 export const PROMPT_ACK_TIMEOUT_MS = 30_000;
+// A `/reload-plugins` re-read of the skill/command roots. omp answers it in
+// ~16-40 ms even mid-turn (measured on 18.4.3), so a short cap only bounds a
+// child that stopped answering at all — the caller's retry is the recovery.
+export const RELOAD_PLUGINS_TIMEOUT_MS = 10_000;
 export const NON_TERMINAL_CONTINUATION_GRACE_MS = 2_000;
 export const AWAITING_AGENT_START_TIMEOUT_MS = 10_000;
 export const RESTARTING_MESSAGE = 'This session is restarting — retry in a moment.';

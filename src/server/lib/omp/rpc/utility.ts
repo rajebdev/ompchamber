@@ -19,6 +19,7 @@
 
 import { homedir } from 'os';
 import { RpcProcess } from '@/server/lib/omp/rpc/process';
+import { RELOAD_PLUGINS_TIMEOUT_MS } from '@/server/lib/omp/rpc/constants';
 
 // Extensions stay ENABLED: they can register models and login providers, and
 // omitting them made the web UI's model/provider lists disagree with the CLI's.
@@ -123,6 +124,35 @@ export function disposeUtilityRpc(): void {
     if (proc) void proc.dispose();
   }
   states.clear();
+}
+
+/**
+ * Ask every pooled utility child to re-read its skill/command roots.
+ *
+ * These children answer `get_available_commands` for the composer's `/` popup
+ * and the settings panes, and they are pooled for up to {@link IDLE_KILL_MS},
+ * so without this a skill written now stays invisible in the popup for minutes
+ * after every session has already picked it up. Only a LIVE process is asked —
+ * a pooled entry with no child has nothing cached and will discover the current
+ * files on its next lazy start.
+ *
+ * Serialized on each pool's own queue like every other command, so it can never
+ * interleave with a `get_available_commands` in flight. Best-effort per cwd.
+ */
+export async function reloadUtilityProcesses(): Promise<void> {
+  const states = globalThis.__ompUtilityRpcStates;
+  if (!states || states.size === 0) return;
+  await Promise.all(
+    [...states.entries()].map(async ([cwd, state]) => {
+      const proc = state.proc;
+      if (!proc || !proc.isAlive) return;
+      try {
+        await runUtilityCommand({ type: 'prompt', message: '/reload-plugins' }, RELOAD_PLUGINS_TIMEOUT_MS, cwd);
+      } catch (error) {
+        console.error(`Failed to reload plugins for pooled utility process (${cwd}):`, error);
+      }
+    }),
+  );
 }
 
 function scheduleIdleKill(state: UtilityRpcState): void {
