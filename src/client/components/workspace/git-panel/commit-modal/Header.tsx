@@ -1,4 +1,5 @@
 import { GitMerge, History, RotateCw, Search, X } from 'lucide-preact';
+import { formatCommitCount } from '@/shared/lib/fs/commit-count';
 
 interface HeaderProps {
   isGraphMode: boolean;
@@ -8,8 +9,13 @@ interface HeaderProps {
   onRefresh: () => void;
   onClose: () => void;
   isRefreshing?: boolean;
+  /** Rows currently rendered (the loaded page, or its search matches). */
   totalCommits: number;
+  /** Rows held in the modal, before the search filter. */
+  loadedCount: number;
+  /** The branch's real commit count, when the response carried it. */
   totalCount?: number;
+  hasMore?: boolean;
 }
 
 export function Header({
@@ -21,8 +27,21 @@ export function Header({
   onClose,
   isRefreshing,
   totalCommits,
+  loadedCount,
   totalCount,
+  hasMore,
 }: HeaderProps) {
+  // What the badge reports, in order of what is actually known:
+  //   searching    → "12 of 50 loaded"  (matches, against the loaded page)
+  //   more on disk → "50 of 646"        (loaded, against the branch total)
+  //   complete     → "646 commits"
+  const badge = formatCommitCount({
+    matches: totalCommits,
+    loaded: loadedCount,
+    total: totalCount,
+    hasMore,
+    isFiltering: searchQuery.trim().length > 0,
+  });
   return (
     <div
       className="flex flex-col gap-2 px-3 lg:px-5 py-3 border-b border-ink/10 bg-paper select-none
@@ -36,9 +55,7 @@ export function Header({
               {isGraphMode ? 'Graph' : 'History'}
             </h2>
             <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-ink/5 text-ink/50 border border-ink/10 whitespace-nowrap">
-              {totalCount && totalCount > totalCommits
-                ? `${totalCommits} of ${totalCount}`
-                : `${totalCommits} commits`}
+              {badge}
             </span>
           </div>
           <p className="text-xs text-ink/50 mt-0.5 hidden lg:block">

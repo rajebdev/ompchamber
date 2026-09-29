@@ -26,6 +26,22 @@ export interface GitCommit {
   lane?: number;
 }
 
+/**
+ * One page of commit history, exactly as the git route answers it.
+ *
+ * `hasMore` and `total` travel WITH the page: `total` is the branch's real
+ * commit count (`git rev-list --count HEAD`), not the size of `data`, and a
+ * consumer that keeps only `data` cannot tell a 50-commit repo from a page of
+ * 50 out of 646.
+ */
+export interface CommitHistoryPage {
+  title: string;
+  /** Rows as the route answered them; the modal normalizes them. */
+  data: unknown[];
+  hasMore?: boolean;
+  total?: number;
+}
+
 export type GitViewMode = 'flat' | 'tree';
 
 export interface GitTreeNode {

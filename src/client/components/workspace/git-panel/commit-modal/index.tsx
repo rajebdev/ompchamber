@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Loader2 } from 'lucide-preact';
+import type { CommitHistoryPage } from '@/shared/types/git';
 import { Header } from '@/client/components/workspace/git-panel/commit-modal/Header';
 import { GraphCanvas } from '@/client/components/workspace/git-panel/commit-modal/GraphCanvas';
 import { CommitRow } from '@/client/components/workspace/git-panel/commit-modal/CommitRow';
@@ -8,7 +9,7 @@ import { useCommitPagination } from '@/client/hooks/workspace/commit-pagination'
 import { useCommitInteractions } from '@/client/hooks/workspace/commit-interactions';
 
 interface GitCommitModalProps {
-  output: { title: string; data: any[]; hasMore?: boolean; total?: number } | null;
+  output: CommitHistoryPage | null;
   onClose: () => void;
   onRefresh?: () => void;
   onExecuteAction?: (actionType: string, file?: string, extra?: Record<string, string>) => void;
@@ -189,7 +190,9 @@ export function GitCommitModal({
           onClose={onClose}
           isRefreshing={isRefreshing}
           totalCommits={filteredCommits.length}
+          loadedCount={commits.length}
           totalCount={totalCount}
+          hasMore={hasMore}
         />
 
         {/* Commits Container with Unified Continuous SVG Canvas */}
@@ -199,7 +202,7 @@ export function GitCommitModal({
         >
           {filteredCommits.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-ink/40 font-mono text-xs">
-              No matching commits found.
+              {searchQuery.trim() ? 'No matching commits found.' : 'No commits in this branch.'}
             </div>
           ) : (
             <div className="relative min-h-full pb-8">
@@ -255,7 +258,7 @@ export function GitCommitModal({
                     </button>
                   ) : filteredCommits.length > 10 ? (
                     <div className="text-[11px] font-mono text-ink/40 py-2">
-                      End of commit history ({filteredCommits.length} commits)
+                      End of commit history ({typeof totalCount === 'number' && totalCount > 0 ? totalCount : commits.length} commits)
                     </div>
                   ) : null}
                 </div>

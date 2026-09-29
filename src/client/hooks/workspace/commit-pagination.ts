@@ -1,14 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
-import type { GitCommit } from '@/shared/types/git';
-import { SAMPLE_GIT_COMMITS } from '@/client/data/mock/git-commits';
+import type { CommitHistoryPage, GitCommit } from '@/shared/types/git';
+import { COMMIT_PAGE_SIZE } from '@/shared/lib/fs/commit-page';
+import { normalizeCommits } from '@/shared/lib/fs/commit-row';
 
 interface UseCommitPaginationOptions {
-  output: { title: string; data: any[]; hasMore?: boolean; total?: number } | null;
+  output: CommitHistoryPage | null;
   isGraphMode: boolean;
   rootPath?: string;
   activeRepo?: string;
 }
 
+/**
+ * Pages of commit history for the commit modal.
+ *
+ * `total` is the branch's real commit count and arrives with the FIRST page,
+ * so the header can say "50 of 646" before any `load more`. It used to be
+ * dropped by the panel and only recovered from a `load more` response, which is
+ * why the header read "50 commits" for a 646-commit branch.
+ */
 export function useCommitPagination({
   output,
   isGraphMode,
@@ -16,38 +25,30 @@ export function useCommitPagination({
   activeRepo,
 }: UseCommitPaginationOptions) {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState<boolean>(output?.hasMore ?? (output?.data?.length === 50));
+  const [hasMore, setHasMore] = useState<boolean>(output?.hasMore ?? (output?.data?.length === COMMIT_PAGE_SIZE));
   const [totalCount, setTotalCount] = useState<number | undefined>(output?.total);
 
-  // Normalize incoming commits or fallback to sample commits
-  const initialCommits: GitCommit[] = useMemo(() => {
-    const raw = output?.data || [];
-    if (raw.length === 0) return SAMPLE_GIT_COMMITS;
-
-    if (raw[0] && typeof raw[0] === 'object' && ('hash' in raw[0] || 'shortHash' in raw[0])) {
-      return raw.map((c: any) => ({
-        hash: c.hash || c.shortHash || 'unknown',
-        shortHash: c.shortHash || (c.hash ? c.hash.slice(0, 8) : 'unknown'),
-        author: c.author || 'Unknown',
-        date: c.date || c.time || '',
-        message: c.message || '',
-        parents: Array.isArray(c.parents) ? c.parents : [],
-        refs: Array.isArray(c.refs) ? c.refs : [],
-        files: Array.isArray(c.files) ? c.files : [],
-        lane: typeof c.lane === 'number' ? c.lane : undefined,
-      }));
-    }
-
-    return SAMPLE_GIT_COMMITS;
-  }, [output?.data]);
+  const initialCommits: GitCommit[] = useMemo(() => normalizeCommits(output?.data), [output?.data]);
+  // The raw page length, which is the count git was asked for — a row dropped
+  // by normalization must not shrink it, or the next `skip` would overlap.
+  const initialRawCount = Array.isArray(output?.data) ? output.data.length : 0;
 
   const [commits, setCommits] = useState<GitCommit[]>(initialCommits);
+  // How many rows git has handed over, which is what `skip` must advance by —
+  // NOT `commits.length`. The two differ whenever a row is dropped (a hash-less
+  // row, or a duplicate), and advancing by the rendered length re-requests
+  // rows already seen: the page overlaps, the list stops growing, and the
+  // sentinel keeps asking for the same offset forever.
+  const [fetchedCount, setFetchedCount] = useState(initialRawCount);
 
   useEffect(() => {
     setCommits(initialCommits);
-    setHasMore(output?.hasMore ?? (output?.data?.length === 50));
+    setFetchedCount(initialRawCount);
+    setHasMore(output?.hasMore ?? (initialRawCount === COMMIT_PAGE_SIZE));
+    // `total` is only meaningful when the response carried it; a refresh that
+    // omits it must not erase the count the previous page established.
     if (typeof output?.total === 'number') setTotalCount(output.total);
-  }, [initialCommits, output?.hasMore, output?.data?.length, output?.total]);
+  }, [initialCommits, initialRawCount, output?.hasMore, output?.total]);
 
   // Load more commits (lazy loading)
   const handleLoadMore = useCallback(async () => {
@@ -56,8 +57,8 @@ export function useCommitPagination({
     try {
       const formData = new FormData();
       formData.set('actionType', isGraphMode ? 'graph' : 'history');
-      formData.set('limit', '50');
-      formData.set('skip', String(commits.length));
+      formData.set('limit', String(COMMIT_PAGE_SIZE));
+      formData.set('skip', String(fetchedCount));
       if (rootPath) formData.set('root', rootPath);
       if (activeRepo) formData.set('repo', activeRepo);
 
@@ -65,25 +66,20 @@ export function useCommitPagination({
       const json = await res.json();
 
       if (json.success && Array.isArray(json.data)) {
-        const nextBatch: GitCommit[] = json.data.map((c: any) => ({
-          hash: c.hash || c.shortHash || 'unknown',
-          shortHash: c.shortHash || (c.hash ? c.hash.slice(0, 8) : 'unknown'),
-          author: c.author || 'Unknown',
-          date: c.date || c.time || '',
-          message: c.message || '',
-          parents: Array.isArray(c.parents) ? c.parents : [],
-          refs: Array.isArray(c.refs) ? c.refs : [],
-          files: Array.isArray(c.files) ? c.files : [],
-          lane: typeof c.lane === 'number' ? c.lane : undefined,
-        }));
+        const nextBatch = normalizeCommits(json.data);
+        const rawCount = json.data.length;
 
         setCommits((prev) => {
           const existing = new Set(prev.map((c) => c.hash));
           const fresh = nextBatch.filter((c) => !existing.has(c.hash));
           return [...prev, ...fresh];
         });
+        // Advanced by the rows git RETURNED, not by the rows kept: a dropped
+        // row still occupied a position in git's ordering, so counting only
+        // the kept ones would re-request it on the next page.
+        setFetchedCount((prev) => prev + rawCount);
 
-        setHasMore(Boolean(json.hasMore ?? (nextBatch.length === 50)));
+        setHasMore(Boolean(json.hasMore ?? (rawCount === COMMIT_PAGE_SIZE)));
         if (typeof json.total === 'number') setTotalCount(json.total);
       } else {
         setHasMore(false);
@@ -93,11 +89,10 @@ export function useCommitPagination({
     } finally {
       setIsLoadingMore(false);
     }
-  }, [isLoadingMore, hasMore, isGraphMode, commits.length, rootPath, activeRepo]);
+  }, [isLoadingMore, hasMore, isGraphMode, fetchedCount, rootPath, activeRepo]);
 
   return {
     commits,
-    setCommits,
     hasMore,
     totalCount,
     isLoadingMore,

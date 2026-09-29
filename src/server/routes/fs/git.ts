@@ -14,6 +14,7 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from '@/server/lib/remix-compat';
 import fs from 'fs';
 import path from 'path';
+import { COMMIT_PAGE_SIZE } from '@/shared/lib/fs/commit-page';
 import { resolveRoot } from '@/server/lib/fs/root';
 import { runShell } from '@/server/lib/fs/shell';
 import { discoveredRepos, rescanRepos, startRepoScan } from '@/server/lib/fs/git-repos';
@@ -65,7 +66,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   // Commits history / graph endpoint
   if (url.searchParams.get('commits') === '1' || url.searchParams.get('history') === '1' || url.searchParams.get('graph') === '1') {
-    const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+    const limit = parseInt(url.searchParams.get('limit') || String(COMMIT_PAGE_SIZE), 10);
     const skip = parseInt(url.searchParams.get('skip') || '0', 10);
     const result = await fetchGitCommits(targetDir, limit, skip);
     return json({
@@ -261,7 +262,7 @@ export async function action({ request }: ActionFunctionArgs) {
       await expectOk(`git checkout -b "${branch}"`, targetDir);
       invalidateRemoteRefs(targetDir);
     } else if (actionType === 'history' || actionType === 'graph') {
-      const limit = parseInt((formData.get('limit') as string) || '50', 10);
+      const limit = parseInt((formData.get('limit') as string) || String(COMMIT_PAGE_SIZE), 10);
       const skip = parseInt((formData.get('skip') as string) || '0', 10);
       const result = await fetchGitCommits(targetDir, limit, skip);
       return json({

@@ -1,7 +1,7 @@
 
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useFetcher } from '@/client/lib/router/fetcher';
-import type { GitChange } from '@/shared/types';
+import type { CommitHistoryPage, GitChange } from '@/shared/types';
 import { BranchPromptModal, ConfirmActionModal, GitOutputModal } from '@/client/components/workspace/git-panel/Modals';
 import { GitCommitBox } from '@/client/components/workspace/git-panel/CommitBox';
 import { GitBranchToolbar } from '@/client/components/workspace/git-panel/BranchToolbar';
@@ -23,7 +23,7 @@ interface GitPanelProps {
 
 export function GitPanel({ className = '', enabled = true, rootPath, refreshKey = 0 }: GitPanelProps) {
   const fetcher = useFetcher<{ changes: GitChange[], branch: string, branches: string[], remoteBranches?: string[], syncCount?: { ahead: number, behind: number } }>();
-  const actionFetcher = useFetcher<{ success: boolean, type?: string, data?: any, error?: string }>();
+  const actionFetcher = useFetcher<{ success: boolean, type?: string, data?: unknown[], hasMore?: boolean, total?: number, error?: string }>();
 
   const { activeRepo: pickedRepo, setActiveRepo, ready: activeRepoReady } = useRepoScope(rootPath, 'git.activeRepo');
   const { repos, scanning: reposScanning, rescan: refreshRepos } = useRepoList(rootPath, enabled);
@@ -97,7 +97,7 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
   const newBranchInputRef = useRef<HTMLInputElement>(null);
   
   // History and Graph states
-  const [viewingOutput, setViewingOutput] = useState<{ title: string, data: any[] } | null>(null);
+  const [viewingOutput, setViewingOutput] = useState<CommitHistoryPage | null>(null);
   const [mounted, setMounted] = useState(false);
 
   const { toasts, pushToast, dismissToast } = useToasts();
@@ -133,14 +133,21 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
   // Reload after action completes
   useEffect(() => {
     if (actionFetcher.state === 'idle' && actionFetcher.data) {
-      if (actionFetcher.data.type === 'history') {
-        setViewingOutput({ title: 'Commit History', data: actionFetcher.data.data || [] });
-      } else if (actionFetcher.data.type === 'graph') {
-        setViewingOutput({ title: 'Git Graph', data: actionFetcher.data.data || [] });
-      } else if (actionFetcher.data.success) {
+      const payload = actionFetcher.data;
+      if (payload.type === 'history' || payload.type === 'graph') {
+        // `hasMore` and `total` are part of the page, not decoration: without
+        // them the modal cannot know the branch holds more than the 50 rows it
+        // was handed, and the header reports the page size as the total.
+        setViewingOutput({
+          title: payload.type === 'graph' ? 'Git Graph' : 'Commit History',
+          data: payload.data || [],
+          hasMore: payload.hasMore,
+          total: payload.total,
+        });
+      } else if (payload.success) {
         loadRepo();
       } else {
-        pushToast(actionFetcher.data.error || 'Git operation failed');
+        pushToast(payload.error || 'Git operation failed');
       }
     }
   }, [actionFetcher.state, actionFetcher.data]);

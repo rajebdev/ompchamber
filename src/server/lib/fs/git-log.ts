@@ -1,6 +1,8 @@
 import path from 'path';
 import type { GitCommit } from '@/shared/types/git';
+import { COMMIT_PAGE_SIZE } from '@/shared/lib/fs/commit-page';
 import { SAMPLE_GIT_COMMITS } from '@/client/data/mock/git-commits';
+import { isMockMode } from '@/server/mock.server';
 import { runShell, shellOk } from '@/server/lib/fs/shell';
 
 export function parseGitLogOutput(stdout: string): GitCommit[] {
@@ -76,7 +78,11 @@ export function parseGitLogOutput(stdout: string): GitCommit[] {
     commits.push(currentCommit);
   }
 
-  return commits.length > 0 ? commits : SAMPLE_GIT_COMMITS;
+  // An empty stdout is a real answer — `--skip` past the end of history, or a
+  // branch with no commits — so it parses to no rows. This used to return
+  // SAMPLE_GIT_COMMITS, which put 20 commits from a different repository at the
+  // bottom of every history and in every graph, in real mode too.
+  return commits;
 }
 
 export interface FetchCommitsResult {
@@ -87,7 +93,7 @@ export interface FetchCommitsResult {
 
 export async function fetchGitCommits(
   targetDir: string,
-  limit: number = 50,
+  limit: number = COMMIT_PAGE_SIZE,
   skip: number = 0
 ): Promise<FetchCommitsResult> {
   try {
@@ -103,18 +109,39 @@ export async function fetchGitCommits(
       `git log -n ${limit} --skip=${skip} --numstat --date-order --pretty=format:"COMMIT_SPLIT|~|%H|~|%h|~|%an|~|%ad|~|%s|~|%D|~|%p" --date=format:"%b %d, %Y, %I:%M %p"`,
       { cwd: targetDir, timeout: 15000 }
     );
-    if (!shellOk(result)) throw new Error(result.stderr || 'git log failed');
+
+    // A branch with no commits makes `git log` exit non-zero with "does not
+    // have any commits yet" — an empty history, not a failure. Reading it as a
+    // failure is what let the mock fallback below answer for a real repository.
+    if (!shellOk(result)) {
+      if (total === 0 && (await hasNoCommits(targetDir))) return { commits: [], hasMore: false, total: 0 };
+      throw new Error(result.stderr || 'git log failed');
+    }
+
     const commits = parseGitLogOutput(result.stdout);
     const hasMore = total > 0 ? skip + commits.length < total : commits.length === limit;
     return { commits, hasMore, total };
   } catch {
-    const paged = SAMPLE_GIT_COMMITS.slice(skip, skip + limit);
-    return {
-      commits: paged,
-      hasMore: skip + paged.length < SAMPLE_GIT_COMMITS.length,
-      total: SAMPLE_GIT_COMMITS.length,
-    };
+    // Reached only when git could not answer at all (not a repository, a bad
+    // revision, a timeout). Mock rows are reserved for MOCK mode, where the
+    // whole chamber runs on presets — returning them here showed 20 commits
+    // from an unrelated repository in real mode.
+    if (isMockMode()) {
+      const paged = SAMPLE_GIT_COMMITS.slice(skip, skip + limit);
+      return {
+        commits: paged,
+        hasMore: skip + paged.length < SAMPLE_GIT_COMMITS.length,
+        total: SAMPLE_GIT_COMMITS.length,
+      };
+    }
+    return { commits: [], hasMore: false, total: 0 };
   }
+}
+
+/** True when `HEAD` resolves to nothing — a repository with no commits yet. */
+async function hasNoCommits(targetDir: string): Promise<boolean> {
+  const out = await runShell('git rev-parse --verify HEAD', { cwd: targetDir, timeout: 5000 });
+  return !shellOk(out);
 }
 
 export async function fetchFileDiff(targetDir: string, hash: string, file: string): Promise<string> {
