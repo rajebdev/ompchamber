@@ -16,6 +16,8 @@
 import type { IncomingExtensionUiRequest, OmpAgentCallbacks, OmpAgentEvent, ToolCallData } from '@/shared/types';
 import { extractTextFromContent, toChatMessage, toolResultText } from '@/shared/lib/omp/session/mapper';
 import { normalizeNoticeText } from '@/shared/lib/chat/notice-text';
+import { parseChamberMarker } from '@/shared/lib/omp/mode/markers';
+import { CHAMBER_MODE_EVENT } from '@/shared/lib/omp/mode/types';
 import { invalidateComposerCache } from '@/shared/lib/chat/composer/client';
 import { setActivity, toolHost, type OmpAgentFoldDeps } from '@/shared/lib/chat/omp/fold-deps';
 import { normalizeThinkingLevel } from '@/shared/lib/models/thinking-levels';
@@ -274,6 +276,33 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
     }
 
     case 'extension_ui_request': {
+      // The chamber's mode extension reports every plan/goal transition through
+      // `ctx.ui.notify`, which omp frames as an `extension_ui_request` with
+      // `method: "notify"` — NOT a `notice` frame (verified against omp 18.4.4:
+      // `rpc-mode.ts`'s `notify` implementation emits exactly that).
+      //
+      // Those payloads are composer state, not conversation, so they are
+      // intercepted here rather than handed to the dialog path: the dialog
+      // renderer would paint a modal for a mode toggle. A marker whose payload
+      // does not parse is NOT intercepted — it falls through as an ordinary
+      // notify, so a version skew shows a readable line instead of silence.
+      //
+      // Delivered as a scoped window event (the shape the subagent frames use),
+      // because the consumer is the composer's mode hook: routing it through
+      // `callbacks` would thread a payload the timeline itself never reads
+      // through four components.
+      if ((data as { method?: unknown }).method === 'notify') {
+        const message = typeof data.message === 'string' ? data.message : '';
+        const marker = parseChamberMarker(message);
+        if (marker) {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent(CHAMBER_MODE_EVENT, {
+              detail: { sessionId: deps.sessionId, marker },
+            }));
+          }
+          break;
+        }
+      }
       callbacks?.onExtensionUiRequest?.(data as unknown as IncomingExtensionUiRequest);
       break;
     }

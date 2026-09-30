@@ -31,7 +31,8 @@ export interface SessionCommandHost extends WebStateHost {
   emit(event: AgentEvent): void;
   /** One dispatch throat (same surface the wrapper's own send uses). */
   send(command: Record<string, unknown>): Promise<unknown>;
-  resetIdleTimer(force?: boolean): void;
+  /** Idle clock for this child (see `idle-reaper.ts`). */
+  idle: { reset(force?: boolean): void };
   /** Forget a pending ask/approval dialog once its response is sent. */
   resolvePendingUiDialog(id: string): void;
   destroyAndWait(): Promise<void>;
@@ -92,7 +93,7 @@ function refuseTuiOnlyPrompt(host: SessionCommandHost, message: unknown, streami
 export async function dispatchSessionCommand(host: SessionCommandHost, command: Record<string, unknown>): Promise<unknown> {
   if (host.restarting) throw new WebRpcError(RESTARTING_MESSAGE, 'session_restarting');
   if (!host.isAlive()) throw new Error('Session is no longer running');
-  host.resetIdleTimer();
+  host.idle.reset();
   const type = command.type as string;
 
   if (IMAGE_BEARING_COMMANDS.has(type)) {

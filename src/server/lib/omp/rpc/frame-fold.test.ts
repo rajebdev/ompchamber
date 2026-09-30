@@ -21,6 +21,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { foldSessionFrame, type SessionFrameHost } from '@/server/lib/omp/rpc/frame-fold';
 import type { AgentEvent } from '@/server/lib/omp/rpc/constants';
+import { ModeMirror } from '@/server/lib/omp/rpc/mode-mirror';
 
 function makeHost(): SessionFrameHost {
   return {
@@ -39,6 +40,7 @@ function makeHost(): SessionFrameHost {
     emit() {},
     trackUiDialog() {},
     observeSubagent() {},
+    modeMirror: new ModeMirror(),
     isAlive: () => true,
     isBusy: () => false,
     send: async () => undefined,

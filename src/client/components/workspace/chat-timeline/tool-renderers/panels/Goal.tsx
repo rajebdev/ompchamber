@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, CircleDot, FileText, Flag, Hand, Target } 
 import type { ToolCallData } from '@/shared/types';
 import { FallbackOutput } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/FallbackOutput';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
+import { GoalRecordPanel } from '@/client/components/workspace/chat-timeline/tool-renderers/panels/GoalRecord';
 import { isRecord } from '@/shared/lib/util/guards';
 
 interface GoalItem {
@@ -90,6 +91,12 @@ export function Goal({ tool }: { tool: ToolCallData }) {
   const items: GoalItem[] = Array.isArray(details.items) ? details.items : [];
   const isYield = tool.type === 'yield' || tool.name === 'yield';
   const isError = tool.status === 'error';
+
+  // omp's OWN goal record (`GoalTool` answers `{op, goal, remainingTokens, …}`)
+  // takes precedence: it shares this tool's name but not its shape, and the
+  // list view below would render nothing for it.
+  const recordPanel = GoalRecordPanel({ tool });
+  if (recordPanel) return recordPanel;
 
   // Structured yield view (common in subagent result submissions)
   if (isYield) {

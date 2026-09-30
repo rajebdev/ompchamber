@@ -15,7 +15,7 @@
  */
 
 import type { RpcProcess, RpcFrame } from '@/server/lib/omp/rpc/process';
-import { GET_STATE_TIMEOUT_MS, IDLE_DESTROY_MS, PROMPT_ACK_TIMEOUT_MS } from '@/server/lib/omp/rpc/constants';
+import { GET_STATE_TIMEOUT_MS, IDLE_REAP_MS, PROMPT_ACK_TIMEOUT_MS } from '@/server/lib/omp/rpc/constants';
 import { buildBtwPrompt } from '@/server/lib/btw/prompt';
 import { boundSideReply } from '@/server/lib/btw/reply';
 import { appendBtwTurn, settleRunningBtwTurns, updateBtwTurn } from '@/server/lib/btw/store.server';
@@ -244,7 +244,7 @@ async function disposeIfUnsettled(host: BtwLifecycleHost): Promise<void> {
 }
 
 /**
- * Reclaim an idle child after `IDLE_DESTROY_MS`. The reschedule is throttled:
+ * Reclaim an idle child after `IDLE_REAP_MS`. The reschedule is throttled:
  * every streamed delta would otherwise clear and re-arm the timer.
  */
 export function resetSideIdleTimer(host: BtwLifecycleHost, force = false): void {
@@ -258,7 +258,7 @@ export function resetSideIdleTimer(host: BtwLifecycleHost, force = false): void 
       return;
     }
     void host.teardownChild();
-  }, IDLE_DESTROY_MS);
+  }, IDLE_REAP_MS);
   timer.unref?.();
   host.idleTimer = timer;
 }

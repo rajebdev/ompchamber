@@ -30,6 +30,7 @@
   ],
   "files": [
     "src",
+    "extensions",
     "index.html",
     "bunfig.toml",
     "public",

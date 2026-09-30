@@ -13,6 +13,7 @@ import { useAutoGrow } from '@/client/hooks/chat/composer/auto-grow';
 import { primeFileReads } from '@/client/hooks/chat/composer/file-reads';
 import { useComposerPipeline } from '@/client/hooks/chat/composer/pipeline';
 import { DropOverlay } from '@/client/components/workspace/chat-timeline/chat-input/DropOverlay';
+import { GoalModal } from '@/client/components/workspace/chat-timeline/chat-input/GoalModal';
 import type { ChatInputProps } from '@/client/components/workspace/chat-timeline/chat-input/props';
 
 export function ChatInput({ 
@@ -34,6 +35,7 @@ export function ChatInput({
   variant = 'desktop',
   accessMode,
   onAccessModeChange,
+  modes,
   showModel = true,
   showThinking = true,
   showAccess = true,
@@ -51,6 +53,9 @@ export function ChatInput({
   deferredComposerPickRef = NO_PENDING_PICK,
 }: ChatInputProps) {
   const [internalAttachments, setInternalAttachments] = useState<Attachment[]>([]);
+  // The Goal modal is owned here, not by the toolbar: the button is a toggle,
+  // and the modal it opens needs the same `modes` slice the toolbar got.
+  const [goalModalOpen, setGoalModalOpen] = useState(false);
 
   const attachments = externalAttachments !== undefined ? externalAttachments : internalAttachments;
   const setAttachments = (updater: SetStateAction<Attachment[]>) => {
@@ -310,7 +315,20 @@ export function ChatInput({
         showModel={showModel}
         showThinking={showThinking}
         showAccess={showAccess}
+        modes={modes}
+        onOpenGoal={() => setGoalModalOpen(true)}
       />
+
+      {modes && (
+        <GoalModal
+          open={goalModalOpen}
+          goal={modes.goal}
+          goalRecord={modes.goalRecord}
+          pending={modes.pending}
+          onClose={() => setGoalModalOpen(false)}
+          onSubmit={modes.onGoalAction}
+        />
+      )}
     </div>
   );
 }

@@ -8,6 +8,9 @@ import { loadPersistedAccessMode } from '@/shared/lib/omp/config/access-mode.ser
 import { CONVERSATION_MOVING_COMMANDS, OBSERVER_ONLY_COMMANDS } from '@/server/lib/omp/rpc/constants';
 import { rpcErrorResponse } from '@/server/lib/omp/rpc/errors';
 import { assertBtwIdle } from '@/server/lib/btw/service.server';
+import { loadPersistedModes } from '@/server/lib/omp/session/modes';
+import { modeCommandPrompt, parseModeRequest, parseModeSelection } from '@/server/lib/omp/mode/request';
+import { chamberModeEnv } from '@/server/lib/omp/extensions/locator';
 
 // POST /api/agent/:sessionId — send a command to an existing session (or spawn
 // it lazily). Mirrors omp-web's /api/agent/[id].
@@ -36,6 +39,24 @@ export async function sendCommand({ params, request }: ActionFunctionArgs) {
       await assertBtwIdle(sessionId, body.type.replace(/_/g, ' '));
     }
 
+    // Plan/Goal mode control. Translated to a `/chamber-mode …` prompt for the
+    // chamber-owned extension inside the child: no RPC verb exists for either
+    // mode, and this path costs no transcript entry (the command is answered
+    // locally). A live session is re-targeted in place — unlike the approval
+    // mode, a mode change needs NO respawn.
+    //
+    // A session with no live child is spawned first, because the toggle is
+    // usually the FIRST thing a user does on a reopened chat: the composer
+    // renders from the persisted selection, and pressing the button is what
+    // makes the child exist.
+    const modeRequest = body.type === 'chamber_mode' ? parseModeRequest(body) : null;
+    if (body.type === 'chamber_mode' && !modeRequest) {
+      return json({ error: 'scope (plan|goal) and action are required', code: 'invalid_mode_request' }, { status: 400 });
+    }
+    // One translation, used by both dispatch paths below: a mode command is a
+    // local extension command inside the child, never an RPC verb.
+    const forwarded = modeRequest ? { type: 'prompt', message: modeCommandPrompt(modeRequest) } : body;
+
     // Fast path: already-running session.
     const existing = getRpcSession(sessionId);
     if (existing?.isAlive()) {
@@ -43,7 +64,7 @@ export async function sendCommand({ params, request }: ActionFunctionArgs) {
       // the spawn path below restarts it with the new --approval-mode flag.
       const liveMode = explicitMode ?? getSpawnApprovalMode(existing);
       if (!(await reconcileSpawnApprovalMode(existing, liveMode))) {
-        const result = await existing.send(body);
+        const result = await existing.send(forwarded);
         return json({ success: true, data: result });
       }
     }
@@ -67,8 +88,14 @@ export async function sendCommand({ params, request }: ActionFunctionArgs) {
 
     const cwd = await resolveSpawnCwd(recordedCwd);
     const spawnMode = explicitMode ?? await loadPersistedAccessMode();
-    const { session } = await startRpcSession(sessionId, filePath, cwd, recordedCwd, spawnMode);
-    const result = await session.send(body);
+    // The mode selection rides the spawn ENVIRONMENT, because `--mode rpc-ui`
+    // never restores `mode_change` and the child's first command is the earliest
+    // moment anything could re-apply it. Read from the session's own JSONL, so a
+    // chamber restart, a second instance, or a CLI-driven session all agree.
+    const persisted = body.modes !== undefined ? parseModeSelection(body as Record<string, unknown>) : await loadPersistedModes(filePath);
+    const modeEnv = chamberModeEnv({ plan: persisted.plan, goal: persisted.goal, goalLive: persisted.goalLive });
+    const { session } = await startRpcSession(sessionId, filePath, cwd, recordedCwd, spawnMode, modeEnv);
+    const result = await session.send(forwarded);
     return json({ success: true, data: result });
   } catch (error) {
     return rpcErrorResponse(error);
@@ -107,7 +134,15 @@ export async function getAgentState({ params }: LoaderFunctionArgs) {
     // Dialogs omp is still blocked on: a client that reloaded mid-ask has no
     // other way to learn the request id it must answer, and omp never
     // re-emits the frame.
-    return json({ running: true, state, pendingUiRequests: session.getPendingUiDialogs() });
+    return json({
+      running: true,
+      state,
+      pendingUiRequests: session.getPendingUiDialogs(),
+      // The child's own goal state. The composer's Goal toggle reads this on
+      // reattach so a run driven from another tab (or the CLI) does not leave
+      // the toggle showing the client's stale last request.
+      goal: { enabled: session.hasLiveGoal, status: session.goalStatus },
+    });
   } catch (error) {
     if (error instanceof WebRpcError && error.code === 'session_unresponsive') {
       return json({ running: false, recovered: true });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import { useSearchParams } from '@/client/lib/router/search-params';
+import { useTimelineScope } from '@/client/hooks/chat/timeline/scope';
 import type { Attachment, ChatMessageData } from '@/shared/types';
 import { useOmpAgent } from '@/client/hooks/chat/omp';
 import { useChatTimelineQueue } from '@/client/hooks/chat/timeline/queue';
@@ -16,6 +16,7 @@ import { createOmpAgentCallbacks } from '@/shared/lib/chat/timeline/omp-callback
 import { cancelStreamingCoalescer } from '@/shared/lib/chat/timeline/stream-coalescer';
 import { readStreamTransport } from '@/shared/lib/chat/omp/transport';
 import { useChatTimelineAccessMode } from '@/client/hooks/chat/timeline/access-mode';
+import { useComposerModes } from '@/client/hooks/chat/timeline/composer-modes';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 
 interface UseChatTimelineOptions {
@@ -34,26 +35,13 @@ export function useChatTimeline({
   appSettings = {},
   reportActionError = (message: string) => console.error(message),
 }: UseChatTimelineOptions = {}) {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const sessionId = searchParams.get('sessionId');
-  const folderId = searchParams.get('folderId');
-
-  const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
-
-  useEffect(() => {
-    setSelectedFolderId(folderId ? parseInt(folderId, 10) : null);
-  }, [folderId]);
-
-  // Choosing a workspace context mirrors it to the `folderId` URL param so the
-  // layout (right-panel scoping) can react to the same selection.
-  const selectContextFolder = useCallback((id: number | null) => {
-    setSelectedFolderId(id);
-    setSearchParams(prev => {
-      if (id) prev.set('folderId', String(id));
-      else prev.delete('folderId');
-      return prev;
-    }, { replace: true });
-  }, [setSearchParams]);
+  const { sessionId, folderId, selectedFolderId, selectContextFolder, setSearchParams } = useTimelineScope();
+  // Plan/goal toggles plus the plan-review surface. PER SESSION, unlike the
+  // access mode: they describe what this conversation is doing, and a global
+  // toggle would drag every other open chat into the same mode. One hook
+  // returns both halves, because a mode command can produce a proposal and
+  // answering that proposal is itself a mode command.
+  const { modes, planReview } = useComposerModes(sessionId);
 
   // Ref mirror of loadOlder so the scroll handler can call the latest one
   // without re-creating it (useSessionLoad is defined below the scroll hook).
@@ -175,7 +163,7 @@ export function useChatTimeline({
     deferredComposerPickRef.current = null;
   }, [sessionId]);
 
-  // Access-control mode is a global, persisted user preference (unlike the
+  // Access control is a GLOBAL, persisted user preference (unlike the
   // per-session model/thinking picks).
   const { accessMode, accessModeRef, setAccessMode: handleAccessModeChange } = useChatTimelineAccessMode(appSettings);
 
@@ -339,6 +327,8 @@ export function useChatTimeline({
     handleModelChange,
     accessMode,
     handleAccessModeChange,
+    modes,
+    planReview,
     composerModelRef,
     deferredComposerPickRef,
     extensionDialogs,

@@ -152,6 +152,9 @@ export function BtwForm({
         showModel={false}
         showThinking={false}
         showAccess={false}
+        // No plan/goal toggles: a side question runs on the CHAT's modes with
+        // `--no-tools`, so a control here would change nothing — and the
+        // `showAccess` gate above already suppresses them.
         placeholder="Ask in this btw session..."
         composerModelRef={composerModelRef}
       />

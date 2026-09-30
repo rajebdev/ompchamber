@@ -29,6 +29,27 @@ export const CHAMBER_COMMANDS: CommandItem[] = [
     isBuiltIn: true,
     inputHint: '[question]',
   },
+  {
+    // omp registers `/plan` with `handleTui` only, so `get_available_commands`
+    // never advertises it — the popup would offer every command except the one
+    // this client can now run. Descriptions are omp's own wording.
+    id: 'chamber-plan',
+    name: 'plan',
+    description: 'Toggle plan mode (agent plans before executing)',
+    scope: 'system',
+    template: '',
+    isBuiltIn: true,
+    inputHint: '[prompt]',
+  },
+  {
+    id: 'chamber-goal',
+    name: 'goal',
+    description: 'Toggle goal mode (persistent autonomous objective for this session)',
+    scope: 'system',
+    template: '',
+    isBuiltIn: true,
+    inputHint: '[objective]',
+  },
 ];
 
 /** True when the chamber intercepts this command instead of forwarding it to

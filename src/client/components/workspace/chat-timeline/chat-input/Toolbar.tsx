@@ -3,6 +3,8 @@ import type { AIModelOption } from '@/shared/types';
 import { ModelDropdown } from '@/client/components/workspace/model-dropdown/index';
 import { ThinkingLevelDropdown } from '@/client/components/workspace/chat-timeline/chat-input/ThinkingLevelDropdown';
 import { AccessDropdown } from '@/client/components/workspace/chat-timeline/chat-input/AccessDropdown';
+import { ModeToggles } from '@/client/components/workspace/chat-timeline/chat-input/ModeToggles';
+import type { ComposerModes } from '@/client/components/workspace/chat-timeline/chat-input/modes-props';
 import { DEFAULT_APPROVAL_MODE, type ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 
 export interface ComposerToolbarProps {
@@ -27,11 +29,20 @@ export interface ComposerToolbarProps {
   showModel?: boolean;
   showThinking?: boolean;
   showAccess?: boolean;
+  /** Plan/Goal toggles. Omitted by a composer that does not own a chat turn. */
+  modes?: ComposerModes;
+  /** Opens the Goal modal, owned by `ChatInput`. */
+  onOpenGoal?: () => void;
 }
 
 /**
- * Bottom config row of the composer: model + thinking + access selectors on the
- * left, Stop/Send on the right.
+ * Bottom config row of the composer: model + thinking + access + plan/goal
+ * selectors on the left, Stop/Send on the right.
+ *
+ * The row is a CONTAINER (`@container`), not a viewport breakpoint: it lives in
+ * a chat panel that can be 320px wide on a 1440px screen, so `sm:` would keep
+ * every label on and overflow the panel. Each control hides its label below
+ * `@[420px]` and keeps its icon.
  *
  * Stop never displaces Send on mobile: a touch keyboard has no Enter-to-send
  * (see ComposerTextarea `variant`), so hiding Send mid-run would leave no way to
@@ -54,11 +65,15 @@ export function ComposerToolbar({
   showModel = true,
   showThinking = true,
   showAccess = true,
+  modes,
+  onOpenGoal,
 }: ComposerToolbarProps) {
   const showStop = isGenerating && (isMobile ? Boolean(onStop) : true);
 
   return (
-    <div className={`flex items-center justify-between border-t border-ink/5 bg-canvas/50 rounded-b-md ${isMobile ? 'px-2 py-2' : 'px-3 py-2'}`}>
+    <div
+      className={`@container flex items-center justify-between border-t border-ink/5 bg-canvas/50 rounded-b-md ${isMobile ? 'px-2 py-2' : 'px-3 py-2'}`}
+    >
       <div className={`flex items-center min-w-0 ${isMobile ? 'space-x-1' : 'space-x-2'}`}>
         {showModel && (
           <ModelDropdown
@@ -82,6 +97,21 @@ export function ComposerToolbar({
         {(showModel || showThinking) && showAccess && <div className="w-[1px] h-3 bg-ink/10" />}
 
         {showAccess && onSelectAccess && <AccessDropdown value={accessMode} onSelect={onSelectAccess} />}
+
+        {showAccess && modes && onOpenGoal && (
+          <>
+            <div className="w-[1px] h-3 bg-ink/10" />
+            <ModeToggles
+              plan={modes.plan}
+              goal={modes.goal}
+              goalRecord={modes.goalRecord}
+              pending={modes.pending}
+              onTogglePlan={modes.onTogglePlan}
+              onOpenGoal={onOpenGoal}
+              planAvailable={modes.planAvailable}
+            />
+          </>
+        )}
       </div>
 
       <div className="flex items-center gap-1.5 flex-shrink-0">

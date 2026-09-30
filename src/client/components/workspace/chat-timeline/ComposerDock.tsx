@@ -6,6 +6,7 @@ import { GeneratingIndicator } from '@/client/components/workspace/chat-timeline
 import { QueueList } from '@/client/components/workspace/chat-timeline/QueueList';
 import type { Attachment, QueuedMessage } from '@/shared/types';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
+import type { ComposerModes } from '@/client/components/workspace/chat-timeline/chat-input/modes-props';
 
 interface ComposerDockProps {
   isMobile: boolean;
@@ -44,6 +45,8 @@ interface ComposerDockProps {
   onModelChange: (provider: string, modelId: string) => void;
   accessMode: ApprovalMode;
   onAccessModeChange: (mode: ApprovalMode) => void;
+  /** Plan/goal mode slice; omitted by a composer with no chat turn of its own. */
+  modes?: ComposerModes;
   composerModelRef: { current: { provider: string; modelId: string; thinkingLevel: string } | null };
   deferredComposerPickRef: { current: { provider?: string; modelId?: string; thinkingLevel?: string } | null };
   sessionModel: { provider: string; modelId: string } | null;
@@ -84,6 +87,7 @@ export function ComposerDock({
   onModelChange,
   accessMode,
   onAccessModeChange,
+  modes,
   composerModelRef,
   deferredComposerPickRef,
   sessionModel,
@@ -153,6 +157,7 @@ export function ComposerDock({
             onModelChange={onModelChange}
             accessMode={accessMode}
             onAccessModeChange={onAccessModeChange}
+            modes={modes}
             composerModelRef={composerModelRef}
             deferredComposerPickRef={deferredComposerPickRef}
             sessionModel={sessionModel}

@@ -27,6 +27,14 @@
  * the running child, because a chamber talking to an older omp would otherwise
  * refuse a command that build actually implements.
  *
+ * `plan` and `goal` are absent because the CHAMBER now owns them: the composer's
+ * mode toggles send `/chamber-mode …` to a chamber-owned extension inside the
+ * child, which reaches the live `AgentSession` the TUI drives. A typed `/plan`
+ * or `/goal` is therefore answered by that same extension rather than refused —
+ * the extension registers the real command names as aliases, so the docs' syntax
+ * works too. `plan-review` and `guided-goal` stay listed: neither has a
+ * counterpart the extension can honour from a prompt.
+ *
  * `btw` is listed because omp's entry is TUI-only — the chamber's own `/btw`
  * is intercepted before this predicate is consulted (see `dispatchBtwCommand`),
  * so the two never conflict.
@@ -53,10 +61,8 @@ export const TUI_ONLY_SLASH_COMMANDS: Record<string, true> = {
   settings: true,
   setup: true,
   providers: true,
-  plan: true,
   'plan-review': true,
   vibe: true,
-  goal: true,
   'guided-goal': true,
   loop: true,
   queue: true,

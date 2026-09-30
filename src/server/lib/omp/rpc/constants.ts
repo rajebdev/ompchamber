@@ -11,6 +11,7 @@
 
 import { homedir } from 'os';
 import { pathExists } from '@/server/lib/omp/core/paths';
+import { chamberExtensionArgs } from '@/server/lib/omp/extensions/locator';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 
 export interface AgentEvent {
@@ -69,7 +70,10 @@ export interface WebSessionState {
   todoPhases: unknown[];
 }
 
-export const IDLE_DESTROY_MS = 10 * 60 * 1000;
+/** Quiet window before an unused child is reclaimed. Long enough that a session
+ *  a user is reading does not pay a respawn, short enough that a forgotten one
+ *  does not hold a process. */
+export const IDLE_REAP_MS = 10 * 60 * 1000;
 // Longest a subagent may go without a frame before the wrapper stops counting
 // it as live work. A terminal frame lost to a protocol hiccup would otherwise
 // pin the session's omp process (and its whole process group) open forever; the
@@ -200,7 +204,13 @@ export async function resolveSpawnCwd(recordedCwd?: string | null): Promise<stri
   return homedir();
 }
 
-/** Extra CLI args for spawning `omp --mode rpc-ui` for a session. */
+/** Extra CLI args for spawning `omp --mode rpc-ui` for a session.
+ *
+ *  `-e <extensions/chamber-modes/index.ts>` is always appended when the file is
+ *  present: the chamber's plan/goal toggles are driven from inside the child
+ *  (omp has no RPC verb for either mode), so the extension is not optional
+ *  equipment for a session that happens to have a mode on — it is how the
+ *  composer's controls reach the agent at all. */
 export function buildSessionSpawnArgs(sessionFile: string, approvalMode?: ApprovalMode): string[] {
   const args: string[] = [];
   if (sessionFile) {
@@ -214,5 +224,6 @@ export function buildSessionSpawnArgs(sessionFile: string, approvalMode?: Approv
     // mode, so the flag is the sole lever. It works with or without --resume.
     args.push('--approval-mode', approvalMode);
   }
+  args.push(...chamberExtensionArgs());
   return args;
 }

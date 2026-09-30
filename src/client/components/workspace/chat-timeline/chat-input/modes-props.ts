@@ -1,0 +1,32 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * The plan/goal slice of the composer's props.
+ *
+ * Its own module because three components thread it (the toolbar, the input and
+ * the dock) and each one only passes it through — a shared shape keeps the
+ * signature identical at every hop, so a field added for the modal cannot be
+ * dropped by an intermediate component.
+ */
+
+import type { GoalRecord } from '@/shared/lib/omp/mode/types';
+import type { GoalAction } from '@/client/hooks/chat/timeline/modes';
+
+export interface ComposerModes {
+  plan: boolean;
+  goal: boolean;
+  goalRecord: GoalRecord | null;
+  pending: boolean;
+  /** Plan is hidden while Goal is on: omp refuses to enter one mode while the
+   *  other is active, so offering both would present a button whose only
+   *  outcome is a refusal. */
+  planAvailable: boolean;
+  onTogglePlan: (enabled: boolean) => void;
+  /** The Goal modal's outcome. Opening the modal is the TOOLBAR's business
+   *  (the modal itself lives in `ChatInput`), so that handler is passed
+   *  separately and does not belong to the shared mode shape. */
+  onGoalAction: (action: GoalAction) => void;
+}

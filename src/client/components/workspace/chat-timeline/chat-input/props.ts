@@ -12,6 +12,7 @@
 import type { SetStateAction } from 'preact/compat';
 import type { Attachment } from '@/shared/types';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
+import type { ComposerModes } from '@/client/components/workspace/chat-timeline/chat-input/modes-props';
 
 export interface ChatInputProps {
   value: string;
@@ -43,6 +44,13 @@ export interface ChatInputProps {
   showModel?: boolean;
   showThinking?: boolean;
   showAccess?: boolean;
+  /**
+   * Which plan/goal modes the CHAT is in, plus the handlers that change them.
+   * Omitted by every composer that does not own a chat turn — the side-question
+   * form runs on the parent's modes and must not offer its own, and the New Chat
+   * modal has no session to change them on yet.
+   */
+  modes?: ComposerModes;
   /**
    * Whether the `@` / `/` / `!` / `#` autocomplete runs. Off for the
    * side-question form, which has no file tree, commands or skills to offer —

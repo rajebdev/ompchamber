@@ -28,6 +28,7 @@ import {
 import { scheduleQueueDelivery, type QueueDeliveryHost } from '@/server/lib/queue/delivery.server';
 import { loadStreamStatuses, markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
 import { NON_TERMINAL_CONTINUATION_GRACE_MS, type AgentEvent } from '@/server/lib/omp/rpc/constants';
+import type { ModeMirror } from '@/server/lib/omp/rpc/mode-mirror';
 
 /**
  * Wrapper surface the fold reads and writes. Every field is owned by the
@@ -45,6 +46,8 @@ export interface SessionFrameHost extends AutoTitleHost, QueueDeliveryHost {
   emit(event: AgentEvent): void;
   /** Remember a blocking ask/approval dialog so a reattaching client can answer it. */
   trackUiDialog(frame: AgentEvent): void;
+  /** Mirror of omp's plan/goal mode, fed by the frames this fold sees. */
+  modeMirror: ModeMirror;
   /** Fold a subagent frame into the liveness roster. */
   observeSubagent(frame: AgentEvent, now: number): void;
 }
@@ -196,6 +199,13 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
       // keyed on file mtime, which that write cannot move, so the list must be
       // rebuilt explicitly.
       clearSessionFileCaches();
+      break;
+    // omp's own goal transitions. The wrapper keeps the record so a snapshot
+    // (`get_state` plus the live frame) can report the mode without a round
+    // trip, and so the idle reaper can see that a goal is still live. The frame
+    // is forwarded as-is: the client folds it into the composer's mode state.
+    case 'goal_updated':
+      host.modeMirror.observe(event);
       break;
     case 'extension_ui_request':
       host.trackUiDialog(event);

@@ -10,6 +10,32 @@ import { resolveSessionFileOr404 } from '@/server/lib/omp/session/locator';
 import { setSessionTitle } from '@/server/lib/omp/session/title-slot';
 import { renameSessionWithAi } from '@/server/lib/omp/session/rename-with-ai.server';
 import { isSinglePathSegment } from '@/server/lib/fs/path-segment';
+import { loadPersistedModes } from '@/server/lib/omp/session/modes';
+
+/**
+ * GET /api/sessions/:sessionId/modes — the plan/goal mode selection persisted
+ * in the session's own transcript.
+ *
+ * Read from the JSONL rather than from `session_ui_state`, because the modes
+ * are not a layout preference: they are state the AGENT ran under, and the
+ * records are written by the child process as it transitions. That makes this
+ * the one source a second tab, a restarted chamber and a CLI-driven session all
+ * agree on.
+ *
+ * A session with no file (a `new-…` chat that has never run) answers the empty
+ * selection; a session id the chamber cannot resolve answers 404 like every
+ * other session route.
+ */
+export async function getSessionModes({ params }: LoaderFunctionArgs) {
+  const sessionId = params.sessionId;
+  if (!sessionId) return json({ error: 'Missing session id' }, { status: 400 });
+  if (!isSinglePathSegment(sessionId)) return json({ error: 'Session not found' }, { status: 404 });
+
+  const resolved = await resolveSessionFileOr404(sessionId);
+  if ('response' in resolved) return resolved.response;
+  const modes = await loadPersistedModes(resolved.filePath);
+  return json({ sessionId, modes });
+}
 
 /**
  * POST /api/sessions/:sessionId/archive — toggle archive state for a session.

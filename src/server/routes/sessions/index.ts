@@ -4,6 +4,7 @@ import * as sessionsFolder from '@/server/routes/sessions/folder';
 import * as sessionsQueue from '@/server/routes/sessions/queue';
 import {
   archiveSession,
+  getSessionModes,
   getSessionState,
   markSeen,
   putSessionState,
@@ -34,6 +35,7 @@ export const sessionsBindings: HandlerBinding[] = [
   ...actionBindings(renameSession, '/api/sessions/:sessionId/rename'),
   ...actionBindings(renameWithAi, '/api/sessions/:sessionId/rename-with-ai'),
   ...actionBindings(putSessionState, '/api/sessions/:sessionId/state', getSessionState),
+  { method: 'GET', path: '/api/sessions/:sessionId/modes', handler: getSessionModes },
   ...actionBindings(markSeen, '/api/sessions/:sessionId/stream-seen'),
   { method: 'GET', path: '/api/sessions/:sessionId/subagents', handler: listSubagents },
   { method: 'GET', path: '/api/sessions/:sessionId/subagents/:subagentId', handler: readSubagentTranscript },

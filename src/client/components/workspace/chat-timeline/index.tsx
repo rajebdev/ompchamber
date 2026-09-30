@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState } from 'preact/hooks';
 import { useSearchParams } from '@/client/lib/router/search-params';
-import { ExtensionDialog } from '@/client/components/workspace/chat-timeline/tool-renderers/extension-dialog/Lazy';
 import { AskFramesContext, splitAskFrames, type AskFramesHandle } from '@/client/hooks/chat/timeline/ask-frames';
 import type { ExtensionUiDialogRequest } from '@/shared/types/omp/agent';
 import type { Attachment } from '@/shared/types';
@@ -8,8 +7,6 @@ import type { UserTurnRef } from '@/shared/types/chat';
 import type { ExtensionDialogResponse } from '@/client/components/workspace/chat-timeline/tool-renderers/extension-dialog/Lazy';
 import { EmptyWorkspacePrompt } from '@/client/components/workspace/chat-timeline/EmptyWorkspacePrompt';
 import { SessionSkeleton } from '@/client/components/workspace/chat-timeline/SessionSkeleton';
-import { UndoConfirmModal } from '@/client/components/workspace/chat-timeline/UndoConfirmModal';
-import { NewChatModal } from '@/client/components/workspace/chat-timeline/NewChatModal';
 import { SubagentView } from '@/client/components/workspace/chat-timeline/SubagentView';
 import { TimelineBody } from '@/client/components/workspace/chat-timeline/TimelineBody';
 import { ComposerDock } from '@/client/components/workspace/chat-timeline/ComposerDock';
@@ -20,6 +17,7 @@ import { useUndoConfirmation } from '@/client/hooks/chat/timeline/undo-confirmat
 import { useModelNames } from '@/client/hooks/models/use-model-names';
 import { useProviderNames } from '@/client/hooks/models/use-provider-names';
 import { useToasts } from '@/client/hooks/ui/toasts';
+import { ChatOverlays } from '@/client/components/workspace/chat-timeline/ChatOverlays';
 import { ToastStack } from '@/client/components/common/ToastStack';
 import { composerRootFor } from '@/shared/lib/workspace/active-project';
 import { useSidebarData } from '@/client/hooks/chat/omp/session-list';
@@ -81,6 +79,8 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
     handleModelChange,
     accessMode,
     handleAccessModeChange,
+    modes,
+    planReview,
     composerModelRef,
     deferredComposerPickRef,
     extensionDialogs,
@@ -206,6 +206,7 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
         onModelChange={handleModelChange}
         accessMode={accessMode}
         onAccessModeChange={handleAccessModeChange}
+        modes={modes}
         composerModelRef={composerModelRef}
         deferredComposerPickRef={deferredComposerPickRef}
         sessionModel={typeof sessionData?.model === 'object' ? sessionData.model : null}
@@ -297,6 +298,7 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
                 onModelChange={handleModelChange}
                 accessMode={accessMode}
                 onAccessModeChange={handleAccessModeChange}
+                modes={modes}
                 composerModelRef={composerModelRef}
                 deferredComposerPickRef={deferredComposerPickRef}
                 sessionModel={typeof sessionData?.model === 'object' ? sessionData.model : null}
@@ -307,35 +309,28 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
           </>
         )}
 
-        {pendingUndo && (
-          <UndoConfirmModal
-            isOmpSession={Boolean(sessionId) && !sessionId.startsWith('new-') && Number.isNaN(Number(sessionId))}
-            content={pendingUndo.content}
-            undoing={undoing}
-            error={undoError}
-            onClose={closeUndoConfirm}
-            onConfirm={confirmUndo}
-          />
-        )}
-        {newChatInitialContent !== null && (
-          <NewChatModal
-            initialContent={newChatInitialContent}
-            initialAttachments={newChatInitialAttachments}
-            onClose={() => {
-              setNewChatInitialContent(null);
-              setNewChatInitialAttachments([]);
-            }}
-            onSend={submitNewChat}
-            appSettings={appSettings}
-            accessMode={accessMode}
-            onAccessModeChange={handleAccessModeChange}
-            composerModelRef={composerModelRef}
-          />
-        )}
-
-        {modalRequest && (
-          <ExtensionDialog request={modalRequest} onRespond={respondToFrame} />
-        )}
+        <ChatOverlays
+          pendingUndo={pendingUndo}
+          undoing={undoing}
+          undoError={undoError}
+          onCloseUndo={closeUndoConfirm}
+          onConfirmUndo={confirmUndo}
+          isOmpSession={Boolean(sessionId) && !sessionId.startsWith('new-') && Number.isNaN(Number(sessionId))}
+          newChatInitialContent={newChatInitialContent}
+          newChatInitialAttachments={newChatInitialAttachments}
+          onCloseNewChat={() => {
+            setNewChatInitialContent(null);
+            setNewChatInitialAttachments([]);
+          }}
+          onSendNewChat={submitNewChat}
+          appSettings={appSettings}
+          accessMode={accessMode}
+          onAccessModeChange={handleAccessModeChange}
+          composerModelRef={composerModelRef}
+          modalRequest={modalRequest}
+          onRespondToFrame={respondToFrame}
+          planReview={planReview}
+        />
 
         <ToastStack toasts={toasts} onDismiss={dismissToast} />
       </div>

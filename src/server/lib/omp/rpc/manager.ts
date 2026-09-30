@@ -20,8 +20,10 @@ import { PendingUiDialogs } from '@/server/lib/omp/rpc/pending-ui-dialogs';
 import { foldSessionFrame } from '@/server/lib/omp/rpc/frame-fold';
 import { dispatchSessionCommand } from '@/server/lib/omp/rpc/session-commands';
 import { SubagentLiveness } from '@/server/lib/omp/rpc/subagent-liveness';
+import { ModeMirror } from '@/server/lib/omp/rpc/mode-mirror';
+import { IdleReaper } from '@/server/lib/omp/rpc/idle-reaper';
 import { markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
-import { GET_STATE_TIMEOUT_MS, IDLE_DESTROY_MS, READY_TIMEOUT_MS, RELOAD_PLUGINS_TIMEOUT_MS, SUBAGENT_STALE_MS, type AgentEvent, type EventListener, type RpcSessionState } from '@/server/lib/omp/rpc/constants';
+import { GET_STATE_TIMEOUT_MS, IDLE_REAP_MS, READY_TIMEOUT_MS, RELOAD_PLUGINS_TIMEOUT_MS, SUBAGENT_STALE_MS, type AgentEvent, type EventListener, type RpcSessionState } from '@/server/lib/omp/rpc/constants';
 
 export type {
   AgentEvent,
@@ -49,7 +51,6 @@ export class AgentSessionWrapper {
   streaming = false;
   compacting = false;
   fastModeEnabled = false;
-  private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private onDestroyCallback: (() => void) | null = null;
   private unsubscribeFrames: (() => void) | null = null;
   private initPromise: Promise<void> | null = null;
@@ -70,6 +71,8 @@ export class AgentSessionWrapper {
   // (the early one at the first user message, the fallback at run end), and two
   // overlapping generations would race to write the same title slot.
   autoTitleInFlight = false;
+  /** omp's own plan/goal mode, mirrored from the frames. */
+  readonly modeMirror = new ModeMirror();
   // One-shot: the FIRST run of this conversation is the only one the chamber
   // may ask omp to name it from. Seeded in applyIdentity from omp's own message
   // count, so a session reclaimed and respawned with `--resume` (which reports
@@ -82,7 +85,9 @@ export class AgentSessionWrapper {
   // Epoch ms until which `command_output` frames belong to our own background
   // rename and must not reach the timeline. 0 when nothing is outstanding.
   autoTitleWindowUntil = 0;
-  readonly idleDestroyMs: number;
+  /** Idle reclaim. Its own object because the rules are self-contained: a busy
+   *  session is never reclaimed, and every frame defers the deadline. */
+  readonly idle: IdleReaper;
   proc: RpcProcess;
   readonly cwd: string;
   private readonly recordedCwd: string | null;
@@ -91,7 +96,11 @@ export class AgentSessionWrapper {
     this.proc = proc;
     this.cwd = cwd;
     this.recordedCwd = recordedCwd ?? null;
-    this.idleDestroyMs = options.idleDestroyMs ?? IDLE_DESTROY_MS;
+    this.idle = new IdleReaper(options.idleDestroyMs ?? IDLE_REAP_MS, () => {
+      if (this.isBusy()) return false;
+      this.destroy();
+      return true;
+    });
   }
 
   get sessionId(): string {
@@ -116,6 +125,17 @@ export class AgentSessionWrapper {
     return this.isAlive() && (this.promptRunning || this.streaming || this.compacting || this.bashRunning);
   }
 
+  /** Whether omp reports a live goal for this session. Read by the agent-state
+   *  route so the composer's Goal toggle reflects the CHILD, not the client's
+   *  last request. */
+  get hasLiveGoal(): boolean {
+    return this.modeMirror.goalEnabled;
+  }
+
+  get goalStatus(): string | undefined {
+    return this.modeMirror.goalStatus;
+  }
+
   /** Anything in flight that a process reset would destroy: the current turn,
    *  a compaction, a shell command, live subagents — which outlive the turn that
    *  spawned them, so no other flag here can see them — or an ask/approval dialog
@@ -136,7 +156,7 @@ export class AgentSessionWrapper {
 
   start(): void {
     this.unsubscribeFrames = this.proc.onFrame((frame) => this.handleFrame(frame));
-    this.resetIdleTimer();
+    this.idle.reset();
   }
 
   /** Resolves once the child announced readiness and identity is known. */
@@ -203,7 +223,7 @@ export class AgentSessionWrapper {
   }
 
   private handleFrame(frame: RpcFrame): void {
-    this.resetIdleTimer();
+    this.idle.reset();
     const event = frame as AgentEvent;
     // The state machine and its settle-time side effects live in frame-fold.ts;
     // this method owns only the wrapper's own bookkeeping around it.
@@ -223,23 +243,6 @@ export class AgentSessionWrapper {
         // starve the remaining subscribers.
       }
     }
-  }
-
-  private lastIdleReset = 0;
-  resetIdleTimer(force = false): void {
-    const now = Date.now();
-    if (!force && this.idleTimer && now - this.lastIdleReset < 5000) {
-      return;
-    }
-    this.lastIdleReset = now;
-    if (this.idleTimer) clearTimeout(this.idleTimer);
-    this.idleTimer = setTimeout(() => {
-      if (this.isBusy()) {
-        this.resetIdleTimer(true);
-        return;
-      }
-      this.destroy();
-    }, this.idleDestroyMs);
   }
 
   onEvent(listener: EventListener): () => void {
@@ -299,7 +302,7 @@ export class AgentSessionWrapper {
    */
   async reloadPlugins(): Promise<boolean> {
     if (!this.isAlive()) return false;
-    this.resetIdleTimer();
+    this.idle.reset();
     const ack = await this.proc.sendCommand<{ agentInvoked?: boolean } | undefined>(
       { type: 'prompt', message: '/reload-plugins' },
       RELOAD_PLUGINS_TIMEOUT_MS,
@@ -318,7 +321,7 @@ export class AgentSessionWrapper {
     if (this.destroyPromise) return this.destroyPromise;
     if (!this._alive) return;
     this._alive = false;
-    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idle.stop();
     this.unsubscribeFrames?.();
     this.pendingUiDialogs.clear();
     this.promptDispatchPendingCount = 0;
@@ -333,3 +336,4 @@ export class AgentSessionWrapper {
 }
 
 export { getRpcSession, startRpcSession, prewarmRpcSession, startNewRpcSession } from '@/server/lib/omp/rpc/session-registry';
+export { getSpawnApprovalMode, getSpawnModeEnv, reconcileSpawnApprovalMode } from '@/server/lib/omp/rpc/spawn-provenance';

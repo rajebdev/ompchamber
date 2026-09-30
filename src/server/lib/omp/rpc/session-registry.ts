@@ -15,7 +15,10 @@ import { RpcProcess } from '@/server/lib/omp/rpc/process';
 import { buildSessionSpawnArgs } from '@/server/lib/omp/rpc/constants';
 import { AgentSessionWrapper } from '@/server/lib/omp/rpc/manager';
 import { syncDiscoveryRootsWatch } from '@/server/lib/omp/config/roots-watch.server';
+import { recordSpawnProvenance } from '@/server/lib/omp/rpc/spawn-provenance';
 import { DEFAULT_APPROVAL_MODE, type ApprovalMode } from '@/shared/lib/omp/config/access-mode';
+
+export { getSpawnApprovalMode, getSpawnModeEnv, reconcileSpawnApprovalMode } from '@/server/lib/omp/rpc/spawn-provenance';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -68,44 +71,6 @@ export function getAwaitingInputSessionIds(): string[] {
   return [...ids];
 }
 
-// The approval mode each wrapper's omp child was actually spawned with. omp has
-// no RPC setter for it, so a live wrapper is stale once the desired mode
-// differs and must be respawned with the new --approval-mode flag.
-// Lives on globalThis (like the registry itself) so a `bun --hot` soft reload —
-// which re-evaluates modules but keeps globalThis — does not forget the mode a
-// surviving wrapper was spawned with; a forgotten mode would make
-// reconcileSpawnApprovalMode destroy and respawn an idle non-default session
-// with the wrong flag on its first post-reload command.
-declare global {
-  // eslint-disable-next-line no-var
-  var __ompSpawnApprovalModes: WeakMap<AgentSessionWrapper, ApprovalMode> | undefined;
-}
-
-function getSpawnApprovalModes(): WeakMap<AgentSessionWrapper, ApprovalMode> {
-  if (!globalThis.__ompSpawnApprovalModes) globalThis.__ompSpawnApprovalModes = new WeakMap();
-  return globalThis.__ompSpawnApprovalModes;
-}
-
-export function getSpawnApprovalMode(session: AgentSessionWrapper): ApprovalMode {
-  return getSpawnApprovalModes().get(session) ?? DEFAULT_APPROVAL_MODE;
-}
-
-/** Destroy an idle session whose spawned approval mode differs from `desired`
- *  so the caller can respawn it with the new --approval-mode flag.
- *  Returns true when the session was destroyed (caller MUST respawn). */
-export async function reconcileSpawnApprovalMode(session: AgentSessionWrapper, desired: ApprovalMode): Promise<boolean> {
-  if (getSpawnApprovalMode(session) === desired) return false;
-  // Never kill in-flight work — the caller would lose the active turn, and a
-  // live subagent outlives that turn.
-  if (session.isBusy()) return false;
-  // A brand-new session has no JSONL on disk yet; destroying it would 404 the
-  // next request that tries to resolve its file.
-  if (!session.sessionFile) return false;
-  if (!(await Bun.file(session.sessionFile).exists())) return false;
-  await session.destroyAndWait();
-  return true;
-}
-
 /**
  * Get or create the omp RPC process for the given session.
  * For new sessions (sessionFile === ''), omp generates its own id.
@@ -116,6 +81,7 @@ export async function startRpcSession(
   cwd: string,
   recordedCwd?: string | null,
   approvalMode?: ApprovalMode,
+  modeEnv?: Record<string, string>,
 ): Promise<{ session: AgentSessionWrapper; realSessionId: string }> {
   const registry = getRegistry();
   const locks = getLocks();
@@ -134,10 +100,11 @@ export async function startRpcSession(
     const proc = new RpcProcess({
       cwd,
       extraArgs: buildSessionSpawnArgs(sessionFile, approvalMode),
+      env: modeEnv,
       onExit: ({ stderrTail }) => holder.wrapper?.handleProcessExit(stderrTail),
     });
     const created = new AgentSessionWrapper(proc, cwd, recordedCwd);
-    getSpawnApprovalModes().set(created, approvalMode ?? DEFAULT_APPROVAL_MODE);
+    recordSpawnProvenance(created, approvalMode, modeEnv);
     holder.wrapper = created;
     created.start();
     try {
@@ -178,6 +145,8 @@ export async function startRpcSession(
 interface PrewarmedEntry {
   cwd: string;
   approvalMode: ApprovalMode;
+  /** Mode selection the entry was spawned with; a mismatch makes it unusable. */
+  modeEnv?: Record<string, string>;
   /** Resolves when the wrapper is ready, or rejects when the spawn failed or
    *  the entry was torn down before being claimed. */
   ready: Promise<AgentSessionWrapper>;
@@ -197,19 +166,23 @@ function getPrewarmed(): Map<string, PrewarmedEntry> {
 /** Spawn (at most one) idle omp process for `cwd` so the next new-session
  *  send starts instantly. Fire-and-forget; a failed spawn just clears itself.
  *  Safe to call repeatedly — an existing live or in-flight entry wins. */
-export function prewarmRpcSession(cwd: string, approvalMode?: ApprovalMode): void {
+export function prewarmRpcSession(cwd: string, approvalMode?: ApprovalMode, modeEnv?: Record<string, string>): void {
   const pool = getPrewarmed();
   const existing = pool.get(cwd);
   if (existing) return;
   const mode = approvalMode ?? DEFAULT_APPROVAL_MODE;
+  // A pending chat has no mode selection yet, so its prewarmed process is
+  // spawned with none — the first send races it and any real selection kills
+  // the entry (see `startNewRpcSession`).
   const holder: { wrapper?: AgentSessionWrapper } = {};
   const proc = new RpcProcess({
     cwd,
     extraArgs: buildSessionSpawnArgs('', mode),
+    env: modeEnv,
     onExit: ({ stderrTail }) => holder.wrapper?.handleProcessExit(stderrTail),
   });
   const wrapper = new AgentSessionWrapper(proc, cwd);
-  getSpawnApprovalModes().set(wrapper, mode);
+  recordSpawnProvenance(wrapper, mode, modeEnv);
   holder.wrapper = wrapper;
   wrapper.start();
   const ready = wrapper
@@ -225,7 +198,7 @@ export function prewarmRpcSession(cwd: string, approvalMode?: ApprovalMode): voi
       if (entry?.ready === ready) pool.delete(cwd);
       throw error;
     });
-  pool.set(cwd, { cwd, approvalMode: mode, ready, claimed: false });
+  pool.set(cwd, { cwd, approvalMode: mode, modeEnv, ready, claimed: false });
 }
 
 /**
@@ -270,12 +243,19 @@ export async function restartPrewarmedSessions(): Promise<number> {
 export async function startNewRpcSession(
   cwd: string,
   approvalMode?: ApprovalMode,
+  modeEnv?: Record<string, string>,
 ): Promise<{ session: AgentSessionWrapper; realSessionId: string }> {
   const pool = getPrewarmed();
   const entry = pool.get(cwd);
   const mode = approvalMode ?? DEFAULT_APPROVAL_MODE;
   let wrapper: AgentSessionWrapper | undefined;
-  if (entry && !entry.claimed && entry.approvalMode === mode) {
+  // A prewarmed entry was spawned with the environment current at prewarm
+  // time, so a MODE selection that differs from its own can no longer be served
+  // by it — the extension reads `CHAMBER_MODES` once, at session start. Treated
+  // exactly like a mode mismatch: claim and kill, then spawn cold.
+  const entryModes = entry?.modeEnv?.CHAMBER_MODES ?? '';
+  const wantedModes = modeEnv?.CHAMBER_MODES ?? '';
+  if (entry && !entry.claimed && entry.approvalMode === mode && entryModes === wantedModes) {
     entry.claimed = true;
     pool.delete(cwd);
     try {
@@ -287,15 +267,16 @@ export async function startNewRpcSession(
       wrapper = undefined; // fall through to a cold spawn
     }
   } else if (entry && !entry.claimed) {
-    // Wrong mode: the prewarmed process cannot serve this request. Kill it and
-    // spawn cold — reconcileSpawnApprovalMode would refuse (no session file).
+    // Wrong approval mode, or a different session-mode selection: the prewarmed
+    // process cannot serve this request. Kill it and spawn cold —
+    // reconcileSpawnApprovalMode would refuse (no session file).
     entry.claimed = true;
     pool.delete(cwd);
     void entry.ready.then((w) => w.destroyAndWait()).catch(() => {});
   }
 
   if (!wrapper) {
-    return startRpcSession(`__new__${Bun.randomUUIDv7()}`, '', cwd, undefined, mode);
+    return startRpcSession(`__new__${Bun.randomUUIDv7()}`, '', cwd, undefined, mode, modeEnv);
   }
 
   const registry = getRegistry();

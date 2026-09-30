@@ -39,6 +39,9 @@ interface EmptyWorkspacePromptProps {
   sessionThinkingLevel?: string | null;
   accessMode: ApprovalMode;
   onAccessModeChange: (mode: ApprovalMode) => void;
+  /** Plan/goal slice. The pending view renders the SAME composer as the real
+   *  timeline, so a mode set here survives adoption of the omp session. */
+  modes?: import('@/client/components/workspace/chat-timeline/chat-input/modes-props').ComposerModes;
   composerModelRef: { current: { provider: string; modelId: string; thinkingLevel: string } | null };
   deferredComposerPickRef: { current: { provider?: string; modelId?: string; thinkingLevel?: string } | null };
   generatingVerb?: string;
@@ -78,6 +81,7 @@ export function EmptyWorkspacePrompt({
   sessionThinkingLevel,
   accessMode,
   onAccessModeChange,
+  modes,
   composerModelRef,
   deferredComposerPickRef,
   generatingVerb,
@@ -245,6 +249,7 @@ export function EmptyWorkspacePrompt({
           sessionThinkingLevel={sessionThinkingLevel}
           accessMode={accessMode}
           onAccessModeChange={onAccessModeChange}
+          modes={modes}
           composerModelRef={composerModelRef}
           deferredComposerPickRef={deferredComposerPickRef}
           variant={variant}
