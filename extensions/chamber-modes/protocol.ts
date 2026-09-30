@@ -42,6 +42,19 @@ export const PLAN_REVIEW_CHOICES = [
   'Save and quit',
 ] as const;
 
+/** Why the auto-continuation loop stood down. `budget` and `max-turns` are the
+ *  two the child enforces; the rest come from the chamber's auditor. */
+export type GoalContinuationStop = 'budget' | 'max-turns' | 'blocked' | 'complete' | 'audit-failed';
+
+/** One automatic goal turn, as the loop reports and persists it. */
+export interface GoalContinuation {
+  /** Automatic turns taken for this goal, 1-based. */
+  turn: number;
+  /** The process's ceiling for one goal (`CHAMBER_GOAL_MAX_TURNS`). */
+  maxTurns: number;
+  stopped?: GoalContinuationStop;
+}
+
 export const CHAMBER_GOAL_STATE_ENTRY = 'chamber-goal-state';
 export const CHAMBER_PLAN_STATE_ENTRY = 'chamber-plan-state';
 export const CHAMBER_MODE_COMMAND = 'chamber-mode';
@@ -58,3 +71,4 @@ export const CHAMBER_PLAN_PROPOSAL_MARKER = 'CHAMBER_PLAN_PROPOSAL:';
 export const CHAMBER_PLAN_DECISION_MARKER = 'CHAMBER_PLAN_DECISION:';
 export const CHAMBER_PLAN_SAVED_MARKER = 'CHAMBER_PLAN_SAVED:';
 export const CHAMBER_GOAL_CONTINUATION_MARKER = 'CHAMBER_GOAL_CONTINUATION:';
+export const CHAMBER_GOAL_EVALUATING_MARKER = 'CHAMBER_GOAL_EVALUATING:';

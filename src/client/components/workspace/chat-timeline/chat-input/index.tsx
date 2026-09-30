@@ -13,7 +13,9 @@ import { useAutoGrow } from '@/client/hooks/chat/composer/auto-grow';
 import { primeFileReads } from '@/client/hooks/chat/composer/file-reads';
 import { useComposerPipeline } from '@/client/hooks/chat/composer/pipeline';
 import { DropOverlay } from '@/client/components/workspace/chat-timeline/chat-input/DropOverlay';
-import { GoalModal } from '@/client/components/workspace/chat-timeline/chat-input/GoalModal';
+import { GoalSurfaces } from '@/client/components/workspace/chat-timeline/chat-input/GoalSurfaces';
+import { normalizeGoalBudget } from '@/shared/lib/omp/mode/budget';
+import { readChamberSetting } from '@/shared/lib/settings/client';
 import type { ChatInputProps } from '@/client/components/workspace/chat-timeline/chat-input/props';
 
 export function ChatInput({ 
@@ -51,6 +53,7 @@ export function ChatInput({
    *  by composers that never stream (the New Chat modal), where there is
    *  nothing to defer and adoption must behave as before. */
   deferredComposerPickRef = NO_PENDING_PICK,
+  chatRunning,
 }: ChatInputProps) {
   const [internalAttachments, setInternalAttachments] = useState<Attachment[]>([]);
   // The Goal modal is owned here, not by the toolbar: the button is a toggle,
@@ -248,12 +251,24 @@ export function ChatInput({
 
   return (
     <div
-      className={`relative border rounded-md bg-paper transition-colors flex flex-col shadow-sm ${
+      className={`@container relative border rounded-md bg-paper transition-colors flex flex-col shadow-sm ${
         isDragging ? 'border-ink/40' : 'border-ink/20 focus-within:border-ink'
       } ${className}`}
       {...dropProps}
     >
       <DropOverlay visible={isDragging} />
+
+      {/* Goal mode is a property of the CHAT, not of this draft, so its strip
+          sits above the attachments and the textarea: it describes the turn the
+          next message will join. */}
+      <GoalSurfaces
+        modes={modes}
+        running={chatRunning ?? isGenerating}
+        open={goalModalOpen}
+        defaultBudget={normalizeGoalBudget(readChamberSetting<number>('goalDefaultBudget', appSettings))}
+        onOpen={() => setGoalModalOpen(true)}
+        onClose={() => setGoalModalOpen(false)}
+      />
 
       <AttachmentToolbar
         attachments={attachments}
@@ -318,17 +333,6 @@ export function ChatInput({
         modes={modes}
         onOpenGoal={() => setGoalModalOpen(true)}
       />
-
-      {modes && (
-        <GoalModal
-          open={goalModalOpen}
-          goal={modes.goal}
-          goalRecord={modes.goalRecord}
-          pending={modes.pending}
-          onClose={() => setGoalModalOpen(false)}
-          onSubmit={modes.onGoalAction}
-        />
-      )}
     </div>
   );
 }

@@ -74,4 +74,12 @@ export interface ChatInputProps {
   autoGrow?: { minHeightPx: number; maxHeightPx: number };
   composerModelRef: { current: { provider: string; modelId: string; thinkingLevel: string } | null };
   deferredComposerPickRef?: { current: { provider?: string; modelId?: string; thinkingLevel?: string } | null };
+  /**
+   * The CHAT-level "a run is in flight" flag (`timelineRunning`), for rows that
+   * describe the run rather than this draft — today the goal strip. Falls back
+   * to `isGenerating`, which is this client's own run: a composer that only
+   * knows what it started would show an idle goal while another tab's turn
+   * streams, the same disagreement `timelineRunning` exists to prevent.
+   */
+  chatRunning?: boolean;
 }

@@ -20,6 +20,7 @@
 
 import {
   CHAMBER_GOAL_CONTINUATION_MARKER,
+  CHAMBER_GOAL_EVALUATING_MARKER,
   CHAMBER_GOAL_STATE_MARKER,
   CHAMBER_MODE_ERROR_MARKER,
   CHAMBER_MODE_STATE_MARKER,
@@ -27,6 +28,8 @@ import {
   CHAMBER_PLAN_PROPOSAL_MARKER,
   CHAMBER_PLAN_SAVED_MARKER,
   CHAMBER_PLAN_STATE_MARKER,
+  GOAL_CONTINUATION_STOPS,
+  type GoalContinuation,
   type GoalRecord,
 } from '@/shared/lib/omp/mode/types';
 
@@ -35,6 +38,7 @@ import {
 const MARKERS = [
   CHAMBER_PLAN_PROPOSAL_MARKER,
   CHAMBER_PLAN_DECISION_MARKER,
+  CHAMBER_GOAL_EVALUATING_MARKER,
   CHAMBER_GOAL_CONTINUATION_MARKER,
   CHAMBER_PLAN_STATE_MARKER,
   CHAMBER_GOAL_STATE_MARKER,
@@ -81,4 +85,26 @@ export function goalRecordFromMarker(payload: Record<string, unknown>): GoalReco
 /** Whether a `CHAMBER_GOAL_STATE` payload reports the mode as on. */
 export function goalEnabledFromMarker(payload: Record<string, unknown>): boolean {
   return payload.enabled === true;
+}
+
+/**
+ * The continuation record a `CHAMBER_GOAL_CONTINUATION` payload carries — or a
+ * nested `continuation` value of a goal-state payload — or null when the value
+ * is not one.
+ *
+ * Both numbers are required and the turn must be 1-based: the child increments
+ * before it emits, so a payload naming turn 0 is a version skew, and a row that
+ * said "turn NaN of undefined" would be worse than no row at all.
+ */
+export function continuationFromMarker(value: unknown): GoalContinuation | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const payload = value as Record<string, unknown>;
+  const turn = Number(payload.turn);
+  const maxTurns = Number(payload.maxTurns);
+  if (!Number.isInteger(turn) || turn < 1) return null;
+  if (!Number.isInteger(maxTurns) || maxTurns < 1) return null;
+  const stopped = typeof payload.stopped === 'string'
+    ? GOAL_CONTINUATION_STOPS.find((reason) => reason === payload.stopped)
+    : undefined;
+  return stopped ? { turn, maxTurns, stopped } : { turn, maxTurns };
 }

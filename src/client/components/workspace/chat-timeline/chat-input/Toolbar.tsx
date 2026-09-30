@@ -103,7 +103,7 @@ export function ComposerToolbar({
             <div className="w-[1px] h-3 bg-ink/10" />
             <ModeToggles
               plan={modes.plan}
-              goal={modes.goal}
+              goal={modes.goalOpen}
               goalRecord={modes.goalRecord}
               pending={modes.pending}
               onTogglePlan={modes.onTogglePlan}

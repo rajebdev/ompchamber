@@ -81,13 +81,12 @@ describe('ModeToggles', () => {
     expect(el.querySelector('[aria-label="Manage the active goal"]')).not.toBeNull();
   });
 
-  test('the goal button reports budget remaining when there is one', () => {
+  test('the goal button carries the record in its title', () => {
+    // The budget figure itself moved to the goal strip above the composer; the
+    // button stays the mode control and the way into the modal.
     const el = paint({ goal: true, goalRecord });
-    expect(el.textContent).toContain('150k left');
-  });
-
-  test('no budget means no leftover figure', () => {
-    const el = paint({ goal: true, goalRecord: { ...goalRecord, tokenBudget: undefined } });
+    const button = el.querySelector('[aria-label="Manage the active goal"]');
+    expect(button?.getAttribute('title')).toContain('50,000');
     expect(el.textContent).not.toContain('left');
   });
 });

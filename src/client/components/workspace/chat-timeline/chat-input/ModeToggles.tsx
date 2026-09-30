@@ -45,23 +45,16 @@ export interface ModeTogglesProps {
   planAvailable: boolean;
 }
 
+/** omp's own footer shows goal token usage beside the mode indicator; that
+ *  figure now lives in the goal strip above the composer (`GoalBanner`), where
+ *  it has room for the budget, the time and the turn count. Keeping a second
+ *  copy here meant two spellings of the same number in a 320px panel. */
 function goalTitle(goal: boolean, record: GoalRecord | null): string {
   if (!goal) return 'Goal mode: off — click to set an objective';
   if (!record) return 'Goal mode: on';
   const used = record.tokensUsed.toLocaleString();
   const budget = record.tokenBudget !== undefined ? ` / ${record.tokenBudget.toLocaleString()}` : '';
   return `Goal: ${record.status} — ${used}${budget} tokens. Click to manage.`;
-}
-
-/** omp's own footer shows goal token usage beside the mode indicator; this is
- *  the same figure at composer scale. Compacted (`12.3k`) because the strip is
- *  320px wide on a narrow panel, and omitted entirely with no budget — a
- *  bare count says nothing about how much is left. */
-function goalBudgetLabel(goal: boolean, record: GoalRecord | null): string | null {
-  if (!goal || !record || record.tokenBudget === undefined) return null;
-  const left = Math.max(0, record.tokenBudget - record.tokensUsed);
-  if (left >= 1000) return `${Math.round(left / 1000)}k left`;
-  return `${left} left`;
 }
 
 export function ModeToggles({
@@ -73,8 +66,6 @@ export function ModeToggles({
   onOpenGoal,
   planAvailable,
 }: ModeTogglesProps) {
-  const budgetLabel = goalBudgetLabel(goal, goalRecord);
-
   return (
     <div className="flex items-center gap-0.5">
       {planAvailable && (
@@ -105,13 +96,6 @@ export function ModeToggles({
       >
         <Target size={12} className={goal ? '' : 'text-ink/60'} />
         <span className="hidden @[420px]:inline">Goal</span>
-        {budgetLabel && (
-          <span
-            className={`hidden font-mono text-[10px] @[520px]:inline ${goal ? 'text-canvas/70' : 'text-ink/45'}`}
-          >
-            {budgetLabel}
-          </span>
-        )}
       </button>
     </div>
   );

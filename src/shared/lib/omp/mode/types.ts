@@ -41,6 +41,37 @@ export interface GoalModeState {
   goal: GoalRecord;
 }
 
+/**
+ * One automatic goal turn, as the chamber's goal driver reports it.
+ *
+ * The chamber asks its AUDITOR after every turn and then tells the child to
+ * open the next one; the child emits this with `CHAMBER_GOAL_CONTINUATION:`
+ * right BEFORE it opens that turn — so the run that starts afterwards IS the
+ * turn this describes, which is what lets the strip say "turn 3 of 25" without
+ * inventing a state omp does not have.
+ */
+export interface GoalContinuation {
+  /** Automatic turns taken for THIS goal, 1-based (counted in the child). */
+  turn: number;
+  /** The child's ceiling for one goal (`CHAMBER_GOAL_MAX_TURNS`, default 25). */
+  maxTurns: number;
+  /** Set once the loop has stood down, with the reason it did. */
+  stopped?: GoalContinuationStop;
+}
+
+/**
+ * Why the automatic continuation loop stood down, as one list so the readers
+ * (markers, the persisted record) can validate against it instead of trusting a
+ * string from the wire.
+ *
+ * `budget` and `max-turns` are enforced inside the child; `blocked`,
+ * `complete` and `audit-failed` come from the chamber's auditor (the working
+ * agent's own report, judged independently).
+ */
+export const GOAL_CONTINUATION_STOPS = ['budget', 'max-turns', 'blocked', 'complete', 'audit-failed'] as const;
+
+export type GoalContinuationStop = (typeof GOAL_CONTINUATION_STOPS)[number];
+
 /** omp's plan-mode state (`PlanModeState`). */
 export interface PlanModeState {
   enabled: boolean;
@@ -104,6 +135,12 @@ export const CHAMBER_PLAN_PROPOSAL_MARKER = 'CHAMBER_PLAN_PROPOSAL:';
 export const CHAMBER_PLAN_DECISION_MARKER = 'CHAMBER_PLAN_DECISION:';
 export const CHAMBER_PLAN_SAVED_MARKER = 'CHAMBER_PLAN_SAVED:';
 export const CHAMBER_GOAL_CONTINUATION_MARKER = 'CHAMBER_GOAL_CONTINUATION:';
+/** Emitted while the child's loop is deciding whether to open another turn
+ *  (`{evaluating: true}` in, `{evaluating: false}` out). The decision itself is
+ *  a synchronous guard chain with no other frame, so this is what a spinner can
+ *  hang off — the gap it covers is the one place the loop is doing something
+ *  that is not a model turn. */
+export const CHAMBER_GOAL_EVALUATING_MARKER = 'CHAMBER_GOAL_EVALUATING:';
 
 /** Window event a `CHAMBER_*_MARKER` notice is re-dispatched on, scoped by
  *  session id. Same shape as the subagent frames: the fold converts a frame

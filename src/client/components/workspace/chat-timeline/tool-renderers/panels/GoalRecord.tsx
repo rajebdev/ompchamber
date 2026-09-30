@@ -18,6 +18,7 @@
 
 import { CheckCircle2, CircleDot, Pause, Target } from 'lucide-preact';
 import type { GoalRecord, GoalStatus } from '@/shared/lib/omp/mode/types';
+import { formatGoalDuration } from '@/shared/lib/omp/mode/format';
 import type { ToolCallData } from '@/shared/types';
 import { isRecord } from '@/shared/lib/util/guards';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
@@ -49,13 +50,6 @@ function formatTokens(record: GoalRecord): string {
   const used = record.tokensUsed.toLocaleString();
   if (record.tokenBudget === undefined) return `${used} used · no budget`;
   return `${used} / ${record.tokenBudget.toLocaleString()} (${Math.max(0, record.tokenBudget - record.tokensUsed).toLocaleString()} left)`;
-}
-
-function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
 /** The card. Returns null when the tool result is not omp's goal record, so the
@@ -98,7 +92,7 @@ export function GoalRecordPanel({ tool }: { tool: ToolCallData }) {
           </div>
           <div className="rounded-md border border-ink/8 bg-canvas/30 p-2">
             <div className="text-[9.5px] font-semibold uppercase tracking-wider text-ink/40">Time</div>
-            <div className="mt-0.5 font-mono text-[11px] text-ink/85">{formatDuration(record.timeUsedSeconds)}</div>
+            <div className="mt-0.5 font-mono text-[11px] text-ink/85">{formatGoalDuration(record.timeUsedSeconds)}</div>
           </div>
         </div>
 

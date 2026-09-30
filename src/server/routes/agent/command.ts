@@ -11,6 +11,12 @@ import { assertBtwIdle } from '@/server/lib/btw/service.server';
 import { loadPersistedModes } from '@/server/lib/omp/session/modes';
 import { modeCommandPrompt, parseModeRequest, parseModeSelection } from '@/server/lib/omp/mode/request';
 import { chamberModeEnv } from '@/server/lib/omp/extensions/locator';
+import { resetGoalDriverState } from '@/server/lib/omp/session/goal-driver.server';
+
+/** How long after an accepted Resume the chamber nudges the loop. The
+ *  extension answers the mode command first; this only coalesces the nudge
+ *  behind that answer (same 250 ms OpenChamber uses for its resume kickoff). */
+const RESUME_KICKOFF_MS = 250;
 
 // POST /api/agent/:sessionId — send a command to an existing session (or spawn
 // it lazily). Mirrors omp-web's /api/agent/[id].
@@ -65,6 +71,16 @@ export async function sendCommand({ params, request }: ActionFunctionArgs) {
       const liveMode = explicitMode ?? getSpawnApprovalMode(existing);
       if (!(await reconcileSpawnApprovalMode(existing, liveMode))) {
         const result = await existing.send(forwarded);
+        // A Resume is the operator re-arming the loop: strike history from the
+        // previous stop is not evidence about this run, and an idle session
+        // should start working at once rather than wait for a user message
+        // (the extension can only open the turn, the chamber paces it).
+        if (modeRequest?.scope === 'goal' && modeRequest.action === 'resume') {
+          resetGoalDriverState(sessionId);
+          setTimeout(() => {
+            void existing.send({ type: 'prompt', message: modeCommandPrompt({ scope: 'goal', action: 'continue' }) });
+          }, RESUME_KICKOFF_MS);
+        }
         return json({ success: true, data: result });
       }
     }
@@ -93,9 +109,17 @@ export async function sendCommand({ params, request }: ActionFunctionArgs) {
     // moment anything could re-apply it. Read from the session's own JSONL, so a
     // chamber restart, a second instance, or a CLI-driven session all agree.
     const persisted = body.modes !== undefined ? parseModeSelection(body as Record<string, unknown>) : await loadPersistedModes(filePath);
-    const modeEnv = chamberModeEnv({ plan: persisted.plan, goal: persisted.goal, goalLive: persisted.goalLive });
+    const modeEnv = chamberModeEnv({ plan: persisted.plan, goal: persisted.goal });
     const { session } = await startRpcSession(sessionId, filePath, cwd, recordedCwd, spawnMode, modeEnv);
     const result = await session.send(forwarded);
+    // Same Resume nudge as the live path: a resumed goal must not sit idle
+    // waiting for the operator's next message.
+    if (modeRequest?.scope === 'goal' && modeRequest.action === 'resume') {
+      resetGoalDriverState(sessionId);
+      setTimeout(() => {
+        void session.send({ type: 'prompt', message: modeCommandPrompt({ scope: 'goal', action: 'continue' }) });
+      }, RESUME_KICKOFF_MS);
+    }
     return json({ success: true, data: result });
   } catch (error) {
     return rpcErrorResponse(error);

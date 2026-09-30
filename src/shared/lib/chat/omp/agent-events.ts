@@ -13,11 +13,12 @@
  * size ceiling.
  */
 
-import type { IncomingExtensionUiRequest, OmpAgentCallbacks, OmpAgentEvent, ToolCallData } from '@/shared/types';
+import type { IncomingExtensionUiRequest, OmpAgentEvent, ToolCallData } from '@/shared/types';
 import { extractTextFromContent, toChatMessage, toolResultText } from '@/shared/lib/omp/session/mapper';
 import { normalizeNoticeText } from '@/shared/lib/chat/notice-text';
 import { parseChamberMarker } from '@/shared/lib/omp/mode/markers';
-import { CHAMBER_MODE_EVENT } from '@/shared/lib/omp/mode/types';
+import { emitChamberModeSignal } from '@/shared/lib/omp/mode/client-signal';
+import { materializeTerminalMessages } from '@/shared/lib/chat/omp/terminal-messages';
 import { invalidateComposerCache } from '@/shared/lib/chat/composer/client';
 import { setActivity, toolHost, type OmpAgentFoldDeps } from '@/shared/lib/chat/omp/fold-deps';
 import { normalizeThinkingLevel } from '@/shared/lib/models/thinking-levels';
@@ -36,36 +37,6 @@ import {
 // site; the implementation lives in tool-results.ts.
 export type { ToolResultRecord } from '@/shared/lib/chat/omp/tool-results';
 export type { OmpAgentFoldDeps } from '@/shared/lib/chat/omp/fold-deps';
-
-/** Flush assistant turns that stopped abnormally and were never streamed as
- *  `message_end`. A user abort is the one terminal path where omp emits no
- *  `message_end` at all — the synthetic aborted turn rides only in
- *  `agent_end.messages`. omp slices out whatever it already streamed, so any
- *  message found here is not a duplicate. Without this the failure stays
- *  invisible until the session JSONL is reloaded. */
-function materializeTerminalMessages(
-  data: OmpAgentEvent,
-  deps: OmpAgentFoldDeps,
-  callbacks: OmpAgentCallbacks | undefined,
-): { errorMessage?: string } {
-  if (data.isTerminal === false) return {};
-  const messages = data.messages;
-  if (!Array.isArray(messages)) return {};
-  let errorMessage: string | undefined;
-  for (const entry of messages) {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
-    const raw = entry as Record<string, unknown>;
-    if (raw.role !== 'assistant') continue;
-    if (raw.stopReason !== 'aborted' && raw.stopReason !== 'error') continue;
-    const converted = toChatMessage(raw, false);
-    if (!converted) continue;
-    const paired = pairToolOutputs(converted, deps);
-    if (paired.toolCalls?.length) deps.lastToolMessageRef.current = paired;
-    callbacks?.onMessageEnd?.(paired);
-    if (typeof raw.errorMessage === 'string') errorMessage = raw.errorMessage;
-  }
-  return { errorMessage };
-}
 
 export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): void {
   const callbacks = deps.callbacksRef.current;
@@ -295,15 +266,22 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
         const message = typeof data.message === 'string' ? data.message : '';
         const marker = parseChamberMarker(message);
         if (marker) {
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent(CHAMBER_MODE_EVENT, {
-              detail: { sessionId: deps.sessionId, marker },
-            }));
-          }
+          emitChamberModeSignal(deps.sessionId, marker);
           break;
         }
       }
       callbacks?.onExtensionUiRequest?.(data as unknown as IncomingExtensionUiRequest);
+      break;
+    }
+
+    case 'goal_evaluating': {
+      // The chamber's auditor working on the turn that just ended. No model
+      // turn is streaming while it runs, so without this frame the composer
+      // would look idle during the seconds the check takes.
+      emitChamberModeSignal(deps.sessionId, {
+        marker: 'CHAMBER_GOAL_EVALUATING:',
+        payload: { evaluating: data.evaluating === true },
+      });
       break;
     }
 

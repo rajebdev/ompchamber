@@ -186,7 +186,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
       <div className="w-full space-y-2.5 font-sans leading-relaxed">
         
         {/* System Notice Alert (a notice carrying the answer renders as content below) */}
-        {isNotice && <SystemNotice notice={msg.notice} />}
+        {isNotice && <SystemNotice notice={msg.notice} source={msg.noticeSource} />}
 
         {/* Thinking / Reasoning Accordion */}
         {thinkingData && (

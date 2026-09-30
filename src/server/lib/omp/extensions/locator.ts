@@ -61,14 +61,11 @@ export function chamberExtensionArgs(): string[] {
 
 /** Environment variables the extension reads at session start.
  *
- *  `CHAMBER_MODES` carries the persisted per-session selection. The goal
- *  continuation flag is separate and opt-in, so a session that merely HAS a goal
- *  record never starts looping — and a PAUSED goal does not arm it either:
- *  omp pauses an active goal on a cold start so it cannot resume unattended, and
- *  the flag would otherwise be the one thing that ignored that. */
-export function chamberModeEnv(modes: { plan: boolean; goal: boolean; goalLive?: boolean }): Record<string, string> {
+ *  `CHAMBER_MODES` carries the persisted per-session selection. There used to be
+ *  a second flag here (`CHAMBER_GOAL_AUTO_CONTINUE`) because the child armed its
+ *  own loop; the loop belongs to the chamber now, so the child has nothing to
+ *  arm and the flag is gone. */
+export function chamberModeEnv(modes: { plan: boolean; goal: boolean }): Record<string, string> {
   const list = [modes.plan ? 'plan' : '', modes.goal ? 'goal' : ''].filter(Boolean);
-  const env: Record<string, string> = { CHAMBER_MODES: list.join(',') };
-  if (modes.goal && modes.goalLive !== false) env.CHAMBER_GOAL_AUTO_CONTINUE = '1';
-  return env;
+  return { CHAMBER_MODES: list.join(',') };
 }

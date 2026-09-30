@@ -151,6 +151,7 @@ export function ComposerDock({
             onAttachmentsChange={setAttachments}
             onSend={onSend}
             isGenerating={isGenerating}
+            chatRunning={showGeneratingIndicator}
             onStop={onStop}
             appSettings={appSettings}
             onThinkingLevelChange={onThinkingLevelChange}

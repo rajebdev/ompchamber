@@ -57,6 +57,7 @@ export function toChatMessage(raw: Record<string, unknown>, streaming = true): C
       role: 'ai',
       content: '',
       notice,
+      noticeSource: typeof raw.customType === 'string' ? raw.customType : undefined,
     };
   }
 

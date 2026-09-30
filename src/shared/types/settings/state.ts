@@ -55,6 +55,24 @@ export interface SettingsState {
   autoSessionTitle: boolean;
   soundAlerts: boolean;
   chatCompletionSound: boolean;
+  /**
+   * Whether the chamber's goal loop runs at all: an independent auditor decides
+   * after every finished turn whether the goal continues. Off means a goal
+   * still exists (the strip, pause/resume and the objective all work) but
+   * nothing advances it on its own.
+   */
+  goalAuditEnabled: boolean;
+  /**
+   * Model the goal auditor asks, as `provider/modelId`. Empty means the
+   * session's own model — the honest default, since the goal loop is otherwise
+   * invisible in a user's provider choice.
+   */
+  goalAuditModel: string;
+  /**
+   * Token budget a NEW goal is created with when the composer's dialog leaves
+   * the field empty. Null = no budget (the turn ceiling is then the only stop).
+   */
+  goalDefaultBudget: number | null;
   followUpBehavior: 'queue' | 'steering';
   keybindingSend: 'Enter' | 'Shift + Enter' | 'Ctrl / Cmd + Enter';
   keybindingNewLine: 'Enter' | 'Shift + Enter' | 'Ctrl / Cmd + Enter';

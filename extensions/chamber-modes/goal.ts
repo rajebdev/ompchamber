@@ -27,42 +27,58 @@
 
 import { GOAL_CONTINUATION_PROMPT, GUIDED_GOAL_INTERVIEW_PROMPT, renderPrompt } from './prompts';
 import type { ExtensionCtx, ModeApi, ModeSession } from './session';
-import type { GoalRecord } from './protocol';
+import {
+  CHAMBER_GOAL_CONTINUATION_MARKER,
+  CHAMBER_GOAL_EVALUATING_MARKER,
+  CHAMBER_GOAL_STATE_ENTRY,
+  type GoalContinuation,
+  type GoalContinuationStop,
+  type GoalRecord,
+} from './protocol';
 
-/** Opt-in flag the spawn path sets when goal mode is part of the selection.
- *  Absent means "no automatic continuation", so a plain chat can never start
- *  looping just because a goal record exists in the file. */
-const AUTO_CONTINUE_ENV = 'CHAMBER_GOAL_AUTO_CONTINUE';
-
-/** Whether this PROCESS has armed automatic continuation.
+/**
+ * Ask the loop to forget how many automatic turns it has taken.
  *
- *  The spawn flag alone is not enough, and that is the common case rather than
- *  an edge one: the composer's Goal toggle is pressed on a child that was
- *  spawned BEFORE the goal existed (you open a session, then set a goal), so
- *  its environment carries no flag and the loop never fired — Goal mode ran
- *  exactly one turn and stopped, which is the failure the loop exists to
- *  prevent. Verified against a real child: `createGoal` wrote the record and
- *  the toggle went live, and `agent_end` returned at the env check on every
- *  turn afterwards.
- *
- *  Arming here rather than dropping the check keeps its purpose intact: a
- *  session file that merely CARRIES a goal (restored, not started) is not
- *  armed, and the status guard below independently refuses a paused one. */
-let continuationArmed = false;
+ * The counter is per goal and per session, and the ceiling is what stops the
+ * loop — so without this a goal that hit `max-turns` cannot be resumed: the
+ * next decision recomputes `turns >= ceiling` from the same counter and stands
+ * down again, leaving Resume a button that appears to do nothing until the
+ * child restarts. Applied on the next decision, which is the first moment the
+ * counter is read.
+ */
+let continuationTurnsReset = false;
 
-/** Arm the loop because the operator started or resumed a goal in this process. */
-export function armGoalContinuation(): void {
-  continuationArmed = true;
+export function resetGoalContinuationTurns(): void {
+  continuationTurnsReset = true;
 }
 
-/** Disarm it because the goal is gone.
+/**
+ * Write the loop's verdict onto the session branch, beside the mode record the
+ * console already reads for the composer's toggles.
  *
- *  The status guard would refuse a dropped goal on its own; this exists so the
- *  process's own state matches the session's — and so a test can put the flag
- *  back to its boot value, which is what a leak between tests needs (the same
- *  reason `parked` is cleared through its public path in `plan.test.ts`). */
-export function disarmGoalContinuation(): void {
-  continuationArmed = false;
+ * It has to be persisted, not only reported: the turn count lives in THIS
+ * process's memory, so without the entry a reload (or a second tab) would show
+ * a goal as active with nothing left to run it, and no way to tell that
+ * automatic continuation had already stood down. The payload carries the whole
+ * mode record — `readPersistedModes` takes the newest `chamber-goal-state` as
+ * the state, so a verdict-only entry would wipe the goal it describes.
+ *
+ * `null` clears it (Resume restarts the count, so the old verdict is a lie).
+ */
+export function persistContinuation(
+  api: ModeApi,
+  session: ModeSession,
+  continuation: GoalContinuation | null,
+  maxTurns?: number,
+): void {
+  api.appendEntry?.(CHAMBER_GOAL_STATE_ENTRY, {
+    ...goalStateRecord(session),
+    continuation,
+    // The goal's own ceiling rides the same entry: the verdict is cleared on
+    // Resume while the ceiling must survive, and this file is the only place
+    // that outlives the process.
+    ...(maxTurns === undefined ? {} : { maxTurns }),
+  });
 }
 
 /** Hard ceiling on automatic turns for one goal. The token budget is the
@@ -70,6 +86,16 @@ export function disarmGoalContinuation(): void {
  *  keeps finding work would otherwise run until the process is killed. */
 const MAX_TURNS_ENV = 'CHAMBER_GOAL_MAX_TURNS';
 const DEFAULT_MAX_TURNS = 25;
+
+/** Per-goal ceilings, keyed by goal id. A goal's own `maxTurns` beats the
+ *  install default for its whole life, including after a Resume. */
+const goalCeilings = new Map<string, number>();
+
+function ceilingFor(goalId: string): number {
+  const configured = Number.parseInt(process.env?.[MAX_TURNS_ENV] ?? '', 10);
+  const fallback = Number.isInteger(configured) && configured > 0 ? configured : DEFAULT_MAX_TURNS;
+  return goalCeilings.get(goalId) ?? fallback;
+}
 
 /** Custom-message types, matching the TUI's own naming so a transcript written
  *  by either surface reads the same. */
@@ -83,6 +109,10 @@ interface GoalArgs {
   objective?: string;
   tokenBudget?: number;
   guided?: string;
+  /** Automatic-turn ceiling for THIS goal; overrides the install default. */
+  maxTurns?: number;
+  /** The auditor's terminal reason, carried by the `done` action. */
+  stopped?: GoalContinuationStop;
 }
 
 /** Parse the JSON payload a chamber command carries.
@@ -106,10 +136,20 @@ export function parseGoalArgs(rest: string): GoalArgs {
   }
   const objective = typeof payload.objective === 'string' ? payload.objective.trim() : undefined;
   const guided = typeof payload.guided === 'string' ? payload.guided : undefined;
+  // The chamber's auditor reports its terminal verdict through `done`; the
+  // reason travels so the strip can name it (and so a reload can too).
+  const stopped = payload.stopped === 'budget' || payload.stopped === 'max-turns' || payload.stopped === 'blocked' || payload.stopped === 'complete' || payload.stopped === 'audit-failed'
+    ? payload.stopped
+    : undefined;
   const rawBudget = payload.tokenBudget;
   const tokenBudget =
     typeof rawBudget === 'number' && Number.isInteger(rawBudget) && rawBudget > 0 ? rawBudget : undefined;
-  return { objective, tokenBudget, guided };
+  // A per-goal ceiling: the install default is fine until someone wants a
+  // short leash on one objective, and then the number belongs to the goal.
+  const rawMaxTurns = payload.maxTurns;
+  const maxTurns =
+    typeof rawMaxTurns === 'number' && Number.isInteger(rawMaxTurns) && rawMaxTurns > 0 ? rawMaxTurns : undefined;
+  return { objective, tokenBudget, guided, maxTurns, stopped };
 }
 
 /** The record the chamber mirrors. `enabled` is what decides whether the
@@ -130,16 +170,23 @@ export function goalStateRecord(session: ModeSession): { goal: GoalRecord | null
  */
 export async function createGoalFromSelection(
   session: ModeSession,
-  input: { objective: string; tokenBudget?: number },
+  input: { objective: string; tokenBudget?: number; maxTurns?: number },
 ): Promise<void> {
   const runtime = session.goalRuntime;
   if (!runtime) throw new Error('goal runtime unavailable');
   const existing = session.getGoalModeState?.();
   if (existing?.goal && existing.goal.status === 'paused') {
     await runtime.resumeGoal();
+    if (input.maxTurns !== undefined) goalCeilings.set(existing.goal.id, input.maxTurns);
     return;
   }
-  await runtime.createGoal({ objective: input.objective, tokenBudget: input.tokenBudget });
+  const created = (await runtime.createGoal({ objective: input.objective, tokenBudget: input.tokenBudget })) as
+    | { goal?: { id?: string } }
+    | undefined;
+  // The ceiling belongs to the goal, not to the process: remembered by id so
+  // every later decision (and a Resume) reads the same number.
+  const goalId = created?.goal?.id ?? session.getGoalModeState?.()?.goal?.id;
+  if (goalId && input.maxTurns !== undefined) goalCeilings.set(goalId, input.maxTurns);
 }
 
 /**
@@ -174,62 +221,109 @@ export function startGuidedGoal(api: ModeApi, rough: string): void {
 }
 
 /**
- * Install the auto-continuation loop.
- *
- * `getSession` is a closure rather than a value: the registry entry is created
- * during session start, so a captured session would be the one from load time.
+ * The loop's per-session counters, kept where the other process-wide state is:
+ * a `bun --hot` reload must not lose the turn count, and the ceiling is the only
+ * thing standing between `budget off` and an unbounded run.
  */
-export function installGoalContinuation(
-  api: ModeApi,
-  getSession: (api: ModeApi) => ModeSession | undefined,
-  emit: (ctx: ExtensionCtx, marker: string, payload: unknown) => void,
-): void {
-  let turns = 0;
-  let countedGoalId: string | undefined;
+const turnCounters = new Map<string, number>();
 
-  api.on?.('agent_end', (event: unknown, ctx: ExtensionCtx) => {
-    if (process.env?.[AUTO_CONTINUE_ENV] !== '1' && !continuationArmed) return;
-    const payload = event as { willContinue?: boolean } | undefined;
-    // omp already scheduled its own continuation (auto-retry, an unexpected-stop
-    // retry, a background job). Firing here too would open a second turn.
-    if (payload?.willContinue === true) return;
+function turnsFor(goalId: string): number {
+  return turnCounters.get(goalId) ?? 0;
+}
 
-    const session = getSession(api);
-    const state = session?.getGoalModeState?.();
-    if (!session || !state?.enabled || state.goal.status !== 'active') {
-      turns = 0;
-      countedGoalId = undefined;
-      return;
-    }
+/** What the chamber's goal driver needs to open one more turn. */
+export interface GoalTurnRequest {
+  api: ModeApi;
+  session: ModeSession;
+  emit: (ctx: ExtensionCtx, marker: string, payload: unknown) => void;
+  ctx: ExtensionCtx;
+  /** The goal's ceiling as the chamber persisted it; beats this process's own
+   *  memory, which a restart (or another instance) never had. */
+  maxTurns?: number;
+}
 
-    // A new goal starts its own count; the ceiling is per goal, not per process.
-    if (countedGoalId !== state.goal.id) {
-      countedGoalId = state.goal.id;
-      turns = 0;
-    }
-    const configured = Number.parseInt(process.env?.[MAX_TURNS_ENV] ?? '', 10);
-    const ceiling = Number.isInteger(configured) && configured > 0 ? configured : DEFAULT_MAX_TURNS;
-    const goal = state.goal as GoalRecord;
-    const budget = goal.tokenBudget;
-    // Same guard chain the chamber uses (`session/goal-continuation.ts`): Stop,
-    // the mode flags, then the budget, then the turn ceiling. Applied here too
-    // because THIS process is the one that has to stop, and it cannot wait for
-    // a chamber that may be gone.
-    if (budget !== undefined && goal.tokensUsed >= budget) return;
-    if (turns >= ceiling) {
-      emit(ctx, 'CHAMBER_GOAL_CONTINUATION:', { turn: turns, maxTurns: ceiling, stopped: 'max-turns' });
-      return;
-    }
+/**
+ * Open the next automatic turn, at the chamber's request.
+ *
+ * The chamber owns the loop now: it audits the last turn with an independent
+ * model and calls this to continue. What stays here is everything the chamber
+ * cannot do or see — the hidden message that re-enters the loop without leaving
+ * a user bubble, the per-goal turn count, and the two hard stops (token budget,
+ * turn ceiling) that must hold even if the chamber is restarted mid-run.
+ */
+export function continueGoalTurn({ api, session, emit, ctx, maxTurns }: GoalTurnRequest): void {
+  const state = session.getGoalModeState?.();
+  // A ceiling the chamber remembers (persisted with the goal) wins: this
+  // process's map is empty after a restart, and the goal's own number must not
+  // be lost to that.
+  if (state?.goal && maxTurns !== undefined) goalCeilings.set(state.goal.id, maxTurns);
+  const ceiling = state?.goal ? ceilingFor(state.goal.id) : DEFAULT_MAX_TURNS;
 
-    turns += 1;
-    emit(ctx, 'CHAMBER_GOAL_CONTINUATION:', { turn: turns, maxTurns: ceiling });
-    const content = renderPrompt(GOAL_CONTINUATION_PROMPT, {
-      objective: goal.objective,
-      tokensUsed: goal.tokensUsed,
-      tokenBudget: budget === undefined ? 'none' : budget,
-      remainingTokens: budget === undefined ? 'unbounded' : Math.max(0, budget - goal.tokensUsed),
-      timeUsedSeconds: goal.timeUsedSeconds,
-    });
-    api.sendMessage?.({ customType: GOAL_CONTINUATION_TYPE, content, display: false }, { triggerTurn: true });
+  const standDown = (stopped: GoalContinuationStop, turns: number): void => {
+    const verdict: GoalContinuation = { turn: Math.max(1, turns), maxTurns: ceiling, stopped };
+    emit(ctx, CHAMBER_GOAL_EVALUATING_MARKER, { evaluating: false, stopped });
+    emit(ctx, CHAMBER_GOAL_CONTINUATION_MARKER, verdict);
+    persistContinuation(api, session, verdict, ceiling);
+  };
+
+  // omp flips the goal to `budget-limited` the moment the budget is spent, so
+  // the loop never sees an `active` goal to decide about — this is the only
+  // place that can report it. Without this the row showed a budget-limited goal
+  // in silence, indistinguishable from one waiting for the next turn.
+  if (state?.enabled && state.goal.status === 'budget-limited') {
+    standDown('budget', turnsFor(state.goal.id));
+    return;
+  }
+  if (!state?.enabled || state.goal.status !== 'active') return;
+
+  if (continuationTurnsReset) {
+    continuationTurnsReset = false;
+    turnCounters.delete(state.goal.id);
+  }
+  let turns = turnsFor(state.goal.id);
+
+  const goal = state.goal as GoalRecord;
+  const budget = goal.tokenBudget;
+  // The hard stops, checked here because THIS process is the one that has to
+  // stop: the chamber's auditor decides progress, never the ceilings.
+  if (budget !== undefined && goal.tokensUsed >= budget) {
+    standDown('budget', turns);
+    return;
+  }
+  if (turns >= ceiling) {
+    standDown('max-turns', turns);
+    return;
+  }
+
+  turns += 1;
+  turnCounters.set(state.goal.id, turns);
+  const verdict: GoalContinuation = { turn: turns, maxTurns: ceiling };
+  emit(ctx, CHAMBER_GOAL_CONTINUATION_MARKER, verdict);
+  // Persisted on the way IN as well: the turn number is what a reload shows
+  // until the loop reports again, and the ceiling rides with it so a resumed
+  // process reads the goal's own number instead of the install default.
+  persistContinuation(api, session, verdict, ceiling);
+  const content = renderPrompt(GOAL_CONTINUATION_PROMPT, {
+    objective: goal.objective,
+    tokensUsed: goal.tokensUsed,
+    tokenBudget: budget === undefined ? 'none' : budget,
+    remainingTokens: budget === undefined ? 'unbounded' : Math.max(0, budget - goal.tokensUsed),
+    timeUsedSeconds: goal.timeUsedSeconds,
   });
+  api.sendMessage?.({ customType: GOAL_CONTINUATION_TYPE, content, display: false }, { triggerTurn: true });
+}
+
+/**
+ * Close the loop with a verdict the AUDITOR reached (`complete`, `blocked`, or
+ * an audit that could not be taken). The goal record itself is omp's — this
+ * only records why the chamber stopped driving it, so the strip can name it and
+ * a reload can show it.
+ */
+export function finishGoalTurn({ api, session, emit, ctx }: GoalTurnRequest, stopped: GoalContinuationStop): void {
+  const state = session.getGoalModeState?.();
+  const ceiling = state?.goal ? ceilingFor(state.goal.id) : DEFAULT_MAX_TURNS;
+  const turns = state?.goal ? turnsFor(state.goal.id) : 0;
+  const verdict: GoalContinuation = { turn: Math.max(1, turns), maxTurns: ceiling, stopped };
+  emit(ctx, CHAMBER_GOAL_CONTINUATION_MARKER, verdict);
+  persistContinuation(api, session, verdict, ceiling);
 }

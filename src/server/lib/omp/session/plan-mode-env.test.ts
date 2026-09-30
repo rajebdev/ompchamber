@@ -25,33 +25,32 @@ describe('spawn-time mode restore', () => {
     expect(chamberModeEnv(modes).CHAMBER_MODES).toBe('plan');
   });
 
-  test('a session with a LIVE goal spawns with goal AND auto-continuation', () => {
+  test('a session with a LIVE goal spawns with goal mode on', () => {
     const modes = readPersistedModes(
       line('chamber-goal-state', {
         enabled: true,
         goal: { id: 'g1', objective: 'x', status: 'active', tokensUsed: 0, timeUsedSeconds: 0, createdAt: 0, updatedAt: 0 },
       }),
     );
-    const env = chamberModeEnv(modes);
-    expect(env.CHAMBER_MODES).toBe('goal');
-    // Without this the restored goal would run one turn and stop.
-    expect(env.CHAMBER_GOAL_AUTO_CONTINUE).toBe('1');
+    // The loop itself is not the child's: it drives nothing on its own, and the
+    // chamber's auditor decides whether the next turn is opened (or whether the
+    // goal stops) — so the spawn carries the MODE, nothing more.
+    expect(chamberModeEnv(modes).CHAMBER_MODES).toBe('goal');
   });
 
-  test('a PAUSED goal restores the mode but NOT the continuation', () => {
-    // Pause is an instruction. The toggle should read as on (the goal exists),
-    // while the loop stays off — arming it here would override omp's own
-    // cold-start pause and start spending tokens the moment the session is
-    // opened. Resume is the operator's move, and it re-arms the loop.
-    const modes = readPersistedModes(
+  test('a PAUSED goal restores the mode, and a finished one restores nothing', () => {
+    // Pause is an instruction: the toggle reads as on (the goal exists) while
+    // the chamber's driver refuses to advance it — the status is what decides,
+    // not a spawn flag. Resume is the operator's move.
+    const paused = readPersistedModes(
       line('chamber-goal-state', {
         enabled: true,
         goal: { id: 'g1', objective: 'x', status: 'paused', tokensUsed: 0, timeUsedSeconds: 0, createdAt: 0, updatedAt: 0 },
       }),
     );
-    expect(modes.goal).toBe(true);
-    expect(modes.goalLive).toBe(false);
-    expect(chamberModeEnv(modes).CHAMBER_GOAL_AUTO_CONTINUE).toBeUndefined();
+    expect(paused.goal).toBe(true);
+    expect(paused.goalLive).toBe(false);
+    expect(chamberModeEnv(paused).CHAMBER_MODES).toBe('goal');
   });
 
   test('a finished goal does not restore anything', () => {

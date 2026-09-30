@@ -11,8 +11,8 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { goalEnabledFromMarker, goalRecordFromMarker, parseChamberMarker } from '@/shared/lib/omp/mode/markers';
-import { CHAMBER_PLAN_STATE_MARKER } from '@/shared/lib/omp/mode/types';
+import { continuationFromMarker, goalEnabledFromMarker, goalRecordFromMarker, parseChamberMarker } from '@/shared/lib/omp/mode/markers';
+import { CHAMBER_GOAL_CONTINUATION_MARKER, CHAMBER_PLAN_STATE_MARKER } from '@/shared/lib/omp/mode/types';
 
 describe('parseChamberMarker', () => {
   test('parses a plan-state marker', () => {
@@ -59,5 +59,33 @@ describe('goal payload readers', () => {
   test('enabled is strict', () => {
     expect(goalEnabledFromMarker({ enabled: 'yes' })).toBe(false);
     expect(goalEnabledFromMarker({})).toBe(false);
+  });
+});
+
+describe('goal continuation reader', () => {
+  test('reads the turn the loop opened', () => {
+    const parsed = parseChamberMarker(`${CHAMBER_GOAL_CONTINUATION_MARKER}{"turn":3,"maxTurns":25}`);
+    expect(parsed?.marker).toBe(CHAMBER_GOAL_CONTINUATION_MARKER);
+    expect(continuationFromMarker(parsed!.payload)).toEqual({ turn: 3, maxTurns: 25 });
+  });
+
+  test('carries the stand-down reason out of the loop', () => {
+    const parsed = parseChamberMarker(
+      `${CHAMBER_GOAL_CONTINUATION_MARKER}{"turn":25,"maxTurns":25,"stopped":"max-turns"}`,
+    );
+    expect(continuationFromMarker(parsed!.payload)?.stopped).toBe('max-turns');
+  });
+
+  test('a turn count that is not 1-based is refused rather than rendered', () => {
+    // The child increments before it emits, so these are version skews — and a
+    // strip reading "turn NaN of undefined" is worse than no strip.
+    expect(continuationFromMarker({ turn: 0, maxTurns: 25 })).toBeNull();
+    expect(continuationFromMarker({ turn: 1.5, maxTurns: 25 })).toBeNull();
+    expect(continuationFromMarker({ turn: 3 })).toBeNull();
+    expect(continuationFromMarker({})).toBeNull();
+  });
+
+  test('an unknown stand-down reason is dropped, not stringified', () => {
+    expect(continuationFromMarker({ turn: 1, maxTurns: 2, stopped: 5 })).toEqual({ turn: 1, maxTurns: 2 });
   });
 });

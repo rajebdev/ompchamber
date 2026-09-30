@@ -27,6 +27,7 @@ import {
 } from '@/server/lib/omp/session/auto-title.server';
 import { scheduleQueueDelivery, type QueueDeliveryHost } from '@/server/lib/queue/delivery.server';
 import { loadStreamStatuses, markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
+import { driveGoalAfterTurn } from '@/server/lib/omp/session/goal-driver.server';
 import { NON_TERMINAL_CONTINUATION_GRACE_MS, type AgentEvent } from '@/server/lib/omp/rpc/constants';
 import type { ModeMirror } from '@/server/lib/omp/rpc/mode-mirror';
 
@@ -165,6 +166,11 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
         // An aborted run still skips: the operator stopped the turn, and the
         // next completed run is a better moment than a half-run transcript.
         if (!aborted) void triggerAutoSessionTitle(host, 'settle');
+        // The goal loop's decision point: an independent auditor is asked about
+        // this turn, and the chamber then either opens the next one (through the
+        // child's own hidden-message path) or records why it stopped. Only a
+        // settled, non-aborted run is auditable — an aborted one has no report.
+        if (!aborted) void driveGoalAfterTurn({ host, messages: event.messages });
         // The run truly ended — the server, not the browser, decides whether a
         // queued follow-up goes out next. A user-aborted run holds the queue
         // (stop-all semantics): the next run end or an explicit send picks it up.

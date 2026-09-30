@@ -39,15 +39,10 @@ describe('chamberModeEnv', () => {
     expect(chamberModeEnv({ plan: false, goal: false })).toEqual({ CHAMBER_MODES: '' });
   });
 
-  test('goal mode turns on automatic continuation', () => {
-    // Without the flag the restored goal would run one turn and stop, which is
-    // the behaviour the feature exists to avoid.
-    const env = chamberModeEnv({ plan: false, goal: true });
-    expect(env.CHAMBER_MODES).toBe('goal');
-    expect(env.CHAMBER_GOAL_AUTO_CONTINUE).toBe('1');
-  });
-
-  test('plan-only does NOT turn on continuation', () => {
-    expect(chamberModeEnv({ plan: true, goal: false }).CHAMBER_GOAL_AUTO_CONTINUE).toBeUndefined();
+  test('goal mode rides the selection, and nothing else', () => {
+    // The loop is the chamber's now, so the child gets no continuation flag: it
+    // opens a turn only when the chamber's auditor asks for one.
+    expect(chamberModeEnv({ plan: false, goal: true })).toEqual({ CHAMBER_MODES: 'goal' });
+    expect(chamberModeEnv({ plan: true, goal: true })).toEqual({ CHAMBER_MODES: 'plan,goal' });
   });
 });

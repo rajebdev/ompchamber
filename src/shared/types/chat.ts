@@ -150,6 +150,14 @@ export interface ChatMessageData {
    *  own metadata (model/provider/usage/…) is an assistant answer omp diverted
    *  into this field and renders as text — see chat/notice-row.ts. */
   notice?: string;
+  /**
+   * The `customType` of the entry a `notice` row came from (`goal-start`,
+   * `goal-continuation`, `ultrathink-notice`, …), when there is one. The text
+   * alone cannot say which notice this is: a goal's opening turn carries the
+   * bare objective, which is indistinguishable from any other prose — so the
+   * renderer that draws a specific card for one kind reads it from here.
+   */
+  noticeSource?: string;
   toolCalls?: ToolCallData[];
   actions?: (AgentActionData | ToolCallData)[];
   systemNote?: string;

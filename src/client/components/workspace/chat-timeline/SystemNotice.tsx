@@ -1,24 +1,53 @@
 import { useMemo, useRef, useState } from 'preact/hooks';
-import { AlertCircle, Bell, Bot, CheckCircle2, ChevronDown, Clock, Info, Layers } from 'lucide-preact';
+import { AlertCircle, Bell, Bot, CheckCircle2, ChevronDown, Clock, Info, Layers, Target } from 'lucide-preact';
 import { isCodeLike } from '@/shared/lib/code/language';
 import { highlightCode } from '@/shared/lib/code/syntax-highlight';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 import { useIsTruncated } from '@/client/hooks/ui/text-overflow';
 import { parseTaskNotice } from '@/shared/lib/chat/task-result-parser';
+import { parseGoalNotice, type GoalNoticeData } from '@/shared/lib/omp/mode/notice';
+import { GoalNotice } from '@/client/components/workspace/chat-timeline/GoalNotice';
 import { TaskResultContent } from '@/client/components/workspace/chat-timeline/TaskResultContent';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 
-interface SystemNoticeProps {
-  notice: string;
+const KIND_LABEL: Record<GoalNoticeData['kind'], string> = {
+  start: 'Goal started',
+  continuation: 'Goal continuation',
+  context: 'Goal context',
+};
+
+/** The card's one visible line when collapsed: a goal card names the objective
+ *  (its own badge already says which injection this is), never the raw comment
+ *  omp's continuation prompt opens with. */
+function goalNoticeTitle(goal: GoalNoticeData): string {
+  const first = goal.objective
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^#+\s*/, '').trim())
+    .find(Boolean);
+  return first ?? KIND_LABEL[goal.kind];
 }
 
-/** System notice collapsible — handles generic notices, structured <task-result> agent jobs, and <system-reminder> blocks. */
-export function SystemNotice({ notice }: SystemNoticeProps) {
-  const [isOpen, setIsOpen] = useState(false);
+interface SystemNoticeProps {
+  notice: string;
+  /** The `customType` this notice came from, when it has one — the only way to
+   *  recognize a goal's opening turn, whose text is the bare objective. */
+  source?: string;
+}
+
+/** System notice card — handles generic notices, structured <task-result> agent
+ *  jobs, and <system-reminder> blocks, all collapsed by default; a goal-mode
+ *  injection renders open and has no collapse control (see `forcedOpen`). */
+export function SystemNotice({ notice, source }: SystemNoticeProps) {
+  const [userOpen, setUserOpen] = useState(false);
   useSyntaxReady();
 
   // 1. Check if notice contains a structured <task-result> block
   const taskNotice = useMemo(() => parseTaskNotice(notice), [notice]);
+
+  // 1b. Goal-mode injections (objective / continuation / context) get their own
+  // card: their first line is a raw HTML comment and their body is the internal
+  // prompt, neither of which belongs in a "System Notice" subtitle.
+  const goalNotice = useMemo(() => parseGoalNotice(notice, source), [notice, source]);
 
   // 2. Check if notice is a <system-reminder> or action-reminder block
   const reminderInfo = useMemo(() => {
@@ -60,7 +89,9 @@ export function SystemNotice({ notice }: SystemNoticeProps) {
     };
   }, [notice]);
 
-  const rawTitle = taskNotice?.intro || reminderInfo?.title || genericInfo.firstLine || notice;
+  const rawTitle = goalNotice
+    ? goalNoticeTitle(goalNotice)
+    : taskNotice?.intro || reminderInfo?.title || genericInfo.firstLine || notice;
   // The subtitle is clipped by CSS at the card's own width, so the decision to
   // offer an expander is a MEASUREMENT, not a character count: 76 characters
   // fit a desktop timeline and are cut on a phone card. A char threshold left
@@ -84,6 +115,16 @@ export function SystemNotice({ notice }: SystemNoticeProps) {
     return lines.length > 1 || subtitleClipped;
   }, [taskNotice, notice, subtitleClipped]);
 
+  /**
+   * A goal injection is never folded away: it is the objective the turn ran
+   * against, and reading it is the whole point of the card. So it renders OPEN,
+   * with a header row in place of the toggle — no chevron, nothing to collapse.
+   * Every other notice keeps the collapsed-by-default behaviour.
+   */
+  const forcedOpen = goalNotice !== null;
+  const isOpen = forcedOpen || userOpen;
+  const canToggle = !forcedOpen && isExpandable;
+
   const noticeStyle = useMemo(() => {
     if (taskNotice) {
       const isError = taskNotice.status === 'failed' || taskNotice.status === 'error';
@@ -99,6 +140,14 @@ export function SystemNotice({ notice }: SystemNoticeProps) {
         icon: <CheckCircle2 size={13} />,
         badgeClass: 'bg-success/10 text-success',
         label: 'Task Result',
+        isError: false,
+      };
+    }
+    if (goalNotice) {
+      return {
+        icon: <Target size={13} />,
+        badgeClass: 'bg-ink/8 text-ink/70',
+        label: KIND_LABEL[goalNotice.kind],
         isError: false,
       };
     }
@@ -119,23 +168,23 @@ export function SystemNotice({ notice }: SystemNoticeProps) {
   }, [taskNotice, reminderInfo]);
 
   const handleToggle = () => {
-    if (!isExpandable) return;
-    setIsOpen((prev) => !prev);
+    if (!canToggle) return;
+    setUserOpen((prev) => !prev);
   };
 
   return (
     <div
       className={`mx-3 overflow-hidden rounded-xl border border-ink/10 bg-paper text-[12px] text-ink transition-colors ${
-        isExpandable ? 'hover:border-ink/20' : ''
+        canToggle ? 'hover:border-ink/20' : ''
       } select-text`}
     >
       <button
         type="button"
         onClick={handleToggle}
-        disabled={!isExpandable}
-        aria-expanded={isExpandable ? isOpen : undefined}
+        disabled={!canToggle}
+        aria-expanded={canToggle ? isOpen : undefined}
         className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors ${
-          isExpandable ? 'cursor-pointer hover:bg-ink/[0.03]' : 'cursor-default'
+          canToggle ? 'cursor-pointer hover:bg-ink/[0.03]' : 'cursor-default'
         } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/20`}
       >
         <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${noticeStyle.badgeClass}`}>
@@ -175,13 +224,13 @@ export function SystemNotice({ notice }: SystemNoticeProps) {
               </span>
             )}
           </span>
-          {!isOpen && rawTitle && (
+          {!forcedOpen && !isOpen && rawTitle && (
             <span ref={subtitleRef} className="truncate font-mono text-[10.5px] text-ink/45" title={rawTitle}>
               {rawTitle}
             </span>
           )}
         </span>
-        {isExpandable && (
+        {canToggle && (
           <ChevronDown
             size={14}
             className={`shrink-0 text-ink/35 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
@@ -189,10 +238,12 @@ export function SystemNotice({ notice }: SystemNoticeProps) {
         )}
       </button>
 
-      {isOpen && isExpandable && (
+      {(forcedOpen || (isOpen && isExpandable)) && (
         <div className="border-t border-ink/8 bg-canvas/40 px-3.5 py-2.5">
           {taskNotice ? (
             <TaskResultContent task={taskNotice} />
+          ) : goalNotice ? (
+            <GoalNotice data={goalNotice} />
           ) : reminderInfo ? (
             <div className="rounded-lg border border-ink/8 bg-paper p-3 text-[11.5px] leading-relaxed text-ink/85">
               <MarkdownRenderer content={reminderInfo.content} />

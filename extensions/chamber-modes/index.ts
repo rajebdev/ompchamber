@@ -48,7 +48,7 @@ import {
   CHAMBER_MODES_ENV,
   type GoalRecord,
 } from './protocol';
-import { armGoalContinuation, goalStateRecord, installGoalContinuation } from './goal';
+import { goalStateRecord } from './goal';
 import { installPlanProposal } from './plan';
 
 
@@ -204,14 +204,11 @@ export default function chamberModes(api: ModeApi): void {
   api.on?.('goal_updated', (event: unknown, ctx: ExtensionCtx) => {
     const payload = event as { goal?: GoalRecord | null; state?: { enabled?: boolean } | null };
     const record = { goal: payload.goal ?? null, enabled: payload.state?.enabled === true };
-    // Arming here covers the paths the composer's dispatch cannot see: the
-    // MODEL calling `goal({op:"create"})` at the end of a guided interview, and
-    // omp's own `/goal` typed in a TUI attached to the same session. Both make
-    // the goal live in THIS process, which is exactly what the loop needs.
-    if (record.enabled) armGoalContinuation();
+    // One record per transition, so the chamber's goal driver reads the state
+    // it audits (and a reload recovers it) no matter who moved the goal: the
+    // composer, the MODEL calling `goal({op:"create"})` after a guided
+    // interview, or omp's own `/goal` typed in a TUI on the same session.
     api.appendEntry?.(CHAMBER_GOAL_STATE_ENTRY, record);
     emit(ctx, CHAMBER_GOAL_STATE_MARKER, record);
   });
-
-  installGoalContinuation(api, activeSession, emit);
 }

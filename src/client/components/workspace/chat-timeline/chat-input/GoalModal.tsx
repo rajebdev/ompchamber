@@ -32,6 +32,9 @@ export interface GoalModalProps {
   goal: boolean;
   goalRecord: GoalRecord | null;
   pending: boolean;
+  /** The default token budget a NEW goal starts with (Settings → Chats → Goal
+   *  Mode). Null means no budget, which is also what an empty field means. */
+  defaultBudget?: number | null;
   onClose: () => void;
   onSubmit: (action: GoalAction) => void;
 }
@@ -45,23 +48,37 @@ function parseBudget(raw: string): { value: number | 'off' } | { error: string }
   return { value: parsed };
 }
 
-export function GoalModal({ open, goal, goalRecord, pending, onClose, onSubmit }: GoalModalProps) {
+/** An empty field means "whatever this install defaults to" — not zero. */
+function parseMaxTurns(raw: string): { value: number | 'default' } | { error: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) return { value: 'default' };
+  const parsed = Number.parseInt(trimmed, 10);
+  if (!Number.isInteger(parsed) || parsed <= 0) return { error: 'Max turns must be a positive integer.' };
+  return { value: parsed };
+}
+
+export function GoalModal({ open, goal, goalRecord, pending, defaultBudget = null, onClose, onSubmit }: GoalModalProps) {
   const [objective, setObjective] = useState('');
   const [budget, setBudget] = useState('');
+  const [maxTurns, setMaxTurns] = useState('');
   const [guided, setGuided] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // A fresh open starts from a blank form: a previous objective left behind
-  // would be submitted as the new one by a careless Enter.
+  // would be submitted as the new one by a careless Enter. The budget field
+  // starts from the install's default (Settings → Chats → Goal Mode) rather
+  // than blank, so the number a goal is created with is visible before the
+  // create — and clearing it is still how you ask for no budget.
   useEffect(() => {
     if (!open) return;
     setObjective('');
-    setBudget('');
+    setBudget(defaultBudget === null ? '' : String(defaultBudget));
+    setMaxTurns('');
     setGuided(false);
     setError(null);
     textareaRef.current?.focus();
-  }, [open]);
+  }, [open, defaultBudget]);
 
   useEffect(() => {
     if (!open) return;
@@ -89,10 +106,16 @@ export function GoalModal({ open, goal, goalRecord, pending, onClose, onSubmit }
       setError(parsed.error);
       return;
     }
+    const turns = parseMaxTurns(maxTurns);
+    if ('error' in turns) {
+      setError(turns.error);
+      return;
+    }
     onSubmit({
       kind: 'create',
       objective: objective.trim(),
       ...(parsed.value === 'off' ? {} : { tokenBudget: parsed.value }),
+      ...(turns.value === 'default' ? {} : { maxTurns: turns.value }),
     });
     onClose();
   };
@@ -204,8 +227,30 @@ export function GoalModal({ open, goal, goalRecord, pending, onClose, onSubmit }
                   value={budget}
                   onChange={(event) => setBudget(event.currentTarget.value)}
                   placeholder="optional — e.g. 200000, or off"
+                  aria-label="Token budget"
                   className="w-full rounded-lg border border-ink/15 bg-paper px-3 py-1.5 font-mono text-[11.5px] outline-none focus:border-ink"
                 />
+                {defaultBudget !== null && (
+                  <p className="mt-1 text-[10px] text-ink/45">
+                    Prefilled from Settings → Chats → Goal Mode; clear it for no budget.
+                  </p>
+                )}
+              </div>
+              <div className="flex-1">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-ink/45">
+                  Max turns
+                </label>
+                <input
+                  value={maxTurns}
+                  onChange={(event) => setMaxTurns(event.currentTarget.value)}
+                  placeholder="auto — this install's default"
+                  inputMode="numeric"
+                  aria-label="Max automatic turns"
+                  className="w-full rounded-lg border border-ink/15 bg-paper px-3 py-1.5 font-mono text-[11.5px] outline-none focus:border-ink"
+                />
+                <p className="mt-1 text-[10px] text-ink/45">
+                  Automatic continuations before the loop stops itself. The auditor can end it sooner; this is the hard stop.
+                </p>
               </div>
             </div>
             <label className="flex items-start gap-2 text-[11.5px] text-ink/75">

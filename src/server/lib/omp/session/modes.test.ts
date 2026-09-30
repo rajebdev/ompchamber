@@ -20,7 +20,14 @@ const line = (customType: string, data: unknown) => JSON.stringify({ type: 'cust
 describe('readPersistedModes', () => {
   test('reports nothing for a session with no mode entries', () => {
     const body = JSON.stringify({ type: 'message', message: { role: 'user', content: 'hi' } });
-    expect(readPersistedModes(body)).toEqual({ plan: false, goal: false, goalLive: false, goalRecord: null });
+    expect(readPersistedModes(body)).toEqual({
+      plan: false,
+      goal: false,
+      goalLive: false,
+      goalRecord: null,
+      goalContinuation: null,
+      goalMaxTurns: null,
+    });
   });
 
   test('takes the LAST transition, not the first', () => {
@@ -81,5 +88,46 @@ describe('readPersistedModes', () => {
   test('ignores a malformed line rather than throwing', () => {
     const body = ['{not json', line('chamber-plan-state', { enabled: true })].join('\n');
     expect(readPersistedModes(body).plan).toBe(true);
+  });
+
+  test('a loop verdict is read back, and only an entry that CARRIES it speaks', () => {
+    // The count lives in the child's memory, so this entry is the only way a
+    // reload learns the loop stood down. Everything after it is a goal
+    // transition (`goal_updated` on each token update) with nothing to say
+    // about the loop — treating that silence as "no verdict" would erase it.
+    const goal = { id: 'g1', objective: 'x', status: 'active', tokensUsed: 9, timeUsedSeconds: 3, createdAt: 0, updatedAt: 0 };
+    const body = [
+      line('chamber-goal-state', { enabled: true, goal, continuation: { turn: 3, maxTurns: 3, stopped: 'max-turns' } }),
+      line('chamber-goal-state', { enabled: true, goal }),
+    ].join('\n');
+    expect(readPersistedModes(body).goalContinuation).toEqual({ turn: 3, maxTurns: 3, stopped: 'max-turns' });
+  });
+
+  test('an explicit null clears the verdict the way a Resume does', () => {
+    const goal = { id: 'g1', objective: 'x', status: 'paused', tokensUsed: 9, timeUsedSeconds: 3, createdAt: 0, updatedAt: 0 };
+    const body = [
+      line('chamber-goal-state', { enabled: true, goal, continuation: { turn: 3, maxTurns: 3, stopped: 'budget' } }),
+      line('chamber-goal-state', { enabled: true, goal, continuation: null }),
+    ].join('\n');
+    expect(readPersistedModes(body).goalContinuation).toBeNull();
+  });
+
+  test('a malformed verdict is dropped rather than rendered', () => {
+    const goal = { id: 'g1', objective: 'x', status: 'active', tokensUsed: 1, timeUsedSeconds: 1, createdAt: 0, updatedAt: 0 };
+    const body = line('chamber-goal-state', { enabled: true, goal, continuation: { turn: 0, maxTurns: 3 } });
+    expect(readPersistedModes(body).goalContinuation).toBeNull();
+  });
+
+  test('the goal\'s own turn ceiling rides the verdict and survives Resume', () => {
+    const goal = { id: 'g1', objective: 'x', status: 'active', tokensUsed: 1, timeUsedSeconds: 1, createdAt: 0, updatedAt: 0 };
+    const body = [
+      line('chamber-goal-state', { enabled: true, goal, continuation: { turn: 2, maxTurns: 5 }, maxTurns: 5 }),
+      // Resume clears the VERDICT; the ceiling must not go with it, or the goal
+      // would silently fall back to the install default after a resume.
+      line('chamber-goal-state', { enabled: true, goal, continuation: null }),
+    ].join('\n');
+    const parsed = readPersistedModes(body);
+    expect(parsed.goalContinuation).toBeNull();
+    expect(parsed.goalMaxTurns).toBe(5);
   });
 });

@@ -28,6 +28,7 @@ const SHARED_KEYS = [
   'CHAMBER_PLAN_DECISION_MARKER',
   'CHAMBER_PLAN_SAVED_MARKER',
   'CHAMBER_GOAL_CONTINUATION_MARKER',
+  'CHAMBER_GOAL_EVALUATING_MARKER',
 ] as const;
 
 describe('extension/shared mode constants', () => {

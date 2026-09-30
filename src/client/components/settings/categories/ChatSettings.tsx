@@ -1,5 +1,6 @@
 import type { SettingsState } from '@/shared/types';
 import { ChatFollowUpSection } from '@/client/components/settings/categories/chat-settings/FollowUpSection';
+import { ChatGoalSection } from '@/client/components/settings/categories/chat-settings/GoalSection';
 import { ChatKeybindingsSection } from '@/client/components/settings/categories/chat-settings/KeybindingsSection';
 import { ChatTitleSection } from '@/client/components/settings/categories/chat-settings/TitleSection';
 import { ChatTransportSection } from '@/client/components/settings/categories/chat-settings/TransportSection';
@@ -21,7 +22,10 @@ export function ChatSettings({ settings, onUpdate }: ChatSettingsProps) {
       {/* 3. Follow-up Behavior (Interactive Selector Cards) */}
       <ChatFollowUpSection settings={settings} onUpdate={onUpdate} />
 
-      {/* 4. Keyboard Shortcuts Configurator */}
+      {/* 4. Goal Mode (auditor model + default budget) */}
+      <ChatGoalSection settings={settings} onUpdate={onUpdate} />
+
+      {/* 5. Keyboard Shortcuts Configurator */}
       <ChatKeybindingsSection settings={settings} onUpdate={onUpdate} />
     </div>
   );

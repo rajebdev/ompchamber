@@ -28,13 +28,16 @@ import {
   CHAMBER_MODE_ERROR_MARKER,
   CHAMBER_MODE_STATE_MARKER,
   CHAMBER_PLAN_STATE_MARKER,
+  type GoalContinuationStop,
 } from './protocol';
 import {
-  armGoalContinuation,
+  continueGoalTurn,
   createGoalFromSelection,
-  disarmGoalContinuation,
+  finishGoalTurn,
   goalStateRecord,
   parseGoalArgs,
+  persistContinuation,
+  resetGoalContinuationTurns,
   startGoalTurn,
   startGuidedGoal,
 } from './goal';
@@ -119,19 +122,32 @@ export async function dispatchGoal(
 
   switch (action) {
     case 'create': {
-      const { objective, tokenBudget } = parseGoalArgs(rest);
+      const { objective, tokenBudget, maxTurns } = parseGoalArgs(rest);
       if (!objective) {
         emit(ctx, CHAMBER_MODE_ERROR_MARKER, { reason: 'an objective is required' });
         return;
       }
-      await createGoalFromSelection(session, { objective, tokenBudget });
+      await createGoalFromSelection(session, { objective, tokenBudget, maxTurns });
       // Both halves of what omp's own `/goal <objective>` does: the record AND
       // the opening turn. `createGoal` opens no turn by itself, so without the
       // second call the goal went live with an idle child — measured on a real
-      // session, where the toggle read `goalLive` and nothing ever ran.
-      armGoalContinuation();
+      // session, where the toggle read `goalLive` and nothing ever ran. From
+      // there the CHAMBER drives: it audits this turn and calls `continue`.
       startGoalTurn(api, objective);
       emit(ctx, CHAMBER_GOAL_STATE_MARKER, goalStateRecord(session));
+      return;
+    }
+    // The chamber's goal driver asks for one more automatic turn after its
+    // auditor said "keep going". The hidden message can only be sent from in
+    // here, and so are the two hard stops that back the auditor up.
+    case 'continue':
+      continueGoalTurn({ api, session, emit, ctx, maxTurns: parseGoalArgs(rest).maxTurns });
+      return;
+    // The auditor's terminal verdict (`complete`, `blocked`, or an audit that
+    // could not be taken): record why the loop stopped driving.
+    case 'done': {
+      const { stopped } = parseGoalArgs(rest);
+      finishGoalTurn({ api, session, emit, ctx }, (stopped ?? 'complete') as GoalContinuationStop);
       return;
     }
     case 'guided': {
@@ -143,18 +159,26 @@ export async function dispatchGoal(
     }
     case 'pause':
       await runtime?.pauseGoal();
+      // The verdict describes a loop that was running; while the goal is paused
+      // it is stale, and Resume clears it outright — so neither state should be
+      // recoverable as "stopped at N turns" after a reload.
+      persistContinuation(api, session, null);
       emit(ctx, CHAMBER_GOAL_STATE_MARKER, goalStateRecord(session));
       return;
     case 'resume':
       await runtime?.resumeGoal();
-      // A resumed goal must loop too, and the operator just asked for it.
-      armGoalContinuation();
+      // A resumed goal must loop too, and the operator just asked for it. The
+      // turn counter restarts with it: a goal that stopped at `max-turns` would
+      // otherwise stand down again on the very next decision, making Resume a
+      // button that does nothing until the child is restarted. The chamber
+      // nudges the loop right after this answers, so an idle session starts
+      // working without waiting for a user message.
+      resetGoalContinuationTurns();
+      persistContinuation(api, session, null);
       emit(ctx, CHAMBER_GOAL_STATE_MARKER, goalStateRecord(session));
       return;
     case 'drop':
       await runtime?.dropGoal();
-      // Nothing left to continue, so the process stops claiming there is.
-      disarmGoalContinuation();
       emit(ctx, CHAMBER_GOAL_STATE_MARKER, { goal: null, enabled: false });
       return;
     case 'budget': {

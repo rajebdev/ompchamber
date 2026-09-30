@@ -198,6 +198,9 @@ export function noticeFromCustomMessage(record: Record<string, unknown>): ChatMe
     role: 'ai',
     content: '',
     notice,
+    // The entry's own type, so a renderer can draw a specific card for a kind
+    // whose text is ambiguous on its own (`goal-start` is the bare objective).
+    noticeSource: customType || undefined,
     date,
   };
 }
