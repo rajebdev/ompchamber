@@ -79,6 +79,27 @@ class StubResizeObserver {
   fire() { this.callback(); }
 }
 
+/** Frame callbacks the hook's observer deferred; index 0 is handle 1. */
+const pendingFrames: Array<(() => void) | null> = [];
+
+/**
+ * Drain the deferred frames. The resize-driven pin is deliberately NOT applied
+ * inside the ResizeObserver delivery — a layout write there makes the browser
+ * re-run its observers in the same frame, and past its depth limit it reports
+ * "ResizeObserver loop completed with undelivered notifications." — so a test
+ * that fires an observer has to let the frame it scheduled run before the
+ * geometry it asserts on has been applied.
+ */
+async function flushFrames() {
+  for (let i = 0; i < pendingFrames.length; i++) {
+    const callback = pendingFrames[i];
+    pendingFrames[i] = null;
+    if (!callback) continue;
+    await act(async () => { callback(); });
+  }
+  pendingFrames.length = 0;
+}
+
 interface ProbeProps {
   sessionId: string;
   messages: ChatMessageData[];
@@ -138,6 +159,13 @@ beforeAll(async () => {
     (globalThis as Record<string, unknown>)[key] = (win as unknown as Record<string, unknown>)[key];
   }
   (globalThis as Record<string, unknown>).ResizeObserver = StubResizeObserver;
+  // The hook defers its resize-driven pin by one frame, and happy-dom's own rAF
+  // never runs without a real event loop, so the queue is drained by hand:
+  // `flushFrames()` runs whatever a delivery scheduled.
+  (globalThis as Record<string, unknown>).requestAnimationFrame = (cb: () => void) => pendingFrames.push(cb);
+  (globalThis as Record<string, unknown>).cancelAnimationFrame = (handle: number) => {
+    pendingFrames[handle - 1] = null;
+  };
   // Static imports cannot work here: Preact binds its environment at module
   // evaluation time, so the modules below must load after those DOM globals.
   ({ useChatTimelineScroll } = await import('@/client/hooks/chat/timeline/scroll'));
@@ -243,6 +271,9 @@ describe('timeline scroll', () => {
     const observer = StubResizeObserver.latest();
     scrolled.length = 0;
     await act(async () => { observer.fire(); });
+    // The delivery itself writes nothing — that is the loop fix.
+    expect(scrolled.length).toBe(0);
+    await flushFrames();
     expect(scrolled.length).toBe(1);
     expect(scrolled[0].behavior).toBe('instant');
     expect(probe.el.scrollTop).toBe(geometry.height - geometry.viewport);
@@ -252,9 +283,38 @@ describe('timeline scroll', () => {
     scrolled.length = 0;
     geometry.height += 800;
     await act(async () => { StubResizeObserver.latest().fire(); });
+    await flushFrames();
     expect(scrolled.length).toBe(0);
     expect(probe.el.scrollTop).toBe(400);
     expect(scroll().followRef.current).toBe(false);
+    await unmountProbe(probe);
+  });
+
+  test('a delivery storm collapses to one pin, and none of them writes inside the delivery', async () => {
+    scrolled.length = 0;
+    geometry.top = 0;
+    geometry.height = 5000;
+    const probe = await mountProbe('a', [message('a1')]);
+
+    await updateProbe(probe, 'a', [message('a1')]);
+    scrolled.length = 0;
+
+    // A panel-width transition delivers a new box every frame. Each delivery
+    // used to write `scrollTop` synchronously, which is what made the browser
+    // re-run its observers within the frame and eventually report a
+    // ResizeObserver loop; the deferred pin coalesces the whole burst into one.
+    const observer = StubResizeObserver.latest();
+    geometry.height += 800;
+    await act(async () => { observer.fire(); });
+    geometry.height += 800;
+    await act(async () => { observer.fire(); });
+    geometry.height += 800;
+    await act(async () => { observer.fire(); });
+    expect(scrolled.length).toBe(0);
+
+    await flushFrames();
+    expect(scrolled.length).toBe(1);
+    expect(probe.el.scrollTop).toBe(geometry.height - geometry.viewport);
     await unmountProbe(probe);
   });
 });

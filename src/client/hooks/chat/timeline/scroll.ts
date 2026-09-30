@@ -174,17 +174,44 @@ export function useChatTimelineScroll(options: ChatTimelineScrollOptions = {}): 
   // — a session picked from the workspace picker swaps the whole subtree in,
   // and the callback ref fires before this effect, so the node is always
   // available here.
+  //
+  // The pin is DEFERRED to the next frame, and that is a correctness
+  // requirement, not a tuning choice. `pinToBottom` assigns `scrollTop`, which
+  // is a layout write — and a layout write made from INSIDE a delivery is what
+  // makes the browser re-run the observers within the same frame. It does that
+  // until it hits its per-frame depth limit, then reports
+  // "ResizeObserver loop completed with undelivered notifications." — measured
+  // here: a panel-width transition burst delivered 34 times over 18 frames with
+  // 18 of those deliveries writing `scrollTop`, and 13 frames saw the observer
+  // run twice. The report is not cosmetic: an uncaught page error raises Bun's
+  // dev-client "Runtime Error" overlay (z-index 2147483647) over the whole app,
+  // so resizing a panel could cover the UI with a warning about the timeline's
+  // own auto-scroll. Deferring also coalesces a burst into ONE write instead of
+  // one per delivery. The delay is invisible: the growth this reacts to is a
+  // layout that has already been painted, and the rAF runs before the next
+  // paint.
+  //
+  // `syncFollowBottom` only sets state, but it runs in the same deferred tick
+  // so the affordance and the pin always describe the same geometry.
   useEffect(() => {
     syncFollowBottom();
     if (typeof ResizeObserver === 'undefined') return;
     const container = scrollRef.current;
+    let frame: number | null = null;
     const observer = new ResizeObserver(() => {
-      if (followRef.current) pinToBottom('instant');
-      syncFollowBottom();
+      if (frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        if (followRef.current) pinToBottom('instant');
+        syncFollowBottom();
+      });
     });
     if (container) observer.observe(container);
     if (contentNode) observer.observe(contentNode);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
   }, [contentNode, pinToBottom, syncFollowBottom]);
 
   useEffect(() => () => {
