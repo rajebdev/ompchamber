@@ -17,6 +17,7 @@ import { ensureTlsCertificate, isTlsEnabledByArgv } from '@/server/lib/lifecycle
 import { SHELL_ROUTE } from '@/server/lib/lifecycle/shell-route';
 import { isMockMode } from '@/server/mock.server';
 import { stopDiscoveryRootsWatch, syncDiscoveryRootsWatch } from '@/server/lib/omp/config/roots-watch.server';
+import { startScheduleRuntime, stopScheduleRuntime } from '@/server/lib/schedule/runtime.server';
 
 // Refuse to run without a resolvable omp binary — before the listener opens and
 // before the first request can reach a route that shells out to it. The database
@@ -202,6 +203,15 @@ try {
 }
 
 /**
+ * The scheduled-task clock. Started after the listener is up and the watchers
+ * are attached, so a task that fires early cannot race the schema or the
+ * discovery roots; the runtime's own first tick is delayed for the same reason.
+ * Idempotent, and anchored on `globalThis` — a `bun --hot` reload must not
+ * leave a second interval running.
+ */
+startScheduleRuntime();
+
+/**
  * What omp reports it can actually run. A live RPC round-trip: a cold utility
  * process takes seconds, which is why it runs after the listener is up. Side
  * benefit — it warms the shared utility process the model picker drives, so the
@@ -232,6 +242,7 @@ async function logDetectedRegistry(): Promise<void> {
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.once(signal, () => {
     stopDiscoveryRootsWatch();
+    stopScheduleRuntime();
     void app.stop();
     process.exit(0);
   });

@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
 import { useSearchParams } from '@/client/lib/router/search-params';
-import { AboutModal, NewWorkspaceModal, SchedulerModal, SettingsModal } from '@/client/components/layout/session-sidebar/Modals';
+import { AboutModal, NewWorkspaceModal, SettingsModal } from '@/client/components/layout/session-sidebar/Modals';
+import { SchedulerModal } from '@/client/components/layout/session-sidebar/scheduler-modal';
 import { SessionSidebarHeader } from '@/client/components/layout/session-sidebar/Header';
 import { SessionSidebarToolbar } from '@/client/components/layout/session-sidebar/Toolbar';
 import { SessionSidebarFooter } from '@/client/components/layout/session-sidebar/Footer';
@@ -12,6 +13,7 @@ import { useScrollbarFade } from '@/client/hooks/ui/scrollbar-fade';
 import { useToasts } from '@/client/hooks/ui/toasts';
 import { useUpdates } from '@/client/hooks/ui/updates';
 import { useSessionSidebarController } from '@/client/hooks/chat/omp/session-sidebar-controller';
+import { useScheduledTaskCount } from '@/client/hooks/workspace/scheduled-tasks';
 
 export function SessionSidebar({ className = '', onClose, appSettings = {} }: { className?: string, onClose?: () => void, appSettings?: Record<string, any> }) {
   const {
@@ -41,6 +43,7 @@ export function SessionSidebar({ className = '', onClose, appSettings = {} }: { 
   // Modals for new workspace and scheduler
   const [newWorkspaceOpen, setNewWorkspaceOpen] = useState(false);
   const [schedulerOpen, setSchedulerOpen] = useState(false);
+  const scheduledCount = useScheduledTaskCount();
   const updates = useUpdates();
   const { toasts, pushToast, dismissToast } = useToasts();
 
@@ -106,6 +109,7 @@ export function SessionSidebar({ className = '', onClose, appSettings = {} }: { 
           onSortChange={handleSortChange}
           onNewWorkspace={() => setNewWorkspaceOpen(true)}
           onScheduler={() => setSchedulerOpen(true)}
+          scheduledCount={scheduledCount}
           onRefresh={refreshNow}
           refreshing={refreshing}
           onClose={onClose}
@@ -169,7 +173,12 @@ export function SessionSidebar({ className = '', onClose, appSettings = {} }: { 
       />
 
       {/* Scheduler Modal */}
-      <SchedulerModal isOpen={schedulerOpen} onClose={() => setSchedulerOpen(false)} />
+      <SchedulerModal
+        isOpen={schedulerOpen}
+        onClose={() => setSchedulerOpen(false)}
+        activeSessionId={typeof sessionParam === 'string' ? sessionParam : null}
+        onToast={pushToast}
+      />
 
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </>

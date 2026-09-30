@@ -17,6 +17,8 @@ interface SessionSidebarToolbarProps {
   onSortChange: (opt: SessionSortOption) => void;
   onNewWorkspace: () => void;
   onScheduler: () => void;
+  /** Armed scheduled tasks, for the Calendar button's badge. */
+  scheduledCount: number;
   onRefresh: () => void;
   /** True while the user-initiated refresh is in flight — spins the icon. */
   refreshing: boolean;
@@ -38,6 +40,7 @@ export function SessionSidebarToolbar({
   onSortChange,
   onNewWorkspace,
   onScheduler,
+  scheduledCount,
   onRefresh,
   refreshing,
   onClose,
@@ -47,7 +50,20 @@ export function SessionSidebarToolbar({
       <div className="flex items-center justify-between px-1 text-ink/60">
         <div className="flex space-x-3 items-center">
           <FolderPlus size={14} className="hover:text-ink cursor-pointer"  onClick={onNewWorkspace} />
-          <Calendar size={14} className="hover:text-ink cursor-pointer" onClick={onScheduler} />
+          <button
+            type="button"
+            title={scheduledCount > 0 ? `Scheduled tasks (${scheduledCount} armed)` : 'Scheduled tasks'}
+            aria-label={scheduledCount > 0 ? `Scheduled tasks, ${scheduledCount} armed` : 'Scheduled tasks'}
+            onClick={onScheduler}
+            className="relative inline-flex cursor-pointer bg-transparent border-0 p-0 text-ink/60 hover:text-ink transition-colors"
+          >
+            <Calendar size={14} />
+            {scheduledCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[10px] h-[10px] px-[2px] rounded-full bg-ink text-canvas text-[7px] leading-[10px] text-center font-semibold">
+                {scheduledCount > 9 ? '9+' : scheduledCount}
+              </span>
+            )}
+          </button>
           <button
             type="button"
             title="Refresh sessions"

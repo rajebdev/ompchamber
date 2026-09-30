@@ -14,6 +14,7 @@
 import type { DbClient } from '@/server/lib/db/client';
 import { migrateQueueTableFk } from '@/server/lib/queue/schema-migration.server';
 import { ensureBtwSchema } from '@/server/lib/btw/schema.server';
+import { ensureScheduleSchema } from '@/server/lib/schedule/schema.server';
 import { migrateWorkspaceFolderColumns } from '@/shared/lib/workspace/schema-migrations';
 import { migrateSessionStreamStateColumns } from '@/shared/lib/omp/session/schema-migrations';
 
@@ -98,6 +99,8 @@ export async function initSchema(db: DbClient): Promise<void> {
   await migrateSessionStreamStateColumns(db);
   // Side-question tables live in their own module (see schema.server.ts).
   await ensureBtwSchema(db);
+  // Scheduled-task tables, same reasoning: their own module.
+  await ensureScheduleSchema(db);
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS files (

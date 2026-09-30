@@ -4,12 +4,14 @@ import { MobileSessionToolbar } from '@/client/components/mobile/mobile-session-
 import { MobileSessionList } from '@/client/components/mobile/mobile-session-sidebar/List';
 import { MobileSessionFooter } from '@/client/components/mobile/mobile-session-sidebar/Footer';
 import { ToastStack } from '@/client/components/common/ToastStack';
-import { AboutModal, NewWorkspaceModal, SchedulerModal } from '@/client/components/layout/session-sidebar/Modals';
+import { AboutModal, NewWorkspaceModal } from '@/client/components/layout/session-sidebar/Modals';
+import { SchedulerModal } from '@/client/components/layout/session-sidebar/scheduler-modal';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 import { useScrollbarFade } from '@/client/hooks/ui/scrollbar-fade';
 import { useToasts } from '@/client/hooks/ui/toasts';
 import { useUpdates } from '@/client/hooks/ui/updates';
 import { useSessionSidebarController } from '@/client/hooks/chat/omp/session-sidebar-controller';
+import { useScheduledTaskCount } from '@/client/hooks/workspace/scheduled-tasks';
 import { MobileSessionListSkeleton } from '@/client/components/mobile/mobile-session-sidebar/Skeleton';
 
 interface MobileSessionSidebarProps {
@@ -60,6 +62,7 @@ export function MobileSessionSidebar({
   // Modals state (matching desktop)
   const [newWorkspaceOpen, setNewWorkspaceOpen] = useState(false);
   const [schedulerOpen, setSchedulerOpen] = useState(false);
+  const scheduledCount = useScheduledTaskCount();
   const [aboutOpen, setAboutOpen] = useState(false);
   const updates = useUpdates();
   const { toasts, pushToast, dismissToast } = useToasts();
@@ -126,6 +129,7 @@ export function MobileSessionSidebar({
         onNewSession={handleNewSessionAndClose}
         onNewWorkspace={() => setNewWorkspaceOpen(true)}
         onScheduler={() => setSchedulerOpen(true)}
+        scheduledCount={scheduledCount}
         onRefresh={refreshNow}
         refreshing={refreshing}
         onToggleOptions={() => setOptionsOpen(!optionsOpen)}
@@ -175,6 +179,8 @@ export function MobileSessionSidebar({
       <SchedulerModal
         isOpen={schedulerOpen}
         onClose={() => setSchedulerOpen(false)}
+        activeSessionId={activeSessionId === null ? null : String(activeSessionId)}
+        onToast={pushToast}
       />
       <AboutModal
         isOpen={aboutOpen}

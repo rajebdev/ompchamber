@@ -103,6 +103,19 @@ export const REPO_DISCOVERY_POLL_MS = 1_500;
 export const TODO_REFRESH_EVENT_THROTTLE_MS = 400;
 
 /**
+ * Scheduled-task poll while the scheduler modal is open, and the idle poll
+ * behind the toolbar badge. The badge's job is to answer "is anything armed",
+ * which changes only when the user edits a task — so it polls slowly and leans
+ * on `omp:schedule-updated` for the edit it just made.
+ */
+export const SCHEDULE_POLL_MS = 10_000;
+export const SCHEDULE_BADGE_POLL_MS = 30_000;
+
+/** Window event dispatched after any scheduled-task write, so the badge and
+ *  the open modal reflect an edit without waiting for their own poll. */
+export const SCHEDULE_UPDATED_EVENT = 'omp:schedule-updated';
+
+/**
  * CDP state/screencast poll. Latency-sensitive — the browser panel streams a
  * live page, so this one stays tight on purpose.
  */

@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'preact/hooks';
-import { Clock, Columns, FolderOpen, Home, Maximize2, Plus, Send, Settings2, Terminal, X } from 'lucide-preact';
+import { FolderOpen, Home, X } from 'lucide-preact';
 import { SettingsModal } from '@/client/components/settings/LazyModal';
 import { FolderPicker } from '@/client/components/common/FolderPicker';
 
+/**
+ * Modals shared by the desktop and mobile sidebars. The scheduler lives in its
+ * own folder (`./scheduler-modal`) — it is a real feature with state, a server
+ * API and its own sub-components, not a presentational dialog.
+ */
 export { SettingsModal };
 export { AboutModal } from '@/client/components/layout/session-sidebar/about-modal';
 
@@ -135,75 +140,6 @@ export function NewWorkspaceModal({ isOpen, onClose, onCreate }: NewWorkspaceMod
           onClose={() => setPickerOpen(false)}
         />
       )}
-    </div>
-  );
-}
-
-interface SchedulerModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-}
-
-export function SchedulerModal({ isOpen, onClose }: SchedulerModalProps) {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 bg-ink/20 z-50 flex items-center justify-center p-4">
-      <div className="bg-paper border border-ink/10 rounded-lg shadow-xl w-full max-w-2xl flex flex-col overflow-hidden">
-        <div className="flex justify-between items-center p-4 border-b border-ink/10 bg-paper">
-          <div className="flex items-center space-x-2 text-ink">
-            <Clock size={16} />
-            <h3 className="font-semibold text-sm">Schedule Chat / Task</h3>
-          </div>
-          <X size={16} className="cursor-pointer hover:text-ink/60" onClick={onClose} />
-        </div>
-        
-        <div className="p-4 bg-canvas">
-          <div className="w-full bg-paper border border-ink/20 rounded-md focus-within:border-ink transition-colors flex flex-col shadow-sm">
-            <div className="flex items-center px-3 py-2 border-b border-ink/5 text-ink/60 space-x-2">
-              <button className="hover:text-ink transition-colors"><Plus size={14} /></button>
-              <button className="hover:text-ink transition-colors"><Columns size={14} /></button>
-              <button className="hover:text-ink transition-colors"><Maximize2 size={14} /></button>
-              
-              <div className="flex-1"></div>
-              
-              <div className="flex items-center space-x-2 text-xs text-ink">
-                <span className="font-medium">Schedule:</span>
-                <select className="bg-transparent border border-ink/20 rounded px-1.5 py-0.5 outline-none focus:border-ink/50">
-                  <option value="once">Once</option>
-                  <option value="every">Every</option>
-                  <option value="cron">Cron</option>
-                </select>
-                <input type="text" placeholder="e.g. 5 mins, 0 0 * * *" className="w-32 bg-transparent border border-ink/20 rounded px-2 py-0.5 outline-none focus:border-ink/50" />
-              </div>
-            </div>
-            
-            <textarea 
-              placeholder="Describe your scheduled task, ask a question, or paste commands..." 
-              className="w-full bg-transparent border-none px-4 py-4 text-sm focus:outline-none resize-none text-ink placeholder-ink/40 min-h-[120px]"
-            />
-            
-            <div className="flex items-center justify-between px-3 py-2 border-t border-ink/5">
-              <div className="flex items-center space-x-3 text-ink/60 text-xs">
-                <div className="flex items-center space-x-1 hover:text-ink cursor-pointer">
-                  <Settings2 size={14} />
-                  <span>Default</span>
-                </div>
-                <div className="flex items-center space-x-1 hover:text-ink cursor-pointer">
-                  <Terminal size={14} />
-                  <span>[CMD] DeepSeek V4 Flash</span>
-                </div>
-              </div>
-              <button 
-                onClick={onClose}
-                className="flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded bg-ink text-canvas hover:bg-ink/80 transition-colors text-xs font-medium"
-              >
-                <span>Schedule Task</span>
-                <Send size={12} className="ml-px" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

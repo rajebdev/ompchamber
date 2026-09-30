@@ -12,6 +12,8 @@ interface MobileSessionToolbarProps {
   onNewSession: () => void;
   onNewWorkspace: () => void;
   onScheduler: () => void;
+  /** Armed scheduled tasks, for the Calendar button's badge. */
+  scheduledCount: number;
   onRefresh: () => void;
   /** True while the user-initiated refresh is in flight — spins the icon. */
   refreshing: boolean;
@@ -33,6 +35,7 @@ export function MobileSessionToolbar({
   onNewSession,
   onNewWorkspace,
   onScheduler,
+  scheduledCount,
   onRefresh,
   refreshing,
   onToggleOptions,
@@ -68,15 +71,22 @@ export function MobileSessionToolbar({
           <FolderPlus size={16} strokeWidth={1.8} />
         </button>
 
-        {/* Scheduler button */}
+        {/* Scheduler button. The badge is the whole point of the count: a
+            button that opens a list you cannot see the state of reads as
+            decorative, which is exactly what this control used to be. */}
         <button
           type="button"
           onClick={onScheduler}
-          className="w-9.5 h-9.5 rounded-xl border border-ink/15 bg-paper hover:bg-ink/5 active:scale-95 text-ink/80 hover:text-ink flex items-center justify-center transition-all flex-shrink-0 cursor-pointer shadow-xs"
-          title="Schedule Task"
-          aria-label="Schedule Task"
+          className="relative w-9.5 h-9.5 rounded-xl border border-ink/15 bg-paper hover:bg-ink/5 active:scale-95 text-ink/80 hover:text-ink flex items-center justify-center transition-all flex-shrink-0 cursor-pointer shadow-xs"
+          title={scheduledCount > 0 ? `Scheduled tasks (${scheduledCount} armed)` : 'Scheduled tasks'}
+          aria-label={scheduledCount > 0 ? `Scheduled tasks, ${scheduledCount} armed` : 'Scheduled tasks'}
         >
           <Calendar size={16} strokeWidth={1.8} />
+          {scheduledCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[13px] h-[13px] px-[3px] rounded-full bg-ink text-canvas text-[8px] leading-[13px] text-center font-semibold">
+              {scheduledCount > 9 ? '9+' : scheduledCount}
+            </span>
+          )}
         </button>
 
         {/* Refresh sessions button — same action the desktop toolbar's
