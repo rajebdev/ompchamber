@@ -201,6 +201,17 @@ describe('handleUndo', () => {
     expect(h.drafts).toEqual(['first ask']);
   });
 
+  test('applies an EMPTY truncated transcript, so the undone rows leave the screen', async () => {
+    // Undoing the turn that opened the session (or its only turn) leaves zero
+    // rows on disk. A `length > 0` guard treated that as "no answer" and kept
+    // the client's copy, so the user bubble and the aborted turn stayed in the
+    // timeline until a reload re-read the file — the reported bug.
+    const h = makeHarness([user('u1'), ai('a1')]);
+    await h.actions.handleUndo('u1', 'first ask');
+
+    expect(h.messages).toEqual([]);
+  });
+
   test('sends the row clock, so a cut the session file does not carry can resolve', async () => {
     const commandRow: ChatMessageData = { id: 'msg-100-user', role: 'user', content: '/usage', startedAt: 1_000 };
     const h = makeHarness([commandRow, ai('a1')]);

@@ -101,7 +101,14 @@ export function createRewindActions(deps: RewindActionsDeps): RewindActions {
         return false;
       }
       if (content) setInputValue(content);
-      if (result.messages && result.messages.length > 0) setLocalMessages(result.messages);
+      // The truncated transcript IS the answer, empty included. The old
+      // `length > 0` guard dropped exactly the case that matters most — undoing
+      // the turn that opened the session (or its only turn) leaves zero rows on
+      // disk, so the client kept its own copy: the undone user bubble and the
+      // aborted turn stayed on screen until a reload re-read the file. The
+      // server answers `messages: null` only when the re-read failed, and there
+      // the previous rows are the best information available.
+      if (result.messages) setLocalMessages(result.messages);
       return true;
     }
 
