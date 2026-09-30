@@ -74,7 +74,15 @@ export interface OmpUpdateHooks {
   onLine?: (chunk: string) => void;
 }
 
-export async function applyOmpUpdate(hooks: OmpUpdateHooks = {}): Promise<{ output: string }> {
+/** `omp update` result. `updated` is what the caller needs to decide whether to
+ *  recycle anything: "already up to date" is a success that must not bounce a
+ *  single process, and the two are the same exit code. */
+export interface OmpUpdateOutcome {
+  output: string;
+  updated: boolean;
+}
+
+export async function applyOmpUpdate(hooks: OmpUpdateHooks = {}): Promise<OmpUpdateOutcome> {
   const bin = resolveOmpBin();
   if (!bin) throw new Error('omp binary not found');
 
@@ -110,5 +118,9 @@ export async function applyOmpUpdate(hooks: OmpUpdateHooks = {}): Promise<{ outp
   if (exitCode !== 0) {
     throw new Error(combined(stdout, stderr).trim() || `omp update exited with code ${exitCode}`);
   }
-  return { output: combined(stdout, stderr).trim() };
+  const output = combined(stdout, stderr).trim();
+  // The up-to-date case is a SUCCESS with the same exit code, and it is the one
+  // where nothing on disk moved — so nothing may be recycled either. The phrase
+  // is the same one `checkOmpUpdate` matches to decide `updateAvailable: false`.
+  return { output, updated: !/already up to date/i.test(output) };
 }

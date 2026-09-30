@@ -7,6 +7,7 @@ import * as ompExtensions from '@/server/routes/omp/extensions';
 import * as ompLogin from '@/server/routes/omp/login';
 import * as ompPlugins from '@/server/routes/omp/plugins';
 import * as ompPricing from '@/server/routes/omp/pricing';
+import * as ompReloadEngine from '@/server/routes/omp/reload-engine';
 
 export const ompBindings: HandlerBinding[] = [
   ...bindingsFor(ompState, '/api/omp/state'),
@@ -17,4 +18,5 @@ export const ompBindings: HandlerBinding[] = [
   ...bindingsFor(ompLogin, '/api/omp/login'),
   ...bindingsFor(ompPlugins, '/api/omp/plugins'),
   ...bindingsFor(ompPricing, '/api/omp/pricing'),
+  ...bindingsFor(ompReloadEngine, '/api/omp/reload-engine'),
 ];

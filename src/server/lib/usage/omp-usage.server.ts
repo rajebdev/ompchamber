@@ -151,6 +151,13 @@ export function parseOmpUsageSnapshot(payload: unknown): OmpUsageSnapshot {
 let cached: { at: number; data: OmpUsageSnapshot } | null = null;
 let inFlight: Promise<OmpUsageSnapshot> | null = null;
 
+/** Drop the cached snapshot so the next read spawns the current omp binary.
+ *  Called when the standby processes are recycled after `omp update`: the
+ *  snapshot was produced by the build that is no longer installed. */
+export function invalidateUsageCache(): void {
+  cached = null;
+}
+
 /**
  * Read (and cache) the provider usage snapshot. Never throws — an unusable
  * snapshot degrades to an empty one so the panel still shows local burn.

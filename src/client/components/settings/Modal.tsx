@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'preact/hooks';
-import { Check, ChevronLeft, X } from 'lucide-preact';
+import { AlertCircle, Check, ChevronLeft, X } from 'lucide-preact';
 import type { SettingsCategoryId, SettingsState } from '@/shared/types';
 import { mergeChamberSettings } from '@/shared/lib/settings/client';
 import { diffSettings } from '@/shared/lib/settings/diff';
 import { useChamberSettingsWriter } from '@/client/hooks/settings/use-chamber-setting';
+import { useReloadOmpEngine } from '@/client/hooks/settings/reload-engine';
 import { applyDocumentTheme } from '@/client/hooks/ui/theme';
 import { DEFAULT_THEME_ID } from '@/shared/lib/theme/catalog';
 import { EDITOR_DEFAULT_FONT_FAMILY } from '@/shared/lib/code/editor/typography';
@@ -58,10 +59,20 @@ export function SettingsModal({
   const [activeCategory, setActiveCategory] = useState<SettingsCategoryId>(initialCategory);
   const [autoOpenAdd, setAutoOpenAdd] = useState(autoOpenAddProvider);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isReloading, setIsReloading] = useState(false);
   const [isMobileDrilled, setIsMobileDrilled] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastTone, setToastTone] = useState<'success' | 'error'>('success');
   const writeChamberSettings = useChamberSettingsWriter();
+  const { isReloading, reload: reloadEngine } = useReloadOmpEngine();
+
+  /** One toast slot for the whole modal: a later message replaces the earlier
+   *  one rather than queueing, and the tone is carried so a failed action
+   *  cannot render under a check mark. */
+  const showToast = (message: string, tone: 'success' | 'error' = 'success') => {
+    setToastMessage(message);
+    setToastTone(tone);
+    setTimeout(() => setToastMessage((current) => (current === message ? null : current)), 3000);
+  };
 
   const [settings, setSettings] = useState<SettingsState>(() =>
     mergeChamberSettings(DEFAULT_SETTINGS, appSettings),
@@ -114,15 +125,12 @@ export function SettingsModal({
       writeChamberSettings(diffSettings(prev, next, updater));
       return next;
     });
-    setToastMessage('Setting was saved');
-    setTimeout(() => setToastMessage(null), 3000);
+    showToast('Setting was saved');
   };
 
-  const handleReloadOmpEngine = () => {
-    setIsReloading(true);
-    setTimeout(() => {
-      setIsReloading(false);
-    }, 1200);
+  const handleReloadOmpEngine = async () => {
+    const outcome = await reloadEngine();
+    showToast(outcome.message, outcome.ok ? 'success' : 'error');
   };
 
   const handleSelectCategory = (catId: SettingsCategoryId) => {
@@ -302,8 +310,10 @@ export function SettingsModal({
 
         {/* Toast Notification */}
         {toastMessage && (
-          <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-ink text-canvas px-4 py-2 rounded-lg text-xs font-semibold shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50 flex items-center space-x-2">
-            <Check size={14} className="text-success" />
+          <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 bg-ink text-canvas px-4 py-2 rounded-lg text-xs font-semibold shadow-lg animate-in fade-in slide-in-from-bottom-2 z-50 flex items-center space-x-2 max-w-[calc(100%-2rem)]">
+            {toastTone === 'error'
+              ? <AlertCircle size={14} className="text-error shrink-0" />
+              : <Check size={14} className="text-success shrink-0" />}
             <span>{toastMessage}</span>
           </div>
         )}

@@ -11,6 +11,7 @@
 import { updateOmpChamber } from '@/server/lib/updates/install';
 import { applyOmpUpdate } from '@/server/lib/updates/omp';
 import { withUpdateSlot } from '@/server/lib/updates/single-flight';
+import { recycleStandbyProcesses } from '@/server/lib/omp/session/standby.server';
 import type { UpdateApplyResult, UpdateTarget } from '@/shared/types/updates';
 
 /** A stage label or a line of command output, as the update produces it. */
@@ -38,10 +39,16 @@ export async function applyUpdate(target: UpdateTarget, hooks: UpdateProgressHoo
   return withUpdateSlot(target, async () => {
     if (target === 'omp') {
       try {
-        const { output } = await applyOmpUpdate({ onLine: hooks.onLine });
+        const { output, updated } = await applyOmpUpdate({ onLine: hooks.onLine });
+        // A replaced binary leaves every standby process on the old build, and
+        // nothing else would ever notice: the utility pool answers the provider
+        // and model lists for up to five minutes and a prewarmed session host
+        // waits for the next send. Recycled only when the install actually
+        // moved — an "already up to date" run must not bounce a warm pool.
+        if (updated) await recycleStandbyProcesses();
         return {
-          result: { success: true, target: 'omp', manual: false, message: 'oh-my-pi updated', output },
-          updated: true,
+          result: { success: true, target: 'omp', manual: false, message: updated ? 'oh-my-pi updated' : 'oh-my-pi is already up to date', output },
+          updated,
         };
       } catch (err) {
         return {

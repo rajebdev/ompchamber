@@ -228,6 +228,42 @@ export function prewarmRpcSession(cwd: string, approvalMode?: ApprovalMode): voi
   pool.set(cwd, { cwd, approvalMode: mode, ready, claimed: false });
 }
 
+/**
+ * Recycle every UNCLAIMED prewarmed process.
+ *
+ * A prewarmed child is a full session host that has no session yet, spawned
+ * from whatever binary was current when the user opened a pending chat. After
+ * `omp update` it is a stale build waiting to be adopted by the next send, so
+ * the recycle happens here rather than being left to the idle timer.
+ *
+ * Safe because there is nothing to lose: an unclaimed entry owns no session and
+ * no turn. An entry a send is already adopting is left alone — the claim is a
+ * synchronous check-and-set (`startNewRpcSession`), so an entry is either taken
+ * before this pass reads it or taken after this pass removed it, never both.
+ * A wrapper still booting is destroyed through `destroyAndWait`, which is also
+ * the error path the prewarm itself would have taken.
+ */
+export async function restartPrewarmedSessions(): Promise<number> {
+  const pool = getPrewarmed();
+  if (pool.size === 0) return 0;
+  const doomed: PrewarmedEntry[] = [];
+  for (const [cwd, entry] of pool) {
+    if (entry.claimed) continue;
+    entry.claimed = true;
+    pool.delete(cwd);
+    doomed.push(entry);
+  }
+  await Promise.all(doomed.map(async (entry) => {
+    try {
+      const wrapper = await entry.ready;
+      await wrapper.destroyAndWait();
+    } catch {
+      // A spawn that failed already tore its own wrapper down; nothing to do.
+    }
+  }));
+  return doomed.length;
+}
+
 /** Consume the prewarmed process for `cwd` when its approval mode matches, or
  *  spawn a fresh session. The returned wrapper is already registered under its
  *  real session id, mirroring startRpcSession's bookkeeping. */

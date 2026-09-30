@@ -155,6 +155,49 @@ export async function reloadUtilityProcesses(): Promise<void> {
   );
 }
 
+/**
+ * Recycle every pooled utility child: dispose the live process and let the next
+ * command spawn a fresh one from the current binary.
+ *
+ * A pooled child is spawned once and then answers registry queries for up to
+ * {@link IDLE_KILL_MS} — so after `omp update` replaces the binary, the provider
+ * list, the model list and the composer's `/` popup keep being served by the
+ * OLD build until the idle kill happens to fire. Disposing is enough to fix
+ * that: the pool's whole contract is lazy start, so "no child" is a normal
+ * state and the next `get_login_providers` boots the new binary.
+ *
+ * Serialized on each pool's own queue, so a command already in flight finishes
+ * on the child it started on rather than being killed mid-response. Returns how
+ * many live children were recycled (an idle-killed pool entry has nothing to
+ * dispose).
+ */
+export async function restartUtilityProcesses(): Promise<number> {
+  const states = globalThis.__ompUtilityRpcStates;
+  if (!states || states.size === 0) return 0;
+  let recycled = 0;
+  await Promise.all(
+    [...states.values()].map(async (state) => {
+      const run = state.queue.then(async () => {
+        if (state.idleTimer) {
+          clearTimeout(state.idleTimer);
+          state.idleTimer = null;
+        }
+        const proc = state.proc;
+        state.proc = null;
+        if (!proc) return;
+        recycled += 1;
+        await proc.dispose();
+      });
+      state.queue = run.then(
+        () => undefined,
+        () => undefined,
+      );
+      await run;
+    }),
+  );
+  return recycled;
+}
+
 function scheduleIdleKill(state: UtilityRpcState): void {
   if (state.idleTimer) clearTimeout(state.idleTimer);
   state.idleTimer = setTimeout(() => {
