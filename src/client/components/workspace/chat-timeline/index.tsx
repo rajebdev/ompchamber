@@ -28,8 +28,9 @@ interface ChatTimelineProps {
   appSettings?: Record<string, any>;
   onSessionTitle?: (title: string | null) => void;
   /**
-   * `mobile` tightens the outer padding, drops the minimap rail (no room on a
-   * phone) and hands the composer a touch-sized layout. Everything else — the
+   * `mobile` tightens the outer padding, swaps the minimap rail for the
+   * tap-sized turn list (a 1px-per-turn rail cannot be aimed at with a
+   * finger) and hands the composer a touch-sized layout. Everything else — the
    * omp agent bridge, queue, steering, subagents, ask dialogs — is identical.
    */
   variant?: 'desktop' | 'mobile';

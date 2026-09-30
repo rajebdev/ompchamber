@@ -2,6 +2,7 @@ import type { RefObject } from 'preact/compat';
 import { ArrowDown } from 'lucide-preact';
 import { MessageList } from '@/client/components/workspace/chat-timeline/MessageList';
 import { MinimapShortcuts } from '@/client/components/workspace/chat-timeline/MinimapShortcuts';
+import { MobileTurnJump } from '@/client/components/workspace/chat-timeline/MobileTurnJump';
 import { LoadingOlderIndicator } from '@/client/components/workspace/chat-timeline/SessionSkeleton';
 import type { Attachment, ChatMessageData, UserTurnRef } from '@/shared/types';
 
@@ -35,9 +36,10 @@ interface TimelineBodyProps {
 }
 
 /**
- * Scrollable timeline body: the minimap rail (desktop only), the history
- * paging affordance, the ordered message rows, and the scroll-to-bottom
- * button. Split out of ChatTimeline so the parent stays a pure layout shell.
+ * Scrollable timeline body: the jump-to-turn control (the rail on desktop,
+ * the tap-sized turn list on mobile), the history paging affordance, the
+ * ordered message rows, and the scroll-to-bottom button. Split out of
+ * ChatTimeline so the parent stays a pure layout shell.
  */
 export function TimelineBody({
   isMobile,
@@ -67,9 +69,12 @@ export function TimelineBody({
 }: TimelineBodyProps) {
   return (
     <>
-      {/* Minimap Shortcuts — desktop only: the rail needs side room a
-          phone does not have. */}
-      {!isMobile && (
+      {/* Jump to a user turn. The rail is desktop's form — one 1px line per
+          turn, previewed on hover — so a phone gets the tap-sized list of the
+          same turns instead. */}
+      {isMobile ? (
+        <MobileTurnJump turns={userTurns} jumping={jumpingTurn} onJumpTurn={onJumpTurn} />
+      ) : (
         <MinimapShortcuts turns={userTurns} jumping={jumpingTurn} onJumpTurn={onJumpTurn} />
       )}
 
