@@ -74,6 +74,29 @@ interface CodeSurfaceProps {
   editorStyle?: CSSProperties;
 }
 
+/**
+ * The root must be as tall as the DOCUMENT, never as tall as the scroller it
+ * sits in.
+ *
+ * Both callers put this surface inside a scroll container, and the desktop
+ * editor's is `display: flex` — so the default `align-items: stretch` sized the
+ * root to the container's viewport height while its content (the highlighted
+ * `<pre>`, one box per line) overflowed it. The gutter is a stretched row of
+ * that root, so its `bg-canvas` band and its `border-r` rule ended after one
+ * viewport's worth of lines: scrolling a long file left the line numbers
+ * painting over the scroller's own background, with the divider gone. Measured
+ * on a 368-line file in a 770px pane — the gutter's box stayed 770px tall at
+ * every scroll offset while the document was 10 218px.
+ *
+ * `align-self: flex-start` is what escapes the stretch; `min-height: 100%` is
+ * the floor that keeps a SHORT document's gutter full-height. Together they
+ * give the box the height the phone's layout already had (`min-h-full` inside a
+ * non-flex scroller), so the two layouts no longer differ here — and the rule
+ * lives in the component, because it is a property of the surface, not of a
+ * caller's chrome. `align-self` is inert outside a flex parent.
+ */
+const ROOT_STYLE: CSSProperties = { alignSelf: 'flex-start', minHeight: '100%' };
+
 /** Same measurement, so a re-render does not resize every gutter row. */
 function sameWrappedLines(previous: WrappedLines | null, next: WrappedLines | null): boolean {
   if (previous === next) return true;
@@ -256,7 +279,7 @@ export const CodeSurface = forwardRef<CodeSurfaceHandle, CodeSurfaceProps>(funct
   const lineHeights = wrapped && wrapped.heights.length === lineCount ? wrapped.heights : null;
 
   return (
-    <div className={rootClassName} ref={rootRef}>
+    <div className={rootClassName} style={ROOT_STYLE} ref={rootRef}>
       <div className={gutterClassName} style={gutterStyle}>
         {virtual && virtual.top > 0 ? <div style={{ height: virtual.top, flexShrink: 0 }} aria-hidden="true" /> : null}
         {rows.map((index) => (
