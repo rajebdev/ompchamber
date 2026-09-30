@@ -34,6 +34,37 @@ import type { GoalRecord } from './protocol';
  *  looping just because a goal record exists in the file. */
 const AUTO_CONTINUE_ENV = 'CHAMBER_GOAL_AUTO_CONTINUE';
 
+/** Whether this PROCESS has armed automatic continuation.
+ *
+ *  The spawn flag alone is not enough, and that is the common case rather than
+ *  an edge one: the composer's Goal toggle is pressed on a child that was
+ *  spawned BEFORE the goal existed (you open a session, then set a goal), so
+ *  its environment carries no flag and the loop never fired — Goal mode ran
+ *  exactly one turn and stopped, which is the failure the loop exists to
+ *  prevent. Verified against a real child: `createGoal` wrote the record and
+ *  the toggle went live, and `agent_end` returned at the env check on every
+ *  turn afterwards.
+ *
+ *  Arming here rather than dropping the check keeps its purpose intact: a
+ *  session file that merely CARRIES a goal (restored, not started) is not
+ *  armed, and the status guard below independently refuses a paused one. */
+let continuationArmed = false;
+
+/** Arm the loop because the operator started or resumed a goal in this process. */
+export function armGoalContinuation(): void {
+  continuationArmed = true;
+}
+
+/** Disarm it because the goal is gone.
+ *
+ *  The status guard would refuse a dropped goal on its own; this exists so the
+ *  process's own state matches the session's — and so a test can put the flag
+ *  back to its boot value, which is what a leak between tests needs (the same
+ *  reason `parked` is cleared through its public path in `plan.test.ts`). */
+export function disarmGoalContinuation(): void {
+  continuationArmed = false;
+}
+
 /** Hard ceiling on automatic turns for one goal. The token budget is the
  *  primary guard, but a goal with `budget off` has none — and an agent that
  *  keeps finding work would otherwise run until the process is killed. */
@@ -44,6 +75,9 @@ const DEFAULT_MAX_TURNS = 25;
  *  by either surface reads the same. */
 const GOAL_CONTINUATION_TYPE = 'goal-continuation';
 const GUIDED_GOAL_TYPE = 'guided-goal-interview';
+/** The opening turn of a goal. Distinct from `goal-continuation` because the
+ *  transcript should read as one started objective, not as a continuation. */
+const GOAL_START_TYPE = 'goal-start';
 
 interface GoalArgs {
   objective?: string;
@@ -109,6 +143,23 @@ export async function createGoalFromSelection(
 }
 
 /**
+ * The turn that makes a freshly created goal actually start.
+ *
+ * `createGoal` only writes the record — it opens no turn, so a goal created
+ * here sat live with an idle child until the operator happened to send
+ * something else, which is not "keeps working across turns". omp's own
+ * `/goal <objective>` path does both (`#zs`: `#Tn({objective})` then a prompt
+ * with the objective as text), and this is that second half.
+ *
+ * Sent as a hidden custom message rather than through the RPC prompt path: the
+ * chamber cannot reach the live session's prompt, and `display: false` is what
+ * keeps the objective out of the transcript as a second user bubble.
+ */
+export function startGoalTurn(api: ModeApi, objective: string): void {
+  api.sendMessage?.({ customType: GOAL_START_TYPE, content: objective, display: false }, { triggerTurn: true });
+}
+
+/**
  * Start the guided-goal interview.
  *
  * A normal conversation with a hidden kickoff: the agent asks its questions as
@@ -137,7 +188,7 @@ export function installGoalContinuation(
   let countedGoalId: string | undefined;
 
   api.on?.('agent_end', (event: unknown, ctx: ExtensionCtx) => {
-    if (process.env?.[AUTO_CONTINUE_ENV] !== '1') return;
+    if (process.env?.[AUTO_CONTINUE_ENV] !== '1' && !continuationArmed) return;
     const payload = event as { willContinue?: boolean } | undefined;
     // omp already scheduled its own continuation (auto-retry, an unexpected-stop
     // retry, a background job). Firing here too would open a second turn.
