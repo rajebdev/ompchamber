@@ -15,6 +15,37 @@
       content="A light e-ink paper developer dashboard and AI Oh-My-Pi web view chamber for CI/CD deployments."
     />
     <title>OMPChamber</title>
+    <!-- Inline and in the head on purpose: this has to be registered BEFORE the
+         dev server's HMR client, which it cannot be from the module entry.
+         Bun injects its client script into the head, so a listener installed
+         from `main.tsx` is registered second — and the `error` event is
+         dispatched AT `window`, where listeners run in REGISTRATION order, not
+         capture-then-bubble. Measured here: the dev client's listener at t=272ms
+         and the module's at t=307ms, so `stopImmediatePropagation` from the
+         module arrived after the overlay had already been fed.
+
+         The message is the browser reporting that its per-frame ResizeObserver
+         delivery depth ran out with a notification still pending — a layout
+         timing warning, not an exception anything threw. Chrome and Firefox
+         raise it through `error`, so Bun's client draws its full-screen "Runtime
+         Error" overlay (z-index 2147483647) over the whole app for it and counts
+         it (`1 of 667 Errors`). The chamber's own resize-driven auto-scroll no
+         longer provokes it (the timeline defers its pin out of the delivery, see
+         `hooks/chat/timeline/scroll.ts`), but observers the app does not own can
+         still report it and it is never actionable.
+
+         `stopImmediatePropagation`, not `preventDefault`: the dev client's
+         listener runs first and is not cancelable, so the dispatch has to be
+         stopped, not the default. Matched exactly, so every other error still
+         reaches the overlay — that is the whole point of having one. -->
+    <script>
+      (function () {
+        var RESIZE_OBSERVER_LOOP = 'ResizeObserver loop completed with undelivered notifications.';
+        window.addEventListener('error', function (event) {
+          if (event.message === RESIZE_OBSERVER_LOOP) event.stopImmediatePropagation();
+        }, true);
+      })();
+    </script>
     <!-- Relative, not absolute: Bun's HTML loader resolves every local `href`
          against this file and emits a content-hashed copy, so `./public/icon.svg`
          becomes `/icon-<hash>.svg`. An absolute `/icon.svg` is read as a module
