@@ -19,6 +19,7 @@ import { BehaviorSettings } from '@/client/components/settings/categories/Behavi
 import { CommandSettings } from '@/client/components/settings/categories/CommandSettings';
 import { McpSettings } from '@/client/components/settings/categories/McpSettings';
 import { SkillSettings } from '@/client/components/settings/categories/SkillSettings';
+import { PluginSettings } from '@/client/components/settings/categories/PluginSettings';
 import { SkillCatalogSettings } from '@/client/components/settings/categories/SkillCatalogSettings';
 import { OtherSettings } from '@/client/components/settings/categories/OtherSettings';
 import { OmpSettings } from '@/client/components/settings/categories/OmpSettings';
@@ -160,6 +161,8 @@ export function SettingsModal({
         return <TokenUsageSettings settings={settings} onUpdate={handleUpdateSettings} />;
       case 'notifications':
         return <NotificationSettings settings={settings} onUpdate={handleUpdateSettings} />;
+      case 'plugins':
+        return <PluginSettings />;
       case 'skills':
         return (
           <SkillSettings
@@ -250,7 +253,7 @@ export function SettingsModal({
 
           {/* Scrollable Settings Body - Full Width across all categories */}
           <div
-            className={`flex-1 scrollbar-overlay-container scrollbar-overlay-static w-full ${['projects', 'providers', 'agents', 'behavior', 'commands', 'mcp', 'skills', 'skills-catalog', 'usage'].includes(activeCategory) ? 'p-0 flex flex-col' : 'p-6 md:p-8 flex flex-col'}`}
+            className={`flex-1 scrollbar-overlay-container scrollbar-overlay-static w-full ${['projects', 'providers', 'agents', 'behavior', 'commands', 'mcp', 'plugins', 'skills', 'skills-catalog', 'usage'].includes(activeCategory) ? 'p-0 flex flex-col' : 'p-6 md:p-8 flex flex-col'}`}
             style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
           >
             <div className="w-full h-full flex-1 flex flex-col">

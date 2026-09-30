@@ -20,6 +20,7 @@ export type SettingsCategoryId =
   | 'commands'
   | 'mcp'
   // LIBRARY
+  | 'plugins'
   | 'skills'
   | 'skills-catalog';
 

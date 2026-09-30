@@ -77,6 +77,66 @@ export function getProjectsRegistryPath(): string {
   return path.join(getAgentDir(), 'projects.json');
 }
 
+/**
+ * The omp DATA root for user-scope plugin state.
+ *
+ * omp resolves `plugins/` and `marketplaces.json` through its `DirResolver`'s
+ * `data` category (`getPluginsDir`/`getMarketplacesRegistryPath`), which is
+ * `$XDG_DATA_HOME/omp` once `omp config init-xdg` has created it and `~/.omp`
+ * otherwise. Reading `~/.omp/plugins` unconditionally would report an empty
+ * plugin list on an XDG install — the same trap `agentDataSubdir` documents for
+ * sessions. The condition is omp's own: the XDG app root must already EXIST, so
+ * an unset-but-set XDG_DATA_HOME does not relocate anything.
+ */
+function pluginDataRoot(): string {
+  if (process.platform !== 'linux' && process.platform !== 'darwin') return getConfigRoot();
+  if (!isDefaultAgentDir()) return getConfigRoot();
+  const value = Bun.env.XDG_DATA_HOME;
+  if (!value) return getConfigRoot();
+  try {
+    const appRoot = path.join(value, APP_NAME);
+    return existsSync(appRoot) ? appRoot : getConfigRoot();
+  } catch {
+    return getConfigRoot();
+  }
+}
+
+/** User-scope plugin root: ~/.omp/plugins (or $XDG_DATA_HOME/omp/plugins). */
+export function getPluginsDir(): string {
+  return path.join(pluginDataRoot(), 'plugins');
+}
+
+/** ~/.omp/marketplaces.json — the configured marketplace catalogs. */
+export function getMarketplacesRegistryPath(): string {
+  return path.join(pluginDataRoot(), 'marketplaces.json');
+}
+
+/**
+ * The project-scope plugin root for a cwd — a faithful port of omp's
+ * `resolveOrDefaultProjectRegistryPath` (`discovery/helpers.ts`), which is the
+ * single source of truth omp's own install/list/upgrade use.
+ *
+ * Two passes: the nearest ancestor holding `.omp/` wins, otherwise the nearest
+ * ancestor holding `.git/`, otherwise the cwd itself. Both walks stop before
+ * `$HOME`, because `~/.omp` is the USER config dir and treating it as a project
+ * anchor would alias the two registries.
+ */
+export function getProjectPluginsDir(cwd: string): string {
+  const home = homedir();
+  const configDir = getConfigDirName();
+  const root = path.resolve(cwd);
+  for (const anchor of [configDir, '.git']) {
+    let dir = root;
+    while (dir !== home) {
+      if (existsSync(path.join(dir, anchor))) return path.join(dir, configDir, 'plugins');
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+  return path.join(root, configDir, 'plugins');
+}
+
 /** Best-effort canonicalization (resolve symlinks when the path exists). */
 export function canonicalize(value: string): string {
   try {

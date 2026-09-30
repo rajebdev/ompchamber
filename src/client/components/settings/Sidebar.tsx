@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-preact';
-import { BarChart3, Bell, BookOpen, Bot, Boxes, Cloud, Coins, Cpu, FolderGit, Library, MessageSquare, Palette, RefreshCw, Search, Sliders, Terminal, X } from 'lucide-preact';
+import { BarChart3, Bell, BookOpen, Bot, Boxes, Cloud, Coins, Cpu, FolderGit, Library, MessageSquare, Palette, Plug, RefreshCw, Search, Sliders, Terminal, X } from 'lucide-preact';
 import type { SettingsCategoryId } from '@/shared/types';
 
 export interface CategoryDef {
@@ -28,6 +28,7 @@ export const SETTINGS_CATEGORIES: CategoryDef[] = [
   { id: 'commands', label: 'Commands', icon: Terminal, section: 'OMP', description: 'Slash command macros and terminal shortcuts.' },
   { id: 'mcp', label: 'MCP', icon: Boxes, section: 'OMP', description: 'Model Context Protocol servers and dynamic tools.' },
   // LIBRARY
+  { id: 'plugins', label: 'Plugins', icon: Plug, section: 'LIBRARY', description: 'Installed omp plugins, marketplaces, features, and plugin settings.' },
   { id: 'skills', label: 'Skills', icon: Library, section: 'LIBRARY', description: 'Manage downloaded skills and scripts.' },
   { id: 'skills-catalog', label: 'Skills Catalog', icon: BookOpen, section: 'LIBRARY', description: 'Browse and install new skills.' },
 ];
