@@ -38,6 +38,9 @@ export const LazyTodoPanel = lazy(() =>
 export const LazyWikiPanel = lazy(() =>
   import('@/client/components/workspace/wiki-panel/index').then((m) => ({ default: m.WikiPanel }))
 );
+export const LazyPlanPanel = lazy(() =>
+  import('@/client/components/workspace/plan-panel/index').then((m) => ({ default: m.PlanPanel }))
+);
 
 /**
  * One cached lazy per right-panel view for the desktop layout.
@@ -75,6 +78,9 @@ export function getDesktopPanelView(scope: object, view: RightPanelType): Compon
       : view === 'browser' ? LazyBrowserPanel
       : view === 'usage' ? LazyUsagePanel
       : view === 'todo' ? LazyTodoPanel
+      // `plan` MUST stay ahead of the fallthrough: the chain ends at the wiki
+      // panel, so a new view without its own branch silently renders a wiki.
+      : view === 'plan' ? LazyPlanPanel
       : LazyWikiPanel;
     const Cached: ComponentType<Record<string, unknown>> = ({ className, ...rest }) => (
       <div className={`w-full h-full ${typeof className === 'string' ? className : ''}`}>

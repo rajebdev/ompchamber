@@ -22,6 +22,10 @@ export const RIGHT_PANEL_TYPES = [
   'browser',
   'usage',
   'todo',
+  // Beside Todos: both are the SESSION's own state rather than the working
+  // tree's, and both stay reachable for a session running outside every
+  // registered workspace.
+  'plan',
 ] as const;
 
 export type RightPanelType = (typeof RIGHT_PANEL_TYPES)[number];
@@ -60,6 +64,8 @@ export const DEFAULT_RIGHT_PANEL_FRACTIONS: Record<RightPanelType, number> = {
   // a file tree, because a task line is a sentence.
   todo: 0.3,
   wiki: 0.45,
+  // A plan is prose — the same reader as the wiki, so the same share.
+  plan: 0.45,
 };
 
 /**
@@ -78,6 +84,7 @@ export const DEFAULT_RIGHT_PANEL_WIDTHS: Record<RightPanelType, number> = {
   usage: 536,
   todo: 384,
   wiki: 600,
+  plan: 600,
 };
 
 /**
@@ -106,6 +113,8 @@ export const MIN_RIGHT_PANEL_WIDTHS: Record<RightPanelType, number> = {
   // The page list needs its 208px beside a readable measure; under 420 the two
   // columns collapse into a drill-down.
   wiki: 420,
+  // Same two-column reader as the wiki, so the same floor.
+  plan: 420,
 };
 
 /** Guards a persisted or URL-provided view id before it keys a width. */

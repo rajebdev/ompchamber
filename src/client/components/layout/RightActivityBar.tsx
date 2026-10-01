@@ -1,4 +1,4 @@
-import { BarChart3, BookOpen, Bot, Files, GitBranch, Globe, Layers, ListTodo, Search, Terminal } from 'lucide-preact';
+import { BarChart3, BookOpen, Bot, ClipboardList, Files, GitBranch, Globe, Layers, ListTodo, Search, Terminal } from 'lucide-preact';
 import type { ReactNode } from 'preact/compat';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
 import { useResolvedRepo } from '@/client/hooks/workspace/repo-scope';
@@ -30,6 +30,7 @@ const PANEL_META: Record<RightPanelType, { title: string; icon: ReactNode }> = {
   usage: { title: 'Usage', icon: <BarChart3 size={16} /> },
   todo: { title: 'Todos', icon: <ListTodo size={16} /> },
   wiki: { title: 'Wiki', icon: <BookOpen size={16} /> },
+  plan: { title: 'Plan (sesi ini)', icon: <ClipboardList size={16} /> },
 };
 
 export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen, hasActiveContext, activeProjectPath, refreshKey }: RightActivityBarProps) {

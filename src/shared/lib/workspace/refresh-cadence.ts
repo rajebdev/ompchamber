@@ -103,6 +103,13 @@ export const REPO_DISCOVERY_POLL_MS = 1_500;
 export const TODO_REFRESH_EVENT_THROTTLE_MS = 400;
 
 /**
+ * Coalescing window for the Plan panel's event-driven re-read. Same reasoning as
+ * the todo reader's: a run signals repeatedly around one tool call, and each
+ * read lists the session's artifact directory and reads a file.
+ */
+export const PLAN_REFRESH_EVENT_THROTTLE_MS = 400;
+
+/**
  * Scheduled-task poll while the scheduler modal is open, and the idle poll
  * behind the toolbar badge. The badge's job is to answer "is anything armed",
  * which changes only when the user edits a task — so it polls slowly and leans

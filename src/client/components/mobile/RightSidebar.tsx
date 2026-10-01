@@ -1,8 +1,8 @@
 import { useState } from 'preact/hooks';
 import { Suspense } from 'preact/compat';
 import type { ReactNode } from 'preact/compat';
-import { BarChart3, BookOpen, Bot, Files, GitBranch, Globe, Layers, ListTodo, Search, Terminal, X } from 'lucide-preact';
-import { LazyBrowserPanel, LazyContextPanel, LazyFileExplorer, LazyGitPanel, LazySearchPanel, LazyTerminalPanel, LazyTodoPanel, LazyUsagePanel, LazyUserBrowserPanel, LazyWikiPanel } from '@/client/components/common/lazy-panels';
+import { BarChart3, BookOpen, Bot, ClipboardList, Files, GitBranch, Globe, Layers, ListTodo, Search, Terminal, X } from 'lucide-preact';
+import { LazyBrowserPanel, LazyContextPanel, LazyFileExplorer, LazyGitPanel, LazyPlanPanel, LazySearchPanel, LazyTerminalPanel, LazyTodoPanel, LazyUsagePanel, LazyUserBrowserPanel, LazyWikiPanel } from '@/client/components/common/lazy-panels';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
 import { useResolvedRepo } from '@/client/hooks/workspace/repo-scope';
 import { GIT_STATUS_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
@@ -34,6 +34,7 @@ const PANEL_META: Record<RightPanelType, { title: string; label: string; icon: R
   usage: { title: 'Usage', label: 'Usage', icon: <BarChart3 size={14} className="flex-shrink-0" /> },
   todo: { title: 'Todos', label: 'Todos', icon: <ListTodo size={14} className="flex-shrink-0" /> },
   wiki: { title: 'Wiki', label: 'Wiki', icon: <BookOpen size={14} className="flex-shrink-0" /> },
+  plan: { title: 'Plan (sesi ini)', label: 'Plan', icon: <ClipboardList size={14} className="flex-shrink-0" /> },
 };
 
 export function MobileRightSidebar({
@@ -106,15 +107,15 @@ export function MobileRightSidebar({
 
       {/* Main Tab Content — shared components so mobile == desktop features.
           The workspace gate below applies per TAB, not to the whole drawer: a
-          todo list belongs to the session, not to the folder its cwd resolves
-          to, so the Todos tab stays reachable for a session running outside
-          every registered workspace. Every other view here reads the working
-          tree and genuinely needs one. */}
+          todo list and a plan both belong to the SESSION, not to the folder its
+          cwd resolves to, so those tabs stay reachable for a session running
+          outside every registered workspace. Every other view here reads the
+          working tree and genuinely needs one. */}
       <div
         className="flex-1 min-h-0 overflow-hidden relative"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
-        {!enabled && activeTab !== 'todo' ? (
+        {!enabled && activeTab !== 'todo' && activeTab !== 'plan' ? (
           <div className="h-full flex items-center justify-center text-ink/40">
             <span className="text-xs font-mono">No session selected</span>
           </div>
@@ -140,6 +141,7 @@ export function MobileRightSidebar({
               {activeTab === 'browser' && <LazyBrowserPanel className="h-full w-full" active />}
               {activeTab === 'usage' && <LazyUsagePanel className="h-full w-full" />}
               {activeTab === 'todo' && <LazyTodoPanel className="h-full w-full" />}
+              {activeTab === 'plan' && <LazyPlanPanel className="h-full w-full" active />}
               {activeTab === 'wiki' && <LazyWikiPanel className="h-full w-full" rootPath={rootPath} enabled={enabled} active />}
             </Suspense>
           </>
