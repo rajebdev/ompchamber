@@ -117,3 +117,52 @@ describe('SystemNotice', () => {
     expect(multi.textContent).not.toContain('Line two');
   });
 });
+
+/**
+ * omp's loop guard writes its notice inside `<system-interrupt>`, a wrapper the
+ * card had no case for: the tag is not a `<system-reminder>`, so the generic
+ * branch ran and the card's title was the raw markup line
+ * `<system-interrupt reason="thinking_loop_detected">`.
+ */
+describe('SystemNotice system-interrupt', () => {
+  const INTERRUPT = [
+    '<system-interrupt reason="thinking_loop_detected">',
+    'Loop guard interrupted prior turn: near-identical reasoning repeated without progress.',
+    '',
+    'Break pattern now:',
+    '- STOP narrating intended actions. Issue one concrete tool call.',
+    '</system-interrupt>',
+  ].join('\n');
+
+  test('names the guard, shows its reason, and strips the tag from the body', async () => {
+    const el = await paint({ notice: INTERRUPT, source: 'thinking-loop-redirect' });
+
+    expect(el.textContent).toContain('System Interrupt');
+    expect(el.textContent).toContain('thinking_loop_detected');
+    // The raw tag is scaffolding — it must not appear anywhere in the card.
+    expect(el.textContent).not.toContain('<system-interrupt');
+    expect(el.textContent).not.toContain('System Notice');
+    // The body underneath is the instruction, so the card is expandable.
+    expect(el.querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  test('a body quoting markup still renders whole', async () => {
+    const withSample = [
+      '<system-interrupt reason="tool_call_loop_detected">',
+      'You called `yield` with `{"data":{"job":"bg_1"}}`.',
+      '',
+      '```typescript',
+      'const x: Promise<LoadedConfig> = load();',
+      '```',
+      '</system-interrupt>',
+    ].join('\n');
+    const el = await paint({ notice: withSample });
+
+    expect(el.textContent).toContain('System Interrupt');
+    expect(el.textContent).not.toContain('<system-interrupt');
+    await act(async () => {
+      (el.querySelector('button') as HTMLButtonElement).click();
+    });
+    expect(el.textContent).toContain('Promise<LoadedConfig>');
+  });
+});

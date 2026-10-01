@@ -19,8 +19,10 @@
  *   escape bytes as `38;2;107;114;128m████…`. True colour stays available in the
  *   realtime xterm panel, which parses ANSI natively.
  * - **`<system-notice>` wrappers.** omp tags its own notices; the tag is
- *   scaffolding, not content. (`<system-reminder>` / `<task-result>` are NOT
- *   stripped — those identify the card variant `SystemNotice` renders.)
+ *   scaffolding, not content. (The runtime-notice wrappers —
+ *   `<system-reminder>`, `<system-interrupt>`, `<task-result>` — are NOT
+ *   stripped: those identify the card variant `SystemNotice` renders, which
+ *   strips them itself once it has read the tag.)
  */
 
 import { stripAnsiCodes } from '@/shared/lib/code/ansi';

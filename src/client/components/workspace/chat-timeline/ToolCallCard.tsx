@@ -3,7 +3,7 @@ import { memo } from 'preact/compat';
 import { Bell, Boxes, Brain, BrainCircuit, Camera, Check, Code2, Cpu, FileCode, FileText, GitPullRequest, Globe, HelpCircle, ListTodo, Search, Server, Shield, Terminal, Wrench } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
 import { stripAnsiCodes } from '@/shared/lib/code/ansi';
-import { isReminderTag, unwrapXmlEnvelope } from '@/shared/lib/chat/xml-envelope';
+import { isReminderTag, unwrapXmlEnvelopes } from '@/shared/lib/chat/xml-envelope';
 import { CopyButton } from '@/client/components/common/CopyButton';
 import { ToolCardShell } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/ToolCardShell';
 import { DiffView } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/DiffView';
@@ -159,10 +159,10 @@ export const ToolCallCard = memo(function ToolCallCard({ tool, isOpen, onToggle,
 
   // A reminder envelope in the result is the runtime interrupting the call, not
   // its outcome — the header flags it next to the status badge.
-  const isReminder = useMemo(() => {
-    const envelope = unwrapXmlEnvelope(stripAnsiCodes(outputText));
-    return Boolean(envelope && isReminderTag(envelope.tag));
-  }, [outputText]);
+  const isReminder = useMemo(
+    () => unwrapXmlEnvelopes(stripAnsiCodes(outputText)).some((envelope) => isReminderTag(envelope.tag)),
+    [outputText],
+  );
 
   // Clean title & subtitle extraction
   let displayTitle = '';

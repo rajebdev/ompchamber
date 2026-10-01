@@ -14,14 +14,10 @@ function envelopeTone(tag: string) {
   return { icon: <Boxes size={12} />, badge: 'bg-info/10 text-info' };
 }
 
-interface EnvelopeHeaderProps {
-  envelope: XmlEnvelope;
-}
-
-/** Identity row for a peeled XML envelope: which wrapper carried the output and
- *  the attributes it declared — for a system reminder those are the rule that
- *  fired and the file behind it, which is the reason the wrapper existed. */
-export function EnvelopeHeader({ envelope }: EnvelopeHeaderProps) {
+/** Identity row for one peeled XML envelope: which wrapper carried the output
+ *  and the attributes it declared — for a system reminder those are the rule
+ *  that fired and the file behind it, which is the reason the wrapper existed. */
+function EnvelopeRow({ envelope }: { envelope: XmlEnvelope }) {
   const tone = envelopeTone(envelope.tag);
 
   return (
@@ -42,5 +38,22 @@ export function EnvelopeHeader({ envelope }: EnvelopeHeaderProps) {
         </span>
       ))}
     </div>
+  );
+}
+
+interface EnvelopeHeaderProps {
+  /** Every wrapper the output was peeled out of, in order. omp emits one
+   *  reminder per matched rule, so a single tool result can open with several. */
+  envelopes: XmlEnvelope[];
+}
+
+/** One identity row per peeled wrapper. */
+export function EnvelopeHeader({ envelopes }: EnvelopeHeaderProps) {
+  return (
+    <>
+      {envelopes.map((envelope, index) => (
+        <EnvelopeRow key={index} envelope={envelope} />
+      ))}
+    </>
   );
 }

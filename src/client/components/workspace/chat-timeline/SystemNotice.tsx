@@ -5,6 +5,7 @@ import { highlightCode } from '@/shared/lib/code/syntax-highlight';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 import { useIsTruncated } from '@/client/hooks/ui/text-overflow';
 import { parseTaskNotice } from '@/shared/lib/chat/task-result-parser';
+import { isReminderTag, stripNoticeTags, unwrapXmlEnvelope } from '@/shared/lib/chat/xml-envelope';
 import { parseGoalNotice, type GoalNoticeData } from '@/shared/lib/omp/mode/notice';
 import { GoalNotice } from '@/client/components/workspace/chat-timeline/GoalNotice';
 import { TaskResultContent } from '@/client/components/workspace/chat-timeline/TaskResultContent';
@@ -14,6 +15,16 @@ const KIND_LABEL: Record<GoalNoticeData['kind'], string> = {
   start: 'Goal started',
   continuation: 'Goal continuation',
   context: 'Goal context',
+};
+
+/** Badge label per runtime-notice wrapper, so a loop guard does not read as an
+ *  ordinary reminder — the tag omp used IS the kind of event that fired. */
+const NOTICE_LABEL: Record<string, string> = {
+  'system-reminder': 'System Reminder',
+  reminder: 'System Reminder',
+  'system-interrupt': 'System Interrupt',
+  'system-warning': 'System Warning',
+  'system-directive': 'System Directive',
 };
 
 /** The card's one visible line when collapsed: a goal card names the objective
@@ -49,14 +60,22 @@ export function SystemNotice({ notice, source }: SystemNoticeProps) {
   // prompt, neither of which belongs in a "System Notice" subtitle.
   const goalNotice = useMemo(() => parseGoalNotice(notice, source), [notice, source]);
 
-  // 2. Check if notice is a <system-reminder> or action-reminder block
+  // 2. Check if notice is a runtime-notice wrapper — `<system-reminder>` (a rule
+  //    fired) or `<system-interrupt>` (a loop guard stopped the turn). Both are
+  //    transport: the tag and its attributes ARE the notice's identity, and the
+  //    body underneath is the instruction omp injected.
   const reminderInfo = useMemo(() => {
-    const hasReminderTag = /<\/?system-reminder[^>]*>/i.test(notice);
-    const isReminderLike =
-      hasReminderTag || notice.includes('xd://resolve') || notice.includes('`ast_edit` result');
-    if (!isReminderLike) return null;
+    const envelope = unwrapXmlEnvelope(notice);
+    const isNoticeLike =
+      (envelope !== undefined && isReminderTag(envelope.tag))
+      || notice.includes('xd://resolve')
+      || notice.includes('`ast_edit` result');
+    if (!isNoticeLike) return null;
 
-    const cleanContent = notice.replace(/<\/?system-reminder[^>]*>/gi, '').trim();
+    // Read the body from the envelope when the tag is one, so a body that quotes
+    // markup (a rule's own TypeScript sample) cannot end the strip early. The
+    // regex is the fallback for a bare notice text with no wrapper to peel.
+    const cleanContent = (envelope?.inner ?? stripNoticeTags(notice)).trim();
     if (!cleanContent) return null;
 
     // First line for display title, removing backticks for clean title bar display
@@ -70,12 +89,16 @@ export function SystemNotice({ notice, source }: SystemNoticeProps) {
     return {
       content: cleanContent,
       title: cleanTitle,
+      /** The tag that carried it, so the badge can say which guard fired. */
+      tag: envelope?.tag,
+      /** `reason="thinking_loop_detected"` — the machine-readable cause. */
+      reason: envelope?.attributes.reason,
     };
   }, [notice]);
 
-  // 3. Fallback generic notice parsing (stripping any residual system-notice tags)
+  // 3. Fallback generic notice parsing (stripping any residual notice tags)
   const genericInfo = useMemo(() => {
-    const clean = notice.replace(/<\/?system-notice[^>]*>/gi, '').trim();
+    const clean = stripNoticeTags(notice).trim();
     const lines = clean.split(/\r?\n/);
     const firstLine = (lines.find((l) => l.trim()) ?? '').trim();
     const restStart = lines.findIndex((l) => l.trim() === firstLine);
@@ -105,9 +128,7 @@ export function SystemNotice({ notice, source }: SystemNoticeProps) {
   // something the one-line header cannot show (more lines, a task-result card).
   const isExpandable = useMemo(() => {
     if (taskNotice) return true;
-    const clean = notice
-      .replace(/<\/?(?:system-notice|system-reminder)[^>]*>/gi, '')
-      .trim();
+    const clean = stripNoticeTags(notice).trim();
     const lines = clean
       .split(/\r?\n/)
       .map((l) => l.trim())
@@ -155,7 +176,7 @@ export function SystemNotice({ notice, source }: SystemNoticeProps) {
       return {
         icon: <Bell size={13} />,
         badgeClass: 'bg-warning/10 text-warning',
-        label: 'System Reminder',
+        label: (reminderInfo.tag && NOTICE_LABEL[reminderInfo.tag]) || 'System Reminder',
         isError: false,
       };
     }
@@ -195,6 +216,14 @@ export function SystemNotice({ notice, source }: SystemNoticeProps) {
             <span className="truncate text-[12px] font-semibold tracking-tight text-ink">
               {noticeStyle.label}
             </span>
+            {reminderInfo?.reason && (
+              <span
+                title={reminderInfo.reason}
+                className="rounded bg-ink/5 px-1.5 py-0.2 font-mono text-[9px] text-ink/60"
+              >
+                {reminderInfo.reason}
+              </span>
+            )}
             {taskNotice?.agent && (
               <span className="flex items-center gap-1 rounded bg-ink/5 px-1.5 py-0.2 font-mono text-[9px] text-ink/60">
                 <Bot size={10} />

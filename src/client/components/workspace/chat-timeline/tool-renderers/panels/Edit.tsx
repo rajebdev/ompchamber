@@ -273,7 +273,7 @@ export function Edit({ tool }: { tool: ToolCallData }) {
             <ArrowRight size={11} className="text-success" />
             <span>Execution Output</span>
           </div>
-          {outputText.envelope && <EnvelopeHeader envelope={outputText.envelope} />}
+          {outputText.envelopes.length > 0 && <EnvelopeHeader envelopes={outputText.envelopes} />}
           {truncatedOutput.skipped > 0 && (
             <div className="mb-1 font-mono text-[9.5px] text-ink/45">… {truncatedOutput.skipped} earlier lines hidden</div>
           )}

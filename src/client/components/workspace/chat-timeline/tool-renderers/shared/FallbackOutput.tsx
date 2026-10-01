@@ -45,7 +45,7 @@ export function FallbackOutput({ text }: FallbackOutputProps) {
           label="Copy"
         />
       </div>
-      {output.envelope && <EnvelopeHeader envelope={output.envelope} />}
+      {output.envelopes.length > 0 && <EnvelopeHeader envelopes={output.envelopes} />}
       {display.skipped > 0 && (
         <div className="font-mono text-[10px] text-ink/45">… {display.skipped} earlier lines hidden</div>
       )}

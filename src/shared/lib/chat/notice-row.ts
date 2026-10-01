@@ -23,8 +23,9 @@ import { isReminderTag, unwrapXmlEnvelope } from '@/shared/lib/chat/xml-envelope
 
 /** Tag that identifies a notice payload rather than prose. A notice keeps its
  *  wrapper — that tag is the field's identity, and `SystemNotice` reads it to
- *  pick "System Reminder" / "Task Result" over the generic card. */
-const NOTICE_TAG_RE = /<\/?(?:system-reminder|reminder|system-notice|task-result)\b/i;
+ *  pick "System Reminder" / "System Interrupt" / "Task Result" over the
+ *  generic card. */
+const NOTICE_TAG_RE = /<\/?(?:system-reminder|reminder|system-interrupt|system-warning|system-directive|system-notice|task-result)\b/i;
 
 /** Fields only a real assistant turn carries. `thinkingLevel` is deliberately
  *  absent: the live stream stamps it on every non-user frame, notice rows

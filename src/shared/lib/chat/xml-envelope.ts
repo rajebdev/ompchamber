@@ -4,20 +4,38 @@
  */
 
 /**
- * Tool output sometimes arrives wrapped in a single XML envelope: omp's
- * `<system-reminder …>…</system-reminder>`, an MCP server's `<result>…</result>`.
- * The tag is transport, not content — rendered as markdown it would show as
- * escaped markup instead of the message it carries, so the timeline peels the
- * wrapper before rendering the inner text.
+ * Tool output sometimes arrives wrapped in XML envelopes: omp's
+ * `<system-reminder …>…</system-reminder>`, `<system-interrupt>`, an MCP
+ * server's `<result>…</result>`. The tag is transport, not content — rendered as
+ * markdown it shows as escaped markup instead of the message it carries, so the
+ * timeline peels the wrapper before rendering the inner text.
  *
- * Only a wrapper that OPENS the output is peeled (a tag in the middle of prose
- * is content: `<div>` inside an HTML sample, `a < b`), its tags must balance
- * and nest, and what follows the closing tag must be free text — a second
- * element means there is no single wrapper, so nothing is peeled.
+ * Three shapes are handled, and the rules that separate them from content are
+ * what the tests pin:
  *
- * The scan is hand-rolled: this module is shared with the server (no
- * `DOMParser` there) and parses arbitrary tool output, so it must never throw.
+ * 1. **A leading wrapper.** It must open the output, its tags must balance and
+ *    nest, and what follows the closing tag must be free text — a second
+ *    element means there is no single wrapper. A tag in the middle of prose is
+ *    content (`<div>` inside an HTML sample, `a < b`).
+ * 2. **A run of notices.** omp emits ONE `system-reminder` PER MATCHED RULE, so
+ *    a tool result routinely opens with two or three; a run is followed only
+ *    for notice tags, since an HTML dump's siblings are content.
+ * 3. **A trailing notice** (`takeTrailingNotice`). omp rewrites a command and
+ *    reports it after the output, where there is no leading wrapper at all.
+ *
+ * **Fenced blocks and inline code spans are not markup.** A reminder that
+ * documents a rule carries the rule's own TypeScript — `` `ReturnType<typeof fn>` ``,
+ * `Promise<LoadedConfig>`, a ```typescript fence — and reading those as tags
+ * unbalanced the scan, so the wrapper was never recognized and the row leaked
+ * into the timeline as raw markup. Measured over the 352 `<system-reminder>`
+ * blocks in this install's session files: 99 of them carry such a sample.
+ *
+ * The scan is hand-rolled (`./xml-tag.ts`): this module is shared with the
+ * server, so there is no `DOMParser`, and it parses arbitrary tool output, so it
+ * must never throw.
  */
+
+import { scanElement } from '@/shared/lib/chat/xml-tag';
 
 export interface XmlEnvelope {
   /** Element name, e.g. `system-reminder`. */
@@ -30,129 +48,104 @@ export interface XmlEnvelope {
   rest?: string;
 }
 
-const NAME_RE = /^[A-Za-z_][A-Za-z0-9_.:-]*/;
-const ATTR_RE = /([A-Za-z_:][A-Za-z0-9_.:-]*)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
+/** Envelope tags that carry a runtime notice about the turn rather than a
+ *  result: omp's `<system-reminder>` (a rule fired) and `<system-interrupt>`
+ *  (a loop guard stopped the turn). Both are transport wrappers whose
+ *  attributes name the reason, so the card header flags them instead of
+ *  treating them as an ordinary result. */
+const NOTICE_TAGS: Record<string, true> = {
+  'system-reminder': true,
+  reminder: true,
+  'system-interrupt': true,
+  'system-warning': true,
+  'system-directive': true,
+};
 
-interface Tag {
-  kind: 'start' | 'end' | 'self' | 'other';
-  name: string;
-  /** Raw text between the name and the closing `>`. */
-  attrs: string;
-  /** Index just past the tag's `>`. */
-  end: number;
-}
-
-/** Attributes of a start tag: `reason="rule_violation" flag`. */
-function parseAttributes(raw: string): Record<string, string> {
-  const attributes: Record<string, string> = {};
-  for (const match of raw.matchAll(ATTR_RE)) {
-    attributes[match[1]] = match[2] ?? match[3] ?? match[4] ?? '';
-  }
-  return attributes;
-}
-
-/** Envelope tags that mean "the runtime interrupted with a reminder" — the
- *  card header flags them instead of treating them as an ordinary result. */
+/** True for any wrapper that means "the runtime interrupted with a notice". */
 export function isReminderTag(tag: string): boolean {
-  return tag === 'system-reminder' || tag === 'reminder';
+  return NOTICE_TAGS[tag] === true;
 }
 
-/** Index of the tag's closing `>` — an attribute value may contain `>`. */
-function tagEnd(text: string, from: number): number {
-  let quote = '';
-  for (let i = from; i < text.length; i += 1) {
-    const ch = text[i];
-    if (quote) {
-      if (ch === quote) quote = '';
-    } else if (ch === '"' || ch === "'") {
-      quote = ch;
-    } else if (ch === '>') {
-      return i;
-    }
-  }
-  return -1;
+/** Every wrapper tag a notice payload can carry — the notice variants plus the
+ *  ones `SystemNotice` reads for a task card. Used to strip the scaffolding
+ *  before display; `normalizeNoticeText` deliberately does NOT do this, because
+ *  the stored notice keeps its wrapper as the field's identity. */
+const NOTICE_WRAPPER_TAG_RE = /<\/?(?:system-reminder|reminder|system-interrupt|system-warning|system-directive|system-notice|task-result)\b[^>]*>/gi;
+
+/** Drop every notice wrapper tag, leaving the text it carried. */
+export function stripNoticeTags(text: string): string {
+  return text.replace(NOTICE_WRAPPER_TAG_RE, '');
 }
 
-/** Read the markup starting at `<`. Comments, CDATA and processing
- *  instructions come back as `other` so their contents can never be read as
- *  tags. Returns undefined for anything malformed. */
-function readTag(text: string, at: number): Tag | undefined {
-  const head = text.slice(at, at + 9);
-  if (head.startsWith('<!--')) {
-    const close = text.indexOf('-->', at + 4);
-    return close === -1 ? undefined : { kind: 'other', name: '', attrs: '', end: close + 3 };
-  }
-  if (head === '<![CDATA[') {
-    const close = text.indexOf(']]>', at + 9);
-    return close === -1 ? undefined : { kind: 'other', name: '', attrs: '', end: close + 3 };
-  }
-  if (text[at + 1] === '!' || text[at + 1] === '?') {
-    const close = tagEnd(text, at + 2);
-    return close === -1 ? undefined : { kind: 'other', name: '', attrs: '', end: close + 1 };
+/** Every XML wrapper the output consists of, in order.
+ *
+ *  A run is followed only for runtime-notice wrappers (`isReminderTag`): omp
+ *  emits ONE `system-reminder` PER MATCHED RULE, so a single tool result
+ *  routinely opens with two of them (measured: 86 of the 353 reminder blocks in
+ *  this install's session files are the second element of such a run). Any
+ *  other sibling markup still means there is no wrapper to peel — an HTML
+ *  dump's `<div>`s are content and must stay raw.
+ *
+ *  Free text after the LAST wrapper rides on it as `rest`; the blank line omp
+ *  writes BETWEEN two wrappers is separator, not content, and is dropped. */
+export function unwrapXmlEnvelopes(text: string): XmlEnvelope[] {
+  const first = text.search(/\S/);
+  if (first === -1 || text[first] !== '<') return [];
+
+  const head = scanElement(text, first);
+  if (!head) return [];
+
+  if (!isReminderTag(head.tag)) {
+    const rest = text.slice(head.end).trim();
+    if (rest.startsWith('<')) return [];
+    return [{ tag: head.tag, attributes: head.attributes, inner: head.inner, ...(rest ? { rest } : {}) }];
   }
 
-  const closing = text[at + 1] === '/';
-  const nameAt = at + (closing ? 2 : 1);
-  const name = NAME_RE.exec(text.slice(nameAt, nameAt + 64))?.[0];
-  if (!name) return undefined;
-  const close = tagEnd(text, nameAt + name.length);
-  if (close === -1) return undefined;
-  const attrs = text.slice(nameAt + name.length, close);
-  if (closing) return { kind: 'end', name, attrs, end: close + 1 };
-  return { kind: text[close - 1] === '/' ? 'self' : 'start', name, attrs, end: close + 1 };
+  const envelopes: XmlEnvelope[] = [{ tag: head.tag, attributes: head.attributes, inner: head.inner }];
+  let cursor = head.end;
+  for (;;) {
+    while (cursor < text.length && /\s/.test(text[cursor] as string)) cursor += 1;
+    if (cursor >= text.length) return envelopes;
+    if (text[cursor] !== '<') break;
+    const next = scanElement(text, cursor);
+    if (!next || !isReminderTag(next.tag)) break;
+    envelopes.push({ tag: next.tag, attributes: next.attributes, inner: next.inner });
+    cursor = next.end;
+  }
+  const rest = text.slice(cursor).trim();
+  if (rest) (envelopes[envelopes.length - 1] as XmlEnvelope).rest = rest;
+  return envelopes;
 }
 
-/** Drop the indentation every line shares — XML pretty-printing padding that
- *  markdown would otherwise read as an indented code block. */
-function stripCommonIndent(text: string): string {
-  const lines = text.split('\n');
-  // The line breaks hugging the wrapper tags are padding, not content.
-  if (lines.length > 1 && !lines[0].trim()) lines.shift();
-  while (lines.length > 1 && !lines[lines.length - 1].trim()) lines.pop();
-
-  let indent = Number.POSITIVE_INFINITY;
-  for (const line of lines) {
-    if (line.trim()) indent = Math.min(indent, line.length - line.trimStart().length);
-  }
-  if (!Number.isFinite(indent)) return '';
-  if (indent === 0) return lines.join('\n');
-  return lines.map((line) => line.slice(Math.min(indent, line.length - line.trimStart().length))).join('\n');
-}
-
-/** Peel the XML wrapper when it opens the output and encloses a whole
- *  element. Returns undefined when the output is not such an envelope. */
+/** The first wrapper of the output, when it is one. */
 export function unwrapXmlEnvelope(text: string): XmlEnvelope | undefined {
-  const opening = text.search(/\S/);
-  if (opening === -1 || text[opening] !== '<') return undefined;
+  return unwrapXmlEnvelopes(text)[0];
+}
 
-  const root = readTag(text, opening);
-  if (!root || root.kind !== 'start') return undefined;
+const NOTICE_OPEN_RE = /<(system-reminder|reminder|system-interrupt|system-warning|system-directive)\b/gi;
 
-  const stack = [root.name];
-  for (let i = root.end; i < text.length; ) {
-    if (text[i] !== '<') {
-      i += 1;
-      continue;
-    }
-    const tag = readTag(text, i);
-    if (!tag) return undefined;
-    if (tag.kind === 'start') {
-      stack.push(tag.name);
-    } else if (tag.kind === 'end') {
-      if (stack.pop() !== tag.name) return undefined;
-      if (stack.length === 0) {
-        const rest = text.slice(tag.end).trim();
-        // A sibling element means there is no single wrapper to peel.
-        if (rest.startsWith('<')) return undefined;
-        return {
-          tag: root.name,
-          attributes: parseAttributes(root.attrs),
-          inner: stripCommonIndent(text.slice(root.end, i)),
-          ...(rest ? { rest } : {}),
-        };
-      }
-    }
-    i = tag.end;
-  }
-  return undefined;
+/** A notice omp APPENDED after the output rather than wrapping it.
+ *
+ *  `<system-warning>` after a command's own lines is the shape: omp rewrote the
+ *  command and reports it after the fact, so there is no leading wrapper to
+ *  peel. The tag must sit on its own line at the very END of the output — an
+ *  output that merely quotes a notice (source code shown by `rg`) keeps it as
+ *  content, which is why the pair has to close the text. */
+export function takeTrailingNotice(text: string): { before: string; envelope: XmlEnvelope } | undefined {
+  const matches = [...text.matchAll(NOTICE_OPEN_RE)];
+  const last = matches[matches.length - 1];
+  if (!last || last.index === undefined) return undefined;
+
+  // Own line, with real content before it.
+  const before = text.slice(0, last.index);
+  if (!before.trim() || !before.endsWith('\n')) return undefined;
+
+  const element = scanElement(text, last.index);
+  if (!element || !isReminderTag(element.tag)) return undefined;
+  if (text.slice(element.end).trim() !== '') return undefined;
+
+  return {
+    before: before.replace(/\s+$/, ''),
+    envelope: { tag: element.tag, attributes: element.attributes, inner: element.inner },
+  };
 }

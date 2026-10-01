@@ -43,6 +43,33 @@ describe('reminderPartIndex', () => {
   test('picks the envelope out of a multi-block turn', () => {
     expect(reminderPartIndex(['prose first', '<system-reminder>note</system-reminder>'])).toBe(1);
   });
+
+  test('finds a reminder whose body carries a TypeScript sample', () => {
+    const reminder =
+      '<system-reminder reason="rule_violation" rule="ts-no-return-type">\n' +
+      'Do not publish contracts through `ReturnType<typeof fn>`.\n\n' +
+      '```typescript\ntype Config = Awaited<ReturnType<typeof loadConfig>>;\n```\n' +
+      '</system-reminder>';
+    expect(reminderPartIndex([reminder])).toBe(0);
+  });
+
+  test('finds a run of reminders in one text block', () => {
+    const run =
+      '<system-reminder rule="ts-no-tiny-functions">\nInline it.\n</system-reminder>\n\n' +
+      '<system-reminder rule="ts-set-map">\nUse a Record.\n</system-reminder>';
+    expect(reminderPartIndex([run])).toBe(0);
+  });
+
+  test('finds an interrupt envelope and keeps it a notice row', () => {
+    const interrupt = '<system-interrupt reason="thinking_loop_detected">\nBreak pattern now.\n</system-interrupt>';
+    expect(reminderPartIndex([interrupt])).toBe(0);
+
+    // The row carries turn metadata (a live stream stamps it) — the wrapper tag
+    // must still win, or the loop guard would render as an assistant answer.
+    const row = { id: 'n2', role: 'ai' as const, content: '', notice: interrupt, model: 'deepseek-v4' };
+    expect(noticeIsAssistantText(row)).toBe(false);
+    expect(isNoticeRow(row)).toBe(true);
+  });
 });
 
 describe('notice row classification', () => {

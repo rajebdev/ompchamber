@@ -9,10 +9,11 @@
  *
  * Two things happen before the parser sees it:
  *
- * 1. An XML envelope wrapping the whole output is peeled
+ * 1. XML envelopes wrapping the output are peeled
  *    (`<system-reminder …>…</system-reminder>`, `<result>…</result>`). Those
  *    tags are transport — left in place, markdown escapes them and the user
- *    reads markup instead of the message it carries.
+ *    reads markup instead of the message it carries. omp emits one reminder
+ *    PER MATCHED RULE, so a single tool result routinely opens with two.
  * 2. Content markdown would reflow gets fenced. A log, a JSON body, an HTML
  *    dump have no blank lines and no markers: parsed as prose they collapse
  *    into a single paragraph and their `#`/`-` lines turn into headings and
@@ -21,25 +22,38 @@
  */
 
 import { detectOutputFormat, type OutputFormat } from '@/shared/lib/chat/detect-format';
-import { unwrapXmlEnvelope, type XmlEnvelope } from '@/shared/lib/chat/xml-envelope';
+import { takeTrailingNotice, unwrapXmlEnvelopes, type XmlEnvelope } from '@/shared/lib/chat/xml-envelope';
 
 export interface ToolOutputText {
-  /** What the user reads: the XML envelope peeled off, if there was one. */
+  /** What the user reads: the XML envelopes peeled off, if there were any. */
   content: string;
   /** Format of `content`, deciding how `outputMarkdown` renders it. */
   format: OutputFormat;
-  /** Wrapper that was peeled — rendered as the output's header. */
-  envelope?: XmlEnvelope;
+  /** Wrappers that were peeled — rendered as the output's headers. */
+  envelopes: XmlEnvelope[];
 }
 
 /** Read raw tool output into the text the timeline renders. */
 export function readToolOutput(text: string): ToolOutputText {
-  const envelope = unwrapXmlEnvelope(text);
-  const content = envelope ? [envelope.inner, envelope.rest].filter(Boolean).join('\n\n') : text;
+  const leading = unwrapXmlEnvelopes(text);
+  // A notice omp appended AFTER the output (a rewritten command it reports
+  // after the fact) has no leading wrapper, so it is peeled from the tail.
+  const trailing = leading.length === 0 ? takeTrailingNotice(text) : undefined;
+  const envelopes = trailing ? [trailing.envelope] : leading;
+  const content = trailing
+    ? [trailing.before, trailing.envelope.inner].filter(Boolean).join('\n\n')
+    : envelopes.length > 0
+      ? [
+          ...envelopes.map((envelope) => envelope.inner),
+          ...envelopes.flatMap((envelope) => (envelope.rest ? [envelope.rest] : [])),
+        ]
+          .filter(Boolean)
+          .join('\n\n')
+      : text;
   return {
     content,
     format: detectOutputFormat(content),
-    ...(envelope ? { envelope } : {}),
+    envelopes,
   };
 }
 
