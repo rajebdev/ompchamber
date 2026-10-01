@@ -5,6 +5,12 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.1](https://github.com/rajebdev/ompchamber/compare/v3.10.0...v3.10.1) — 2026-10-01
+
+### Fixed
+
+* **session:** release the stream row a prompt that opened no turn left behind ([3d50fd3](https://github.com/rajebdev/ompchamber/commit/3d50fd3c89874af2c962f7d434f6b731962d5db8))
+
 ## [3.10.0](https://github.com/rajebdev/ompchamber/compare/v3.9.0...v3.10.0) — 2026-10-01
 
 ### Added
