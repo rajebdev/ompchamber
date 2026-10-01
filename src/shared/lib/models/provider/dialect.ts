@@ -177,3 +177,32 @@ export function providerEmptyReason(provider: {
   return undefined;
 }
 
+/**
+ * Why "fetch models" cannot run for this provider, or `undefined` when it can.
+ *
+ * One function for both the button's `disabled` state and its tooltip, because
+ * a disabled button that only says "no fetchable endpoint" names the wrong cause
+ * for half the cases. Two conditions block a fetch:
+ *
+ *  - no KNOWN endpoint — the probe needs somewhere to send the listing request,
+ *    and a login provider (`omp auth`) carries no baseUrl because omp owns its
+ *    endpoint;
+ *  - the provider is listed by OMP ITSELF — a discovery entry resolves its
+ *    models live on every run, so writing a fetched snapshot into models.yml
+ *    would freeze one listing beside the live one omp keeps serving, which is
+ *    the shape the writer's `overrideOnly` exists to avoid.
+ */
+export function providerFetchBlockReason(provider: {
+  baseUrl?: string;
+  discovery?: ProviderDiscoveryType;
+  modelSource?: ProviderModelSource;
+}): string | undefined {
+  if (provider.discovery !== undefined || provider.modelSource === 'discovery') {
+    return 'omp lists this provider’s models itself — a fetch here would freeze a snapshot beside that live list.';
+  }
+  if (!provider.baseUrl) {
+    return 'This provider has no endpoint the chamber can probe — omp owns its URL.';
+  }
+  return undefined;
+}
+

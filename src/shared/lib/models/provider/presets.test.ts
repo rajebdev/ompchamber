@@ -19,7 +19,7 @@ import {
   configuredProviderSlugs,
   groupProviderPresets,
 } from '@/shared/lib/models/provider/presets';
-import { PROVIDER_APIS, providerEmptyReason } from '@/shared/lib/models/provider/dialect';
+import { PROVIDER_APIS, providerEmptyReason, providerFetchBlockReason } from '@/shared/lib/models/provider/dialect';
 import { PRESET_NEW_PROVIDERS } from '@/client/data/settings/provider';
 import type { PresetProviderOption, ProviderItem } from '@/shared/types/settings/provider';
 
@@ -168,5 +168,31 @@ describe('providerEmptyReason', () => {
     // reason for it would hide the failure.
     expect(providerEmptyReason({})).toBeUndefined();
     expect(providerEmptyReason({ modelSource: 'fetch' })).toBeUndefined();
+  });
+});
+
+describe('providerFetchBlockReason', () => {
+  test('a models.yml provider with an endpoint may fetch', () => {
+    // The regression: the registry built these entries without a `baseUrl`, so
+    // the button was disabled for the one set of providers whose endpoint the
+    // chamber actually knows.
+    expect(providerFetchBlockReason({ baseUrl: 'https://kenari.id/v1', modelSource: 'fetch' })).toBeUndefined();
+  });
+
+  test('a login provider names the endpoint as the reason, not the shape', () => {
+    // omp owns the URL of an `omp auth` provider, so there is nothing to probe.
+    const reason = providerFetchBlockReason({});
+    expect(reason).toContain('no endpoint');
+  });
+
+  test('a discovery provider is blocked even though it has an endpoint', () => {
+    // Fetching here would write a snapshot beside the list omp resolves live.
+    const reason = providerFetchBlockReason({ baseUrl: 'http://127.0.0.1:11434', discovery: 'ollama' });
+    expect(reason).toContain('lists this provider’s models itself');
+    expect(providerFetchBlockReason({ baseUrl: 'http://127.0.0.1:11434', modelSource: 'discovery' })).toBeDefined();
+  });
+
+  test('an endpoint override is NOT blocked — adding specific ids is the point', () => {
+    expect(providerFetchBlockReason({ baseUrl: 'https://proxy.example.com', modelSource: 'override' })).toBeUndefined();
   });
 });

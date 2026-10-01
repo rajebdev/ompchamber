@@ -14,13 +14,8 @@
 import { readDisabledProviders } from '@/server/lib/omp/config/disabled-providers';
 import { getModelsConfigPath, readNativeProviders } from '@/server/lib/omp/config/models-config';
 import { runUtilityCommand, type OmpModel } from '@/server/lib/omp/rpc/utility';
+import { disabledProviderItem, nativeProviderItem } from '@/server/lib/models/provider-items.server';
 import { isKenariProvider, removeLegacyKenariModels } from '@/shared/lib/models/provider/cleanup';
-import {
-  isOmpProviderApi,
-  isProviderAuthMode,
-  isProviderDiscoveryType,
-} from '@/shared/lib/models/provider/dialect';
-import { formatContextWindow } from '@/shared/lib/code/format';
 import type { ProviderItem } from '@/shared/types';
 
 /** app_settings key holding the chamber-local provider overlay. */
@@ -116,88 +111,6 @@ async function loadRpcProviderItems(): Promise<ProviderItem[]> {
     // RPC unavailable (cold start / omp busy) — degrade to the remaining sources.
     return [];
   }
-}
-
-/**
- * Build a disabled-native ProviderItem for a provider the omp agent reports as
- * disabled (config.yml disabledProviders). The UI treats these as
- * "disconnected" — re-enabling via POST { enableProvider } flips config.yml.
- */
-function disabledProviderItem(slug: string): ProviderItem {
-  return {
-    id: `omp-disabled-${slug}`,
-    name: slug,
-    slug,
-    icon: slug,
-    status: 'disconnected',
-    disabled: true,
-    configuredIn: 'omp disabledProviders',
-    models: [],
-  };
-}
-
-/**
- * Native provider entry discovered from models.yml. Credentials never leave
- * omp's own stores — chamber only surfaces registration info.
- */
-function nativeProviderItem(
-  info: {
-    slug: string;
-    baseUrl?: string;
-    api?: string;
-    auth?: string;
-    discovery?: string;
-    models: Array<{
-      id: string;
-      name?: string;
-      contextWindow?: number;
-      maxTokens?: number;
-      reasoning?: boolean;
-      imageInput?: boolean;
-    }>;
-  },
-  isDisabled = false,
-): ProviderItem {
-  const { slug, baseUrl } = info;
-  const models = info.models.map((model) => ({
-    id: model.id,
-    name: model.name || model.id,
-    contextWindow: model.contextWindow
-      ? `${formatContextWindow(model.contextWindow) || Math.round(model.contextWindow / 1000)} ctx`
-      : '',
-    hasTools: true,
-    hasVision: model.imageInput === true,
-    hasReasoning: model.reasoning,
-    isVisible: true,
-    maxTokens: model.maxTokens,
-  }));
-  return {
-    id: `omp-native-${slug}`,
-    name: slug,
-    slug,
-    icon: slug,
-    status: isDisabled ? 'disconnected' : 'connected',
-    disabled: isDisabled,
-    configuredIn: baseUrl ? `models.yml · ${baseUrl}` : 'models.yml',
-    credentialSource: 'models.yml' as const,
-    // This entry was built FROM models.yml, so the file holds it by definition.
-    inModelsYml: true,
-    // The dialect is what makes a native entry legible in the settings UI: an
-    // Anthropic-shaped proxy and an OpenAI one look identical without it, and
-    // the keyless/auth choice decides whether a missing credential is a bug.
-    ...(isOmpProviderApi(info.api) ? { api: info.api } : {}),
-    ...(isProviderAuthMode(info.auth) ? { auth: info.auth } : {}),
-    ...(isProviderDiscoveryType(info.discovery) ? { discovery: info.discovery } : {}),
-    // The registry can tell the two shapes apart without guessing: a
-    // discovery block means omp owns the list, and no models at all under a
-    // configured endpoint means this is an override for a bundled provider.
-    modelSource: isProviderDiscoveryType(info.discovery)
-      ? 'discovery'
-      : info.models.length === 0 && Boolean(baseUrl)
-        ? 'override'
-        : 'fetch',
-    models: removeLegacyKenariModels({ name: slug, slug, baseUrl }, models),
-  };
 }
 
 function providerIdentityKey(provider: ProviderItem): string {

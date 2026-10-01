@@ -2,6 +2,7 @@ import { json } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs } from '@/server/lib/remix-compat';
 import { isMockMode } from '@/server/mock.server';
 import { upsertOmpProviderModels } from '@/server/lib/omp/config/providers';
+import { readOmpProviderApiKey } from '@/server/lib/omp/core/auth-credentials';
 import { invalidateModelsCaches } from '@/shared/lib/models/server-cache';
 import {
   enrichFromCatalog,
@@ -109,9 +110,19 @@ export async function action({ request }: ActionFunctionArgs) {
       return json({ ok: true, models: skipListing ? [] : MOCK_REMOTE_MODELS });
     }
 
+    // A provider whose credential lives in models.yml or agent.db never sends
+    // it to the browser — the settings payload carries no key material — so the
+    // probe resolves it here, server-side. Without this, "fetch models" on a
+    // models.yml provider reached a keyed endpoint with no Authorization header
+    // and every listing answered 401, which reads exactly like a broken
+    // endpoint. The resolved key is used for the PROBE only: it is never passed
+    // to the writer, so a credential is not copied from one of omp's stores into
+    // another.
+    const probeApiKey = apiKey ?? (providerSlug ? (await readOmpProviderApiKey(providerSlug)) ?? undefined : undefined);
+
     let enriched: ProviderModel[] = [];
     if (!skipListing) {
-      const result = await fetchRemoteModels(baseUrl, apiKey, api);
+      const result = await fetchRemoteModels(baseUrl, probeApiKey, api);
       if (!result.models) {
         return json({ ok: false, error: result.error }, { status: 502 });
       }

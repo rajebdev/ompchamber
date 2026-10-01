@@ -20,6 +20,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { deduplicateProviderItems } from '@/server/lib/models/provider-registry.server';
+import { nativeProviderItem } from '@/server/lib/models/provider-items.server';
 import type { ProviderItem } from '@/shared/types/settings/provider';
 
 function item(overrides: Partial<ProviderItem> & { slug: string }): ProviderItem {
@@ -97,6 +98,33 @@ describe('inModelsYml', () => {
     expect(merged).toHaveLength(1);
     expect(merged[0].inModelsYml).toBe(true);
     expect(merged[0].credentialSource).toBe('models.yml');
+  });
+});
+
+describe('nativeProviderItem', () => {
+  test('carries the models.yml endpoint, which gates "fetch models"', () => {
+    // Reproduced live: the settings payload for a models.yml provider had no
+    // `baseUrl` at all, so the button read `disabled` for every native provider
+    // even though its endpoint was in the file. It is also not a secret — the
+    // label beside it prints the same URL.
+    const native = nativeProviderItem({
+      slug: 'kenari',
+      baseUrl: 'https://kenari.id/v1',
+      api: 'openai-completions',
+      modelIds: ['m'],
+      models: [{ id: 'm' }],
+    });
+    expect(native.baseUrl).toBe('https://kenari.id/v1');
+    expect(native.inModelsYml).toBe(true);
+    expect(native.modelSource).toBe('fetch');
+  });
+
+  test('omits the endpoint entirely when the entry declares none', () => {
+    // A discovery entry is listed by omp and needs no probe URL; an empty
+    // string would read as "known but unusable" instead of "not applicable".
+    const native = nativeProviderItem({ slug: 'lm-studio', discovery: 'lm-studio', modelIds: [], models: [] });
+    expect(native.baseUrl).toBeUndefined();
+    expect(native.modelSource).toBe('discovery');
   });
 });
 

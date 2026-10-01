@@ -11,7 +11,7 @@ import { ModelConfigModal } from '@/client/components/settings/categories/provid
 import { ModelCapabilitiesModal } from '@/client/components/settings/categories/provider-settings/ModelCapabilitiesModal';
 import { AddModelModal } from '@/client/components/settings/categories/provider-settings/AddModelModal';
 import { DeleteProviderModal } from '@/client/components/settings/categories/provider-settings/DeleteProviderModal';
-import { providerEmptyReason } from '@/shared/lib/models/provider/dialect';
+import { providerEmptyReason, providerFetchBlockReason } from '@/shared/lib/models/provider/dialect';
 import { configuredProviderSlugs } from '@/shared/lib/models/provider/presets';
 import { useSettingsMasterDetail } from '@/client/hooks/settings/master-detail';
 import { SettingsMasterDetail } from '@/client/components/settings/master-detail';
@@ -125,7 +125,7 @@ export function ProviderSettings({
                   onShowAll={handleShowAll}
                   onFetchModels={handleFetchModelsFromList}
                   onAddModel={() => setIsAddModelModalOpen(true)}
-                  canFetchModels={Boolean(selectedProvider.baseUrl)}
+                  fetchBlockReason={providerFetchBlockReason(selectedProvider)}
                   isFetchingModels={isFetchingModels}
                   onOpenModelConfig={(model) => setConfigModel(model)}
                   onOpenModelCapabilities={(model) => setCapabilitiesModel(model)}

@@ -14,7 +14,12 @@ interface ProviderModelsListProps {
   onFetchModels: () => Promise<void>;
   /** Opens the manual "Add Model" dialog. */
   onAddModel: () => void;
-  canFetchModels: boolean;
+  /**
+   * Why a fetch is not possible, or undefined when it is. One prop rather than a
+   * boolean plus a message: the button's `disabled` state and its tooltip have
+   * to come from the same rule, or they can disagree about why it is off.
+   */
+  fetchBlockReason?: string;
   isFetchingModels: boolean;
   onOpenModelConfig: (model: ProviderModel) => void;
   onOpenModelCapabilities: (model: ProviderModel) => void;
@@ -28,7 +33,7 @@ export function ProviderModelsList({
   onShowAll,
   onFetchModels,
   onAddModel,
-  canFetchModels,
+  fetchBlockReason,
   isFetchingModels,
   onOpenModelConfig,
   onOpenModelCapabilities,
@@ -53,8 +58,8 @@ export function ProviderModelsList({
           <button
             type="button"
             onClick={onFetchModels}
-            disabled={!canFetchModels || isFetchingModels}
-            title={canFetchModels ? 'Fetch models from provider endpoint' : 'This provider has no fetchable endpoint'}
+            disabled={Boolean(fetchBlockReason) || isFetchingModels}
+            title={fetchBlockReason ?? 'Fetch models from provider endpoint'}
             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-ink text-canvas text-[11px] font-medium hover:opacity-90 transition-opacity cursor-pointer border border-ink disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <RefreshCw size={12} className={isFetchingModels ? 'animate-spin' : ''} />
