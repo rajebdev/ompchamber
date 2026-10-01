@@ -24,21 +24,17 @@
  * modes it is actually in rather than the last thing this tab requested.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
-  CHAMBER_MODE_EVENT,
   EMPTY_MODE_SELECTION,
   type ChamberModeSelection,
   type GoalContinuation,
   type GoalRecord,
 } from '@/shared/lib/omp/mode/types';
-import {
-  continuationFromMarker,
-  goalEnabledFromMarker,
-  goalRecordFromMarker,
-  type ParsedMarker,
-} from '@/shared/lib/omp/mode/markers';
+import { goalMarkerPatch, useModeMarkers, type ModesResponse } from '@/client/hooks/chat/timeline/mode-markers';
+import { createGoalAction } from '@/client/hooks/chat/timeline/goal-command';
 import { isGoalOpen } from '@/shared/lib/omp/mode/status';
+import { isPendingSessionId } from '@/shared/lib/omp/session/default-title';
 
 export interface ChatTimelineModes {
   plan: boolean;
@@ -71,13 +67,33 @@ export interface ChatTimelineModes {
   pending: boolean;
   /** omp refuses to enter one mode while the other is active, so Plan is not
    *  offered while Goal is on — a button whose only outcome is a refusal is
-   *  worse than an absent one. */
+   *  worse than an absent one. The child enforces the same rule, because this
+   *  flag only hides a button: a stale client or a typed `/plan` used to reach
+   *  the child and turn both modes on. */
   planAvailable: boolean;
+  /**
+   * The last refusal, from either side of the wire: the route's own error, or a
+   * `CHAMBER_MODE_ERROR` the extension emitted (an unknown action, a missing
+   * omp API, the plan/goal exclusion). Surfaced by the composer because a mode
+   * command that fails silently leaves the toggle pressed over a mode the child
+   * is not in.
+   */
+  error: string | null;
+  /** Clear the refusal once it has been shown. */
+  clearError: () => void;
+  /**
+   * For a pending `new-…` chat only: the selection its spawn must carry, since
+   * there is no child to command yet. Null once the session exists — from then
+   * on the child is authoritative and the value is written to its transcript.
+   *
+   * A ref rather than a value because the reader is the SEND path
+   * (`executeSend`), which runs outside the render that produced it.
+   */
+  spawnSelectionRef: { current: ChamberModeSelection | null };
   onTogglePlan: (enabled: boolean) => void;
   /** Goal needs an objective, so the toggle opens a modal instead of sending a
    *  bare enable — see `GoalModal`. */
   onGoalAction: (action: GoalAction) => void;
-  error: string | null;
 }
 
 export type GoalAction =
@@ -88,32 +104,12 @@ export type GoalAction =
   | { kind: 'drop' }
   | { kind: 'budget'; value: number | 'off' };
 
-interface ModesResponse {
-  modes?: ChamberModeSelection & { goalRecord?: GoalRecord | null; goalContinuation?: GoalContinuation | null };
-}
-
-/**
- * Subscribe to this session's mode markers. A marker for another session is
- * ignored: two chats can be open at once and only one of them owns the process
- * that emitted it.
- */
-function useModeMarkers(sessionId: string | null, handler: (marker: ParsedMarker) => void): void {
-  const handlerRef = useRef(handler);
-  handlerRef.current = handler;
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const listener = (event: Event) => {
-      const detail = (event as CustomEvent<{ sessionId?: string; marker?: ParsedMarker }>).detail;
-      if (!detail?.marker) return;
-      if (sessionId && detail.sessionId && detail.sessionId !== sessionId) return;
-      handlerRef.current(detail.marker);
-    };
-    window.addEventListener(CHAMBER_MODE_EVENT, listener);
-    return () => window.removeEventListener(CHAMBER_MODE_EVENT, listener);
-  }, [sessionId]);
-}
-
 export function useChatTimelineModes(sessionId: string | null): ChatTimelineModes {
+  // A pending `new-…` chat has no omp session to command: `/api/agent/:id`
+  // answers 404 and nothing persists. The selection lives in
+  // `spawnSelectionRef` instead, and the SEND path hands it to the spawn
+  // (`executeSend` → `sendNewPrompt` → the session's `CHAMBER_MODES`
+  // environment), which is the earliest moment a child exists to carry it.
   const [plan, setPlanState] = useState(false);
   const [goal, setGoalState] = useState(false);
   const [goalRecord, setGoalRecord] = useState<GoalRecord | null>(null);
@@ -125,6 +121,13 @@ export function useChatTimelineModes(sessionId: string | null): ChatTimelineMode
   const [error, setError] = useState<string | null>(null);
   const sessionRef = useRef(sessionId);
   sessionRef.current = sessionId;
+  // The mode the toggles currently READ, for the rollback below: the previous
+  // value is needed outside a state updater (React may run one twice).
+  const planRef = useRef(false);
+  planRef.current = plan;
+  /** The selection a pending chat's spawn must carry. Reset whenever the hook
+   *  is looking at a real session — from then on the child owns the modes. */
+  const spawnSelectionRef = useRef<ChamberModeSelection | null>(null);
   // Mirrors the record's id so a goal transition can be detected OUTSIDE a
   // state updater. Comparing inside `setGoalRecord` would put the reset in an
   // updater that React may run twice.
@@ -148,7 +151,15 @@ export function useChatTimelineModes(sessionId: string | null): ChatTimelineMode
     setGoalContinuation(null);
     setGoalEvaluating(false);
     goalIdRef.current = null;
+    // The pending selection is spent at the spawn that adopts a real id: this
+    // hook is now rendering the CHILD's modes, and a stale ref would re-apply
+    // the pending chat's picks to an unrelated later spawn.
+    if (!isPendingSessionId(current)) spawnSelectionRef.current = null;
     if (!current) return;
+    // A pending `new-…` id has no session file, so the route can only answer
+    // 404. Skipped rather than fetched-and-ignored: the read is what a network
+    // panel shows, and a request whose only possible outcome is a 404 is noise.
+    if (isPendingSessionId(current)) return;
     let cancelled = false;
     fetch(`/api/sessions/${encodeURIComponent(current)}/modes`)
       .then((res) => (res.ok ? (res.json() as Promise<ModesResponse>) : null))
@@ -175,49 +186,38 @@ export function useChatTimelineModes(sessionId: string | null): ChatTimelineMode
   // a goal the model created itself during a guided interview, and one paused
   // by an interrupt.
   useModeMarkers(sessionId, (marker) => {
+    const patch = goalMarkerPatch(marker, goalIdRef.current);
+    if (patch) {
+      // A different goal owns a different turn count — including no goal at all
+      // (Drop reports `goal: null`), which must not leave the last counter
+      // standing.
+      if (patch.goalChanged) {
+        goalIdRef.current = patch.record?.id ?? null;
+        setGoalContinuation(null);
+      }
+      if (patch.continuation !== undefined) setGoalContinuation(patch.continuation);
+      if (patch.evaluating !== undefined) setGoalEvaluating(patch.evaluating);
+      // A state frame carries the record; the evaluating/continuation frames
+      // carry none, so they must not blank it.
       if (marker.marker === 'CHAMBER_GOAL_STATE:') {
-        const record = goalRecordFromMarker(marker.payload);
-        // A different goal owns a different turn count — including no goal at
-        // all (Drop reports `goal: null`), which must not leave the last
-        // counter standing.
-        if ((record?.id ?? null) !== goalIdRef.current) {
-          goalIdRef.current = record?.id ?? null;
-          setGoalContinuation(null);
-        }
-        // A verdict written by the child (a stand-down it reported before this
-        // tab attached) travels with the state record.
-        if ('continuation' in marker.payload) {
-          setGoalContinuation(continuationFromMarker(marker.payload.continuation));
-        }
-        setGoalRecord(record);
-        setGoalState(goalEnabledFromMarker(marker.payload));
-        if (!record || record.status !== 'active') setGoalEvaluating(false);
-        return;
+        setGoalRecord(patch.record);
+        setGoalState(patch.enabled);
+        if (!patch.record || patch.record.status !== 'active') setGoalEvaluating(false);
       }
-      if (marker.marker === 'CHAMBER_GOAL_EVALUATING:') {
-        // The child's loop is deciding whether to open another turn. It has no
-        // other frame (the decision is a synchronous guard chain), so this is
-        // what the strip's spinner hangs off.
-        setGoalEvaluating(marker.payload.evaluating === true);
-        return;
-      }
-      if (marker.marker === 'CHAMBER_GOAL_CONTINUATION:') {
-        // The loop's own per-turn report: emitted just before it opens an
-        // automatic turn, so the run that follows is the turn it names.
-        const continuation = continuationFromMarker(marker.payload);
-        if (continuation) setGoalContinuation(continuation);
-        // The decision that produced this frame is over; a lost
-        // `evaluating: false` must not leave the strip spinning.
-        setGoalEvaluating(false);
-        return;
-      }
-      if (marker.marker === 'CHAMBER_PLAN_STATE:') {
-        setPlanState(marker.payload.enabled === true);
-        return;
-      }
-      if (marker.marker === 'CHAMBER_MODE_ERROR:') {
-        setError(typeof marker.payload.reason === 'string' ? marker.payload.reason : 'Mode command failed');
-      }
+      return;
+    }
+    if (marker.marker === 'CHAMBER_PLAN_STATE:') {
+      setPlanState(marker.payload.enabled === true);
+      return;
+    }
+    if (marker.marker === 'CHAMBER_MODE_ERROR:') {
+      setError(typeof marker.payload.reason === 'string' ? marker.payload.reason : 'Mode command failed');
+      // A refusal means the mode did NOT change, so the optimistic flip has to
+      // come back off. The scope tag is what says which toggle lied; without it
+      // a refused `plan on` under a live goal left the button pressed over a
+      // mode the child never entered (measured).
+      if (marker.payload.scope === 'plan') setPlanState(false);
+    }
   });
 
   const send = useCallback(
@@ -250,69 +250,61 @@ export function useChatTimelineModes(sessionId: string | null): ChatTimelineMode
 
   const onTogglePlan = useCallback(
     (enabled: boolean) => {
+      // A pending chat: keep the pick for the spawn instead of POSTing to a
+      // session that does not exist. The optimistic flip is not a guess here —
+      // it IS the state, because the spawn will read it back from this ref.
+      setError(null);
+      if (isPendingSessionId(sessionRef.current)) {
+        setPlanState(enabled);
+        spawnSelectionRef.current = { plan: enabled, goal: false };
+        return;
+      }
+      const previous = planRef.current;
       // The child answers with a marker that re-sets this; the optimistic flip
-      // exists only so the button responds to the press.
+      // exists only so the button responds to the press. A REFUSED command
+      // rolls it back: leaving it pressed over a mode the child is not in is
+      // the lie the refusal exists to prevent (measured: `plan on` against a
+      // live goal returned 200, the child refused, and the button stayed on).
       setPlanState(enabled);
-      void send('plan', enabled ? 'on' : 'off');
-    },
-    [send],
-  );
-
-  const onGoalAction = useCallback(
-    (action: GoalAction) => {
-      // Every branch below mirrors the transition it asked for LOCALLY, and the
-      // child's own marker overwrites that mirror when it lands. The mirror is
-      // not cosmetic: the mark returns over the session's event stream, and the
-      // strip's controls are the only feedback the user gets — measured after a
-      // dev-server restart (which kills the child and the client's socket), a
-      // Resume answered 200 and the goal went active in the child while the row
-      // kept reading "paused" indefinitely, because nothing re-attached the
-      // stream. Same rule the Plan toggle already follows.
-      //
-      // Pause and Resume also drop the last turn's verdict: the loop's ceiling
-      // count starts over in the child (`resetGoalContinuationTurns`), and omp's
-      // own resume opens no turn, so a "stopped at 25 turns" row left standing
-      // would describe a state the operator just left.
-      if (action.kind === 'create') {
-        void send('goal', 'create', {
-          objective: action.objective,
-          tokenBudget: action.tokenBudget,
-          maxTurns: action.maxTurns,
-        }).then(
-          (ok) => { if (ok) setGoalContinuation(null); },
-        );
-        return;
-      }
-      if (action.kind === 'guided') {
-        void send('goal', 'guided', { rough: action.rough }).then((ok) => { if (ok) setGoalContinuation(null); });
-        return;
-      }
-      if (action.kind === 'budget') {
-        void send('goal', 'budget', { value: action.value });
-        return;
-      }
-      void send('goal', action.kind).then((ok) => {
-        if (!ok) return;
-        if (action.kind === 'pause') {
-          setGoalState(false);
-          setGoalRecord((prev) => (prev ? { ...prev, status: 'paused' } : prev));
-        } else if (action.kind === 'resume') {
-          setGoalState(true);
-          setGoalRecord((prev) => (prev ? { ...prev, status: 'active' } : prev));
-          setGoalContinuation(null);
-        } else if (action.kind === 'drop') {
-          setGoalState(false);
-          setGoalRecord(null);
-          setGoalContinuation(null);
-        }
+      void send('plan', enabled ? 'on' : 'off').then((ok) => {
+        if (!ok) setPlanState(previous);
       });
     },
     [send],
   );
 
+  const runGoalAction = useMemo(
+    () => createGoalAction({
+      send: (scope, action, payload) => send(scope, action, payload),
+      setGoalState,
+      setGoalRecord,
+      setGoalContinuation,
+    }),
+    [send],
+  );
+
+  const onGoalAction = useCallback(
+    (action: GoalAction) => {
+      // A pending chat has no child to create a goal on, and the spawn env
+      // cannot carry one: a goal needs an objective and an opening turn, and
+      // `restoreModes` deliberately does NOT resume a restored goal. Refused
+      // with a reason rather than queued silently — the modal closes on submit,
+      // so a silent drop would look like the goal was created.
+      if (isPendingSessionId(sessionRef.current)) {
+        setError('Send a message first — a goal needs a session to run in.');
+        return;
+      }
+      runGoalAction(action);
+    },
+    [runGoalAction],
+  );
+
+  const clearError = useCallback(() => setError(null), []);
+
   // omp's own mutual exclusion (`#enterGoalMode` refuses while plan mode is
   // active and vice versa), surfaced as an availability rule rather than as a
-  // refusal the user has to read.
+  // refusal the user has to read — and enforced in the child for the callers
+  // this flag cannot reach (a stale client, a typed `/plan`).
   return {
     plan,
     goal,
@@ -322,9 +314,11 @@ export function useChatTimelineModes(sessionId: string | null): ChatTimelineMode
     goalEvaluating,
     pending,
     planAvailable: !goal,
+    error,
+    clearError,
+    spawnSelectionRef,
     onTogglePlan,
     onGoalAction,
-    error,
   };
 }
 

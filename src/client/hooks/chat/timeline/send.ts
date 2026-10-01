@@ -59,6 +59,11 @@ export interface ChatTimelineSendDeps {
   /** Global access-control mode (persisted user preference), read at send time
    *  so the spawn-capable requests carry the latest value. */
   accessModeRef: { current: ApprovalMode };
+  /** Plan/goal picks made on a pending `new-…` chat, applied to the spawn that
+   *  replaces it. Read here rather than from `modes` because the spawn happens
+   *  outside the render that produced the pick, and it is the FIRST moment a
+   *  child exists to carry the selection. */
+  spawnSelectionRef: { current: { plan: boolean; goal: boolean } | null };
   /** Picks the composer made while a turn was streaming. Pushed onto the
    *  session here, immediately before the prompt they were meant for. */
   deferredComposerPickRef: DeferredModelStore;
@@ -101,6 +106,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
     pendingThinkingLevelRef,
     deferredComposerPickRef,
     accessModeRef,
+    spawnSelectionRef,
     abortControllerRef,
     setInputValue,
     setSearchParams,
@@ -250,13 +256,18 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
         optimisticUserIdRef.current = userMsgId;
         const composerModel = pendingComposerModelRef.current;
         const composerThinking = pendingThinkingLevelRef.current;
+        // The mode picks made on the pending view ride the spawn. Read once,
+        // here, and cleared below on success: a selection that outlived its
+        // spawn would re-apply to the NEXT new session the user opens.
+        const spawnModes = spawnSelectionRef.current;
         const spawned = await ompAgent.sendNewPrompt(
           promptText,
           cwd,
           images.length ? images : undefined,
-          { model: composerModel, thinkingLevel: composerThinking, accessMode: accessModeRef.current },
+          { model: composerModel, thinkingLevel: composerThinking, accessMode: accessModeRef.current, modes: spawnModes },
         );
         if (spawned) {
+          spawnSelectionRef.current = null;
           adoptedSessionIdRef.current = spawned.sessionId;
           aiPlaceholderIdRef.current = aiPlaceholderId;
           // The spawn already applied this level to the session; seed it so the

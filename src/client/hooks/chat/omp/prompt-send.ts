@@ -34,7 +34,15 @@ export interface OmpPromptSender {
     message: string,
     cwd: string,
     images?: AgentImage[],
-    composerOptions?: { model?: { provider: string; modelId: string } | null; thinkingLevel?: string | null; accessMode?: ApprovalMode },
+    composerOptions?: {
+      model?: { provider: string; modelId: string } | null;
+      thinkingLevel?: string | null;
+      accessMode?: ApprovalMode;
+      /** Plan/goal picks made on the pending view. Applied through the spawn
+       *  ENVIRONMENT, because a brand-new session has no transcript for the
+       *  extension to restore from — see the route's `modes` handling. */
+      modes?: { plan: boolean; goal: boolean } | null;
+    },
   ) => Promise<{ sessionId: string; model: { provider: string; modelId: string } | null } | null>;
 }
 
@@ -106,7 +114,12 @@ export function useOmpPromptSender(deps: OmpPromptSenderDeps): OmpPromptSender {
     message: string,
     cwd: string,
     images?: AgentImage[],
-    composerOptions?: { model?: { provider: string; modelId: string } | null; thinkingLevel?: string | null; accessMode?: ApprovalMode },
+    composerOptions?: {
+      model?: { provider: string; modelId: string } | null;
+      thinkingLevel?: string | null;
+      accessMode?: ApprovalMode;
+      modes?: { plan: boolean; goal: boolean } | null;
+    },
   ): Promise<{ sessionId: string; model: { provider: string; modelId: string } | null } | null> => {
     setState((prev) => ({ ...prev, isGenerating: true, error: null }));
     try {
@@ -119,6 +132,9 @@ export function useOmpPromptSender(deps: OmpPromptSenderDeps): OmpPromptSender {
           ...(composerOptions?.model ? composerOptions.model : {}),
           ...(composerOptions?.thinkingLevel ? { thinkingLevel: composerOptions.thinkingLevel } : {}),
           ...(composerOptions?.accessMode ? { accessMode: composerOptions.accessMode } : {}),
+          // Plan/goal picks from the pending view. Omitted when the user made
+          // none, so a spawn with no selection behaves exactly as before.
+          ...(composerOptions?.modes ? { modes: composerOptions.modes } : {}),
         }),
       });
       const createdBody = (await created.json().catch(() => ({}))) as {

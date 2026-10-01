@@ -232,6 +232,7 @@ export function useChatTimeline({
     pendingThinkingLevelRef,
     deferredComposerPickRef,
     accessModeRef,
+    spawnSelectionRef: modes.spawnSelectionRef,
     abortControllerRef,
     setInputValue,
     setSearchParams,

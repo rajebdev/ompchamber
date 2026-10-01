@@ -87,9 +87,6 @@ export interface ExtensionCtx {
   cwd?: string;
   /** The session's `local://` root mapping, needed to read a plan artifact. */
   localProtocolOptions?: unknown;
-  /** Managed one-shot timer: cleared automatically on session shutdown. */
-  setTimeout?(callback: (...args: unknown[]) => void, ms?: number): unknown;
-  clearTimer?(timer: unknown): void;
   /** Start a new session (command context only). */
   newSession?(options?: { parentSession?: string }): Promise<{ cancelled: boolean }>;
   /** Compact the session context (command context only). */

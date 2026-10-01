@@ -35,6 +35,7 @@ import {
   ensureGoalTool,
   enterPlanMode,
   modeCapabilities,
+  recordPlanState,
   type ExtensionCtx,
   type ModeApi,
 } from './session';
@@ -44,12 +45,14 @@ import {
   CHAMBER_GOAL_STATE_MARKER,
   CHAMBER_MODE_COMMAND,
   CHAMBER_MODE_ERROR_MARKER,
+  CHAMBER_PLAN_DECISION_MARKER,
   CHAMBER_PLAN_STATE_MARKER,
   CHAMBER_MODES_ENV,
   type GoalRecord,
 } from './protocol';
 import { goalStateRecord } from './goal';
 import { installPlanProposal } from './plan';
+import { peekParkedProposal, releaseForRefinement } from './parked';
 
 
 function parseModesEnv(): { plan: boolean; goal: boolean } {
@@ -72,16 +75,34 @@ async function restoreModes(api: ModeApi, ctx: ExtensionCtx): Promise<void> {
   if (!session) return;
   const caps = modeCapabilities(session);
 
+  // Both flags can only arrive from a record written before the modes were
+  // mutually exclusive. Plan wins: it is the passive one, while a restored goal
+  // is what the chamber's driver keeps opening turns for.
+  const bothWanted = wanted.plan && wanted.goal;
+  if (bothWanted) {
+    emit(ctx, CHAMBER_MODE_ERROR_MARKER, {
+      reason: 'This session recorded both plan mode and a goal; plan mode was restored and the goal was left off.',
+    });
+  }
+
   if (wanted.plan) {
     if (!caps.plan) emit(ctx, CHAMBER_MODE_ERROR_MARKER, { reason: 'plan-mode API missing in this omp build' });
     else {
       const planFilePath = session.getPlanReferencePath?.() || 'local://PLAN.md';
       await enterPlanMode(session, planFilePath);
       installPlanProposal(session, ctx);
+      // The persisted record too, not just the live marker. `enterPlanMode`
+      // writes omp's own `mode_change`, which `--mode rpc-ui` never restores,
+      // and the spawn env is what re-applied the flag — so without this entry a
+      // reloaded session's JSONL still said "plan off" while the child was in
+      // plan mode, and the NEXT spawn read the stale record and came up with
+      // plan mode off. Measured: plan on → toggle off before any turn → toggle
+      // on again → the second spawn reported `plan: null`.
+      recordPlanState(api, true);
       emit(ctx, CHAMBER_PLAN_STATE_MARKER, { enabled: true, planFilePath });
     }
   }
-  if (wanted.goal) {
+  if (wanted.goal && !bothWanted) {
     if (!caps.goal) emit(ctx, CHAMBER_MODE_ERROR_MARKER, { reason: 'goal-mode API missing in this omp build' });
     else {
       // The tool is enabled so the toggle can act immediately, but a restored
@@ -196,6 +217,27 @@ export default function chamberModes(api: ModeApi): void {
 
   api.on?.('session_start', async (_event: unknown, ctx: ExtensionCtx) => {
     await restoreModes(api, ctx);
+  });
+
+  // A run that ended while a review was still parked means the tool call is
+  // gone — Stop/abort is the only way in, since omp does NOT clear the proposal
+  // handler when it interrupts (`setPlanProposalHandler(null)` appears only on
+  // the plan-yolo approval path). Measured: after an abort the child reported
+  // idle while the slot still held the plan, so `republish` kept re-announcing a
+  // review nobody was waiting on and the composer's panel stayed up over a
+  // finished run.
+  //
+  // Releasing is the same refinement `plan off` performs: the model learns the
+  // review was abandoned rather than the operator's choice being invented. The
+  // `clear: true` teardown would ALSO uninstall the handler, which a still-active
+  // plan mode needs for the next `xd://propose`.
+  api.on?.('agent_end', (event: unknown, ctx: ExtensionCtx) => {
+    // A run that already scheduled a continuation is not over; its tool call may
+    // still be the parked one.
+    if ((event as { willContinue?: boolean }).willContinue === true) return;
+    if (!peekParkedProposal()) return;
+    releaseForRefinement('The run was interrupted before the plan was reviewed.');
+    emit(ctx, CHAMBER_PLAN_DECISION_MARKER, { choice: 'Interrupted', title: '' });
   });
 
   // omp's own goal transitions are authoritative: the chamber mirrors them and

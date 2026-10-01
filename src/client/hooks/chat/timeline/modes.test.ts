@@ -42,6 +42,16 @@ function Probe({ sessionId }: { sessionId: string }) {
     { id: 'probe' },
     h('button', { id: 'resume', onClick: () => modes.onGoalAction({ kind: 'resume' }) }, 'resume'),
     h('button', { id: 'pause', onClick: () => modes.onGoalAction({ kind: 'pause' }) }, 'pause'),
+    // The Plan toggle, and the selection its spawn would carry. Rendered as
+    // text because that is what the assertions read: the composer paints the
+    // refusal strip, and the send path reads the ref.
+    h(
+      'button',
+      { id: 'plan', onClick: () => modes.onTogglePlan(!modes.plan), 'data-pressed': String(modes.plan) },
+      modes.plan ? 'on' : 'off',
+    ),
+    h('span', { id: 'spawn' }, JSON.stringify(modes.spawnSelectionRef.current)),
+    h('span', { id: 'error' }, modes.error ?? ''),
     modes.goalOpen && modes.goalRecord
       ? h(GoalBanner, {
           record: modes.goalRecord,
@@ -56,13 +66,25 @@ function Probe({ sessionId }: { sessionId: string }) {
   );
 }
 
+/** Every request the hook issued, so a test can assert what was NOT sent. */
+const requests: Array<{ url: string; method: string }> = [];
+/** When set, a POST to the agent route answers this instead of success. */
+let postFailure: { status: number; error: string } | null = null;
+
 beforeAll(() => {
   const win = new Window({ url: 'http://localhost' });
   const target = globalThis as unknown as Record<string, unknown>;
   for (const key of DOM_GLOBALS) target[key] = (win as unknown as Record<string, unknown>)[key];
   target.fetch = async (input: unknown, init?: { method?: string }) => {
     const url = String(input);
+    requests.push({ url, method: init?.method ?? 'GET' });
     if (init?.method === 'POST') {
+      if (postFailure) {
+        return new Response(JSON.stringify({ error: postFailure.error }), {
+          status: postFailure.status,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
       return new Response(JSON.stringify({ success: true }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
@@ -110,6 +132,8 @@ afterAll(() => {
 afterEach(() => {
   if (container) render(null, container);
   container = undefined;
+  requests.length = 0;
+  postFailure = null;
 });
 
 /** Mounts `sessionId`, then drains the hydrate promise and its re-render. */
@@ -202,5 +226,86 @@ describe('useChatTimelineModes hydration', () => {
     const el = await mount(WITH_GOAL);
     expect(el.textContent).toContain('stopped at 5 turns');
     expect(el.querySelector('[aria-label="Resume the goal"]')).not.toBeNull();
+  });
+});
+
+describe('the Plan toggle', () => {
+  test('a pending chat keeps the pick locally and never POSTs to a session that does not exist', async () => {
+    const el = await mount(WITHOUT_FILE);
+    requests.length = 0;
+    await act(async () => {
+      (el.querySelector('#plan') as HTMLButtonElement).click();
+    });
+    for (let i = 0; i < 5; i += 1) await act(async () => {});
+
+    // The button is on, and the SEND path has the selection it must hand the
+    // spawn. The server has heard nothing: `/api/agent/new-…` answers 404, and
+    // a POST whose only outcome is a failure would also leave the toggle
+    // reading a mode nothing applied (the bug this pins).
+    expect(el.querySelector('#plan')?.getAttribute('data-pressed')).toBe('true');
+    expect(el.querySelector('#spawn')?.textContent).toBe('{"plan":true,"goal":false}');
+    expect(requests.filter((r) => r.method === 'POST')).toHaveLength(0);
+  });
+
+  test('a refusal from the child rolls the optimistic flip back and reports why', async () => {
+    const el = await mount(WITH_GOAL);
+    // The child refuses `plan on` while a goal is live. The route answers 200 —
+    // the command was DELIVERED, and the refusal travels as a marker — so the
+    // rollback has to come from the marker's SCOPE, not from the status.
+    await act(async () => {
+      (el.querySelector('#plan') as HTMLButtonElement).click();
+    });
+    for (let i = 0; i < 5; i += 1) await act(async () => {});
+    expect(el.querySelector('#plan')?.getAttribute('data-pressed')).toBe('true');
+
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent('omp:chamber-mode', {
+          detail: {
+            sessionId: WITH_GOAL,
+            marker: {
+              marker: 'CHAMBER_MODE_ERROR:',
+              payload: { scope: 'plan', reason: 'Cannot enter plan mode while a goal is active.' },
+            },
+          },
+        }),
+      );
+    });
+    expect(el.querySelector('#error')?.textContent).toContain('Cannot enter plan mode');
+    expect(el.querySelector('#plan')?.getAttribute('data-pressed')).toBe('false');
+  });
+
+  test('a GOAL refusal does not disturb the Plan toggle', async () => {
+    const el = await mount(WITH_GOAL);
+    await act(async () => {
+      (el.querySelector('#plan') as HTMLButtonElement).click();
+    });
+    for (let i = 0; i < 5; i += 1) await act(async () => {});
+    expect(el.querySelector('#plan')?.getAttribute('data-pressed')).toBe('true');
+
+    // A goal-side refusal reports its own scope; rolling Plan back for it would
+    // turn a working mode off because an unrelated command failed.
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent('omp:chamber-mode', {
+          detail: {
+            sessionId: WITH_GOAL,
+            marker: { marker: 'CHAMBER_MODE_ERROR:', payload: { scope: 'goal', reason: 'an objective is required' } },
+          },
+        }),
+      );
+    });
+    expect(el.querySelector('#plan')?.getAttribute('data-pressed')).toBe('true');
+  });
+
+  test('a rejected request rolls the flip back too', async () => {
+    const el = await mount(WITH_GOAL);
+    postFailure = { status: 400, error: 'invalid_mode_request' };
+    await act(async () => {
+      (el.querySelector('#plan') as HTMLButtonElement).click();
+    });
+    for (let i = 0; i < 10; i += 1) await act(async () => {});
+    expect(el.querySelector('#plan')?.getAttribute('data-pressed')).toBe('false');
+    expect(el.querySelector('#error')?.textContent).toBe('invalid_mode_request');
   });
 });

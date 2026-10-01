@@ -5,10 +5,18 @@ import { startNewRpcSession } from '@/server/lib/omp/rpc/manager';
 import { isApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { loadPersistedAccessMode } from '@/shared/lib/omp/config/access-mode.server';
 import { rpcErrorResponse } from '@/server/lib/omp/rpc/errors';
+import { chamberModeEnv } from '@/server/lib/omp/extensions/locator';
+import { parseModeSelection } from '@/server/lib/omp/mode/request';
 
 /** The model-dropdown persists its selection here (actionType 'selectModel');
  *  a spawn that arrives without an explicit provider/modelId falls back to it. */
 const SELECTED_MODEL_KEY = 'omp_selected_model';
+
+/** A JSON object, or `{}` for anything else. The mode flags are read off the
+ *  result, and a non-object body must read as "no modes" rather than throw. */
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
 
 async function loadPersistedModel(): Promise<{ provider: string; modelId: string } | null> {
   try {
@@ -40,10 +48,27 @@ export async function action({ request }: ActionFunctionArgs) {
 
     // Trust a client-supplied mode only when valid; else use the persisted pick.
     const accessMode = isApprovalMode(body.accessMode) ? body.accessMode : await loadPersistedAccessMode();
+    // The composer's Plan/Goal selection rides the spawn ENVIRONMENT, because a
+    // brand-new session has no JSONL for `loadPersistedModes` to read: the
+    // toggle was pressed on a pending `new-…` chat, whose server call cannot
+    // reach a child that does not exist yet. Without this the button read
+    // "Leave plan mode" over a session that was born with plan mode off, and
+    // flipped back the moment the spawn was adopted (measured).
+    //
+    // A selection that differs from the prewarmed entry's own kills that entry
+    // and cold-spawns (`startNewRpcSession`), which is why the prewarm carries
+    // no modes: the first real selection always wins over it.
+    // `parseModeSelection` reads the FLAGS off the body it is given (that is
+    // what `POST /api/agent/:id` sends), while this route nests them under
+    // `modes`. Passing the body straight through therefore parsed `{}` and
+    // spawned with an EMPTY selection — the client's pick was silently dropped
+    // (measured: `modes:{plan:true}` produced a child reporting `plan: null`).
+    const modes = body.modes !== undefined ? parseModeSelection(asRecord(body.modes)) : null;
+    const modeEnv = modes ? chamberModeEnv(modes) : undefined;
     // startNewRpcSession adopts the prewarmed idle process for this cwd when
     // one exists (fired by the sidebar's New Session click) and otherwise
     // cold-spawns — same contract, minus the boot wait when prewarmed.
-    const { session, realSessionId } = await startNewRpcSession(cwd, accessMode);
+    const { session, realSessionId } = await startNewRpcSession(cwd, accessMode, modeEnv);
 
     const { type, message, images, provider, modelId, thinkingLevel } = body as {
       type: string;

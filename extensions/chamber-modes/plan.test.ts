@@ -39,6 +39,8 @@ interface Harness {
   notices: string[];
   appended: Array<{ customType: string; data: unknown }>;
   sent: Array<{ customType: string; content: string }>;
+  /** Delays any timer the extension armed would have fired at. */
+  timerArms: number[];
   planEnabled: () => boolean;
 }
 
@@ -72,11 +74,23 @@ function harness(): Harness {
     sendMessage: (message) => sent.push({ customType: message.customType, content: message.content }),
   };
 
+  // The review must arm NO timer: omp's own handler is awaited with no
+  // deadline, and `ask.timeout` defaults to 0 for the same reason. Spying on
+  // the ctx hooks is what makes a re-added deadline a test failure rather than
+  // a silent behaviour change — the shape is widened locally so the spy does
+  // not put the hooks back on the production interface.
+  const timerArms: number[] = [];
+  const timerHost = {
+    setTimeout: (_callback: (...args: unknown[]) => void, ms?: number) => {
+      timerArms.push(ms ?? 0);
+      return 1;
+    },
+    clearTimer: () => {},
+  };
   const ctx: ExtensionCtx = {
     cwd: '/tmp/plan-review-test',
     ui: { notify: (message) => notices.push(message) },
-    clearTimer: () => {},
-    setTimeout: () => 1,
+    ...timerHost,
   };
 
   // Expose the installed handler through the session object the harness owns, so
@@ -89,6 +103,7 @@ function harness(): Harness {
     notices,
     appended,
     sent,
+    timerArms,
     planEnabled: () => planState?.enabled === true,
   };
   Object.defineProperty(exposed, 'handler', {
@@ -185,5 +200,20 @@ describe('decidePlan', () => {
   test('a decision with nothing parked is refused, not silently dropped', async () => {
     const h = harness();
     expect(await decidePlan(h.api, h.session, h.ctx, 'Approve and keep context', '')).toBe(false);
+  });
+
+  test('the review waits with NO deadline, like the ask tool', async () => {
+    const h = harness();
+    await propose(h);
+    // A parked review must not expire under the operator. The 30-minute timer
+    // this used to arm resolved the proposal as a REFINEMENT, so a review left
+    // open came back as a different plan with the panel still showing the
+    // abandoned one. `ask.timeout` defaults to 0 — "wait forever" — and this is
+    // the same kind of gate, so nothing may be armed at all.
+    expect(h.timerArms).toEqual([]);
+
+    // And the proposal really is still pending: a decision is what resolves it.
+    expect(await decidePlan(h.api, h.session, h.ctx, 'Approve and keep context', '')).toBe(true);
+    expect(decisionOf(h)?.choice).toBe('Approve and keep context');
   });
 });

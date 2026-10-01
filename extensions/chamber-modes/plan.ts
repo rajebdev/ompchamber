@@ -4,26 +4,12 @@
  */
 
 /**
- * Plan review: the parked `xd://propose`, and the five ways out of it.
+ * Plan review: the five ways out of a parked `xd://propose`.
  *
- * ## The parking contract
- *
- * Plan mode's approval path is a `write` to `xd://propose`, which omp dispatches
- * to whatever `setPlanProposalHandler` installed. The TUI's handler opens the
- * full-screen review overlay and resolves when the operator picks; the model's
- * tool call stays open for the whole time. That is exactly what the chamber
- * needs — the operator reviews in the web console, and the decision travels
- * back — so this handler parks the promise the same way.
- *
- * Parking is safe: measured on omp 18.4.4 with a proposal held for 45 s, the RPC
- * loop stays responsive (`get_state` answers, a second command runs) because the
- * handler blocks only the tool call, not the reader. Two things keep a parked
- * proposal from becoming a hung run:
- *
- *  - a managed timeout (`PLAN_DECISION_TIMEOUT_MS`) resolves it as a refinement
- *    request, so an abandoned review degrades to "the model keeps planning";
- *  - `plan off` resolves it the same way before tearing plan mode down, so
- *    turning the toggle off mid-review cannot strand the turn.
+ * The parked proposal itself — its slot, its plan body, and the releases that
+ * are not a decision (teardown, refinement) — lives in `parked.ts`. This module
+ * owns the CHOICES, because they are omp's own five and each one does something
+ * different to the session.
  *
  * ## The five choices
  *
@@ -36,6 +22,14 @@
 import { PLAN_MODE_APPROVED_PROMPT, PLAN_MODE_COMPACT_INSTRUCTIONS_PROMPT, renderPrompt } from './prompts';
 import { recordPlanState, type ExtensionCtx, type ModeApi, type ModeSession } from './session';
 import {
+  awaitParkedProposal,
+  parkProposal,
+  peekParkedProposal,
+  readPlanFile,
+  releaseParkedProposal,
+  takeParkedProposal,
+} from './parked';
+import {
   CHAMBER_PLAN_DECISION_MARKER,
   CHAMBER_PLAN_PROPOSAL_MARKER,
   CHAMBER_PLAN_SAVED_MARKER,
@@ -43,102 +37,11 @@ import {
   PLAN_REVIEW_CHOICES,
 } from './protocol';
 
-/** How long a parked proposal waits before it is released as a refinement.
- *  The model's tool call is open for the whole window. */
-const PLAN_DECISION_TIMEOUT_MS = 30 * 60 * 1000;
-
 /** Custom-message type the approved plan rides as, mirroring omp's own
  *  `plan-mode-reference` bookkeeping so a transcript reads the same either way. */
 const PLAN_MODE_REFERENCE_TYPE = 'plan-mode-reference';
 
-interface ParkedProposal {
-  title: string;
-  planFilePath: string;
-  planContent: string;
-  resolve: (result: unknown) => void;
-  timer: unknown;
-}
-
-/** The single parked proposal for this process. omp permits one `xd://propose`
- *  at a time per session (the handler is replaced, never stacked), so a slot
- *  rather than a map is the honest shape. */
-let parked: ParkedProposal | null = null;
-
-/** Resolvers waiting for the next proposal to park. See `awaitParkedProposal`. */
-let parkedWaiters: Array<() => void> = [];
-
-/**
- * Resolve once a proposal is parked (immediately when one already is).
- *
- * A seam for the test suite, and honest about why it has to exist: parking
- * happens AFTER the plan file is read, so a caller cannot know from the return
- * of `installPlanProposal` whether the handler has reached its parked state —
- * and a test that guessed with a delay would be racing the read rather than
- * waiting for it.
- */
-export function awaitParkedProposal(): Promise<void> {
-  if (parked) return Promise.resolve();
-  const { promise, resolve } = Promise.withResolvers<void>();
-  parkedWaiters.push(resolve);
-  return promise;
-}
-
-/**
- * omp's `local://` root resolver, loaded ON DEMAND.
- *
- * Dynamic on purpose: the module lives in the omp package, which is installed
- * in the machine's global prefix and is NOT a chamber dependency — a static
- * import would make this file unresolvable outside a child process (measured:
- * `bun test` on this very file failed with "Cannot find module
- * '@oh-my-pi/pi-coding-agent/internal-urls'"). Inside the child the specifier
- * resolves, and the load is cached after the first call.
- */
-async function localRootResolver(): Promise<((options: unknown) => string) | null> {
-  try {
-    const mod: unknown = await import('@oh-my-pi/pi-coding-agent/internal-urls');
-    if (mod && typeof mod === 'object' && 'resolveLocalRoot' in mod) {
-      const resolver = mod.resolveLocalRoot;
-      return typeof resolver === 'function' ? (resolver as (options: unknown) => string) : null;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/** Read a `local://` artifact through omp's own root mapping. */
-async function readPlanFile(ctx: ExtensionCtx, planFilePath: string): Promise<string> {
-  try {
-    const resolveLocalRoot = await localRootResolver();
-    if (!resolveLocalRoot) return '';
-    const root = resolveLocalRoot(ctx.localProtocolOptions);
-    const relative = planFilePath.replace(/^local:\/+/i, '');
-    const file = Bun.file(`${root}/${relative}`);
-    if (!(await file.exists())) return '';
-    return await file.text();
-  } catch {
-    // A plan that cannot be read is reported as an empty body; the approval
-    // itself still works, because omp re-reads the file its own way.
-    return '';
-  }
-}
-
-/** Resolve a parked proposal with a refinement request, which keeps plan mode
- *  active and hands the model a reason instead of a decision. */
-function releaseForRefinement(reason: string): void {
-  const current = parked;
-  if (!current) return;
-  parked = null;
-  current.resolve({
-    content: [{ type: 'text', text: `${reason} Update the plan file, then write its title to xd://propose again.` }],
-    details: { planFilePath: current.planFilePath, title: current.title, planExists: true },
-  });
-}
-
-/** Release the parked proposal because plan mode is being torn down. */
-function releaseParkedProposal(): void {
-  releaseForRefinement('Plan review was dismissed.');
-}
+export { awaitParkedProposal };
 
 /**
  * Install (or clear) the proposal handler.
@@ -180,21 +83,45 @@ export function installPlanProposal(
       }
     }
     const planContent = await readPlanFile(ctx, planFilePath);
+    // No timer: the review waits as long as the operator takes, the same way
+    // `ask` does (`ask.timeout` defaults to 0). See `parked.ts` for why the
+    // 30-minute refinement this used to arm was the wrong escape hatch.
     const { promise, resolve } = Promise.withResolvers<unknown>();
-    const timer = ctx.setTimeout?.(
-      () => releaseForRefinement('The plan review timed out without a decision.'),
-      PLAN_DECISION_TIMEOUT_MS,
-    );
-    parked = { title: resolvedTitle, planFilePath, planContent, resolve, timer };
-    const waiters = parkedWaiters;
-    parkedWaiters = [];
-    for (const waiter of waiters) waiter();
+    parkProposal({ title: resolvedTitle, planFilePath, planContent, resolve });
     ctx.ui?.notify?.(
       `${CHAMBER_PLAN_PROPOSAL_MARKER}${JSON.stringify({ title: resolvedTitle, planFilePath, planContent, details })}`,
       'info',
     );
     return promise;
   });
+}
+
+/**
+ * Re-emit the marker for the proposal already parked.
+ *
+ * The proposal reaches the console exactly once, as a notice frame on the
+ * stream, and a page that reloads while the review is open has no other way to
+ * learn the request id — omp never re-delivers the frame, and the plan body
+ * lives only in this slot. The client asks for this on attach, which is why it
+ * costs nothing when no plan is parked: the answer is a boolean the caller
+ * turns into "no plan is awaiting review".
+ *
+ * The body is NOT re-read from disk: the parked copy is what the operator was
+ * shown, and re-reading could hand them a different plan than the model is
+ * waiting on.
+ */
+export function republishParkedProposal(ctx: ExtensionCtx): boolean {
+  const current = peekParkedProposal();
+  if (!current) return false;
+  ctx.ui?.notify?.(
+    `${CHAMBER_PLAN_PROPOSAL_MARKER}${JSON.stringify({
+      title: current.title,
+      planFilePath: current.planFilePath,
+      planContent: current.planContent,
+    })}`,
+    'info',
+  );
+  return true;
 }
 
 /**
@@ -221,10 +148,8 @@ export async function decidePlan(
     recordPlanState(api, false);
     ctx.ui?.notify?.(`${CHAMBER_PLAN_STATE_MARKER}${JSON.stringify({ enabled: false, planFilePath: '' })}`, 'info');
   };
-  const current = parked;
+  const current = takeParkedProposal();
   if (!current) return false;
-  parked = null;
-  if (current.timer) ctx.clearTimer?.(current.timer);
 
   if (choice === 'Refine plan') {
     const note = feedback.trim() || 'The operator asked for another pass.';

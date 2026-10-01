@@ -41,13 +41,24 @@ import {
   startGoalTurn,
   startGuidedGoal,
 } from './goal';
-import { decidePlan, installPlanProposal } from './plan';
+import { decidePlan, installPlanProposal, republishParkedProposal } from './plan';
 
 /** Report an outcome through the notice channel, which is how the chamber
  *  learns the new state without polling (the frame reaches it over the same
  *  event stream the transcript uses). */
 export function emit(ctx: ExtensionCtx, marker: string, payload: unknown): void {
   ctx.ui?.notify?.(`${marker}${JSON.stringify(payload)}`, 'info');
+}
+
+/**
+ * Report a refusal, tagged with the SCOPE it belongs to.
+ *
+ * The tag is what lets the console roll the right toggle back: both toggles
+ * flip optimistically, and an untagged refusal would leave the client guessing
+ * whether the plan button or the goal button is the one that lied.
+ */
+function emitModeError(ctx: ExtensionCtx, scope: 'plan' | 'goal', reason: string): void {
+  emit(ctx, CHAMBER_MODE_ERROR_MARKER, { scope, reason });
 }
 
 /** Parse a command's trailing JSON payload; a bare string is the objective. */
@@ -70,10 +81,21 @@ export async function dispatchPlan(
   rest: string,
 ): Promise<void> {
   if (!modeCapabilities(session).plan) {
-    emit(ctx, CHAMBER_MODE_ERROR_MARKER, { reason: 'plan-mode API missing in this omp build' });
+    emitModeError(ctx, 'plan', 'plan-mode API missing in this omp build');
     return;
   }
   if (action === 'on') {
+    // omp refuses to enter one mode while the other is live, and so must this:
+    // the composer only HIDES the Plan button under a goal, so a stale client,
+    // a typed `/plan`, or a second tab reached the child and turned BOTH on
+    // (measured: persisted `plan True goal True`, live child reporting both
+    // enabled). The refusal is reported rather than silently dropped, because
+    // the client's optimistic flip would otherwise leave a pressed button over
+    // a mode the child is not in.
+    if (goalStateRecord(session).enabled) {
+      emitModeError(ctx, 'plan', 'Cannot enter plan mode while a goal is active. Drop or pause the goal first.');
+      return;
+    }
     const planFilePath = session.getPlanReferencePath?.() || 'local://PLAN.md';
     await enterPlanMode(session, planFilePath);
     installPlanProposal(session, ctx);
@@ -93,14 +115,26 @@ export async function dispatchPlan(
     const choice = typeof payload.choice === 'string' ? payload.choice : '';
     const feedback = typeof payload.feedback === 'string' ? payload.feedback : '';
     const handled = await decidePlan(api, session, ctx, choice, feedback);
-    if (!handled) emit(ctx, CHAMBER_MODE_ERROR_MARKER, { reason: 'no plan is awaiting review' });
+    if (!handled) emitModeError(ctx, 'plan', 'no plan is awaiting review');
+    return;
+  }
+  if (action === 'republish') {
+    // Asked by a client attaching to a live session, because a parked proposal
+    // is otherwise unreachable after a reload: it exists only in the extension's
+    // slot, and the marker that announced it went out over a stream this client
+    // was not attached to.
+    //
+    // Deliberately SILENT when nothing is parked: this runs on every attach, so
+    // an error here would paint a failure strip on every chat the user opens.
+    // The client's positive signal is the proposal marker itself.
+    republishParkedProposal(ctx);
     return;
   }
   if (action === 'state') {
     emit(ctx, CHAMBER_MODE_STATE_MARKER, { plan: session.getPlanModeState?.() ?? null, goal: goalStateRecord(session) });
     return;
   }
-  emit(ctx, CHAMBER_MODE_ERROR_MARKER, { reason: `unknown plan action: ${action}` });
+  emitModeError(ctx, 'plan', `unknown plan action: ${action}`);
 }
 
 export async function dispatchGoal(
@@ -111,11 +145,23 @@ export async function dispatchGoal(
   rest: string,
 ): Promise<void> {
   if (!modeCapabilities(session).goal) {
-    emit(ctx, CHAMBER_MODE_ERROR_MARKER, { reason: 'goal-mode API missing in this omp build' });
+    emitModeError(ctx, 'goal', 'goal-mode API missing in this omp build');
+    return;
+  }
+  // The other half of the exclusion `dispatchPlan` enforces: omp refuses to
+  // start a goal while plan mode is active, and creating one here used to leave
+  // both modes on with a parked plan review nobody could reach.
+  //
+  // Checked BEFORE `ensureGoalTool`, because a refusal must not have a side
+  // effect: widening the active tool set on a command that is about to be
+  // rejected would leave the child holding a tool its mode does not allow.
+  const planActive = action === 'create' && session.getPlanModeState?.()?.enabled === true;
+  if (planActive) {
+    emitModeError(ctx, 'goal', 'Cannot start a goal while plan mode is active. Leave plan mode first.');
     return;
   }
   if (!(await ensureGoalTool(api, session))) {
-    emit(ctx, CHAMBER_MODE_ERROR_MARKER, { reason: 'could not enable the goal tool for this session' });
+    emitModeError(ctx, 'goal', 'could not enable the goal tool for this session');
     return;
   }
   const runtime = session.goalRuntime;
@@ -124,7 +170,7 @@ export async function dispatchGoal(
     case 'create': {
       const { objective, tokenBudget, maxTurns } = parseGoalArgs(rest);
       if (!objective) {
-        emit(ctx, CHAMBER_MODE_ERROR_MARKER, { reason: 'an objective is required' });
+        emitModeError(ctx, 'goal', 'an objective is required');
         return;
       }
       await createGoalFromSelection(session, { objective, tokenBudget, maxTurns });
@@ -185,7 +231,7 @@ export async function dispatchGoal(
       const value = rest.trim();
       const budget = value === 'off' || value === '' ? undefined : Number.parseInt(value, 10);
       if (budget !== undefined && (!Number.isInteger(budget) || budget <= 0)) {
-        emit(ctx, CHAMBER_MODE_ERROR_MARKER, { reason: 'budget must be a positive integer, or `off`' });
+        emitModeError(ctx, 'goal', 'budget must be a positive integer, or `off`');
         return;
       }
       await runtime?.onBudgetMutated(budget);
@@ -196,6 +242,6 @@ export async function dispatchGoal(
       emit(ctx, CHAMBER_GOAL_STATE_MARKER, goalStateRecord(session));
       return;
     default:
-      emit(ctx, CHAMBER_MODE_ERROR_MARKER, { reason: `unknown goal action: ${action}` });
+      emitModeError(ctx, 'goal', `unknown goal action: ${action}`);
   }
 }

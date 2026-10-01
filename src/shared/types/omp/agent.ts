@@ -94,7 +94,14 @@ export interface OmpAgentHandle extends OmpAgentState {
     message: string,
     cwd: string,
     images?: AgentImage[],
-    composerOptions?: { model?: { provider: string; modelId: string } | null; thinkingLevel?: string | null; accessMode?: ApprovalMode },
+    composerOptions?: {
+      model?: { provider: string; modelId: string } | null;
+      thinkingLevel?: string | null;
+      accessMode?: ApprovalMode;
+      /** Plan/goal picks made on a pending view. A brand-new session has no
+       *  transcript to restore them from, so they ride the spawn environment. */
+      modes?: { plan: boolean; goal: boolean } | null;
+    },
   ) => Promise<{ sessionId: string; model: { provider: string; modelId: string } | null } | null>;
   /** Abort the running turn and immediately send `message` as a fresh prompt. */
   sendInterruptAndReply: (message: string, images?: AgentImage[]) => Promise<boolean>;

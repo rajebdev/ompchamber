@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { CHAMBER_MODE_EVENT, type PlanProposal } from '@/shared/lib/omp/mode/types';
 import type { ParsedMarker } from '@/shared/lib/omp/mode/markers';
+import { isPendingSessionId } from '@/shared/lib/omp/session/default-title';
 
 export interface PlanReviewState {
   proposal: PlanProposal | null;
@@ -52,6 +53,33 @@ export function usePlanReview(sessionId: string | null): PlanReviewState {
     setProposal(null);
     setError(null);
     setDeciding(false);
+  }, [sessionId]);
+
+  // A parked proposal is invisible to a client that was not attached when it
+  // was announced: the marker went out over the stream, omp never re-delivers
+  // it, and the plan body exists only in the extension's slot. So ask the child
+  // to re-send it — but ONLY while a child is already alive. This route is the
+  // chamber's lazy-spawn path, and opening a finished session to READ it must
+  // not boot an omp process for a question the answer to which is "nothing is
+  // parked" (the same rule the observer-only commands follow).
+  useEffect(() => {
+    const current = sessionId;
+    if (!current || isPendingSessionId(current)) return;
+    let cancelled = false;
+    fetch(`/api/agent/${encodeURIComponent(current)}`)
+      .then((res) => (res.ok ? (res.json() as Promise<{ running?: boolean }>) : null))
+      .then((data) => {
+        if (cancelled || !data?.running) return;
+        return fetch(`/api/agent/${encodeURIComponent(current)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'chamber_mode', scope: 'plan', action: 'republish' }),
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [sessionId]);
 
   useEffect(() => {

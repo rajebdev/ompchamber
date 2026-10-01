@@ -276,13 +276,19 @@ export function ChatInput({
         onRemove={removeAttachment}
       />
 
-      {notice && (
+      {/* A refused plan/goal command. Same strip as the composer's own notice,
+          and its own slot: the two describe different things (a rejected
+          attachment versus a mode the child would not enter) and one must not
+          swallow the other. Without this the refusal was invisible — the
+          optimistic flip left the button pressed over a mode that never
+          applied. */}
+      {(notice || modes?.error) && (
         <div className="flex items-start gap-1.5 border-b border-error/20 bg-error/5 px-3 py-1.5 text-[11px] text-error">
           <AlertTriangle size={11} className="mt-0.5 shrink-0" />
-          <span className="min-w-0 flex-1 break-words">{notice}</span>
+          <span className="min-w-0 flex-1 break-words">{notice || modes?.error}</span>
           <button
             type="button"
-            onClick={() => dismissNotice()}
+            onClick={() => (notice ? dismissNotice() : modes?.clearError())}
             className="shrink-0 text-error/60 hover:text-error transition-colors"
             title="Dismiss"
           >
