@@ -6,6 +6,8 @@ import { DiffView } from '@/client/components/workspace/chat-timeline/tool-rende
 import { HashlinePatch } from '@/client/components/workspace/chat-timeline/tool-renderers/hashline-patch';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 import { EnvelopeHeader } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/EnvelopeHeader';
+import { ExcerptCode } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/ExcerptCode';
+import { parseEditOutput } from '@/shared/lib/chat/excerpt';
 import { getLanguageFromPath } from '@/shared/lib/code/language';
 import { highlightCode } from '@/shared/lib/code/syntax-highlight';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
@@ -152,12 +154,20 @@ export function Edit({ tool }: { tool: ToolCallData }) {
     () => (newContent ? highlightCode(newContent.split('\n').slice(0, 80).join('\n'), lang) : ''),
     [newContent, lang, syntaxReady]
   );
-  const outputText = useMemo(() => readToolOutput(output), [output]);
-  const truncatedOutput = useMemo(() => truncateTailLines(outputText.content, MAX_OUTPUT_LINES), [outputText]);
-  const outputBody = useMemo(
-    () => outputMarkdown(truncatedOutput.text, outputText.format),
-    [truncatedOutput, outputText.format]
-  );
+
+  // omp answers an edit with the excerpt it touched, not with prose: numbered
+  // rows under a `[path#TAG]` header. Rendered as markdown that is one plain
+  // code block whose first line is the path; the rows and the notes around them
+  // are separated here so each gets the surface it needs.
+  const sections = useMemo(() => {
+    if (!output) return [];
+    return parseEditOutput(output).map((section) => {
+      const notes = section.notes.join('\n').trim();
+      if (!notes) return { ...section, notesMarkdown: '', envelopes: [] };
+      const read = readToolOutput(notes);
+      return { ...section, notesMarkdown: outputMarkdown(read.content, read.format), envelopes: read.envelopes };
+    });
+  }, [output]);
 
   return (
     <div className="space-y-2.5">
@@ -266,18 +276,24 @@ export function Edit({ tool }: { tool: ToolCallData }) {
         </div>
       )}
 
-      {/* Execution Result Notification — envelope XML dilepas, isinya markdown */}
-      {output && (
-        <div className="rounded-lg border border-ink/8 bg-paper p-2.5 select-text">
-          <div className="flex items-center gap-1.5 mb-1.5 text-[9.5px] font-semibold uppercase tracking-wider text-ink/40">
+      {/* Execution Result — excerpt rows bergutter per file, catatan sebagai markdown */}
+      {sections.length > 0 && (
+        <div className="space-y-2 rounded-lg border border-ink/8 bg-paper p-2.5 select-text">
+          <div className="flex items-center gap-1.5 text-[9.5px] font-semibold uppercase tracking-wider text-ink/40">
             <ArrowRight size={11} className="text-success" />
             <span>Execution Output</span>
           </div>
-          {outputText.envelopes.length > 0 && <EnvelopeHeader envelopes={outputText.envelopes} />}
-          {truncatedOutput.skipped > 0 && (
-            <div className="mb-1 font-mono text-[9.5px] text-ink/45">… {truncatedOutput.skipped} earlier lines hidden</div>
-          )}
-          <MarkdownRenderer content={outputBody} className="text-[11.5px] text-ink/85" />
+          {sections.map((section, index) => (
+            <div key={index} className="space-y-2">
+              {section.envelopes.length > 0 && <EnvelopeHeader envelopes={section.envelopes} />}
+              {section.lines.length > 0 && (
+                <ExcerptCode lines={section.lines} path={section.path || targetPath} tag={section.tag} />
+              )}
+              {section.notesMarkdown && (
+                <MarkdownRenderer content={section.notesMarkdown} className="text-[11.5px] text-ink/85" />
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>
