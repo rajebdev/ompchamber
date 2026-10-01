@@ -5,6 +5,29 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.9.0](https://github.com/rajebdev/ompchamber/compare/v3.8.0...v3.9.0) — 2026-10-01
+
+### Added
+
+* **chat-timeline:** give mobile a tap-sized jump-to-user-message control ([4380b10](https://github.com/rajebdev/ompchamber/commit/4380b10ff3f74dfbe52751f266690775123f7896)), closes [#N](https://github.com/rajebdev/ompchamber/issues/N) [#4](https://github.com/rajebdev/ompchamber/issues/4) [#1](https://github.com/rajebdev/ompchamber/issues/1)
+* **chat:** add a goal strip and an auditor-driven continuation loop ([ca3354f](https://github.com/rajebdev/ompchamber/commit/ca3354f7122ed8cddb34d2f355d00e16d0ba4876))
+* **chat:** drive omp's plan and goal modes from the composer ([651bc4c](https://github.com/rajebdev/ompchamber/commit/651bc4cc825f19ab8599bc7085f8da527201e4fb))
+* **chat:** show send button on desktop while a run streams ([b682f3c](https://github.com/rajebdev/ompchamber/commit/b682f3c81b9c8dded514ecaf060bcc155ff57afe))
+* **schedule:** run prompts on a clock, behind the sidebar Calendar button ([508237f](https://github.com/rajebdev/ompchamber/commit/508237f77dd2fd8cd132200fedff408a9c5c55a7))
+* **settings:** add Plugins panel under LIBRARY ([2d0c07b](https://github.com/rajebdev/ompchamber/commit/2d0c07b4657be2d3a4a7ed7ade1cc72ee0b97e6d))
+* **updates:** announce a new release once per version, with its changelog ([e45604a](https://github.com/rajebdev/ompchamber/commit/e45604aec37acb611c484e6fc1788e8a4582a950))
+* **updates:** give MOCK mode an update that exists and cannot touch the machine ([3f1db25](https://github.com/rajebdev/ompchamber/commit/3f1db25ca20930cce567c8b388c64b4c28ca560f))
+
+### Fixed
+
+* **chat-timeline:** clear the undone turn when the rewind empties the transcript ([70552ef](https://github.com/rajebdev/ompchamber/commit/70552ef5a2dcab5b05e676a41993164069b52fba))
+* **chat:** keep the timeline's auto-scroll out of the ResizeObserver delivery ([9f35246](https://github.com/rajebdev/ompchamber/commit/9f3524624556c292ac20c97bd52e0fe558dcac99))
+* **chat:** make goal mode actually run and keep running ([50c8fdd](https://github.com/rajebdev/ompchamber/commit/50c8fdd75aea47139a7cdd5a8020c97d8e5b6a75))
+* **dev:** stop the ResizeObserver report from raising the dev error overlay ([1bbafde](https://github.com/rajebdev/ompchamber/commit/1bbafde6ed6cfb870d8dd3dcda817085e624fc65))
+* **editor:** keep the line-number gutter as tall as the document ([b106b7e](https://github.com/rajebdev/ompchamber/commit/b106b7eb7fec9a4b558c94ff931e889b23eec076))
+* **omp:** recycle standby omp processes after an update and on Reload OMP Engine ([c3837e9](https://github.com/rajebdev/ompchamber/commit/c3837e9ee432da4fdbbe3e01b70550c588682484))
+* **updates:** run the manual update command with bun, not npm ([115f405](https://github.com/rajebdev/ompchamber/commit/115f405a45ad890583e47b200fa72fb92bffdadd))
+
 ## [3.8.0](https://github.com/rajebdev/ompchamber/compare/v3.7.1...v3.8.0) — 2026-09-29
 
 ### Added
