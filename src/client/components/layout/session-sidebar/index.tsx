@@ -2,6 +2,7 @@ import { useState } from 'preact/hooks';
 import { useSearchParams } from '@/client/lib/router/search-params';
 import { AboutModal, NewWorkspaceModal, SettingsModal } from '@/client/components/layout/session-sidebar/Modals';
 import { SchedulerModal } from '@/client/components/layout/session-sidebar/scheduler-modal';
+import { UpdatePopup } from '@/client/components/layout/update-popup';
 import { SessionSidebarHeader } from '@/client/components/layout/session-sidebar/Header';
 import { SessionSidebarToolbar } from '@/client/components/layout/session-sidebar/Toolbar';
 import { SessionSidebarFooter } from '@/client/components/layout/session-sidebar/Footer';
@@ -10,8 +11,10 @@ import { SessionListSkeleton } from '@/client/components/layout/session-sidebar/
 import { ToastStack } from '@/client/components/common/ToastStack';
 import { spawnCwdForNewSession, triggerSessionPrewarm } from '@/shared/lib/omp/session/prewarm';
 import { useScrollbarFade } from '@/client/hooks/ui/scrollbar-fade';
+import { useChamberEvent } from '@/client/hooks/ui/window-event';
 import { useToasts } from '@/client/hooks/ui/toasts';
 import { useUpdates } from '@/client/hooks/ui/updates';
+import { UPDATE_REQUEST_EVENT } from '@/shared/lib/updates/popup-state';
 import { useSessionSidebarController } from '@/client/hooks/chat/omp/session-sidebar-controller';
 import { useScheduledTaskCount } from '@/client/hooks/workspace/scheduled-tasks';
 
@@ -51,6 +54,20 @@ export function SessionSidebar({ className = '', onClose, appSettings = {} }: { 
   const [isSearchVisible, setIsSearchVisible] = useState(false);
 
   const { isScrolling, handleScroll } = useScrollbarFade();
+
+  // The popup's "Update now" hands the run over instead of starting its own: the
+  // About modal is where an update has always been driven from and it owns the
+  // live output, so this opens it and starts the run it will draw. The popup
+  // dispatches this only after it has closed, so the two dialogs never stack.
+  useChamberEvent(UPDATE_REQUEST_EVENT, () => {
+    setInfoOpen(true);
+    void updates.apply('ompchamber').then((result) => {
+      // A null result means the run was aborted with the page; there is nobody
+      // left to tell. A `manual` answer is the command to run, not a success.
+      if (!result) return;
+      pushToast(result.message, result.success && !result.manual ? 'success' : 'error');
+    });
+  });
 
   /** The folder whose context a new session will inherit — same resolution
    *  the send path uses, so the prewarmed cwd matches the spawn cwd. */
@@ -153,6 +170,10 @@ export function SessionSidebar({ className = '', onClose, appSettings = {} }: { 
         updates={updates}
         onToast={pushToast}
       />
+
+      {/* "Update available" announcement — once per version, gated on the check.
+          Its "Update now" hands the run to the About modal below. */}
+      <UpdatePopup updates={updates} />
 
       {/* New Workspace Modal */}
       <NewWorkspaceModal

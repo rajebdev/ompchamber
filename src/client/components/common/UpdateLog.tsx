@@ -1,3 +1,17 @@
+/**
+ * The update run's own output, as it arrives.
+ *
+ * A live install prints the commands it runs and what they answered, and that
+ * is the only honest progress signal available — there is no percentage to
+ * report. It follows the tail while the run is active so the newest line stays
+ * on screen, and stays readable afterwards, because the failure that matters
+ * explains itself in the last few lines.
+ *
+ * Shared by the About modal and the "What's new" popup: both drive the same
+ * `useUpdates().progress`, and two copies of this fold's presentation would
+ * drift the moment one of them grew a state.
+ */
+
 import { useEffect, useRef } from 'preact/hooks';
 import { Loader2, Terminal } from 'lucide-preact';
 import { updateLogText, type UpdateLogState } from '@/shared/lib/updates/progress';
@@ -8,15 +22,6 @@ interface UpdateLogProps {
   active: boolean;
 }
 
-/**
- * The update's own output, as it arrives.
- *
- * A live install prints the commands it runs and what they answered, and that
- * is the only honest progress signal available — there is no percentage to
- * report. It follows the tail while the run is active so the newest line stays
- * on screen, and stays readable afterwards, because the failure that matters
- * explains itself in the last few lines.
- */
 export function UpdateLog({ state, active }: UpdateLogProps) {
   const scroller = useRef<HTMLPreElement>(null);
   const text = updateLogText(state);

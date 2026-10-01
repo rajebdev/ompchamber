@@ -1,7 +1,8 @@
-import { AlertCircle, Check, Download, Loader2, RefreshCw } from 'lucide-preact';
+import { AlertCircle, Check, Download, Loader2, RefreshCw, Sparkles } from 'lucide-preact';
 import type { UpdateTarget, UpdateTargetInfo } from '@/shared/types/updates';
 import type { UseUpdatesResult } from '@/client/hooks/ui/updates';
-import { UpdateLog } from '@/client/components/layout/session-sidebar/about-modal/UpdateLog';
+import { UpdateLog } from '@/client/components/common/UpdateLog';
+import { UPDATE_POPUP_OPEN_EVENT } from '@/shared/lib/updates/popup-state';
 
 interface UpdateSectionProps {
   updates: UseUpdatesResult;
@@ -150,6 +151,17 @@ export function UpdateSection({ updates, onToast }: UpdateSectionProps) {
                 onApply={(selectedTarget) => void handleApply(selectedTarget)}
               />
             ))}
+            {updates.info?.ompchamber.updateAvailable && (
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent(UPDATE_POPUP_OPEN_EVENT))}
+                disabled={updates.applying !== null}
+                className={`${actionClassName} mt-2 w-full justify-center`}
+              >
+                <Sparkles size={12} />
+                <span>What&apos;s new in {updates.info.ompchamber.latest}</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => void updates.check()}

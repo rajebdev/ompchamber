@@ -27,6 +27,56 @@ export interface UpdateCheckResult {
   checkedAt: string; // ISO timestamp
 }
 
+/**
+ * One release, as the "What's new" popup reads it.
+ *
+ * `body` is the release note GitHub serves verbatim, which for this repository
+ * is the `CHANGELOG.md` section `release.config.mjs` wrote for that tag — so the
+ * popup renders the same prose the changelog carries, without reading the file.
+ */
+export interface ReleaseNote {
+  /** Normalized version without the leading `v`. */
+  version: string;
+  /** The raw tag, so a link can point at the exact ref. */
+  tag: string;
+  name: string;
+  url: string;
+  publishedAt: string | null;
+  body: string;
+}
+
+/**
+ * How this OMPChamber copy can replace itself, so the popup knows whether to
+ * offer a button or a command. `install.method` is what the manual-command
+ * branch keys off, and `install.command` is the exact command to run (null for
+ * the methods that update themselves).
+ */
+export interface UpdateInstallInfo {
+  method: string;
+  reason: string;
+  manual: boolean;
+  command: string | null;
+}
+
+/**
+ * The version range between what is installed and what is published, newest
+ * first. `total` is how many releases exist above `current` (before the caps
+ * below trimmed the list), which is what lets the popup say "showing N of M".
+ */
+export interface UpdateChangelog {
+  current: string | null;
+  latest: string | null;
+  versions: ReleaseNote[];
+  /** Releases between `current` and `latest` before the caps were applied. */
+  total: number;
+  /** The list was cut by a cap; the newest releases are always kept. */
+  truncated: boolean;
+  releaseUrl: string | null;
+  install: UpdateInstallInfo;
+  /** Human-readable reason the range is empty, or null. */
+  error: string | null;
+}
+
 export interface UpdateApplyResult {
   success: boolean;
   target: UpdateTarget;

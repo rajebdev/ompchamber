@@ -6,10 +6,13 @@ import { MobileSessionFooter } from '@/client/components/mobile/mobile-session-s
 import { ToastStack } from '@/client/components/common/ToastStack';
 import { AboutModal, NewWorkspaceModal } from '@/client/components/layout/session-sidebar/Modals';
 import { SchedulerModal } from '@/client/components/layout/session-sidebar/scheduler-modal';
+import { UpdatePopup } from '@/client/components/layout/update-popup';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 import { useScrollbarFade } from '@/client/hooks/ui/scrollbar-fade';
+import { useChamberEvent } from '@/client/hooks/ui/window-event';
 import { useToasts } from '@/client/hooks/ui/toasts';
 import { useUpdates } from '@/client/hooks/ui/updates';
+import { UPDATE_REQUEST_EVENT } from '@/shared/lib/updates/popup-state';
 import { useSessionSidebarController } from '@/client/hooks/chat/omp/session-sidebar-controller';
 import { useScheduledTaskCount } from '@/client/hooks/workspace/scheduled-tasks';
 import { MobileSessionListSkeleton } from '@/client/components/mobile/mobile-session-sidebar/Skeleton';
@@ -66,6 +69,19 @@ export function MobileSessionSidebar({
   const [aboutOpen, setAboutOpen] = useState(false);
   const updates = useUpdates();
   const { toasts, pushToast, dismissToast } = useToasts();
+
+  // The popup's "Update now" hands the run over rather than starting its own —
+  // see the desktop sidebar. The phone must also bring the drawer forward, or
+  // the About modal would open over the chat with the user still looking at the
+  // session list they came from.
+  useChamberEvent(UPDATE_REQUEST_EVENT, () => {
+    onClose();
+    setAboutOpen(true);
+    void updates.apply('ompchamber').then((result) => {
+      if (!result) return;
+      pushToast(result.message, result.success && !result.manual ? 'success' : 'error');
+    });
+  });
 
   const optionsRef = useRef<HTMLDivElement>(null);
   useOnClickOutside(optionsRef, () => setOptionsOpen(false));
@@ -188,6 +204,10 @@ export function MobileSessionSidebar({
         updates={updates}
         onToast={pushToast}
       />
+
+      {/* "Update available" announcement — once per version, gated on the check.
+          Its "Update now" hands the run to the About modal below. */}
+      <UpdatePopup updates={updates} />
 
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
 
