@@ -7,6 +7,7 @@ import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 import { parseDirListing, parseNumberedCode } from '@/shared/lib/code/parser';
 import { getImageMimeType } from '@/shared/lib/fs/file-kind';
 import { buildFsRawUrl } from '@/shared/lib/fs/paths';
+import { toolImageSrc } from '@/shared/lib/omp/session/tool-images';
 import type { ToolCallData } from '@/shared/types/chat';
 import { MAX_OUTPUT_LINES, truncateTailLines } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/truncate';
 import { extractLineMeta } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/read-line-meta';
@@ -26,10 +27,31 @@ export function Read({ tool, targetFilePath, output }: ReadPanelProps) {
   const inputPath = getToolInputPath(tool?.input);
   const filePath = targetFilePath || inputPath || tool?.target || '';
   const cleanFetchPath = filePath.split('?')[0].split('#')[0].replace(/:\d+(?:-\d+)?$/, '');
-  // An image read has no text to show: the panel paints the picture instead of
-  // the code surface, and `/api/fs/raw` is what carries its bytes.
-  const isImage = getImageMimeType(cleanFetchPath) !== null;
-  const imageUrl = isImage ? buildFsRawUrl({ path: cleanFetchPath }) : null;
+
+  // A `read` of an image answers with the picture itself, so the panel paints
+  // the result's own bytes. Reconstructing the image from the tool call's PATH
+  // was the previous behaviour and it only worked for a file inside the browse
+  // scope: `read` routinely names an absolute path outside it (`/tmp/x.png`),
+  // `/api/fs/raw` refused it, and the panel drew a broken image while the bytes
+  // sat in the result. The path is now the FALLBACK, for a result that carries
+  // no image at all.
+  const resultImage = useMemo(() => {
+    for (const image of tool?.images ?? []) {
+      const src = toolImageSrc(image);
+      if (src) return { src, name: cleanFetchPath || 'Image' };
+    }
+    return null;
+  }, [tool?.images, cleanFetchPath]);
+
+  // The path fallback is only for a call that SUCCEEDED and still reported no
+  // image: a `read` that failed ("Path '/tmp/x.png' not found") names a picture
+  // that is not there, and pointing an <img> at it draws a broken thumbnail
+  // over an output that is an error message. The failure renders as its own
+  // text instead.
+  const readFailed = tool?.status === 'error' || tool?.isError === true;
+  const isPathImage = !resultImage && !readFailed && getImageMimeType(cleanFetchPath) !== null;
+  const isImage = Boolean(resultImage) || isPathImage;
+  const imageUrl = resultImage?.src ?? (isPathImage ? buildFsRawUrl({ path: cleanFetchPath }) : null);
 
   useEffect(() => {
     if (cleanFetchPath && !isImage && !output && lazyContent === null && !loadingFile) {
@@ -137,7 +159,7 @@ export function Read({ tool, targetFilePath, output }: ReadPanelProps) {
             {isDir ? <FolderOpen size={12} /> : isImage ? <FileImage size={12} /> : <FileCode size={12} />}
           </span>
           <span className="truncate font-mono text-[11px] font-medium text-ink">
-            {filePath || (isDir ? 'Directory Listing' : 'File Content')}
+            {filePath || resultImage?.name || (isDir ? 'Directory Listing' : 'File Content')}
           </span>
           <span className="rounded bg-ink/5 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-ink/50">
             {kindLabel}
@@ -160,7 +182,8 @@ export function Read({ tool, targetFilePath, output }: ReadPanelProps) {
           <div className="flex max-h-80 items-center justify-center overflow-auto bg-canvas/60 p-3">
             <img
               src={imageUrl}
-              alt={cleanFetchPath}
+              alt={resultImage?.name ?? cleanFetchPath ?? 'Image'}
+              title={resultImage?.name ?? cleanFetchPath}
               className="max-h-72 max-w-full object-contain"
             />
           </div>

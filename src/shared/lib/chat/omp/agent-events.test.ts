@@ -24,6 +24,7 @@ const ABORTED_TURN = {
 
 function makeDeps() {
   const ended: ChatMessageData[] = [];
+  const updates: ChatMessageData[] = [];
   const activity: string[] = [];
   const commandOutputs: string[] = [];
   let settledCount = 0;
@@ -31,6 +32,7 @@ function makeDeps() {
   let state: OmpAgentState = { isGenerating: false, connected: true, error: null };
   const callbacks: OmpAgentCallbacks = {
     onMessageEnd: (msg) => ended.push(msg),
+    onMessageUpdate: (msg) => updates.push(msg),
     onActivity: (verb) => activity.push(verb),
     onPromptSettled: () => { settledCount += 1; },
     onCommandOutput: (text) => commandOutputs.push(text),
@@ -49,7 +51,7 @@ function makeDeps() {
     currentThinkingLevelRef: { current: undefined },
     fileMutatingCallsRef: { current: new Set<string>() },
   };
-  return { deps, ended, activity, commandOutputs, settled: () => settledCount, runEnds: () => runEnds, state: () => state };
+  return { deps, ended, updates, activity, commandOutputs, settled: () => settledCount, runEnds: () => runEnds, state: () => state };
 }
 
 describe('toChatMessage error derivation', () => {
@@ -169,6 +171,50 @@ describe('foldAgentEvent activity phrases', () => {
     // name alone must still read as an activity, never a dangling verb.
     foldAgentEvent({ type: 'tool_execution_start', toolCallId: 'c4', toolName: 'bash', args: {} }, deps);
     expect(activity).toEqual(['Running']);
+  });
+});
+
+describe('foldAgentEvent tool images', () => {
+  const IMAGE_MSG = {
+    role: 'assistant',
+    id: 'm1',
+    content: [
+      { type: 'toolCall', id: 'c1', name: 'read', arguments: { path: '/tmp/shiki96.png' } },
+    ],
+  };
+
+  test('a read result pairs its image onto the tool call', () => {
+    // A `read` of an image answers with the picture itself, and the panel has
+    // no other way to reach it: the PATH is routinely outside the browse scope
+    // (`/tmp/...`), so `/api/fs/raw` refuses it and the result's own bytes are
+    // the only copy the timeline can paint. The pairing re-emits the message,
+    // so the assertion reads the update channel the timeline subscribes to.
+    const { deps, updates } = makeDeps();
+    foldAgentEvent({ type: 'message_end', message: IMAGE_MSG }, deps);
+    foldAgentEvent({
+      type: 'tool_execution_end',
+      toolCallId: 'c1',
+      result: {
+        content: [
+          { type: 'text', text: 'Read image file [image/jpeg]' },
+          { type: 'image', data: `blob:sha256:${'a'.repeat(64)}`, mimeType: 'image/jpeg' },
+        ],
+      },
+    }, deps);
+
+    expect(updates.at(-1)?.toolCalls?.[0]?.images).toEqual([
+      { mimeType: 'image/jpeg', blobRef: `blob:sha256:${'a'.repeat(64)}` },
+    ]);
+  });
+
+  test('a result with no image leaves the field unset', () => {
+    // The fallback (re-read the path) must only fire for a call whose result
+    // genuinely carried no picture — a text read is not an image read.
+    const { deps, updates } = makeDeps();
+    foldAgentEvent({ type: 'message_end', message: IMAGE_MSG }, deps);
+    foldAgentEvent({ type: 'tool_execution_end', toolCallId: 'c1', result: { content: [{ type: 'text', text: '1: hello' }] } }, deps);
+
+    expect(updates.at(-1)?.toolCalls?.[0]?.images).toBeUndefined();
   });
 });
 

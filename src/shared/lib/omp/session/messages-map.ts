@@ -5,6 +5,7 @@
 
 import type { ChatMessageData } from '@/shared/types/chat';
 import { extractInlinedTextAttachments, extractText, extractUserImageAttachments, parseAssistantContent, resultOutput, roleFor, stripInlinedTextAttachments, type OmpMessageEntry } from '@/shared/lib/omp/session/messages-parse';
+import { extractToolImages, type ToolImageRef } from '@/shared/lib/omp/session/tool-images';
 import { isRecord } from '@/shared/lib/util/guards';
 import { normalizeNoticeText } from '@/shared/lib/chat/notice-text';
 import { reminderPartIndex } from '@/shared/lib/chat/notice-row';
@@ -125,6 +126,8 @@ export interface CollectedToolResult {
   output: string;
   details?: Record<string, unknown>;
   isError?: boolean;
+  /** Pictures the result returned (a `read` of an image). */
+  images?: ToolImageRef[];
 }
 
 export interface SequenceState {
@@ -159,7 +162,13 @@ export function collectToolOutputs(records: Record<string, unknown>[]): Map<stri
     }
     const details = (isRecord(msg.details) ? (msg.details as Record<string, unknown>) : undefined) || existing?.details;
     const isError = msg.isError === true || existing?.isError;
-    outputs.set(callId, { output, details, isError });
+    const images = extractToolImages(msg.content);
+    outputs.set(callId, {
+      output,
+      details,
+      isError,
+      ...(images.length > 0 ? { images } : existing?.images ? { images: existing.images } : {}),
+    });
   }
   return outputs;
 }

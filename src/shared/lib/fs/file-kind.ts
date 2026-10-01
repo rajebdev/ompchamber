@@ -48,3 +48,43 @@ export function getFileExtension(filePath: string | undefined | null): string {
 export function getImageMimeType(filePath: string | undefined | null): string | null {
   return IMAGE_MIME_BY_EXT[getFileExtension(filePath)] ?? null;
 }
+
+/** Leading bytes → MIME, longest signature first so `webp`'s `RIFF`/`WEBP`
+ *  pair is checked before a bare container match could accept it. */
+const IMAGE_MAGIC: { bytes: number[]; mime: string; offset?: number }[] = [
+  { bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], mime: 'image/png' },
+  { bytes: [0xff, 0xd8, 0xff], mime: 'image/jpeg' },
+  { bytes: [0x47, 0x49, 0x46, 0x38], mime: 'image/gif' },
+  // RIFF????WEBP — the tag sits at offset 8, after the 4-byte size field.
+  { bytes: [0x57, 0x45, 0x42, 0x50], mime: 'image/webp', offset: 8 },
+  { bytes: [0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66], mime: 'image/avif', offset: 4 },
+  { bytes: [0x42, 0x4d], mime: 'image/bmp' },
+  { bytes: [0x49, 0x49, 0x2a, 0x00], mime: 'image/tiff' },
+  { bytes: [0x4d, 0x4d, 0x00, 0x2a], mime: 'image/tiff' },
+  { bytes: [0x00, 0x00, 0x01, 0x00], mime: 'image/x-icon' },
+];
+
+/**
+ * MIME type for a raster image read from its own bytes, or null when no
+ * signature matches.
+ *
+ * The extension is not always available: omp's blob store names a file by its
+ * content hash and writes the extension onto a hardlink beside it, so a store
+ * pruned of those links — or a ref whose `mimeType` field the caller lost —
+ * leaves the bytes as the only evidence. A wrong `content-type` is not
+ * cosmetic here: `image/*` is what makes the browser paint rather than download.
+ */
+export function getImageMimeFromBytes(bytes: Uint8Array): string | null {
+  for (const { bytes: magic, mime, offset = 0 } of IMAGE_MAGIC) {
+    if (bytes.length < offset + magic.length) continue;
+    let matched = true;
+    for (let i = 0; i < magic.length; i += 1) {
+      if (bytes[offset + i] !== magic[i]) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) return mime;
+  }
+  return null;
+}

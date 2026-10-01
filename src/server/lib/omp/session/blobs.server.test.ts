@@ -23,7 +23,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import * as fsp from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { getBlobStoreDir, isBlobRef, readBlob, readBlobRef } from '@/server/lib/omp/session/blobs.server';
+import { getBlobStoreDir, isBlobRef, readBlob, readBlobImage, readBlobRef } from '@/server/lib/omp/session/blobs.server';
 import { extractUserImageAttachments, isBlobImageRef } from '@/shared/lib/omp/session/parse-message-blocks';
 
 /** A minimal but structurally valid PNG, so the assertion is about real bytes. */
@@ -96,5 +96,34 @@ describe('image block extraction', () => {
   test('distinguishes the two payload shapes', () => {
     expect(isBlobImageRef(`blob:sha256:${HASH}`)).toBe(true);
     expect(isBlobImageRef('iVBORw0KGgo=')).toBe(false);
+  });
+});
+
+describe('readBlobImage', () => {
+  /** A store entry with NO extension link beside it — what a pruned store or a
+   *  copied session leaves behind, and the case the extension cannot answer. */
+  const LONE_HASH = 'c'.repeat(64);
+  const JPEG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+
+  beforeAll(async () => {
+    await fsp.writeFile(path.join(getBlobStoreDir(), LONE_HASH), JPEG_BYTES);
+  });
+
+  test('names the content type from the bytes when no extension link exists', async () => {
+    // Measured on this install: a `read` of a 96×96 PNG came back as a JPEG
+    // blob, so the bytes are the honest source and the sibling link only the
+    // fallback.
+    const image = await readBlobImage(LONE_HASH);
+    expect(image?.mimeType).toBe('image/jpeg');
+    expect(image?.bytes).toEqual(JPEG_BYTES);
+  });
+
+  test('a missing blob yields null', async () => {
+    expect(await readBlobImage('d'.repeat(64))).toBeNull();
+  });
+
+  test('a malformed hash never reaches the filesystem', async () => {
+    expect(await readBlobImage('../../etc/passwd')).toBeNull();
+    expect(await readBlobImage('not-a-hash')).toBeNull();
   });
 });

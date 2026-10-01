@@ -112,10 +112,12 @@ export async function loadSessionMessages(filePath: string): Promise<ChatMessage
     if (mapped.toolCalls?.length) {
       mapped.toolCalls = mapped.toolCalls.map((call) => {
         const collected = state.outputsByCall.get(call.id);
+        const images = call.images ?? collected?.images;
         return {
           ...call,
           output: call.output || collected?.output || undefined,
           details: (call.details || collected?.details || undefined) as Record<string, any> | undefined,
+          ...(images && images.length > 0 ? { images } : {}),
           status: collected?.isError ? 'error' : call.status,
         };
       });

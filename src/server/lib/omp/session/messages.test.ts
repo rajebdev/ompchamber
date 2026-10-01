@@ -72,6 +72,76 @@ describe('loadSessionMessages ordering', () => {
   });
 });
 
+describe('loadSessionMessages tool images', () => {
+  test('carries a read result image onto the tool call that asked for it', async () => {
+    // omp answers a `read` of an image with the picture itself, and the panel
+    // cannot reach it any other way: the PATH is routinely outside the browse
+    // scope (`/tmp/...`), so `/api/fs/raw` refuses it. The result entry is a
+    // SEPARATE JSONL record from the assistant turn that emitted the call, so
+    // the reload pass has to pair them by toolCallId.
+    const file = await writeSession([
+      {
+        type: 'message',
+        id: 'a1',
+        timestamp: at(0),
+        message: {
+          role: 'assistant',
+          content: [{ type: 'toolCall', id: 'c1', name: 'read', arguments: { path: '/tmp/shiki96.png' } }],
+        },
+      },
+      {
+        type: 'message',
+        id: 'r1',
+        timestamp: at(1),
+        message: {
+          role: 'toolResult',
+          toolCallId: 'c1',
+          toolName: 'read',
+          content: [
+            { type: 'text', text: 'Read image file [image/jpeg]' },
+            { type: 'image', data: `blob:sha256:${'a'.repeat(64)}`, mimeType: 'image/jpeg' },
+          ],
+          details: { fileSize: 2640 },
+        },
+      },
+    ]);
+
+    const messages = await loadSessionMessages(file);
+    const call = messages.find((m) => m.toolCalls?.length)?.toolCalls?.[0];
+
+    expect(call?.images).toEqual([{ mimeType: 'image/jpeg', blobRef: `blob:sha256:${'a'.repeat(64)}` }]);
+    expect(call?.output).toContain('Read image file');
+  });
+
+  test('an inline base64 image survives the reload', async () => {
+    // A small image (or one written before the externalization threshold) stays
+    // in the entry, and must reach the panel as bytes rather than be dropped
+    // for lacking a blob ref.
+    const file = await writeSession([
+      {
+        type: 'message',
+        id: 'a1',
+        timestamp: at(0),
+        message: { role: 'assistant', content: [{ type: 'toolCall', id: 'c1', name: 'read', arguments: { path: '/tmp/x.png' } }] },
+      },
+      {
+        type: 'message',
+        id: 'r1',
+        timestamp: at(1),
+        message: {
+          role: 'toolResult',
+          toolCallId: 'c1',
+          toolName: 'read',
+          content: [{ type: 'image', data: 'QUJD', mimeType: 'image/png' }],
+        },
+      },
+    ]);
+
+    const call = (await loadSessionMessages(file)).find((m) => m.toolCalls?.length)?.toolCalls?.[0];
+    expect(call?.images).toEqual([{ mimeType: 'image/png', dataBase64: 'QUJD' }]);
+  });
+});
+
 describe('loadSessionMessages reminder classification', () => {
   const blocks = (id: string, texts: string[], second: number) => ({
     type: 'message',

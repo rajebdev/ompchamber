@@ -131,7 +131,7 @@ export function toChatMessage(raw: Record<string, unknown>, streaming = true): C
   }
 
   const toolCalls: ToolCallData[] = parsed.toolCalls.map((tc) =>
-    toToolCallData(tc, { streaming }),
+    toToolCallData(tc, { streaming, images: parsed.inlineImages.get(tc.id) }),
   );
   const message: ChatMessageData = {
     id,

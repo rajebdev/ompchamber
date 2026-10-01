@@ -56,7 +56,11 @@ export interface ParsedAssistantTurn {
 export function parseAssistantContent(content: unknown): ParsedAssistantTurn {
   const parsed = parseMessageBlocks(content);
   const toolCalls = parsed.toolCalls.map((tc) =>
-    toToolCallData(tc, { streaming: false, output: parsed.inlineOutputs.get(tc.id) ?? undefined }),
+    toToolCallData(tc, {
+      streaming: false,
+      output: parsed.inlineOutputs.get(tc.id) ?? undefined,
+      images: parsed.inlineImages.get(tc.id),
+    }),
   );
   return {
     thinking: parsed.thinking,

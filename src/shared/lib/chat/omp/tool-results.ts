@@ -18,13 +18,17 @@
 
 import type { RefObject } from 'preact/compat';
 import type { ChatMessageData, ToolCallData } from '@/shared/types';
+import type { ToolImageRef } from '@/shared/types/chat';
 import { extractTextFromContent } from '@/shared/lib/omp/session/mapper';
+import { extractToolImages } from '@/shared/lib/omp/session/tool-images';
 
 /** Tool output accumulated between a `toolCall` block and its result frame. */
 export interface ToolResultRecord {
   output: string;
   isError?: boolean;
   details?: Record<string, any>;
+  /** Pictures the result returned (a `read` of an image). */
+  images?: ToolImageRef[];
 }
 
 /** Per-entry cap on stored tool output; the tail of a build log is what matters. */
@@ -70,9 +74,11 @@ export function putToolResult(host: ToolResultHost, callId: string, record: Tool
 export function recordToolResult(raw: Record<string, unknown>, host: ToolResultHost): void {
   const callId = typeof raw.toolCallId === 'string' ? raw.toolCallId : undefined;
   if (!callId) return;
+  const images = extractToolImages(raw.content);
   host.toolResultsRef.current?.set(callId, {
     output: extractTextFromContent(raw.content),
     details: (raw.details && typeof raw.details === 'object' ? raw.details : undefined) as ToolResultRecord['details'],
+    ...(images.length > 0 ? { images } : {}),
   });
 }
 
@@ -86,6 +92,7 @@ export function pairToolOutputs(msg: ChatMessageData, host: ToolResultHost): Cha
           ...tc,
           output: res.output,
           details: tc.details || res.details || undefined,
+          ...(res.images && res.images.length > 0 ? { images: res.images } : {}),
           status: (res.isError ? 'error' : 'success') as ToolCallData['status'],
         }
       : tc;

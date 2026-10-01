@@ -25,6 +25,7 @@ import { normalizeThinkingLevel } from '@/shared/lib/models/thinking-levels';
 import { PHASE_VERBS } from '@/shared/lib/chat/timeline/tool-phrases';
 import { describeAssistantPhase, describeToolActivity } from '@/shared/lib/chat/timeline/tool-verbs';
 import { FILE_MUTATION_EVENT, isFileMutatingTool } from '@/shared/lib/chat/omp/file-mutations';
+import { extractToolImages } from '@/shared/lib/omp/session/tool-images';
 import {
   pairToolOutputs,
   putToolResult,
@@ -152,10 +153,12 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       const callId = typeof data.toolCallId === 'string' ? data.toolCallId : undefined;
       if (!callId) break;
       setActivity(PHASE_VERBS.thinking, deps);
+      const images = extractToolImages(data.result);
       putToolResult(deps, callId, {
         output: toolResultText(data.result),
         isError: data.isError === true,
         details: (data.details && typeof data.details === 'object' ? data.details : undefined) as ToolResultRecord['details'],
+        ...(images.length > 0 ? { images } : {}),
       });
       refreshToolMessage(callId, toolHost(deps));
       // A file-mutating tool just finished — tell the data-bearing right panels

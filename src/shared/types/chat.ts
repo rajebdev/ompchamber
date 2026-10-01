@@ -1,6 +1,18 @@
 import type { ReactNode } from 'preact/compat';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 
+/** One image a tool result returned (a `read` of a picture, an `eval` that
+ *  painted one). Exactly one payload field is set: omp externalizes anything
+ *  large to the blob store and inlines the rest. */
+export interface ToolImageRef {
+  mimeType: string;
+  /** `blob:sha256:<hash>` when omp externalized the bytes to the blob store. */
+  blobRef?: string;
+  /** Inline base64 payload (a small image, or a session written before the
+   *  externalization threshold existed). */
+  dataBase64?: string;
+}
+
 export interface Attachment {
   id: string;
   /**
@@ -108,6 +120,10 @@ export interface ToolCallData {
   diff?: ToolDiffChunk;
   /** RAW details toolResult — dipakai renderer diff/task/usage. */
   details?: Record<string, any>;
+  /** Pictures the result itself returned (a `read` of an image, an `eval`
+   *  that painted one). Carries the bytes or a blob reference, so the panel
+   *  paints the result instead of re-reading the path it names. */
+  images?: ToolImageRef[];
   isError?: boolean;
   /** details.__synthetic === true → call emitted tapi tidak dieksekusi. */
   synthetic?: boolean;

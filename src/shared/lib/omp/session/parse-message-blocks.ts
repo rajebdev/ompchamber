@@ -18,6 +18,7 @@
 
 import type { ToolCallData, ToolType } from '@/shared/types/chat';
 import { hashlineTargetPath } from '@/shared/lib/omp/session/hashline-patch';
+import { extractToolImages, type ToolImageRef } from '@/shared/lib/omp/session/tool-images';
 import { isRecord } from '@/shared/lib/util/guards';
 
 /** Extract plain text from omp content (string or [{type:'text',text},...]). */
@@ -47,6 +48,8 @@ export interface ParsedMessageBlocks {
   toolCalls: ParsedToolCall[];
   /** toolCallId → text output carried by inline toolResult blocks. */
   inlineOutputs: Map<string, string>;
+  /** toolCallId → pictures the inline toolResult blocks returned. */
+  inlineImages: Map<string, ToolImageRef[]>;
   textParts: string[];
   /** Short human intent (omp arguments.i) for the tool calls in this turn. */
   intent?: string;
@@ -91,7 +94,7 @@ const TARGET_KEYS = ['path', 'TargetFile', 'targetFile', 'FilePath', 'filePath',
 /** Parse omp message content (string or block array) into the canonical
  *  parsed-message shape shared by the live and reload render paths. */
 export function parseMessageBlocks(content: unknown): ParsedMessageBlocks {
-  const result: ParsedMessageBlocks = { toolCalls: [], inlineOutputs: new Map(), textParts: [] };
+  const result: ParsedMessageBlocks = { toolCalls: [], inlineOutputs: new Map(), inlineImages: new Map(), textParts: [] };
   if (typeof content === 'string') {
     result.textParts.push(content);
     return result;
@@ -139,11 +142,14 @@ export function parseMessageBlocks(content: unknown): ParsedMessageBlocks {
     } else if (block.type === 'toolResult') {
       const targetId = typeof block.toolCallId === 'string' ? block.toolCallId : undefined;
       const text = typeof block.text === 'string' ? block.text : '';
+      const images = extractToolImages(raw);
       if (targetId && result.inlineOutputs.has(targetId)) {
         result.inlineOutputs.set(targetId, text);
-      } else if (text && result.toolCalls.length > 0) {
+        if (images.length > 0) result.inlineImages.set(targetId, images);
+      } else if (result.toolCalls.length > 0) {
         const last = result.toolCalls[result.toolCalls.length - 1];
-        result.inlineOutputs.set(last.id, text);
+        if (text) result.inlineOutputs.set(last.id, text);
+        if (images.length > 0) result.inlineImages.set(last.id, images);
       }
     } else if (block.type === 'text') {
       if (typeof block.text === 'string') result.textParts.push(block.text);
@@ -157,7 +163,7 @@ export function parseMessageBlocks(content: unknown): ParsedMessageBlocks {
  *  output after the fact overrides it back to success/error. */
 export function toToolCallData(
   parsed: ParsedToolCall,
-  options: { streaming: boolean; output?: string; isError?: boolean },
+  options: { streaming: boolean; output?: string; isError?: boolean; images?: ToolImageRef[] },
 ): ToolCallData {
   const input = parsed.input;
   const stripped = isRecord(input)
@@ -178,6 +184,7 @@ export function toToolCallData(
     command: parsed.command,
     input: stripped && Object.keys(stripped).length > 0 ? stripped : undefined,
     output: options.output,
+    ...(options.images && options.images.length > 0 ? { images: options.images } : {}),
     status,
   };
 }
