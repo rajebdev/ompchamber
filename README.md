@@ -12,10 +12,10 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/ompchamber"><img alt="npm version" src="https://img.shields.io/npm/v/ompchamber?logo=npm&logoColor=white&color=cb3837"></a>
   <a href="https://bun.sh"><img alt="Bun &ge; 1.4" src="https://img.shields.io/badge/Bun-%E2%89%A51.4-000000?logo=bun&logoColor=white"></a>
-  <a href="https://elysiajs.com"><img alt="Elysia" src="https://img.shields.io/github/package-json/dependency-version/rajebdev/ompchamber/elysia?color=6f42c1"></a>
+  <a href="https://elysiajs.com"><img alt="Elysia" src="https://img.shields.io/github/package-json/dependency-version/rajebdev/ompchamber/elysia?color=6f42c1&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48cGF0aCBmaWxsPSIjZmZmIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik00MjQgNDcxQTI1NSAyNTUgMCAwIDAgMjU2IDIyIDI1NiAyNTYgMCAwIDAgODMgNDY3di0ybDMzNi0xMTB6TTIwMyAyMTkgNzIgNDUzaC0zbC0yLTItMTEtMTMtOC05LTE3LTI3LTEtMnEtOC0xNS0xNC0zMmwtMy0xMHEtOS0zMC00LTU5di0xcTItMTMgNi0yNWw2LTE3IDQtMTBxMTAtMjEgMjgtMzdsNS02cTE3LTE1IDQxLTIybC0xMSAyLTcgMWgtNmwtNiAxLTYgMWgtN2wtMS0xaDFsNC0ycTIwLTExIDMwLTI5bDQtN3E5LTEzIDIxLTIxbDItMSAxMC01IDE1LTVxNS0yIDctNnYtMWE5IDkgMCAwIDAtMi0xMGwtMy0ydi0xbC0xOC0yMy0xNC0yMHEtNS02LTUtMTMgMC0yIDItMWwxNSA3cTIwIDEwIDQzIDRsMTAtMiA3LTFxMjYtMyA1MyA1aDFsMTcgNnEzMyAxMyA0NiA0NWwzIDE0YTU2IDU2IDAgMCAwIDIyIDMybDkgNiAxMiA3IDIwIDEwIDEgM3EtOSAxMC0yMSAxNmwtMTIgNS0xNCA1LTggMnEtMTggNS0zNiA1aC0yMWwtMTItMmMtMTUtNi0zMyAwLTQxIDE0Ii8%2BPC9zdmc%2B"></a>
   <a href="https://preactjs.com"><img alt="Preact" src="https://img.shields.io/github/package-json/dependency-version/rajebdev/ompchamber/preact?logo=preact&logoColor=white&color=673ab7"></a>
-  <a href="https://shiki.style"><img alt="Shiki" src="https://img.shields.io/github/package-json/dependency-version/rajebdev/ompchamber/shiki?color=3f3f46"></a>
-  <a href="package.json"><img alt="Version" src="https://img.shields.io/github/package-json/v/rajebdev/ompchamber?label=version&color=3f3f46"></a>
+  <a href="https://shiki.style"><img alt="Shiki" src="https://img.shields.io/github/package-json/dependency-version/rajebdev/ompchamber/shiki?color=3f3f46&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNjYgMjY2Ij48Y2lyY2xlIGN4PSIyMjAiIGN5PSI0NyIgcj0iNDciIGZpbGw9IiNmZmYiLz48cGF0aCBmaWxsPSIjZmZmIiBkPSJNMCA0OGgyNjZ2NjVIMHoiLz48cGF0aCBmaWxsPSIjZmZmIiBkPSJNMTA5IDE0NHEwLTgtNi0xMy02LTQtMTctNGwtMTIgMS03IDUtMiA3IDEgNSA1IDUgNyAzIDExIDMgMTQgMyAyNCA4IDE3IDEycTcgOCAxMCAxNWE1MyA1MyAwIDAgMS02IDQ3cS03IDEyLTI0IDE4LTE1IDYtMzggNi0yMiAwLTM5LTYtMTctNy0yNi0yMXQtOS0zNWg0NGw0IDEzcTQgNiAxMCA4IDcgMyAxNiAzbDEyLTIgOC01cTMtMyAzLTggMC0zLTMtN2wtOC01LTE1LTUtMTctM3EtMjQtNS0zNy0xNy0xMy0xMS0xMy0zMiAwLTE3IDktMjl0MjUtMTkgMzYtNyAzNiA3IDI0IDIwcTkgMTIgOCAyOXoiLz48cGF0aCBmaWxsPSIjZmZmIiBkPSJNMjE3IDB2MjY2aC02NVYweiIvPjwvc3ZnPg%3D%3D"></a>
+  <a href="package.json"><img alt="Version" src="https://img.shields.io/github/package-json/v/rajebdev/ompchamber?label=version&color=3f3f46&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjExNyAxMzMgMjc4IDI3OCI%2BPGcgZmlsbD0iI2Y5NzMxNiI%2BPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBkPSJNMTQ1IDE4NGMtMTYgMC0yOCAxNC0yOCAzMnY0NGMwIDE4IDEyIDMyIDI4IDMyaDI0YzE2IDAgMjgtMTQgMjgtMzJ2LTQ0YzAtMTgtMTItMzItMjgtMzJabTAgMjZoMjRxNCAwIDQgNnY0NHEwIDYtNCA2aC0yNHEtNCAwLTQtNnYtNDRxMC02IDQtNiIvPjxwYXRoIGQ9Ik0yMTEgMTg0aDI2bDIxIDU0IDIxLTU0aDI2djEwOGgtMjR2LTcybC0xNiA0MGgtMTRsLTE2LTQwdjcyaC0yNFoiLz48cGF0aCBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0zMTkgMTg0aDQ0cTI5IDEgMzAgMzF2OHEtMSAzMC0zMCAzMWgtMjB2MzhoLTI0Wm0yNCAyNGgxN3E5IDAgOSA4djZxMCA5LTkgOGgtMTdaIi8%2BPC9nPjwvc3ZnPg%3D%3D"></a>
 </p>
 
 <p align="center">
@@ -314,6 +314,11 @@ bun test                                                      # bun test
 The screenshots, GIFs and the MP4 in [`docs/assets`](docs/assets) are captured from a scratch
 checkout running `MOCK=true` (`PORT=3123`) with Playwright, so they contain demo data only — never a
 real workspace.
+The three logos in the badge row at the top live in
+[`docs/assets/brand`](docs/assets/brand) — Elysia and Shiki have no Simple Icons slug and shields
+rejects a remote `logo=` URL, so each mark is inlined in the badge as a base64 data URI. Their
+provenance, licences and recolouring are documented beside them, and
+`docs/assets/brand/badges.test.ts` fails if a mark and its embedded payload drift apart.
 
 ## Releasing
 
