@@ -133,35 +133,114 @@ export function isStaleStreamRow(
 }
 
 /**
- * Self-heal: a `stream` row outlives its owner when a chamber process exits
- * mid-run (crash, restart, SIGKILL) — nothing will ever write the terminal
- * status for it. At read time every such row flips to `finish`, which is the
+ * Whether a `prompt_result` frame proves the dispatched prompt opened no turn,
+ * so the live `stream` row written at dispatch must be released.
+ *
+ * The PROMPT ACK does not carry `agentInvoked`; this frame does, and it arrives
+ * after it. Two senders reach it, and the dispatch can only catch the first:
+ *
+ *   - a builtin (`/usage`, `/compact`) answers the ack itself with
+ *     `agentInvoked:false`, and the dispatcher clears the row there;
+ *   - the chamber's OWN extension (`/chamber-mode plan on` — the composer's
+ *     Plan/Goal toggles) acks a bare `{success:true}` and reports
+ *     `agentInvoked:false` on THIS frame instead. Verified against the real
+ *     child: the dispatcher read that bare ack as a run, armed the
+ *     awaiting-agent-start deadline, and left the row `stream` forever.
+ *
+ * `agentInvoked === false` is required rather than `!== true`: a frame that
+ * omits the field (an older omp, or omp's own trailing `prompt_result` for a
+ * real run, which carries `true`) must never be read as "no turn".
+ *
+ * `streaming` is the same guard the dispatcher's own release uses, and it is
+ * load-bearing: a `/chamber-mode` sent while a turn runs is answered in ~20 ms
+ * from omp's command loop with the turn still streaming, so without it this
+ * would delete THAT turn's live row and blank a spinner that is working.
+ *
+ * The row is owned by a LIVE process either way, so `healStaleStreamStatuses`
+ * can never reach it — this frame is the only thing that can release it.
+ */
+export function releasesStreamRowOnPromptResult(
+  event: Record<string, unknown>,
+  host: { streaming: boolean; sessionId: string },
+): boolean {
+  return event.agentInvoked === false && !host.streaming && Boolean(host.sessionId);
+}
+
+/**
+ * Whether a `stream` row is an ORPHAN: owned by the reading process, which
+ * holds no live run for it.
+ *
+ * This is the half of the heal that only the owning process can answer. The
+ * row's owner is ALIVE (so {@link isStaleStreamRow} can never reach it) and no
+ * other instance can see this process's runtime registry — without this rule
+ * the row is unreleasable and the spinner turns until the process restarts.
+ * Measured: a dropped prompt leaves exactly this shape.
+ *
+ * `liveRunIds` OMITTED means "release nothing", deliberately: a caller that
+ * cannot answer "what am I running?" must never guess, and an EMPTY set is the
+ * claim "I run nothing", which would release every row this process owns.
+ */
+export function isOrphanStreamRow(
+  row: { session_id: string; owner_pid: number | null },
+  readerPid: number,
+  liveRunIds: Set<string> | undefined,
+): boolean {
+  if (liveRunIds === undefined) return false;
+  return row.owner_pid === readerPid && !liveRunIds.has(row.session_id);
+}
+
+/**
+ * Self-heal, in two directions. Both leave the row at `finish`, which is the
  * honest outcome: the run is not going to finish.
  *
- * Deliberately takes no caller context. Liveness is the same question for every
- * instance, so it is answered once, here, from the OS — the database is shared
- * by all of them and they must all read the same status out of it.
+ *  1. A `stream` row whose OWNER IS GONE — a chamber process that exited
+ *     mid-run (crash, restart, SIGKILL). Nothing will ever write the terminal
+ *     status for it. This half is judged from the row alone (`owner_pid` against
+ *     OS liveness), so every instance reading the shared database reaches the
+ *     same verdict, and it takes no caller context.
+ *
+ *  2. A `stream` row THIS PROCESS OWNS while holding no live run for it — the
+ *     orphan. The owner is alive, so half (1) can never reach it, and no other
+ *     instance can see it either: only the owning process knows whether it
+ *     still has a run for the session. This is the shape a dropped prompt
+ *     leaves behind (omp accepts the prompt and opens no turn, so no
+ *     `agent_end` ever arrives — measured with the chamber's own
+ *     `/chamber-mode` extension, whose bare `{success:true}` ack read as a
+ *     run), and without this half the spinner turns until the process restarts.
+ *
+ * `liveRunIds` is what the caller knows and this module cannot: the sessions
+ * its process is running right now (`getLiveRunSessionIds`). OMITTED means
+ * "release nothing" — deliberately the default, so a caller that cannot answer
+ * the question never guesses. Half (2) is skipped entirely rather than assumed
+ * empty, because an empty set is the claim "this process runs nothing", which
+ * would release every row the process owns.
  *
  * Runs on the sidebar loader's path, so the authoritative status travels with
  * the same fetch that refreshes the list.
  */
-export async function healStaleStreamStatuses(): Promise<void> {
+export async function healStaleStreamStatuses(liveRunIds?: Set<string>): Promise<void> {
   try {
     const db = await getDb();
     const rows = (await db.all("SELECT session_id, owner_pid FROM session_stream_state WHERE status = 'stream'")) as {
       session_id: string;
       owner_pid: number | null;
     }[];
-    const stale = rows.filter((row) => isStaleStreamRow(row, isProcessAlive)).map((row) => row.session_id);
-    if (stale.length === 0) return;
+    const released = new Set<string>();
+    for (const row of rows) {
+      if (isStaleStreamRow(row, isProcessAlive) || isOrphanStreamRow(row, process.pid, liveRunIds)) {
+        released.add(row.session_id);
+      }
+    }
+    if (released.size === 0) return;
     // `status = 'stream'` is re-checked in the WHERE clause: a run that started
     // between the read above and this write owns its row now, and healing it
     // would clear the spinner of a session that is demonstrably working.
-    const placeholders = stale.map(() => '?').join(', ');
+    const ids = [...released];
+    const placeholders = ids.map(() => '?').join(', ');
     await db.run(
       `UPDATE session_stream_state SET status = 'finish', updated_at = CURRENT_TIMESTAMP
        WHERE status = 'stream' AND session_id IN (${placeholders})`,
-      stale,
+      ids,
     );
   } catch {
     // Best-effort.

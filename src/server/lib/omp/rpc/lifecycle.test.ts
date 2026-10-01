@@ -177,3 +177,117 @@ describe('AgentSessionWrapper lifecycle', () => {
     expect(resumed.autoTitlePending).toBe(false);
   });
 });
+
+/**
+ * The deadline watchdog. Nothing else watches `awaitingAgentStartDeadline`, and
+ * a dispatch whose turn never opens strands the session: `promptRunning` stays
+ * true, so the idle reaper refuses to reclaim the child and the agent-state
+ * route reports `busy` forever, while the `stream` row (owner ALIVE) is beyond
+ * the reach of the sidebar heal.
+ *
+ * Driven through the real wrapper, so the host wiring is covered too. The row
+ * clear goes through `clearStreamStatus`, which resolves `getDb()` — and a test
+ * must never open the developer's database — so that half is asserted
+ * end to end against a real omp child on a temp database instead.
+ */
+describe('AgentSessionWrapper agent-start watchdog', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** A wrapper mid-dispatch: a prompt was sent and its turn has not opened.
+   *  Returns the frame stub too, so a test can drive the real frame path. */
+  function dispatched(): { wrapper: AgentSessionWrapper; emit: (frame: Record<string, unknown>) => void } {
+    const stub = makeProc();
+    const wrapper = new AgentSessionWrapper(stub.proc, '/tmp');
+    // The id is getter-only; `adoptSessionIdentity` is how a real child sets it.
+    wrapper.adoptSessionIdentity({ sessionId: 'sess-1', sessionFile: '/tmp/s.jsonl' } as never);
+    wrapper.promptRunning = true;
+    wrapper.awaitingAgentStart = true;
+    wrapper.awaitingAgentStartDeadline = Date.now() + 10_000;
+    return { wrapper, emit: stub.emit };
+  }
+
+  test('settles a dispatch whose turn never opened', () => {
+    const { wrapper } = dispatched();
+    expect(wrapper.isRunning()).toBe(true);
+
+    wrapper.armAgentStartWatchdog();
+    vi.advanceTimersByTime(10_001);
+
+    // The two things that were stuck: the run flag (and with it `isRunning()`,
+    // the idle reaper's gate and the agent-state route's `busy`) and the
+    // awaiting flag.
+    expect(wrapper.awaitingAgentStart).toBe(false);
+    expect(wrapper.promptRunning).toBe(false);
+    expect(wrapper.awaitingAgentStartDeadline).toBe(0);
+    expect(wrapper.isRunning()).toBe(false);
+  });
+
+  test('a turn that starts in time leaves the watchdog a no-op', () => {
+    const { wrapper, emit } = dispatched();
+    wrapper.start();
+    wrapper.armAgentStartWatchdog();
+
+    // The real settle, through the real frame path.
+    emit({ type: 'agent_start' });
+    expect(wrapper.streaming).toBe(true);
+
+    vi.advanceTimersByTime(10_001);
+
+    expect(wrapper.streaming).toBe(true);
+    expect(wrapper.promptRunning).toBe(true);
+  });
+
+  test('a running turn is never settled by a late deadline', () => {
+    // The belt to the braces above: even if the timer survives to its fire
+    // time, the live flags win. Clearing here would blank a working spinner.
+    const { wrapper } = dispatched();
+    wrapper.armAgentStartWatchdog();
+    wrapper.streaming = true;
+
+    vi.advanceTimersByTime(10_001);
+
+    expect(wrapper.promptRunning).toBe(true);
+    expect(wrapper.awaitingAgentStart).toBe(true);
+  });
+
+  test('a settled frame cancels the timer instead of letting it fire', () => {
+    const { wrapper, emit } = dispatched();
+    wrapper.start();
+    wrapper.armAgentStartWatchdog();
+
+    emit({ type: 'agent_start' });
+    // Re-arm the deadline by hand: the timer was cancelled on that frame, so it
+    // must not fire even though a deadline is set again.
+    wrapper.awaitingAgentStartDeadline = Date.now() + 10_000;
+    vi.advanceTimersByTime(10_001);
+
+    expect(wrapper.awaitingAgentStart).toBe(false);
+  });
+
+  test('re-arming replaces the previous timer instead of double-firing', () => {
+    const { wrapper } = dispatched();
+    wrapper.armAgentStartWatchdog();
+    // A second dispatch re-arms on the same wrapper.
+    wrapper.awaitingAgentStartDeadline = Date.now() + 20_000;
+    wrapper.armAgentStartWatchdog();
+
+    // Past the FIRST deadline: the replaced timer must not have fired.
+    vi.advanceTimersByTime(10_001);
+    expect(wrapper.awaitingAgentStart).toBe(true);
+
+    vi.advanceTimersByTime(10_000);
+    expect(wrapper.awaitingAgentStart).toBe(false);
+  });
+
+  test('arming with nothing pending schedules nothing', () => {
+    const wrapper = new AgentSessionWrapper(makeProc().proc, '/tmp');
+    wrapper.armAgentStartWatchdog();
+    vi.advanceTimersByTime(60_000);
+    expect(wrapper.promptRunning).toBe(false);
+  });
+});

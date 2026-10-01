@@ -22,7 +22,7 @@ import { isValidSessionSortOption, sortFolders } from '@/shared/lib/workspace/si
 import { loadOmpSidebarData } from '@/server/lib/omp/session/reader';
 import { sessionHasSubagents } from '@/server/lib/omp/session/subagent-presence';
 import { healStaleStreamStatuses, loadStreamStatuses } from '@/shared/lib/omp/session/stream-state.server';
-import { getAwaitingInputSessionIds } from '@/server/lib/omp/rpc/session-registry';
+import { getAwaitingInputSessionIds, getLiveRunSessionIds } from '@/server/lib/omp/rpc/session-registry';
 import type { SessionItemData, SessionSortOption, WorkspaceFolderData } from '@/shared/types';
 import type { OmpSession } from '@/shared/types/omp/session';
 
@@ -110,10 +110,16 @@ export async function loadSidebarData(): Promise<SessionListPayload> {
   const sidebarSort = await serverSidebarSort();
 
   // Live stream status per session (spinner / one-shot done badge), written by
-  // the RPC manager on agent_start/agent_end and by the abort command. A
-  // `stream` row whose owning chamber process is gone is stale (that process
-  // exited mid-run) and heals to `finish` right here — the authoritative status
-  // travels with the same fetch that refreshes the sidebar list.
+  // the RPC manager on agent_start/agent_end and by the abort command. The heal
+  // pass runs first and has two halves, both ending at `finish`:
+  //
+  //   - a `stream` row whose owning chamber process is gone (it exited
+  //     mid-run) — judged from the row alone, so every instance agrees;
+  //   - a `stream` row THIS process owns with no live run behind it — an
+  //     orphan, which only this process can see (see `healStaleStreamStatuses`).
+  //
+  // The authoritative status then travels with the same fetch that refreshes
+  // the sidebar list.
   const streamStatuses: Record<string, 'stream' | 'finish' | 'abort'> = {};
   // Sessions blocked on a dialog nobody has answered yet. Read live from the
   // process registry (never persisted): the child that owns the question is the
@@ -125,7 +131,11 @@ export async function loadSidebarData(): Promise<SessionListPayload> {
     // read from the row itself (its `owner_pid`) against OS liveness — never
     // against this process's own runtime registry, which would make two
     // instances report different statuses for the same run.
-    await healStaleStreamStatuses();
+    //
+    // The live-run set is passed for the OTHER half only: the rows this process
+    // owns. It is deliberately not the staleness rule, which must stay
+    // instance-independent.
+    await healStaleStreamStatuses(getLiveRunSessionIds());
     Object.assign(streamStatuses, await loadStreamStatuses());
     for (const id of getAwaitingInputSessionIds()) awaitingInput.add(id);
   }

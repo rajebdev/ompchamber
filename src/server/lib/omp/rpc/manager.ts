@@ -22,7 +22,9 @@ import { dispatchSessionCommand } from '@/server/lib/omp/rpc/session-commands';
 import { SubagentLiveness } from '@/server/lib/omp/rpc/subagent-liveness';
 import { ModeMirror } from '@/server/lib/omp/rpc/mode-mirror';
 import { IdleReaper } from '@/server/lib/omp/rpc/idle-reaper';
-import { markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
+import { AgentStartWatchdog } from '@/server/lib/omp/rpc/agent-start-watchdog';
+import { EventFanout } from '@/server/lib/omp/rpc/event-fanout';
+import { clearStreamStatus, markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
 import { GET_STATE_TIMEOUT_MS, IDLE_REAP_MS, READY_TIMEOUT_MS, RELOAD_PLUGINS_TIMEOUT_MS, SUBAGENT_STALE_MS, type AgentEvent, type EventListener, type RpcSessionState } from '@/server/lib/omp/rpc/constants';
 
 export type {
@@ -41,11 +43,14 @@ export interface AgentSessionWrapperOptions {
 }
 
 export class AgentSessionWrapper {
-  private listeners: EventListener[] = [];
+  private readonly fanout = new EventFanout();
   promptRunning = false;
   promptDispatchPendingCount = 0;
   awaitingAgentStart = false;
   awaitingAgentStartDeadline = 0;
+  /** Watches the deadline above so a dispatch whose turn never opens cannot
+   *  strand the session (see `AgentStartWatchdog`). */
+  private readonly agentStartWatchdog: AgentStartWatchdog;
   continuationGraceUntil = 0;
   bashRunning = false;
   streaming = false;
@@ -101,6 +106,15 @@ export class AgentSessionWrapper {
       this.destroy();
       return true;
     });
+    this.agentStartWatchdog = new AgentStartWatchdog(this, () => {
+      // The deadline passed with no frame settling the dispatch. Clear the
+      // flags AND the row: the row's owner is this LIVE process, so the
+      // sidebar heal can never reach it.
+      this.promptRunning = false;
+      this.awaitingAgentStart = false;
+      this.awaitingAgentStartDeadline = 0;
+      if (this.sessionId) void clearStreamStatus(this.sessionId);
+    });
   }
 
   get sessionId(): string {
@@ -125,17 +139,6 @@ export class AgentSessionWrapper {
     return this.isAlive() && (this.promptRunning || this.streaming || this.compacting || this.bashRunning);
   }
 
-  /** Whether omp reports a live goal for this session. Read by the agent-state
-   *  route so the composer's Goal toggle reflects the CHILD, not the client's
-   *  last request. */
-  get hasLiveGoal(): boolean {
-    return this.modeMirror.goalEnabled;
-  }
-
-  get goalStatus(): string | undefined {
-    return this.modeMirror.goalStatus;
-  }
-
   /** Anything in flight that a process reset would destroy: the current turn,
    *  a compaction, a shell command, live subagents — which outlive the turn that
    *  spawned them, so no other flag here can see them — or an ask/approval dialog
@@ -152,6 +155,16 @@ export class AgentSessionWrapper {
       this.pendingUiDialogs.list().length > 0 ||
       this.subagents.liveCount(Date.now(), SUBAGENT_STALE_MS) > 0
     );
+  }
+
+  /**
+   * Watchdog for a dispatch whose turn never opened. The clock lives in its own
+   * object (`AgentStartWatchdog`) because "did it actually settle?" is a
+   * question only this wrapper can answer; this method only feeds it the flags.
+   * See that module for the failure it exists to close.
+   */
+  armAgentStartWatchdog(): void {
+    this.agentStartWatchdog.arm();
   }
 
   start(): void {
@@ -228,6 +241,10 @@ export class AgentSessionWrapper {
     // The state machine and its settle-time side effects live in frame-fold.ts;
     // this method owns only the wrapper's own bookkeeping around it.
     const { suppressForward } = foldSessionFrame(this, event);
+    // A frame settled the dispatch (agent_start cleared `awaitingAgentStart` and
+    // set `streaming`; prompt_result cleared it too), so the watchdog has
+    // nothing left to do.
+    this.agentStartWatchdog.settleIfDone();
     // `suppressForward` withholds only the FRAME — a failed prompt response
     // already emitted its own `prompt_error`, and the chamber's own background
     // rename must not surface its diagnostics.
@@ -235,22 +252,11 @@ export class AgentSessionWrapper {
   }
 
   emit(event: AgentEvent): void {
-    for (const l of this.listeners) {
-      try {
-        l(event);
-      } catch {
-        // A throwing subscriber (SSE encode failure, UI handler bug) must not
-        // starve the remaining subscribers.
-      }
-    }
+    this.fanout.emit(event);
   }
 
   onEvent(listener: EventListener): () => void {
-    this.listeners.push(listener);
-    return () => {
-      const i = this.listeners.indexOf(listener);
-      if (i !== -1) this.listeners.splice(i, 1);
-    };
+    return this.fanout.on(listener);
   }
 
   /** Dialogs omp is still blocked on, oldest first. A client reattaching to a
@@ -324,6 +330,7 @@ export class AgentSessionWrapper {
     this.idle.stop();
     this.unsubscribeFrames?.();
     this.pendingUiDialogs.clear();
+    this.agentStartWatchdog.stop();
     this.promptDispatchPendingCount = 0;
     this.awaitingAgentStart = false;
     this.awaitingAgentStartDeadline = 0;

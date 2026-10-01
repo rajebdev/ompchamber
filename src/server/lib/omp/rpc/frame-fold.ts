@@ -26,7 +26,7 @@ import {
   type AutoTitleHost,
 } from '@/server/lib/omp/session/auto-title.server';
 import { scheduleQueueDelivery, type QueueDeliveryHost } from '@/server/lib/queue/delivery.server';
-import { loadStreamStatuses, markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
+import { clearStreamStatus, loadStreamStatuses, markStreamStatus, releasesStreamRowOnPromptResult } from '@/shared/lib/omp/session/stream-state.server';
 import { driveGoalAfterTurn } from '@/server/lib/omp/session/goal-driver.server';
 import { NON_TERMINAL_CONTINUATION_GRACE_MS, type AgentEvent } from '@/server/lib/omp/rpc/constants';
 import type { ModeMirror } from '@/server/lib/omp/rpc/mode-mirror';
@@ -183,6 +183,14 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
       host.promptRunning = false;
       host.awaitingAgentStart = false;
       host.awaitingAgentStartDeadline = 0;
+      // The PROMPT ACK never says `agentInvoked`; this frame is what does, and
+      // it arrives after it. A `false` here is omp's own word that the prompt
+      // opened no turn — so the `stream` row the dispatch wrote must go. That
+      // row's owner is ALIVE, so `healStaleStreamStatuses` can never reach it
+      // and this frame is the only thing that can: without it the spinner turns
+      // forever. See `releasesStreamRowOnPromptResult` for the two senders and
+      // the `!streaming` guard.
+      if (releasesStreamRowOnPromptResult(event, host)) void clearStreamStatus(host.sessionId);
       break;
     case 'auto_compaction_start':
       host.compacting = true;

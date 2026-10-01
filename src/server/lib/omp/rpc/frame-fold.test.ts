@@ -20,6 +20,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { foldSessionFrame, type SessionFrameHost } from '@/server/lib/omp/rpc/frame-fold';
+import { releasesStreamRowOnPromptResult } from '@/shared/lib/omp/session/stream-state.server';
 import type { AgentEvent } from '@/server/lib/omp/rpc/constants';
 import { ModeMirror } from '@/server/lib/omp/rpc/mode-mirror';
 
@@ -122,5 +123,48 @@ describe('auto-title trigger wiring', () => {
     fold(host, { type: 'agent_end', isTerminal: false, messages: [] });
 
     expect(host.autoTitlePending).toBe(true);
+  });
+});
+
+/**
+ * The `prompt_result` frame is where omp reports `agentInvoked`, and the
+ * dispatch-time `stream` row hangs on it.
+ *
+ * The shipped defect: the chamber's own `/chamber-mode` extension (the
+ * composer's Plan/Goal toggles) acks a BARE `{success:true}` — no
+ * `agentInvoked` — and reports `agentInvoked:false` on this frame instead. The
+ * dispatcher read that bare ack as a run, armed the awaiting-agent-start
+ * deadline, and left the row `stream` with a LIVE owner, which
+ * `healStaleStreamStatuses` can never reach. The sidebar spinner turned
+ * forever. Reproduced end to end against the real omp child before the fix.
+ */
+describe('releasesStreamRowOnPromptResult', () => {
+  const live = { streaming: false, sessionId: 's1' };
+
+  test('releases the row for a prompt that opened no turn', () => {
+    expect(releasesStreamRowOnPromptResult({ agentInvoked: false }, live)).toBe(true);
+  });
+
+  test('never releases a row for a prompt that DID open a turn', () => {
+    // omp's own trailing `prompt_result` for a real run carries `true`.
+    expect(releasesStreamRowOnPromptResult({ agentInvoked: true }, live)).toBe(false);
+  });
+
+  test('a frame with no agentInvoked field is not proof of anything', () => {
+    // An older omp, or any other prompt_result shape. Reading absence as
+    // "no turn" would clear the spinner of a run that is working.
+    expect(releasesStreamRowOnPromptResult({}, live)).toBe(false);
+    expect(releasesStreamRowOnPromptResult({ agentInvoked: undefined }, live)).toBe(false);
+  });
+
+  test('keeps the running turn’s row when the command lands mid-turn', () => {
+    // Measured: a `/chamber-mode` sent while a turn streams is answered in
+    // ~20 ms from omp's command loop with the turn STILL running. Clearing
+    // here would blank the spinner of a run that is demonstrably working.
+    expect(releasesStreamRowOnPromptResult({ agentInvoked: false }, { streaming: true, sessionId: 's1' })).toBe(false);
+  });
+
+  test('does nothing before the session id is known', () => {
+    expect(releasesStreamRowOnPromptResult({ agentInvoked: false }, { streaming: false, sessionId: '' })).toBe(false);
   });
 });

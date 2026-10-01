@@ -72,6 +72,32 @@ export function getAwaitingInputSessionIds(): string[] {
 }
 
 /**
+ * Sessions this process is running RIGHT NOW — the ones whose `stream` row is
+ * genuinely live.
+ *
+ * Deliberately the reader's OWN registry, unlike the staleness rule, which is
+ * judged from the row's `owner_pid` and OS liveness so every instance agrees.
+ * The two answer different questions and must not be conflated:
+ *
+ *   - `isStaleStreamRow` asks "did the process that wrote this row die?" —
+ *     answerable from the row alone, so all instances reach one verdict;
+ *   - this asks "does THIS process still hold a run for the session it claims?"
+ *     — only this process can answer, and it is the only thing that can release
+ *     a row whose owner is alive but whose run is gone (a dropped prompt, a
+ *     lost `agent_end`). No other instance can see it, and the OS cannot help.
+ *
+ * `isRunning()` is the same predicate `GET /api/agent/:id` reports as `busy`,
+ * so the sidebar's spinner and the attach probe cannot disagree.
+ */
+export function getLiveRunSessionIds(): Set<string> {
+  const ids = new Set<string>();
+  for (const [sessionId, session] of getRegistry()) {
+    if (session.isAlive() && session.isRunning()) ids.add(session.sessionId || sessionId);
+  }
+  return ids;
+}
+
+/**
  * Get or create the omp RPC process for the given session.
  * For new sessions (sessionFile === ''), omp generates its own id.
  */

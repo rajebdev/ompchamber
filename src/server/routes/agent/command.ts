@@ -165,7 +165,9 @@ export async function getAgentState({ params }: LoaderFunctionArgs) {
       // The child's own goal state. The composer's Goal toggle reads this on
       // reattach so a run driven from another tab (or the CLI) does not leave
       // the toggle showing the client's stale last request.
-      goal: { enabled: session.hasLiveGoal, status: session.goalStatus },
+      // Read from the mirror, so the composer's Goal toggle reflects the CHILD
+      // rather than the client's last request.
+      goal: { enabled: session.modeMirror.goalEnabled, status: session.modeMirror.goalStatus },
     });
   } catch (error) {
     if (error instanceof WebRpcError && error.code === 'session_unresponsive') {

@@ -35,6 +35,9 @@ export interface SessionCommandHost extends WebStateHost {
   idle: { reset(force?: boolean): void };
   /** Forget a pending ask/approval dialog once its response is sent. */
   resolvePendingUiDialog(id: string): void;
+  /** Arm the deadline watchdog for a dispatch whose turn never opened. Optional
+   *  so a test host can omit it; the real wrapper always implements it. */
+  armAgentStartWatchdog?(): void;
   destroyAndWait(): Promise<void>;
 }
 
@@ -150,6 +153,13 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
         } else if (!streamingBehavior && ack?.agentInvoked !== false) {
           host.awaitingAgentStart = true;
           host.awaitingAgentStartDeadline = Date.now() + AWAITING_AGENT_START_TIMEOUT_MS;
+          // Nothing else watches this deadline. Without the watchdog a dispatch
+          // whose turn never opens (omp accepted the prompt and emitted no
+          // `agent_start` — measured with the chamber's own `/chamber-mode`,
+          // whose bare `{success:true}` ack reads as a run) leaves
+          // `promptRunning` true forever AND the `stream` row owned by a LIVE
+          // process, which the sidebar heal cannot reach. See the method.
+          host.armAgentStartWatchdog?.();
         }
       } catch (error) {
         host.promptRunning = false;
