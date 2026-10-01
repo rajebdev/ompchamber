@@ -2,11 +2,37 @@ import { json, type ActionFunctionArgs } from '@/server/lib/remix-compat';
 import { methodNotAllowed } from '@/server/lib/route-adapter';
 import { scheduleSelfRestart } from '@/server/lib/lifecycle/restart';
 import { createSseStream } from '@/server/lib/sse';
+import { isMockMode } from '@/server/mock.server';
 import { applyUpdate } from '@/server/lib/updates/apply';
 import { runningUpdate, updateBusyMessage } from '@/server/lib/updates/single-flight';
 
 /** Longest a buffered output chunk waits before it is flushed anyway. */
 const FLUSH_DELAY_MS = 50;
+
+/**
+ * MOCK mode must not touch the machine. The demo update check reports an update
+ * as available, so the popup and the About modal both offer "Update now" — and
+ * the real handler behind it would `git fetch`/`merge` the checkout this demo is
+ * running from. The stream is shaped like a real run so the log and the result
+ * toast render, and it says it was simulated.
+ */
+function mockApplyStream(target: 'omp' | 'ompchamber') {
+  return createSseStream({
+    heartbeatMs: 15_000,
+    onStart: async (handlers) => {
+      const label = target === 'omp' ? 'Oh-My-Pi' : 'OMPChamber';
+      handlers.send('stage', `Simulating the ${label} update`);
+      handlers.send('line', `[mock] no command was run; MOCK=true skips real updates\n`);
+      handlers.send('result', {
+        success: true,
+        target,
+        manual: false,
+        message: `${label} update simulated (MOCK mode) — nothing was changed.`,
+      });
+      handlers.close();
+    },
+  }).response;
+}
 
 /**
  * POST /api/updates/apply — body `{ target: 'omp' | 'ompchamber' }`.
@@ -35,6 +61,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
   if (target !== 'omp' && target !== 'ompchamber') {
     return json({ error: 'Unknown update target' }, { status: 400 });
   }
+
+  if (isMockMode()) return mockApplyStream(target);
 
   // Checked before the stream exists, because after it starts the status is
   // already 200 and a refusal could only be reported as a failure frame. The
