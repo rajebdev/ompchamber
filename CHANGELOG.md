@@ -5,6 +5,21 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.0](https://github.com/rajebdev/ompchamber/compare/v3.9.0...v3.10.0) — 2026-10-01
+
+### Added
+
+* **readme:** give the Elysia, Shiki and version badges their logos ([6a6b366](https://github.com/rajebdev/ompchamber/commit/6a6b36689e5407dae367bca30385a51293feff60))
+* **workspace:** add a Plan panel for the session's plan-mode artifacts ([1dd7a38](https://github.com/rajebdev/ompchamber/commit/1dd7a3834c507128fb076c9f0decce74da6effdc))
+
+### Fixed
+
+* **chat:** make the Plan toggle reach the session it was set on ([451f7f4](https://github.com/rajebdev/ompchamber/commit/451f7f4c271879a4f97ce3df4c41d2826a6baa3f))
+* **chat:** paint a read image from its own result bytes ([62afb50](https://github.com/rajebdev/ompchamber/commit/62afb502e339170e5737627cf50a28d13dc45223))
+* **chat:** render an edit result as its numbered excerpt, not one plain block ([71f76a6](https://github.com/rajebdev/ompchamber/commit/71f76a675c71ba37ac54088209874d6336cdda99)), closes [path#TAG](https://github.com/rajebdev/path/issues/TAG)
+* **chat:** render runtime notices instead of leaking their raw markup ([6322c34](https://github.com/rajebdev/ompchamber/commit/6322c34b69f2b3965277b9532060370810b865ca))
+* **providers:** enable "fetch models" for models.yml providers ([a514929](https://github.com/rajebdev/ompchamber/commit/a514929b51b406a21853c593595f8fc2167e0632))
+
 ## [3.9.0](https://github.com/rajebdev/ompchamber/compare/v3.8.0...v3.9.0) — 2026-10-01
 
 ### Added
