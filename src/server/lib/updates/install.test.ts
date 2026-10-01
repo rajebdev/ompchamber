@@ -31,7 +31,8 @@ describe('detectInstallMethod', () => {
   test('leaves a package-manager install manual', () => {
     const info = detectInstallMethod({ pkgRoot: '/usr/local/lib/node_modules/ompchamber', gitWorkTree: false, gitRemote: null });
     expect(info.method).toBe('npm');
-    expect(manualUpdateCommand(info.method, '0.3.0')).toBe('npm install -g ompchamber@0.3.0');
+    // The command is bun's in both manual branches: OMPChamber is a Bun package.
+    expect(manualUpdateCommand(info.method, '0.3.0')).toBe('bun add -g ompchamber@0.3.0');
   });
 
   test('treats a checkout of the repository as updatable over git', () => {

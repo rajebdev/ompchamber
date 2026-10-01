@@ -64,10 +64,16 @@ export function isManualMethod(method: InstallMethod): boolean {
   return method === 'npm' || method === 'unmanaged';
 }
 
-/** The exact command a user must run when the update cannot be automatic. */
+/**
+ * The exact command a user must run when the update cannot be automatic.
+ *
+ * Both branches use `bun add -g`: OMPChamber is a Bun package and the repo's own
+ * toolchain contract is Bun-only (see AGENTS.md — npm/npx/yarn/pnpm are never
+ * used here), so a copy under `node_modules` is still replaced with `bun`, not
+ * with the package manager that happened to install it. The method is reported
+ * separately for diagnostics; it does not change the command.
+ */
 export function manualUpdateCommand(method: InstallMethod, version: string | null): string | null {
-  const target = `ompchamber@${version ?? 'latest'}`;
-  if (method === 'npm') return `npm install -g ${target}`;
-  if (method === 'unmanaged') return `bun add -g ${target}`;
+  if (method === 'unmanaged' || method === 'npm') return `bun add -g ompchamber@${version ?? 'latest'}`;
   return null;
 }
