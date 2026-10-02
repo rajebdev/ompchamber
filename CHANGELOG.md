@@ -5,6 +5,16 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.11.0](https://github.com/rajebdev/ompchamber/compare/v3.10.1...v3.11.0) — 2026-10-02
+
+### Added
+
+* **chat:** persist each run's provider and model beside the stream status ([883b1af](https://github.com/rajebdev/ompchamber/commit/883b1af91137997a381c24a2af4d53a0b7c7b3d6))
+
+### Fixed
+
+* **eval:** title the tool card from input.title, icon it by language, keep the result whole ([5a17f99](https://github.com/rajebdev/ompchamber/commit/5a17f99f47616fdad3750664c05ef9b4b91d0962))
+
 ## [3.10.1](https://github.com/rajebdev/ompchamber/compare/v3.10.0...v3.10.1) — 2026-10-01
 
 ### Fixed
