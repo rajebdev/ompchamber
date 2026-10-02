@@ -49,8 +49,6 @@ export function knownModelIds(provider: Record<string, unknown> | undefined): Se
 
 /** The model entry as omp expects it, omitting anything omp would reject. */
 export function toModelEntry(model: OmpProviderModelSeed): Record<string, unknown> {
-  // omp's `ModelThinkingSchema` requires `mode`; the only ladder the chamber
-  // writes is the effort one, which is what a chat model's `efforts` list means.
   const efforts = model.efforts && model.efforts.length > 0 ? model.efforts : undefined;
   return sanitizeModelEntry({
     id: model.id,
@@ -66,8 +64,7 @@ export function toModelEntry(model: OmpProviderModelSeed): Record<string, unknow
 
 /**
  * Metadata a bare existing entry is missing, taken from the freshly fetched
- * seed. Values already present are never touched. Writes through the YAML node
- * so the entry's own comments and key order stay as the user wrote them.
+ * seed. Values already present are never touched.
  */
 export function backfillEntry(doc: Document, entry: YAMLMap, seed: OmpProviderModelSeed): void {
   if (seed.name && !entry.has('name')) entry.set('name', seed.name);
@@ -87,6 +84,66 @@ export function backfillEntry(doc: Document, entry: YAMLMap, seed: OmpProviderMo
   if (seed.cost && !entry.has('cost')) {
     entry.set('cost', seed.cost);
   }
+}
+
+/**
+ * Overwrite model metadata from the fetched seed — unlike `backfillEntry`,
+ * this replaces values that already exist. Used when the user explicitly
+ * fetches models from the provider endpoint and expects the data to be
+ * refreshed.
+ */
+export function updateEntry(_doc: Document, entry: YAMLMap, seed: OmpProviderModelSeed): void {
+  if (seed.name) entry.set('name', seed.name);
+  if (seed.reasoning !== undefined) entry.set('reasoning', seed.reasoning);
+  if (seed.imageInput !== undefined) {
+    entry.set('input', seed.imageInput ? ['text', 'image'] : ['text']);
+  }
+  if (seed.contextWindow && seed.contextWindow > 0) entry.set('contextWindow', seed.contextWindow);
+  if (seed.maxTokens && seed.maxTokens > 0) entry.set('maxTokens', seed.maxTokens);
+  if (seed.cost) entry.set('cost', seed.cost);
+}
+
+/**
+ * Existing entries worth backfilling: a bare id whose seed now carries
+ * metadata the entry lacks (context window, price, reasoning, image input).
+ */
+export function backfillableIds(
+  existingModels: unknown,
+  incomingById: Map<string, OmpProviderModelSeed>,
+): string[] {
+  if (!Array.isArray(existingModels)) return [];
+  return existingModels
+    .filter((model): model is Record<string, unknown> => {
+      if (!isRecord(model) || typeof model.id !== 'string') return false;
+      const seed = incomingById.get(model.id);
+      if (!seed) return false;
+      const missingContext = typeof model.contextWindow !== 'number' || !model.contextWindow;
+      return Boolean(
+        (missingContext && (seed.contextWindow || seed.maxTokens))
+        || (!model.cost && seed.cost)
+        || (seed.reasoning !== undefined && model.reasoning === undefined)
+        || (!Array.isArray(model.input) && seed.imageInput),
+      );
+    })
+    .map((model) => String(model.id));
+}
+
+/**
+ * Existing entries whose metadata should be overwritten from the fetched seed:
+ * every model id present in BOTH existing and incoming, not just those with
+ * missing fields.
+ */
+export function updatableIds(
+  existingModels: unknown,
+  incomingById: Map<string, OmpProviderModelSeed>,
+): string[] {
+  if (!Array.isArray(existingModels)) return [];
+  return existingModels
+    .filter((model): model is Record<string, unknown> => {
+      if (!isRecord(model) || typeof model.id !== 'string') return false;
+      return incomingById.has(model.id);
+    })
+    .map((model) => String(model.id));
 }
 
 /**
@@ -122,12 +179,7 @@ export function manualModelSeed(input: ManualModelInput): OmpProviderModelSeed {
   );
   const costInput = finite(input.costInput);
   const costOutput = finite(input.costOutput);
-  // omp requires all four cost fields together, so the two cache rates are
-  // written as 0 when the user left them out — that is "no cached-token
-  // discount", which is what an unlisted rate means.
   const hasCost = costInput !== undefined && costOutput !== undefined;
-  // A ladder is a capability, so it is only declared for a reasoning model and
-  // only when the user chose a subset; an empty list is omp's own default.
   const efforts = input.reasoning && input.efforts && input.efforts.length > 0
     ? [...new Set(input.efforts)]
     : undefined;
@@ -148,29 +200,4 @@ export function manualModelSeed(input: ManualModelInput): OmpProviderModelSeed {
       },
     } : {}),
   };
-}
-
-/**
- * Existing entries worth backfilling: a bare id whose seed now carries
- * metadata the entry lacks (context window, price, reasoning, image input).
- */
-export function backfillableIds(
-  existingModels: unknown,
-  incomingById: Map<string, OmpProviderModelSeed>,
-): string[] {
-  if (!Array.isArray(existingModels)) return [];
-  return existingModels
-    .filter((model): model is Record<string, unknown> => {
-      if (!isRecord(model) || typeof model.id !== 'string') return false;
-      const seed = incomingById.get(model.id);
-      if (!seed) return false;
-      const missingContext = typeof model.contextWindow !== 'number' || !model.contextWindow;
-      return Boolean(
-        (missingContext && (seed.contextWindow || seed.maxTokens))
-        || (!model.cost && seed.cost)
-        || (seed.reasoning !== undefined && model.reasoning === undefined)
-        || (!Array.isArray(model.input) && seed.imageInput),
-      );
-    })
-    .map((model) => String(model.id));
 }

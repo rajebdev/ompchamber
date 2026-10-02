@@ -163,6 +163,28 @@ export async function fetchRemoteModels(
 }
 
 /**
+ * Derive a human-readable display name from a model id.
+ *
+ * - `deepseek-v4-flash-0731:netra` → `Deepseek-V4-Flash-0731 - Netra`
+ * - `deepseek-v4-flash-0731` → `Deepseek-V4-Flash-0731` (title case)
+ */
+function displayNameFromId(modelId: string): string {
+  const colonIdx = modelId.indexOf(':');
+  if (colonIdx >= 0) {
+    const suffix = modelId.slice(colonIdx + 1);
+    if (suffix.length > 0) {
+      const base = modelId.slice(0, colonIdx);
+      const namePart = base.includes('/') ? base.split('/').pop()! : base;
+      const titleBase = namePart.split('-').map(seg => seg.charAt(0).toUpperCase() + seg.slice(1)).join('-');
+      const capSuffix = suffix.charAt(0).toUpperCase() + suffix.slice(1);
+      return `${titleBase} - ${capSuffix}`;
+    }
+  }
+  const name = modelId.includes('/') ? modelId.split('/').pop()! : modelId;
+  return name.split('-').map(seg => seg.charAt(0).toUpperCase() + seg.slice(1)).join('-');
+}
+
+/**
  * Fill in metadata the listing endpoint did not provide from the models.dev
  * catalog: vision/reasoning/tool flags, context + output window, and
  * per-1M-token pricing (cache rates included). Only empty fields are filled —
@@ -189,7 +211,7 @@ export async function enrichFromCatalog(
       : '';
     return {
       ...model,
-      name: model.name === model.id && info.name ? info.name : model.name,
+      name: displayNameFromId(model.id),
       contextWindow: model.contextWindow || catalogContext,
       hasVision: model.hasVision || info.attachment === true,
       hasReasoning: model.hasReasoning ?? (info.reasoning === true || undefined),

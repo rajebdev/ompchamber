@@ -22,6 +22,8 @@ import {
   backfillEntry,
   knownModelIds,
   toModelEntry,
+  updateEntry,
+  updatableIds,
   type OmpProviderModelSeed,
 } from '@/server/lib/omp/config/provider-seeds';
 import { isMaskedApiKey } from '@/shared/lib/models/provider/dialect';
@@ -55,6 +57,13 @@ export interface OmpProviderUpsertInput {
    * model list is owned by discovery.
    */
   overrideOnly?: boolean;
+  /**
+   * When true, existing model entries are overwritten with the fresh data
+   * from `models` rather than being skipped or only backfilled with missing
+   * fields. Used by the "Fetch models" path where the user expects refreshed
+   * metadata (context, pricing, reasoning, capabilities).
+   */
+  overwrite?: boolean;
   models: OmpProviderModelSeed[];
 }
 
@@ -160,10 +169,14 @@ export async function upsertOmpProviderModels(
       };
     }
 
-    // Existing entries with bare ids (no context, no capabilities) get the
-    // fetched metadata filled in — values already present are never touched.
-    // A discovery provider keeps its empty list: omp owns those models.
-    const backfillIds = overrideOnly ? [] : backfillableIds(existing?.models, incomingById);
+    // Existing entries — when `overwrite` is true, every known model gets
+    // refreshed from the incoming seed (fetch path). Otherwise, only bare ids
+    // with missing metadata are backfilled (add-only path).
+    const backfillIds = overrideOnly ? [] : (
+      input.overwrite
+        ? updatableIds(existing?.models, incomingById)
+        : backfillableIds(existing?.models, incomingById)
+    );
 
     // A provider the user re-saves without any new model and without a dialect
     // change has nothing to write — reporting `written: true` there would claim
@@ -183,7 +196,7 @@ export async function upsertOmpProviderModels(
           addedModels: [],
           backfilledModels: [],
           skippedModels: input.models.map((model) => model.id),
-          reason: existing ? 'all models already registered' : undefined,
+          reason: existing ? (input.overwrite ? undefined : 'all models already registered') : undefined,
         },
         changed: false,
       };
@@ -238,7 +251,13 @@ export async function upsertOmpProviderModels(
         const id = entry.get('id');
         if (typeof id !== 'string' || !backfillIds.includes(id)) continue;
         const seed = incomingById.get(id);
-        if (seed) backfillEntry(doc, entry, seed);
+        if (seed) {
+          if (input.overwrite) {
+            updateEntry(doc, entry, seed);
+          } else {
+            backfillEntry(doc, entry, seed);
+          }
+        }
       }
     }
 

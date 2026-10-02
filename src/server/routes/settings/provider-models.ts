@@ -146,6 +146,8 @@ export async function action({ request }: ActionFunctionArgs) {
           // An override/discovery provider keeps omp's own model list; writing
           // ids here would freeze a snapshot omp would then serve twice.
           overrideOnly: skipListing,
+          // Fetch-model path should overwrite existing model metadata
+          overwrite: true,
           models: enriched.map(toOmpSeed),
         });
         if (upsert.written) invalidateModelsCaches();

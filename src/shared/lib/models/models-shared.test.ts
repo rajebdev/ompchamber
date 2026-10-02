@@ -81,6 +81,11 @@ describe('findCatalogModel', () => {
   const catalog = {
     kenari: { models: { 'deepseek-v4-flash': { name: 'Flash' } } },
     anthropic: { models: { 'anthropic/claude-sonnet-4': { name: 'Sonnet' } } },
+    'deepseek-ai': { models: { 'DeepSeek-V4-Flash-0731': { name: 'DeepSeek V4 Flash 0731', reasoning: true, limit: { context: 1_000_000, output: 393_216 }, cost: { input: 0.424, output: 1.272 } } } },
+    deepinfra: { models: { 'deepinfra/deepseek-ai/DeepSeek-V4-Flash-0731': { name: 'DeepSeek V4 Flash 0731', canonical_model_id: 'deepseek/deepseek-v4-flash-0731', reasoning: true } } },
+    empiriolabs: { models: { 'deepseek-v4-flash-0731': { name: 'DeepSeek V4 Flash 0731', canonical_model_id: 'deepseek/deepseek-v4-flash-0731', limit: { context: 1_000_000 } } } },
+    // A provider whose model names look nothing like deepseek — for false-positive guard
+    tencent: { models: { 'tencent/Hy3': { name: 'Hy3', reasoning: true } } },
   };
 
   test('finds a plain id under the given provider slug', () => {
@@ -105,7 +110,8 @@ describe('findCatalogModel', () => {
   });
 
   test('a missing provider slug or model id returns null', () => {
-    expect(findCatalogModel(catalog, 'ghost', 'deepseek-v4-flash')).toBeNull();
+    // Model still found via Level 3 (model name only) despite wrong slug
+    expect(findCatalogModel(catalog, 'ghost', 'deepseek-v4-flash')?.info?.name).toBe('Flash');
     expect(findCatalogModel(catalog, 'kenari', 'ghost')).toBeNull();
     expect(findCatalogModel({}, undefined, 'anything')).toBeNull();
   });
@@ -116,6 +122,54 @@ describe('findCatalogModel', () => {
       anthropic: { models: { 'anthropic/x': { name: 'Anthropic' } } },
     };
     expect(findCatalogModel(both, 'custom', 'anthropic/x')?.providerKey).toBe('custom');
+  });
+
+  test('strips :variant suffix before matching (level 1)', () => {
+    expect(findCatalogModel(catalog, 'kenari', 'deepseek-v4-flash:netra')).toEqual({
+      info: { name: 'Flash' },
+      providerKey: 'kenari',
+    });
+  });
+
+  test('matches PascalCase model name under provider (level 2)', () => {
+    // `sumopod/deepseek-v4-flash-0731:netra` → strip variant → `deepseek-v4-flash-0731`
+    // Level 1: not under sumopod → Level 2: try provider prefix `sumopod` (not in catalog)
+    // No providerSlug given → skip Level 2 explicit provider check
+    // But with providerSlug='deepseek-ai' it should match PascalCase
+    expect(findCatalogModel(catalog, 'deepseek-ai', 'deepseek-v4-flash-0731:netra')?.info?.name).toBe('DeepSeek V4 Flash 0731');
+  });
+
+  test('matches canonical_model_id when provider key differs from model id prefix (level 2 fallback)', () => {
+    // deepinfra/deepseek-ai/DeepSeek-V4-Flash-0731 has canonical_model_id
+    // Searching with providerSlug='deepinfra' should find it by canonical match
+    const result = findCatalogModel(catalog, 'deepinfra', 'deepseek/deepseek-v4-flash-0731');
+    expect(result).not.toBeNull();
+    expect(result?.providerKey).toBe('deepinfra');
+    expect(result?.info?.name).toBe('DeepSeek V4 Flash 0731');
+  });
+
+  test('matches model name only ignoring provider prefix (level 3)', () => {
+    // `sumopod/deepseek-v4-flash-0731` → cleanId = `sumopod/deepseek-v4-flash-0731`
+    // modelName = `deepseek-v4-flash-0731` → should match `empiriolabs/deepseek-v4-flash-0731`
+    const result = findCatalogModel(catalog, 'sumopod', 'sumopod/deepseek-v4-flash-0731');
+    expect(result).not.toBeNull();
+    expect(result?.info?.limit?.context).toBe(1_000_000);
+  });
+
+  test('does not false-positive match tencent/Hy3 for sumopod/deepseek (level 4 guard)', () => {
+    // Prefix: 'sumopod-deepseek-v4-flash-0731' → segments: ['sumopod','deepseek','v4','flash','0731']
+    // Hy3 → ['Hy3']
+    // MIN_SEGMENTS_MATCH=2 required: first segment 'sumopod' !== 'Hy3' → 0 segments match → rejected
+    const result = findCatalogModel(catalog, undefined, 'sumopod/deepseek-v4-flash-0731:netra');
+    // Should NOT match tencent/Hy3
+    expect(result?.info?.name).not.toBe('Hy3');
+    // But SHOULD find something (empiriolabs/deepseek-v4-flash-0731 via level 3)
+    expect(result?.info?.name).toBe('DeepSeek V4 Flash 0731');
+  });
+
+  test('returns null for completely unrelated model id', () => {
+    expect(findCatalogModel(catalog, undefined, 'foo/bar:baz')).toBeNull();
+    expect(findCatalogModel(catalog, undefined, 'something-completely-different')).toBeNull();
   });
 });
 

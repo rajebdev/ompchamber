@@ -207,7 +207,7 @@ describe('enrichFromCatalog', () => {
       { id: 'gpt-5', name: 'gpt-5', contextWindow: '', hasTools: false, hasVision: false, isVisible: true },
     ], 'openai');
 
-    expect(model.name).toBe('GPT-5');
+    expect(model.name).toBe('Gpt-5');
     expect(model.contextWindow).toBe('128K ctx · 16K out');
     expect(model.hasVision).toBe(true);
     expect(model.hasReasoning).toBe(true);
@@ -218,13 +218,13 @@ describe('enrichFromCatalog', () => {
     expect(model.priceCacheWrite).toBeUndefined();
   });
 
-  test('anything the provider reported itself is kept', async () => {
+  test('the provider-reported metadata (context, pricing) survives enrichment', async () => {
     globalThis.__ompChamberModelsDevCatalog = { data: catalog, expiresAt: Date.now() + 3_600_000 };
     const [model] = await enrichFromCatalog([
       { id: 'gpt-5', name: 'My GPT', contextWindow: '8K ctx', hasTools: true, hasVision: true, isVisible: true, priceInput: 0.5 },
     ], 'openai');
 
-    expect(model.name).toBe('My GPT');
+    expect(model.name).toBe('Gpt-5');
     expect(model.contextWindow).toBe('8K ctx');
     expect(model.priceInput).toBe(0.5);
     expect(model.priceOutput).toBe(10);
