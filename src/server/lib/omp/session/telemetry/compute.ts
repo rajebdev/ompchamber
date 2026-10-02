@@ -3,6 +3,7 @@ import { contentProfile } from '@/shared/lib/omp/session/telemetry-blocks';
 import type { RawMessageItem, SessionContextTelemetry } from '@/shared/types/context';
 import type { OmpMessageEntry, OmpUsage } from '@/shared/types/omp/session';
 import { CONTEXT_LIMIT, buildInfo, contextAnchorTokens, emptyTelemetry, formatCost, formatTs, textOf, tokensOf } from '@/server/lib/omp/session/telemetry/format';
+import { loadModelsWithCache } from '@/server/lib/models/registry.server';
 import { scanSessionEntries } from '@/server/lib/omp/session/telemetry/scan';
 
 /**
@@ -128,8 +129,25 @@ export async function computeRealSessionTelemetry(
   if (messagesCount === 0 && !header && !effectiveTitle) return emptyTelemetry(sessionId, defaultTitle);
 
   const providerModel = modelProvider && modelId ? `${modelProvider}/${modelId}` : '';
+
+  // Resolve the model's context window from the model registry. Falls back to
+  // CONTEXT_LIMIT when the model is not found (provider-only sessions, custom
+  // models the registry has never seen, or the process is still booting).
+  let contextLimit = CONTEXT_LIMIT;
+  try {
+    if (modelProvider && modelId) {
+      const models = await loadModelsWithCache();
+      const modelEntry = models.modelList.find(m =>
+        m.provider === modelProvider && m.id === modelId
+      );
+      if (modelEntry?.contextWindow) contextLimit = modelEntry.contextWindow;
+    }
+  } catch {
+    // Registry unavailable — keep the default fallback.
+  }
+
   const contextUsed = contextAnchor;
-  const contextPercent = Math.min(100, Math.max(0, Number(((contextUsed / CONTEXT_LIMIT) * 100).toFixed(1))));
+  const contextPercent = Math.min(100, Math.max(0, Number(((contextUsed / contextLimit) * 100).toFixed(1))));
 
   // Distribution: real token categories (input→user, output→assistant, cacheWrite→tool, cacheRead→other); char fallback when no usage.
   const hasUsage = sumInput + sumOutput + sumCacheRead + sumCacheWrite > 0;
@@ -155,7 +173,7 @@ export async function computeRealSessionTelemetry(
     modelName: providerModel,
     timestamp: formatTs(header?.timestamp),
     contextUsed,
-    contextLimit: CONTEXT_LIMIT,
+    contextLimit,
     contextPercent,
     messagesCount,
     userCount,

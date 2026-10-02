@@ -4,7 +4,8 @@ import { rawPayload1, rawPayload2, rawPayload3, rawPayload4, rawPayload5 } from 
 export function computeSessionContextTelemetry(
   sessionId: string | null,
   sessionTitle?: string,
-  messages: any[] = []
+  messages: any[] = [],
+  contextLimit: number = 1_000_000,
 ): SessionContextTelemetry {
   const currentTitle = sessionTitle || (sessionId ? `Session ${sessionId}` : 'History Commit 2026-09-06 23:00');
   const now = new Date();
@@ -124,7 +125,6 @@ export function computeSessionContextTelemetry(
     });
   });
 
-  const contextLimit = 1_000_000;
   const totalCostVal = ((totalInput * 0.14) + (totalOutput * 0.28) + (totalCacheRead * 0.014)) / 1_000_000;
 
   // Last assistant message stats
@@ -195,7 +195,7 @@ export function computeSessionContextTelemetry(
   };
 }
 
-export function emptyTelemetry(sessionId: string, sessionTitle: string): SessionContextTelemetry {
+export function emptyTelemetry(sessionId: string, sessionTitle: string, contextLimit: number = 1_000_000): SessionContextTelemetry {
   return {
     sessionId,
     sessionTitle,
@@ -203,7 +203,7 @@ export function emptyTelemetry(sessionId: string, sessionTitle: string): Session
     modelName: '',
     timestamp: '',
     contextUsed: 0,
-    contextLimit: 1_000_000,
+    contextLimit,
     contextPercent: 0,
     messagesCount: 0,
     userCount: 0,

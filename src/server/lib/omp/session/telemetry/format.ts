@@ -88,7 +88,7 @@ export function buildInfo(
   };
 }
 
-export function emptyTelemetry(sessionId: string, sessionTitle: string): SessionContextTelemetry {
+export function emptyTelemetry(sessionId: string, sessionTitle: string, contextLimit: number = CONTEXT_LIMIT): SessionContextTelemetry {
   return {
     sessionId,
     sessionTitle,
@@ -96,7 +96,7 @@ export function emptyTelemetry(sessionId: string, sessionTitle: string): Session
     modelName: '',
     timestamp: '',
     contextUsed: 0,
-    contextLimit: CONTEXT_LIMIT,
+    contextLimit,
     contextPercent: 0,
     messagesCount: 0,
     userCount: 0,
