@@ -3,6 +3,7 @@ import type { ClipboardEvent, SetStateAction } from 'preact/compat';
 import { AlertTriangle, X } from 'lucide-preact';
 import type { AIModelOption, Attachment, ModelEntry } from '@/shared/types';
 import { ComposerToolbar } from '@/client/components/workspace/chat-timeline/chat-input/Toolbar';
+import { VoiceNotice } from '@/client/components/workspace/chat-timeline/chat-input/VoiceNotice';
 import { ComposerTextarea } from '@/client/components/common/ComposerTextarea';
 import { AttachmentToolbar } from '@/client/components/workspace/chat-timeline/chat-input/AttachmentToolbar';
 import { selectableThinkingLevels } from '@/shared/lib/models/thinking-levels';
@@ -10,6 +11,7 @@ import { fetchModelsData, subscribeModelsUpdated } from '@/shared/lib/models/cli
 import { resolveThinkingLevel, selectionFor } from '@/client/components/workspace/chat-timeline/chat-input/selection';
 import { NO_PENDING_PICK } from '@/client/hooks/chat/timeline/deferred-model';
 import { useAutoGrow } from '@/client/hooks/chat/composer/auto-grow';
+import { useVoiceInput } from '@/client/hooks/chat/composer/voice-input';
 import { primeFileReads } from '@/client/hooks/chat/composer/file-reads';
 import { useComposerPipeline } from '@/client/hooks/chat/composer/pipeline';
 import { DropOverlay } from '@/client/components/workspace/chat-timeline/chat-input/DropOverlay';
@@ -44,14 +46,9 @@ export function ChatInput({
   enablePicker = true,
   placeholder,
   autoGrow,
-  /** Written on every model/thinking pick so the send path can snapshot the
-   *  selection into queued items without lifting ChatInput state. */
+  /** Mirrors the pick so the send path queues it without reading state. */
   composerModelRef,
-  /** A pick the user made while a turn was streaming, still waiting for the
-   *  next prompt. While set, the session's own model must NOT be adopted over
-   *  it — the composer shows what the next prompt will actually run. Omitted
-   *  by composers that never stream (the New Chat modal), where there is
-   *  nothing to defer and adoption must behave as before. */
+  /** Pending pick from a previous turn; omits for non-streaming composers. */
   deferredComposerPickRef = NO_PENDING_PICK,
   chatRunning,
 }: ChatInputProps) {
@@ -87,24 +84,13 @@ export function ChatInput({
       thinkingLevel: selectedModel.thinkingLevel ?? 'auto',
     };
   }, [selectedModel?.provider, selectedModel?.id, selectedModel?.thinkingLevel, composerModelRef]);
-  // Mirrors sessionThinkingLevel for the async model-sync effects below,
-  // which may resolve after the session-level effect and must not erase it.
+  // Mirror session model/thinking so async sync effects do not clobber them.
   const sessionThinkingLevelRef = useRef<string | null>(null);
   sessionThinkingLevelRef.current = sessionThinkingLevel ?? null;
-  // Mirrors sessionModel for the async model-sync effect below, which resolves
-  // after the session-adoption effect and must not clobber it.
   const sessionModelRef = useRef<{ provider: string; modelId: string } | null>(sessionModel ?? null);
   sessionModelRef.current = sessionModel ?? null;
 
-  // Adopt the active session's last-used model as the selected model. The
-  // thinking level must fall back to the CURRENT one, never the ladder default:
-  // this effect re-runs right after a spawn (sessionModel changes while the
-  // session's own thinking_level_change entry is not readable yet), and any
-  // concrete fallback here claims a level the run never used.
-  //
-  // A pick still waiting for the next prompt wins: the session's model is what
-  // the RUNNING turn uses, and adopting it would erase the user's choice from
-  // the composer even though it is what the next prompt will run with.
+  // Adopt the active session's model. A pending pick wins over adoption.
   useEffect(() => {
     if (!sessionModel?.provider || !sessionModel.modelId) return;
     if (deferredComposerPickRef.current) return;
@@ -126,10 +112,7 @@ export function ChatInput({
     };
   }, [sessionModel?.provider, sessionModel?.modelId, deferredComposerPickRef]);
 
-  // Adopt the active session's last-used thinking level. Runs after the model
-  // sync effect above so it overrides the catalog default for this session.
-  // Same rule as the model: a pick waiting for the next prompt is not
-  // overridden by the level the running turn recorded.
+  // Adopt the session's thinking level; a pending pick wins.
   useEffect(() => {
     if (!sessionThinkingLevel) return;
     if (deferredComposerPickRef.current?.thinkingLevel) return;
@@ -249,6 +232,23 @@ export function ChatInput({
     maxHeightPx: autoGrow?.maxHeightPx ?? Number.POSITIVE_INFINITY,
   });
 
+  // Browser dictation, delegated to omp's own local STT worker. The hook owns
+  // capture + the socket; this component owns where the text lands and the
+  // status line while a first-run model download is still going.
+  const {
+    voiceSupported,
+    voiceListening,
+    voiceBusy,
+    voiceStatus,
+    handleVoiceToggle,
+    displayedVoiceError,
+  } = useVoiceInput((transcript) => {
+    // Append rather than replace: a dictation into a composer that already
+    // holds a draft must not discard what the user typed.
+    const existing = value.trim();
+    onChange(existing ? `${existing} ${transcript}` : transcript);
+  });
+
   return (
     <div
       className={`@container relative border rounded-md bg-paper transition-colors flex flex-col shadow-sm ${
@@ -258,9 +258,7 @@ export function ChatInput({
     >
       <DropOverlay visible={isDragging} />
 
-      {/* Goal mode is a property of the CHAT, not of this draft, so its strip
-          sits above the attachments and the textarea: it describes the turn the
-          next message will join. */}
+      {/* Goal mode strip describes the turn the next message will join. */}
       <GoalSurfaces
         modes={modes}
         running={chatRunning ?? isGenerating}
@@ -276,12 +274,7 @@ export function ChatInput({
         onRemove={removeAttachment}
       />
 
-      {/* A refused plan/goal command. Same strip as the composer's own notice,
-          and its own slot: the two describe different things (a rejected
-          attachment versus a mode the child would not enter) and one must not
-          swallow the other. Without this the refusal was invisible — the
-          optimistic flip left the button pressed over a mode that never
-          applied. */}
+      {/* Refused plan/goal command notice. */}
       {(notice || modes?.error) && (
         <div className="flex items-start gap-1.5 border-b border-error/20 bg-error/5 px-3 py-1.5 text-[11px] text-error">
           <AlertTriangle size={11} className="mt-0.5 shrink-0" />
@@ -315,6 +308,9 @@ export function ChatInput({
         textareaRef={autoGrow ? growRef : undefined}
       />
 
+      {/* Dictation progress / failure, above the toolbar that owns the mic. */}
+      <VoiceNotice status={voiceStatus} error={displayedVoiceError} />
+
       {/* Bottom Config Toolbar */}
       <ComposerToolbar
         isMobile={isMobile}
@@ -339,6 +335,10 @@ export function ChatInput({
         showAccess={showAccess}
         modes={modes}
         onOpenGoal={() => setGoalModalOpen(true)}
+        voiceSupported={voiceSupported}
+        voiceListening={voiceListening}
+        voiceBusy={voiceBusy}
+        onVoiceToggle={handleVoiceToggle}
       />
     </div>
   );

@@ -1,4 +1,4 @@
-import { Send, Square } from 'lucide-preact';
+import { Loader2, Mic, MicOff, Send, Square } from 'lucide-preact';
 import type { AIModelOption } from '@/shared/types';
 import { ModelDropdown } from '@/client/components/workspace/model-dropdown/index';
 import { ThinkingLevelDropdown } from '@/client/components/workspace/chat-timeline/chat-input/ThinkingLevelDropdown';
@@ -44,6 +44,12 @@ export interface ComposerToolbarProps {
   modes?: ComposerModes;
   /** Opens the Goal modal, owned by `ChatInput`. */
   onOpenGoal?: () => void;
+  /** Voice input controls. */
+  voiceSupported?: boolean;
+  voiceListening?: boolean;
+  /** True from release until the transcript lands; the button shows a spinner. */
+  voiceBusy?: boolean;
+  onVoiceToggle?: () => void;
 }
 
 /**
@@ -79,6 +85,10 @@ export function ComposerToolbar({
   showAccess = true,
   modes,
   onOpenGoal,
+  voiceSupported,
+  voiceListening,
+  voiceBusy,
+  onVoiceToggle,
 }: ComposerToolbarProps) {
   const chatInFlight = chatRunning ?? isGenerating;
   const showStop = chatInFlight && (isMobile ? Boolean(onStop) : true);
@@ -128,6 +138,40 @@ export function ComposerToolbar({
       </div>
 
       <div className="flex items-center gap-1.5 flex-shrink-0">
+        {/* Voice input — only when the browser can capture audio. Idle ▸ mic,
+            recording ▸ pulsing red mic-off, transcribing ▸ spinner. */}
+        {voiceSupported && (
+          <button
+            type="button"
+            onClick={onVoiceToggle}
+            disabled={voiceBusy}
+            className={`flex items-center justify-center rounded transition-colors flex-shrink-0 ${
+              voiceBusy
+                ? 'text-ink/40 cursor-wait'
+                : voiceListening
+                  ? 'bg-error text-canvas animate-pulse shadow-xs cursor-pointer'
+                  : 'text-ink/50 hover:text-ink hover:bg-ink/10 cursor-pointer'
+            } ${
+              isMobile ? 'w-10 h-10 rounded-lg' : 'w-7 h-7'
+            }`}
+            title={
+              voiceBusy
+                ? 'Transcribing…'
+                : voiceListening
+                  ? 'Stop recording'
+                  : 'Voice input (omp speech-to-text)'
+            }
+          >
+            {voiceBusy ? (
+              <Loader2 size={isMobile ? 16 : 12} className="animate-spin" />
+            ) : voiceListening ? (
+              <MicOff size={isMobile ? 16 : 12} />
+            ) : (
+              <Mic size={isMobile ? 16 : 12} />
+            )}
+          </button>
+        )}
+
         {showStop && (
           <button
             type="button"

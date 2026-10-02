@@ -15,6 +15,7 @@ import { filesBindings } from '@/server/routes/files';
 import { telemetryBindings } from '@/server/routes/telemetry';
 import { terminalBindings } from '@/server/routes/terminal';
 import { terminalWsRoutes } from '@/server/routes/terminal/ws';
+import { dictationWsRoutes } from '@/server/routes/dictation/ws';
 import { browserBindings } from '@/server/routes/browser';
 import { modelsBindings } from '@/server/routes/models';
 import { ompBindings } from '@/server/routes/omp';
@@ -48,4 +49,5 @@ const allBindings: HandlerBinding[] = [
 export const apiRoutes = mountBindings(new Elysia(), allBindings)
   .use(agentWsRoutes)
   .use(btwWsRoutes)
-  .use(terminalWsRoutes);
+  .use(terminalWsRoutes)
+  .use(dictationWsRoutes);

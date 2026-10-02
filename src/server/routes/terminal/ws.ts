@@ -22,6 +22,7 @@
  */
 
 import { Elysia, t } from 'elysia';
+import { isSameOriginUpgrade } from '@/server/lib/http/same-origin';
 import {
   attachTerminal,
   closeTerminal,
@@ -152,20 +153,3 @@ export const terminalWsRoutes = new Elysia({ prefix: '/api/terminal' }).ws('/:te
     detachTerminal(attachment.viewer, attachment.id);
   },
 });
-
-/**
- * A WebSocket upgrade carries the page's `Origin`, and no preflight protects
- * it. Requests without one (curl, tests) are allowed: they are not a browser
- * being tricked into dialing localhost.
- */
-function isSameOriginUpgrade(request: Request): boolean {
-  const origin = request.headers.get('origin');
-  if (!origin) return true;
-  const host = request.headers.get('host');
-  if (!host) return false;
-  try {
-    return new URL(origin).host === host;
-  } catch {
-    return false;
-  }
-}
