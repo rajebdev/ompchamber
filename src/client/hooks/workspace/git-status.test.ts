@@ -23,6 +23,7 @@ import { act } from 'preact/test-utils';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
 
 const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'HTMLInputElement', 'Event', 'MouseEvent', 'KeyboardEvent'] as const;
+/** The runner's own globals, restored on teardown — deleting them would strip natives (Event/CustomEvent) every later file needs. */const nativeGlobals: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
 
 const ROOT = '/ws';
 
@@ -38,7 +39,10 @@ function Harness({ repo }: { repo: string }) {
 beforeAll(() => {
   const win = new Window({ url: 'http://localhost' });
   const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) target[key] = (win as unknown as Record<string, unknown>)[key];
+  for (const key of DOM_GLOBALS) {
+    if (!(key in nativeGlobals)) nativeGlobals[key] = target[key];
+    target[key] = (win as unknown as Record<string, unknown>)[key];
+  }
   target.fetch = (input: unknown) => {
     const { promise, resolve } = Promise.withResolvers<Response>();
     pending.push({
@@ -52,13 +56,16 @@ beforeAll(() => {
 
 afterAll(() => {
   const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) delete target[key];
+  for (const key of DOM_GLOBALS) {
+    if (nativeGlobals[key] === undefined) delete target[key];
+    else target[key] = nativeGlobals[key];
+  }
   delete target.fetch;
 });
 
 afterEach(() => {
   if (container) render(null, container);
-  container = undefined;
+  container?.remove();
   pending.length = 0;
 });
 

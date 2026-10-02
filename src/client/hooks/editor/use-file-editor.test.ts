@@ -132,8 +132,8 @@ beforeEach(() => {
 // timer that outlived this file would fire during the next file's test and, with
 // `window` already removed by `afterAll`, break its render.
 afterEach(() => {
-  render(null, container);
-  container.remove();
+  if (container) render(null, container);
+  container?.remove();
 });
 
 describe('useFileEditor revalidation', () => {

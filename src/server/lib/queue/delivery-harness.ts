@@ -23,21 +23,48 @@ import { jest, mock } from 'bun:test';
 import type { QueuedMessage } from '@/shared/types/chat';
 import type { QueueDeliveryHost } from '@/server/lib/queue/delivery.server';
 
+// Hoisted above the registration, so spreading it here snapshots the REAL
+// SQLite store BEFORE `installStoreMock` patches the module's exports. The
+// mock MERGES into that module, so the namespace object itself is no longer
+// pristine once the mock is in place — `restoreStore` must hand back this
+// snapshot rather than the live namespace.
+import * as realStore from '@/server/lib/queue/store.server';
+
+const PRISTINE_STORE = { ...realStore };
+
 /** In-memory stand-in for the SQLite-backed queue. */
 export const queue = new Map<string, QueuedMessage[]>();
 
-mock.module('@/server/lib/queue/store.server', () => ({
-  claimHeadQueueItem: async (sessionId: string): Promise<QueuedMessage | null> => {
-    const items = queue.get(sessionId);
-    return items?.shift() ?? null;
-  },
-  hasQueuedItem: async (sessionId: string): Promise<boolean> => (queue.get(sessionId)?.length ?? 0) > 0,
-  requeueHeadQueueItem: async (sessionId: string, item: QueuedMessage): Promise<void> => {
-    const items = queue.get(sessionId) ?? [];
-    items.unshift(item);
-    queue.set(sessionId, items);
-  },
-}));
+/** Registers the in-memory store. Called at import and again by each delivery
+ *  test file's `beforeAll`, so the mock is in place no matter which file runs
+ *  after another has restored the real one. */
+export function installStoreMock(): void {
+  mock.module('@/server/lib/queue/store.server', () => ({
+    claimHeadQueueItem: async (sessionId: string): Promise<QueuedMessage | null> => {
+      const items = queue.get(sessionId);
+      return items?.shift() ?? null;
+    },
+    hasQueuedItem: async (sessionId: string): Promise<boolean> => (queue.get(sessionId)?.length ?? 0) > 0,
+    requeueHeadQueueItem: async (sessionId: string, item: QueuedMessage): Promise<void> => {
+      const items = queue.get(sessionId) ?? [];
+      items.unshift(item);
+      queue.set(sessionId, items);
+    },
+  }));
+}
+
+installStoreMock();
+
+/**
+ * Hands the real store back. `mock.module` swaps the registry entry for the
+ * WHOLE `bun test` run, so leaving it registered would hand `store.server.test.ts`
+ * this three-function stand-in — its `appendQueueItem` import does not exist
+ * there, and every claim reads an in-memory map that is always empty. Each
+ * delivery file restores in `afterAll` and re-installs in `beforeAll`.
+ */
+export function restoreStore(): void {
+  mock.module('@/server/lib/queue/store.server', () => PRISTINE_STORE);
+}
 
 // Dynamic import is load-bearing: the module must be evaluated AFTER the
 // `mock.module` call above, so its store bindings resolve to the mock. A static

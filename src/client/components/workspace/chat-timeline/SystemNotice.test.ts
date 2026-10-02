@@ -26,6 +26,7 @@ import { act } from 'preact/test-utils';
 import { SystemNotice } from '@/client/components/workspace/chat-timeline/SystemNotice';
 
 const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'Event'] as const;
+/** The runner's own globals, restored on teardown — deleting them would strip natives (Event/CustomEvent) every later file needs. */const nativeGlobals: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
 
 const CONTINUATION = [
   '<!-- Hidden continuation steer. role=user, suppressed from visible transcript. -->',
@@ -50,17 +51,23 @@ let container: HTMLElement;
 beforeAll(() => {
   const win = new Window({ url: 'http://localhost' });
   const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) target[key] = (win as unknown as Record<string, unknown>)[key];
+  for (const key of DOM_GLOBALS) {
+    if (!(key in nativeGlobals)) nativeGlobals[key] = target[key];
+    target[key] = (win as unknown as Record<string, unknown>)[key];
+  }
   container = document.body.appendChild(document.createElement('div'));
 });
 
 afterAll(() => {
   const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) delete target[key];
+  for (const key of DOM_GLOBALS) {
+    if (nativeGlobals[key] === undefined) delete target[key];
+    else target[key] = nativeGlobals[key];
+  }
 });
 
 async function paint(props: { notice: string; source?: string }): Promise<HTMLElement> {
-  render(null, container);
+  if (container) render(null, container);
   await act(async () => {
     render(h(SystemNotice, props), container);
   });

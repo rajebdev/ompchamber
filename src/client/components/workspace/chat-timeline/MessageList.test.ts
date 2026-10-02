@@ -26,16 +26,23 @@ import type { ChatMessageData } from '@/shared/types';
 let container: HTMLElement;
 
 const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'HTMLInputElement', 'Event', 'MouseEvent', 'KeyboardEvent'] as const;
+/** The runner's own globals, restored on teardown — deleting them would strip natives (Event/CustomEvent) every later file needs. */const nativeGlobals: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
 
 beforeAll(() => {
   const win = new Window({ url: 'http://localhost' });
   const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) target[key] = (win as unknown as Record<string, unknown>)[key];
+  for (const key of DOM_GLOBALS) {
+    if (!(key in nativeGlobals)) nativeGlobals[key] = target[key];
+    target[key] = (win as unknown as Record<string, unknown>)[key];
+  }
 });
 
 afterAll(() => {
   const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) delete target[key];
+  for (const key of DOM_GLOBALS) {
+    if (nativeGlobals[key] === undefined) delete target[key];
+    else target[key] = nativeGlobals[key];
+  }
 });
 
 const user = (id: string): ChatMessageData => ({ id, role: 'user', content: 'yo' });

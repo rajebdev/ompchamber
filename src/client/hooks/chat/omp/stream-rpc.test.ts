@@ -1,0 +1,202 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/** The `useOmpAgent` RPC-command half of `stream.test.ts`: follow-ups,
+ * interrupts, model/thinking picks and dialog answers posted through the
+ * bridge. Split verbatim so both files stay under the repo's 350-line
+ * ceiling. */
+
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
+import { Window } from 'happy-dom';
+import { h, render } from 'preact';
+import { act } from 'preact/test-utils';
+import { useOmpAgent } from '@/client/hooks/chat/omp/index';
+import type { OmpAgentCallbacks, OmpAgentEvent, OmpAgentHandle, StreamTransport } from '@/shared/types';
+
+
+const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'Event', 'CustomEvent', 'WebSocket', 'EventSource'] as const;
+/** The runner's own globals, restored on teardown (see the matching afterAll at the end of this file) so later files still see native Event/CustomEvent/window. */
+const nativeGlobals: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
+
+let container: HTMLElement;
+
+/** Minimal WebSocket double: records instances and lets a test drive events. */
+class StubSocket {
+  static latest: StubSocket[] = [];
+  url: string;
+  closed = false;
+  onopen: (() => void) | null = null;
+  onmessage: ((event: { data: string }) => void) | null = null;
+  onclose: (() => void) | null = null;
+  onerror: unknown = null;
+
+  constructor(url: string) {
+    this.url = url;
+    StubSocket.latest.push(this);
+  }
+
+  close() { this.closed = true; }
+  open() { this.onopen?.(); }
+  frame(data: OmpAgentEvent) { this.onmessage?.({ data: JSON.stringify(data) }); }
+  drop() { this.onclose?.(); }
+}
+
+class StubEventSource {
+  static latest: StubEventSource[] = [];
+  static CLOSED = 2;
+  static readonly instances: StubEventSource[] = StubEventSource.latest;
+  url: string;
+  readyState = 0;
+  closed = false;
+  onopen: (() => void) | null = null;
+  onmessage: ((event: { data: string }) => void) | null = null;
+  onerror: (() => void) | null = null;
+
+  constructor(url: string) {
+    this.url = url;
+    StubEventSource.latest.push(this);
+  }
+
+  close() { this.closed = true; }
+  open() { this.readyState = 1; this.onopen?.(); }
+  frame(data: OmpAgentEvent) { this.onmessage?.({ data: JSON.stringify(data) }); }
+}
+
+beforeAll(() => {
+  const win = new Window({ url: 'http://localhost' });
+  const target = globalThis as unknown as Record<string, unknown>;
+  for (const key of DOM_GLOBALS) {
+    if (!(key in nativeGlobals)) nativeGlobals[key] = target[key];
+    target[key] = (win as unknown as Record<string, unknown>)[key];
+  }
+  target.WebSocket = StubSocket;
+  target.EventSource = StubEventSource;
+});
+
+afterEach(() => {
+  if (container) render(null, container);
+  container?.remove();
+  StubSocket.latest = [];
+  StubEventSource.latest = [];
+});
+
+function mount(vnode: Parameters<typeof render>[0]) {
+  container ??= document.body.appendChild(document.createElement('div'));
+  return act(async () => { render(vnode, container as HTMLElement); });
+}
+
+
+
+/** Mounts `useOmpAgentStream` with fresh refs and exposes its api + state. */
+interface StubCall { url: string; method: string; body: Record<string, unknown>; }
+
+function stubFetch(answers: Record<string, unknown>) {
+  const calls: StubCall[] = [];
+  (globalThis as unknown as Record<string, unknown>).fetch = async (input: unknown, init?: { method?: string; body?: string }) => {
+    const url = String(input);
+    calls.push({ url, method: init?.method ?? 'GET', body: init?.body ? JSON.parse(init.body) : {} });
+    const answer = answers[url];
+    if (answer === undefined) return new Response('{}', { status: 200 });
+    return new Response(JSON.stringify(answer), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  return calls;
+}
+
+/** Mounts `useOmpAgent` and exposes the handle plus the refs it owns. */
+function mountAgent(sessionId: string | null, callbacks: OmpAgentCallbacks = {}, transport: StreamTransport = 'websocket') {
+  const seen: { handle: OmpAgentHandle | null } = { handle: null };
+
+  function Probe({ id }: { id: string | null }) {
+    seen.handle = useOmpAgent(id, callbacks, transport);
+    return null;
+  }
+
+  return {
+    mount: () => mount(h(Probe, { id: sessionId })),
+    rerender: (id: string | null) => act(async () => { render(h(Probe, { id }), container as HTMLElement); }),
+    handle: () => seen.handle as OmpAgentHandle,
+  };
+}
+
+/** Flush the promise chain behind the mount-time GET probe. */
+async function settle() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+
+describe('useOmpAgent RPC commands', () => {
+  const SID = 'sess/1';
+  const ROUTE = `/api/agent/${encodeURIComponent(SID)}`;
+
+  test('follow-up posts its body and reports refusal', async () => {
+    const calls = stubFetch({ [ROUTE]: { success: true } });
+    const probe = mountAgent(SID);
+    await probe.mount();
+    await settle();
+
+    expect(await probe.handle().sendFollowUp('next', [{ type: 'image', data: 'A', mimeType: 'image/png' }])).toBe(true);
+    expect(calls.at(-1)).toEqual({
+      url: ROUTE, method: 'POST',
+      body: { type: 'follow_up', message: 'next', images: [{ type: 'image', data: 'A', mimeType: 'image/png' }] },
+    });
+
+    stubFetch({ [ROUTE]: { error: 'nope' } });
+    expect(await probe.handle().sendFollowUp('again')).toBe(false);
+  });
+
+  test('interrupt-and-reply posts abort_and_prompt and releases the guard on failure', async () => {
+    const calls = stubFetch({ [ROUTE]: { success: true } });
+    const probe = mountAgent(SID);
+    await probe.mount();
+    await settle();
+
+    expect(await probe.handle().sendInterruptAndReply('pivot')).toBe(true);
+    expect(calls.at(-1)?.body).toEqual({ type: 'abort_and_prompt', message: 'pivot' });
+
+    stubFetch({ [ROUTE]: { error: 'busy' } });
+    expect(await probe.handle().sendInterruptAndReply('pivot')).toBe(false);
+    expect(probe.handle().isGenerating).toBe(false);
+    expect(probe.handle().error).toBe('busy');
+  });
+
+  test('model, thinking level and dialog answers post their RPC bodies', async () => {
+    const calls = stubFetch({ [ROUTE]: { success: true } });
+    const probe = mountAgent(SID);
+    await probe.mount();
+    await settle();
+
+    await probe.handle().setModel('anthropic', 'claude');
+    expect(calls.at(-1)?.body).toEqual({ type: 'set_model', provider: 'anthropic', modelId: 'claude' });
+
+    await probe.handle().setThinkingLevel('high');
+    expect(calls.at(-1)?.body).toEqual({ type: 'set_thinking_level', level: 'high' });
+
+    await probe.handle().respondToExtensionUi({ id: 'ui-7' } as never, { confirmed: true });
+    expect(calls.at(-1)?.body).toEqual({ type: 'extension_ui_response', id: 'ui-7', confirmed: true });
+  });
+
+  test('abort posts the stop command and drops the interrupt guard', async () => {
+    const calls = stubFetch({ [ROUTE]: { success: true } });
+    const probe = mountAgent(SID);
+    await probe.mount();
+    await settle();
+
+    await probe.handle().abort();
+    expect(calls.at(-1)?.body).toEqual({ type: 'abort' });
+    expect(probe.handle().isGenerating).toBe(false);
+  });
+});
+
+afterAll(() => {
+  const target = globalThis as unknown as Record<string, unknown>;
+  for (const key of DOM_GLOBALS) {
+    if (nativeGlobals[key] === undefined) delete target[key];
+    else target[key] = nativeGlobals[key];
+  }
+});

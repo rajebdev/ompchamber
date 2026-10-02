@@ -27,6 +27,7 @@ import { useRepoScope } from '@/client/hooks/workspace/repo-scope';
 import { flushSession } from '@/shared/lib/workspace/session-state/store';
 
 const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'HTMLInputElement', 'Event', 'MouseEvent', 'KeyboardEvent'] as const;
+/** The runner's own globals, restored on teardown — deleting them would strip natives (Event/CustomEvent) every later file needs. */const nativeGlobals: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
 
 const ROOT = '/ws';
 const OTHER_ROOT = '/other';
@@ -53,7 +54,10 @@ function Consumer({ id, rootPath, repo }: { id: string; rootPath: string; repo?:
 beforeAll(() => {
   const win = new Window({ url: 'http://localhost' });
   const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) target[key] = (win as unknown as Record<string, unknown>)[key];
+  for (const key of DOM_GLOBALS) {
+    if (!(key in nativeGlobals)) nativeGlobals[key] = target[key];
+    target[key] = (win as unknown as Record<string, unknown>)[key];
+  }
   target.fetch = async (_input: unknown, init?: { method?: string; body?: unknown }) => {
     const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
     if (init?.method === 'POST') {
@@ -70,25 +74,30 @@ beforeAll(() => {
 
 afterAll(() => {
   const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) delete target[key];
+  for (const key of DOM_GLOBALS) {
+    if (nativeGlobals[key] === undefined) delete target[key];
+    else target[key] = nativeGlobals[key];
+  }
   delete target.fetch;
 });
 
 afterEach(() => {
   if (container) render(null, container);
+  container?.remove();
   container = undefined;
   stored = {};
   posted.length = 0;
 });
 
 /** Mounts one session's consumers and drains the session-state load. */
-async function mount(children: ComponentChild, sessionId = SESSION) {
+async function mount(children: ComponentChild, sessionId = SESSION): Promise<HTMLElement> {
   container = document.createElement('div');
   document.body.appendChild(container);
   await act(async () => {
     render(h(SessionStateProvider, { sessionId, children }), container as HTMLElement);
   });
   for (let i = 0; i < 20; i += 1) await act(async () => {});
+  if (!container) throw new Error('expected the mounted container');
   return container;
 }
 

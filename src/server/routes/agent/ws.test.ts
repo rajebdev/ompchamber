@@ -23,24 +23,25 @@
 import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
 import { Elysia } from 'elysia';
 
+import * as cadence from '@/shared/lib/workspace/refresh-cadence';
+
 /** Heartbeat for the test — several beats must fit inside a test timeout. */
 const HEARTBEAT_MS = 60;
+
+/**
+ * The real table, snapshotted BEFORE the mock replaces it. `mock.module`
+ * swaps the registry entry for the whole `bun test` run, so the file restores
+ * this snapshot in `afterAll` — otherwise every suite that runs after this one
+ * reads the shrunken heartbeat (and the constants this mock omits arrive as
+ * `undefined`).
+ */
+const REAL_CADENCE = { ...cadence };
 
 // The route reads the cadence constant at module scope, so the module is
 // replaced BEFORE the route module is imported.
 mock.module('@/shared/lib/workspace/refresh-cadence', () => ({
+  ...REAL_CADENCE,
   STREAM_HEARTBEAT_MS: HEARTBEAT_MS,
-  SIDEBAR_IDLE_REFRESH_MS: 30_000,
-  SIDEBAR_STREAM_POLL_MS: 8_000,
-  SIDEBAR_REVALIDATE_THROTTLE_MS: 1_000,
-  PANEL_REFRESH_MS: 5_000,
-  FILE_MUTATION_THROTTLE_MS: 500,
-  GIT_STATUS_POLL_MS: 15_000,
-  GIT_STATUS_EVENT_THROTTLE_MS: 1_000,
-  REPO_DISCOVERY_POLL_MS: 1_500,
-  TODO_REFRESH_EVENT_THROTTLE_MS: 400,
-  BROWSER_POLL_MS: 1_000,
-  SIDEBAR_DATA_TTL_MS: 4_000,
   SESSION_META_RETRY_SCHEDULE_MS: [250],
 }));
 
@@ -74,6 +75,11 @@ let session = makeSession();
 const app = new Elysia().use(agentWsRoutes);
 let baseUrl = '';
 
+/** The registry entry this file replaces; `getLiveRunSessionIds` walks it as
+ *  an iterable `Map`, so leaving this plain object behind breaks every suite
+ *  that reads the live-run set afterwards. */
+const nativeSessions = Object.getOwnPropertyDescriptor(globalThis, '__ompSessions');
+
 beforeAll(async () => {
   (globalThis as { __ompSessions?: unknown }).__ompSessions = {
     get: (id: string) => (id === 'test-session' ? session : undefined),
@@ -86,6 +92,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app.stop();
+  // Hand the real cadence table back to every suite that runs after this one.
+  mock.module('@/shared/lib/workspace/refresh-cadence', () => REAL_CADENCE);
+  if (nativeSessions) Object.defineProperty(globalThis, '__ompSessions', nativeSessions);
+  else delete (globalThis as { __ompSessions?: unknown }).__ompSessions;
 });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

@@ -25,20 +25,27 @@ import type { GoalAction } from '@/client/hooks/chat/timeline/modes';
 import type { GoalRecord } from '@/shared/lib/omp/mode/types';
 
 const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'Event'] as const;
+/** The runner's own globals, restored on teardown — deleting them would strip natives (Event/CustomEvent) every later file needs. */const nativeGlobals: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
 
 let container: HTMLElement;
 
 beforeAll(() => {
   const win = new Window({ url: 'http://localhost' });
   const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) target[key] = (win as unknown as Record<string, unknown>)[key];
+  for (const key of DOM_GLOBALS) {
+    if (!(key in nativeGlobals)) nativeGlobals[key] = target[key];
+    target[key] = (win as unknown as Record<string, unknown>)[key];
+  }
   container = (globalThis as unknown as { document: Document }).document.createElement('div');
   (globalThis as unknown as { document: Document }).document.body.appendChild(container);
 });
 
 afterAll(() => {
   const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) delete target[key];
+  for (const key of DOM_GLOBALS) {
+    if (nativeGlobals[key] === undefined) delete target[key];
+    else target[key] = nativeGlobals[key];
+  }
 });
 
 const record: GoalRecord = {
@@ -71,7 +78,7 @@ function paint(overrides: Partial<GoalBannerProps> = {}, actions: GoalAction[] =
     onOpenDetails: () => {},
     ...overrides,
   };
-  render(null, container);
+  if (container) render(null, container);
   render(h(GoalBanner, props), container);
   return container;
 }

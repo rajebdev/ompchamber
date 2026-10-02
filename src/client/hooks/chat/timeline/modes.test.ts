@@ -25,6 +25,7 @@ import { useChatTimelineModes } from '@/client/hooks/chat/timeline/modes';
 import { GoalBanner } from '@/client/components/workspace/chat-timeline/chat-input/GoalBanner';
 
 const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'Event', 'CustomEvent'] as const;
+/** The runner's own globals, restored on teardown — deleting them would strip natives (Event/CustomEvent) every later file needs. */const nativeGlobals: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
 
 const WITH_GOAL = 'session-with-goal';
 /** A live goal whose loop has NOT reported a verdict — the state in which the
@@ -74,7 +75,10 @@ let postFailure: { status: number; error: string } | null = null;
 beforeAll(() => {
   const win = new Window({ url: 'http://localhost' });
   const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) target[key] = (win as unknown as Record<string, unknown>)[key];
+  for (const key of DOM_GLOBALS) {
+    if (!(key in nativeGlobals)) nativeGlobals[key] = target[key];
+    target[key] = (win as unknown as Record<string, unknown>)[key];
+  }
   target.fetch = async (input: unknown, init?: { method?: string }) => {
     const url = String(input);
     requests.push({ url, method: init?.method ?? 'GET' });
@@ -125,13 +129,16 @@ beforeAll(() => {
 
 afterAll(() => {
   const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) delete target[key];
+  for (const key of DOM_GLOBALS) {
+    if (nativeGlobals[key] === undefined) delete target[key];
+    else target[key] = nativeGlobals[key];
+  }
   delete target.fetch;
 });
 
 afterEach(() => {
   if (container) render(null, container);
-  container = undefined;
+  container?.remove();
   requests.length = 0;
   postFailure = null;
 });

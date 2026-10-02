@@ -21,8 +21,22 @@
  * `delivery-dispatch.server.test.ts`; both share `delivery-harness.ts`.
  */
 
-import { afterAll, afterEach, describe, expect, jest, mock, test } from 'bun:test';
-import { beginQueueTest, flush, makeHost, queue, queueItem, scheduleQueueDelivery, settleDelivery } from '@/server/lib/queue/delivery-harness';
+import { afterAll, afterEach, beforeAll, describe, expect, jest, mock, test } from 'bun:test';
+import {
+  beginQueueTest,
+  flush,
+  installStoreMock,
+  makeHost,
+  queue,
+  queueItem,
+  restoreStore,
+  scheduleQueueDelivery,
+  settleDelivery,
+} from '@/server/lib/queue/delivery-harness';
+
+beforeAll(() => {
+  installStoreMock();
+});
 
 afterEach(() => {
   jest.useRealTimers();
@@ -30,6 +44,9 @@ afterEach(() => {
 
 afterAll(() => {
   mock.restore();
+  // Hand the real SQLite store back: `mock.module` would otherwise stay
+  // registered for every suite that runs after this file.
+  restoreStore();
 });
 
 describe('queue delivery scheduling', () => {

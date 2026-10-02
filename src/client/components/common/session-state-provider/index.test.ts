@@ -28,6 +28,7 @@ import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { flushSession } from '@/shared/lib/workspace/session-state/store';
 
 const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'HTMLInputElement', 'Event', 'MouseEvent', 'KeyboardEvent'] as const;
+/** The runner's own globals, restored on teardown — deleting them would strip natives (Event/CustomEvent) every later file needs. */const nativeGlobals: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
 
 let container: HTMLElement;
 const calls: { url: string; method: string; body: { state?: Record<string, unknown> } | null }[] = [];
@@ -43,7 +44,10 @@ function Probe() {
 beforeAll(() => {
   const win = new Window({ url: 'http://localhost' });
   const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) target[key] = (win as unknown as Record<string, unknown>)[key];
+  for (const key of DOM_GLOBALS) {
+    if (!(key in nativeGlobals)) nativeGlobals[key] = target[key];
+    target[key] = (win as unknown as Record<string, unknown>)[key];
+  }
   target.fetch = async (input: unknown, init?: { method?: string; body?: unknown }) => {
     const method = init?.method ?? 'GET';
     calls.push({ url: String(input), method, body: init?.body ? JSON.parse(String(init.body)) : null });
@@ -56,7 +60,10 @@ beforeAll(() => {
 
 afterAll(() => {
   const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) delete target[key];
+  for (const key of DOM_GLOBALS) {
+    if (nativeGlobals[key] === undefined) delete target[key];
+    else target[key] = nativeGlobals[key];
+  }
   delete target.fetch;
 });
 

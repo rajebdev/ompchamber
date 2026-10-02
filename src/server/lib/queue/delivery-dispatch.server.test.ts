@@ -12,9 +12,24 @@
  * owns the store mock and the fake clock.
  */
 
-import { afterAll, afterEach, describe, expect, jest, mock, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, describe, expect, jest, mock, test } from 'bun:test';
 import type { QueuedMessage } from '@/shared/types/chat';
-import { MODEL, beginQueueTest, deliverQueueNow, flush, makeHost, queue, queueItem, settleDelivery } from '@/server/lib/queue/delivery-harness';
+import {
+  MODEL,
+  beginQueueTest,
+  deliverQueueNow,
+  flush,
+  installStoreMock,
+  makeHost,
+  queue,
+  queueItem,
+  restoreStore,
+  settleDelivery,
+} from '@/server/lib/queue/delivery-harness';
+
+beforeAll(() => {
+  installStoreMock();
+});
 
 afterEach(() => {
   jest.useRealTimers();
@@ -22,6 +37,9 @@ afterEach(() => {
 
 afterAll(() => {
   mock.restore();
+  // Hand the real SQLite store back: `mock.module` would otherwise stay
+  // registered for every suite that runs after this file.
+  restoreStore();
 });
 
 describe('queue dispatch', () => {

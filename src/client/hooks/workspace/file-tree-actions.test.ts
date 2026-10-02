@@ -158,8 +158,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  render(null, container);
-  container.remove();
+  if (container) render(null, container);
+  container?.remove();
 });
 
 function server(createResult: Server['createResult']): Server {

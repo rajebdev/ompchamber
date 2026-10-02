@@ -115,8 +115,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  render(null, container);
-  container.remove();
+  if (container) render(null, container);
+  container?.remove();
 });
 
 describe('CommandPalette', () => {
