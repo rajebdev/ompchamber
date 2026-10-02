@@ -5,6 +5,17 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.13.0](https://github.com/rajebdev/ompchamber/compare/v3.12.1...v3.13.0) — 2026-10-02
+
+### Added
+
+* **dictation:** add a composer mic button backed by omp's own speech-to-text ([9344e1a](https://github.com/rajebdev/ompchamber/commit/9344e1a3e16b1830ea9b378ffcf03959200efa7e))
+* **models:** enrich model display name from id with title-case and suffix format ([2d62c51](https://github.com/rajebdev/ompchamber/commit/2d62c5173cbe0a1e7e5399129b4224ab41b4fd40))
+
+### Fixed
+
+* **context-panel:** resolve context window dari model registry, bukan hardcoded 1M ([858359f](https://github.com/rajebdev/ompchamber/commit/858359fff4a64525aacaf61238bcd8b69f0a4c9e))
+
 ## [3.12.1](https://github.com/rajebdev/ompchamber/compare/v3.12.0...v3.12.1) — 2026-10-02
 
 ### Fixed
