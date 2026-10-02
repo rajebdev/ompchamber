@@ -11,12 +11,15 @@
  * The signal is the point: the server writes the live `stream` row when it
  * dispatches the prompt, so waiting for `agent_start` (spawn + ack round trip)
  * would leave the sidebar spinner dark for seconds after the user hit send.
- * Extracted from useOmpAgent so that hook stays under the repo's per-file size
- * ceiling.
+ * The client half of that is the optimistic mark armed on the click itself
+ * (`setStreamPending`), which covers the round trip the server's write cannot:
+ * see `stream-overlay.ts`. Extracted from useOmpAgent so that hook stays under
+ * the repo's per-file size ceiling.
  */
 
 import { useCallback } from 'preact/hooks';
 import type { Dispatch, SetStateAction } from 'preact/compat';
+import { setStreamPending } from '@/client/hooks/chat/omp/stream-overlay';
 import type { AgentImage, OmpAgentState } from '@/shared/types';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 
@@ -58,6 +61,10 @@ export function useOmpPromptSender(deps: OmpPromptSenderDeps): OmpPromptSender {
     const sid = sessionIdRef.current;
     if (!sid) return false;
     setState((prev) => ({ ...prev, isGenerating: true, error: null }));
+    // The sidebar spinner starts on the CLICK, not when the server's dispatch
+    // write lands a spawn/resume round trip later; the chat's own
+    // `isGenerating` cannot carry this across a session switch.
+    setStreamPending(sid, true);
     try {
       // Mirror omp-web handleSend: warm the session process up with get_state
       // (spawns it on first use), then attach the event stream before sending
@@ -88,15 +95,21 @@ export function useOmpPromptSender(deps: OmpPromptSenderDeps): OmpPromptSender {
       if (!res.ok || body.error) {
         // `session_busy`: the ack timed out behind a still-running turn, so the
         // prompt may already be accepted — never resend it automatically.
+        setStreamPending(sid, false);
         setState((prev) => ({ ...prev, isGenerating: false, error: body.error ?? `HTTP ${res.status}` }));
         return false;
       }
+      // Re-arm on the accepted dispatch: the authoritative row exists now, so
+      // the mark's clock moves to a moment a later snapshot can be trusted
+      // against (see `releaseObservedPending`).
+      setStreamPending(sid, true);
       // Tell the sidebars to re-read the session list now — the server wrote
       // this session's live `stream` row at dispatch. Revalidation is
       // leading-edge throttled, so this lands immediately.
       window.dispatchEvent(new CustomEvent('omp:session-updated', { detail: { sessionId: sid } }));
       return true;
     } catch (e) {
+      setStreamPending(sid, false);
       setState((prev) => ({ ...prev, isGenerating: false, error: e instanceof Error ? e.message : String(e) }));
       return false;
     }
@@ -122,6 +135,10 @@ export function useOmpPromptSender(deps: OmpPromptSenderDeps): OmpPromptSender {
     },
   ): Promise<{ sessionId: string; model: { provider: string; modelId: string } | null } | null> => {
     setState((prev) => ({ ...prev, isGenerating: true, error: null }));
+    // The real id does not exist until `ensure_session` answers, so the mark
+    // can only be armed past that point — the spawn itself is covered by the
+    // pending view, and nothing on the sidebar can name the session yet.
+    let sid: string | null = null;
     try {
       const created = await fetch('/api/agent/new', {
         method: 'POST',
@@ -147,8 +164,9 @@ export function useOmpPromptSender(deps: OmpPromptSenderDeps): OmpPromptSender {
         setState((prev) => ({ ...prev, isGenerating: false, error: createdBody.error ?? `HTTP ${created.status}` }));
         return null;
       }
-      const sid = createdBody.sessionId;
+      sid = createdBody.sessionId;
       connect(sid);
+      setStreamPending(sid, true);
       const res = await fetch(`/api/agent/${encodeURIComponent(sid)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -160,14 +178,18 @@ export function useOmpPromptSender(deps: OmpPromptSenderDeps): OmpPromptSender {
       });
       const body = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
       if (!res.ok || body.error) {
+        setStreamPending(sid, false);
         setState((prev) => ({ ...prev, isGenerating: false, error: body.error ?? `HTTP ${res.status}` }));
         return null;
       }
-      // Same dispatch-time signal as sendPrompt: the new session's live badge
-      // must not wait for agent_start + the first JSONL write.
+      // Same dispatch-time signal as sendPrompt, and the same re-arm: the new
+      // session's live badge must not wait for agent_start + the first JSONL
+      // write.
+      setStreamPending(sid, true);
       window.dispatchEvent(new CustomEvent('omp:session-updated', { detail: { sessionId: sid } }));
       return { sessionId: sid, model: createdBody.model ?? null };
     } catch (e) {
+      if (sid) setStreamPending(sid, false);
       setState((prev) => ({ ...prev, isGenerating: false, error: e instanceof Error ? e.message : String(e) }));
       return null;
     }
