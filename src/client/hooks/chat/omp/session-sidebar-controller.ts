@@ -75,7 +75,7 @@ export function useSessionSidebarController(
   options: SessionSidebarControllerOptions = {},
 ): SessionSidebarController {
   const { includePendingSessions = false, onSelectSession, onAfterSelect } = options;
-  const { folders, initializing, refresh, refreshNow, refreshing, markSeen, hasSeen } = useSidebarData();
+  const { folders, initializing, refresh, refreshNow, refreshing, markSeen, hasSeen, isStreamPending } = useSidebarData();
   const [searchParams, setSearchParams] = useSearchParams();
   const sessionParam = searchParams.get('sessionId');
   const activeSessionId = sessionParam
@@ -126,7 +126,17 @@ export function useSessionSidebarController(
   // Live session status — server-tracked via SQLite, riding the same loader
   // data as the session list. Spinner while `stream`; a one-shot terminal
   // badge (acknowledged server-side on open, dropped by the next revalidate).
-  const sessionStatus = useMemo(() => buildSidebarSessionStatus(folders), [folders]);
+  //
+  // The rows render from THIS map, not from an item's own `streamStatus`, and
+  // the pending placeholder is built in `processedFolders` — outside `folders` —
+  // so the mark has to be folded in here: without it the "New Session …" row of
+  // a send this tab just started drew no spinner at all until the real row was
+  // scanned in seconds later.
+  const sessionStatus = useMemo(() => {
+    const map = buildSidebarSessionStatus(folders);
+    if (isStreamPending(sessionParam)) map[String(sessionParam)] = 'stream';
+    return map;
+  }, [folders, sessionParam, isStreamPending]);
   // hasSeen: clicks already acked + optimistically stripped these badges, so
   // the effect must not re-POST while the authoritative list is still stale.
   useSessionStatusAck(sessionStatus, activeSessionId, revalidate, hasSeen);
@@ -230,7 +240,7 @@ export function useSessionSidebarController(
     result = sortFolders(result, sortOption);
 
     return result;
-  }, [folders, searchQuery, sortOption, sessionParam, searchParams, includePendingSessions]);
+  }, [folders, searchQuery, sortOption, sessionParam, searchParams, includePendingSessions, isStreamPending]);
 
   return {
     folders,

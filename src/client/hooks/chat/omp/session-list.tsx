@@ -66,6 +66,14 @@ export interface SidebarDataHandle {
   markSeen: (sessionId: number | string) => void;
   /** True when markSeen already ran for this session on this mount. */
   hasSeen: (sessionId: number | string) => boolean;
+  /**
+   * True while a session carries an armed optimistic `stream` mark: a send this
+   * tab started whose authoritative row has not arrived yet. The sidebar's
+   * PLACEHOLDER row — a `new-…` chat, or a spawned session the list has not
+   * scanned yet — is built outside `folders`, so it needs this predicate to
+   * paint a spinner at all.
+   */
+  isStreamPending: (sessionId: number | string | null | undefined) => boolean;
 }
 
 const SidebarDataContext = createContext<SidebarDataHandle | null>(null);
@@ -237,6 +245,7 @@ export function SidebarDataProvider({ children, initialFolders = [] }: { childre
       refreshing,
       markSeen,
       hasSeen: (id) => seen.has(String(id)),
+      isStreamPending: (id) => id !== null && id !== undefined && pending.has(String(id)),
     };
     // `overlayVersion` is the re-render trigger for the two refs above.
   }, [fetcher.data, initialFolders, hasLoaded, refresh, refreshNow, refreshing, markSeen, overlayVersion]);
@@ -261,5 +270,6 @@ export function useSidebarData(): SidebarDataHandle {
     refreshing: false,
     markSeen: () => {},
     hasSeen: () => false,
+    isStreamPending: () => false,
   };
 }

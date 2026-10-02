@@ -255,6 +255,22 @@ describe('SidebarDataProvider renders the armed mark and hands over to the row',
     expect(renderedStatus(harness.holder.api)).toBe('stream');
   });
 
+  test('exposes the armed mark, so a placeholder row can paint the spinner', async () => {
+    // The sidebar's "New Session …" row is built OUTSIDE the loader's folders,
+    // so the overlay cannot reach it: the predicate is the only way that row
+    // shows a spinner before the real row is scanned in.
+    const harness = await mountProvider(() => listBody());
+    expect(harness.holder.api?.isStreamPending('a')).toBe(false);
+
+    await act(async () => {
+      setStreamPending('a', true);
+    });
+
+    expect(harness.holder.api?.isStreamPending('a')).toBe(true);
+    expect(harness.holder.api?.isStreamPending('b')).toBe(false);
+    expect(harness.holder.api?.isStreamPending(null)).toBe(false);
+  });
+
   test('hands the session back to the row, and does not pin a finished run', async () => {
     let body = listBody({ streamStatus: 'stream' });
     const harness = await mountProvider(() => body);
