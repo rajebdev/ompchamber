@@ -16,12 +16,12 @@
  * a workspace write refreshes the git panel on every LSP call.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { beforeEach, describe, expect, test } from 'bun:test';
 import type { ChatMessageData } from '@/shared/types';
 import type { OmpAgentFoldDeps } from '@/shared/lib/chat/omp/fold-deps';
 import { setActivity, toolHost } from '@/shared/lib/chat/omp/fold-deps';
 import { materializeTerminalMessages } from '@/shared/lib/chat/omp/terminal-messages';
-import { AGENT_STREAM_STATUS_EVENT, publishAgentStreamStatus, readAgentStreamStatus } from '@/shared/lib/chat/omp/status';
+import { AGENT_STREAM_STATUS_EVENT, publishAgentStreamStatus, readAgentStreamStatus, resetAgentStreamStatus } from '@/shared/lib/chat/omp/status';
 import { FILE_MUTATION_EVENT, isFileMutatingTool } from '@/shared/lib/chat/omp/file-mutations';
 import {
   pairToolOutputs,
@@ -247,6 +247,10 @@ describe('materializeTerminalMessages', () => {
 });
 
 describe('stream status event', () => {
+  // The store is module state shared by the whole `bun test` process, so each
+  // case starts from "nothing published yet".
+  beforeEach(resetAgentStreamStatus);
+
   test('seeds the latest status from the transport default, disconnected', () => {
     expect(readAgentStreamStatus()).toEqual({ transport: 'websocket', connected: false });
   });

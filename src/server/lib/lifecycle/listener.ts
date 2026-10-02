@@ -29,6 +29,17 @@ export function setListener(server: { url: URL }, fetchOptions?: RequestInit): v
   listener = { url: server.url, fetchOptions };
 }
 
+/**
+ * Drop the reference — the listener is gone.
+ *
+ * Paired with `setListener`, and what keeps "before the server publishes its
+ * listener" observable: the reference is module state that outlives a whole
+ * `bun test` process, so a suite that published one must be able to unpublish.
+ */
+export function clearListener(): void {
+  listener = null;
+}
+
 /** The listener's base URL, or null before it is up. */
 export function listenerUrl(): URL | null {
   return listener?.url ?? null;

@@ -21,13 +21,14 @@
  * the slot exists to prevent.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
 import { RESTART_GRACE_MS, scheduleSelfRestart, skipRestartNote } from '@/server/lib/lifecycle/restart';
-import { listenerFetchOptions, listenerUrl, setListener } from '@/server/lib/lifecycle/listener';
+import { invalidateOmpCliCache } from '@/server/lib/omp/core/cli';
+import { clearListener, listenerFetchOptions, listenerUrl, setListener } from '@/server/lib/lifecycle/listener';
 import { resolveBunBin } from '@/server/lib/lifecycle/bun';
 import { SHELL_ROUTE } from '@/server/lib/lifecycle/shell-route';
 import { writeInstanceRecord } from '@/server/lib/lifecycle/instance';
@@ -55,6 +56,7 @@ function useFixtureOmp(output: string, exitCode = 0): void {
   const bin = path.join(dir, 'omp');
   fs.writeFileSync(bin, `#!/bin/sh\necho "${output}"\nexit ${exitCode}\n`, { mode: 0o755 });
   Bun.env.OMPCHAMBER_OMP_BIN = bin;
+  invalidateOmpCliCache();
 }
 
 afterEach(() => {
@@ -62,6 +64,7 @@ afterEach(() => {
   else Bun.env.OMPCHAMBER_DATA_DIR = originalDataDir;
   if (originalOmpBin === undefined) delete Bun.env.OMPCHAMBER_OMP_BIN;
   else Bun.env.OMPCHAMBER_OMP_BIN = originalOmpBin;
+  invalidateOmpCliCache();
   if (originalPort === undefined) delete Bun.env.PORT;
   else Bun.env.PORT = originalPort;
   for (const dir of fixtures.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
@@ -126,6 +129,11 @@ describe('scheduleSelfRestart', () => {
 });
 
 describe('listener reference', () => {
+  // The reference is module state shared by the whole `bun test` process, so
+  // each case starts and ends with it unpublished.
+  beforeEach(clearListener);
+  afterEach(clearListener);
+
   test('is empty before the server publishes its listener', () => {
     expect(listenerUrl()).toBeNull();
     expect(listenerFetchOptions()).toEqual({});
