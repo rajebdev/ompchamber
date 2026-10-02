@@ -12,7 +12,7 @@
  * Rendered with `h()` (no JSX) against happy-dom.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
@@ -22,6 +22,9 @@ import { useRepoScope } from '@/client/hooks/workspace/repo-scope';
 
 const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'HTMLInputElement', 'Event', 'MouseEvent', 'KeyboardEvent'] as const;
 /** The runner's own globals, restored on teardown — deleting them would strip natives (Event/CustomEvent) every later file needs. */const nativeGlobals: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
+/** The runner's own fetch — this file replaces it for the whole process. */
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const nativeFetch = Bun.fetch;
 
 const ROOT = '/ws';
 const SESSION = 'new-activity-dot';
@@ -35,7 +38,10 @@ function Picker({ repo }: { repo: string }) {
   return h('button', { id: 'pick', onClick: () => setActiveRepo(repo) }, 'pick');
 }
 
-beforeAll(() => {
+// Installed per CASE, not per file: another suite's teardown can strip
+// `window` mid-file when the runner interleaves files, and this hook's
+// first render would then throw `window is not defined`.
+beforeEach(() => {
   const win = new Window({ url: 'http://localhost' });
   const target = globalThis as unknown as Record<string, unknown>;
   for (const key of DOM_GLOBALS) {
@@ -61,7 +67,9 @@ afterAll(() => {
     if (nativeGlobals[key] === undefined) delete target[key];
     else target[key] = nativeGlobals[key];
   }
-  delete target.fetch;
+  // The runner's own fetch comes back: `delete` removed the global outright,
+  // so every suite after this one had no `fetch` at all.
+  target.fetch = nativeFetch;
 });
 
 afterEach(() => {

@@ -13,7 +13,7 @@
  * and the history → roster projection.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 
 import { asAgentSource, asNumber, asString, taskResultStructuredOutput, taskResultUsageCost } from '@/shared/lib/omp/subagent/result-details';
 import { applySettlement, foldSettlements } from '@/shared/lib/omp/subagent/history/settlement';
@@ -301,10 +301,18 @@ describe('row formatters', () => {
 });
 
 describe('fetchSubagentHistory', () => {
-  const originalFetch = globalThis.fetch;
+  /** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const originalFetch = Bun.fetch;
   const respond = (body: unknown, ok = true) => {
     globalThis.fetch = (async () => ({ ok, json: async () => body })) as unknown as typeof fetch;
   };
+
+  // Every case stubs the global; restoring only in the last one left the stub
+  // installed for whatever ran next inside this process — including the rest of
+  // THIS file, since a case is free to be the last one to run.
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
 
   test('reads a top-level subagents array and drops malformed rows', async () => {
     respond({ subagents: [{ id: 'a', agent: 'task', status: 'completed', index: 0 }, { id: '', agent: 'x', status: 'started', index: 1 }] });

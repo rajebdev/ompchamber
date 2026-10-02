@@ -109,7 +109,8 @@ function makeHarness(
   };
 }
 
-const originalFetch = globalThis.fetch;
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const originalFetch = Bun.fetch;
 afterEach(() => {
   globalThis.fetch = originalFetch;
 });

@@ -32,7 +32,8 @@ function foldDeps(): OmpAgentFoldDeps {
 describe('available_commands_update', () => {
   test('refetches the command pool on the next composer open', async () => {
     let fetches = 0;
-    const originalFetch = globalThis.fetch;
+    /** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const originalFetch = Bun.fetch;
     globalThis.fetch = (async (url: string | URL | Request) => {
       const href = String(url);
       if (href.includes('/api/settings/commands')) {

@@ -30,6 +30,7 @@ import fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+import { invalidateOmpCliCache } from '@/server/lib/omp/core/cli';
 import { listPlugins } from '@/server/lib/omp/config/plugins';
 
 let root = '';
@@ -152,6 +153,10 @@ beforeAll(() => {
   fs.writeFileSync(stub, `#!/bin/sh\ncat "${listFixture}"\n`);
   fs.chmodSync(stub, 0o755);
   Bun.env.OMPCHAMBER_OMP_BIN = stub;
+  invalidateOmpCliCache();
+  // `resolveOmpBin` memoizes the FIRST binary it resolves for the process, so a
+  // sibling suite's value would otherwise answer every call here.
+  invalidateOmpCliCache();
 });
 
 afterAll(() => {
@@ -161,6 +166,7 @@ afterAll(() => {
   else Bun.env.PI_CODING_AGENT_DIR = prevAgentDir;
   if (prevBin === undefined) delete Bun.env.OMPCHAMBER_OMP_BIN;
   else Bun.env.OMPCHAMBER_OMP_BIN = prevBin;
+  invalidateOmpCliCache();
   fs.rmSync(root, { recursive: true, force: true });
 });
 

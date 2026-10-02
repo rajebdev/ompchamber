@@ -129,7 +129,7 @@ function domGlobals(win: Window): Record<string, unknown> {
 
 const installed: Record<string, unknown> = {};
 const displaced: Record<string, unknown> = {};
-
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */const nativeFetch = Bun.fetch;
 beforeAll(async () => {
   const win = new Window({ url: 'http://localhost' });
   for (const [key, value] of Object.entries(domGlobals(win))) {
@@ -143,6 +143,7 @@ beforeAll(async () => {
 });
 
 afterAll(() => {
+  globalThis.fetch = nativeFetch;
   for (const key of Object.keys(installed)) {
     if (displaced[key] === undefined) delete (globalThis as Record<string, unknown>)[key];
     else (globalThis as Record<string, unknown>)[key] = displaced[key];

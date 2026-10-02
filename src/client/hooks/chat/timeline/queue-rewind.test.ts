@@ -33,7 +33,8 @@ const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTML
 /** The runner's own globals, restored on teardown so later files still have them. */
 const native: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
 
-const originalFetch = globalThis.fetch;
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const originalFetch = Bun.fetch;
 const calls: Array<{ url: string; method: string; body: string | null }> = [];
 /** Canonical queue the next response carries. */
 let canonical: QueuedMessage[] = [];

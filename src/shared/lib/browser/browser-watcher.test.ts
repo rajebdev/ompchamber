@@ -10,6 +10,7 @@
 
 import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
 import { watchOwnedTargets } from '@/shared/lib/browser/watcher';
+import { pristineWebSocket } from '@/test-support/pristine-globals';
 
 interface Listener {
   handler: (event: unknown) => void;
@@ -93,6 +94,7 @@ beforeEach(() => {
     captured = true;
     for (const key of DOM_GLOBALS) nativeGlobals[key] = globals[key];
   }
+  nativeGlobals.WebSocket = pristineWebSocket;   // never the fake another suite left
   globals.WebSocket = FakeSocket;
   FakeSocket.instances = [];
   FakeSocket.replies = new Map();

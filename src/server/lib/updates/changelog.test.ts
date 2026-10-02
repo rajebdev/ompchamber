@@ -118,7 +118,8 @@ describe('capReleaseNotes', () => {
 });
 
 describe('fetchReleases', () => {
-  const originalFetch = globalThis.fetch;
+  /** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const originalFetch = Bun.fetch;
   let urls: string[] = [];
   let payload: unknown = [];
 
@@ -197,7 +198,8 @@ describe('fetchReleases', () => {
 });
 
 describe('fetchLatestRelease', () => {
-  const originalFetch = globalThis.fetch;
+  /** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const originalFetch = Bun.fetch;
   let urls: string[] = [];
 
   beforeEach(() => {

@@ -156,6 +156,25 @@ describe('countLiveTerminals', () => {
   const ids: string[] = [];
   let liveChild: Bun.Subprocess | null = null;
 
+  /**
+   * Count with ONLY the given records in the store.
+   *
+   * The store is process-wide, so whatever another suite (or this file's other
+   * describe) left behind would otherwise be counted as this test's shells.
+   */
+  async function countingOnly(...sessions: TerminalSession[]): Promise<number> {
+    const store = terminalStore();
+    const saved = new Map(store.sessions);
+    store.sessions.clear();
+    for (const session of sessions) store.sessions.set(session.id, session);
+    try {
+      return await countLiveTerminals();
+    } finally {
+      store.sessions.clear();
+      for (const [id, session] of saved) store.sessions.set(id, session);
+    }
+  }
+
   function withSessions(...sessions: TerminalSession[]): void {
     for (const session of sessions) {
       ids.push(session.id);
@@ -169,15 +188,16 @@ describe('countLiveTerminals', () => {
   });
 
   test('no sessions means nothing is live', async () => {
-    expect(await countLiveTerminals()).toBe(0);
+    expect(await countingOnly()).toBe(0);
   });
 
   test('exited shells and shells with no process are not budgeted', async () => {
-    withSessions(
-      fakeSession({ id: 'corpse', status: 'exited', exitCode: 0 }),
-      fakeSession({ id: 'record-only', proc: null }),
-    );
-    expect(await countLiveTerminals()).toBe(0);
+    expect(
+      await countingOnly(
+        fakeSession({ id: 'corpse', status: 'exited', exitCode: 0 }),
+        fakeSession({ id: 'record-only', proc: null }),
+      ),
+    ).toBe(0);
   });
 
   test('a running shell with a live process is counted', async () => {
@@ -232,12 +252,15 @@ describe('listTerminals', () => {
   test('a repo narrows the scope to that subdirectory', async () => {
     seed(fakeSession({ id: 'rp-in', cwd: '/srv/work/pkg' }));
     seed(fakeSession({ id: 'rp-out', cwd: '/srv/work/pkg2' }));
+    // Seeded HERE: the `.` case needs a session at the root itself, and taking
+    // it from another test would make this one depend on that test having run.
+    const root = seed(fakeSession({ id: 'rp-root', cwd: '/srv/work' }));
 
     const listed = (await listTerminals('/srv/work', 'pkg')).map((snapshot) => snapshot.id);
     expect(listed).toContain('rp-in');
     expect(listed).not.toContain('rp-out');
     // `.` means the root itself, not a child named `.`.
-    expect((await listTerminals('/srv/work', '.')).map((snapshot) => snapshot.id)).toContain('sc-root');
+    expect((await listTerminals('/srv/work', '.')).map((snapshot) => snapshot.id)).toContain(root.id);
   });
 
   test('a running shell with a live process is reported busy', async () => {

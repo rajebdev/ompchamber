@@ -31,7 +31,8 @@ import { join } from 'node:path';
 import { getDb } from '@/server/db.server';
 import { buildKenariReport } from '@/server/lib/usage/kenari';
 
-const realFetch = globalThis.fetch;
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const realFetch = Bun.fetch;
 const calls: Array<{ url: string; body: unknown; headers: Headers }> = [];
 const handlers = {
   quota: () => Response.json({}),

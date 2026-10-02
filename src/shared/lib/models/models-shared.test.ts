@@ -24,7 +24,8 @@ import { modelKey } from '@/shared/lib/models/identity';
 import { findCatalogModel, loadModelsDevCatalog } from '@/shared/lib/models/catalog';
 import { entryCapabilities, extractModels } from '@/shared/lib/models/remote-list';
 
-const realFetch = globalThis.fetch;
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const realFetch = Bun.fetch;
 
 // Bun has no `window`; the catalog cache lives on `globalThis` under this key.
 const CATALOG_CACHE_KEY = '__ompChamberModelsDevCatalog';

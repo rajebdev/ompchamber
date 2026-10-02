@@ -11,11 +11,12 @@
  * after a switch.
  */
 
-import { describe, expect, test, beforeEach } from 'bun:test';
+import { afterAll, describe, expect, test, beforeEach } from 'bun:test';
 
 import { invalidateComposerCache, loadComposerItems } from '@/shared/lib/chat/composer/client';
 
-const realFetch = globalThis.fetch;
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const realFetch = Bun.fetch;
 let requested: string[] = [];
 
 function stubFetch(): void {
@@ -81,7 +82,12 @@ describe('loadComposerItems workspace scope', () => {
   });
 });
 
-// Restore the real fetch so a later test file in the same process is unaffected.
-process.once('exit', () => {
+// The real fetch goes back when this FILE is done. `process.once('exit', …)`
+// was the wrong hook: every file after this one shares the process, so the
+// stub lived on for the rest of the run and answered their requests with this
+// file's `{commands: []}` — measured as `listPlugins` returning `[]`, every
+// `fetchHealth` probe answering `null` and the model-listing dialect checks
+// reading "unrecognized response format".
+afterAll(() => {
   globalThis.fetch = realFetch;
 });

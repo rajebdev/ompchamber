@@ -28,6 +28,9 @@ import { flushSession } from '@/shared/lib/workspace/session-state/store';
 
 const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'HTMLInputElement', 'Event', 'MouseEvent', 'KeyboardEvent'] as const;
 /** The runner's own globals, restored on teardown — deleting them would strip natives (Event/CustomEvent) every later file needs. */const nativeGlobals: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
+/** The runner's own fetch — this file replaces it for the whole process. */
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const nativeFetch = Bun.fetch;
 
 const ROOT = '/ws';
 const OTHER_ROOT = '/other';
@@ -78,7 +81,9 @@ afterAll(() => {
     if (nativeGlobals[key] === undefined) delete target[key];
     else target[key] = nativeGlobals[key];
   }
-  delete target.fetch;
+  // The runner's own fetch comes back: `delete` removed the global outright,
+  // so every suite after this one had no `fetch` at all.
+  target.fetch = nativeFetch;
 });
 
 afterEach(() => {

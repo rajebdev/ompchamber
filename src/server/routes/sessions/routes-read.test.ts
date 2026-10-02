@@ -19,7 +19,7 @@ import { listSubagents, readSubagentTranscript } from '@/server/routes/sessions/
 import { loader as folderSessions } from '@/server/routes/sessions/folder';
 import { loader as sidebarList } from '@/server/routes/sessions/list';
 
-const ROOT = `/tmp/omc-sessions-routes-${process.pid}`;
+const ROOT = `/tmp/omc-sessions-routes-read-${process.pid}`;
 const AGENT = path.join(ROOT, 'agent');
 const SESSION_ID = '11111111-2222-3333-4444-555555555555';
 

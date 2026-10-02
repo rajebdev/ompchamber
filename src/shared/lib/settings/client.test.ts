@@ -1,4 +1,4 @@
-import { test, expect, beforeEach } from 'bun:test';
+import { test, expect, afterAll, beforeEach } from 'bun:test';
 import {
   primeChamberSettings,
   readChamberSetting,
@@ -59,4 +59,14 @@ test('a later write does not clobber previously written flat keys', () => {
   writeChamberSettings({ theme: 'noir' });
   expect(readChamberSetting<boolean>('showRightPanel')).toBe(false);
   expect(readChamberSetting<string>('theme')).toBe('noir');
+});
+
+/**
+ * The snapshot is module state shared by every suite in one `bun test`
+ * process; the last case here leaves it holding this file's fixtures. Restore
+ * the pristine (unprimed) snapshot so a later file that reads a chamber
+ * setting sees the default rather than the fixture.
+ */
+afterAll(() => {
+  primeChamberSettings({});
 });

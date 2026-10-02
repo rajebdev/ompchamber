@@ -30,7 +30,8 @@ import { hashPassword, verifyPassword } from '@/server/lib/auth/config';
 import { getDb } from '@/server/db.server';
 
 describe('triggerSessionPrewarm', () => {
-  const originalFetch = globalThis.fetch;
+  /** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const originalFetch = Bun.fetch;
   const calls: Array<{ url: string; method?: string; body: unknown }> = [];
   const post = (url: unknown, init?: { method?: string; body?: string }) => {
     calls.push({ url: String(url), method: init?.method, body: JSON.parse(String(init?.body)) });

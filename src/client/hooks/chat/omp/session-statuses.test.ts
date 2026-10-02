@@ -47,10 +47,14 @@ import {
 } from '@/shared/lib/workspace/refresh-cadence';
 import type { SessionItemData } from '@/shared/types';
 import { AGENT_STREAM_STATUS_EVENT, publishAgentStreamStatus, type AgentStreamStatus } from '@/shared/lib/chat/omp/status';
+import { DEFAULT_STREAM_TRANSPORT } from '@/shared/lib/chat/omp/transport';
 
 const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'Event', 'CustomEvent'] as const;
 /** The runner's own globals, restored on teardown (see the matching afterAll at the end of this file) so later files still see native Event/CustomEvent/window. */
 const nativeGlobals: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
+/** The runner's own fetch — `installFetch` replaces it for the whole process. */
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const nativeFetch = Bun.fetch;
 
 let container: HTMLElement;
 
@@ -67,6 +71,13 @@ afterEach(() => {
   if (container) render(null, container);
   container?.remove();
   jest.useRealTimers();
+  // `installFetch` replaces the global for the WHOLE process; left in place it
+  // answers every later suite's requests with this file's `{deleted}` body
+  // (measured: `listPlugins` read `[]`, every live-listener probe read `null`).
+  globalThis.fetch = nativeFetch;
+  // The status store is module state too: a suite that asserts the pristine
+  // seed must not read this file's `sse` transition.
+  publishAgentStreamStatus({ transport: DEFAULT_STREAM_TRANSPORT, connected: false });
 });
 
 async function mount(vnode: Parameters<typeof render>[0]) {
@@ -319,6 +330,7 @@ describe('useAgentStreamStatus', () => {
 });
 
 afterAll(() => {
+  globalThis.fetch = nativeFetch;
   const target = globalThis as unknown as Record<string, unknown>;
   for (const key of DOM_GLOBALS) {
     if (nativeGlobals[key] === undefined) delete target[key];

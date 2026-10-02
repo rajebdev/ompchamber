@@ -25,7 +25,8 @@ import { invalidateComposerCache } from '@/shared/lib/chat/composer/client';
 
 type TextFile = Parameters<typeof buildPromptText>[1][number] & { missing?: boolean };
 
-const originalFetch = globalThis.fetch;
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const originalFetch = Bun.fetch;
 
 /** Agent names the composer's own settings read answers with. */
 let agents: string[] = ['architect', 'build'];

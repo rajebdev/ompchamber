@@ -226,6 +226,7 @@ describe('useInputRequiredAlert', () => {
 });
 
 afterAll(() => {
+  primeChamberSettings({});
   const target = globalThis as unknown as Record<string, unknown>;
   for (const key of DOM_GLOBALS) {
     if (nativeGlobals[key] === undefined) delete target[key];

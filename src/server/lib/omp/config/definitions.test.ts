@@ -5,35 +5,26 @@
 
 /**
  * The definition files the chamber owns (agents, instruction files) and the
- * plugin CLI wrapper.
- *
- * What is pinned, and why each has bitten or could bite:
- *
- * - Agent discovery is read-only and forgiving: a malformed frontmatter field
- *   becomes a default (`mode: all`, `temperature: null`) instead of dropping
- *   the agent, a non-`.md` entry is skipped, an oversized file is skipped, and
- *   a USER agent must win over a project agent with the same file base name.
- * - `writeAgentDefinition` is the only writer: it must refuse a file name that
- *   escapes the agents directory and an empty system prompt, and it must emit
- *   the exact frontmatter keys omp reads (`thinking-level`, `top_p`) with
- *   quoted scalars.
- * - An instruction file with only whitespace REMOVES the file — absence is the
- *   honest state, and an empty AGENTS.md would still claim the context scope.
- * - The plugin wrappers must pass `--scope` only where omp accepts it and must
- *   keep `upgrade`'s scope with the id it upgrades.
- * - `pluginCliError` must prefer stderr (where omp reports) and strip the
- *   status glyph, or a failed install reads as an empty success.
- *
- * `PI_CODING_AGENT_DIR` is redirected to a temp dir and the `omp` binary to a
- * stub script that records its argv — no real omp process, no network.
+ * plugin CLI wrapper. Agent discovery is read-only and forgiving: a malformed
+ * frontmatter field becomes a default (`mode: all`, `temperature: null`) rather
+ * than dropping the agent, a non-`.md` entry and an oversized file are skipped,
+ * and a USER agent wins over a project agent with the same base name.
+ * `writeAgentDefinition` is the only writer — it refuses a name that escapes the
+ * agents directory and an empty prompt, and emits exactly the frontmatter keys
+ * omp reads (`thinking-level`, `top_p`) with quoted scalars. An instruction file
+ * of only whitespace REMOVES the file, or an empty AGENTS.md would still claim
+ * the context scope; plugin wrappers pass `--scope` only where omp accepts it,
+ * and `pluginCliError` prefers stderr. `PI_CODING_AGENT_DIR` points at a temp
+ * dir and `OMPCHAMBER_OMP_BIN` at a stub recording its argv — no real process.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { deleteAgentDefinition, discoverNativeAgents, writeAgentDefinition } from '@/server/lib/omp/config/agents';
+import { invalidateOmpCliCache } from '@/server/lib/omp/core/cli';
 import {
   clearInstructionFile,
   getInstructionFilePath,
@@ -97,6 +88,18 @@ beforeAll(() => {
   fs.writeFileSync(stub, `#!/bin/sh\nprintf '%s\\n' "$@" > "${logFile}"\n`);
   fs.chmodSync(stub, 0o755);
   Bun.env.OMPCHAMBER_OMP_BIN = stub;
+  // `resolveOmpBin` memoizes the FIRST binary it resolves for the process.
+  invalidateOmpCliCache();
+});
+
+// Each case writes its own fixtures here; clear first, or a shuffled run lets
+// one case's files (and the process-wide env / memoized binary) decide another's.
+beforeEach(() => {
+  for (const dir of [userAgents, projectAgents]) {
+    for (const entry of fs.readdirSync(dir)) fs.rmSync(join(dir, entry), { recursive: true, force: true });
+  }
+  Bun.env.PI_CODING_AGENT_DIR = agentDir;
+  invalidateOmpCliCache();
 });
 
 afterAll(() => {
@@ -104,6 +107,7 @@ afterAll(() => {
   else Bun.env.PI_CODING_AGENT_DIR = prevAgentDir;
   if (prevBin === undefined) delete Bun.env.OMPCHAMBER_OMP_BIN;
   else Bun.env.OMPCHAMBER_OMP_BIN = prevBin;
+  invalidateOmpCliCache();
   if (prevMock === undefined) delete Bun.env.MOCK;
   else Bun.env.MOCK = prevMock;
   fs.rmSync(root, { recursive: true, force: true });

@@ -57,8 +57,12 @@ const summary = (overrides: Partial<UsageProviderSummary> = {}): UsageProviderSu
 
 describe('usage number formatting', () => {
   test('formatRp groups Rupiah with no decimals', () => {
-    expect(formatRp(1234567)).toBe('Rp1.234.567');
-    expect(formatRp(0)).toBe('Rp0');
+    // The space ICU puts between the symbol and the amount is locale DATA, not
+    // our rule: newer CLDR emits `Rp\u00a01.234.567`, the older one shipped on
+    // macOS emits `Rp1.234.567`. Grouping and the absent decimals are ours.
+    const compact = (value: number): string => formatRp(value).replace(/\s/g, '');
+    expect(compact(1234567)).toBe('Rp1.234.567');
+    expect(compact(0)).toBe('Rp0');
   });
 
   test('formatNumber groups with the id-ID separator', () => {

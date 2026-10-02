@@ -11,6 +11,7 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
 
 import { acquireConnection, releaseConnection } from '@/shared/lib/browser/connection';
+import { pristineWebSocket } from '@/test-support/pristine-globals';
 import { openScreencast, type ScreencastHandle } from '@/shared/lib/browser/viewer';
 import type { BrowserActionDraft } from '@/shared/lib/browser/activity';
 import type { BrowserViewFrame, BrowserViewState } from '@/shared/types';
@@ -64,9 +65,31 @@ class FakeSocket {
     this.sent.push(raw);
     const frame = JSON.parse(raw) as { id: number; method: string };
     if (!FakeSocket.replies.has(frame.method)) return;
+    this.answered.add(frame.id);
     const result = FakeSocket.replies.get(frame.method);
     queueMicrotask(() => this.emit('message', { data: JSON.stringify({ id: frame.id, result }) }));
   }
+
+  /**
+   * Answer every command the canned table left unanswered.
+   *
+   * A command with no reply stays in the client's pending map until its 15s
+   * timeout and then rejects — long after this file's tests are over, so the
+   * unhandled rejection is reported under whichever suite runs next and fails
+   * it. The fire-and-forget commands this file exercises are drained here
+   * instead, once the assertions that needed them pending have already run.
+   */
+  drainPending(): void {
+    for (const raw of this.sent) {
+      const frame = JSON.parse(raw) as { id: number };
+      if (this.answered.has(frame.id)) continue;
+      this.answered.add(frame.id);
+      this.emit('message', { data: JSON.stringify({ id: frame.id, result: {} }) });
+    }
+  }
+
+  /** Ids this socket has already answered. */
+  private readonly answered = new Set<number>();
 
   close(): void {
     if (this.closed) return;
@@ -97,6 +120,7 @@ beforeEach(() => {
     captured = true;
     for (const key of DOM_GLOBALS) nativeGlobals[key] = globals[key];
   }
+  nativeGlobals.WebSocket = pristineWebSocket;   // never the fake another suite left
   globals.WebSocket = FakeSocket;
   FakeSocket.instances = [];
   FakeSocket.replies = new Map();
@@ -106,6 +130,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  for (const socket of FakeSocket.instances) socket.drainPending();
+  FakeSocket.instances.length = 0;
   for (const key of DOM_GLOBALS) {
     if (nativeGlobals[key] === undefined) delete globals[key];
     else globals[key] = nativeGlobals[key];

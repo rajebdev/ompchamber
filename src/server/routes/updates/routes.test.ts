@@ -22,11 +22,13 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { action as applyUpdateRoute } from '@/server/routes/updates/apply';
+import { invalidateOmpCliCache } from '@/server/lib/omp/core/cli';
 import { loader as checkRoute } from '@/server/routes/updates/check';
 import { loader as changelogRoute } from '@/server/routes/updates/changelog';
 import { runningUpdate, withUpdateSlot } from '@/server/lib/updates/single-flight';
 
-const originalFetch = globalThis.fetch;
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const originalFetch = Bun.fetch;
 const MISSING_OMP = '/nonexistent/omc-updates-test/omp';
 /** The suite mutates process-wide env; restore what was there, not just delete. */
 const ORIGINAL_ENV = { MOCK: Bun.env.MOCK, OMPCHAMBER_OMP_BIN: Bun.env.OMPCHAMBER_OMP_BIN };
@@ -83,6 +85,7 @@ beforeEach(() => {
   // No omp child may be spawned: the override path does not exist, so
   // `resolveOmpBin()` answers null and the omp probe stops before any spawn.
   Bun.env.OMPCHAMBER_OMP_BIN = MISSING_OMP;
+  invalidateOmpCliCache();
 });
 
 afterEach(() => {

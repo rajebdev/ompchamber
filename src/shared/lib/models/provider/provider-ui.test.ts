@@ -27,7 +27,8 @@ import {
 } from '@/shared/lib/models/provider/connection';
 import type { ProviderItem, ProviderModel } from '@/shared/types';
 
-const realFetch = globalThis.fetch;
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const realFetch = Bun.fetch;
 
 // Bun has no `window`; the connection writes dispatch a CustomEvent on it, so
 // the test installs a stub through this single named handle.

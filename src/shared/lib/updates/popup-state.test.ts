@@ -19,7 +19,7 @@
  * the shared settings client, whose fire-and-forget failure is irrelevant here.
  */
 
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
 
 import {
   UPDATE_POPUP_OPEN_EVENT,
@@ -90,4 +90,9 @@ describe('markAnnounced', () => {
     expect(readAnnouncedVersion()).toBe('3.9.0');
     expect(shouldAnnounce('3.9.0')).toBe(false);
   });
+});
+
+/** The snapshot is module state shared across the whole `bun test` process. */
+afterAll(() => {
+  primeChamberSettings({});
 });

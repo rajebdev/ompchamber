@@ -34,6 +34,7 @@ import type { RefObject } from 'preact/compat';
 import { act } from 'preact/test-utils';
 
 import { useOmpAgentStream } from '@/client/hooks/chat/omp/stream';
+import { pristineWebSocket } from '@/test-support/pristine-globals';
 import { readAgentStreamStatus } from '@/shared/lib/chat/omp/status';
 import type { ChatMessageData, OmpAgentCallbacks, OmpAgentEvent, OmpAgentState, StreamTransport } from '@/shared/types';
 
@@ -90,6 +91,7 @@ beforeAll(() => {
   const target = globalThis as unknown as Record<string, unknown>;
   for (const key of DOM_GLOBALS) {
     if (!(key in nativeGlobals)) nativeGlobals[key] = target[key];
+  nativeGlobals.WebSocket = pristineWebSocket;   // never the fake another suite left
     target[key] = (win as unknown as Record<string, unknown>)[key];
   }
   target.WebSocket = StubSocket;

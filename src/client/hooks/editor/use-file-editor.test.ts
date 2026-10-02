@@ -98,6 +98,9 @@ function domGlobals(win: Window): Record<string, unknown> {
 
 const installed: Record<string, unknown> = {};
 const displaced: Record<string, unknown> = {};
+/** The runner's own fetch. The stub below replaces it for the WHOLE process. */
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const nativeFetch = Bun.fetch;
 
 beforeAll(async () => {
   const win = new Window({ url: 'http://localhost' });
@@ -115,6 +118,7 @@ beforeAll(async () => {
 // code that branches on `typeof window` (the agent-event fold, for one) would
 // otherwise take its browser path for the rest of the run.
 afterAll(() => {
+  globalThis.fetch = nativeFetch;
   for (const key of Object.keys(installed)) {
     if (displaced[key] === undefined) delete (globalThis as Record<string, unknown>)[key];
     else (globalThis as Record<string, unknown>)[key] = displaced[key];

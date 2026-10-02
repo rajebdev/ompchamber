@@ -35,7 +35,8 @@ import { primeChamberSettings, readChamberSetting, writeSetting } from '@/shared
 import type { WorkspaceFolderData } from '@/shared/types';
 
 const EXPANDED_KEY = 'omp_sidebar_expanded_sessions';
-const originalFetch = globalThis.fetch;
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const originalFetch = Bun.fetch;
 
 afterEach(() => {
   Reflect.set(globalThis, 'fetch', originalFetch);

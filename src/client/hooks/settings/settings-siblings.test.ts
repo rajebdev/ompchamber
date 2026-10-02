@@ -23,7 +23,8 @@ const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTML
 /** The runner's own globals, restored on teardown so later files still have them. */
 const native: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
 /** The runner's own fetch, put back on teardown — deleting it strips the global every later file needs. */
-const nativeFetch = globalThis.fetch;
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const nativeFetch = Bun.fetch;
 
 let container: HTMLElement;
 let masterDetail: { pane: string; openDetail: () => void; back: () => void } | null = null;

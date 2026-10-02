@@ -42,7 +42,8 @@ const DOM_GLOBALS = [
 ] as const;
 
 /** The runner's own fetch, restored after every test that stubs one. */
-const nativeFetch = globalThis.fetch;
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const nativeFetch = Bun.fetch;
 /** Set by a stub so a test can read the Blob handed to the download anchor. */
 let lastBlob: Blob | null = null;
 /** URLs handed to `createObjectURL`, and the ones revoked. */

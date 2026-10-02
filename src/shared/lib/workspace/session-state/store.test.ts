@@ -32,7 +32,8 @@ import {
 } from '@/shared/lib/workspace/session-state/store';
 
 const originalWindow = Reflect.get(globalThis, 'window');
-const originalFetch = globalThis.fetch;
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const originalFetch = Bun.fetch;
 const touched: string[] = [];
 const unsubs: Array<() => void> = [];
 
@@ -278,16 +279,26 @@ describe('session-state store: blob arrival (loadSession)', () => {
 
   test('loadSession without a window returns early: no fetch, no notify', async () => {
     const id = use('load-nowindow');
+    // Removed for the case and put back after it: another file's hook can have
+    // installed one while this file runs, and leaving it missing would break
+    // whichever case follows.
+    const hadWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+    Reflect.deleteProperty(globalThis, 'window');
     let fetched = false;
     Reflect.set(globalThis, 'fetch', async () => {
       fetched = true;
       throw new Error('must not be called');
     });
-    const probe = counter();
-    follow(id, null, probe.listener);
-    await loadSession(id);
-    expect(fetched).toBe(false);
-    expect(probe.calls).toBe(0);
+    try {
+      const probe = counter();
+      follow(id, null, probe.listener);
+      await loadSession(id);
+      expect(fetched).toBe(false);
+      expect(probe.calls).toBe(0);
+    } finally {
+      if (hadWindow) Object.defineProperty(globalThis, 'window', hadWindow);
+      Reflect.set(globalThis, 'fetch', Bun.fetch);
+    }
   });
 
   test('flushSession is a resolved no-op without a window or id', async () => {

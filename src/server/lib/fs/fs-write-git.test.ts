@@ -27,7 +27,7 @@
  * non-answer.
  */
 
-import { afterAll, describe, expect, test } from 'bun:test';
+import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
 import {
   chmodSync,
   existsSync,
@@ -126,6 +126,14 @@ describe('writeFileAtomic', () => {
 });
 
 describe('withConfigLock', () => {
+  // Only the PID-file FALLBACK is dropped: another suite forces it to exercise
+  // its recovery branches, and it must not decide which mechanism runs here —
+  // while a real host may be held by a lease a sibling suite still owns.
+  beforeEach(() => {
+    const host = globalThis as { __ompChamberFlock?: { available?: boolean } };
+    if (host.__ompChamberFlock?.available === false) delete host.__ompChamberFlock;
+  });
+
   test('runs the critical section, returns its value, removes the lock', async () => {
     const configPath = join(tempDir('lock'), 'config.json');
     const lockPath = `${configPath}.lock`;

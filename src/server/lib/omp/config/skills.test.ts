@@ -64,7 +64,10 @@ describe('writeSkillFile', () => {
   });
 
   test('re-saving what was read does not grow the file', async () => {
+    // Written here, not taken from the case above: the file this re-saves must
+    // not depend on which case ran first.
     const filePath = join(projectDir, '.omp', 'skills', 'proj-skill', 'SKILL.md');
+    await writeSkillFile({ scope: 'project', projectDir, name: 'proj-skill', description: 'a skill', hidden: false, body: 'the body\n' });
     const first = fs.readFileSync(filePath, 'utf8');
     const parsed = await readSkillFile(filePath);
     await writeSkillFile({

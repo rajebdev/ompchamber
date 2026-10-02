@@ -13,6 +13,7 @@ import { Window } from 'happy-dom';
 import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
 import { useOmpAgent } from '@/client/hooks/chat/omp/index';
+import { pristineWebSocket } from '@/test-support/pristine-globals';
 import type { OmpAgentCallbacks, OmpAgentEvent, OmpAgentHandle, StreamTransport } from '@/shared/types';
 
 
@@ -69,6 +70,7 @@ beforeAll(() => {
   const target = globalThis as unknown as Record<string, unknown>;
   for (const key of DOM_GLOBALS) {
     if (!(key in nativeGlobals)) nativeGlobals[key] = target[key];
+  nativeGlobals.WebSocket = pristineWebSocket;   // never the fake another suite left
     target[key] = (win as unknown as Record<string, unknown>)[key];
   }
   target.WebSocket = StubSocket;

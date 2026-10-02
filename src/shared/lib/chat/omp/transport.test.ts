@@ -15,7 +15,7 @@
  * WebSocket/EventSource/timers are stubbed: no live server, no real waits.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import {
   DEFAULT_STREAM_TRANSPORT,
@@ -26,6 +26,7 @@ import {
   readStreamTransport,
 } from '@/shared/lib/chat/omp/transport';
 import { connectAgentEvents, connectEvents } from '@/shared/lib/chat/omp/sse';
+import { pristineWebSocket } from '@/test-support/pristine-globals';
 import { connectAgentSocket, connectSocket } from '@/shared/lib/chat/omp/socket';
 import { primeChamberSettings } from '@/shared/lib/settings/client';
 
@@ -41,6 +42,17 @@ function fakeLocation(protocol: string, host: string): void {
 
 afterEach(() => {
   (globalThis as Record<string, unknown>).window = realWindow;
+});
+
+/**
+ * The settings snapshot is module state shared by every suite in one
+ * `bun test` process, and the last case here leaves it primed with `sse`.
+ * Restore the pristine (unprimed) snapshot so a later file that reads the
+ * configured transport — `status.ts` seeds its default at import — sees the
+ * default rather than this suite's last fixture.
+ */
+afterAll(() => {
+  primeChamberSettings({});
 });
 
 describe('agent + btw URL builders', () => {
@@ -118,7 +130,7 @@ class FakeWebSocket {
 
 const realSetTimeout = globalThis.setTimeout;
 const realClearTimeout = globalThis.clearTimeout;
-const realWebSocket = (globalThis as Record<string, unknown>).WebSocket;
+const realWebSocket = pristineWebSocket;
 
 let timers: { fn: () => void; ms: number }[];
 

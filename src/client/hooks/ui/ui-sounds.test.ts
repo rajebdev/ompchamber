@@ -8,7 +8,7 @@
  * that records instead of playing. The waiting-session alert moved to
  * `ui-alert.test.ts` so both files stay under the 350-line ceiling. */
 
-import { afterEach, beforeAll, describe, expect, jest, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, describe, expect, jest, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { act } from 'preact/test-utils';
 import {
@@ -241,4 +241,14 @@ describe('isChatSoundEnabled', () => {
     triggerChatCompletionSound();
     expect(FakeAudioContext.instances).toHaveLength(1);
   });
+});
+
+/** The snapshot and the DOM globals are module/global state shared across the whole `bun test` process. */
+afterAll(() => {
+  primeChamberSettings({});
+  const target = globalThis as unknown as Record<string, unknown>;
+  for (const key of DOM_GLOBALS) {
+    if (nativeGlobals[key] === undefined) delete target[key];
+    else target[key] = nativeGlobals[key];
+  }
 });

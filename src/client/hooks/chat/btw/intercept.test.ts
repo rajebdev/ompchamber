@@ -13,6 +13,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { Window } from 'happy-dom';
 import { dispatchBtwCommand } from '@/client/hooks/chat/btw/intercept';
 
 /**
@@ -21,18 +22,36 @@ import { dispatchBtwCommand } from '@/client/hooks/chat/btw/intercept';
  * The stub is installed for this file alone and REMOVED afterwards: several
  * other files in this suite install their own DOM by assigning `globalThis`,
  * and a `window` left behind here replaced theirs (measured: `use-file-editor`
- * failed with `form.get is not a function`). The descriptor is `writable` for
- * the same reason — those files assign rather than define.
+ * failed with `form.get is not a function`).
+ *
+ * `window`, `Event` and `CustomEvent` all come from ONE happy-dom `Window`,
+ * never from the ambient globals. `intercept.ts` builds its event with the
+ * global `CustomEvent` and dispatches it on the global `window`, so a mixed
+ * pair — a happy-dom class left installed by an earlier file, or the runner's
+ * own classes captured at import time, which is itself order-dependent because
+ * a file is imported right before it runs — is a cross-realm dispatch the
+ * target rejects ("must be an instance of Event", ERR_INVALID_ARG_TYPE).
  */
 const hadWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+const hadEvent = Object.getOwnPropertyDescriptor(globalThis, 'Event');
+const hadCustomEvent = Object.getOwnPropertyDescriptor(globalThis, 'CustomEvent');
+
+function restoreGlobal(key: 'window' | 'Event' | 'CustomEvent', had: PropertyDescriptor | undefined): void {
+  if (had) Object.defineProperty(globalThis, key, had);
+  else delete (globalThis as Record<string, unknown>)[key];
+}
 
 beforeAll(() => {
-  Object.defineProperty(globalThis, 'window', { value: new EventTarget(), configurable: true, writable: true });
+  const win = new Window({ url: 'http://localhost' });
+  Object.defineProperty(globalThis, 'window', { value: win, configurable: true, writable: true });
+  Object.defineProperty(globalThis, 'Event', { value: win.Event, configurable: true, writable: true });
+  Object.defineProperty(globalThis, 'CustomEvent', { value: win.CustomEvent, configurable: true, writable: true });
 });
 
 afterAll(() => {
-  if (hadWindow) Object.defineProperty(globalThis, 'window', hadWindow);
-  else delete (globalThis as Record<string, unknown>).window;
+  restoreGlobal('window', hadWindow);
+  restoreGlobal('Event', hadEvent);
+  restoreGlobal('CustomEvent', hadCustomEvent);
 });
 
 function capture(text: string): { handled: boolean; detail: unknown } {

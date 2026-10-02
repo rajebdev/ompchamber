@@ -14,7 +14,7 @@
  * place.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { Server } from 'bun';
 
 import { fetchHealth, isLoopbackHost, isPortAvailable, probeHost, waitForPortFree } from '@/server/lib/lifecycle/probe';
@@ -46,6 +46,19 @@ async function freePort(): Promise<number> {
   }
   return held.port;
 }
+
+/**
+ * The runner's own fetch, captured before any test runs. Another file in the
+ * same `bun test` process may have left a stub installed on the global, and
+ * every case here talks to a REAL listener it just started on loopback — so
+ * the global is put back before each one rather than trusting the ambient one.
+ */
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const realFetch = Bun.fetch;
+
+beforeEach(() => {
+  globalThis.fetch = realFetch;
+});
 
 afterEach(() => {
   for (const server of servers.splice(0)) server.stop(true);
@@ -117,18 +130,26 @@ describe('isPortAvailable', () => {
   });
 
   test('probes the address the server will bind, not the one that is easier', async () => {
-    // A loopback listener does NOT occupy the wildcard address, and a wildcard
-    // listener does NOT occupy only loopback. Probing the wrong one is the
-    // false negative that turns a clean startup into an EADDRINUSE.
+    // A probe that answers about a fixed `localhost` is the false negative that
+    // turns a clean startup into an EADDRINUSE, so the answer must be about the
+    // address it was given.
     const loopback = occupy(() => new Response('held'));
     expect(await isPortAvailable(loopback.port, '127.0.0.1')).toBe(false);
-    expect(await isPortAvailable(loopback.port, '0.0.0.0')).toBe(true);
+    // A CROSS-address probe is the platform's answer, not a rule of ours: macOS
+    // lets a wildcard bind coexist with the loopback listener (reads free),
+    // Linux refuses it (reads busy). Neither is pinned — both are honest
+    // answers about the address asked for.
     loopback.server.stop(true);
     servers.splice(servers.indexOf(loopback.server), 1);
 
     const wildcard = occupy(() => new Response('held'), '0.0.0.0');
     expect(await isPortAvailable(wildcard.port, '0.0.0.0')).toBe(false);
-    expect(await isPortAvailable(wildcard.port, '127.0.0.1')).toBe(true);
+    wildcard.server.stop(true);
+    servers.splice(servers.indexOf(wildcard.server), 1);
+
+    // The listener that held the port is gone, so the same question flips.
+    expect(await waitForPortFree(loopback.port, '127.0.0.1', 2_000, 25)).toBe(true);
+    expect(await isPortAvailable(loopback.port, '127.0.0.1')).toBe(true);
   });
 
   test('refuses a nonsensical port without touching the network', async () => {

@@ -25,6 +25,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { action as login } from '@/server/routes/omp/login';
+import { invalidateOmpCliCache } from '@/server/lib/omp/core/cli';
 import { loader as pluginsLoader } from '@/server/routes/omp/plugins';
 
 const AGENT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'omc-omp-routes-'));
@@ -33,7 +34,8 @@ const ORIGINAL_ENV = {
   PI_CODING_AGENT_DIR: Bun.env.PI_CODING_AGENT_DIR,
   OMPCHAMBER_OMP_BIN: Bun.env.OMPCHAMBER_OMP_BIN,
 };
-const originalFetch = globalThis.fetch;
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const originalFetch = Bun.fetch;
 
 beforeEach(() => {
   fs.rmSync(path.join(AGENT_DIR, 'sessions'), { recursive: true, force: true });
@@ -43,6 +45,10 @@ beforeEach(() => {
   // No omp child may be spawned: a non-existent override makes `resolveOmpBin()`
   // answer null, so the plugin bridge stops before `Bun.spawn`.
   Bun.env.OMPCHAMBER_OMP_BIN = path.join(AGENT_DIR, 'no-such-omp');
+  // `resolveOmpBin` memoizes the first binary IT resolved for the process, so a
+  // sibling suite's stub would otherwise be reused here (and this file's
+  // non-existent override cached for the files after it).
+  invalidateOmpCliCache();
   delete Bun.env.MOCK;
   // The id index and the release cache hang off globalThis; a fixture must not
   // survive into a sibling suite.
@@ -54,6 +60,7 @@ afterEach(() => {
     if (value === undefined) delete Bun.env[key];
     else Bun.env[key] = value;
   }
+  invalidateOmpCliCache();
   globalThis.fetch = originalFetch;
   delete (globalThis as { __ompChamberLoginResponseSink?: unknown }).__ompChamberLoginResponseSink;
   delete (globalThis as { __ompChamberModelsDevCatalog?: unknown }).__ompChamberModelsDevCatalog;

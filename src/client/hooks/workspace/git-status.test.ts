@@ -16,7 +16,7 @@
  * so every ordering is exercised without a timer.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
@@ -24,6 +24,9 @@ import { useGitStatus } from '@/client/hooks/workspace/git-status';
 
 const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'HTMLInputElement', 'Event', 'MouseEvent', 'KeyboardEvent'] as const;
 /** The runner's own globals, restored on teardown — deleting them would strip natives (Event/CustomEvent) every later file needs. */const nativeGlobals: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
+/** The runner's own fetch — `beforeAll` replaces it for the whole process. */
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const nativeFetch = Bun.fetch;
 
 const ROOT = '/ws';
 
@@ -36,7 +39,10 @@ function Harness({ repo }: { repo: string }) {
   return h('span', { id: 'count' }, String(changes.length));
 }
 
-beforeAll(() => {
+// Installed per CASE, not per file: another suite's teardown can strip
+// `window` mid-file when the runner interleaves files, and this hook's
+// first render would then throw `window is not defined`.
+beforeEach(() => {
   const win = new Window({ url: 'http://localhost' });
   const target = globalThis as unknown as Record<string, unknown>;
   for (const key of DOM_GLOBALS) {
@@ -60,7 +66,10 @@ afterAll(() => {
     if (nativeGlobals[key] === undefined) delete target[key];
     else target[key] = nativeGlobals[key];
   }
-  delete target.fetch;
+  // Put the runner's own fetch back. `delete target.fetch` removed the global
+  // outright, so every suite that ran after this one lost `fetch` entirely —
+  // their requests threw instead of reaching the listeners they had started.
+  target.fetch = nativeFetch;
 });
 
 afterEach(() => {

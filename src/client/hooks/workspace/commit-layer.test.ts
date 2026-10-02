@@ -4,22 +4,16 @@
  */
 
 /**
- * The commit modal's two data hooks: the paging cursor behind "load more", and
- * the per-file diff fetch behind expanding a changed file.
- *
- * `useCommitPagination` is where the cursor bug lived: `skip` must advance by
- * the rows git RETURNED, not the rows kept — a hash-less row that normalization
- * drops still occupied a position in git's ordering, so counting only the kept
- * rows re-requests it, the page overlaps and the sentinel never ends. `total`
- * arrives with the FIRST page and a later response that omits it must not erase
- * it. Both are asserted against a stubbed fetch, never a live server.
- *
- * `useCommitInteractions` fetches a file's diff once and remembers it, and maps
- * each menu action onto the one callback the modal owns — a refused `confirm`
- * and an out-of-range reset mode are no-ops rather than requests.
- *
- * The tree fold lives in `git-tree.test.ts`. Rendered with `h()` (no JSX)
- * against happy-dom; responses are answered by hand, so no timer is waited on.
+ * The commit modal's two data hooks: the paging cursor behind "load more" and the
+ * per-file diff fetch behind expanding a changed file. Both are asserted against
+ * a stubbed fetch, never a live server: `skip` must advance by the rows git
+ * RETURNED, not the rows kept — a hash-less row that normalization drops still
+ * occupied a position in git's ordering, so counting only the kept rows
+ * re-requests it and the page overlaps; `total` arrives with the FIRST page and a
+ * later response that omits it must not erase it. `useCommitInteractions` fetches
+ * a file's diff once and remembers it, and maps each menu action onto the one
+ * callback the modal owns. The tree fold lives in `git-tree.test.ts`; rendered
+ * with `h()` (no JSX) against happy-dom, no timer waited on.
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
@@ -34,7 +28,8 @@ import type { CommitHistoryPage, GitCommit, GitCommitFile } from '@/shared/types
 const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'Event', 'CustomEvent'] as const;
 /** The runner's own globals, restored on teardown so later files still have them. */
 const native: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
-/** The runner's own fetch, put back on teardown — deleting it strips the global every later file needs. */const nativeFetch = globalThis.fetch;
+/** The runner's own fetch, put back on teardown — deleting it strips the global every later file needs. *//** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const nativeFetch = Bun.fetch;
 
 /** The paging handle the hook exposes (the module exports no named type). */
 interface PageHandle {
@@ -109,6 +104,11 @@ afterEach(() => {
   if (container) render(null, container);
   container?.remove();
   pending.length = 0;
+  // Knobs a case moves, so no assertion depends on test order.
+  activeRepo = REPO;
+  executeAction = recordAction;
+  confirmAnswer = true;
+  promptAnswer = 'typed-name';
 });
 
 /** Mounts a probe and drains the effects it queued. */
@@ -233,10 +233,10 @@ describe('useCommitPagination', () => {
 
 const actions: Array<{ type: string; file?: string; extra?: Record<string, string> }> = [];
 let interactions: InteractionsHandle | null = null;
-let activeRepo = REPO;
 /** The callback the probe is handed; a test clears it to model a panel with none. */
-let executeAction: ((type: string, file?: string, extra?: Record<string, string>) => void) | undefined = (type, file, extra) =>
-  actions.push({ type, file, extra });
+const recordAction = (type: string, file?: string, extra?: Record<string, string>): void => (void actions.push({ type, file, extra }));
+let activeRepo = REPO;
+let executeAction: typeof recordAction | undefined = recordAction;
 
 function InteractionsProbe() {
   interactions = useCommitInteractions({ onExecuteAction: executeAction, rootPath: ROOT, activeRepo });

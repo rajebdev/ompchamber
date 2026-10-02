@@ -113,8 +113,16 @@ describe('processProbe selection', () => {
   test('reads the command line of a real child, spaces preserved', async () => {
     // The platform probe (libproc on macOS, /proc on Linux) must join argv and
     // keep an argument that itself contains a space.
-    const child = Bun.spawn(['/bin/sh', '-c', 'sleep 30'], { stdin: 'ignore', stdout: 'ignore', stderr: 'ignore' });
+    //
+    // The shell prints before it sleeps, and that line is what says the OS has
+    // finished `exec`: reading the command line in the instant between fork and
+    // exec sees an EMPTY `/proc/<pid>/cmdline`, and Linux's probe then falls
+    // back to `comm` — `sh`, with no `sleep 30` in it. `printf` also keeps the
+    // shell in place, so the argv under test is the shell's own.
+    const child = Bun.spawn(['/bin/sh', '-c', 'printf ready; sleep 30'], { stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' });
+    const reader = (child.stdout as ReadableStream<Uint8Array>).getReader();
     try {
+      await reader.read();
       expect(processProbe.liveness(child.pid)).toBe('alive');
       const command = processProbe.commandLine(child.pid);
       if (process.platform === 'win32') {
@@ -124,6 +132,7 @@ describe('processProbe selection', () => {
         expect(command).toContain('sleep 30');
       }
     } finally {
+      reader.releaseLock();
       child.kill();
       await child.exited;
     }

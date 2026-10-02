@@ -24,7 +24,7 @@
  * enough to redirect discovery — the same seam `blobs.server.test.ts` uses.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import * as fsp from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -109,6 +109,16 @@ beforeAll(async () => {
   await plantSession('seed-1', '/Users/someone/JatisMobile/literasi-web');
   await plantSession('seed-2', '/Users/someone/JatisMobile/Workspace');
   await plantSession('seed-3', '/tmp/omp-scratch-run');
+  invalidateDiscovery();
+});
+
+// The agent dir is process-wide env and the discovery caches are module state:
+// another suite's temp fixtures must not answer this file's scan.
+beforeEach(() => {
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  // omp prefers the XDG layout when `$XDG_DATA_HOME/omp` exists, and a sibling
+  // suite's temp XDG root would answer this file's scan instead.
+  delete process.env.XDG_DATA_HOME;
   invalidateDiscovery();
 });
 

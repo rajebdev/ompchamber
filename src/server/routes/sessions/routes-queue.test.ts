@@ -6,10 +6,11 @@
 /** The session route group's follow-up queue: validation, ordering,
  * append/edit/remove/reorder, and the canonical-queue contract. Split verbatim
  * from `routes.test.ts` so both files stay under the repo's 350-line ceiling;
- * it shares the temp DB and the one live omp session the head file seeds. */
+ * it seeds its own temp agent dir and DB — a shared directory meant one file's
+ * `beforeAll` wiped the database another file was still using. */
 
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import fs from 'fs';
 import path from 'path';
 import type { ActionFunctionArgs } from '@/server/lib/remix-compat';
@@ -24,7 +25,7 @@ import {
   reorderQueueItems,
 } from '@/server/routes/sessions/queue';
 
-const ROOT = `/tmp/omc-sessions-routes-${process.pid}`;
+const ROOT = `/tmp/omc-sessions-routes-queue-${process.pid}`;
 const AGENT = path.join(ROOT, 'agent');
 const SESSION_ID = '11111111-2222-3333-4444-555555555555';
 
@@ -104,6 +105,17 @@ function jsonRequest(method: string, body: unknown, url = 'http://localhost/api/
 
 describe('queue routes', () => {
   const SID = 'queue-session';
+
+  /** The env and the DB slot are process-wide, and the queue is per session:
+   *  assert both and start from an empty queue, so a case never reads another
+   *  file's fixtures (or another case's leftovers). */
+  beforeEach(async () => {
+    Bun.env.PI_CODING_AGENT_DIR = AGENT;
+    Bun.env.OMPCHAMBER_DB_PATH = path.join(ROOT, 'db.sqlite');
+    globalThis.__ompChamberDb = undefined;
+    clearSessionFileCaches();
+    for (const item of await ids(await call.get())) await call.remove('DELETE', item);
+  });
   const call = {
     get: () => getQueue({ params: { sessionId: SID } } as unknown as ActionFunctionArgs),
     add: (method: string, body: unknown) =>
@@ -159,10 +171,6 @@ describe('queue routes', () => {
     const res = await call.add('POST', { text: '   ', attachments: [] });
     expect(res.status).toBe(200);
     expect(await texts(res)).toEqual(['   ']);
-    // This case is a side trip through the guards: drop what it added so the
-    // chain below starts from the empty queue its expectations document.
-    const [addedId] = await ids(await call.get());
-    expect((await call.remove('DELETE', addedId)).status).toBe(200);
   });
 
   test('add returns the canonical queue, and the append order is preserved', async () => {
@@ -172,16 +180,21 @@ describe('queue routes', () => {
   });
 
   test('edit updates an item and 404s for an id that is not there', async () => {
+    await call.add('POST', { text: 'one' });
+    await call.add('POST', { text: 'two' });
     const [itemId] = await ids(await call.get());
     expect(await texts(await call.edit('PATCH', { text: 'edited' }, itemId))).toEqual(['edited', 'two']);
     expect((await call.edit('PATCH', { text: 'x' }, 'missing-item')).status).toBe(404);
   });
 
   test('edit with no known field still answers the canonical queue', async () => {
+    await call.add('POST', { text: 'one' });
+    await call.add('POST', { text: 'two' });
     const [itemId] = await ids(await call.get());
     const res = await call.edit('PATCH', {}, itemId);
     expect(res.status).toBe(200);
-    expect(await texts(res)).toEqual(['edited', 'two']);
+    // Nothing known to change, so the queue comes back as it was.
+    expect(await texts(res)).toEqual(['one', 'two']);
   });
 
   test('reorder refuses anything but a string-id array', async () => {
@@ -191,15 +204,18 @@ describe('queue routes', () => {
   });
 
   test('reorder applies the requested order', async () => {
+    await call.add('POST', { text: 'one' });
+    await call.add('POST', { text: 'two' });
     const current = await ids(await call.get());
-    expect(await texts(await call.reorder('PUT', { orderedIds: [...current].reverse() }))).toEqual(['two', 'edited']);
+    expect(await texts(await call.reorder('PUT', { orderedIds: [...current].reverse() }))).toEqual(['two', 'one']);
   });
 
   test('remove 404s for an unknown id and succeeds for a real one', async () => {
     expect((await call.remove('DELETE', 'missing-item')).status).toBe(404);
+    await call.add('POST', { text: 'only' });
     const [itemId] = await ids(await call.get());
     expect((await call.remove('DELETE', itemId)).status).toBe(200);
-    expect(await texts(await call.get())).toEqual(['edited']);
+    expect(await texts(await call.get())).toEqual([]);
   });
 
   test('nudging a session with no live process does not deliver and still answers the queue', async () => {

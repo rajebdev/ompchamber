@@ -9,23 +9,22 @@
  *
  * Why each case is risky:
  *
- * - The protocol reader is the only thing standing between a malformed frame
- *   and a hung panel. A response that lands on the wrong `id` resolves the
- *   wrong promise (the screencast attaches to the wrong tab); an error frame
- *   that resolves instead of rejecting leaves `send()` pending forever.
+ * - The protocol reader is the only thing between a malformed frame and a hung
+ *   panel: a response that lands on the wrong `id` resolves the wrong promise,
+ *   and an error frame that resolves instead of rejecting leaves `send()` pending.
  * - `handleClose` must reject *every* pending command and fire every close
  *   handler. A missed rejection strands an `await` and the viewer never reports
  *   `browser-offline`.
- * - The screencast scoping moved to `browser-viewer.test.ts` so both files
- *   stay under the 350-line ceiling.
- * - `connection.ts` shares one socket across viewers; a refcount bug closes the
- *   socket while another viewer is still streaming, or leaks a socket per
- *   request.
+ * - The screencast scoping moved to `browser-viewer.test.ts` (both files stay
+ *   under the 350-line ceiling).
+ * - `connection.ts` shares one socket across viewers; a refcount bug closes it
+ *   while another viewer still streams, or leaks a socket per request.
  */
 
 import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
 
 import { CdpConnection } from '@/shared/lib/browser/cdp';
+import { pristineWebSocket } from '@/test-support/pristine-globals';
 import { acquireConnection, releaseConnection } from '@/shared/lib/browser/connection';
 
 interface Listener {
@@ -77,9 +76,23 @@ class FakeSocket {
     this.sent.push(raw);
     const frame = JSON.parse(raw) as { id: number; method: string };
     if (!FakeSocket.replies.has(frame.method)) return;
+    this.answered.add(frame.id);
     const result = FakeSocket.replies.get(frame.method);
     queueMicrotask(() => this.emit('message', { data: JSON.stringify({ id: frame.id, result }) }));
   }
+
+  // Answers the commands the canned table left pending: unanswered, each rejects
+  // 15s later — after this file is over — and fails whichever suite runs then.
+  drainPending(): void {
+    for (const raw of this.sent) {
+      const frame = JSON.parse(raw) as { id: number };
+      if (this.answered.has(frame.id)) continue;
+      this.answered.add(frame.id);
+      this.emit('message', { data: JSON.stringify({ id: frame.id, result: {} }) });
+    }
+  }
+
+  private readonly answered = new Set<number>();
 
   close(): void {
     if (this.closed) return;
@@ -110,6 +123,7 @@ beforeEach(() => {
     captured = true;
     for (const key of DOM_GLOBALS) nativeGlobals[key] = globals[key];
   }
+  nativeGlobals.WebSocket = pristineWebSocket;   // never the fake another suite left
   globals.WebSocket = FakeSocket;
   FakeSocket.instances = [];
   FakeSocket.replies = new Map();
@@ -119,6 +133,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  for (const socket of FakeSocket.instances) socket.drainPending();
+  FakeSocket.instances.length = 0;
   for (const key of DOM_GLOBALS) {
     if (nativeGlobals[key] === undefined) delete globals[key];
     else globals[key] = nativeGlobals[key];

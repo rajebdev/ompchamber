@@ -34,6 +34,9 @@ import { waitForPortFree } from '@/server/lib/lifecycle/probe';
 
 let tempDir: string;
 let originalDataDir: string | undefined;
+/** The runner's own fetch, captured before any test runs. */
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const realFetch = Bun.fetch;
 const leases: (PortLock | FlockHandle)[] = [];
 const children: Bun.Subprocess[] = [];
 const servers: Server<undefined>[] = [];
@@ -59,10 +62,27 @@ function track<T extends PortLock | FlockHandle>(lease: T | null): T | null {
   return lease;
 }
 
-/** A real process whose argv says `ompchamber`, i.e. `matched` to identity.ts. */
+/**
+ * A real process whose argv says `ompchamber`, i.e. `matched` to identity.ts.
+ *
+ * The child announces itself before it parks, and that line is what says the OS
+ * has finished `exec`: a freshly spawned process's command line is unreadable
+ * for the instant between fork and exec (`/proc/<pid>/cmdline` reads empty
+ * there, so Linux's probe falls back to `comm` and identity answers
+ * `mismatched` for a process that IS ours). Production reads a PID out of a
+ * lock file written by a process started long before, so it never sees that
+ * window — no fixed delay to guess at here.
+ */
 async function spawnChamberHolder(): Promise<Bun.Subprocess> {
-  const child = Bun.spawn({ cmd: ['bun', '-e', 'await new Promise(() => {})', 'ompchamber-holder'], stdout: 'ignore', stderr: 'ignore' });
+  const child = Bun.spawn({
+    cmd: ['bun', '-e', 'console.log("ready"); await new Promise(() => {})', 'ompchamber-holder'],
+    stdout: 'pipe',
+    stderr: 'ignore',
+  });
   children.push(child);
+  const reader = (child.stdout as ReadableStream<Uint8Array>).getReader();
+  await reader.read();
+  reader.releaseLock();
   expect(getProcessState(child.pid)).toBe('matched');
   return child;
 }
@@ -101,6 +121,9 @@ beforeEach(() => {
   originalDataDir = Bun.env.OMPCHAMBER_DATA_DIR;
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ompchamber-test-port-guard-'));
   Bun.env.OMPCHAMBER_DATA_DIR = tempDir;
+  // `claimPort` asks the occupant whether it is an OMPChamber server, over the
+  // global fetch. A stub another file left installed would answer for it.
+  globalThis.fetch = realFetch;
 });
 
 afterEach(async () => {

@@ -20,10 +20,11 @@
  * thing being measured. The interval is shrunk to 60ms to keep it cheap.
  */
 
-import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
+import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { Elysia } from 'elysia';
 
 import * as cadence from '@/shared/lib/workspace/refresh-cadence';
+import { pristineWebSocket } from '@/test-support/pristine-globals';
 
 /** Heartbeat for the test — several beats must fit inside a test timeout. */
 const HEARTBEAT_MS = 60;
@@ -79,6 +80,12 @@ let baseUrl = '';
  *  an iterable `Map`, so leaving this plain object behind breaks every suite
  *  that reads the live-run set afterwards. */
 const nativeSessions = Object.getOwnPropertyDescriptor(globalThis, '__ompSessions');
+
+// Another suite's fake `WebSocket` must not answer for this file's real client:
+// put the runner's own back before each case.
+beforeEach(() => {
+  globalThis.WebSocket = pristineWebSocket;
+});
 
 beforeAll(async () => {
   (globalThis as { __ompSessions?: unknown }).__ompSessions = {

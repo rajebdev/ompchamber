@@ -29,7 +29,8 @@ const DOM_GLOBALS = [
 ] as const;
 
 /** The runner's own fetch, restored after every test that stubs one. */
-const nativeFetch = globalThis.fetch;
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const nativeFetch = Bun.fetch;
 
 let container: HTMLElement;
 

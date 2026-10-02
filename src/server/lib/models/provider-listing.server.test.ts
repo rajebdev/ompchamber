@@ -24,9 +24,17 @@
  * each assertion is about what actually went on the wire.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { enrichFromCatalog, fetchRemoteModels, toOmpSeed } from '@/server/lib/models/provider-listing.server';
+
+/**
+ * The runner's own fetch, captured before any test runs: another file in the
+ * same `bun test` process may have left a stub on the global, and this file
+ * must reach the REAL listener it starts per case.
+ */
+/** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
+const realFetch = Bun.fetch;
 
 interface RecordedRequest {
   url: string;
@@ -50,6 +58,10 @@ function startServer(respond: (request: Request, index: number) => Response): st
   servers.push(server);
   return `http://127.0.0.1:${server.port}`;
 }
+
+beforeEach(() => {
+  globalThis.fetch = realFetch;
+});
 
 afterEach(() => {
   for (const server of servers.splice(0)) server.stop(true);
