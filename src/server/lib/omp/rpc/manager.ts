@@ -24,7 +24,7 @@ import { ModeMirror } from '@/server/lib/omp/rpc/mode-mirror';
 import { IdleReaper } from '@/server/lib/omp/rpc/idle-reaper';
 import { AgentStartWatchdog } from '@/server/lib/omp/rpc/agent-start-watchdog';
 import { EventFanout } from '@/server/lib/omp/rpc/event-fanout';
-import { clearStreamStatus, markStreamStatus, type SessionRunModel } from '@/shared/lib/omp/session/stream-state.server';
+import { clearStreamStatus, markStreamModel, markStreamStatus, type SessionRunModel } from '@/shared/lib/omp/session/stream-state.server';
 import { GET_STATE_TIMEOUT_MS, IDLE_REAP_MS, READY_TIMEOUT_MS, RELOAD_PLUGINS_TIMEOUT_MS, SUBAGENT_STALE_MS, type AgentEvent, type EventListener, type RpcSessionState } from '@/server/lib/omp/rpc/constants';
 
 export type {
@@ -286,6 +286,36 @@ export class AgentSessionWrapper {
 
   private async getStateWithTimeout(): Promise<RpcSessionState> {
     return this.proc.sendCommand<RpcSessionState>({ type: 'get_state' }, GET_STATE_TIMEOUT_MS);
+  }
+
+  /**
+   * Re-read the model the child is ACTUALLY serving with, and rename the live
+   * run row to match.
+   *
+   * omp's `model_changed` frame carries no payload, so this is the only way to
+   * learn what it switched to: a retry under a fallback chain
+   * (`retry.fallbackChains`) can swap the model MID-RUN, and the row the
+   * sidebar and the generating indicator name the run by would otherwise keep
+   * the pre-fallback model for the rest of the turn — reporting a provider the
+   * answer did not come from.
+   *
+   * The write is deliberately live-only (`markStreamModel`): a fallback landing
+   * on the run's last frame must not resurrect a `stream` row.
+   */
+  syncRunModel(): void {
+    void this.getStateWithTimeout()
+      .then((state) => {
+        if (!state.model) return;
+        const next = { provider: state.model.provider, modelId: state.model.id };
+        const changed = this.runModel?.provider !== next.provider || this.runModel?.modelId !== next.modelId;
+        this.runModel = next;
+        if (changed && this.sessionId) void markStreamModel(this.sessionId, next);
+      })
+      .catch(() => {
+        // A state read that fails (destroyed child, timeout) leaves the last
+        // known model in place: the indicator keeps naming something true
+        // rather than blanking mid-run.
+      });
   }
 
   async send(command: Record<string, unknown>): Promise<unknown> {

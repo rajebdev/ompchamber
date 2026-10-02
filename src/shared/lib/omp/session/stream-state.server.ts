@@ -88,6 +88,35 @@ export async function markStreamStatus(
 }
 
 /**
+ * Rename the model a LIVE stream row carries, leaving its status and owner
+ * alone.
+ *
+ * omp's `model_changed` frame carries no payload, so the wrapper re-reads
+ * `get_state` and lands here: a retry under a fallback chain
+ * (`retry.fallbackChains`) switches the model MID-RUN, and the row the sidebar
+ * and the generating indicator name the run by would otherwise keep the
+ * pre-fallback model for the rest of the turn.
+ *
+ * Live-only, deliberately: `markStreamStatus(id, 'stream', model)` upserts a
+ * `stream` row, which would RESURRECT a spinner for a run that already ended
+ * (a fallback landing on the run's last frame). This can only ever rename a row
+ * that still means "a run is in flight".
+ */
+export async function markStreamModel(sessionId: string, model: SessionRunModel): Promise<void> {
+  try {
+    const db = await getDb();
+    await db.run(
+      `UPDATE session_stream_state
+         SET model_provider = ?, model_id = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE session_id = ? AND status = 'stream'`,
+      [model.provider, model.modelId, sessionId],
+    );
+  } catch {
+    // Status tracking is best-effort by design.
+  }
+}
+
+/**
  * Drop an optimistic `stream` row whose prompt never started a turn: the ack
  * reported `agentInvoked: false`, or the dispatch failed before omp accepted
  * it. Live-only — a `stream` row a concurrent `agent_start` wrote is still the

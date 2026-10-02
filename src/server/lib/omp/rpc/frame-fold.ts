@@ -51,6 +51,12 @@ export interface SessionFrameHost extends AutoTitleHost, QueueDeliveryHost {
   modeMirror: ModeMirror;
   /** Fold a subagent frame into the liveness roster. */
   observeSubagent(frame: AgentEvent, now: number): void;
+  /**
+   * Re-read the model the child is actually serving with and rename the live run
+   * row to match — omp's payload-less `model_changed`, e.g. a fallback-chain
+   * retry that swapped the model mid-run.
+   */
+  syncRunModel(): void;
 }
 
 /** What the caller must do after the fold. */
@@ -88,6 +94,18 @@ async function markEndStatus(sessionId: string, messages: unknown): Promise<void
   await markStreamStatus(sessionId, endedAborted(messages) ? 'abort' : 'finish');
 }
 
+/**
+ * True while the chamber's own background `/rename` may still be emitting
+ * frames that belong to it.
+ *
+ * The same window `consumeAutoTitleOutput` claims for the rename's output tail,
+ * read here WITHOUT consuming it — that tail still needs the window when it
+ * arrives.
+ */
+function titleClaimArmed(host: AutoTitleHost): boolean {
+  return host.autoTitleWindowUntil > Date.now();
+}
+
 /** Apply one frame to the wrapper's runtime state. */
 export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): FrameFoldResult {
   const result: FrameFoldResult = { suppressForward: false };
@@ -106,6 +124,12 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
       host.autoTitleRequested = false;
       clearSessionFileCaches();
       if (host.sessionId) void markStreamStatus(host.sessionId, 'stream');
+      // Belt for a switch omp did not announce: a fallback that landed between
+      // runs leaves `runModel` (and the row the indicator names the run by) on
+      // the pre-fallback model. `model_changed` covers the switches omp
+      // reports; this makes the run's own opening frame re-read the truth
+      // before the first token, so the indicator cannot inherit a stale pair.
+      host.syncRunModel();
       break;
     case 'turn_start':
       // Redundant with agent_start in the happy path, but the run-level
@@ -180,6 +204,24 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
       }
       break;
     case 'prompt_result':
+      // The chamber's own background `/rename` answers on THIS frame with
+      // `agentInvoked:false`: auto-title fires it right after the first settled
+      // user message, and `rename-with-ai` sends the same command. Forwarding it
+      // would tell the client its prompt opened no turn — the client's fold
+      // settles the optimistic turn and blanks the docked generating indicator.
+      // Measured on a fresh session: the first message lost the indicator ~450ms
+      // in, while the answer was still streaming, and it only reappeared when a
+      // later transcript fetch pulled the finished turn in.
+      //
+      // The request is the chamber's, not the operator's, so it must neither
+      // reach the client nor clear the LIVE run's flags. Attribution is the same
+      // window the rename's output tail claims (`consumeAutoTitleOutput`, read
+      // here without spending it), and `streaming` keeps the operator's OWN
+      // builtin — the case this frame exists for — passing through untouched.
+      if (event.agentInvoked === false && host.streaming && titleClaimArmed(host)) {
+        result.suppressForward = true;
+        break;
+      }
       host.promptRunning = false;
       host.awaitingAgentStart = false;
       host.awaitingAgentStartDeadline = 0;
@@ -207,6 +249,15 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
       // asked for, and the second would be pure noise. The frame carries no
       // correlation id, so attribution is by the request window.
       result.suppressForward = consumeAutoTitleOutput(host);
+      break;
+    case 'model_changed':
+      // omp swapped the model under us: a retry under `retry.fallbackChains`
+      // picks the next eligible model when the primary fails, and can do it
+      // MID-RUN. The frame carries NO payload, so the wrapper re-reads
+      // `get_state` and renames the live run row — the sidebar and the
+      // generating indicator must name the model the answer came from, not the
+      // one that was requested.
+      host.syncRunModel();
       break;
     case 'session_info_update':
       // A rename rewrote the fixed-width title slot in place; the scan cache is

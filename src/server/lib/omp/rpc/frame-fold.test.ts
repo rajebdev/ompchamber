@@ -24,7 +24,7 @@ import { releasesStreamRowOnPromptResult } from '@/shared/lib/omp/session/stream
 import type { AgentEvent } from '@/server/lib/omp/rpc/constants';
 import { ModeMirror } from '@/server/lib/omp/rpc/mode-mirror';
 
-function makeHost(): SessionFrameHost {
+function makeHost(overrides: Partial<SessionFrameHost> = {}): SessionFrameHost {
   return {
     sessionId: '',
     autoTitleInFlight: false,
@@ -41,10 +41,12 @@ function makeHost(): SessionFrameHost {
     emit() {},
     trackUiDialog() {},
     observeSubagent() {},
+    syncRunModel() {},
     modeMirror: new ModeMirror(),
     isAlive: () => true,
     isBusy: () => false,
     send: async () => undefined,
+    ...overrides,
   };
 }
 
@@ -123,6 +125,98 @@ describe('auto-title trigger wiring', () => {
     fold(host, { type: 'agent_end', isTerminal: false, messages: [] });
 
     expect(host.autoTitlePending).toBe(true);
+  });
+});
+
+/**
+ * The chamber's own background `/rename` answers on `prompt_result` with
+ * `agentInvoked:false` — auto-title fires it right after the first settled user
+ * message, and `rename-with-ai` sends the same command.
+ *
+ * The shipped defect: forwarding that frame tells the CLIENT its prompt opened
+ * no turn, and the client's fold settles the optimistic turn and blanks the
+ * docked generating indicator. Measured on a fresh session before the fix — the
+ * first message lost the indicator ~450 ms in while the answer was still
+ * streaming, and it only reappeared when a later transcript fetch pulled the
+ * finished turn in. Attribution is the window the rename's output tail claims,
+ * read without spending it.
+ */
+describe('the chamber’s own rename result never reaches the client', () => {
+  /** A host mid-run with the rename window armed, exactly as auto-title leaves it. */
+  function midRunHost(): SessionFrameHost {
+    return makeHost({
+      sessionId: 's1',
+      streaming: true,
+      promptRunning: true,
+      autoTitleWindowUntil: Date.now() + 60_000,
+    });
+  }
+
+  test('suppresses the rename’s ack instead of settling the live turn', () => {
+    const host = midRunHost();
+    const result = foldSessionFrame(host, { type: 'prompt_result', agentInvoked: false });
+
+    expect(result.suppressForward).toBe(true);
+    // The turn is still streaming: its flags must survive the frame.
+    expect(host.promptRunning).toBe(true);
+    expect(host.awaitingAgentStart).toBe(false);
+  });
+
+  test('still forwards the operator’s own builtin result when no turn runs', () => {
+    // The case the frame exists for: a `/usage` the operator typed must settle
+    // the optimistic turn, even inside a rename window.
+    const host = makeHost({ sessionId: 's1', promptRunning: true, autoTitleWindowUntil: Date.now() + 60_000 });
+    const result = foldSessionFrame(host, { type: 'prompt_result', agentInvoked: false });
+
+    expect(result.suppressForward).toBe(false);
+    expect(host.promptRunning).toBe(false);
+  });
+
+  test('forwards a rename ack that arrives outside the window', () => {
+    const host = midRunHost();
+    host.autoTitleWindowUntil = 0;
+    expect(foldSessionFrame(host, { type: 'prompt_result', agentInvoked: false }).suppressForward).toBe(false);
+  });
+
+  test('a real run’s own prompt_result still settles normally', () => {
+    // omp's trailing `prompt_result` for a real run carries `true`; it must pass
+    // through even mid-run.
+    const host = midRunHost();
+    expect(foldSessionFrame(host, { type: 'prompt_result', agentInvoked: true }).suppressForward).toBe(false);
+  });
+});
+
+/**
+ * omp's payload-less `model_changed`: a retry under `retry.fallbackChains` picks
+ * the next eligible model when the primary fails, and it can swap MID-RUN. The
+ * frame names nothing, so the fold asks the wrapper to re-read `get_state` and
+ * rename the live run row — the sidebar and the generating indicator must name
+ * the model the answer came from, not the one that was requested.
+ */
+describe('model_changed wiring', () => {
+  test('asks the wrapper to re-read the model the child actually served with', () => {
+    let synced = 0;
+    const host = makeHost({ syncRunModel: () => { synced += 1; } });
+
+    foldSessionFrame(host, { type: 'model_changed' });
+
+    expect(synced).toBe(1);
+  });
+
+  test('still forwards the frame, so the client refreshes its own metadata', () => {
+    const host = makeHost();
+    expect(foldSessionFrame(host, { type: 'model_changed' }).suppressForward).toBe(false);
+  });
+
+  test('re-reads the model when a run opens, for a switch omp never announced', () => {
+    // A fallback that landed between runs leaves `runModel` stale; the run's
+    // opening frame is the last chance to correct it before the first token.
+    let synced = 0;
+    const host = makeHost({ sessionId: 's1', syncRunModel: () => { synced += 1; } });
+
+    foldSessionFrame(host, { type: 'agent_start' });
+
+    expect(synced).toBe(1);
   });
 });
 

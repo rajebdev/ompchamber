@@ -88,8 +88,14 @@ export async function action({ request }: ActionFunctionArgs) {
     }
 
     if (type === 'ensure_session') {
-      // Seeded client-side before the JSONL has a model_change entry.
-      return json({ success: true, sessionId: realSessionId, model: effectiveModel, data: null });
+      // Seeded client-side before the JSONL has a model_change entry. The
+      // RESOLVED model is what the child is actually serving with — omp may pick
+      // its own default or resolve an alias, and `effectiveModel` is only what we
+      // asked for. The generating indicator names this value from the first
+      // frame, so a seed built from the request alone can report a model the
+      // answer does not come from.
+      const resolvedModel = session.runModel ?? effectiveModel;
+      return json({ success: true, sessionId: realSessionId, model: resolvedModel, data: null });
     }
 
     if (type === 'prompt') {

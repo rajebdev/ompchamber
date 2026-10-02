@@ -162,6 +162,18 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
     [aiPlaceholderIdRef],
   );
 
+  /** Session metadata for a run whose transcript is not readable yet: the
+   *  spawn's own seed. `/api/chat/:id` answers with no `model` for a freshly
+   *  spawned session (it reads the JSONL's `model_change` entry, which omp has
+   *  not written), so replacing `sessionData` with null there blanked the
+   *  generating indicator's provider/model for the whole first run. Null when
+   *  nothing was seeded or no run is in flight. */
+  const seededSessionData = useCallback(
+    (): SessionDataShape | null =>
+      isGeneratingRef.current && seededModelRef.current ? { model: seededModelRef.current } : null,
+    [isGeneratingRef],
+  );
+
   // Fetch session messages and details from API
   useEffect(() => {
     let active = true;
@@ -243,7 +255,7 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
             }
             applyWindow(data.hasMore, data.oldestIndex);
           } else {
-            setSessionData(null);
+            setSessionData(seededSessionData());
             if (!timelineOwnedByOptimistic()) setLocalMessages([]);
           }
         })
@@ -251,7 +263,7 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
           console.error('Error loading session from API:', err);
           if (active) setSessionLoading(false);
           if (active && !timelineOwnedByOptimistic()) {
-            setSessionData(null);
+            setSessionData(seededSessionData());
             setLocalMessages([]);
           }
         });
@@ -265,7 +277,7 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
     // sessionModel identity flows through applySessionData; the effect only
     // re-runs on session switches by design.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, applySessionData, timelineOwnedByOptimistic, setLocalMessages, setGenerating]);
+  }, [sessionId, applySessionData, timelineOwnedByOptimistic, seededSessionData, setLocalMessages, setGenerating]);
 
   return {
     sessionData,
