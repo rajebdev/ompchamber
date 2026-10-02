@@ -25,6 +25,7 @@ import { action as applyUpdateRoute } from '@/server/routes/updates/apply';
 import { invalidateOmpCliCache } from '@/server/lib/omp/core/cli';
 import { loader as checkRoute } from '@/server/routes/updates/check';
 import { loader as changelogRoute } from '@/server/routes/updates/changelog';
+import { readInstalledVersion } from '@/server/lib/updates/install';
 import { runningUpdate, withUpdateSlot } from '@/server/lib/updates/single-flight';
 
 /** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
@@ -176,13 +177,17 @@ describe('POST /api/updates/apply in MOCK mode', () => {
 
 describe('GET /api/updates/check', () => {
   test('reports the real release and the missing omp binary in one result', async () => {
+    // Read from the package on disk, never pinned: the release job bumps the
+    // version on every push to `main`, and this suite runs after it.
+    const installed = await readInstalledVersion();
+    expect(installed).toMatch(/^\d+\.\d+\.\d+/);
     globalThis.fetch = githubFetch as typeof fetch;
     const res = (await checkRoute()) as unknown as Response;
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toBe('no-store');
     const result = await payload(res);
     expect(result.ompchamber).toMatchObject({
-      current: '3.11.0',
+      current: installed,
       latest: '999.0.0',
       updateAvailable: true,
       installed: true,
@@ -213,7 +218,7 @@ describe('GET /api/updates/changelog', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toBe('no-store');
     const result = await payload(res);
-    expect(result.current).toBe('3.11.0');
+    expect(result.current).toBe(await readInstalledVersion());
     expect(result.latest).toBe('999.0.0');
     expect(result.error).toBeNull();
     expect(result.truncated).toBe(false);
