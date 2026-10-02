@@ -21,6 +21,11 @@ export interface SessionItemData {
    *  waiting for a user answer. Derived from the running process registry, never
    *  persisted — the process it describes is the same thing that owns the flag. */
   awaitingInput?: boolean;
+  /** Model serving the session's current run — persisted beside `streamStatus`
+   *  (session_stream_state) so the generating indicator names the real
+   *  provider/model in every tab and chamber instance. Absent for a session
+   *  with no run row; callers fall back to the transcript's model entry. */
+  runModel?: { provider: string; modelId: string };
 }
 
 /**

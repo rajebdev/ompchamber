@@ -16,6 +16,12 @@
  * (`markStreamSeen` deletes the row), which is exactly the "check appears
  * once, disappears when the session is opened" contract.
  *
+ * A row also carries the MODEL serving that run (`model_provider` + `model_id`),
+ * written by the dispatcher that owns the `stream` row and updated only when the
+ * writer actually knows the model — so the generating indicator names the real
+ * provider/model from the same loader that already carries the status, in every
+ * tab and every chamber instance, with no per-session JSONL read.
+ *
  * `stream` rows record the pid of the chamber process running that session, so
  * a `stream` row whose owner is gone self-heals to `finish` — see
  * `healStaleStreamStatuses`. Ownership travels in the row because the database
@@ -33,7 +39,32 @@ import { isProcessAlive } from '@/server/lib/lifecycle/identity';
 
 export type SessionStreamStatus = 'stream' | 'finish' | 'abort';
 
-export async function markStreamStatus(sessionId: string, status: SessionStreamStatus): Promise<void> {
+/** The model a session's run is served by, as the generating indicator names it. */
+export interface SessionRunModel {
+  provider: string;
+  modelId: string;
+}
+
+/** A session's stream row: its status plus the model that serves that run. */
+export interface SessionStreamState {
+  status: SessionStreamStatus;
+  model?: SessionRunModel;
+}
+
+/**
+ * Upsert a session's stream row.
+ *
+ * `model` is written only when the caller actually knows it (prompt dispatch,
+ * where the wrapper has reconciled `get_state`/`set_model`); every other write —
+ * `agent_start`, a terminal badge, the heal pass — passes nothing and the
+ * COALESCE keeps the stored pair, so a status flip cannot blank the model the
+ * indicator is reading from the same row.
+ */
+export async function markStreamStatus(
+  sessionId: string,
+  status: SessionStreamStatus,
+  model?: SessionRunModel | null,
+): Promise<void> {
   try {
     const db = await getDb();
     // The owner describes the process running a live row; a terminal badge
@@ -41,13 +72,15 @@ export async function markStreamStatus(sessionId: string, status: SessionStreamS
     // to judge the badge by the liveness of a process it never concerned.
     const ownerPid = status === 'stream' ? process.pid : null;
     await db.run(
-      `INSERT INTO session_stream_state (session_id, status, owner_pid, updated_at)
-       VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+      `INSERT INTO session_stream_state (session_id, status, owner_pid, model_provider, model_id, updated_at)
+       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
        ON CONFLICT(session_id) DO UPDATE SET
          status = excluded.status,
          owner_pid = excluded.owner_pid,
+         model_provider = COALESCE(excluded.model_provider, session_stream_state.model_provider),
+         model_id = COALESCE(excluded.model_id, session_stream_state.model_id),
          updated_at = excluded.updated_at`,
-      [sessionId, status, ownerPid],
+      [sessionId, status, ownerPid, model?.provider ?? null, model?.modelId ?? null],
     );
   } catch {
     // Status tracking is best-effort by design.
@@ -90,24 +123,38 @@ export async function markStreamSeen(sessionId: string): Promise<boolean> {
   }
 }
 
-/** All statuses keyed by session id — the sidebar loader's single read. */
-export async function loadStreamStatuses(): Promise<Record<string, SessionStreamStatus>> {
+/** Every stream row keyed by session id — the sidebar loader's single read. */
+export async function loadStreamStates(): Promise<Record<string, SessionStreamState>> {
   try {
     const db = await getDb();
-    const rows = (await db.all('SELECT session_id, status FROM session_stream_state')) as {
+    const rows = (await db.all('SELECT session_id, status, model_provider, model_id FROM session_stream_state')) as {
       session_id: string;
       status: string;
+      model_provider: string | null;
+      model_id: string | null;
     }[];
-    const map: Record<string, SessionStreamStatus> = {};
+    const map: Record<string, SessionStreamState> = {};
     for (const row of rows) {
-      if (row.status === 'stream' || row.status === 'finish' || row.status === 'abort') {
-        map[row.session_id] = row.status;
-      }
+      if (row.status !== 'stream' && row.status !== 'finish' && row.status !== 'abort') continue;
+      map[row.session_id] = {
+        status: row.status,
+        ...(row.model_provider && row.model_id
+          ? { model: { provider: row.model_provider, modelId: row.model_id } }
+          : {}),
+      };
     }
     return map;
   } catch {
     return {};
   }
+}
+
+/** Statuses only — for callers (the frame fold's end check) that read no model. */
+export async function loadStreamStatuses(): Promise<Record<string, SessionStreamStatus>> {
+  const states = await loadStreamStates();
+  const map: Record<string, SessionStreamStatus> = {};
+  for (const [id, state] of Object.entries(states)) map[id] = state.status;
+  return map;
 }
 
 /**

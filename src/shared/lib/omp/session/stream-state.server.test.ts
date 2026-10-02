@@ -14,9 +14,18 @@
  * read the same row and ask the same question about the same pid.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import { isOrphanStreamRow, isStaleStreamRow } from '@/shared/lib/omp/session/stream-state.server';
+import {
+  isOrphanStreamRow,
+  isStaleStreamRow,
+  loadStreamStates,
+  loadStreamStatuses,
+  markStreamStatus,
+} from '@/shared/lib/omp/session/stream-state.server';
 
 const OWNER = 4242;
 const otherInstance = 9999;
@@ -96,5 +105,60 @@ describe('isOrphanStreamRow', () => {
     expect(isOrphanStreamRow({ session_id: 's1', owner_pid: null }, ME, running)).toBe(false);
     // ...and that rule does release it.
     expect(isStaleStreamRow({ session_id: 's1', owner_pid: null }, () => true)).toBe(true);
+  });
+});
+
+/**
+ * The run model rides the same row as the status, and the whole point of the
+ * column pair is that a status flip cannot blank it: `agent_start`, the terminal
+ * badge and the heal pass all re-mark the row with no model, and the COALESCE in
+ * the upsert is what keeps the pair the indicator reads.
+ */
+describe('run model on the stream row', () => {
+  let root: string;
+  let savedDbPath: string | undefined;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'ompchamber-ss-'));
+    savedDbPath = Bun.env.OMPCHAMBER_DB_PATH;
+    // The writes resolve the database; point them at a temp tree so the real
+    // `~/.ompchamber` is never opened.
+    Bun.env.OMPCHAMBER_DB_PATH = join(root, 'db.sqlite');
+    delete globalThis.__ompChamberDb;
+  });
+
+  afterEach(() => {
+    delete globalThis.__ompChamberDb;
+    if (savedDbPath === undefined) delete Bun.env.OMPCHAMBER_DB_PATH;
+    else Bun.env.OMPCHAMBER_DB_PATH = savedDbPath;
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test('a dispatch write stores the pair, and a status-only re-mark keeps it', async () => {
+    await markStreamStatus('s1', 'stream', { provider: 'anthropic', modelId: 'claude' });
+    expect((await loadStreamStates()).s1).toEqual({
+      status: 'stream',
+      model: { provider: 'anthropic', modelId: 'claude' },
+    });
+
+    // agent_start / turn_start / message_start / the terminal badge all write
+    // the status alone.
+    await markStreamStatus('s1', 'finish');
+    expect((await loadStreamStates()).s1).toEqual({
+      status: 'finish',
+      model: { provider: 'anthropic', modelId: 'claude' },
+    });
+  });
+
+  test('a later run’s model replaces the previous one', async () => {
+    await markStreamStatus('s1', 'stream', { provider: 'anthropic', modelId: 'claude' });
+    await markStreamStatus('s1', 'stream', { provider: 'openai', modelId: 'gpt-5' });
+    expect((await loadStreamStates()).s1?.model).toEqual({ provider: 'openai', modelId: 'gpt-5' });
+  });
+
+  test('a row written without a model reports none, and the status view is status-only', async () => {
+    await markStreamStatus('s2', 'abort');
+    expect((await loadStreamStates()).s2).toEqual({ status: 'abort' });
+    expect(await loadStreamStatuses()).toEqual({ s2: 'abort' });
   });
 });

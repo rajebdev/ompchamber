@@ -87,6 +87,8 @@ export async function initSchema(db: DbClient): Promise<void> {
       session_id TEXT PRIMARY KEY,
       status TEXT NOT NULL,
       owner_pid INTEGER,
+      model_provider TEXT,
+      model_id TEXT,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);

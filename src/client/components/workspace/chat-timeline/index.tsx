@@ -153,10 +153,19 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
 
   const modelNames = useModelNames();
   const providerNames = useProviderNames();
-  const sessionProvider = typeof sessionData?.model === 'object' ? sessionData.model.provider : undefined;
-  const sessionModelName = typeof sessionData?.model === 'object'
-    ? (modelNames[sessionData.model.modelId] ?? sessionData.model.modelId)
-    : sessionData?.model;
+  // The run's model is persisted beside the stream status and rides the sidebar
+  // payload, so the indicator names the real provider/model even for a run this
+  // page never started — the transcript is the fallback, not the source.
+  const runModel = useMemo(
+    () => folders.flatMap((f) => f.sessions ?? []).find((s) => String(s.id) === String(sessionId))?.runModel ?? null,
+    [folders, sessionId],
+  );
+  const fallbackModel = typeof sessionData?.model === 'object' ? sessionData.model : null;
+  const sessionProvider = runModel?.provider ?? fallbackModel?.provider;
+  const sessionModelId = runModel?.modelId ?? fallbackModel?.modelId;
+  const sessionModelName = sessionModelId
+    ? (modelNames[sessionModelId] ?? sessionModelId)
+    : (typeof sessionData?.model === 'string' ? sessionData.model : undefined);
 
   // A pending "new-…" session has no messages yet, so the workspace picker
   // must stay available until the first chat is sent (which spawns the real

@@ -27,4 +27,9 @@ export async function migrateSessionStreamStateColumns(db: DbClient): Promise<vo
   // Which chamber process is running the session, so any instance reading this
   // table can judge a `stream` row it does not own (see stream-state.server.ts).
   await addColumn(db, 'ALTER TABLE session_stream_state ADD COLUMN owner_pid INTEGER;');
+  // The model that serves the session's run, so the generating indicator names
+  // the real provider/model from the SAME loader that already carries the
+  // stream status — instead of re-deriving it from the session JSONL.
+  await addColumn(db, 'ALTER TABLE session_stream_state ADD COLUMN model_provider TEXT;');
+  await addColumn(db, 'ALTER TABLE session_stream_state ADD COLUMN model_id TEXT;');
 }

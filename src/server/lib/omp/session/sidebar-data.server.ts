@@ -21,7 +21,7 @@ import { isMockMode } from '@/server/mock.server';
 import { isValidSessionSortOption, sortFolders } from '@/shared/lib/workspace/sidebar-sort';
 import { loadOmpSidebarData } from '@/server/lib/omp/session/reader';
 import { sessionHasSubagents } from '@/server/lib/omp/session/subagent-presence';
-import { healStaleStreamStatuses, loadStreamStatuses } from '@/shared/lib/omp/session/stream-state.server';
+import { healStaleStreamStatuses, loadStreamStates, type SessionRunModel } from '@/shared/lib/omp/session/stream-state.server';
 import { getAwaitingInputSessionIds, getLiveRunSessionIds } from '@/server/lib/omp/rpc/session-registry';
 import type { SessionItemData, SessionSortOption, WorkspaceFolderData } from '@/shared/types';
 import type { OmpSession } from '@/shared/types/omp/session';
@@ -121,6 +121,9 @@ export async function loadSidebarData(): Promise<SessionListPayload> {
   // The authoritative status then travels with the same fetch that refreshes
   // the sidebar list.
   const streamStatuses: Record<string, 'stream' | 'finish' | 'abort'> = {};
+  // The model each run is served by, read from the same rows as the status so
+  // the generating indicator needs no per-session JSONL read.
+  const runModels: Record<string, SessionRunModel> = {};
   // Sessions blocked on a dialog nobody has answered yet. Read live from the
   // process registry (never persisted): the child that owns the question is the
   // same thing that owns the flag, so a restart cannot leave a stale badge.
@@ -136,7 +139,10 @@ export async function loadSidebarData(): Promise<SessionListPayload> {
     // owns. It is deliberately not the staleness rule, which must stay
     // instance-independent.
     await healStaleStreamStatuses(getLiveRunSessionIds());
-    Object.assign(streamStatuses, await loadStreamStatuses());
+    for (const [id, state] of Object.entries(await loadStreamStates())) {
+      streamStatuses[id] = state.status;
+      if (state.model) runModels[id] = state.model;
+    }
     for (const id of getAwaitingInputSessionIds()) awaitingInput.add(id);
   }
   const foldersWithStatus = groupedFolders.map((folder) => ({
@@ -144,6 +150,7 @@ export async function loadSidebarData(): Promise<SessionListPayload> {
     sessions: (folder.sessions ?? []).map((s) => ({
       ...s,
       streamStatus: streamStatuses[String(s.id)],
+      ...(runModels[String(s.id)] ? { runModel: runModels[String(s.id)] } : {}),
       ...(awaitingInput.has(String(s.id)) ? { awaitingInput: true } : {}),
     })),
   }));

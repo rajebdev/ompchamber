@@ -13,13 +13,16 @@ import { RpcCommandTimeoutError, type RpcProcess } from '@/server/lib/omp/rpc/pr
 import { AWAITING_AGENT_START_TIMEOUT_MS, GET_STATE_TIMEOUT_MS, IMAGE_BEARING_COMMANDS, PASSTHROUGH_COMMANDS, PROMPT_ACK_TIMEOUT_MS, RESTARTING_MESSAGE, SESSION_BUSY_MESSAGE, WebRpcError, toImageContents, type AgentEvent, type RpcSessionState, validateAgentImages } from '@/server/lib/omp/rpc/constants';
 import { clearSessionFileCaches } from '@/server/lib/omp/session/files';
 import { scheduleQueueDelivery } from '@/server/lib/queue/delivery.server';
-import { clearStreamStatus, markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
+import { clearStreamStatus, markStreamStatus, type SessionRunModel } from '@/shared/lib/omp/session/stream-state.server';
 import { buildWebState, type WebStateHost } from '@/server/lib/omp/rpc/web-state';
 import { isTuiOnlySlashCommand, tuiOnlyCommandNotice } from '@/shared/lib/chat/composer/tui-only';
 
 /** Runtime surface AgentSessionWrapper exposes to the command dispatcher. */
 export interface SessionCommandHost extends WebStateHost {
   restarting: boolean;
+  /** Model serving this session's latest run, persisted on the stream row when a
+   *  prompt is dispatched so the generating indicator can name it. */
+  runModel: SessionRunModel | null;
   proc: RpcProcess;
   isAlive(): boolean;
   /** Anything a reset would destroy: the running turn, a compaction, a shell
@@ -132,7 +135,11 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
         host.awaitingAgentStart = false;
         host.awaitingAgentStartDeadline = 0;
         host.continuationGraceUntil = 0;
-        if (ownsStreamRow) void markStreamStatus(host.sessionId, 'stream');
+        // The row carries the model this run is served by: known here because
+        // the warmup `get_state` (and any `set_model`) reconciled it. A later
+        // `agent_start` re-marks the same row without a model, and the upsert's
+        // COALESCE keeps this pair.
+        if (ownsStreamRow) void markStreamStatus(host.sessionId, 'stream', host.runModel);
       }
       try {
         const ack = await host.proc.sendCommand<{ agentInvoked?: boolean } | undefined>({
@@ -209,6 +216,9 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
     case 'set_model': {
       const { provider, modelId } = command as { provider: string; modelId: string };
       const model = await host.proc.sendCommand<{ id: string; provider: string }>({ type: 'set_model', provider, modelId });
+      // The ack names the model omp RESOLVED (an alias or fallback may differ
+      // from the request), which is what the indicator must report.
+      host.runModel = { provider: model.provider, modelId: model.id };
       return { id: model.id, provider: model.provider };
     }
 

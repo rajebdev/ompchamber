@@ -24,7 +24,7 @@ import { ModeMirror } from '@/server/lib/omp/rpc/mode-mirror';
 import { IdleReaper } from '@/server/lib/omp/rpc/idle-reaper';
 import { AgentStartWatchdog } from '@/server/lib/omp/rpc/agent-start-watchdog';
 import { EventFanout } from '@/server/lib/omp/rpc/event-fanout';
-import { clearStreamStatus, markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
+import { clearStreamStatus, markStreamStatus, type SessionRunModel } from '@/shared/lib/omp/session/stream-state.server';
 import { GET_STATE_TIMEOUT_MS, IDLE_REAP_MS, READY_TIMEOUT_MS, RELOAD_PLUGINS_TIMEOUT_MS, SUBAGENT_STALE_MS, type AgentEvent, type EventListener, type RpcSessionState } from '@/server/lib/omp/rpc/constants';
 
 export type {
@@ -56,6 +56,7 @@ export class AgentSessionWrapper {
   streaming = false;
   compacting = false;
   fastModeEnabled = false;
+  runModel: SessionRunModel | null = null;
   private onDestroyCallback: (() => void) | null = null;
   private unsubscribeFrames: (() => void) | null = null;
   private initPromise: Promise<void> | null = null;
@@ -202,6 +203,7 @@ export class AgentSessionWrapper {
     this.streaming = state.isStreaming;
     this.compacting = state.isCompacting;
     this.fastModeEnabled = state.fastModeEnabled ?? state.fastMode ?? this.fastModeEnabled;
+    if (state.model) this.runModel = { provider: state.model.provider, modelId: state.model.id };
     // omp reports the messages it restored, so a child spawned for an EXISTING
     // conversation (a `--resume` after the idle reclaim, or a session opened
     // from the sidebar) already has a first turn behind it — it must never be
@@ -279,6 +281,7 @@ export class AgentSessionWrapper {
     if (!state.sessionId) return;
     this._sessionId = state.sessionId;
     this._sessionFile = state.sessionFile ?? this._sessionFile;
+    if (state.model) this.runModel = { provider: state.model.provider, modelId: state.model.id };
   }
 
   private async getStateWithTimeout(): Promise<RpcSessionState> {
