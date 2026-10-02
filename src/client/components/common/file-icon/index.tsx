@@ -20,15 +20,17 @@ interface FileIconProps {
   className?: string;
 }
 
-/** A brand icon rendered from static path data, tinted with its official color. */
-function BrandIconSvg({ name, size, className }: { name: BrandIconName; size: number; className?: string }) {
+/** A brand icon rendered from static path data. Painted with the official brand
+ *  color by default; `monochrome` takes the surrounding ink instead, for
+ *  surfaces that must stay free of chroma (the chat's tool cards). */
+function BrandIconSvg({ name, size, className, monochrome = false }: { name: BrandIconName; size: number; className?: string; monochrome?: boolean }) {
   const brand = BRAND_ICONS[name];
   return (
     <svg
       viewBox={BRAND_VIEWBOX}
       width={size}
       height={size}
-      fill={brand.color}
+      fill={monochrome ? 'currentColor' : brand.color}
       className={className}
       aria-hidden="true"
     >
@@ -87,12 +89,14 @@ const LANGUAGE_ALIASES: Readonly<Record<string, string>> = {
 };
 
 /** Brand logo for a tool's `language` id — the omp eval ids (`js`, `py`) and
- *  the spellings a file extension uses. Returns null when the language has no
- *  brand mark, so the caller keeps its own generic glyph. */
+ *  the spellings a file extension uses. Painted in the surrounding ink, never
+ *  the brand's own color, so a tool card stays as monochrome as its neighbors.
+ *  Returns null when the language has no brand mark, so the caller keeps its
+ *  own generic glyph. */
 export function languageBrandIcon(language: string, size = 14, className = ''): ReactNode {
   const id = language.trim().toLowerCase();
   const brand = BRAND_BY_EXT.get(LANGUAGE_ALIASES[id] ?? id);
-  return brand ? <BrandIconSvg name={brand} size={size} className={className} /> : null;
+  return brand ? <BrandIconSvg name={brand} size={size} className={className} monochrome /> : null;
 }
 
 export function FileIcon({ name, isFolder, isOpen, size = 14, className = '' }: FileIconProps) {
