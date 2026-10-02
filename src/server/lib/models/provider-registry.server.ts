@@ -15,7 +15,7 @@ import { readDisabledProviders } from '@/server/lib/omp/config/disabled-provider
 import { getModelsConfigPath, readNativeProviders } from '@/server/lib/omp/config/models-config';
 import { runUtilityCommand, type OmpModel } from '@/server/lib/omp/rpc/utility';
 import { disabledProviderItem, nativeProviderItem } from '@/server/lib/models/provider-items.server';
-import { isKenariProvider, removeLegacyKenariModels } from '@/shared/lib/models/provider/cleanup';
+import { removeLegacyKenariModels } from '@/shared/lib/models/provider/cleanup';
 import type { ProviderItem } from '@/shared/types';
 
 /** app_settings key holding the chamber-local provider overlay. */
@@ -113,14 +113,6 @@ async function loadRpcProviderItems(): Promise<ProviderItem[]> {
   }
 }
 
-function providerIdentityKey(provider: ProviderItem): string {
-  const slug = provider.slug.trim().toLowerCase();
-  const name = provider.name.trim().toLowerCase();
-  const baseUrl = provider.baseUrl?.trim().toLowerCase() || '';
-  if (isKenariProvider({ name, slug, baseUrl })) return 'kenari';
-  return slug;
-}
-
 function mergeProviderItems(existing: ProviderItem, incoming: ProviderItem): ProviderItem {
   const primary = existing.id.startsWith('omp-auth-') || !incoming.id.startsWith('omp-auth-')
     ? existing
@@ -179,7 +171,15 @@ export function deduplicateProviderItems(items: ProviderItem[]): ProviderItem[] 
       ...item,
       models: removeLegacyKenariModels(item, item.models),
     };
-    const key = providerIdentityKey(normalizedItem);
+    // Identity is the provider's OWN slug. It used to fold every entry whose
+    // name, slug or endpoint mentioned kenari onto one `kenari` key, which made
+    // a second Kenari account (`kenari2`) indistinguishable from the first: the
+    // two models.yml entries merged into a single row, the panel could only act
+    // on the surviving slug, and a disconnect/delete hit one while omp still
+    // served the other. The two halves of one provider already spell the same
+    // slug (omp reports a models.yml provider under its models.yml key), so
+    // nothing that genuinely is one provider stops merging.
+    const key = normalizedItem.slug.trim().toLowerCase();
     const existing = bySlug.get(key);
     bySlug.set(key, existing ? mergeProviderItems(existing, normalizedItem) : normalizedItem);
   }

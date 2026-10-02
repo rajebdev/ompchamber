@@ -1,6 +1,8 @@
 import { getDb } from '@/server/db.server';
 import { fetchOmpRegistrySnapshot } from '@/server/lib/models/provider-registry.server';
+import { readNativeProviders } from '@/server/lib/omp/config/models-config';
 import { listAgentDbCredentialSlugs, listModelsYmlCredentialSlugs, readOmpProviderApiKey } from '@/server/lib/omp/core/auth-credentials';
+import { isKenariProvider } from '@/shared/lib/models/provider/cleanup';
 import { isRecord } from '@/shared/lib/util/guards';
 
 const SETTINGS_KEY = 'omp_providers_config';
@@ -66,13 +68,44 @@ async function resolveApiKey(
   return readOmpProviderApiKey(slug);
 }
 
-/** Resolve the Kenari provider key (baseUrl kenari.id, or name/slug "kenari"). */
-export function resolveKenariApiKey(): Promise<string | null> {
-  return resolveApiKey('kenari', (entry) =>
-    entry.baseUrl.toLowerCase().includes('kenari.id') ||
-    entry.name.toLowerCase().includes('kenari') ||
-    entry.slug.toLowerCase().includes('kenari'),
-  );
+/**
+ * Resolve the key of ONE Kenari provider. The slug scopes the match, so a
+ * second account (`kenari2`) resolves its own key: the old version scanned for
+ * any entry mentioning kenari and returned the first hit, which meant the usage
+ * card for `kenari2` could report the first account's quota under the wrong
+ * name. A provider counts as Kenari when its own entry points at kenari.id or
+ * names kenari — the same identity rule the provider registry uses.
+ */
+export function resolveKenariApiKey(slug: string): Promise<string | null> {
+  const target = slug.trim().toLowerCase();
+  return resolveApiKey(target, (entry) => {
+    const own = (entry.slug || entry.name).trim().toLowerCase();
+    return own === target && isKenariProvider(entry);
+  });
+}
+
+/**
+ * Which of `slugs` are Kenari providers. The agent.db and omp-registry halves
+ * carry no endpoint or display name, so the slug's own spelling is the first
+ * signal, and the two endpoint-bearing stores (the chamber overlay and
+ * models.yml) decide the rest — a provider registered under an unrelated slug
+ * but pointed at kenari.id is still Kenari.
+ */
+export async function kenariProviderSlugs(slugs: Iterable<string>): Promise<Set<string>> {
+  const wanted = new Set([...slugs].map((slug) => slug.trim().toLowerCase()).filter(Boolean));
+  const found = new Set<string>();
+  for (const slug of wanted) {
+    if (slug.includes('kenari')) found.add(slug);
+  }
+  for (const entry of await loadProviderEntries()) {
+    const own = (entry.slug || entry.name).trim().toLowerCase();
+    if (wanted.has(own) && isKenariProvider(entry)) found.add(own);
+  }
+  for (const info of await readNativeProviders()) {
+    const own = info.slug.trim().toLowerCase();
+    if (wanted.has(own) && isKenariProvider({ name: own, slug: own, baseUrl: info.baseUrl })) found.add(own);
+  }
+  return found;
 }
 
 /** Resolve the DeepSeek provider key (baseUrl deepseek.com, or name/slug "deepseek"). */

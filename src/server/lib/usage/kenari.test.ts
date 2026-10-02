@@ -126,7 +126,7 @@ describe('buildKenariReport — payload shaping', () => {
     handlers.balance = () => toolResponse('Balance: Rp 76.514');
     handlers.usage = () => toolResponse(USAGE_TABLE);
 
-    const report = await buildKenariReport();
+    const report = await buildKenariReport('kenari');
     expect(report?.error).toBeUndefined();
     expect(report?.quota).toEqual({
       planName: 'Pro',
@@ -151,7 +151,7 @@ describe('buildKenariReport — payload shaping', () => {
     await seedKenariCredential('secret-key');
     handlers.balance = () => toolResponse('Rp 1');
 
-    await buildKenariReport();
+    await buildKenariReport('kenari');
     const mcp = calls.find((call) => call.url.includes('/mcp'));
     expect(mcp?.headers.get('authorization')).toBe('Bearer secret-key');
     expect(mcp?.headers.get('user-agent')).toContain('ompchamber/');
@@ -164,7 +164,7 @@ describe('buildKenariReport — payload shaping', () => {
     handlers.balance = () => toolResponse('Rp 5');
     handlers.usage = () => toolResponse(USAGE_TABLE);
 
-    const report = await buildKenariReport();
+    const report = await buildKenariReport('kenari');
     expect(report?.quota).toBeUndefined();
     expect(report?.error).toBe('Unexpected quota response format');
     expect(report?.balance).toEqual({ amountRp: 5, raw: 'Rp 5' });
@@ -175,7 +175,7 @@ describe('buildKenariReport — payload shaping', () => {
     await seedKenariCredential();
     handlers.quota = () => Response.json({ code: 'shared_key_not_allowed' }, { status: 403 });
 
-    const report = await buildKenariReport();
+    const report = await buildKenariReport('kenari');
     expect(report?.error).toContain('shared key');
     expect(report?.quota).toBeUndefined();
   });
@@ -184,7 +184,7 @@ describe('buildKenariReport — payload shaping', () => {
     await seedKenariCredential();
     handlers.usage = () => Response.json({ jsonrpc: '2.0', id: 1, error: { message: 'quota exhausted' } });
 
-    const report = await buildKenariReport();
+    const report = await buildKenariReport('kenari');
     expect(report?.error).toContain('quota exhausted');
     expect(report?.usage).toBeUndefined();
   });
@@ -197,7 +197,7 @@ describe('buildKenariReport — payload shaping', () => {
       { headers: { 'content-type': 'text/event-stream' } },
     );
 
-    const report = await buildKenariReport();
+    const report = await buildKenariReport('kenari');
     expect(report?.usage?.rows.map((row) => row.model)).toEqual(['deepseek-v4', 'gemini-2']);
   });
 
@@ -205,7 +205,7 @@ describe('buildKenariReport — payload shaping', () => {
     await seedKenariCredential();
     handlers.balance = () => new Response('boom', { status: 500 });
 
-    const report = await buildKenariReport();
+    const report = await buildKenariReport('kenari');
     expect(report?.error).toBe('HTTP 500');
     expect(report?.balance).toBeUndefined();
   });
@@ -214,7 +214,7 @@ describe('buildKenariReport — payload shaping', () => {
     await seedKenariCredential();
     handlers.balance = () => toolResponse('Rp 1.234,56');
 
-    const report = await buildKenariReport();
+    const report = await buildKenariReport('kenari');
     expect(report?.balance?.amountRp).toBe(1234.56);
   });
 
@@ -222,7 +222,7 @@ describe('buildKenariReport — payload shaping', () => {
     await seedKenariCredential();
     handlers.balance = () => toolResponse('unavailable');
 
-    const report = await buildKenariReport();
+    const report = await buildKenariReport('kenari');
     expect(report?.balance).toEqual({ amountRp: null, raw: 'unavailable' });
   });
 
@@ -230,7 +230,7 @@ describe('buildKenariReport — payload shaping', () => {
     await seedKenariCredential();
     handlers.usage = () => toolResponse('| model | requests | input | output | cost |\n| a | 1 | 2 | 3 | Rp 4 |');
 
-    const report = await buildKenariReport();
+    const report = await buildKenariReport('kenari');
     expect(report?.usage?.rows).toHaveLength(1);
     expect(report?.usage?.totalRequests).toBe(0);
     expect(report?.usage?.totalCostRp).toBe(0);
@@ -244,14 +244,14 @@ describe('buildKenariReport — credential gate', () => {
     delete Bun.env.MOCK;
     globalThis.__ompChamberDb = undefined;
 
-    expect(await buildKenariReport()).toBeNull();
+    expect(await buildKenariReport('kenari')).toBeNull();
     expect(calls).toHaveLength(0);
   });
 
   test('a masked placeholder key is not a credential', async () => {
     await seedKenariCredential('••••••••');
 
-    expect(await buildKenariReport()).toBeNull();
+    expect(await buildKenariReport('kenari')).toBeNull();
     expect(calls).toHaveLength(0);
   });
 });

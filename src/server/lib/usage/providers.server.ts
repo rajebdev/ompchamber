@@ -24,9 +24,9 @@ import { buildDeepSeekReport } from '@/server/lib/usage/deepseek';
 import { buildKenariReport } from '@/server/lib/usage/kenari';
 import { fetchOmpUsageSnapshot, type OmpUsageSnapshot } from '@/server/lib/usage/omp-usage.server';
 import { fetchVendorBalance, type VendorBalance } from '@/server/lib/usage/vendor-balance.server';
-import { listCredentialedProviders, type CredentialedProvider } from '@/server/lib/usage/provider-key';
+import { kenariProviderSlugs, listCredentialedProviders, type CredentialedProvider } from '@/server/lib/usage/provider-key';
 import { titleCaseProviderSlug } from '@/shared/lib/models/provider/label';
-import type { UsageProviderSummary } from '@/shared/types';
+import type { KenariUsageReport, UsageProviderSummary } from '@/shared/types';
 
 /** Slug aliases omp uses interchangeably, folded onto one display entry. */
 const SLUG_ALIASES: Record<string, string> = {
@@ -165,15 +165,20 @@ export async function buildUsageProviders(options: { force?: boolean } = {}): Pr
   ]);
 
   const credentials = mergeCredentials(credentialed);
-  // The kenari and DeepSeek reports are built for their canonical slugs only;
-  // each returns null when that provider has no credential. Vendor balances are
-  // fetched for every slug that has a balance adapter (a pay-as-you-go vendor
-  // omp ships no usage adapter for).
-  const [kenari, deepseek, balances] = await Promise.all([
-    credentials.has('kenari') ? buildKenariReport() : Promise.resolve(null),
+  // Each Kenari provider carries its own report: two accounts share the same
+  // upstream endpoints, so gating on the literal slug `kenari` left a second
+  // one (`kenari2`) with no quota card while its key was never read. DeepSeek
+  // still resolves by its canonical slug.
+  const kenariSlugs = await kenariProviderSlugs(credentials.keys());
+  const [kenariReports, deepseek, balances] = await Promise.all([
+    Promise.all([...kenariSlugs].map(async (slug) => [slug, await buildKenariReport(slug)] as const)),
     credentials.has('deepseek') ? buildDeepSeekReport() : Promise.resolve(null),
     loadVendorBalances([...credentials.keys()]),
   ]);
+  const kenariBySlug = new Map<string, KenariUsageReport>();
+  for (const [slug, report] of kenariReports) {
+    if (report) kenariBySlug.set(slug, report);
+  }
 
   const summaries: UsageProviderSummary[] = [];
   for (const [slug, sources] of credentials) {
@@ -191,9 +196,10 @@ export async function buildUsageProviders(options: { force?: boolean } = {}): Pr
       ...(report?.notes ? { notes: report.notes } : {}),
     };
 
-    if (slug === 'kenari' && kenari) {
-      summary.kenari = kenari;
-      if (kenari.error) summary.error = kenari.error;
+    const kenariReport = kenariBySlug.get(slug);
+    if (kenariReport) {
+      summary.kenari = kenariReport;
+      if (kenariReport.error) summary.error = kenariReport.error;
     } else if (slug === 'deepseek' && deepseek) {
       summary.deepseek = deepseek;
       if (deepseek.error) summary.error = deepseek.error;

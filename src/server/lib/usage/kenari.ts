@@ -215,13 +215,16 @@ function errorMessage(error: unknown, fallback: string): string {
 }
 
 /**
- * Build the Kenari usage report, or `null` when kenari has no credential —
- * the caller then omits kenari from the provider list entirely. The three
- * upstream calls (quota REST + two MCP tools) run independently so a failure in
- * one does not lose the others; failures are folded into the report's `error`.
+ * Build the Kenari usage report for ONE provider slug, or `null` when that
+ * provider has no credential — the caller then omits it. The slug is what keeps
+ * a second Kenari account (`kenari2`) on its own key: both accounts share the
+ * same upstream endpoints, so only the credential decides whose quota is read.
+ * The three upstream calls (quota REST + two MCP tools) run independently so a
+ * failure in one does not lose the others; failures are folded into the
+ * report's `error`.
  */
-export async function buildKenariReport(): Promise<KenariUsageReport | null> {
-  const apiKey = await resolveKenariApiKey();
+export async function buildKenariReport(slug: string): Promise<KenariUsageReport | null> {
+  const apiKey = await resolveKenariApiKey(slug);
   if (!apiKey) return null;
 
   const report: KenariUsageReport = {};

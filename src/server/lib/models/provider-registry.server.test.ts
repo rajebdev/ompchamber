@@ -74,6 +74,29 @@ describe('deduplicateProviderItems', () => {
     expect(merged[0].disabled).toBe(true);
     expect(merged[0].status).toBe('disconnected');
   });
+
+  test('two Kenari accounts keep their own rows', () => {
+    // Reproduced: identity folded every item whose slug, name or endpoint
+    // mentioned kenari onto one key, so two models.yml entries (two keys, two
+    // accounts) became a single row whose models listed both. The panel then
+    // had one slug to edit, and a disconnect or delete acted on that half only.
+    const merged = deduplicateProviderItems([
+      item({
+        slug: 'kenari',
+        id: 'omp-native-kenari',
+        baseUrl: 'https://kenari.id/v1',
+        models: [{ id: 'm-1', name: 'm-1', contextWindow: '', hasTools: true, hasVision: false, isVisible: true }],
+      }),
+      item({
+        slug: 'kenari2',
+        id: 'omp-native-kenari2',
+        baseUrl: 'https://kenari.id/v1',
+        models: [{ id: 'm-2', name: 'm-2', contextWindow: '', hasTools: true, hasVision: false, isVisible: true }],
+      }),
+    ]);
+    expect(merged.map((provider) => provider.slug)).toEqual(['kenari', 'kenari2']);
+    expect(merged.map((provider) => provider.models.map((entry) => entry.id))).toEqual([['m-1'], ['m-2']]);
+  });
 });
 
 describe('inModelsYml', () => {

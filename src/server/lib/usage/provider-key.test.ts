@@ -31,7 +31,7 @@ import { join } from 'node:path';
 import { getDb } from '@/server/db.server';
 import { invalidateOmpCliCache } from '@/server/lib/omp/core/cli';
 import { disposeUtilityRpc } from '@/server/lib/omp/rpc/utility';
-import { listCredentialedProviders, loadProviderEntries, resolveDeepSeekApiKey, resolveKenariApiKey } from '@/server/lib/usage/provider-key';
+import { kenariProviderSlugs, listCredentialedProviders, loadProviderEntries, resolveDeepSeekApiKey, resolveKenariApiKey } from '@/server/lib/usage/provider-key';
 
 /** Answers the two registry commands from FAKE_OMP_RESPONSES; never the real agent. */
 const STUB_SOURCE = `#!/usr/bin/env bun
@@ -251,7 +251,7 @@ describe('resolveKenariApiKey / resolveDeepSeekApiKey', () => {
     await writeOverlayValue(JSON.stringify([{ name: 'Kenari', slug: 'kenari', baseUrl: 'https://kenari.id/v1', apiKey: 'app-key' }]));
     writeOmpStores({ yml: { kenari: 'yml-key' } });
 
-    expect(await resolveKenariApiKey()).toBe('app-key');
+    expect(await resolveKenariApiKey('kenari')).toBe('app-key');
   });
 
   test('a masked overlay key falls through to omp models.yml', async () => {
@@ -259,7 +259,7 @@ describe('resolveKenariApiKey / resolveDeepSeekApiKey', () => {
     await writeOverlayValue(JSON.stringify([{ name: 'Kenari', slug: 'kenari', baseUrl: '', apiKey: '••••••' }]));
     writeOmpStores({ yml: { kenari: 'yml-key' } });
 
-    expect(await resolveKenariApiKey()).toBe('yml-key');
+    expect(await resolveKenariApiKey('kenari')).toBe('yml-key');
   });
 
   test('matching is case-insensitive on name, slug and baseUrl', async () => {
@@ -268,7 +268,7 @@ describe('resolveKenariApiKey / resolveDeepSeekApiKey', () => {
     writeOmpStores({});
 
     expect(await resolveDeepSeekApiKey()).toBe('ds-key');
-    expect(await resolveKenariApiKey()).toBeNull();
+    expect(await resolveKenariApiKey('kenari')).toBeNull();
   });
 
   test('a provider no store has a key for resolves to null', async () => {
@@ -277,5 +277,67 @@ describe('resolveKenariApiKey / resolveDeepSeekApiKey', () => {
     writeOmpStores({});
 
     expect(await resolveDeepSeekApiKey()).toBeNull();
+  });
+
+  test('each Kenari account resolves its own key', async () => {
+    // Reproduced: the resolver scanned for any entry mentioning kenari and
+    // returned the first hit, so `kenari2` could read the first account's quota
+    // while its own key was never used.
+    useTempDb();
+    await writeOverlayValue(JSON.stringify([
+      { name: 'Kenari', slug: 'kenari', baseUrl: 'https://kenari.id/v1', apiKey: 'first-key' },
+      { name: 'Kenari 2', slug: 'kenari2', baseUrl: 'https://kenari.id/v1', apiKey: 'second-key' },
+    ]));
+    writeOmpStores({});
+
+    expect(await resolveKenariApiKey('kenari')).toBe('first-key');
+    expect(await resolveKenariApiKey('kenari2')).toBe('second-key');
+  });
+
+  test("another account's key is never returned for a slug with no entry", async () => {
+    useTempDb();
+    await writeOverlayValue(JSON.stringify([
+      { name: 'Kenari 2', slug: 'kenari2', baseUrl: 'https://kenari.id/v1', apiKey: 'second-key' },
+    ]));
+    writeOmpStores({});
+
+    expect(await resolveKenariApiKey('kenari')).toBeNull();
+  });
+
+  test('a slug the overlay does not hold falls through to its own models.yml key', async () => {
+    useTempDb();
+    writeOmpStores({ yml: { kenari2: 'yml-second' } });
+
+    expect(await resolveKenariApiKey('kenari2')).toBe('yml-second');
+    expect(await resolveKenariApiKey('kenari')).toBeNull();
+  });
+});
+
+describe('kenariProviderSlugs', () => {
+  test('the slug spelling alone identifies an account', async () => {
+    useTempDb();
+    writeOmpStores({});
+    expect([...(await kenariProviderSlugs(['kenari', 'kenari2', 'deepseek']))].sort()).toEqual(['kenari', 'kenari2']);
+  });
+
+  test('an unrelated slug pointed at kenari.id is still Kenari', async () => {
+    // The slug is not always a giveaway; the endpoint is what the upstream
+    // calls are keyed to, so identity has to consult models.yml too.
+    useTempDb();
+    writeFileSync(join(agentDir, 'models.yml'), 'providers:\n  kyc-gateway:\n    apiKey: k\n    baseUrl: https://kenari.id/v1\n');
+    expect([...(await kenariProviderSlugs(['kyc-gateway', 'openai']))]).toEqual(['kyc-gateway']);
+  });
+
+  test('the chamber overlay decides for a slug whose name says kenari', async () => {
+    useTempDb();
+    await writeOverlayValue(JSON.stringify([{ name: 'Kenari Gateway', slug: 'knri', baseUrl: '', apiKey: 'k' }]));
+    writeOmpStores({});
+    expect([...(await kenariProviderSlugs(['knri', 'openai']))]).toEqual(['knri']);
+  });
+
+  test('a slug nothing accounts for stays out', async () => {
+    useTempDb();
+    writeOmpStores({ yml: { deepseek: 'ds-key' } });
+    expect([...(await kenariProviderSlugs(['deepseek']))]).toEqual([]);
   });
 });
