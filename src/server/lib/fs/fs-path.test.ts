@@ -222,6 +222,10 @@ describe('runShell', () => {
   });
 
   test('a timeout kills the child and is surfaced as a signal', async () => {
+    // `sh -c 'sleep 5'` forks on Linux (dash), so the shell's grandchild is what
+    // holds stdout open: the timeout must signal the whole process GROUP, or
+    // this read blocks until `sleep` finishes on its own and the case times out
+    // instead of observing the signal.
     const killed = await runShell('sleep 5', { timeout: 100 });
     expect(killed.killed).toBe(true);
     expect(killed.signalCode).toBe('SIGTERM');
