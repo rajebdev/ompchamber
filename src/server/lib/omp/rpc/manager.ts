@@ -24,8 +24,10 @@ import { ModeMirror } from '@/server/lib/omp/rpc/mode-mirror';
 import { IdleReaper } from '@/server/lib/omp/rpc/idle-reaper';
 import { AgentStartWatchdog } from '@/server/lib/omp/rpc/agent-start-watchdog';
 import { EventFanout } from '@/server/lib/omp/rpc/event-fanout';
-import { clearStreamStatus, markStreamModel, markStreamStatus, type SessionRunModel } from '@/shared/lib/omp/session/stream-state.server';
-import { GET_STATE_TIMEOUT_MS, IDLE_REAP_MS, READY_TIMEOUT_MS, RELOAD_PLUGINS_TIMEOUT_MS, SUBAGENT_STALE_MS, type AgentEvent, type EventListener, type RpcSessionState } from '@/server/lib/omp/rpc/constants';
+import { syncRunModel as syncRunModelFor } from '@/server/lib/omp/rpc/run-model';
+import { reloadChildPlugins } from '@/server/lib/omp/rpc/reload-plugins';
+import { clearStreamStatus, markStreamStatus, type SessionRunModel } from '@/shared/lib/omp/session/stream-state.server';
+import { GET_STATE_TIMEOUT_MS, IDLE_REAP_MS, READY_TIMEOUT_MS, SUBAGENT_STALE_MS, type AgentEvent, type EventListener, type RpcSessionState } from '@/server/lib/omp/rpc/constants';
 
 export type {
   AgentEvent,
@@ -186,7 +188,7 @@ export class AgentSessionWrapper {
     // a live subagent roster. Older omp builds may not know the command —
     // degrade silently.
     await this.proc.sendCommand({ type: 'set_subagent_subscription', level: 'events' }).catch(() => {});
-    const state = await this.getStateWithTimeout();
+    const state = await this.proc.sendCommand<RpcSessionState>({ type: 'get_state' }, GET_STATE_TIMEOUT_MS);
     this.applyIdentity(state);
     if (this.recordedCwd && this.recordedCwd !== this.cwd) {
       this.emit({
@@ -284,69 +286,18 @@ export class AgentSessionWrapper {
     if (state.model) this.runModel = { provider: state.model.provider, modelId: state.model.id };
   }
 
-  private async getStateWithTimeout(): Promise<RpcSessionState> {
-    return this.proc.sendCommand<RpcSessionState>({ type: 'get_state' }, GET_STATE_TIMEOUT_MS);
-  }
-
-  /**
-   * Re-read the model the child is ACTUALLY serving with, and rename the live
-   * run row to match.
-   *
-   * omp's `model_changed` frame carries no payload, so this is the only way to
-   * learn what it switched to: a retry under a fallback chain
-   * (`retry.fallbackChains`) can swap the model MID-RUN, and the row the
-   * sidebar and the generating indicator name the run by would otherwise keep
-   * the pre-fallback model for the rest of the turn — reporting a provider the
-   * answer did not come from.
-   *
-   * The write is deliberately live-only (`markStreamModel`): a fallback landing
-   * on the run's last frame must not resurrect a `stream` row.
-   */
+  /** Delegate; the fallback-chain rationale lives in `run-model.ts`. */
   syncRunModel(): void {
-    void this.getStateWithTimeout()
-      .then((state) => {
-        if (!state.model) return;
-        const next = { provider: state.model.provider, modelId: state.model.id };
-        const changed = this.runModel?.provider !== next.provider || this.runModel?.modelId !== next.modelId;
-        this.runModel = next;
-        if (changed && this.sessionId) void markStreamModel(this.sessionId, next);
-      })
-      .catch(() => {
-        // A state read that fails (destroyed child, timeout) leaves the last
-        // known model in place: the indicator keeps naming something true
-        // rather than blanking mid-run.
-      });
+    syncRunModelFor(this);
   }
 
   async send(command: Record<string, unknown>): Promise<unknown> {
     return dispatchSessionCommand(this, command);
   }
 
-  /**
-   * Re-read this child's skill/command/plugin roots.
-   *
-   * Deliberately NOT routed through `dispatchSessionCommand`: that path owns the
-   * turn state machine (`promptRunning`, the stream row, queue delivery) because
-   * a prompt it dispatches is a USER TURN. `/reload-plugins` is not a turn —
-   * omp answers `agentInvoked: false`, writes nothing to the transcript (verified
-   * on 18.4.3: a session file is byte-identical across a reload), and answers it
-   * from its command loop even while a turn streams. Measured: ack in 16-40 ms
-   * during a live turn AND while a blocking approval dialog was parked, with the
-   * turn completing normally afterwards and the new skill listed immediately.
-   * Going through the prompt path would flip a busy session to "starting a run"
-   * — the one state a reload must not disturb.
-   *
-   * Returns false when the child is gone; a missing ack is still a success (an
-   * older omp accepts the command without echoing `agentInvoked`).
-   */
+  /** Delegate; `reload-plugins.ts` holds why this is not a dispatched turn. */
   async reloadPlugins(): Promise<boolean> {
-    if (!this.isAlive()) return false;
-    this.idle.reset();
-    const ack = await this.proc.sendCommand<{ agentInvoked?: boolean } | undefined>(
-      { type: 'prompt', message: '/reload-plugins' },
-      RELOAD_PLUGINS_TIMEOUT_MS,
-    );
-    return ack?.agentInvoked !== true;
+    return reloadChildPlugins(this);
   }
 
   destroy(): void {
