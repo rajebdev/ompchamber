@@ -5,6 +5,12 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.12.1](https://github.com/rajebdev/ompchamber/compare/v3.12.0...v3.12.1) — 2026-10-02
+
+### Fixed
+
+* **usage:** keep each Kenari account as its own provider ([a23a5c2](https://github.com/rajebdev/ompchamber/commit/a23a5c22775850d930d250a5510ffd93ca6aa9ca))
+
 ## [3.12.0](https://github.com/rajebdev/ompchamber/compare/v3.11.0...v3.12.0) — 2026-10-02
 
 ### Added
