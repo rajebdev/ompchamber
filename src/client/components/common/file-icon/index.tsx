@@ -8,6 +8,7 @@ import {
   Folder,
   FolderOpen,
 } from 'lucide-preact';
+import type { ReactNode } from 'preact/compat';
 import { BRAND_ICONS, BRAND_VIEWBOX, type BrandIconName } from '@/client/components/common/file-icon/brand-paths';
 import { getImageMimeType } from '@/shared/lib/fs/file-kind';
 
@@ -74,6 +75,25 @@ const BRAND_BY_EXT: ReadonlyMap<string, BrandIconName> = (() => {
   }
   return map;
 })();
+
+/** Spelled-out language names → the extension that names the same brand. */
+const LANGUAGE_ALIASES: Readonly<Record<string, string>> = {
+  javascript: 'js',
+  typescript: 'ts',
+  python: 'py',
+  ruby: 'rb',
+  golang: 'go',
+  rust: 'rs',
+};
+
+/** Brand logo for a tool's `language` id — the omp eval ids (`js`, `py`) and
+ *  the spellings a file extension uses. Returns null when the language has no
+ *  brand mark, so the caller keeps its own generic glyph. */
+export function languageBrandIcon(language: string, size = 14, className = ''): ReactNode {
+  const id = language.trim().toLowerCase();
+  const brand = BRAND_BY_EXT.get(LANGUAGE_ALIASES[id] ?? id);
+  return brand ? <BrandIconSvg name={brand} size={size} className={className} /> : null;
+}
 
 export function FileIcon({ name, isFolder, isOpen, size = 14, className = '' }: FileIconProps) {
   const lowerName = name.toLowerCase();

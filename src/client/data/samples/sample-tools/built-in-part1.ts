@@ -174,6 +174,7 @@ Line 68: export interface ToolCallData {
     input: {
       code: "const tab = await browser.open('http://localhost:3000');\nconst title = await tab.title();\nreturn { title, url: tab.url };",
       language: 'js',
+      title: 'Open localhost:3000 and read its title',
       timeout: 30,
     },
     output: '{"title": "OMPChamber", "url": "http://localhost:3000/", "status": 200, "ready": true}',

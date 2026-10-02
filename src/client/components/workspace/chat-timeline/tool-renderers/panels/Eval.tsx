@@ -20,7 +20,6 @@ export function Eval({ tool }: { tool: ToolCallData }) {
 
   const language = (typeof inputObj?.language === 'string' ? inputObj.language : 'js').toUpperCase();
   const timeout = typeof inputObj?.timeout === 'number' ? `${inputObj.timeout}s` : undefined;
-  const title = typeof inputObj?.title === 'string' ? inputObj.title : undefined;
 
   const output = tool.output || (tool.error ? `Error: ${tool.error}` : '');
   const isError = tool.status === 'error' || output.includes('ToolError:') || output.includes('Command exited with code');
@@ -38,14 +37,11 @@ export function Eval({ tool }: { tool: ToolCallData }) {
     () => highlightCode(truncatedCode.text, 'javascript'),
     [truncatedCode, syntaxReady]
   );
-  const truncatedOutput = useMemo(() => truncateTailLines(output, MAX_OUTPUT_LINES), [output]);
-  const truncatedJson = useMemo(
-    () => (jsonResult.isValid && jsonResult.pretty ? truncateTailLines(jsonResult.pretty, MAX_OUTPUT_LINES) : null),
-    [jsonResult]
-  );
+  // The result is shown whole: an eval's output IS the answer, so hiding its
+  // head behind a "… earlier lines hidden" line misreports what the cell returned.
   const highlightedJson = useMemo(
-    () => (truncatedJson ? highlightJson(truncatedJson.text) : ''),
-    [truncatedJson, syntaxReady]
+    () => (jsonResult.isValid && jsonResult.pretty ? highlightJson(jsonResult.pretty) : ''),
+    [jsonResult, syntaxReady]
   );
 
   return (
@@ -57,7 +53,7 @@ export function Eval({ tool }: { tool: ToolCallData }) {
             <div className="flex items-center gap-2">
               <Code2 size={12} className="text-ink/60" />
               <span className="font-mono text-[10.5px] font-semibold text-ink">
-                {title || 'Script Evaluation'}
+                Script Evaluation
               </span>
               <span className="rounded bg-ink/5 px-1.5 py-0.2 font-mono text-[9px] uppercase tracking-wider text-ink/50">
                 {language}
@@ -161,39 +157,25 @@ export function Eval({ tool }: { tool: ToolCallData }) {
           </div>
 
           {jsonResult.isValid && jsonResult.pretty ? (
-            <>
-              {truncatedJson && truncatedJson.skipped > 0 && (
-                <div className="border-b border-ink/6 bg-canvas/40 px-3 py-1 font-mono text-[9.5px] text-ink/45">
-                  … {truncatedJson.skipped} earlier lines hidden
-                </div>
-              )}
-              <div className="flex max-h-56 items-start overflow-x-auto font-mono text-[11px] leading-relaxed select-text">
-                <div className="sticky left-0 flex-shrink-0 select-none border-r border-ink/6 bg-canvas/50 py-2 pl-2.5 pr-2 text-right text-[10px] text-ink/25">
-                  {(truncatedJson ? truncatedJson.text : jsonResult.pretty).split('\n').map((_, idx) => (
-                    <div key={idx}>{idx + 1}</div>
-                  ))}
-                </div>
-                <pre
-                  className="flex-1 overflow-x-auto p-2.5 whitespace-pre text-ink/85 font-mono"
-                  dangerouslySetInnerHTML={{ __html: highlightedJson }}
-                />
+            <div className="flex max-h-56 items-start overflow-x-auto font-mono text-[11px] leading-relaxed select-text">
+              <div className="sticky left-0 flex-shrink-0 select-none border-r border-ink/6 bg-canvas/50 py-2 pl-2.5 pr-2 text-right text-[10px] text-ink/25">
+                {jsonResult.pretty.split('\n').map((_, idx) => (
+                  <div key={idx}>{idx + 1}</div>
+                ))}
               </div>
-            </>
-          ) : (
-            <>
-              {truncatedOutput.skipped > 0 && (
-                <div className="border-b border-ink/6 bg-canvas/40 px-3 py-1 font-mono text-[9.5px] text-ink/45">
-                  … {truncatedOutput.skipped} earlier lines hidden
-                </div>
-              )}
               <pre
-                className={`max-h-48 overflow-y-auto p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-words select-text ${
-                  isError ? 'text-error' : isAborted ? 'text-warning' : 'text-ink/80'
-                }`}
-              >
-                {truncatedOutput.text}
-              </pre>
-            </>
+                className="flex-1 overflow-x-auto p-2.5 whitespace-pre text-ink/85 font-mono"
+                dangerouslySetInnerHTML={{ __html: highlightedJson }}
+              />
+            </div>
+          ) : (
+            <pre
+              className={`max-h-48 overflow-y-auto p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-words select-text ${
+                isError ? 'text-error' : isAborted ? 'text-warning' : 'text-ink/80'
+              }`}
+            >
+              {output}
+            </pre>
           )}
         </div>
       )}

@@ -1,10 +1,11 @@
 import { useCallback, useMemo } from 'preact/hooks';
-import { memo } from 'preact/compat';
+import { memo, type ReactNode } from 'preact/compat';
 import { Bell, Boxes, Brain, BrainCircuit, Camera, Check, Code2, Cpu, FileCode, FileText, GitPullRequest, Globe, HelpCircle, ListTodo, Search, Server, Shield, Terminal, Wrench } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
 import { stripAnsiCodes } from '@/shared/lib/code/ansi';
 import { isReminderTag, unwrapXmlEnvelopes } from '@/shared/lib/chat/xml-envelope';
 import { CopyButton } from '@/client/components/common/CopyButton';
+import { languageBrandIcon } from '@/client/components/common/file-icon';
 import { ToolCardShell } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/ToolCardShell';
 import { DiffView } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/DiffView';
 import { ToolDetailsPanel, hasToolDetailsPanel, resolveTargetFile, resolveToolKey } from '@/client/components/workspace/chat-timeline/tool-renderers';
@@ -77,6 +78,22 @@ function getToolIcon(key: string) {
       if (key.startsWith('mcp__')) return <Boxes size={14} />;
       return <Wrench size={14} />;
   }
+}
+
+/** `input.title` of an `eval` call — omp's own label for the cell. The card
+ *  header names the eval with it rather than the generic tool name. */
+function evalInputTitle(tool: ToolCallData): string | undefined {
+  const inputObj = typeof tool.input === 'object' && tool.input !== null ? (tool.input as Record<string, any>) : undefined;
+  const title = typeof inputObj?.title === 'string' ? inputObj.title.trim() : '';
+  return title || undefined;
+}
+
+/** Brand mark for an `eval` call's `language` (`js`, `py`, …); null when the
+ *  language is unknown or absent, so the generic code glyph stands in. */
+function evalLanguageIcon(tool: ToolCallData): ReactNode {
+  const inputObj = typeof tool.input === 'object' && tool.input !== null ? (tool.input as Record<string, any>) : undefined;
+  const language = typeof inputObj?.language === 'string' ? inputObj.language : '';
+  return language ? languageBrandIcon(language, 14) : null;
 }
 
 function commandOrInputOf(tool: ToolCallData): string {
@@ -168,6 +185,10 @@ export const ToolCallCard = memo(function ToolCallCard({ tool, isOpen, onToggle,
   let displayTitle = '';
   let displaySubtitle: string | undefined;
 
+  // `eval` names itself: `input.title` is the label omp put on the cell, and it
+  // beats the generic "Eval" the fallback chain would render.
+  const evalTitle = toolKey === 'eval' ? evalInputTitle(tool) : undefined;
+
   if (toolKey === 'lsp') {
     displayTitle = 'LSP';
     const xdev = xdevOf(tool);
@@ -206,6 +227,8 @@ export const ToolCallCard = memo(function ToolCallCard({ tool, isOpen, onToggle,
     displayTitle = 'Question';
     const asked = parseAskQuestions(tool).length;
     if (asked > 0) displaySubtitle = `Asked ${asked} question${asked === 1 ? '' : 's'}`;
+  } else if (evalTitle) {
+    displayTitle = evalTitle;
   } else if (mcpToolNameOf(tool)) {
     // MCP call: `write xd://mcp__<tool>` (or a direct `mcp__<tool>` name) —
     // the MCP tool names the action, never the transport `write`.
@@ -255,10 +278,13 @@ export const ToolCallCard = memo(function ToolCallCard({ tool, isOpen, onToggle,
       </span>
     ) : null;
 
+  // The eval card is marked by the language it runs, not a generic code glyph.
+  const icon = tool.icon || (toolKey === 'eval' ? evalLanguageIcon(tool) : null) || getToolIcon(toolKey);
+
   return (
     <ToolCardShell
       tool={tool}
-      icon={tool.icon || getToolIcon(toolKey)}
+      icon={icon}
       title={displayTitle}
       subtitle={subtitle}
       meta={meta}
