@@ -328,6 +328,7 @@ export function ChatInput({
         onSelectThinking={handleSelectThinking}
         onThinkingLevelChange={onThinkingLevelChange}
         isGenerating={isGenerating}
+        chatRunning={chatRunning}
         onStop={onStop}
         onSend={() => submit()}
         sendDisabled={disabled || (!value.trim() && attachments.length === 0)}

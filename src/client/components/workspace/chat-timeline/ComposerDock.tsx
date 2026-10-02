@@ -18,8 +18,9 @@ interface ComposerDockProps {
    * `isGenerating`: it also counts the server-tracked `stream` status the
    * sidebar spinner is drawn from, so a run this client did not start (a
    * second tab, another chamber instance) still shows as generating here.
-   * `isGenerating` stays the composer's own flag — Send-vs-queue, Stop, and
-   * the model/thinking picks held for the next prompt.
+   * Reaches the composer as its chat-level running flag as well: the goal strip
+   * and the Stop button describe the RUN, not this draft, and reading
+   * `isGenerating` alone hid Stop for every run this page did not start.
    */
   showGeneratingIndicator: boolean;
   modelName?: string;

@@ -60,6 +60,24 @@ describe('agent command spawn guard', () => {
     expect(await payload(response)).toMatchObject({ code: 'session_not_running' });
   });
 
+  // A stop names no work, only the cancelling of work under way. Falling
+  // through to the spawn path resumes the session FILE — a second writer on a
+  // file the process that owns the run is still appending to — and answers
+  // "abort" against a child it had just created. The Stop button follows the
+  // server-tracked `stream` status, so it can be pressed from a page whose
+  // process does not own the run.
+  test('refuses a stop for a session that is not running', async () => {
+    const response = await post(DEAD, { type: 'abort' });
+    expect(response.status).toBe(409);
+    expect(await payload(response)).toMatchObject({ code: 'session_not_running' });
+  });
+
+  test('refuses a force-reset for a session that is not running', async () => {
+    const response = await post(DEAD, { type: 'force_reset' });
+    expect(response.status).toBe(409);
+    expect(await payload(response)).toMatchObject({ code: 'session_not_running' });
+  });
+
   test('does not refuse a command that asks for work', async () => {
     const response = await post(UNKNOWN, { type: 'prompt', message: 'hello' });
     // It reached the spawn path and failed there (no session file on disk),

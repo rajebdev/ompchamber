@@ -5,7 +5,7 @@ import { WebRpcError, getRpcSession, resolveSpawnCwd, startRpcSession, type Agen
 import { getSpawnApprovalMode, reconcileSpawnApprovalMode } from '@/server/lib/omp/rpc/session-registry';
 import { isApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { loadPersistedAccessMode } from '@/shared/lib/omp/config/access-mode.server';
-import { CONVERSATION_MOVING_COMMANDS, OBSERVER_ONLY_COMMANDS } from '@/server/lib/omp/rpc/constants';
+import { CONVERSATION_MOVING_COMMANDS, LIVE_RUN_COMMANDS, OBSERVER_ONLY_COMMANDS } from '@/server/lib/omp/rpc/constants';
 import { rpcErrorResponse } from '@/server/lib/omp/rpc/errors';
 import { assertBtwIdle } from '@/server/lib/btw/service.server';
 import { loadPersistedModes } from '@/server/lib/omp/session/modes';
@@ -96,6 +96,12 @@ export async function sendCommand({ params, request }: ActionFunctionArgs) {
     // consulted while a process exists to answer for.
     if (OBSERVER_ONLY_COMMANDS.has(body.type)) {
       return json({ error: 'Session is not managed by the chamber', code: 'session_not_running' }, { status: 409 });
+    }
+    // Same refusal for a stop: with no live wrapper here there is nothing to
+    // stop, and the spawn path below would resume the session file just to
+    // answer `abort` (see LIVE_RUN_COMMANDS).
+    if (LIVE_RUN_COMMANDS[body.type]) {
+      return json({ error: 'Session is not running', code: 'session_not_running' }, { status: 409 });
     }
 
     const resolved = await resolveSessionPathOr404(sessionId);

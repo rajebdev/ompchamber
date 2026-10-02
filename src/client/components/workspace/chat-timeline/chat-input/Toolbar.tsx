@@ -19,6 +19,17 @@ export interface ComposerToolbarProps {
    *  entry points reach the live session. */
   onThinkingLevelChange?: (level: string) => void;
   isGenerating: boolean;
+  /**
+   * The CHAT-level "a run is in flight" flag (`timelineRunning`) — the
+   * server-tracked `stream` status OR this client's own run. The Stop button
+   * asks THIS: a run this page did not start (another tab, a scheduled task,
+   * the goal driver's continuation, a page that reattached to the stream)
+   * still has to be stoppable, and the sidebar spinner already says it is
+   * running. Reading `isGenerating` alone hid Stop for exactly those runs.
+   * Falls back to `isGenerating` for a composer with no chat turn (the New
+   * Chat modal, the side-question form).
+   */
+  chatRunning?: boolean;
   onStop?: () => void;
   onSend: () => void;
   /** Send is blocked while no workspace context is selected or nothing is typed. */
@@ -57,6 +68,7 @@ export function ComposerToolbar({
   onSelectThinking,
   onThinkingLevelChange,
   isGenerating,
+  chatRunning,
   onStop,
   onSend,
   sendDisabled,
@@ -68,7 +80,8 @@ export function ComposerToolbar({
   modes,
   onOpenGoal,
 }: ComposerToolbarProps) {
-  const showStop = isGenerating && (isMobile ? Boolean(onStop) : true);
+  const chatInFlight = chatRunning ?? isGenerating;
+  const showStop = chatInFlight && (isMobile ? Boolean(onStop) : true);
 
   return (
     <div

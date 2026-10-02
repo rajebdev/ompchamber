@@ -143,6 +143,27 @@ export const PASSTHROUGH_COMMANDS = new Set([
 export const OBSERVER_ONLY_COMMANDS = new Set(['get_subagents', 'get_subagent_messages']);
 
 /**
+ * Commands that control a run IN THIS PROCESS — they name no work, only the
+ * stopping of work already under way. A live session answers them on the fast
+ * path; with no wrapper here the spawn path must refuse them (409) instead of
+ * booting a child to answer "stop".
+ *
+ * Spawning is not merely wasteful, it is destructive: the spawn path resumes
+ * the session FILE, and a `stream` row is written by whichever process owns the
+ * run — so an `abort` posted from a second chamber instance (or from a page
+ * that reattached after a reload) would start a second `omp --resume` writer on
+ * a session file the owning process is appending to, abort nothing, and, for
+ * `force_reset`, then destroy the child it had just created. The Stop button
+ * now follows the server-tracked `stream` status, so a press is sent exactly
+ * while the sidebar says a run is in flight — which is also the only time the
+ * owning process would answer it.
+ */
+export const LIVE_RUN_COMMANDS: Record<string, true> = {
+  abort: true,
+  force_reset: true,
+};
+
+/**
  * Commands that MOVE the conversation: they replace the transcript the session
  * is running on, so a side question that snapshotted the old one would be left
  * describing a conversation the chat has already left. omp blocks the same
