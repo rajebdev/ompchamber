@@ -5,6 +5,25 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.12.0](https://github.com/rajebdev/ompchamber/compare/v3.11.0...v3.12.0) — 2026-10-02
+
+### Added
+
+* **chat:** start the sidebar run spinner on the click, not on dispatch ([ddd8d98](https://github.com/rajebdev/ompchamber/commit/ddd8d9828b495b50bff0fa1c0cc31fc810b191e7))
+
+### Changed
+
+* **rpc:** split the session wrapper's out-of-band probes into two modules ([9b998ad](https://github.com/rajebdev/ompchamber/commit/9b998ad36d9a511a0c4fa08171b23c1da4722894))
+
+### Fixed
+
+* **chat:** give a first send's sidebar row a spinner from the click ([b467509](https://github.com/rajebdev/ompchamber/commit/b467509dade93a5e16ebcf4d7139903e23e0e82a))
+* **chat:** keep the first run's indicator, with the model it actually used ([d4a0723](https://github.com/rajebdev/ompchamber/commit/d4a07231ab60a41c9655fb6a2adf12ceabdbcbc3))
+* **chat:** show Stop from the server stream status, not just this client's run ([0eb9371](https://github.com/rajebdev/ompchamber/commit/0eb9371f2f74a146ab0ab3bf8816a063617b922e))
+* **eval:** paint the language icon in the surrounding ink, not the brand color ([abfc0e6](https://github.com/rajebdev/ompchamber/commit/abfc0e6570116d1f03d67d2a65710ab24b42af52))
+* **fs:** signal the process group when a shell command times out ([48647f0](https://github.com/rajebdev/ompchamber/commit/48647f05921ff108ed94411914aec20718410193))
+* **state:** stop the agent stream status and the listener reference leaking ([9bdeafd](https://github.com/rajebdev/ompchamber/commit/9bdeafdd71d5a001b648e9a347274b630c798cf5))
+
 ## [3.11.0](https://github.com/rajebdev/ompchamber/compare/v3.10.1...v3.11.0) — 2026-10-02
 
 ### Added
