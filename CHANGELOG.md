@@ -5,6 +5,12 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.13.1](https://github.com/rajebdev/ompchamber/compare/v3.13.0...v3.13.1) — 2026-10-03
+
+### Fixed
+
+* **sidebar:** stop the run spinner and name a new session at send time ([1791c85](https://github.com/rajebdev/ompchamber/commit/1791c850f79bb32964abca6a1415c95314d79246))
+
 ## [3.13.0](https://github.com/rajebdev/ompchamber/compare/v3.12.1...v3.13.0) — 2026-10-02
 
 ### Added
