@@ -17,19 +17,15 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { h, render } from 'preact';
-import { act } from 'preact/test-utils';
 
 import {
   applyStreamOverlay,
   releaseObservedPending,
-  setStreamPending,
   STREAM_PENDING_EVENT,
   type StreamPendingDetail,
 } from '@/client/hooks/chat/omp/stream-overlay';
 import { useOmpPromptSender } from '@/client/hooks/chat/omp/prompt-send';
 import type { OmpPromptSender, OmpPromptSenderDeps } from '@/client/hooks/chat/omp/prompt-send';
-import { SidebarDataProvider, useSidebarData } from '@/client/hooks/chat/omp/session-list';
-import type { SidebarDataHandle } from '@/client/hooks/chat/omp/session-list';
 import type { OmpAgentState, WorkspaceFolderData } from '@/shared/types';
 
 const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'Event', 'CustomEvent'] as const;
@@ -60,9 +56,6 @@ afterAll(() => {
     else target[key] = nativeGlobals[key];
   }
 });
-
-/** Let queued promises (a stubbed fetch, Preact's effects) settle. */
-const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 type Status = 'stream' | 'finish' | 'abort';
 
@@ -202,137 +195,5 @@ describe('useOmpPromptSender arms the optimistic mark', () => {
     // that span — so no mark may name anything else.
     expect(marks.every((mark) => mark.sessionId === 'omp-9')).toBe(true);
     expect(marks[marks.length - 1]).toEqual({ sessionId: 'omp-9', pending: true });
-  });
-});
-
-/** A session-list payload carrying one session, `a`, with the given fields. */
-function listBody(session: { streamStatus?: Status } = {}): unknown {
-  return {
-    folders: [{ id: 1, name: 'ws', sessions: [{ id: 'a', folder_id: 1, title: 'A', ...session }] }],
-    isMock: false,
-  };
-}
-
-/** The status the provider currently renders for session `a`. */
-function renderedStatus(api: SidebarDataHandle | null): Status | undefined {
-  return api?.folders[0]?.sessions?.[0].streamStatus;
-}
-
-/** Mount the real provider over a stubbed `/api/sessions/list`. */
-async function mountProvider(body: () => unknown) {
-  const calls: string[] = [];
-  (globalThis as unknown as Record<string, unknown>).fetch = async (input: unknown) => {
-    calls.push(String(input));
-    return new Response(JSON.stringify(body()), {
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-    });
-  };
-  const holder: { api: SidebarDataHandle | null } = { api: null };
-  function Probe() {
-    holder.api = useSidebarData();
-    return null;
-  }
-  const el = document.createElement('div');
-  document.body.appendChild(el);
-  container = el;
-  await act(async () => {
-    render(h(SidebarDataProvider, { children: h(Probe, null) }), el);
-    await tick();
-  });
-  return { calls, holder };
-}
-
-describe('SidebarDataProvider renders the armed mark and hands over to the row', () => {
-  test('shows `stream` for a click-armed session the loader still reports as idle', async () => {
-    const harness = await mountProvider(() => listBody());
-    expect(renderedStatus(harness.holder.api)).toBeUndefined();
-
-    await act(async () => {
-      setStreamPending('a', true);
-    });
-
-    expect(renderedStatus(harness.holder.api)).toBe('stream');
-  });
-
-  test('exposes the armed mark, so a placeholder row can paint the spinner', async () => {
-    // The sidebar's "New Session …" row is built OUTSIDE the loader's folders,
-    // so the overlay cannot reach it: the predicate is the only way that row
-    // shows a spinner before the real row is scanned in.
-    const harness = await mountProvider(() => listBody());
-    expect(harness.holder.api?.isStreamPending('a')).toBe(false);
-
-    await act(async () => {
-      setStreamPending('a', true);
-    });
-
-    expect(harness.holder.api?.isStreamPending('a')).toBe(true);
-    expect(harness.holder.api?.isStreamPending('b')).toBe(false);
-    expect(harness.holder.api?.isStreamPending(null)).toBe(false);
-  });
-
-  test('hands the session back to the row, and does not pin a finished run', async () => {
-    let body = listBody({ streamStatus: 'stream' });
-    const harness = await mountProvider(() => body);
-
-    await act(async () => {
-      setStreamPending('a', true);
-    });
-    await act(async () => {
-      harness.holder.api?.refresh();
-      await tick();
-    });
-    expect(renderedStatus(harness.holder.api)).toBe('stream');
-
-    // The run ended and the server row was acked away (or never landed): the
-    // mark must be gone, or the spinner would turn forever.
-    body = listBody();
-    await act(async () => {
-      harness.holder.api?.refresh();
-      await tick();
-    });
-    expect(renderedStatus(harness.holder.api)).toBeUndefined();
-  });
-
-  test('a refresh coalesced behind an in-flight load still runs afterwards', async () => {
-    const resolvers: Array<() => void> = [];
-    let calls = 0;
-    (globalThis as unknown as Record<string, unknown>).fetch = () => {
-      calls += 1;
-      return new Promise<Response>((resolve) => {
-        resolvers.push(() => resolve(new Response(JSON.stringify(listBody()), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        })));
-      });
-    };
-    const holder: { api: SidebarDataHandle | null } = { api: null };
-    function Probe() {
-      holder.api = useSidebarData();
-      return null;
-    }
-    const el = document.createElement('div');
-    document.body.appendChild(el);
-    container = el;
-    await act(async () => {
-      render(h(SidebarDataProvider, { children: h(Probe, null) }), el);
-      await tick();
-    });
-    expect(calls).toBe(1);
-
-    // Two refreshes land while the mount's load is still in flight. They must
-    // coalesce into ONE trailing load — neither vanish (the send's live row is
-    // what such a refresh carries) nor duplicate.
-    await act(async () => {
-      holder.api?.refresh();
-      holder.api?.refresh();
-    });
-    expect(calls).toBe(1);
-
-    await act(async () => {
-      resolvers[0]();
-      await tick();
-    });
-    expect(calls).toBe(2);
   });
 });

@@ -31,11 +31,56 @@ export interface StreamPendingDetail {
   pending: boolean;
 }
 
-/** Arm (or disarm) the optimistic `stream` mark for one session. */
+/**
+ * Arm (or disarm) the optimistic `stream` mark for one session.
+ *
+ * Disarming is also how a run's END releases the mark. That is not a second
+ * mechanism: the mark is armed by a send and must not outlive the run, and for
+ * a fresh spawn the chat's own run boundary (`onAgentEnd` / `onPromptSettled`)
+ * is the only signal that arrives at all — omp creates the session file when
+ * the first assistant message settles (measured ~17s on a plain prompt), so
+ * until then the session is absent from the list payload and no snapshot can
+ * release the mark. Without the end-disarm the spinner outlived the run by up
+ * to a full list refresh, over a turn whose indicator and completion sound had
+ * already settled.
+ */
 export function setStreamPending(sessionId: string, pending: boolean): void {
   window.dispatchEvent(
     new CustomEvent<StreamPendingDetail>(STREAM_PENDING_EVENT, {
       detail: { sessionId, pending },
+    }),
+  );
+}
+
+/** Window event carrying the text a session's sidebar row should show until
+ *  omp's own title lands. */
+export const SESSION_TITLE_HINT_EVENT = 'omp:session-title-hint';
+
+export interface SessionTitleHintDetail {
+  sessionId: string;
+  title: string;
+}
+
+/**
+ * Seed a session's sidebar row with the text the user just sent.
+ *
+ * The row's real title comes from omp's transcript scan, and for a new session
+ * that scan cannot see it yet: omp creates the session file only when the first
+ * assistant message settles (measured ~17s on a plain prompt, because its
+ * writes are buffered). Until then the sidebar's placeholder row is the only
+ * thing on screen, and it used to say `New Session - <timestamp>` for the whole
+ * first run — the operator's own words, which the client already has at send
+ * time, name the row far better than a clock.
+ *
+ * A hint, not a rename: the placeholder stops using it the moment omp's row
+ * exists, so nothing here can overwrite the title omp derived.
+ */
+export function setSessionTitleHint(sessionId: string, title: string): void {
+  const trimmed = title.trim();
+  if (!trimmed) return;
+  window.dispatchEvent(
+    new CustomEvent<SessionTitleHintDetail>(SESSION_TITLE_HINT_EVENT, {
+      detail: { sessionId, title: trimmed },
     }),
   );
 }

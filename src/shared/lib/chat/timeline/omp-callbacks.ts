@@ -22,8 +22,9 @@ import {
   flushStreamingUpdates,
   queueStreamingUpdate,
 } from '@/shared/lib/chat/timeline/stream-coalescer';
-import { PHASE_VERBS } from '@/shared/lib/chat/timeline/tool-phrases';
 import { appendCommandOutputNotice } from '@/shared/lib/chat/timeline/command-output';
+import { setStreamPending } from '@/client/hooks/chat/omp/stream-overlay';
+import { handleAgentStart, handleResumeStream, handleTurnStart } from '@/shared/lib/chat/timeline/run-signals';
 
 export interface OmpAgentCallbacksDeps {
   setGenerating: (v: boolean) => void;
@@ -56,7 +57,6 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
     scrollToBottom,
     adoptedSessionIdRef,
     sessionIdRef,
-    metaRefreshedRef,
     firstAssistantRef,
     refreshSessionMeta,
     setLocalMessages,
@@ -73,48 +73,12 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
   bindStreamingCoalescer(setLocalMessages, () => scrollToBottom('smooth'));
 
   return {
-    onAgentStart: () => {
-      setGenerating(true);
-      setGeneratingVerb(PHASE_VERBS.thinking);
-      setTimeout(() => scrollToBottom('smooth'), 50);
-      // A fresh run re-arms the first-assistant signal.
-      firstAssistantRef.current = false;
-      const sid = adoptedSessionIdRef.current ?? sessionIdRef.current;
-      if (sid) {
-        // Sidebar signal on EVERY run start — the metaRefreshedRef guard below
-        // is once-per-session (title refresh), but the sidebar must revalidate
-        // each time to pick up the server's `stream` status row. The sidebar's
-        // revalidation throttle is leading-edge, so the spinner does not lag.
-        window.dispatchEvent(new CustomEvent('omp:session-updated', { detail: { sessionId: sid } }));
-        if (metaRefreshedRef.current !== sid) {
-          metaRefreshedRef.current = sid;
-          setTimeout(() => refreshSessionMeta(sid), 100);
-        }
-      }
-    },
-    onTurnStart: () => {
-      // Every turn inside the run re-signals the sidebar: the throttle makes
-      // this cheap, and it recovers the `stream` status row if a previous
-      // dispatch raced with the status write (or the row was healed away).
-      const sid = adoptedSessionIdRef.current ?? sessionIdRef.current;
-      if (sid && typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('omp:session-updated', { detail: { sessionId: sid } }));
-      }
-    },
+    onAgentStart: () => handleAgentStart(deps),
+    onTurnStart: () => handleTurnStart(deps),
     // Reload recovery: the omp process kept running server-side, so the event
     // stream is reattached and the generating UI must resume (the timeline
     // fetch already loaded the committed messages; live updates continue).
-    onResumeStream: () => {
-      setGenerating(true);
-      setGeneratingVerb(PHASE_VERBS.thinking);
-      setTimeout(() => scrollToBottom('smooth'), 50);
-      // Reattach re-arms the signal too: the reattached run's first assistant
-      // turn has not been signalled by THIS mount.
-      firstAssistantRef.current = false;
-      const sid = adoptedSessionIdRef.current ?? sessionIdRef.current;
-      // Reattach mid-run: the sidebar needs the `stream` status row.
-      if (sid) window.dispatchEvent(new CustomEvent('omp:session-updated', { detail: { sessionId: sid } }));
-    },
+    onResumeStream: () => handleResumeStream(deps),
     // The stream names what the agent is doing right now (tool call or
     // assistant phase), so the indicator stops guessing.
     onActivity: (verb) => {
@@ -267,6 +231,14 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
       pendingUserDisplaysRef.current = [];
       triggerChatCompletionSound(appSettings);
       setTimeout(() => scrollToBottom('smooth'), 50);
+      // Release the sidebar's optimistic `stream` mark NOW. For a session whose
+      // omp transcript is not on disk yet (a fresh spawn — omp writes the file
+      // only when the first assistant message settles, measured ~17s) the mark
+      // is the only thing drawing the spinner, and no list snapshot can release
+      // it: the session is absent from the payload until then. Without this the
+      // spinner outlived the run by up to a full list refresh.
+      const ended = adoptedSessionIdRef.current ?? sessionIdRef.current;
+      if (ended && typeof window !== 'undefined') setStreamPending(ended, false);
       // The omp JSONL has the final title/messages now — refresh session
       // metadata so navbar/context panel show the real title. A fresh spawn
       // ("new-…" → UUID) may not have re-rendered the URL yet, so prefer the
@@ -295,6 +267,11 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
       setGenerating(false);
       abortControllerRef.current = null;
       optimisticUserIdRef.current = null;
+      // Same release as onAgentEnd: this path is the other way a dispatched
+      // prompt ends without an `agent_end` (a builtin answered on the command
+      // path), and the optimistic mark would otherwise spin on.
+      const settled = adoptedSessionIdRef.current ?? sessionIdRef.current;
+      if (settled && typeof window !== 'undefined') setStreamPending(settled, false);
       const placeholderId = aiPlaceholderIdRef.current;
       aiPlaceholderIdRef.current = null;
       if (placeholderId) {

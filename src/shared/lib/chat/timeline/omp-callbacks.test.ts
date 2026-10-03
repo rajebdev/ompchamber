@@ -129,7 +129,14 @@ describe('createOmpAgentCallbacks first-assistant sidebar signal', () => {
     callbacks.onMessageEnd?.(assistantTurn('a1'));
     callbacks.onMessageEnd?.(assistantTurn('a2'));
 
-    expect(signals).toHaveLength(2);
+    // The reattach also re-arms the sidebar's OPTIMISTIC mark, because a fresh
+    // spawn's session is absent from the list payload until omp writes its file
+    // (~17s): without the arm the spinner stayed dark for the resumed run while
+    // the generating indicator was already showing.
+    expect(signals.filter(s => s.name === 'omp:stream-pending')).toEqual([
+      { name: 'omp:stream-pending', sessionId: 'sess-1' },
+    ]);
+    expect(signals.filter(s => s.name === 'omp:session-updated')).toHaveLength(2);
   });
 
   test('onTurnStart signals the sidebar on every turn of the run', () => {

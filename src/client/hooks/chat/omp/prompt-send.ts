@@ -19,7 +19,7 @@
 
 import { useCallback } from 'preact/hooks';
 import type { Dispatch, SetStateAction } from 'preact/compat';
-import { setStreamPending } from '@/client/hooks/chat/omp/stream-overlay';
+import { setSessionTitleHint, setStreamPending } from '@/client/hooks/chat/omp/stream-overlay';
 import type { AgentImage, OmpAgentState } from '@/shared/types';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 
@@ -167,6 +167,11 @@ export function useOmpPromptSender(deps: OmpPromptSenderDeps): OmpPromptSender {
       sid = createdBody.sessionId;
       connect(sid);
       setStreamPending(sid, true);
+      // Name the sidebar's placeholder row with what the user actually sent:
+      // omp's own title is ~17s away (it writes the session file only at the
+      // first assistant message), so until then the row would read
+      // `New Session - <clock>`. A hint only — the real row supersedes it.
+      setSessionTitleHint(sid, message);
       const res = await fetch(`/api/agent/${encodeURIComponent(sid)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

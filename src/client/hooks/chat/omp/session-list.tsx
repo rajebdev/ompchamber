@@ -30,7 +30,9 @@ import { useChamberEvent } from '@/client/hooks/ui/window-event';
 import {
   applyStreamOverlay,
   releaseObservedPending,
+  SESSION_TITLE_HINT_EVENT,
   STREAM_PENDING_EVENT,
+  type SessionTitleHintDetail,
   type StreamPendingDetail,
 } from '@/client/hooks/chat/omp/stream-overlay';
 import type { WorkspaceFolderData } from '@/shared/types';
@@ -73,7 +75,14 @@ export interface SidebarDataHandle {
    * scanned yet — is built outside `folders`, so it needs this predicate to
    * paint a spinner at all.
    */
-  isStreamPending: (sessionId: number | string | null | undefined) => boolean;
+  isStreamPending: (id: number | string | null | undefined) => boolean;
+  /**
+   * Text the user just sent for this session, shown by the sidebar's
+   * PLACEHOLDER row while omp's transcript scan cannot name the session yet
+   * (omp creates the file only at the first assistant message). Undefined once
+   * the real row exists — the placeholder is not drawn then.
+   */
+  titleHint: (id: number | string | null | undefined) => string | undefined;
 }
 
 const SidebarDataContext = createContext<SidebarDataHandle | null>(null);
@@ -91,6 +100,10 @@ export function SidebarDataProvider({ children, initialFolders = [] }: { childre
   // and dropped as soon as a snapshot that landed AFTER the arm carries a real
   // status (see `releaseObservedPending`).
   const pendingRef = useRef<Map<string, number>>(new Map());
+  // Text the user just sent, by session id — shown by the placeholder row until
+  // omp's transcript scan can name the session (its file appears only at the
+  // first assistant message). Dropped when the real row arrives.
+  const titleHintRef = useRef<Map<string, string>>(new Map());
   // The refs above are deliberately not reactive; this bumps a render when one
   // of them changes so the overlays below re-apply. Read only as a dependency.
   const [overlayVersion, setOverlayVersion] = useState(0);
@@ -146,11 +159,33 @@ export function SidebarDataProvider({ children, initialFolders = [] }: { childre
     setOverlayVersion((v) => v + 1);
   });
 
+  // The text the user just sent, for the placeholder row that stands in until
+  // omp's transcript scan can name the session.
+  useChamberEvent(SESSION_TITLE_HINT_EVENT, (event) => {
+    const detail = (event as CustomEvent<SessionTitleHintDetail>).detail;
+    if (!detail?.sessionId || !detail.title) return;
+    const key = String(detail.sessionId);
+    if (titleHintRef.current.get(key) === detail.title) return;
+    titleHintRef.current.set(key, detail.title);
+    setOverlayVersion((v) => v + 1);
+  });
+
   // Hand a session back to the authoritative status the moment a snapshot that
   // landed after the arm carries one: the server wrote `stream` before
   // answering the send, so such a read cannot be the run's absence.
   useEffect(() => {
     if (!fetcher.data?.folders) return;
+    // A hint lives only until omp's transcript scan surfaces the session; the
+    // real row carries the real title, and the placeholder is not drawn.
+    if (titleHintRef.current.size) {
+      const listed = new Set<string>();
+      for (const folder of fetcher.data.folders) {
+        for (const session of folder.sessions ?? []) listed.add(String(session.id));
+      }
+      for (const key of titleHintRef.current.keys()) {
+        if (listed.has(key)) titleHintRef.current.delete(key);
+      }
+    }
     if (releaseObservedPending(pendingRef.current, fetcher.data.folders)) {
       setOverlayVersion((v) => v + 1);
     }
@@ -246,6 +281,7 @@ export function SidebarDataProvider({ children, initialFolders = [] }: { childre
       markSeen,
       hasSeen: (id) => seen.has(String(id)),
       isStreamPending: (id) => id !== null && id !== undefined && pending.has(String(id)),
+      titleHint: (id) => (id === null || id === undefined ? undefined : titleHintRef.current.get(String(id))),
     };
     // `overlayVersion` is the re-render trigger for the two refs above.
   }, [fetcher.data, initialFolders, hasLoaded, refresh, refreshNow, refreshing, markSeen, overlayVersion]);
@@ -271,5 +307,6 @@ export function useSidebarData(): SidebarDataHandle {
     markSeen: () => {},
     hasSeen: () => false,
     isStreamPending: () => false,
+    titleHint: () => undefined,
   };
 }

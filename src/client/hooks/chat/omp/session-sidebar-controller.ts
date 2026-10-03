@@ -20,7 +20,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useSearchParams } from '@/client/lib/router/search-params';
 import { isValidSessionSortOption, sortFolders } from '@/shared/lib/workspace/sidebar-sort';
-import { pendingSessionCreatedAt, pendingSessionTitle } from '@/shared/lib/omp/session/default-title';
+import { pendingSessionCreatedAt, pendingSessionTitle, sessionIdEpochMs } from '@/shared/lib/omp/session/default-title';
 import { buildSidebarSessionStatus, useSessionStatusAck } from '@/client/hooks/chat/omp/session-statuses';
 import { useStreamPoll } from '@/client/hooks/chat/omp/stream-poll';
 import { useSidebarRevalidation } from '@/client/hooks/chat/omp/revalidation-throttle';
@@ -75,7 +75,7 @@ export function useSessionSidebarController(
   options: SessionSidebarControllerOptions = {},
 ): SessionSidebarController {
   const { includePendingSessions = false, onSelectSession, onAfterSelect } = options;
-  const { folders, initializing, refresh, refreshNow, refreshing, markSeen, hasSeen, isStreamPending } = useSidebarData();
+  const { folders, initializing, refresh, refreshNow, refreshing, markSeen, hasSeen, isStreamPending, titleHint } = useSidebarData();
   const [searchParams, setSearchParams] = useSearchParams();
   const sessionParam = searchParams.get('sessionId');
   const activeSessionId = sessionParam
@@ -185,20 +185,25 @@ export function useSessionSidebarController(
           target?.sessions?.some((s) => String(s.id) === String(pendingId)),
         );
         if (target && !alreadyListed) {
-          // A pending id carries its creation epoch, so the stamp is stable
-          // across recomputes instead of reshuffling LATEST_SESSION on every
-          // revalidate. An adopted real id has no epoch; the row is newest by
-          // definition then.
+          // The stamp is the session's own creation clock, never `Date.now()`:
+          // a re-stamp on every revalidate advanced the title's seconds on each
+          // list refresh and made the row perpetually newest, re-shuffling
+          // LATEST_SESSION ordering mid-run. A pending id carries its epoch
+          // directly; an adopted omp UUID carries one in its v7 prefix, which
+          // is what the row needs while omp's transcript scan cannot see the
+          // session yet (the file appears only at the first assistant message).
           const epochMs = pendingSessionCreatedAt(pendingId);
-          const stamp = Number.isFinite(epochMs)
-            ? new Date(epochMs).toISOString()
-            : new Date().toISOString();
+          const stableMs = Number.isFinite(epochMs) ? epochMs : sessionIdEpochMs(pendingId);
+          const stamp = new Date(Number.isFinite(stableMs) ? stableMs : Date.now()).toISOString();
           result = result.map(f => {
             if (f.id !== target.id) return f;
             const pending: SessionItemData = {
               id: pendingId,
               folder_id: f.id,
-              title: pendingSessionTitle(pendingId),
+              // The text the user just sent beats a clock: omp's own title is
+              // ~17s away (its first write), and the operator's words are
+              // already known here.
+              title: titleHint(pendingId) ?? pendingSessionTitle(pendingId),
               // Read by @/shared/lib/workspace/sidebar-sort to rank this folder newest.
               created_at: stamp,
               updated_at: stamp,
@@ -240,7 +245,7 @@ export function useSessionSidebarController(
     result = sortFolders(result, sortOption);
 
     return result;
-  }, [folders, searchQuery, sortOption, sessionParam, searchParams, includePendingSessions, isStreamPending]);
+  }, [folders, searchQuery, sortOption, sessionParam, searchParams, includePendingSessions, isStreamPending, titleHint]);
 
   return {
     folders,
