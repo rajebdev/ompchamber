@@ -104,6 +104,17 @@ jobs:
         id: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The release commit is attributed to the App, not to semantic-release's
+          # own default (`semantic-release-bot <semantic-release-bot@martynus.net>`,
+          # see COMMIT_NAME/COMMIT_EMAIL in semantic-release's constants). The
+          # library writes those into the child env and then spreads the caller's
+          # env OVER them, and @semantic-release/git has no author option — these
+          # four variables are the only way to change it.
+          # The id is the App's USER id (NOT its app id): `gh api /users/ompchamber-bot[bot] --jq .id`.
+          GIT_AUTHOR_NAME: ompchamber-bot[bot]
+          GIT_AUTHOR_EMAIL: 333284999+ompchamber-bot[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: ompchamber-bot[bot]
+          GIT_COMMITTER_EMAIL: 333284999+ompchamber-bot[bot]@users.noreply.github.com
         run: |
           # semantic-release writes no outputs, so the tag it cut is read back
           # off the repository. `releaseRules` in release/release-rules.js means
