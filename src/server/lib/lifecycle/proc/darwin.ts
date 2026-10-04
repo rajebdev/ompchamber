@@ -115,6 +115,8 @@ const PROC_PIDTBSDINFO = 3;
 const BSDINFO_BYTES = 136;
 /** `pbi_pid` — the identity check that guards every offset below. */
 const BSDINFO_PID_OFFSET = 12;
+/** `pbi_ppid` — the parent pid, read for the same reason `pbi_pid` is. */
+const BSDINFO_PPID_OFFSET = 16;
 /** `e_tpgid` — the field `ps -o tpgid=` prints. */
 const BSDINFO_TPGID_OFFSET = 112;
 
@@ -280,5 +282,24 @@ export const darwinProbe: ProcessProbe = {
     if (written < BSDINFO_BYTES) return null;
     if (bsdInfoView.getUint32(BSDINFO_PID_OFFSET, true) !== pid) return null;
     return bsdInfoView.getUint32(BSDINFO_TPGID_OFFSET, true);
+  },
+  /**
+   * `pbi_ppid` — the parent pid, from the SAME `proc_bsdinfo` reply
+   * `foregroundGroup` reads. Verified against this platform: a process's own
+   * `pbi_ppid` equals its `getppid()`.
+   */
+  parentPid(pid) {
+    const bound = bindLibs();
+    if (bound === null) return null;
+    let written = 0;
+    try {
+      written = bound.libproc.symbols.proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, ptr(bsdInfo), BSDINFO_BYTES);
+    } catch {
+      return null;
+    }
+    if (written < BSDINFO_BYTES) return null;
+    if (bsdInfoView.getUint32(BSDINFO_PID_OFFSET, true) !== pid) return null;
+    const ppid = bsdInfoView.getUint32(BSDINFO_PPID_OFFSET, true);
+    return ppid > 0 ? ppid : null;
   },
 };

@@ -55,4 +55,10 @@ export const win32Probe: ProcessProbe = {
     // from being asked, and null says "unknown" rather than guessing.
     return null;
   },
+  parentPid() {
+    // Not reachable without walking the process table through `ntdll`; the
+    // ownership guard already degrades to a refusal when the parent is unknown,
+    // and Windows has no `flock` for it to reach anyway.
+    return null;
+  },
 };

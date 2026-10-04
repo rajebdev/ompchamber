@@ -47,4 +47,12 @@ export interface ProcessProbe {
    * so it is the exact answer to "is this terminal busy".
    */
   foregroundGroup(pid: number): number | null;
+  /**
+   * Parent pid of a live process, or null when unreadable.
+   *
+   * Used to attribute a process to the chamber instance that spawned it: an omp
+   * child's parent IS the server, which is how a session owned by ANOTHER
+   * instance is told from this process's own child.
+   */
+  parentPid(pid: number): number | null;
 }

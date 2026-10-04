@@ -90,4 +90,10 @@ export const psProbe: ProcessProbe = {
     // own `ps -o pid=,tpgid=` path, which is where the BSDs were anyway.
     return null;
   },
+  parentPid(pid) {
+    // The cached table carries no ppid column for the same reason it carries no
+    // tpgid; the caller falls back to its own `ps -o ppid=`.
+    void pid;
+    return null;
+  },
 };

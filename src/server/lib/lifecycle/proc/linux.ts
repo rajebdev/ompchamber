@@ -99,4 +99,12 @@ export const linuxProbe: ProcessProbe = {
     const stat = procStat(pid);
     return stat === null ? null : stat.tpgid;
   },
+  parentPid(pid) {
+    // `/proc/<pid>/stat` field 4 is the parent pid. `statTail` has dropped
+    // fields 1 (`pid`) and 2 (`(comm)`), so it lands at index 1.
+    const fields = statTail(pid);
+    if (fields === null) return null;
+    const ppid = Number(fields[1]);
+    return Number.isInteger(ppid) && ppid > 0 ? ppid : null;
+  },
 };

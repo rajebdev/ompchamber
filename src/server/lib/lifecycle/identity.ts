@@ -56,3 +56,14 @@ export function getProcessState(pid: number): ProcessState {
   if (command === null) return 'unknown';
   return command.toLowerCase().includes('ompchamber') ? 'matched' : 'mismatched';
 }
+
+/**
+ * Parent pid of a live process, or null when the platform cannot answer.
+ *
+ * Read through the same probe the rest of this module uses (libproc, `/proc`,
+ * `ps`) — never a `ps` subprocess of its own.
+ */
+export function processParentPid(pid: number): number | null {
+  if (!isProcessAlive(pid)) return null;
+  return processProbe.parentPid(pid);
+}
