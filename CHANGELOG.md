@@ -5,6 +5,12 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.15.0](https://github.com/rajebdev/ompchamber/compare/v3.14.0...v3.15.0) — 2026-10-04
+
+### Added
+
+* **updates:** resolve both update targets from npm ([04a35d4](https://github.com/rajebdev/ompchamber/commit/04a35d4c80dcbcd2f77c90b13c4acc8167f795a6))
+
 ## [3.14.0](https://github.com/rajebdev/ompchamber/compare/v3.13.1...v3.14.0) — 2026-10-04
 
 ### Added
