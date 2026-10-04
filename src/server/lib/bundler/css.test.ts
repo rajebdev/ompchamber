@@ -38,6 +38,28 @@ async function buildThroughPlugin(css: string): Promise<string> {
   }
 }
 
+/**
+ * The project's own stylesheet, built the way the client build builds it.
+ * Used for rules that are NOT Tailwind utilities — a hand-written rule that
+ * silently fails to survive the plugin chain is invisible in review.
+ */
+async function buildProjectStylesheet(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'ompchamber-tw-'));
+  try {
+    const result = await Bun.build({
+      entrypoints: [join(import.meta.dir, '../../../client/tailwind.css')],
+      outdir: join(dir, 'out'),
+      target: 'bun',
+      minify: true,
+      plugins: [cssPlugin],
+    });
+    if (!result.success) throw new Error(result.logs.map((log) => log.message).join('\n'));
+    return await Bun.file(result.outputs[0].path).text();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
 describe('css plugin — nested at-rules reach the browser flattened', () => {
   test('a placeholder colour refinement survives as a top-level @supports', async () => {
     const out = await buildThroughPlugin(`.probe::placeholder {
@@ -83,5 +105,59 @@ describe('css plugin — nested at-rules reach the browser flattened', () => {
     // would let the at-rule's `background` win over a later one.
     expect(out.indexOf('border-radius')).toBeGreaterThan(out.indexOf('@supports'));
     expect(out).not.toMatch(/(?<!\\)&/);
+  });
+});
+
+/**
+ * The reveal-on-touch counterparts. Tailwind v4 emits `group-hover:` inside
+ * `@media (hover: hover)`, so a device with no cursor (which reports
+ * `hover: none`) never applies it — the git rows' stage/discard buttons, the
+ * queue rows' send/edit/remove, the editor tab close and the folder picker's
+ * "Choose" all stayed hidden, present in the DOM but unreachable by finger.
+ * The three hand-written rules below undo exactly that, and they only work
+ * because they are UNLAYERED: Tailwind's `opacity-0` / `hidden` sit in the
+ * `utilities` layer, and an unlayered rule wins over every layered one.
+ * Layering them would make them no-ops, silently, on the only devices they
+ * exist for.
+ */
+describe('css plugin — reveal-on-touch rules reach the browser', () => {
+  /**
+   * The at-rules enclosing `marker`, found by walking the minified sheet with
+   * a stack: every `{` pushes what introduced it, every `}` pops. Asserting on
+   * the enclosing context is the whole point — a rule that exists but sits
+   * inside `@layer utilities` is a rule that loses the cascade.
+   */
+  function enclosingAtRules(css: string, marker: string): string[] {
+    const at = css.indexOf(marker);
+    expect(at).toBeGreaterThan(-1);
+    const stack: string[] = [];
+    let buffer = '';
+    for (let i = 0; i < at; i++) {
+      const ch = css[i];
+      if (ch === '{') {
+        stack.push(buffer.trim());
+        buffer = '';
+      } else if (ch === '}') {
+        stack.pop();
+        buffer = '';
+      } else {
+        buffer += ch;
+      }
+    }
+    return stack;
+  }
+
+  test('every reveal rule is emitted unlayered under @media (hover: none)', async () => {
+    const out = await buildProjectStylesheet();
+    // A control shown where there is no cursor (and made hit-testable: the
+    // sidebar's swapped-in chevron ships `pointer-events-none` at rest).
+    expect(enclosingAtRules(out, '.touch-visible{opacity:1;pointer-events:auto}'))
+      .toEqual(['@media (hover:none)']);
+    // The other half of a swap: the glyph a hover would take away.
+    expect(enclosingAtRules(out, '.touch-hidden{opacity:0}'))
+      .toEqual(['@media (hover:none)']);
+    // A control revealed by `hidden group-hover:flex`.
+    expect(enclosingAtRules(out, '.touch-shown-flex{display:flex}'))
+      .toEqual(['@media (hover:none)']);
   });
 });

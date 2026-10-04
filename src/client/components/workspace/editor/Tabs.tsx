@@ -85,7 +85,7 @@ export function EditorTabs({ openedFiles, activeFileId, onSelectFile, onCloseFil
                 </span>
               )}
               <div
-                className={`p-0.5 rounded hover:bg-ink/10 ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                className={`p-0.5 rounded hover:bg-ink/10 touch-visible ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   onCloseFile(file.id);
@@ -129,7 +129,7 @@ export function EditorTabs({ openedFiles, activeFileId, onSelectFile, onCloseFil
                   )}
                   <span className="text-xs font-mono truncate flex-1 text-ink/80">{file.name}</span>
                   <div
-                    className="p-0.5 rounded hover:bg-ink/10 opacity-0 group-hover:opacity-100"
+                    className="touch-visible p-0.5 rounded hover:bg-ink/10 opacity-0 group-hover:opacity-100"
                     onClick={(e) => {
                       e.stopPropagation();
                       onCloseFile(file.id);

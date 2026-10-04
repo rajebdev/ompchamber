@@ -217,7 +217,7 @@ export function FolderPicker({ initialPath, onSelect, onClose }: FolderPickerPro
                 <button
                   type="button"
                   onClick={() => handlePick(dir)}
-                  className="hidden group-hover:flex px-2 py-0.5 rounded bg-ink text-canvas text-[10px] font-semibold hover:bg-ink/80 transition-colors flex-shrink-0"
+                  className="touch-shown-flex hidden group-hover:flex px-2 py-0.5 rounded bg-ink text-canvas text-[10px] font-semibold hover:bg-ink/80 transition-colors flex-shrink-0"
                 >
                   Choose
                 </button>

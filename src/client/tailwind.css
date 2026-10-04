@@ -131,6 +131,47 @@
   background: color-mix(in srgb, var(--theme-ink) 40%, transparent);
 }
 
+/* Reveal-on-hover controls are written `opacity-0 group-hover:opacity-100`
+ * (or `hidden group-hover:flex`), and Tailwind v4 emits every one of those
+ * variants inside `@media (hover: hover)` — verified in the emitted
+ * stylesheet, not assumed. A device with no pointing cursor reports
+ * `hover: none`, so the rule never applies and the control stays invisible:
+ * present in the DOM, unreachable by finger, and undiscoverable to anyone who
+ * does not already know it is there.
+ *
+ * The predicate is exactly "this device has no cursor", which is what the
+ * media query means — a desktop keeps its hover behaviour untouched, a
+ * touchscreen laptop whose primary pointer is a trackpad also keeps it (it has
+ * a cursor), and a phone or tablet draws every one of these controls outright.
+ *
+ * Three shapes cover every site in the app, and they are classes rather than
+ * utilities because they must sit OUTSIDE Tailwind's `utilities` layer: an
+ * unlayered rule wins over every layered one regardless of specificity, which
+ * is what lets `opacity: 1` beat the `opacity-0` these are paired with. A
+ * `@custom-variant` would emit a nested rule instead — and this pipeline has
+ * already proven Chrome drops those.
+ */
+@media (hover: none) {
+  /* The control itself: shown, and hit-testable. `pointer-events` rides along
+   * because a swapped-in control is commonly written `pointer-events-none`
+   * at rest (the sidebar's chevron), and revealing it without that would
+   * paint a button no finger could press. */
+  .touch-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* The other half of a swap: the glyph a hover would take away. */
+  .touch-hidden {
+    opacity: 0;
+  }
+
+  /* A control revealed by `hidden group-hover:flex`. */
+  .touch-shown-flex {
+    display: flex;
+  }
+}
+
 /* Horizontally scrollable strips (mobile tab bars) that pan without a visible
  * scrollbar track eating vertical space. */
 .no-scrollbar {

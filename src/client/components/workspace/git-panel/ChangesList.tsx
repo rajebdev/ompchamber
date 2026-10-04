@@ -59,7 +59,7 @@ export function GitChangesList({ changes, isLoading, viewMode, repo, rootPath, o
                   {stagedChanges.length}
                 </span>
               </div>
-              <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-1 text-ink/40 flex-shrink-0">
+              <div className="touch-visible opacity-0 group-hover:opacity-100 flex items-center space-x-1 text-ink/40 flex-shrink-0">
                 <button
                   type="button"
                   onClick={(e) => {
@@ -112,7 +112,7 @@ export function GitChangesList({ changes, isLoading, viewMode, repo, rootPath, o
                   {unstagedChanges.length}
                 </span>
               </div>
-              <div className="opacity-0 group-hover:opacity-100 flex items-center space-x-1 text-ink/40 flex-shrink-0">
+              <div className="touch-visible opacity-0 group-hover:opacity-100 flex items-center space-x-1 text-ink/40 flex-shrink-0">
                 <button
                   type="button"
                   onClick={(e) => {

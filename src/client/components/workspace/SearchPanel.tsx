@@ -244,7 +244,7 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
                   <button
                     onClick={() => handleReplace(file)}
                     disabled={replaceFetcher.state !== 'idle'}
-                    className="opacity-0 group-hover:opacity-100 p-1 text-ink/40 hover:text-ink rounded hover:bg-ink/5 disabled:opacity-50 flex-shrink-0"
+                    className="touch-visible opacity-0 group-hover:opacity-100 p-1 text-ink/40 hover:text-ink rounded hover:bg-ink/5 disabled:opacity-50 flex-shrink-0"
                     title="Replace in this file"
                   >
                     <Replace size={12} />

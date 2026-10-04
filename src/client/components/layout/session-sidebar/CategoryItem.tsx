@@ -139,7 +139,7 @@ export function Category({
               the slot to the disclosure chevron on hover, so the icon column
               reads as one line AND the header says what clicking it does. */}
           <span className="relative w-4 h-4 flex items-center justify-center shrink-0">
-            <span className="absolute inset-0 flex items-center justify-center transition-opacity group-hover:opacity-0">
+            <span className="absolute inset-0 flex items-center justify-center transition-opacity group-hover:opacity-0 touch-hidden">
               {folder.customIconUrl ? (
                 <img
                   src={folder.customIconUrl}
@@ -155,7 +155,7 @@ export function Category({
                 />
               )}
             </span>
-            <span className="absolute inset-0 flex items-center justify-center text-ink/60 opacity-0 transition-opacity group-hover:opacity-100">
+            <span className="absolute inset-0 flex items-center justify-center text-ink/60 opacity-0 transition-opacity group-hover:opacity-100 touch-visible">
               {isActuallyOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
             </span>
           </span>

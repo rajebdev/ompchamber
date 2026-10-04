@@ -67,7 +67,7 @@ export function QueueList({ queue, onReorder, onRemove, isSteering = false, onEd
           {onSendNow && kind === 'followup' && (
             <button
               onClick={() => onSendNow(item)}
-              className="text-ink/40 hover:text-ink/80 opacity-0 group-hover:opacity-100 transition-opacity"
+              className="touch-visible text-ink/40 hover:text-ink/80 opacity-0 group-hover:opacity-100 transition-opacity"
               title="Send Now (Steering)"
             >
               <Send size={12} />
@@ -76,7 +76,7 @@ export function QueueList({ queue, onReorder, onRemove, isSteering = false, onEd
           {onEdit && (
             <button
               onClick={() => onEdit(item)}
-              className="text-ink/40 hover:text-ink/80 opacity-0 group-hover:opacity-100 transition-opacity"
+              className="touch-visible text-ink/40 hover:text-ink/80 opacity-0 group-hover:opacity-100 transition-opacity"
               title="Edit"
             >
               <Pencil size={12} />
@@ -85,7 +85,7 @@ export function QueueList({ queue, onReorder, onRemove, isSteering = false, onEd
           {onRemove && (
             <button
               onClick={() => onRemove(item.id)}
-              className="text-ink/40 hover:text-error opacity-0 group-hover:opacity-100 transition-opacity"
+              className="touch-visible text-ink/40 hover:text-error opacity-0 group-hover:opacity-100 transition-opacity"
               title="Remove"
             >
               <X size={14} />

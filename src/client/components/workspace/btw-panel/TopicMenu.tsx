@@ -92,7 +92,7 @@ export function BtwTopicMenu({ topics, activeTopicId, onSelectTopic, onDeleteTop
             <button
               type="button"
               onClick={() => onDeleteTopic(topic.id)}
-              className="p-1.5 mr-1 rounded text-ink/40 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-error hover:bg-error/10 transition-colors cursor-pointer"
+              className="touch-visible p-1.5 mr-1 rounded text-ink/40 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-error hover:bg-error/10 transition-colors cursor-pointer"
               aria-label={`Delete side question: ${topic.title}`}
               title="Delete this side question"
             >

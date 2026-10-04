@@ -53,12 +53,15 @@ export function GitFileItem({ change, isStaged, repo, rootPath, onAction }: GitF
         )}
       </div>
       <div className="flex items-center space-x-1 text-ink/40 flex-shrink-0">
-        <div className="flex items-center opacity-0 group-hover:opacity-100 space-x-1">
+        <div className="flex items-center touch-visible opacity-0 group-hover:opacity-100 space-x-1">
           {!isStaged && (
             <>
               <button 
                 type="button" 
-                onClick={() => onAction('revert', change.file)} 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAction('revert', change.file);
+                }} 
                 title="Discard Changes" 
                 className="w-5 h-5 flex items-center justify-center rounded hover:text-error hover:bg-error/10 cursor-pointer transition-colors"
               >
@@ -66,7 +69,10 @@ export function GitFileItem({ change, isStaged, repo, rootPath, onAction }: GitF
               </button>
               <button 
                 type="button" 
-                onClick={() => onAction('stage', change.file)} 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAction('stage', change.file);
+                }} 
                 title="Stage Changes" 
                 className="w-5 h-5 flex items-center justify-center rounded hover:text-ink hover:bg-ink/10 cursor-pointer transition-colors"
               >
@@ -77,7 +83,10 @@ export function GitFileItem({ change, isStaged, repo, rootPath, onAction }: GitF
           {isStaged && (
             <button 
               type="button" 
-              onClick={() => onAction('unstage', change.file)} 
+              onClick={(e) => {
+                e.stopPropagation();
+                onAction('unstage', change.file);
+              }} 
               title="Unstage Changes" 
               className="w-5 h-5 flex items-center justify-center rounded hover:text-ink hover:bg-ink/10 cursor-pointer transition-colors"
             >
