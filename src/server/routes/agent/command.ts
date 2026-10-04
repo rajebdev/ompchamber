@@ -12,6 +12,7 @@ import { loadPersistedModes } from '@/server/lib/omp/session/modes';
 import { modeCommandPrompt, parseModeRequest, parseModeSelection } from '@/server/lib/omp/mode/request';
 import { chamberModeEnv } from '@/server/lib/omp/extensions/locator';
 import { resetGoalDriverState } from '@/server/lib/omp/session/goal-driver.server';
+import { forwardToPeer, isPeerRelayed, peerOriginForSession } from '@/server/lib/omp/rpc/peer-proxy.server';
 
 /** How long after an accepted Resume the chamber nudges the loop. The
  *  extension answers the mode command first; this only coalesces the nudge
@@ -28,6 +29,15 @@ export async function sendCommand({ params, request }: ActionFunctionArgs) {
     const body = await request.json().catch(() => null);
     if (!body || typeof body.type !== 'string' || !body.type.trim()) {
       return json({ error: 'command type is required', code: 'command_type_required' }, { status: 400 });
+    }
+
+    // The session is running on ANOTHER chamber instance: relay this command
+    // there instead of resuming the file here (which omp would fork). Checked
+    // before any spawn decision, and never for a request that already hopped —
+    // two instances that disagree would otherwise bounce it forever.
+    if (!isPeerRelayed(request)) {
+      const origin = await peerOriginForSession(sessionId);
+      if (origin) return forwardToPeer(request, origin, body);
     }
 
     // A request with no explicit mode must never change a live session: use the
@@ -144,12 +154,20 @@ function busySessionPayload(session: AgentSessionWrapper) {
 }
 
 // GET /api/agent/:sessionId — current agent state (running set + live state).
-export async function getAgentState({ params }: LoaderFunctionArgs) {
+export async function getAgentState({ params, request }: LoaderFunctionArgs) {
   const { sessionId } = params;
   if (!sessionId) return json({ error: 'session id is required' }, { status: 400 });
 
   const session = getRpcSession(sessionId);
   if (!session || !session.isAlive()) {
+    // Another instance may be running it. Without this the client reads
+    // `running: false`, never reattaches its stream, and shows a timeline that
+    // does not move while the owner streams — the exact symptom the peer bridge
+    // exists to remove.
+    if (!isPeerRelayed(request)) {
+      const origin = await peerOriginForSession(sessionId);
+      if (origin) return forwardToPeer(request, origin);
+    }
     return json({ running: false });
   }
 

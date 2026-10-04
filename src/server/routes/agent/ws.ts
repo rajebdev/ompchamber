@@ -29,6 +29,8 @@
 
 import { Elysia, t } from 'elysia';
 import { attachObserverStream, createObserverState, type ObserverConnectionState } from '@/server/lib/observer-ws';
+import { peerOriginForSession, peerSocketUrl } from '@/server/lib/omp/rpc/peer-proxy.server';
+import { attachPeerStream } from '@/server/lib/omp/rpc/peer-ws.server';
 
 interface AgentEventSession {
   isAlive?: () => boolean;
@@ -49,32 +51,52 @@ function findAgentSession(sessionId: string): AgentEventSession | null {
 }
 
 /** Elysia's ws context, narrowed to the per-connection store this route adds. */
-type AgentWsData = { params: { sessionId: string }; observer?: ObserverConnectionState };
+type AgentWsData = {
+  params: { sessionId: string };
+  observer?: ObserverConnectionState;
+  /** Set when this session is owned by another instance; the socket bridges. */
+  peerOrigin?: string;
+};
 
 export const agentWsRoutes = new Elysia({ prefix: '/api/agent' }).ws('/:sessionId/ws', {
   params: t.Object({ sessionId: t.String() }),
 
-  beforeHandle({ params, status }) {
-    if (!findAgentSession(params.sessionId)) {
-      return status(409, 'Session is not managed by the chamber');
-    }
+  async beforeHandle({ params, status }) {
+    if (findAgentSession(params.sessionId)) return;
+    // Not managed HERE: the session may be running on another instance. That is
+    // not a refusal — the socket bridges to the owner so the client stays on
+    // whichever instance it opened. Only a session no instance owns is refused.
+    if (await peerOriginForSession(params.sessionId)) return;
+    return status(409, 'Session is not managed by the chamber');
   },
 
   open(ws) {
     const data = ws.data as unknown as AgentWsData;
     const sessionId = data.params.sessionId;
     const session = findAgentSession(sessionId);
-    if (!session) {
-      ws.close();
-      return;
-    }
 
     const state = createObserverState();
     data.observer = state;
-    const { push } = attachObserverStream(state, ws);
 
-    state.unsubscribe = session.onEvent((event) => push('', event));
-    push('', { type: 'connected', sessionId });
+    if (session) {
+      const { push } = attachObserverStream(state, ws);
+      state.unsubscribe = session.onEvent((event) => push('', event));
+      push('', { type: 'connected', sessionId });
+      return;
+    }
+
+    // Re-resolve rather than trust `beforeHandle`: ownership can move between
+    // the upgrade check and this callback, and a stale origin would bridge to
+    // an instance that no longer holds the session.
+    void peerOriginForSession(sessionId).then((origin) => {
+      if (state.closed) return;
+      if (!origin) {
+        state.teardown();
+        return;
+      }
+      data.peerOrigin = origin;
+      attachPeerStream(state, ws, peerSocketUrl(sessionId, origin));
+    });
   },
 
   pong(ws) {

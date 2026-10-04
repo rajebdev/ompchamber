@@ -20,6 +20,7 @@
 import { useCallback } from 'preact/hooks';
 import type { Dispatch, SetStateAction } from 'preact/compat';
 import { setSessionTitleHint, setStreamPending } from '@/client/hooks/chat/omp/stream-overlay';
+import { redirectToOwningInstance, type SessionOwnerConflict } from '@/client/hooks/chat/omp/owner-redirect';
 import type { AgentImage, OmpAgentState } from '@/shared/types';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 
@@ -91,8 +92,11 @@ export function useOmpPromptSender(deps: OmpPromptSenderDeps): OmpPromptSender {
           ...(options?.accessMode ? { accessMode: options.accessMode } : {}),
         }),
       });
-      const body = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      const body = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string } & SessionOwnerConflict;
       if (!res.ok || body.error) {
+        // Another chamber instance owns this session: send the tab there
+        // instead of starting a second writer (which omp would fork).
+        if (redirectToOwningInstance(body, sid)) return false;
         // `session_busy`: the ack timed out behind a still-running turn, so the
         // prompt may already be accepted — never resend it automatically.
         setStreamPending(sid, false);

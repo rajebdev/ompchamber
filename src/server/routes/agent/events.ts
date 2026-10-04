@@ -1,5 +1,7 @@
 import { getRpcSession } from '@/server/lib/omp/rpc/manager';
 import { createEventCoalescer, createSseStream, type EventCoalescer } from '@/server/lib/sse';
+import { peerOriginForSession } from '@/server/lib/omp/rpc/peer-proxy.server';
+import { bridgePeerEvents } from '@/server/lib/omp/rpc/peer-sse.server';
 
 /** Longest a coalesced `message_update` may wait before it is flushed anyway,
  *  so a burst that ends while the consumer is behind never strands the newest
@@ -15,7 +17,15 @@ export async function loader({ params, request }: { params: Record<string, strin
 
   const existing = getRpcSession(sessionId);
   const session = existing?.isAlive() ? existing : undefined;
-  if (!session) return new Response('Session is not managed by the chamber', { status: 409 });
+
+  // Not managed HERE: the session may be running on another instance. Bridge the
+  // owner's stream through this one so the client stays where it opened, instead
+  // of refusing (which is what sent a user hunting for the other port).
+  if (!session) {
+    const origin = await peerOriginForSession(sessionId);
+    if (origin) return bridgePeerEvents(request, sessionId, origin);
+    return new Response('Session is not managed by the chamber', { status: 409 });
+  }
 
   // Backpressure slot: while the consumer is behind (desiredSize < 0),
   // replaceable `message_update` frames collapse to the latest one (omp sends
