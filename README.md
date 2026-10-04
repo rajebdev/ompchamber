@@ -75,7 +75,7 @@ bun run src/server/index.ts    # API + WebSocket + static client on :3000
 - **Full omp settings surface** — engine config keys, providers, agents, `AGENTS.md` / `RULES.md`,
   slash commands, MCP servers with live connection tests, skills and the skills catalog, token
   usage and notifications.
-- **Self-update** — `ompchamber update` installs the latest GitHub release, and **About → Updates**
+- **Self-update** — `ompchamber update` installs the latest version from npm, and **About → Updates**
   does the same from the console, restart included.
 - **Opt-in password, HTTPS and session revocation** — the UI is open by default and locked only when
   you ask for it (`--ui-password` / `OMPCHAMBER_UI_PASSWORD`), with `--tls` for a self-signed HTTPS
@@ -151,7 +151,7 @@ instance serving that console.
 | Command | Purpose |
 |---|---|
 | `serve` | Start the web server (daemon by default) |
-| `update` | Install the latest GitHub release, then restart the instance it started |
+| `update` | Install the latest version from npm, then restart the instance it started |
 | `stop` | Stop the instances the CLI started — `--port`/`--all` to stop any |
 | `restart` | Stop, then start again — leaving servers started from source alone |
 | `status` | Report whether an instance is running |
@@ -222,7 +222,7 @@ Environment variables, read from `.env` (see [`.env.example`](.env.example)):
 | `PI_CONFIG_DIR` / `PI_CODING_AGENT_DIR` | `~/.omp` | Oh-My-Pi config root overrides |
 | `OMPCHAMBER_OMP_BIN` | — | Explicit `omp` binary path |
 | `SKILLS_API_URL` | `https://skills.sh` | Skills catalog source |
-| `GITHUB_TOKEN` / `GH_TOKEN` | — | Raise the GitHub API rate limit for update checks |
+| `NPM_CONFIG_REGISTRY` | `https://registry.npmjs.org` | Registry the update check reads |
 
 Runtime state, sessions and settings live in SQLite (`~/.ompchamber/db.sqlite`), the single source
 of truth for persisted settings.

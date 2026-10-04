@@ -54,31 +54,38 @@ function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
 }
 
-/** The release cache hangs off globalThis; a stubbed page must not leak into a sibling suite. */
-const globalWithCache = globalThis as { __ompChamberReleaseCache?: unknown };
+/** The changelog cache hangs off globalThis; a stubbed page must not leak into a sibling suite. */
+const globalWithCache = globalThis as { __ompChamberChangelogCache?: unknown };
 
-/** A GitHub release payload good enough for both the latest-release and list reads. */
-function releaseJson(): Record<string, unknown> {
-  return {
-    tag_name: 'v999.0.0',
-    name: 'v999.0.0',
-    html_url: 'https://github.com/rajebdev/ompchamber/releases/tag/v999.0.0',
-    published_at: '2026-01-01T00:00:00Z',
-    body: '### Added\n\n* a thing\n',
-  };
+/** A published version manifest, the shape `/latest` answers. */
+function versionJson(version: string): Record<string, unknown> {
+  return { name: 'ompchamber', version, dist: { tarball: `https://registry.npmjs.org/ompchamber/-/ompchamber-${version}.tgz` } };
 }
 
+/** A changelog shaped like the repository's own, for the notes range. */
+const CHANGELOG_MARKDOWN = [
+  '# Changelog',
+  '',
+  '## [999.0.0](https://github.com/rajebdev/ompchamber/compare/v998.0.0...v999.0.0) — 2026-01-01',
+  '',
+  '### Added',
+  '',
+  '* a thing',
+  '',
+].join('\n');
+
 /**
- * The GitHub read, stubbed. `/releases/latest` is a single object while
- * `/releases?per_page=` is a list, and the two endpoints answer different
- * shapes — a stub that got this wrong would make the changelog look like a
- * fetch failure.
+ * The two network reads, stubbed: npm's `/latest` manifest for the versions, and
+ * the repository's CHANGELOG.md for the notes. A stub that answered both with the
+ * same body would make the notes look like a fetch failure.
  */
-function githubFetch(input: RequestInfo | URL): Promise<Response> {
+function updatesFetch(input: RequestInfo | URL): Promise<Response> {
   const url = String(input);
-  const body = url.includes('per_page') ? [releaseJson()] : releaseJson();
+  if (url.includes('CHANGELOG')) {
+    return Promise.resolve(new Response(CHANGELOG_MARKDOWN, { status: 200, headers: { 'content-type': 'text/markdown' } }));
+  }
   return Promise.resolve(
-    new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } }),
+    new Response(JSON.stringify(versionJson('999.0.0')), { status: 200, headers: { 'content-type': 'application/json' } }),
   );
 }
 
@@ -92,8 +99,8 @@ beforeEach(() => {
 afterEach(() => {
   restoreEnv();
   globalThis.fetch = originalFetch;
-  // `fetchReleases` caches on globalThis, so a stubbed page must not leak.
-  delete globalWithCache.__ompChamberReleaseCache;
+  // `fetchChangelogNotes` caches on globalThis, so a stubbed page must not leak.
+  delete globalWithCache.__ompChamberChangelogCache;
 });
 
 afterAll(() => {
@@ -181,7 +188,7 @@ describe('GET /api/updates/check', () => {
     // version on every push to `main`, and this suite runs after it.
     const installed = await readInstalledVersion();
     expect(installed).toMatch(/^\d+\.\d+\.\d+/);
-    globalThis.fetch = githubFetch as typeof fetch;
+    globalThis.fetch = updatesFetch as typeof fetch;
     const res = (await checkRoute()) as unknown as Response;
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toBe('no-store');
@@ -213,7 +220,7 @@ describe('GET /api/updates/check', () => {
 
 describe('GET /api/updates/changelog', () => {
   test('builds the release range from the installed version and the stub', async () => {
-    globalThis.fetch = githubFetch as typeof fetch;
+    globalThis.fetch = updatesFetch as typeof fetch;
     const res = (await changelogRoute()) as unknown as Response;
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toBe('no-store');
@@ -225,7 +232,12 @@ describe('GET /api/updates/changelog', () => {
     expect(result.total).toBe(1);
     const versions = result.versions as Array<Record<string, unknown>>;
     expect(versions).toHaveLength(1);
-    expect(versions[0]).toMatchObject({ version: '999.0.0', tag: 'v999.0.0' });
+    expect(versions[0]).toMatchObject({
+      version: '999.0.0',
+      date: '2026-01-01',
+      body: '### Added\n\n* a thing',
+    });
+    expect(result.releaseUrl).toBe('https://github.com/rajebdev/ompchamber/releases/tag/v999.0.0');
     // How this copy updates itself is a fact about the install, always present.
     const install = asRecord(result.install);
     expect(typeof install.method).toBe('string');

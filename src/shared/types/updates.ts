@@ -1,7 +1,8 @@
 /**
- * Shared shapes for the "Check for updates" feature: OMPChamber GitHub
- * releases and the oh-my-pi (`omp`) binary. The client depends on these
- * field names and null semantics, so keep them stable.
+ * Shared shapes for the "Check for updates" feature: OMPChamber and the
+ * oh-my-pi (`omp`) binary, both resolved from npm — the registry each install
+ * actually comes from. The client depends on these field names and null
+ * semantics, so keep them stable.
  */
 
 export type UpdateTarget = 'ompchamber' | 'omp';
@@ -30,18 +31,17 @@ export interface UpdateCheckResult {
 /**
  * One release, as the "What's new" popup reads it.
  *
- * `body` is the release note GitHub serves verbatim, which for this repository
- * is the `CHANGELOG.md` section `release.config.mjs` wrote for that tag — so the
- * popup renders the same prose the changelog carries, without reading the file.
+ * `body` is the `CHANGELOG.md` section `release.config.mjs` wrote for that
+ * version, read from the repository file itself — the same prose the GitHub
+ * release body carries, without a Releases API read.
  */
 export interface ReleaseNote {
   /** Normalized version without the leading `v`. */
   version: string;
-  /** The raw tag, so a link can point at the exact ref. */
-  tag: string;
-  name: string;
+  /** The date the changelog heading carries (`YYYY-MM-DD`), or null. */
+  date: string | null;
+  /** That version's release page, where the same notes are published. */
   url: string;
-  publishedAt: string | null;
   body: string;
 }
 
@@ -71,6 +71,7 @@ export interface UpdateChangelog {
   total: number;
   /** The list was cut by a cap; the newest releases are always kept. */
   truncated: boolean;
+  /** The newest version's release page, for a "what changed" link. */
   releaseUrl: string | null;
   install: UpdateInstallInfo;
   /** Human-readable reason the range is empty, or null. */

@@ -1,18 +1,17 @@
 /**
  * The release range, drawn as one section per version.
  *
- * Each section is the GitHub release body for that tag — which for this project
- * IS the `CHANGELOG.md` section the release pipeline wrote — rendered through the
- * app's own markdown pipeline, so links, bold labels and commit hashes look the
- * same here as they do in a chat message. The body's own leading heading is
- * stripped (see `@/shared/lib/updates/release-body`) because this component
- * draws that heading itself, with the date and the link to the release.
+ * Each section is the version's `CHANGELOG.md` section, read from the repository
+ * file by the server — the same prose the GitHub release body carries — rendered
+ * through the app's own markdown pipeline, so links, bold labels and commit
+ * hashes look the same here as they do in a chat message. The section's own
+ * heading was consumed by the parser (it names the version and the date the
+ * heading carried), so what arrives here is the prose below it.
  */
 
 import type { TargetedMouseEvent } from 'preact';
 import { ExternalLink } from 'lucide-preact';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
-import { splitReleaseBody } from '@/shared/lib/updates/release-body';
 import type { ReleaseNote, UpdateChangelog } from '@/shared/types/updates';
 
 const LINK_CLASS = 'inline-flex items-center gap-1 text-[10px] font-medium text-ink/50 hover:text-ink transition-colors';
@@ -31,15 +30,12 @@ function openLinksExternally(event: TargetedMouseEvent<HTMLDivElement>) {
 }
 
 function ReleaseSection({ note }: { note: ReleaseNote }) {
-  const { date, markdown } = splitReleaseBody(note.body);
-  const published = date ?? note.publishedAt?.slice(0, 10) ?? null;
-
   return (
     <article className="border-t border-ink/10 pt-4 first:border-t-0 first:pt-0">
       <header className="flex items-baseline justify-between gap-3">
         <div className="min-w-0">
           <h3 className="font-mono text-[13px] font-semibold text-ink">v{note.version}</h3>
-          {published && <p className="font-mono text-[10px] text-ink/40">{published}</p>}
+          {note.date && <p className="font-mono text-[10px] text-ink/40">{note.date}</p>}
         </div>
         {note.url && (
           <a href={note.url} target="_blank" rel="noopener noreferrer" className={`${LINK_CLASS} shrink-0`}>
@@ -48,8 +44,8 @@ function ReleaseSection({ note }: { note: ReleaseNote }) {
           </a>
         )}
       </header>
-      {markdown ? (
-        <MarkdownRenderer content={markdown} className="mt-2 text-[12px]" />
+      {note.body ? (
+        <MarkdownRenderer content={note.body} className="mt-2 text-[12px]" />
       ) : (
         <p className="mt-2 text-[11px] text-ink/40">This release was published without notes.</p>
       )}
@@ -74,7 +70,7 @@ export function ReleaseNotes({ data }: { data: UpdateChangelog }) {
         </p>
       )}
       {data.versions.map((note) => (
-        <ReleaseSection key={note.tag || note.version} note={note} />
+        <ReleaseSection key={note.version} note={note} />
       ))}
     </div>
   );

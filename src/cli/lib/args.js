@@ -198,7 +198,7 @@ USAGE:
 
 COMMANDS:
   serve          Start the OMPChamber web server (default when no command is given)
-  update         Update OMPChamber to the latest GitHub release
+  update         Update OMPChamber to the latest version on npm
   stop           Stop the instances the CLI started (--port/--all to stop any)
   restart        Stop and start again (every CLI-started instance, or --port <port>)
   status         Show running instances (every one, or --port <port>)
@@ -233,7 +233,7 @@ ENVIRONMENT:
   OMPCHAMBER_UI_PASSWORD  UI password, hashed into auth.json at startup and then
                           removed from the environment (see --ui-password)
   OMPCHAMBER_OMP_BIN      Path to the omp binary (required; falls back to PATH)
-  GITHUB_TOKEN            Raise the GitHub API rate limit for update checks
+  NPM_CONFIG_REGISTRY     Registry the update check reads (default: registry.npmjs.org)
 
 EXAMPLES:
   ompchamber                       # Start the server on the default port

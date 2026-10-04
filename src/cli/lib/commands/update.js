@@ -1,4 +1,4 @@
-// `ompchamber update` — replace this install with the latest GitHub release.
+// `ompchamber update` — replace this install with the latest version on npm.
 //
 // The installation mechanics live in the shared update engine so the CLI and
 // the console's "Update" button do the same thing; this command owns the
@@ -69,7 +69,7 @@ async function runCheck(pkgRoot, json) {
       method: context.method,
       reason: context.reason,
       error: info.error,
-      releaseUrl: info.release?.url ?? null,
+      releaseUrl: info.latest ? `https://github.com/rajebdev/ompchamber/releases/tag/v${info.latest}` : null,
     });
   } else {
     log(`Current version: ${info.current ?? 'unknown'}`);

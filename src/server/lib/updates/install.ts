@@ -15,7 +15,8 @@
 import { join as joinPath, resolve as resolvePath } from 'node:path';
 
 import { resolveBunBin } from '@/server/lib/lifecycle/bun';
-import { fetchLatestRelease, type GitHubRelease } from '@/server/lib/updates/github';
+import { fetchNpmLatest, OMPCHAMBER_PACKAGE } from '@/server/lib/updates/npm';
+import { releaseTagUrl } from '@/server/lib/updates/release-url';
 import {
   detectInstallMethod,
   isManualMethod,
@@ -23,7 +24,7 @@ import {
   type InstallMethod,
   type InstallMethodInfo,
 } from '@/server/lib/updates/install-method';
-import { isNewer, normalizeVersion } from '@/shared/lib/updates/semver';
+import { isNewer } from '@/shared/lib/updates/semver';
 
 /** Package root of the running copy: src/server/lib/updates -> four levels up. */
 const DEFAULT_PKG_ROOT = resolvePath(import.meta.dir, '..', '..', '..', '..');
@@ -35,10 +36,9 @@ const OUTPUT_LIMIT = 20_000;
 export interface OmpChamberVersionInfo {
   /** Version on disk right now (`package.json`), null when unreadable. */
   current: string | null;
-  /** Newest published release, null when none could be resolved. */
+  /** Newest version published on npm, null when none could be resolved. */
   latest: string | null;
   updateAvailable: boolean;
-  release: GitHubRelease | null;
   error: string | null;
 }
 
@@ -75,9 +75,10 @@ export interface OmpChamberUpdateResult {
   reason: string;
   current: string | null;
   latest: string | null;
-  /** The release version this call targeted. */
+  /** The version this call targeted. */
   version: string | null;
   message: string;
+  /** That version's npm page. */
   releaseUrl: string | null;
   /** Captured command output (tail), for non-streaming callers. */
   output: string;
@@ -109,22 +110,22 @@ export async function readInstalledVersion(pkgRoot = DEFAULT_PKG_ROOT): Promise<
   }
 }
 
-/** Installed version + newest published release, never throws. */
+/**
+ * Installed version + newest published version on npm, never throws.
+ *
+ * The comparison is against npm rather than the GitHub release list because npm
+ * is what the install comes from: `bun add -g ompchamber@<version>` can only
+ * install a published version, and a release tag that never reached the registry
+ * would be offered and then fail to install.
+ */
 export async function resolveOmpChamberVersion(pkgRoot = DEFAULT_PKG_ROOT): Promise<OmpChamberVersionInfo> {
   const current = await readInstalledVersion(pkgRoot);
-  let release: GitHubRelease | null = null;
-  try {
-    release = await fetchLatestRelease();
-  } catch {
-    release = null;
-  }
-  const latest = release ? normalizeVersion(release.tag) : null;
+  const latest = await fetchNpmLatest(OMPCHAMBER_PACKAGE);
   return {
     current,
     latest,
     updateAvailable: Boolean(current && latest && isNewer(latest, current)),
-    release,
-    error: release ? null : 'No OMPChamber release could be resolved',
+    error: latest ? null : 'No OMPChamber release could be resolved',
   };
 }
 
@@ -241,7 +242,7 @@ export async function updateOmpChamber({ force = false, pkgRoot = DEFAULT_PKG_RO
     return fail(err instanceof Error ? err.message : 'Failed to resolve the latest release');
   }
 
-  const resolved = { current: info.current, latest: info.latest, releaseUrl: info.release?.url ?? null };
+  const resolved = { current: info.current, latest: info.latest, releaseUrl: info.latest ? releaseTagUrl(info.latest) : null };
 
   if (!info.latest) {
     return fail(info.error ?? 'No OMPChamber release could be resolved', resolved);
