@@ -7,6 +7,9 @@ import { useSidebarData } from '@/client/hooks/chat/omp/session-list';
 import { useAgentStreamStatus } from '@/client/hooks/chat/omp/status';
 import { StreamStatusDot } from '@/client/components/common/StreamStatusDot';
 import { formatCompactTokens } from '@/shared/lib/format/number';
+import { useModelNames } from '@/client/hooks/models/use-model-names';
+import { useProviderNames } from '@/client/hooks/models/use-provider-names';
+import { providerLabel } from '@/shared/lib/models/provider/label';
 
 interface MobileHeaderProps {
   activeSessionTitle: string;
@@ -41,6 +44,8 @@ export function MobileHeader({
 }: MobileHeaderProps) {
   const { folders } = useSidebarData();
   const streamStatus = useAgentStreamStatus();
+  const modelNames = useModelNames();
+  const providerNames = useProviderNames();
   const [showSessionPicker, setShowSessionPicker] = useState(false);
   const [showTelemetry, setShowTelemetry] = useState(false);
   const [telemetry, setTelemetry] = useState<SessionContextTelemetry | null>(null);
@@ -108,6 +113,23 @@ export function MobileHeader({
   const displayTitle = activeSessionTitle
     ? activeSessionTitle.charAt(0).toUpperCase() + activeSessionTitle.slice(1)
     : 'New session';
+
+  // The telemetry reports the model as `provider/modelId` (omp's own selector).
+  // Split once here so the popover can print the provider and the model on
+  // separate lines and resolve each to its display name — the raw slug reads as
+  // "kenari-jatis/deepseek-v4-1-flash", which names neither the vendor nor the
+  // model as the user picked them.
+  const { providerName, modelName } = useMemo(() => {
+    const selector = telemetry?.modelId ?? '';
+    const slash = selector.indexOf('/');
+    if (slash <= 0) return { providerName: selector, modelName: '' };
+    const providerSlug = selector.slice(0, slash);
+    const modelId = selector.slice(slash + 1);
+    return {
+      providerName: providerLabel(providerSlug, providerNames),
+      modelName: modelNames[modelId] ?? modelId,
+    };
+  }, [telemetry?.modelId, providerNames, modelNames]);
 
   return (
     <header
@@ -236,8 +258,12 @@ export function MobileHeader({
               ) : (
                 <div className="pt-2 space-y-1.5 text-[11px] text-ink/80">
                   <div className="flex justify-between gap-2">
-                    <span className="text-ink/50">Model:</span>
-                    <span className="truncate">{telemetry.modelName || '—'}</span>
+                    <span className="text-ink/50 flex-shrink-0">Provider:</span>
+                    <span className="truncate text-right">{providerName || '—'}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-ink/50 flex-shrink-0">Model:</span>
+                    <span className="truncate text-right">{modelName || '—'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-ink/50">Context:</span>
