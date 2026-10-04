@@ -5,6 +5,24 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.14.0](https://github.com/rajebdev/ompchamber/compare/v3.13.1...v3.14.0) — 2026-10-04
+
+### Added
+
+* **agent:** route a peer-owned session through its instance ([cb890ab](https://github.com/rajebdev/ompchamber/commit/cb890ab06664868f136f584f74e8694748db1b4a))
+* **lifecycle:** read a process parent pid through the platform probe ([890563b](https://github.com/rajebdev/ompchamber/commit/890563bef31764a779ff664d5c2a4b0e098f32d0))
+* **session:** guard a session's omp writer against a second instance ([95183d2](https://github.com/rajebdev/ompchamber/commit/95183d2759fda890e9072d88bc3529c1e13d792a))
+* **session:** serve a peer-owned session by relaying to its instance ([f87728f](https://github.com/rajebdev/ompchamber/commit/f87728fb9be168b6731e535b1bb4405f93150dd5))
+
+### Fixed
+
+* **chat:** stop listing a sent turn twice in the timeline rail ([34efcf7](https://github.com/rajebdev/ompchamber/commit/34efcf7d9e592f66f92bc5e7d67a255394211d9b))
+* **context:** measure an empty session against the selected model's window ([be9a776](https://github.com/rajebdev/ompchamber/commit/be9a776be5e0f6c5561888f7ea5d37da05c71886))
+* **mobile:** move the Plan/Goal toggles to the attachment row on a phone ([b7bd935](https://github.com/rajebdev/ompchamber/commit/b7bd9353c5f07822d3e54e21bfec35d0a59f8767))
+* **mobile:** name the provider and model on separate lines in the header ([8ca4dba](https://github.com/rajebdev/ompchamber/commit/8ca4dba003d3acb717fe2869dc3c442fd9dfea21))
+* **session:** refuse to spawn a writer for a session another process owns ([165c112](https://github.com/rajebdev/ompchamber/commit/165c112e7e4f91abfd1587f043010bb7a75712a1))
+* **ui:** reveal hover-only controls on devices without a cursor ([72035f9](https://github.com/rajebdev/ompchamber/commit/72035f92f5b478632236f04a7879c8dabb6f56be))
+
 ## [3.13.1](https://github.com/rajebdev/ompchamber/compare/v3.13.0...v3.13.1) — 2026-10-03
 
 ### Fixed
