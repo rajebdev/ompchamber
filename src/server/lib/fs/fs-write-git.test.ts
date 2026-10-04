@@ -160,7 +160,6 @@ describe('withConfigLock', () => {
 
   test('a live holder makes the second writer wait for it, then both run', async () => {
     const configPath = join(tempDir('lock'), 'contended.json');
-    const lockPath = `${configPath}.lock`;
     const order: string[] = [];
     const gateA = Promise.withResolvers<void>();
     const first = withConfigLock(configPath, async () => {
@@ -169,17 +168,22 @@ describe('withConfigLock', () => {
       order.push('a-end');
       return 'A';
     });
-    // The holder's lockfile appears as soon as it acquires; no duration guess.
-    for (let i = 0; i < 1_000 && !existsSync(lockPath); i += 1) await yieldLoop();
-    expect(existsSync(lockPath)).toBe(true);
+    // Wait for `first` to be INSIDE its critical section, not for the lockfile:
+    // the file is created by `open` and the holder's pid reaches it only after
+    // `writeFile` + `close` have drained, which takes hundreds of event-loop
+    // turns on a loaded host. Watching the lockfile therefore returned while
+    // `a-start` had not run, and the later assertion saw an empty `order`.
+    for (let i = 0; i < 50_000 && order.length === 0; i += 1) await yieldLoop();
+    expect(order).toEqual(['a-start']);
 
     const second = withConfigLock(configPath, () => {
       order.push('b');
       return 'B';
     });
-    // `first` holds the lock for as long as `gateA` is unresolved, so `second`
-    // can only be blocked here — the assertion cannot race a release.
-    for (let i = 0; i < 50; i += 1) await yieldLoop();
+    // `first` holds the lock until `gateA` resolves, so `b` must not appear —
+    // the wait below only gives `second` a chance to run, and the final order
+    // is what proves mutual exclusion.
+    for (let i = 0; i < 200; i += 1) await yieldLoop();
     expect(order).toEqual(['a-start']);
 
     gateA.resolve();
