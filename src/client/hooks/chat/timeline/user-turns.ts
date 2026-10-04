@@ -121,10 +121,43 @@ export function useUserTurns(deps: UseUserTurnsDeps): UserTurnsState {
     // Until the index lands the mounted rows ARE the rail: a session that
     // already shows turns never renders an empty rail.
     if (!indexed) return mountedTurns;
-    const known = new Set(indexed.map((turn) => turn.id));
+    const knownIds = new Set(indexed.map((turn) => turn.id));
+    // Committed turns with no mounted row of their own. A reconciled echo puts
+    // its own id back on the mounted row, so an entry left in here is one the
+    // mounted window still shows under a DIFFERENT id — the optimistic
+    // `msg-…-user` the composer mounted, awaiting the echo.
+    const mountedIds = new Set(mountedTurns.map((turn) => turn.id));
+    const orphanedCommitted = indexed.filter((turn) => !mountedIds.has(turn.id));
     // Rows the index does not carry yet (a live send, a turn committed after
     // the fetch) are already mounted, so they belong on the rail too.
-    const extra = mountedTurns.filter((turn) => !known.has(turn.id));
+    //
+    // Identity alone is not enough. A sent turn lives under TWO ids for a
+    // moment: the optimistic bubble (`msg-…-user`) and the id omp echoed for
+    // the same request. The `/turns` index reports the echoed id as soon as the
+    // transcript has it, while `localMessages` still carries the optimistic one
+    // until the echo reconciles them — so an id-only match listed one turn
+    // twice, the second entry pointing at a DOM id the reconciliation had
+    // already replaced.
+    //
+    // The pairing is deliberately PER ROW, not a "have I seen this text" set:
+    // a user who sends the same text twice has two turns, and the second must
+    // not be swallowed by the first. So a live row stands down only against an
+    // orphaned committed entry it actually matches, and that entry is consumed
+    // so two identical prompts cannot both pair with one entry. Preview
+    // equality is exact — both sides truncate the same content at
+    // `TURN_PREVIEW_CHARS`, so a real match is byte-identical, while a prefix
+    // test would swallow a genuine short prompt that opens with an earlier
+    // turn's words.
+    const paired = new Set<string>();
+    const extra = mountedTurns.filter((turn) => {
+      if (knownIds.has(turn.id)) return false;
+      const match = orphanedCommitted.find(
+        (entry) => !paired.has(entry.id) && entry.preview === turn.preview,
+      );
+      if (!match) return true;
+      paired.add(match.id);
+      return false;
+    });
     return extra.length > 0 ? [...indexed, ...extra] : indexed;
   }, [indexed, mountedTurns]);
 

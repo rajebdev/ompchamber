@@ -89,11 +89,23 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
     // committed list), and only flushed to history on message_end. omp's
     // message frames are timestamp-identified, not id-identified.
     onMessageUpdate: (msg) => {
-      // React may invoke state updaters more than once (eager-state bailout),
-      // so this ref mutation must stay OUTSIDE the updater to keep it pure.
-      if (msg.role !== 'user' && !isNoticeRow(msg)) optimisticUserIdRef.current = null;
-      // Queue for the next frame, collapsing same-message bursts to the newest
-      // full-content frame; scroll runs once per rendered frame.
+      // The optimistic mark is released when the turn it stands for has been
+      // reconciled (the `msg.role === 'user'` branch below), NOT here.
+      //
+      // Clearing it on any non-user frame was wrong, and it is the whole
+      // duplicate-turn bug: omp streams the ASSISTANT segment before it
+      // re-emits the user turn, so the first assistant `message_update` dropped
+      // the mark and the user echo that followed found no bubble to reconcile
+      // into — it appended a second one. The timeline then showed the turn
+      // twice, and the jump rail listed it twice (`/api/chat/:id/turns` merges
+      // the stored optimistic row onto the JSONL echo only when the two relate,
+      // and a row already carrying omp's id relates to nothing). Measured on
+      // this install: `{"msg-…-user","lanjut"}` and `{"omp-id","lanjut"}` side
+      // by side in the same overlay, and both listed in the rail.
+      //
+      // Leaving it set is safe: it is a per-send slot, overwritten by the next
+      // send and cleared at `agent_end`, and the user branch consumes it only
+      // for the id it actually names.
       queueStreamingUpdate(prev => {
         const placeholderId = aiPlaceholderIdRef.current;
         // Notice rows (e.g. background job done, system alerts) are appended in
@@ -121,6 +133,10 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
           if (pendingId) {
             const pIdx = prev.findIndex(m => m.id === pendingId);
             if (pIdx !== -1) {
+              // Consumed: this echo is the turn the mark stood for, so a later
+              // user frame (a genuine steering delivery) appends normally
+              // instead of reconciling into a row that is already final.
+              optimisticUserIdRef.current = null;
               const reconciled: ChatMessageData = {
                 ...msg,
                 id: msg.id,
@@ -180,7 +196,9 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
       // Apply any coalesced update before the terminal frame so the last chunk
       // is never dropped and the end always runs after it.
       flushStreamingUpdates();
-      if (msg.role !== 'user') optimisticUserIdRef.current = null;
+      // The optimistic mark is NOT cleared here either: `agent_end` owns that,
+      // and the user branch below consumes it on the echo it belongs to. See
+      // `onMessageUpdate` for why an assistant frame must not release it.
       setLocalMessages(prev => {
         const placeholderId = aiPlaceholderIdRef.current;
         // User turn finalization (steering/follow-up): same contract as the
@@ -191,6 +209,7 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
           if (prev.some(m => m.id === msg.id)) {
             next = prev.map(m => (m.id === msg.id ? msg : m));
           } else if (pendingId && prev.some(m => m.id === pendingId)) {
+            optimisticUserIdRef.current = null;
             next = prev.map(m => (m.id === pendingId
               ? { ...msg, id: msg.id, content: m.content, date: m.date, attachments: msg.attachments?.length ? msg.attachments : m.attachments }
               : m));

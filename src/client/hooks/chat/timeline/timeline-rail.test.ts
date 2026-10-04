@@ -133,6 +133,42 @@ describe('useUserTurns', () => {
     expect(rail?.turns[0].index).toBe(4);
   });
 
+  /**
+   * A sent turn lives under TWO ids for a moment: the optimistic bubble the
+   * composer mounted (`msg-…-user`) and the id omp echoed for the same request.
+   * The `/turns` index reports the echoed id as soon as the transcript has it,
+   * while the mounted window still carries the optimistic one until the echo
+   * reconciles them — so an id-only match listed the turn twice, and the extra
+   * entry pointed at a DOM id the reconciliation had already replaced. This is
+   * the duplicate a user sees right after sending a prompt.
+   */
+  test('the same turn under its optimistic and echoed ids is listed once', async () => {
+    const text = 'send this once';
+    committed = { turns: [{ id: 'omp-echo-id', index: 7, preview: text }] };
+    await open('s1', [userMessage('msg-1791000000000-user', text)]);
+    expect(rail?.turns.map((turn) => turn.id)).toEqual(['omp-echo-id']);
+  });
+
+  test('a genuinely new turn is still appended even when another shares a prefix', async () => {
+    committed = { turns: [{ id: 'omp-echo-id', index: 7, preview: 'older turn' }] };
+    await open('s1', [userMessage('msg-1-user', 'a brand new turn')]);
+    expect(rail?.turns.map((turn) => turn.id)).toEqual(['omp-echo-id', 'msg-1-user']);
+  });
+
+  /**
+   * The other side of the same coin: a user who sends the SAME text twice has
+   * two turns, and the second must not be swallowed by the first's preview.
+   * The dedupe is therefore per mounted row against the committed list, not a
+   * global "have I seen this text" filter — a live row only stands down when a
+   * committed entry is genuinely its own (same id, or the same content at the
+   * tail the echo reconciles against).
+   */
+  test('two turns with identical text are still two entries', async () => {
+    committed = { turns: [{ id: 'omp-1', index: 0, preview: 'same text' }] };
+    await open('s1', [userMessage('omp-1', 'same text'), userMessage('msg-2-user', 'same text')]);
+    expect(rail?.turns.map((turn) => turn.id)).toEqual(['omp-1', 'msg-2-user']);
+  });
+
   test('a failed index read leaves the mounted rows standing', async () => {
     committed = null;
     await open('s1', [userMessage('u1', 'kept')]);

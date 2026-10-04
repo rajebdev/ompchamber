@@ -22,6 +22,8 @@ import {
   type OmpAgentCallbacksDeps,
 } from '@/shared/lib/chat/timeline/omp-callbacks';
 import { foldAgentEvent, type OmpAgentFoldDeps } from '@/shared/lib/chat/omp/agent-events';
+import { bindStreamingCoalescer, disposeStreamingCoalescer } from '@/shared/lib/chat/timeline/stream-coalescer';
+import type { SetStateAction } from 'preact/compat';
 import type { ChatMessageData, OmpAgentCallbacks, OmpAgentState } from '@/shared/types';
 
 /** omp's own shape for a completed assistant turn, before the mapper runs. */
@@ -34,6 +36,31 @@ const OMP_ASSISTANT_TURN = {
 const assistantTurn = (id: string): ChatMessageData => ({ id, role: 'ai', content: 'hi' });
 const userTurn = (id: string): ChatMessageData => ({ id, role: 'user', content: 'yo' });
 const noticeRow = (id: string): ChatMessageData => ({ id, role: 'ai', content: '', notice: 'job done' });
+
+/** The callbacks with every dep defaulted; overrides patch one behaviour. */
+function makeCallbacks(overrides: Partial<OmpAgentCallbacksDeps> = {}): OmpAgentCallbacks {
+  const deps: OmpAgentCallbacksDeps = {
+    setGenerating: () => {},
+    setGeneratingVerb: () => {},
+    scrollToBottom: () => {},
+    adoptedSessionIdRef: { current: null },
+    sessionIdRef: { current: 'sess-1' },
+    metaRefreshedRef: { current: null },
+    firstAssistantRef: { current: false },
+    refreshSessionMeta: () => {},
+    setLocalMessages: () => {},
+    aiPlaceholderIdRef: { current: null },
+    optimisticUserIdRef: { current: null },
+    pendingUserDisplaysRef: { current: [] },
+    persistMessages: () => {},
+    abortControllerRef: { current: null },
+    appSettings: {},
+    enqueueExtensionDialog: () => {},
+    withdrawExtensionDialog: () => {},
+    ...overrides,
+  };
+  return createOmpAgentCallbacks(deps);
+}
 
 describe('createOmpAgentCallbacks first-assistant sidebar signal', () => {
   const signals: Array<{ name: string; sessionId?: string }> = [];
@@ -60,29 +87,6 @@ describe('createOmpAgentCallbacks first-assistant sidebar signal', () => {
   afterEach(() => {
     Reflect.deleteProperty(globalThis, 'window');
   });
-
-  function makeCallbacks(): OmpAgentCallbacks {
-    const deps: OmpAgentCallbacksDeps = {
-      setGenerating: () => {},
-      setGeneratingVerb: () => {},
-      scrollToBottom: () => {},
-      adoptedSessionIdRef: { current: null },
-      sessionIdRef: { current: 'sess-1' },
-      metaRefreshedRef: { current: null },
-      firstAssistantRef: { current: false },
-      refreshSessionMeta: () => {},
-      setLocalMessages: () => {},
-      aiPlaceholderIdRef: { current: null },
-      optimisticUserIdRef: { current: null },
-      pendingUserDisplaysRef: { current: [] },
-      persistMessages: () => {},
-      abortControllerRef: { current: null },
-      appSettings: {},
-      enqueueExtensionDialog: () => {},
-      withdrawExtensionDialog: () => {},
-    };
-    return createOmpAgentCallbacks(deps);
-  }
 
   function makeFoldDeps(callbacks: OmpAgentCallbacks): OmpAgentFoldDeps {
     let state: OmpAgentState = { isGenerating: false, connected: true, error: null };
@@ -165,5 +169,121 @@ describe('createOmpAgentCallbacks first-assistant sidebar signal', () => {
     foldAgentEvent({ type: 'message_end', message: { ...OMP_ASSISTANT_TURN, timestamp: 1757943901000 } }, deps);
 
     expect(signals).toHaveLength(2);
+  });
+});
+
+/**
+ * The optimistic user bubble must be reconciled with omp's echo, never left
+ * beside it.
+ *
+ * omp streams the ASSISTANT segment before it re-emits the user turn, so an
+ * assistant frame arrives while the optimistic mark is still the only thing
+ * that knows which bubble the echo belongs to. Clearing the mark on any
+ * non-user frame (the old behaviour, in both `onMessageUpdate` and
+ * `onMessageEnd`) made the echo find no bubble and append a second one — the
+ * turn rendered twice, and `/api/chat/:id/turns` listed it twice, because the
+ * stored optimistic row no longer related to the JSONL echo. Measured on this
+ * install: `{"msg-…-user","lanjut"}` and `{"omp-id","lanjut"}` side by side.
+ *
+ * The mark is now released in exactly two places: the user branch, on the echo
+ * it actually names, and `agent_end`.
+ */
+describe('createOmpAgentCallbacks optimistic user reconciliation', () => {
+  const realRaf = globalThis.requestAnimationFrame;
+  const realCancelRaf = globalThis.cancelAnimationFrame;
+  let frames: Array<(() => void) | null> = [];
+
+  /** Apply every frame the coalescer scheduled. Running the callback INLINE
+   *  would break its batching (the batch assigns `frame` after the callback
+   *  returns), so the frames are collected and drained here. */
+  const drainFrames = () => {
+    const queued = frames;
+    frames = [];
+    for (const fn of queued) fn?.();
+  };
+
+  beforeEach(() => {
+    frames = [];
+    (globalThis as Record<string, unknown>).requestAnimationFrame = (cb: () => void) => {
+      frames.push(cb);
+      return frames.length;
+    };
+    (globalThis as Record<string, unknown>).cancelAnimationFrame = (handle: number) => {
+      frames[handle - 1] = null;
+    };
+  });
+
+  afterEach(() => {
+    // Dispose BEFORE restoring the real rAF: `disposeStreamingCoalescer` cancels
+    // its pending frame through the stub above.
+    disposeStreamingCoalescer();
+    (globalThis as Record<string, unknown>).requestAnimationFrame = realRaf;
+    (globalThis as Record<string, unknown>).cancelAnimationFrame = realCancelRaf;
+  });
+
+  function harness() {
+    let messages: ChatMessageData[] = [
+      { id: 'msg-100-user', role: 'user', content: 'lanjut' },
+      { id: 'msg-101-ai', role: 'ai', content: '' },
+    ];
+    const optimisticUserIdRef = { current: 'msg-100-user' as string | null };
+    const setLocalMessages = (update: SetStateAction<ChatMessageData[]>) => {
+      messages = typeof update === 'function'
+        ? (update as (prev: ChatMessageData[]) => ChatMessageData[])(messages)
+        : update;
+    };
+    // The coalescer's sink is module-level; point it at this harness's state.
+    bindStreamingCoalescer(setLocalMessages, () => {});
+    const callbacks = makeCallbacks({
+      setLocalMessages,
+      aiPlaceholderIdRef: { current: 'msg-101-ai' },
+      optimisticUserIdRef,
+    });
+    const users = () => messages.filter(m => m.role === 'user');
+    return { callbacks, users, optimisticUserIdRef, drainFrames };
+  }
+
+  test('an assistant segment landing before the user echo still reconciles in place', () => {
+    const h = harness();
+
+    h.callbacks.onMessageUpdate?.({ id: 'omp-a1', role: 'ai', content: 'hi' });
+    h.drainFrames();
+    h.callbacks.onMessageUpdate?.({ id: 'omp-u1', role: 'user', content: 'lanjut' });
+    h.drainFrames();
+
+    expect(h.users()).toHaveLength(1);
+    expect(h.users()[0]?.id).toBe('omp-u1');
+    expect(h.optimisticUserIdRef.current).toBeNull();
+  });
+
+  test('the message_end path reconciles the same way', () => {
+    const h = harness();
+
+    h.callbacks.onMessageEnd?.({ id: 'omp-a1', role: 'ai', content: 'hi' });
+    h.callbacks.onMessageEnd?.({ id: 'omp-u1', role: 'user', content: 'lanjut' });
+
+    expect(h.users()).toHaveLength(1);
+    expect(h.users()[0]?.id).toBe('omp-u1');
+  });
+
+  test('a later steering user turn still appends as its own row', () => {
+    const h = harness();
+
+    h.callbacks.onMessageUpdate?.({ id: 'omp-u1', role: 'user', content: 'lanjut' });
+    h.drainFrames();
+    h.callbacks.onMessageUpdate?.({ id: 'omp-u2', role: 'user', content: 'steer now' });
+    h.drainFrames();
+
+    expect(h.users().map(m => m.id)).toEqual(['omp-u1', 'omp-u2']);
+  });
+
+  test('agent_end releases the mark so a next send starts clean', () => {
+    const h = harness();
+
+    h.callbacks.onMessageEnd?.({ id: 'omp-a1', role: 'ai', content: 'hi' });
+    expect(h.optimisticUserIdRef.current).toBe('msg-100-user');
+
+    h.callbacks.onAgentEnd?.({});
+    expect(h.optimisticUserIdRef.current).toBeNull();
   });
 });
