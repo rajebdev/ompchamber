@@ -3,14 +3,23 @@ import type { ChangeEvent } from 'preact/compat';
 import { File as FileIcon, Paperclip, X } from 'lucide-preact';
 import type { Attachment } from '@/shared/types';
 import { attachmentName } from '@/shared/lib/chat/attachments';
+import { ModeToggles } from '@/client/components/workspace/chat-timeline/chat-input/ModeToggles';
+import type { ComposerModes } from '@/client/components/workspace/chat-timeline/chat-input/modes-props';
 
 interface AttachmentToolbarProps {
   attachments: Attachment[];
   onFilesSelected: (files: File[]) => void;
   onRemove: (id: string) => void;
+  /**
+   * Plan/Goal toggles, hosted HERE on a phone and in the bottom toolbar on a
+   * desktop. Both are supplied together or not at all: the row owns the
+   * toggles only when it was handed the slice AND a way to open the modal.
+   */
+  modes?: ComposerModes;
+  onOpenGoal?: () => void;
 }
 
-export function AttachmentToolbar({ attachments, onFilesSelected, onRemove }: AttachmentToolbarProps) {
+export function AttachmentToolbar({ attachments, onFilesSelected, onRemove, modes, onOpenGoal }: AttachmentToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
@@ -50,6 +59,25 @@ export function AttachmentToolbar({ attachments, onFilesSelected, onRemove }: At
             </button>
           </div>
         ))}
+
+        {/* Plan/Goal sit HERE on a phone, not in the bottom row: that row is a
+            single line whose left cluster (model, thinking, access) already
+            fills it, so a third group pushed the voice button under the model
+            label. `ml-auto` keeps them on the row's trailing edge, away from
+            the paperclip and any attachment chips. */}
+        {modes && onOpenGoal && (
+          <div className="ml-auto flex-shrink-0">
+            <ModeToggles
+              plan={modes.plan}
+              goal={modes.goalOpen}
+              goalRecord={modes.goalRecord}
+              pending={modes.pending}
+              onTogglePlan={modes.onTogglePlan}
+              onOpenGoal={onOpenGoal}
+              planAvailable={modes.planAvailable}
+            />
+          </div>
+        )}
       </div>
 
       <input

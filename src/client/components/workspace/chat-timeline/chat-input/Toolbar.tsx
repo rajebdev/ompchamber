@@ -121,7 +121,11 @@ export function ComposerToolbar({
 
         {showAccess && onSelectAccess && <AccessDropdown value={accessMode} onSelect={onSelectAccess} />}
 
-        {showAccess && modes && onOpenGoal && (
+        {/* On a phone the mode toggles live in the row above (the attachment
+            row), because this one is a single line already filled by the
+            model/thinking/access cluster plus voice+send: a third group here
+            pushed voice under the model label. On desktop there is room. */}
+        {!isMobile && showAccess && modes && onOpenGoal && (
           <>
             <div className="w-[1px] h-3 bg-ink/10" />
             <ModeToggles

@@ -272,6 +272,10 @@ export function ChatInput({
         attachments={attachments}
         onFilesSelected={(files) => acceptFiles(files)}
         onRemove={removeAttachment}
+        // The phone hosts the mode toggles here; the desktop keeps them in the
+        // bottom toolbar, which has room. `showAccess` gates both hosts.
+        modes={isMobile && showAccess ? modes : undefined}
+        onOpenGoal={() => setGoalModalOpen(true)}
       />
 
       {/* Refused plan/goal command notice. */}

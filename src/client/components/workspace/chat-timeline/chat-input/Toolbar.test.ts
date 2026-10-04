@@ -53,10 +53,27 @@ interface MountOptions {
   chatRunning?: boolean;
   isMobile?: boolean;
   onStop?: () => void;
+  /** Renders the Plan/Goal group when supplied. */
+  withModes?: boolean;
 }
 
+const MODES = {
+  plan: false,
+  goal: false,
+  goalOpen: false,
+  goalRecord: null,
+  goalContinuation: null,
+  goalEvaluating: false,
+  pending: false,
+  planAvailable: true,
+  error: null,
+  clearError: () => {},
+  onTogglePlan: () => {},
+  onGoalAction: () => {},
+};
+
 /** The selectors are off: this file is about the right-hand action strip. */
-async function mount({ isGenerating, chatRunning, isMobile = false, onStop }: MountOptions): Promise<HTMLElement> {
+async function mount({ isGenerating, chatRunning, isMobile = false, onStop, withModes = false }: MountOptions): Promise<HTMLElement> {
   container = document.createElement('div');
   document.body.appendChild(container);
   await act(async () => {
@@ -75,7 +92,9 @@ async function mount({ isGenerating, chatRunning, isMobile = false, onStop }: Mo
         sendDisabled: false,
         showModel: false,
         showThinking: false,
-        showAccess: false,
+        showAccess: withModes,
+        modes: withModes ? MODES : undefined,
+        onOpenGoal: withModes ? () => {} : undefined,
       }),
       container,
     );
@@ -104,5 +123,33 @@ describe('composer toolbar Stop', () => {
   test('keeps Stop off a phone composer that has no stop handler', async () => {
     const el = await mount({ isGenerating: true, chatRunning: true, isMobile: true, onStop: undefined });
     expect(el.querySelectorAll(stops).length).toBe(0);
+  });
+});
+
+/**
+ * Where the Plan/Goal group is drawn. The bottom row is a single line whose
+ * left cluster already fills it on a 320px phone, so a third group there
+ * pushed the voice button under the model label; the attachment row above has
+ * a second line of room. Desktop keeps the group where it has always been.
+ */
+describe('composer toolbar Plan/Goal host', () => {
+  const plan = '[aria-label="Enter plan mode"]';
+  const goal = '[aria-label="Set a goal"]';
+
+  test('draws the toggles in the bottom row on a desktop', async () => {
+    const el = await mount({ isGenerating: false, isMobile: false, withModes: true });
+    expect(el.querySelectorAll(plan).length).toBe(1);
+    expect(el.querySelectorAll(goal).length).toBe(1);
+  });
+
+  test('leaves the phone bottom row without them, for the attachment row to host', async () => {
+    const el = await mount({ isGenerating: false, isMobile: true, withModes: true });
+    expect(el.querySelectorAll(plan).length).toBe(0);
+    expect(el.querySelectorAll(goal).length).toBe(0);
+  });
+
+  test('draws neither when the composer has no modes at all', async () => {
+    const el = await mount({ isGenerating: false, withModes: false });
+    expect(el.querySelectorAll(plan).length).toBe(0);
   });
 });
