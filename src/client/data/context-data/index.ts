@@ -13,9 +13,11 @@ export function computeSessionContextTelemetry(
   const dateFormatted = `${now.getMonth() + 1}/${now.getDate()}, ${timeFormatted}`;
 
   // If there are no messages, this is a newly started (or empty) session —
-  // show a zeroed telemetry rather than fabricated demo data.
+  // show a zeroed telemetry rather than fabricated demo data. The caller's
+  // `contextLimit` still applies: the window belongs to the model that will
+  // run the first turn, not to a constant.
   if (!messages || messages.length === 0) {
-    return emptyTelemetry(sessionId || 'default', currentTitle);
+    return emptyTelemetry(sessionId || 'default', currentTitle, contextLimit);
   }
 
   let userCount = 0;

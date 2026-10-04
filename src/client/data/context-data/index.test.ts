@@ -86,3 +86,35 @@ describe('computeSessionContextTelemetry context anchor', () => {
     expect(telemetry.contextPercent).toBeLessThanOrEqual(100);
   });
 });
+
+/**
+ * The window a session reports belongs to the model that will run its turns.
+ * A session with no message yet still has one — the model the user picked —
+ * and rendering it against the 1M constant made a 256K model read as 8% of a
+ * window it does not have.
+ */
+describe('computeSessionContextTelemetry selected-model context limit', () => {
+  test('an empty session carries the caller\'s limit, not the 1M default', () => {
+    const telemetry = computeSessionContextTelemetry('ses_empty', 'Empty', [], 256_000);
+    expect(telemetry.contextLimit).toBe(256_000);
+    expect(telemetry.messagesCount).toBe(0);
+  });
+
+  test('a populated session divides by the caller\'s limit', () => {
+    const telemetry = computeSessionContextTelemetry('ses_lim', 'Limit', [
+      userMessage('u1', 'question'),
+      assistantMessage('a1', 'answer'),
+    ], 256_000);
+
+    expect(telemetry.contextLimit).toBe(256_000);
+    expect(telemetry.contextPercent).toBeCloseTo(
+      Number(((telemetry.contextUsed / 256_000) * 100).toFixed(1)),
+      5,
+    );
+  });
+
+  test('omitting the limit keeps the historical constant', () => {
+    const telemetry = computeSessionContextTelemetry('ses_default', 'Default', []);
+    expect(telemetry.contextLimit).toBe(CONTEXT_LIMIT);
+  });
+});

@@ -4,6 +4,8 @@ import { computeSessionContextTelemetry, emptyTelemetry } from '@/client/data/co
 import { isMockMode } from '@/server/mock.server';
 import { loadSessionSource } from '@/server/lib/chat/session-store.server';
 import { computeRealSessionTelemetry } from '@/server/lib/omp/session/telemetry';
+import { CONTEXT_LIMIT } from '@/server/lib/omp/session/telemetry/format';
+import { resolveSelectedModelContextLimit } from '@/server/lib/models/selected-context-limit.server';
 import type { SessionContextTelemetry } from '@/shared/types';
 
 /**
@@ -23,12 +25,17 @@ export async function loader({ request }: LoaderFunctionArgs) {
   try {
     const source = await loadSessionSource(sessionId);
 
+    // A session with no turn yet has no model of its own, so the window shown
+    // is the one belonging to the model the user has PICKED. Read once, before
+    // the branches, because every fallback below needs it.
+    const selectedLimit = await resolveSelectedModelContextLimit() ?? CONTEXT_LIMIT;
+
     if (mock) {
       if (source?.kind === 'messages') {
-        const telemetry = computeSessionContextTelemetry(sessionId, source.title, source.messages);
+        const telemetry = computeSessionContextTelemetry(sessionId, source.title, source.messages, selectedLimit);
         return json({ telemetry: stripRawMessages(telemetry), isMock: true });
       }
-      const defaultMock = emptyTelemetry(sessionId || 'default', 'Session not started');
+      const defaultMock = emptyTelemetry(sessionId || 'default', 'Session not started', selectedLimit);
       return json({ telemetry: defaultMock, isMock: true });
     }
 
@@ -38,11 +45,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
 
     if (source?.kind === 'messages') {
-      const telemetry = computeSessionContextTelemetry(sessionId, source.title, source.messages);
+      const telemetry = computeSessionContextTelemetry(sessionId, source.title, source.messages, selectedLimit);
       return json({ telemetry: stripRawMessages(telemetry), isMock: false });
     }
 
-    const defaultTelemetry = emptyTelemetry('default', 'Session not started');
+    const defaultTelemetry = emptyTelemetry('default', 'Session not started', selectedLimit);
     return json({ telemetry: defaultTelemetry, isMock: false });
   } catch (error: unknown) {
     console.error('Context telemetry loader error:', error);
