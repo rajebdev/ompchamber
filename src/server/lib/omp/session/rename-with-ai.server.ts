@@ -39,6 +39,7 @@ import { getRpcSession, resolveSpawnCwd, startRpcSession } from '@/server/lib/om
 import { PROMPT_ACK_TIMEOUT_MS } from '@/server/lib/omp/rpc/constants';
 import { resolveSessionPathOr404 } from '@/server/lib/omp/session/locator';
 import { markTitleRequestSent, type AutoTitleHost } from '@/server/lib/omp/session/auto-title.server';
+import { resolveSessionOwnership, SessionOwnedElsewhereError } from '@/server/lib/omp/session/ownership.server';
 import { clearSessionFileCaches } from '@/server/lib/omp/session/files';
 import { loadPersistedAccessMode } from '@/shared/lib/omp/config/access-mode.server';
 import { isMockMode } from '@/server/mock.server';
@@ -81,7 +82,12 @@ export async function renameSessionWithAi(sessionId: string): Promise<RenameWith
     const spawnMode = await loadPersistedAccessMode();
     // A session the chamber is not managing still has a transcript on disk, so
     // the child is resumed for this one action — the same spawn the send path
-    // performs, minus the prompt bookkeeping.
+    // performs, minus the prompt bookkeeping. Refused when another process owns
+    // the file: resuming it would make omp fork the session (open-elsewhere).
+    const ownership = await resolveSessionOwnership(sessionId);
+    if (ownership) {
+      return { ok: false, error: new SessionOwnedElsewhereError(sessionId, ownership).message, status: 409 };
+    }
     const started = await startRpcSession(sessionId, resolved.filePath, cwd, resolved.recordedCwd, spawnMode);
     session = started.session;
   }

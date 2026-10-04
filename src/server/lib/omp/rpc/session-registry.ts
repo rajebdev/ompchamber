@@ -16,6 +16,7 @@ import { buildSessionSpawnArgs } from '@/server/lib/omp/rpc/constants';
 import { AgentSessionWrapper } from '@/server/lib/omp/rpc/manager';
 import { syncDiscoveryRootsWatch } from '@/server/lib/omp/config/roots-watch.server';
 import { recordSpawnProvenance } from '@/server/lib/omp/rpc/spawn-provenance';
+import { resolveSessionOwnership, SessionOwnedElsewhereError } from '@/server/lib/omp/session/ownership.server';
 import { DEFAULT_APPROVAL_MODE, type ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 
 export { getSpawnApprovalMode, getSpawnModeEnv, reconcileSpawnApprovalMode } from '@/server/lib/omp/rpc/spawn-provenance';
@@ -117,6 +118,16 @@ export async function startRpcSession(
     return { session: existing, realSessionId: sessionId };
   }
   if (existing?.destroyPromise) await existing.destroyPromise;
+
+  // A session file another omp process already owns must not be resumed: omp
+  // would move THIS child to a sibling file (open-elsewhere), splitting the
+  // conversation and adding a duplicate sidebar row with the same title. The
+  // local registry above cannot see a second chamber instance, so ownership is
+  // read from omp's own lease (see ownership.server.ts).
+  if (sessionFile) {
+    const ownership = await resolveSessionOwnership(sessionId);
+    if (ownership) throw new SessionOwnedElsewhereError(sessionId, ownership);
+  }
 
   const inflight = locks.get(sessionId);
   if (inflight) return inflight;
