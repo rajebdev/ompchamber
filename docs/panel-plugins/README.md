@@ -516,14 +516,18 @@ The two are one pipeline split in two for the same reason the app's are: the npm
 side keeps the `npm` environment's approval gate, the gates and the tarball
 check in one place.
 
-`ui` pins the SDK version at pack time (`workspace:*` becomes the exact version
-in the published tarball), so the packages are released in order and a failed
-SDK release stops the run rather than publishing a `ui` whose dependency is not
-on npm.
+`ui` declares its SDK dependency as `workspace:*`, which becomes an exact
+version in the published tarball — read from `bun.lock`, not from the manifest.
+The release therefore refreshes the lock and commits it with the version, so a
+`ui` release pins the SDK version it was actually built against; and the
+packages are released in order, with a failed SDK release stopping the run
+rather than publishing a `ui` against an SDK that is not there.
 
 **To publish by hand** — a re-run after a failed publish, or a package cut from
 a branch — bump the version in the package's `package.json`, push a matching tag,
-and the same workflow publishes it:
+and the same workflow publishes it. If the package you are bumping is depended
+on by the other (`plugin-sdk`), run `bun install` first so `bun.lock` carries
+the new version:
 
 ```bash
 git tag plugin-sdk/v1.1.0     # or ui/v1.1.0
