@@ -468,6 +468,12 @@ Two behaviours the kit exists to encode:
 - **Session state is not component state.** A component is unmounted when its
   panel is hidden, so a value kept in `useState` alone would be lost on every
   tab switch. `useSessionValue` reads the chamber's store.
+- **Two readers of one key stay in step.** `useSessionValue` re-reads the slot
+  when anything else writes it, so a field and a readout of the same value
+  cannot disagree — a plugin that shows a character count of a note it also
+  edits gets the count updated as the user types. A component's OWN edit is
+  exempt: it keeps what the user typed until the debounce lands, because
+  re-reading the store mid-keystroke would erase it.
 
 ### Styling
 

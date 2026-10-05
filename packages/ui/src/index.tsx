@@ -22,7 +22,7 @@
  *   every tab switch. `useSessionValue` reads the chamber's store.
  */
 
-import { useCallback, useEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 
 /** What the host seeds every plugin component with. */
 export interface PanelContext {
@@ -47,6 +47,21 @@ export interface UiKitServices {
   getSessionValue(sessionId: string | null, key: string): string | null;
   /** Write one per-session value. */
   setSessionValue(sessionId: string | null, key: string, value: string): void;
+  /**
+   * Subscribe to writes of ONE per-session value, from any component.
+   *
+   * Optional so a host built before this seam still runs a newer kit — the
+   * hook degrades to read-on-mount, which is what every host did.
+   *
+   * It exists because `getSessionValue` alone makes two readers of one key
+   * disagree: a component reads the store once and then holds its own copy, so
+   * a field that WRITES a value and a readout that DISPLAYS it are two private
+   * copies of the same fact, and the readout keeps the value it read at mount
+   * forever. That is not a stale pixel — it is the plugin's own UI contradicting
+   * itself, which is exactly what the bundled example does (a note field and a
+   * character count of that note).
+   */
+  subscribeSessionValue?(sessionId: string | null, key: string, listener: () => void): () => void;
   /** Read a text file inside the active workspace. Rejects with the reason. */
   readWorkspaceFile(workspacePath: string | null, relativePath: string): Promise<string>;
 }
@@ -109,23 +124,49 @@ export function useSessionValue(key: string, delayMs = 400): SessionValue {
   const [value, setValue] = useState<string | null>(null);
   const [status, setStatus] = useState<SessionValue['status']>('loading');
   const [error, setError] = useState<string | null>(null);
+  // Distinguishes "this component's own edit" from "someone else wrote the
+  // slot". Only the former may set `saving`, or an unrelated write would mark a
+  // field dirty and write it straight back.
+  const editing = useRef(false);
 
-  useEffect(() => {
-    setStatus('loading');
+  const read = useCallback((): string => {
     try {
-      setValue(requireServices().getSessionValue(sessionId, key) ?? '');
-      setStatus('idle');
+      const stored = requireServices().getSessionValue(sessionId, key) ?? '';
+      setError(null);
+      return stored;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
       setStatus('error');
+      return '';
     }
   }, [sessionId, key]);
+
+  useEffect(() => {
+    editing.current = false;
+    setStatus('loading');
+    setValue(read());
+    setStatus((current) => (current === 'error' ? current : 'idle'));
+  }, [read]);
+
+  // Follow writes from anywhere else — the header readout showing a note's
+  // length, a second view of the same value. Skipped while THIS component is
+  // mid-edit, because its own state is the newer truth until the debounce
+  // lands.
+  useEffect(() => {
+    const api = requireServices();
+    if (!api.subscribeSessionValue) return;
+    return api.subscribeSessionValue(sessionId, key, () => {
+      if (editing.current) return;
+      setValue(read());
+    });
+  }, [sessionId, key, read]);
 
   useEffect(() => {
     if (value === null || status !== 'saving') return;
     const timer = setTimeout(() => {
       try {
         requireServices().setSessionValue(sessionId, key, value);
+        editing.current = false;
         setStatus('saved');
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
@@ -136,6 +177,7 @@ export function useSessionValue(key: string, delayMs = 400): SessionValue {
   }, [sessionId, key, value, status, delayMs]);
 
   const update = useCallback((next: string) => {
+    editing.current = true;
     setValue(next);
     setStatus('saving');
   }, []);

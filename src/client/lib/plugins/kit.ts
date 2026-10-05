@@ -24,6 +24,7 @@
 
 import { configureUiKit } from '@ompchamber/ui';
 import { getSessionValue, setSessionKey } from '@/shared/lib/workspace/session-state/store';
+import { subscribeSessionKey } from '@/shared/lib/workspace/session-state/listeners';
 import { pluginContext, subscribePluginContext } from '@/client/lib/plugins/context';
 
 /**
@@ -55,6 +56,12 @@ export function installUiKit(): void {
       return typeof stored === 'string' ? stored : null;
     },
     setSessionValue: (sessionId, key, value) => setSessionKey(sessionId, `plugin.${key}`, value),
+    // The store's own per-slot bus, so a plugin's write reaches every OTHER
+    // component reading that slot — a note field and a readout of its length are
+    // two readers of one value, and without this the readout keeps whatever it
+    // read at mount.
+    subscribeSessionValue: (sessionId, key, listener) =>
+      subscribeSessionKey(sessionId, `plugin.${key}`, listener),
     readWorkspaceFile,
   });
 }
