@@ -45,7 +45,8 @@
     "typecheck": "tsc",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "publish:plugins": "bash .github/scripts/publish-plugin-packages.sh packages/plugin-sdk packages/ui"
   },
   "dependencies": {
     "@fontsource/fira-code": "^5.3.0",

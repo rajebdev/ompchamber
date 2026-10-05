@@ -1,0 +1,175 @@
+name: Publish Plugin Packages
+
+# Publishes `@ompchamber/plugin-sdk` and `@ompchamber/ui` — the packages a panel
+# plugin imports — to npm.
+#
+# Deliberately separate from `publish.yml`, which ships the app. The two have
+# different cadences and different blast radii: the app is published on a release
+# tag and is what users install, while these packages are a library surface that
+# a plugin author depends on. Folding them together would republish a library on
+# every app release for no reason, and a library fix would have to wait for one.
+#
+# Triggered by pushing a tag `plugin-sdk/v1.2.3` or `ui/v1.2.3`, which must match
+# the version in that package's package.json — the check below refuses the tag
+# otherwise, so a tag can never publish a version nobody wrote down.
+#
+# `workflow_dispatch` re-runs a failed publish. It is safe to re-run: the script
+# skips any package already at its version, so a job that died after the first
+# package finishes the second rather than failing on the first.
+#
+# Required repo secret: NPM_TOKEN — a granular access token with "Read and write"
+# on BOTH @ompchamber packages, or an automation token. Bun reads it from
+# NPM_CONFIG_TOKEN, so the token never lands in a file.
+#
+# Both packages are published PUBLIC: a scoped package defaults to restricted,
+# which would make the SDK uninstallable by anyone but the owner. That is set in
+# each package.json's `publishConfig.access`, not as a flag here, so a manual
+# `bun publish` from a maintainer's machine behaves identically.
+
+on:
+  push:
+    tags:
+      - 'plugin-sdk/v*'
+      - 'ui/v*'
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Which package to publish
+        required: true
+        type: choice
+        options:
+          - plugin-sdk
+          - ui
+          - both
+
+concurrency:
+  # One publish per package at a time. Grouped by the package rather than by the
+  # ref so a `ui` publish cannot start while a `plugin-sdk` one is still running —
+  # `ui` depends on `plugin-sdk`, so their order matters.
+  group: publish-plugins
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # A tag push checks out the tag; a dispatch checks out the branch it was
+          # dispatched from, which is what a re-run wants.
+          ref: ${{ github.ref }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.x
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Fail fast: an unset token would otherwise surface as a bare 401 after the
+      # whole gate run.
+      - name: Check the npm token is configured
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          test -n "$NPM_TOKEN" || {
+            echo "::error::NPM_TOKEN is not set. Add a granular npm access token with read/write on @ompchamber/plugin-sdk and @ompchamber/ui (Settings -> Secrets and variables -> Actions)."
+            exit 1
+          }
+
+      # The gates the app runs, because these packages are part of the same tree
+      # and the same typecheck: a plugin author installs what this publishes, so a
+      # package that does not typecheck must not reach the registry.
+      - name: Typecheck
+        run: bun run lint
+
+      - name: Test
+        run: bun test
+
+      # A tag names a version, and the version in package.json is what npm
+      # receives. A mismatch would publish something nobody asked for.
+      - name: Verify the tag matches the package version
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          pkg="${TAG%%/*}"                       # plugin-sdk/v1.2.3 -> plugin-sdk
+          want="${TAG#*/}"                       # plugin-sdk/v1.2.3 -> v1.2.3
+          dir="packages/$pkg"
+          test -d "$dir" || { echo "::error::Tag $TAG names no package directory ($dir)"; exit 1; }
+          have="v$(bun -e "console.log((await Bun.file('$dir/package.json').json()).version)")"
+          if [ "$want" != "$have" ]; then
+            echo "::error::Tag $TAG expects $want but $dir/package.json says $have"
+            exit 1
+          fi
+          echo "Publishing $pkg at $have"
+
+      # What npm receives, asserted before the token is used: a tarball missing
+      # `src/` (the only thing it ships — these are source packages Bun executes
+      # directly) would publish a package that cannot be imported.
+      #
+      # The check `cd`s into each package. `bun pm pack --dry-run <dir>` does NOT
+      # pack that directory: measured on 1.4.2 it ignores the argument and packs
+      # the CWD, which here is the repo root — a 1467-file, 21 MB tarball that
+      # would pass this check while the real payload was never inspected.
+      - name: Verify the publish payload
+        run: |
+          for dir in packages/plugin-sdk packages/ui; do
+            (cd "$dir" && bun pm pack --dry-run) > /tmp/pack.txt
+            grep -q 'src/' /tmp/pack.txt || { echo "::error::$dir packs no src/"; exit 1; }
+            # The UI kit ships a stylesheet, and a consumer's `import
+            # '@ompchamber/ui/styles.css'` needs its declaration beside it or
+            # TypeScript refuses the import.
+            if [ "$dir" = "packages/ui" ]; then
+              grep -q 'styles.d.css.ts' /tmp/pack.txt || {
+                echo "::error::$dir packs no styles.d.css.ts — a consumer's CSS import would not typecheck"
+                exit 1
+              }
+            fi
+            echo "--- $dir"; tail -3 /tmp/pack.txt
+          done
+
+      # Which packages this run publishes: the tag names one, the dispatch input
+      # names one or both.
+      - name: Resolve the target packages
+        id: target
+        run: |
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            pkg="${GITHUB_REF_NAME%%/*}"
+            echo "dirs=packages/$pkg" >> "$GITHUB_OUTPUT"
+          else
+            case "${{ inputs.package }}" in
+              plugin-sdk) echo "dirs=packages/plugin-sdk" >> "$GITHUB_OUTPUT" ;;
+              ui)         echo "dirs=packages/ui" >> "$GITHUB_OUTPUT" ;;
+              *)          echo "dirs=packages/plugin-sdk packages/ui" >> "$GITHUB_OUTPUT" ;;
+            esac
+          fi
+          cat "$GITHUB_OUTPUT"
+
+      # `ui` depends on `plugin-sdk` at the exact version, so a `both` run has to
+      # put the SDK up first or `ui` installs against a version that is not there.
+      - name: Publish
+        env:
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: bash .github/scripts/publish-plugin-packages.sh ${{ steps.target.outputs.dirs }}
+
+      - name: Summary
+        run: |
+          {
+            echo "### Published plugin packages"
+            echo
+            echo "| package | version |"
+            echo "|---|---|"
+            for dir in ${{ steps.target.outputs.dirs }}; do
+              v="$(bun -e "console.log((await Bun.file('$dir/package.json').json()).version)")"
+              n="$(bun -e "console.log((await Bun.file('$dir/package.json').json()).name)")"
+              echo "| \`$n\` | \`$v\` |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
