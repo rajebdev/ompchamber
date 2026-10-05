@@ -97,6 +97,28 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # `release-packages.yml` shares this workflow's concurrency group, so
+      # whichever of the two runs SECOND starts from a checkout the other has
+      # already moved past — and semantic-release refuses to release when the
+      # local branch is behind the remote ("The local branch main is behind the
+      # remote one, therefore a new version won't be published."). Measured:
+      # this workflow won the group and the packages one silently released
+      # nothing.
+      #
+      # Fast-forwarding is safe in both directions: a package release commit is a
+      # `chore` to this pipeline (no version bump, and its types are hidden from
+      # the changelog), and the app's commit range starts at its own `v*` tag,
+      # which no package tag matches.
+      #
+      # `--ff-only` rather than a reset: a checkout that has diverged is a state
+      # this workflow never intends, and it should fail loudly instead of
+      # silently moving.
+      - name: Sync to the current remote
+        run: |
+          git fetch origin main
+          git merge --ff-only FETCH_HEAD
+          git log --oneline -1
+
       # Never tag a red main. publish.yml re-runs both gates against the
       # tarball, but by then the tag and the release are already published.
       - name: Typecheck

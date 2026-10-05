@@ -14,7 +14,10 @@ name: Release Plugin Packages
 # push a release commit to `main`, and two of those racing means one is rejected
 # as a non-fast-forward. The group is the same string (`release-${ref}`), which
 # is repository-wide across workflows, so one waits for the other. The order
-# they run in does not matter: each one's commit is a `chore` to the other.
+# does not matter, but the group alone is not enough: whichever runs SECOND
+# starts from a checkout the first has moved past, and semantic-release refuses
+# to release when the local branch is behind the remote — while still exiting 0.
+# The "Sync to the current remote" step below is what closes that.
 #
 # **The tags this cuts do NOT trigger `publish-plugins.yml`.** GitHub creates no
 # workflow run for an event raised by `GITHUB_TOKEN` (only `workflow_dispatch`
@@ -84,6 +87,27 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      # The shared concurrency group means whichever release workflow runs
+      # SECOND starts from a checkout the other has already moved past, and
+      # semantic-release refuses to release when the local branch is behind the
+      # remote ("The local branch main is behind the remote one, therefore a new
+      # version won't be published."). Measured on this workflow's first run: the
+      # app's release landed first and this one silently released nothing.
+      #
+      # Fast-forwarding is safe in both directions. The app's release commit is a
+      # `chore` to this pipeline and touches no package directory, so the path
+      # filter drops it; and this workflow's commit range starts at the package's
+      # own tag, so the app's version tag is not one it reads.
+      #
+      # `--ff-only` rather than a reset: a checkout that has diverged is a state
+      # this workflow never intends, and it should fail loudly instead of
+      # silently moving.
+      - name: Sync to the current remote
+        run: |
+          git fetch origin main
+          git merge --ff-only FETCH_HEAD
+          git log --oneline -1
 
       # Never tag a red main. publish-plugins.yml re-runs both gates against the
       # tag before the npm token is used, but by then the tag and the release
