@@ -480,13 +480,13 @@ the palette changes.
 ## Publishing
 
 Maintainers only. `@ompchamber/plugin-sdk` and `@ompchamber/ui` are released
-independently of the app, because they are a library surface with its own
-cadence.
+independently of the app — they are a library surface with its own cadence — but
+they are cut in the SAME run as the app, and BEFORE it.
 
 **The version is derived from your commits — do not bump it by hand.**
-`.github/workflows/release-packages.yml` runs on every push to `main`, right
-beside the app's own release, and each package gets a release only from the
-commits that touched its directory:
+`.github/workflows/release.yml` runs on every push to `main` and has four jobs:
+the packages release, their publish, the app release, then the app's publish.
+Each package gets a release only from the commits that touched its directory:
 
 ```bash
 # ships the app, and NOT the packages: no file under packages/ changed
@@ -500,6 +500,15 @@ git commit -m 'feat(sdk)!: drop the old slot name
 
 BREAKING CHANGE: ...' -- packages/plugin-sdk
 ```
+
+**Why the app waits for the packages.** The app does not ship `packages/`; at
+runtime it resolves `@ompchamber/*` from its own `node_modules`, which is the
+version `bun.lock` records for those workspace packages. Releasing the app first
+would publish pins naming the previous package versions — which is what
+`ompchamber@4.1.1` does today, declaring both packages at `1.0.0` while they are
+at `2.0.0`. The packages job commits the refreshed `bun.lock`, and the app job
+fast-forwards to that commit before it installs and releases, so the pins are
+always current. A failed package release stops the app's for the same reason.
 
 The version rules are the app's, reused rather than restated
 (`release/release-rules.js`), so `feat` is a minor, `fix` is a patch, `!` on a
@@ -572,11 +581,12 @@ the `workspaces` map) and a published install (via `node_modules`). A fixed path
 would be wrong for one of them — the app's `files` list does not ship `packages/`,
 and a plugin cannot fetch these from a registry on its own.
 
-The two published packages are released automatically by
-`.github/workflows/release-packages.yml` on every push to `main`, from the
-Conventional Commits that touched each package; `.github/workflows/publish-plugins.yml`
-is what puts them on npm, and also accepts a `plugin-sdk/vX.Y.Z` or `ui/vX.Y.Z`
-tag for a manual release. See [Publishing](#publishing).
+The two published packages are released automatically by the `packages` job of
+`.github/workflows/release.yml` on every push to `main`, from the Conventional
+Commits that touched each package — before that workflow releases the app;
+`.github/workflows/publish-plugins.yml` is what puts them on npm, and also
+accepts a `plugin-sdk/vX.Y.Z` or `ui/vX.Y.Z` tag for a manual release. See
+[Publishing](#publishing).
 
 Copy its shape:
 

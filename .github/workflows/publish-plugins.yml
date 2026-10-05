@@ -41,7 +41,7 @@ on:
   workflow_dispatch:
     inputs:
       packages:
-        description: 'Space-separated package directories, as release-packages.yml names them'
+        description: 'Space-separated package directories, as the release workflow names them'
         required: false
         type: string
       tag:
@@ -113,7 +113,7 @@ jobs:
       #
       # Three ways in, most specific first:
       #   - a tag push names one package, and its version must match the tag;
-      #   - `packages` is what release-packages.yml dispatches, already a
+      #   - `packages` is what the release workflow dispatches, already a
       #     directory list in catalog order (SDK before UI, which pins it);
       #   - `tag` names one package for a manual re-run of a release whose
       #     publish failed, without re-creating the release;

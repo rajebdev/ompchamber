@@ -2,10 +2,10 @@
 /**
  * Cut a release for every published package that has changes.
  *
- * Run by `.github/workflows/release-packages.yml` on a push to `main`, beside
- * `release.yml` — which does the same job for the app. The two are separate
- * workflows because they release separate things: a `feat(panels)` commit ships
- * the app, and only ships a package if it also touched that package's directory.
+ * Run by the `packages` job of `.github/workflows/release.yml` on a push to
+ * `main`, BEFORE that workflow's `app` job — the app's published
+ * `@ompchamber/*` pins come from `bun.lock`, so the packages must be versioned
+ * and the lock committed before the app releases.
  *
  * Each package is released from the SAME commit range and the same rules as the
  * app (see `release/packages.mjs` for the per-package config, which narrows the

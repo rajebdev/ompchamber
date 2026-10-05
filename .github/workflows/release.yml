@@ -1,43 +1,75 @@
 name: Release
 
-# A push to `main` cuts a release from the Conventional Commits it carries:
-# semantic-release reads the commits since the last `v*` tag, decides the next
-# version from them, writes that version into package.json and CHANGELOG.md,
-# commits those two files, then creates the tag and the GitHub Release.
+# A push to `main` cuts every release this repository makes, in ONE run, in a
+# fixed order: the published packages first, then the app.
 #
-# Publishing to npm is not this workflow's job, and it cannot be chained through
-# the usual `release: published` event either: GitHub creates no workflow run for
-# an event raised by GITHUB_TOKEN (only `workflow_dispatch` and
-# `repository_dispatch` are exempt — see "Triggering a workflow" in the Actions
-# docs). So this workflow dispatches publish.yml itself once a release exists,
-# which keeps the npm side in one place: the `npm` environment's approval gate,
-# the production build, and the tarball verification all stay in publish.yml.
+# The order is the point, not a preference. The app does NOT ship `packages/`
+# (see the `files` list in package.json) — at runtime it resolves
+# `@ompchamber/plugin-sdk` and `@ompchamber/ui` out of its own `node_modules`,
+# which is the version `bun.lock` records for those workspace packages. A
+# `workspace:` spec is substituted from the LOCK, not from the manifest, so the
+# app's published dependency pins are whatever the lock said when the app was
+# released. Releasing the app before the packages therefore publishes stale
+# pins — measured: `ompchamber@4.1.1` on npm declares both packages at `1.0.0`
+# while they are at `2.0.0`, and `@ompchamber/ui@2.0.0` declared
+# `"@ompchamber/plugin-sdk": "1.0.0"` while the SDK was `2.0.0`.
 #
-# `push` is the only trigger, which means a commit message can silently switch this
-# workflow off: GitHub skips the run entirely when the message carries a skip
-# marker — `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]`
-# — and it scans the whole message, not just the subject. The first release of this
-# pipeline was swallowed that way: a commit body quoted the release commit's
-# subject, marker included, so the push created no run at all and the release had to
-# be triggered by hand. Only the bot's release commit is meant to carry a marker,
-# and only so that it does not re-trigger this workflow; never write one into a
-# message you push to `main` yourself.
+# Chaining closes it: the `packages` job bumps the versions and commits the
+# refreshed `bun.lock`, and the `app` job fast-forwards to that commit before it
+# releases — so the app is always built and pinned against the packages that
+# were just released.
 #
-# Rehearsing a release locally is not `--dry-run`: that flag still runs every
-# `prepare` hook — which is where @semantic-release/git commits AND pushes — and
-# semantic-release takes `repositoryUrl` from package.json's `repository` field in
-# preference to the git remote, so rewriting `origin` contains nothing. To rehearse,
-# drop the `@semantic-release/github` entry from release.config.mjs first (that
-# plugin publishes a real release even in dry-run mode), then point the run at a
-# throwaway repository whose URL parses — a bare filesystem path fails with
-# "Invalid URL" from the notes generator:
-#   git init --bare /tmp/sr-origin.git && git push /tmp/sr-origin.git main --tags
-#   node node_modules/semantic-release/bin/semantic-release.js \
-#     --repository-url file:///tmp/sr-origin.git
-# The rehearsal writes the changelog with that scratch URL's links — and with that
-# URL's path parsed as the owner, so the maintainer's own commits come out credited
-# too (the contributor credit is owner-relative, see release/contributors.js). Read
-# the result for structure, not for URLs or attribution.
+# One run also keeps concurrency simple. Two workflows sharing a concurrency
+# group is not a lock: a group is a queue that DROPS pending members as it
+# grows, and sharing one across workflows let each cancel the other's releases.
+# A single workflow with a single group has nothing to cancel.
+#
+# `publish.yml` and `publish-plugins.yml` stay separate and are DISPATCHED, not
+# called: GitHub creates no workflow run for an event raised by `GITHUB_TOKEN`
+# (only `workflow_dispatch` and `repository_dispatch` are exempt — see
+# "Triggering a workflow" in the Actions docs), and dispatching keeps the npm
+# side in one place — the `npm` environment's approval gate, the production
+# build and the tarball verification all stay in those two files.
+#
+# The two release jobs repeat their setup steps rather than sharing them through
+# YAML anchors. GitHub does support anchors, but an alias that carries an entire
+# step into a DIFFERENT job is not a shape the documented examples cover, and
+# this is a release pipeline: a parser that rejects it means no release at all,
+# silently, on the push that needed one. Six short steps duplicated is the
+# cheaper failure mode.
+#
+# `push` is the only trigger, which means a commit message can silently switch
+# this workflow off: GitHub skips the run entirely when the message carries a
+# skip marker — `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`,
+# `[actions skip]` — and it scans the whole message, not just the subject. The
+# first release of this pipeline was swallowed that way: a commit body quoted
+# the release commit's subject, marker included, so the push created no run at
+# all and the release had to be triggered by hand. Only the bot's release
+# commits are meant to carry a marker, and only so they do not re-trigger this
+# workflow; never write one into a message you push to `main` yourself.
+#
+# Rehearsing locally is NOT `--dry-run` on the app pipeline: that flag still runs
+# every `prepare` hook — which is where @semantic-release/git commits AND pushes
+# — and semantic-release takes `repositoryUrl` from package.json's `repository`
+# field in preference to the git remote, so rewriting `origin` contains nothing.
+# **A rehearsal without care writes to production**: measured, a "scratch" clone
+# pushed two release commits and two tags to the real repository and the branch
+# had to be reverted by hand.
+#
+#   - packages: `node release/release-packages.mjs --dry-run` cuts nothing and
+#     pushes nothing (it skips every `prepare` step), and refuses to run without
+#     `--dry-run` outside CI unless `OMPCHAMBER_RELEASE_ALLOW_NON_CI=1`.
+#   - app: drop the `@semantic-release/github` entry from release.config.mjs
+#     first (that plugin publishes a real release even in dry-run mode), then
+#     point the run at a throwaway repository whose URL parses — a bare
+#     filesystem path fails with "Invalid URL" from the notes generator:
+#       git init --bare /tmp/sr-origin.git && git push /tmp/sr-origin.git main --tags
+#       node node_modules/semantic-release/bin/semantic-release.js \
+#         --repository-url file:///tmp/sr-origin.git
+#     The rehearsal writes the changelog with that scratch URL's links — and with
+#     that URL's path parsed as the owner, so the maintainer's own commits come
+#     out credited too (the credit is owner-relative, see release/contributors.js).
+#     Read the result for structure, not for URLs or attribution.
 
 on:
   push:
@@ -45,39 +77,25 @@ on:
   workflow_dispatch:
 
 # One release at a time, never cancelled: an interrupted run leaves a tag whose
-# release commit never landed.
-#
-# The group is PER WORKFLOW (`release-app-*` here, `release-packages-*` there),
-# and that is deliberate. An earlier revision shared one group across both,
-# reasoning that both push a release commit to `main`. It broke the app release:
-# two pushes in quick succession put four runs in the one group, and GitHub
-# cancelled the app's runs to keep the queue bounded — measured, `Release` came
-# back `cancelled` on two consecutive pushes while the packages workflow took
-# the slot both times. A group is not a lock; it is a queue that drops pending
-# members when it grows, so sharing it across workflows lets one workflow's
-# releases be cancelled by the other's.
-#
-# The cross-workflow push race is real but narrow, and it is handled where it
-# happens instead: the release step below fast-forwards to the current remote
-# first, so the window between reading the branch and pushing to it is the few
-# seconds semantic-release spends on the release itself. A collision would fail
-# this run loudly (a non-fast-forward from @semantic-release/git), not silently,
-# and the commits it missed are still in range for the next push.
+# release commit never landed. `cancel-in-progress: false` means a queued run
+# waits rather than replacing this one — and because every release now lives in
+# this single workflow, there is no second group to collide with.
 concurrency:
-  group: release-app-${{ github.ref }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: Cut the release
+  # ---------------------------------------------------------------------------
+  # 1. The published packages. Runs first because the app is pinned to them.
+  # ---------------------------------------------------------------------------
+  packages:
+    name: Release the plugin packages
     runs-on: ubuntu-latest
     outputs:
+      any: ${{ steps.release.outputs.any }}
       released: ${{ steps.release.outputs.released }}
-      tag: ${{ steps.release.outputs.tag }}
-    # `contents` creates the tag, the release and the release commit.
-    # `issues`/`pull-requests` are for the plugin's success hook, which comments
-    # on any issue a released commit references — without them the run would fail
-    # after the release already exists.
+    # `contents` creates the tags, the releases and the release commits.
+    # `issues`/`pull-requests` are for the GitHub plugin's success hook.
     permissions:
       contents: write
       issues: write
@@ -86,11 +104,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          # The version is derived from the commits since the last tag, so a
-          # shallow clone would see no history and cut no release.
+          # Both releases derive their version from commits since a tag, so a
+          # shallow clone would see no history and cut nothing.
           fetch-depth: 0
           # Keep the token in the checkout's git config: @semantic-release/git
-          # pushes the release commit with it.
+          # pushes the release commits with it.
           persist-credentials: true
 
       - name: Setup Bun
@@ -106,19 +124,12 @@ jobs:
         with:
           node-version: 24
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      # `release-packages.yml` can be pushing a release commit at the same
-      # moment, so the checkout may already be behind the remote when this
-      # starts — and semantic-release refuses to release in that state
-      # ("The local branch main is behind the remote one, therefore a new
-      # version won't be published.") while still exiting 0.
-      #
-      # Fast-forwarding is safe in both directions: a package release commit is
-      # a `chore` to this pipeline (no version bump, and its types are hidden
-      # from the changelog), and the app's commit range starts at its own `v*`
-      # tag, which no package tag matches.
+      # semantic-release refuses to release when the local branch is behind the
+      # remote — "The local branch main is behind the remote one, therefore a new
+      # version won't be published." — and it exits 0 while doing it, so a
+      # checkout that starts behind releases nothing and reports success.
+      # Measured on this pipeline's first run: the app's release had landed first
+      # and the packages run silently cut no release.
       #
       # `--ff-only` rather than a reset: a checkout that has diverged is a state
       # this workflow never intends, and it should fail loudly instead of
@@ -129,8 +140,113 @@ jobs:
           git merge --ff-only FETCH_HEAD
           git log --oneline -1
 
-      # Never tag a red main. publish.yml re-runs both gates against the
-      # tarball, but by then the tag and the release are already published.
+      # After the sync, so a lockfile the previous run committed is the one
+      # installed.
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Never tag a red main. Both publish workflows re-run these against the
+      # tarball before a token is used, but by then the tag and the release
+      # already exist.
+      - name: Typecheck
+        run: bun run lint
+
+      - name: Test
+        run: bun test
+
+      - name: Release the packages
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The release commits are attributed to the App, not to
+          # semantic-release's own default (`semantic-release-bot
+          # <semantic-release-bot@martynus.net>`, see COMMIT_NAME/COMMIT_EMAIL in
+          # semantic-release's constants). The library writes those into the
+          # child env and then spreads the caller's env OVER them, and
+          # @semantic-release/git has no author option — these four variables are
+          # the only way to change it. The id is the App's USER id (NOT its app
+          # id): `gh api /users/ompchamber-bot[bot] --jq .id`.
+          GIT_AUTHOR_NAME: ompchamber-bot[bot]
+          GIT_AUTHOR_EMAIL: 333284999+ompchamber-bot[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: ompchamber-bot[bot]
+          GIT_COMMITTER_EMAIL: 333284999+ompchamber-bot[bot]@users.noreply.github.com
+        # Per-package version rules, path scoping and the lockfile refresh live
+        # in release/packages.mjs, release/version-package.mjs and
+        # release/packages.js. This script reports what it released in
+        # GITHUB_OUTPUT, because a package that released nothing must not be
+        # dispatched to publish.
+        run: node release/release-packages.mjs
+
+  packages-publish:
+    name: Publish the released packages
+    needs: packages
+    if: needs.packages.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    # `actions: write` is what `gh workflow run` needs. `workflow_dispatch` is
+    # the one event GITHUB_TOKEN is allowed to raise.
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch publish-plugins.yml for ${{ needs.packages.outputs.released }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # This job never checks out, so there is no `.git` for gh to read the
+          # repository out of; GH_REPO is what it would otherwise infer.
+          GH_REPO: ${{ github.repository }}
+          PACKAGES: ${{ needs.packages.outputs.released }}
+        # Fire and report, never wait: publish-plugins.yml waits on the `npm`
+        # environment, which may require review, and a reviewer should not be
+        # holding this run open. Its own run is separate and re-runnable:
+        #   gh workflow run publish-plugins.yml -f packages="packages/plugin-sdk"
+        run: gh workflow run publish-plugins.yml --ref main -f packages="$PACKAGES"
+
+  # ---------------------------------------------------------------------------
+  # 2. The app. Waits for the packages, so its dependency pins are current.
+  # ---------------------------------------------------------------------------
+  app:
+    name: Release the app
+    needs: packages
+    runs-on: ubuntu-latest
+    outputs:
+      released: ${{ steps.release.outputs.released }}
+      tag: ${{ steps.release.outputs.tag }}
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      # Same setup as the `packages` job — see the note at the top of this file
+      # for why it is repeated rather than aliased.
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.x
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      # THIS is the step the ordering exists for. The `packages` job committed a
+      # refreshed `bun.lock` carrying the new package versions, and syncing picks
+      # it up BEFORE the install and the release — so the app's published
+      # `@ompchamber/*` pins name the versions that were just released instead of
+      # the previous ones.
+      - name: Sync to the current remote
+        run: |
+          git fetch origin main
+          git merge --ff-only FETCH_HEAD
+          git log --oneline -1
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
       - name: Typecheck
         run: bun run lint
 
@@ -141,13 +257,6 @@ jobs:
         id: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # The release commit is attributed to the App, not to semantic-release's
-          # own default (`semantic-release-bot <semantic-release-bot@martynus.net>`,
-          # see COMMIT_NAME/COMMIT_EMAIL in semantic-release's constants). The
-          # library writes those into the child env and then spreads the caller's
-          # env OVER them, and @semantic-release/git has no author option — these
-          # four variables are the only way to change it.
-          # The id is the App's USER id (NOT its app id): `gh api /users/ompchamber-bot[bot] --jq .id`.
           GIT_AUTHOR_NAME: ompchamber-bot[bot]
           GIT_AUTHOR_EMAIL: 333284999+ompchamber-bot[bot]@users.noreply.github.com
           GIT_COMMITTER_NAME: ompchamber-bot[bot]
@@ -167,28 +276,17 @@ jobs:
             echo "tag=$after" >> "$GITHUB_OUTPUT"
           fi
 
-  publish:
-    name: Publish the release
-    needs: release
-    if: needs.release.outputs.released == 'true'
+  app-publish:
+    name: Publish the app release
+    needs: app
+    if: needs.app.outputs.released == 'true'
     runs-on: ubuntu-latest
-    # `actions: write` is what `gh workflow run` needs. `workflow_dispatch` is
-    # the one event GITHUB_TOKEN is allowed to raise, which is why the npm side
-    # is dispatched rather than triggered off the release.
     permissions:
       actions: write
     steps:
-      - name: Dispatch publish.yml for ${{ needs.release.outputs.tag }}
+      - name: Dispatch publish.yml for ${{ needs.app.outputs.tag }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # This job never checks out, so there is no `.git` for gh to read the
-          # repository out of and it dies on `failed to run git: fatal: not a git
-          # repository` before reaching the API at all. GH_REPO is what gh would
-          # otherwise infer from the working directory.
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ needs.release.outputs.tag }}
-        # Fire and report, never wait: publish.yml waits on the `npm`
-        # environment, which may require review, and a reviewer should not be
-        # holding this run open. Its own run is separate and re-runnable:
-        #   gh workflow run publish.yml -f tag=vX.Y.Z
+          TAG: ${{ needs.app.outputs.tag }}
         run: gh workflow run publish.yml --ref main -f tag="$TAG"
