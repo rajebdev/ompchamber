@@ -10,14 +10,18 @@ name: Release Plugin Packages
 # that package's own tag, and the analyzer only sees commits that touched its
 # directory.
 #
-# **`release.yml` shares this workflow's concurrency group, deliberately.** Both
-# push a release commit to `main`, and two of those racing means one is rejected
-# as a non-fast-forward. The group is the same string (`release-${ref}`), which
-# is repository-wide across workflows, so one waits for the other. The order
-# does not matter, but the group alone is not enough: whichever runs SECOND
-# starts from a checkout the first has moved past, and semantic-release refuses
-# to release when the local branch is behind the remote — while still exiting 0.
-# The "Sync to the current remote" step below is what closes that.
+# **The concurrency group is PER WORKFLOW, deliberately.** An earlier revision
+# shared one group with `release.yml`, reasoning that both push a release commit
+# to `main`. It broke the app release: two pushes in quick succession put four
+# runs in the one group, and GitHub cancelled the app's runs to keep the queue
+# bounded — measured, `Release` came back `cancelled` on two consecutive pushes
+# while this workflow took the slot both times. A concurrency group is a queue
+# that drops pending members as it grows, not a lock, so sharing one across
+# workflows lets either workflow's releases be cancelled by the other's.
+#
+# The cross-workflow push race is handled where it happens: the "Sync to the
+# current remote" step below fast-forwards first, and a collision fails this run
+# loudly (a non-fast-forward from @semantic-release/git) rather than silently.
 #
 # **The tags this cuts do NOT trigger `publish-plugins.yml`.** GitHub creates no
 # workflow run for an event raised by `GITHUB_TOKEN` (only `workflow_dispatch`
@@ -46,8 +50,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  # Shared with release.yml on purpose — see the note above.
-  group: release-${{ github.ref }}
+  # Per workflow, deliberately — see the note at the top of this file.
+  group: release-packages-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:

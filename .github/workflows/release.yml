@@ -47,12 +47,24 @@ on:
 # One release at a time, never cancelled: an interrupted run leaves a tag whose
 # release commit never landed.
 #
-# The group is deliberately the SAME string `release-packages.yml` uses. Both
-# push a release commit to `main`, and two of those racing means one is rejected
-# as a non-fast-forward. `concurrency` groups are repository-wide across
-# workflows, so a shared group is what makes one wait for the other.
+# The group is PER WORKFLOW (`release-app-*` here, `release-packages-*` there),
+# and that is deliberate. An earlier revision shared one group across both,
+# reasoning that both push a release commit to `main`. It broke the app release:
+# two pushes in quick succession put four runs in the one group, and GitHub
+# cancelled the app's runs to keep the queue bounded — measured, `Release` came
+# back `cancelled` on two consecutive pushes while the packages workflow took
+# the slot both times. A group is not a lock; it is a queue that drops pending
+# members when it grows, so sharing it across workflows lets one workflow's
+# releases be cancelled by the other's.
+#
+# The cross-workflow push race is real but narrow, and it is handled where it
+# happens instead: the release step below fast-forwards to the current remote
+# first, so the window between reading the branch and pushing to it is the few
+# seconds semantic-release spends on the release itself. A collision would fail
+# this run loudly (a non-fast-forward from @semantic-release/git), not silently,
+# and the commits it missed are still in range for the next push.
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-app-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -97,18 +109,16 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # `release-packages.yml` shares this workflow's concurrency group, so
-      # whichever of the two runs SECOND starts from a checkout the other has
-      # already moved past — and semantic-release refuses to release when the
-      # local branch is behind the remote ("The local branch main is behind the
-      # remote one, therefore a new version won't be published."). Measured:
-      # this workflow won the group and the packages one silently released
-      # nothing.
+      # `release-packages.yml` can be pushing a release commit at the same
+      # moment, so the checkout may already be behind the remote when this
+      # starts — and semantic-release refuses to release in that state
+      # ("The local branch main is behind the remote one, therefore a new
+      # version won't be published.") while still exiting 0.
       #
-      # Fast-forwarding is safe in both directions: a package release commit is a
-      # `chore` to this pipeline (no version bump, and its types are hidden from
-      # the changelog), and the app's commit range starts at its own `v*` tag,
-      # which no package tag matches.
+      # Fast-forwarding is safe in both directions: a package release commit is
+      # a `chore` to this pipeline (no version bump, and its types are hidden
+      # from the changelog), and the app's commit range starts at its own `v*`
+      # tag, which no package tag matches.
       #
       # `--ff-only` rather than a reset: a checkout that has diverged is a state
       # this workflow never intends, and it should fail loudly instead of
