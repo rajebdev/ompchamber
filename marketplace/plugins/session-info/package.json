@@ -1,0 +1,55 @@
+{
+  "name": "session-info",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shows the active workspace and keeps a note per session.",
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/index.html src/scratch.html --outdir dist --target browser --minify"
+  },
+  "dependencies": {
+    "preact": "^10.29.8"
+  },
+  "ompchamber": {
+    "id": "session-info",
+    "name": "Session Info",
+    "version": "1.0.0",
+    "description": "Shows the active workspace and keeps a note per session.",
+    "panels": [
+      {
+        "id": "info",
+        "title": "Session Info",
+        "position": "right",
+        "entry": "dist/index.html",
+        "capabilities": [
+          "theme",
+          "session-state"
+        ],
+        "minWidth": 300,
+        "defaultFraction": 0.35
+      },
+      {
+        "id": "scratch",
+        "title": "Scratchpad",
+        "position": "editor",
+        "entry": "dist/scratch.html",
+        "capabilities": [
+          "theme",
+          "session-state"
+        ]
+      }
+    ]
+  },
+  "peerDependencies": {
+    "@ompchamber/plugin-sdk": "*",
+    "@ompchamber/ui": "*"
+  },
+  "peerDependenciesMeta": {
+    "@ompchamber/plugin-sdk": {
+      "optional": true
+    },
+    "@ompchamber/ui": {
+      "optional": true
+    }
+  }
+}

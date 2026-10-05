@@ -84,7 +84,7 @@ export function PluginSidebarList({
                 view === segment.id ? 'bg-paper text-ink shadow-2xs' : 'text-ink/60 hover:text-ink'
               }`}
             >
-              <span>{segment.label}</span>
+              <span className="truncate">{segment.label}</span>
               <span className="font-mono text-[10px] text-ink/50">{segment.count}</span>
             </button>
           ))}

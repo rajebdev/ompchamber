@@ -10,6 +10,10 @@ export type SettingsCategoryId =
   | 'notifications'
   | 'usage'
   | 'token-usage'
+  /** Panel plugins — the chamber's own extension surface (marketplaces of
+   *  sandboxed panel views). Deliberately NOT under LIBRARY, which holds omp's
+   *  plugins: these are chamber surfaces omp has no concept of. */
+  | 'panel-plugins'
   // WORKSPACE
   | 'projects'
   // OMP

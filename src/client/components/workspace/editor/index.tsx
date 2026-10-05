@@ -2,25 +2,23 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { TargetedKeyboardEvent } from 'preact';
 import { AlertTriangle, Loader2 } from 'lucide-preact';
 import { FileIcon } from '@/client/components/common/file-icon';
-import { CodeSurface, type CodeSurfaceHandle } from '@/client/components/common/code-surface';
-import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
-import { useScrollbarFade, scrollbarFadeClass } from '@/client/hooks/ui/scrollbar-fade';
+import { useScrollbarFade } from '@/client/hooks/ui/scrollbar-fade';
 import { EditorTabs } from '@/client/components/workspace/editor/Tabs';
 import { EditorToolbar } from '@/client/components/workspace/editor/Toolbar';
-import { FindWidget } from '@/client/components/workspace/editor/FindWidget';
-import { CommandPalette } from '@/client/components/workspace/editor/CommandPalette';
 import { EDITOR_KEY_BINDINGS, isFindBarCommand, type EditorCommand } from '@/shared/lib/code/editor/keymap';
 import {
   EDITOR_DEFAULT_FONT_SIZE,
-  EDITOR_LINE_HEIGHT,
   EDITOR_MAX_FONT_SIZE,
   EDITOR_MIN_FONT_SIZE,
 } from '@/shared/lib/code/editor/typography';
 import { useEditorFontStack } from '@/client/hooks/editor/font';
 import type { TextRange } from '@/shared/lib/code/editor/commands';
+import type { CodeSurfaceHandle } from '@/client/components/common/code-surface';
 import { resolveBinding } from '@/shared/lib/ui/key-binding';
 import { ImageViewer } from '@/client/components/common/image-viewer';
 import { DiffPanel } from '@/client/components/workspace/diff-panel';
+import { PluginPanelView } from '@/client/components/workspace/panel-host/view';
+import { FileDocument } from '@/client/components/workspace/editor/FileDocument';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { useSessionStateContext } from '@/client/hooks/workspace/session-state/context';
 import { getSessionValue } from '@/shared/lib/workspace/session-state/store';
@@ -195,7 +193,6 @@ export function Editor({
     );
   }
 
-  const currentContent = editor.content;
   const isMd = activeFile?.name.endsWith('.md');
   const isPreview = activeFile ? previewMode[activeFile.id] : false;
 
@@ -213,7 +210,14 @@ export function Editor({
       />
 
       {activeFile ? (
-        activeFile.isDiff ? (
+        activeFile.isPluginPanel ? (
+          <PluginPanelView
+            panelKey={activeFile.isPluginPanel}
+            active
+            workspacePath={activeFile.root ?? null}
+            className="flex-1 min-h-0"
+          />
+        ) : activeFile.isDiff ? (
           <DiffPanel
             filePath={activeFile.path}
             status={activeFile.diffStatus || 'M'}
@@ -268,68 +272,22 @@ export function Editor({
                 <span className="text-[11px] text-ink/50 font-mono break-all">{editor.loadError}</span>
               </div>
             ) : (
-              <div className="relative flex-1 min-h-0 flex flex-col">
-                {find.open ? <FindWidget find={find} /> : null}
-                {paletteOpen ? <CommandPalette onRun={runCommand} onClose={() => setPaletteOpen(false)} /> : null}
-                <div onScroll={handleScroll} className={`flex-1 overflow-auto bg-paper flex ${scrollbarFadeClass(isScrolling)}`}>
-                  {(isMd && isPreview) ? (
-                    // No `prose` wrapper: markdown is styled by `.prose-content`
-                    // alone (the same system the chat timeline uses). The
-                    // typography plugin fought it — `.prose img` added 2em
-                    // vertical margins that ballooned a badge row into its own
-                    // line box, and `--tw-prose-*` colors ignored the theme.
-                    <div className="p-6 max-w-4xl mx-auto font-sans flex-1" style={{ fontSize: `${zoomLevel}px` }}>
-                      <MarkdownRenderer
-                        content={currentContent}
-                        document
-                        scope={{ path: activeFile.path, root: activeFile.root, repo: activeFile.repo }}
-                      />
-                    </div>
-                  ) : (
-                    <CodeSurface
-                      ref={surfaceRef}
-                      value={currentContent}
-                      onValueChange={editor.onChange}
-                      language={editor.language}
-                      wordWrap={wordWrap}
-                      marks={find.open ? find.matches : undefined}
-                      currentMark={find.currentIndex}
-                      occurrences={occurrences}
-                      onOccurrencesChange={setOccurrences}
-                      onCommand={runCommand}
-                      rootClassName="flex"
-                      gutterClassName="flex flex-col text-right pl-4 pr-3 select-none text-ink/30 font-mono border-r border-ink/10 bg-canvas sticky left-0 z-10"
-                      gutterStyle={{
-                        fontSize: zoomLevel,
-                        paddingTop: 16,
-                        paddingBottom: 16,
-                        lineHeight: EDITOR_LINE_HEIGHT,
-                        fontFamily: editorFontFamily,
-                      }}
-                      gutterLineClassName="min-w-[1.5rem]"
-                      // `min-w-max` keeps a long line intact and lets the panel
-                      // scroll sideways; while wrapping it would instead widen the
-                      // column past the panel, so the toggle had no effect at all.
-                      editorWrapperClassName={`flex-1 code-surface ${wordWrap ? 'min-w-0' : 'min-w-max'}`}
-                      editorPadding={16}
-                      editorClassName="font-mono focus:outline-none"
-                      editorStyle={{
-                        fontFamily: editorFontFamily,
-                        fontSize: zoomLevel,
-                        lineHeight: EDITOR_LINE_HEIGHT,
-                        minHeight: '100%',
-                        // Breathing room under the last line. It has to live on the
-                        // surface, not on the scroll container: a scroll container's
-                        // own bottom padding is not part of its scrollable overflow,
-                        // so `pb-*` on the scroller left the last line flush with the
-                        // panel's edge (measured: padding-bottom 32px did not change
-                        // scrollHeight by a single pixel).
-                        paddingBottom: 16,
-                      }}
-                    />
-                  )}
-                </div>
-              </div>
+              <FileDocument
+                activeFile={activeFile}
+                editor={editor}
+                find={find}
+                surfaceRef={surfaceRef}
+                paletteOpen={paletteOpen}
+                onClosePalette={() => setPaletteOpen(false)}
+                onRunCommand={runCommand}
+                onScroll={handleScroll}
+                isScrolling={isScrolling}
+                wordWrap={wordWrap}
+                zoomLevel={zoomLevel}
+                editorFontFamily={editorFontFamily}
+                occurrences={occurrences}
+                onOccurrencesChange={setOccurrences}
+              />
             )}
           </>
         )

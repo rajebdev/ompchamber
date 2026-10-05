@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-preact';
-import { BarChart3, Bell, BookOpen, Bot, Boxes, Cloud, Coins, Cpu, FolderGit, Library, MessageSquare, Palette, Plug, RefreshCw, Search, Sliders, Terminal, X } from 'lucide-preact';
+import { BarChart3, Bell, BookOpen, Bot, Boxes, Cloud, Coins, Cpu, FolderGit, Library, MessageSquare, Palette, Plug, Puzzle, RefreshCw, Search, Sliders, Terminal, X } from 'lucide-preact';
 import type { SettingsCategoryId } from '@/shared/types';
 
 export interface CategoryDef {
@@ -18,6 +18,7 @@ export const SETTINGS_CATEGORIES: CategoryDef[] = [
   { id: 'notifications', label: 'Notifications', icon: Bell, section: 'OMPCHAMBER', description: 'Build failure alerts, sounds, and system popups.' },
   { id: 'usage', label: 'Usage', icon: BarChart3, section: 'OMPCHAMBER', description: 'Build minutes quota, storage, and general usage.' },
   { id: 'token-usage', label: 'Token Usage', icon: Coins, section: 'OMPCHAMBER', description: 'Token telemetry, cache, and cost breakdown.' },
+  { id: 'panel-plugins', label: 'Panel Plugins', icon: Puzzle, section: 'OMPCHAMBER', description: 'Chamber marketplaces of sandboxed right-panel and editor-panel views.' },
   // WORKSPACE
   { id: 'projects', label: 'Projects', icon: FolderGit, section: 'WORKSPACE', description: 'Workspace directories, roots, and ignored paths.' },
   // OMP

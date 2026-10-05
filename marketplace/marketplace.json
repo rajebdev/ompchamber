@@ -1,0 +1,13 @@
+{
+  "name": "OMPChamber",
+  "description": "Panels bundled with OMPChamber, plus the ones you install from a git URL.",
+  "owner": { "name": "OMPChamber" },
+  "plugins": [
+    {
+      "name": "session-info",
+      "source": "plugins/session-info",
+      "description": "Shows the active workspace and keeps a note per session.",
+      "category": "utility"
+    }
+  ]
+}
