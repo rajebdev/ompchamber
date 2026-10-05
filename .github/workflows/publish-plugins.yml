@@ -40,14 +40,23 @@ on:
       - 'ui/v*'
   workflow_dispatch:
     inputs:
+      packages:
+        description: 'Space-separated package directories, as release-packages.yml names them'
+        required: false
+        type: string
+      tag:
+        description: 'Tag to publish, e.g. plugin-sdk/v2.0.0 (alternative to `packages`)'
+        required: false
+        type: string
       package:
-        description: Which package to publish
-        required: true
+        description: 'Which package to publish (used when neither of the above is given)'
+        required: false
+        default: both
         type: choice
         options:
+          - both
           - plugin-sdk
           - ui
-          - both
 
 concurrency:
   # One publish per package at a time. Grouped by the package rather than by the
@@ -100,12 +109,50 @@ jobs:
       - name: Test
         run: bun test
 
+      # Which packages this run publishes, in the order they must go up.
+      #
+      # Three ways in, most specific first:
+      #   - a tag push names one package, and its version must match the tag;
+      #   - `packages` is what release-packages.yml dispatches, already a
+      #     directory list in catalog order (SDK before UI, which pins it);
+      #   - `tag` names one package for a manual re-run of a release whose
+      #     publish failed, without re-creating the release;
+      #   - `package` is the fallback for a hand-run publish.
+      - name: Resolve the target packages
+        id: target
+        run: |
+          dirs=""
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            pkg="${GITHUB_REF_NAME%%/*}"
+            dirs="packages/$pkg"
+          elif [ -n "${{ inputs.packages }}" ]; then
+            for dir in ${{ inputs.packages }}; do
+              test -d "$dir" || { echo "::error::$dir is not a directory"; exit 1; }
+              dirs="$dirs $dir"
+            done
+          elif [ -n "${{ inputs.tag }}" ]; then
+            pkg="${{ inputs.tag }}"; pkg="${pkg%%/*}"
+            dirs="packages/$pkg"
+          else
+            case "${{ inputs.package }}" in
+              plugin-sdk) dirs="packages/plugin-sdk" ;;
+              ui)         dirs="packages/ui" ;;
+              *)          dirs="packages/plugin-sdk packages/ui" ;;
+            esac
+          fi
+          dirs="${dirs# }"
+          test -n "$dirs" || { echo "::error::No package resolved from the inputs"; exit 1; }
+          echo "dirs=$dirs" >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
       # A tag names a version, and the version in package.json is what npm
-      # receives. A mismatch would publish something nobody asked for.
+      # receives. A mismatch would publish something nobody asked for. This
+      # covers the `tag` input as well as a tag push, because both name a
+      # version the caller expects to find in the manifest.
       - name: Verify the tag matches the package version
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || inputs.tag != ''
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
         run: |
           pkg="${TAG%%/*}"                       # plugin-sdk/v1.2.3 -> plugin-sdk
           want="${TAG#*/}"                       # plugin-sdk/v1.2.3 -> v1.2.3
@@ -134,7 +181,7 @@ jobs:
       # would pass this check while the real payload was never inspected.
       - name: Verify the publish payload
         run: |
-          for dir in packages/plugin-sdk packages/ui; do
+          for dir in ${{ steps.target.outputs.dirs }}; do
             (cd "$dir" && bun pm pack --dry-run) > /tmp/pack.txt
             targets="$(bun -e "
               const pkg = await Bun.file('$dir/package.json').json();
@@ -156,25 +203,9 @@ jobs:
             echo "--- $dir ($targets)"; tail -3 /tmp/pack.txt
           done
 
-      # Which packages this run publishes: the tag names one, the dispatch input
-      # names one or both.
-      - name: Resolve the target packages
-        id: target
-        run: |
-          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
-            pkg="${GITHUB_REF_NAME%%/*}"
-            echo "dirs=packages/$pkg" >> "$GITHUB_OUTPUT"
-          else
-            case "${{ inputs.package }}" in
-              plugin-sdk) echo "dirs=packages/plugin-sdk" >> "$GITHUB_OUTPUT" ;;
-              ui)         echo "dirs=packages/ui" >> "$GITHUB_OUTPUT" ;;
-              *)          echo "dirs=packages/plugin-sdk packages/ui" >> "$GITHUB_OUTPUT" ;;
-            esac
-          fi
-          cat "$GITHUB_OUTPUT"
-
-      # `ui` depends on `plugin-sdk` at the exact version, so a `both` run has to
-      # put the SDK up first or `ui` installs against a version that is not there.
+      # `ui` depends on `plugin-sdk` at the exact version, so the target list is
+      # in catalog order (SDK before UI) and the script stops at the first
+      # failure rather than publishing a UI whose SDK is not on npm.
       - name: Publish
         env:
           NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}

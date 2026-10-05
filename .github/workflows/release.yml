@@ -46,6 +46,11 @@ on:
 
 # One release at a time, never cancelled: an interrupted run leaves a tag whose
 # release commit never landed.
+#
+# The group is deliberately the SAME string `release-packages.yml` uses. Both
+# push a release commit to `main`, and two of those racing means one is rejected
+# as a non-fast-forward. `concurrency` groups are repository-wide across
+# workflows, so a shared group is what makes one wait for the other.
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false

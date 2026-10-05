@@ -11,6 +11,11 @@
 # A version already on npm is never overwritten: npm refuses a republish, and
 # republishing would be wrong anyway. To ship a change, bump the version.
 #
+# A failure STOPS the run rather than moving to the next package. The list is in
+# catalog order, and `@ompchamber/ui` pins the SDK version at pack time, so
+# publishing `ui` after a failed SDK publish would put a package on npm whose
+# dependency does not exist there — worse than publishing neither.
+#
 # usage: publish-plugin-packages.sh <package-dir>...
 #   each <package-dir> is relative to the repo root and holds a package.json
 set -euo pipefail
@@ -28,12 +33,10 @@ published_version() {
   npm view "$name" version 2>/dev/null || true
 }
 
-failed=0
 for dir in "$@"; do
   if [ ! -f "$dir/package.json" ]; then
     echo "::error::$dir has no package.json"
-    failed=1
-    continue
+    exit 1
   fi
 
   name="$(bun -e "console.log((await Bun.file('$dir/package.json').json()).name)")"
@@ -41,8 +44,7 @@ for dir in "$@"; do
 
   if [ -z "$name" ] || [ -z "$version" ]; then
     echo "::error::$dir has no name or version"
-    failed=1
-    continue
+    exit 1
   fi
 
   existing="$(published_version "$name")"
@@ -53,11 +55,8 @@ for dir in "$@"; do
 
   echo "publishing $name@$version (registry has: ${existing:-<none>})"
   if ! (cd "$dir" && bun publish); then
-    echo "::error::failed to publish $name@$version"
-    failed=1
-    continue
+    echo "::error::failed to publish $name@$version — stopping, later packages depend on it"
+    exit 1
   fi
   echo "published $name@$version"
 done
-
-exit "$failed"

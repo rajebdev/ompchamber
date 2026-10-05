@@ -1,0 +1,129 @@
+name: Release Plugin Packages
+
+# Cuts a release for `@ompchamber/plugin-sdk` and `@ompchamber/ui` from the
+# Conventional Commits that touched each package, on every push to `main`.
+#
+# `release.yml` does the same job for the app, and the two are separate because
+# they release separate things: a `feat(panels)` commit ships the app, and only
+# ships a package if it also touched that package's directory. The split is
+# enforced per package in `release/packages.mjs` — the commit range comes from
+# that package's own tag, and the analyzer only sees commits that touched its
+# directory.
+#
+# **`release.yml` shares this workflow's concurrency group, deliberately.** Both
+# push a release commit to `main`, and two of those racing means one is rejected
+# as a non-fast-forward. The group is the same string (`release-${ref}`), which
+# is repository-wide across workflows, so one waits for the other. The order
+# they run in does not matter: each one's commit is a `chore` to the other.
+#
+# **The tags this cuts do NOT trigger `publish-plugins.yml`.** GitHub creates no
+# workflow run for an event raised by `GITHUB_TOKEN` (only `workflow_dispatch`
+# and `repository_dispatch` are exempt — see "Triggering a workflow" in the
+# Actions docs), so the publish is dispatched below for exactly the packages
+# this run released. That dispatch is also what keeps the npm side in one place:
+# `publish-plugins.yml` owns the gates, the token and the tarball check.
+#
+# Rehearsing locally: `node release/release-packages.mjs --dry-run` cuts nothing
+# and prints what each package would get. It needs no token — drop
+# `@semantic-release/github` from the config first if it complains, the same
+# caveat `release.yml` documents.
+#
+# **Never rehearse WITHOUT `--dry-run`.** This pipeline pushes through
+# `@semantic-release/git`, which uses the repository URL in `package.json` —
+# the real remote — and not the clone's `origin`. A rehearsal in a scratch clone
+# therefore writes to production: measured, it pushed two release commits and
+# two tags to `github.com/rajebdev/ompchamber` and the branch had to be reverted
+# by hand. `release/release-packages.mjs` refuses to run outside CI unless
+# `OMPCHAMBER_RELEASE_ALLOW_NON_CI=1` is set, which is what turns that mistake
+# into a refusal.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # Shared with release.yml on purpose — see the note above.
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Cut the package releases
+    runs-on: ubuntu-latest
+    outputs:
+      any: ${{ steps.release.outputs.any }}
+      released: ${{ steps.release.outputs.released }}
+    # `contents` creates the tags, the releases and the release commits.
+    # `issues`/`pull-requests` are for the GitHub plugin's success hook.
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # The version is derived from the commits since each package's last
+          # tag, so a shallow clone would see no history and cut no release.
+          fetch-depth: 0
+          # @semantic-release/git pushes the release commits with this token.
+          persist-credentials: true
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.x
+
+      # semantic-release runs under Node, not Bun: it (and @semantic-release/npm,
+      # which shells out to `npm version`) declares engines `^22.14 || >=24.10`.
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Never tag a red main. publish-plugins.yml re-runs both gates against the
+      # tag before the npm token is used, but by then the tag and the release
+      # already exist.
+      - name: Typecheck
+        run: bun run lint
+
+      - name: Test
+        run: bun test
+
+      - name: Release the packages
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The release commits are attributed to the App, not to
+          # semantic-release's own default. See the same four variables in
+          # release.yml for why they are the only way to change it.
+          GIT_AUTHOR_NAME: ompchamber-bot[bot]
+          GIT_AUTHOR_EMAIL: 333284999+ompchamber-bot[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: ompchamber-bot[bot]
+          GIT_COMMITTER_EMAIL: 333284999+ompchamber-bot[bot]@users.noreply.github.com
+        run: node release/release-packages.mjs
+
+  publish:
+    name: Publish the released packages
+    needs: release
+    if: needs.release.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    # `actions: write` is what `gh workflow run` needs.
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch publish-plugins.yml for ${{ needs.release.outputs.released }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # This job never checks out, so there is no `.git` for gh to read the
+          # repository out of; GH_REPO is what it would otherwise infer.
+          GH_REPO: ${{ github.repository }}
+          PACKAGES: ${{ needs.release.outputs.released }}
+        # Fire and report, never wait: publish-plugins.yml waits on the `npm`
+        # environment, which may require review, and a reviewer should not be
+        # holding this run open.
+        run: gh workflow run publish-plugins.yml --ref main -f packages="$PACKAGES"
