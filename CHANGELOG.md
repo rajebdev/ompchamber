@@ -5,6 +5,16 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.0](https://github.com/rajebdev/ompchamber/compare/v4.0.1...v4.1.0) — 2026-10-05
+
+### Added
+
+* **plugins:** version and release the plugin packages from commits ([6b88727](https://github.com/rajebdev/ompchamber/commit/6b88727336697b3b76dc8cf5dc3a83829766ec0f))
+
+### Changed
+
+* **release:** record how the plugin packages are released ([1ba573e](https://github.com/rajebdev/ompchamber/commit/1ba573e3ad66378bddd4a399ddfa0b2f23efe305))
+
 ## [4.0.1](https://github.com/rajebdev/ompchamber/compare/v4.0.0...v4.0.1) — 2026-10-05
 
 ### Fixed
