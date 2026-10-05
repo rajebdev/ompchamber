@@ -27,4 +27,5 @@ export * from '@/shared/types/updates';
 export * from '@/shared/types/todo';
 export * from '@/shared/types/plan';
 export * from '@/shared/types/wiki';
+export * from '@/shared/types/panels';
 export type { RightPanelType } from '@/shared/lib/workspace/right-panels';

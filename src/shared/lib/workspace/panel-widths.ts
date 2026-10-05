@@ -20,7 +20,8 @@
  *
  * Sizes persist as `app_settings.desktopLayoutSizes`.
  */
-import { isRightPanelType, type RightPanelType } from '@/shared/lib/workspace/right-panels';
+import type { RightPanelType } from '@/shared/lib/workspace/right-panels';
+import { isPanelId } from '@/shared/lib/workspace/panel-ids';
 
 /** The editor panel keeps a separate width while a diff tab is active. */
 export type EditorWidthMode = 'editor' | 'diff';
@@ -42,8 +43,13 @@ export interface PanelWidths {
   editor?: PanelWidth;
   /** Editor panel while a diff tab is active. */
   diff?: PanelWidth;
-  /** Right panel, keyed by the activity-bar view it currently shows. */
-  right?: Partial<Record<RightPanelType, PanelWidth>>;
+  /**
+   * Right panel, keyed by the activity-bar view it currently shows. A plugin
+   * panel keys by its own `plugin:<id>/<panel>` string, so this is a plain
+   * string map rather than the built-in union — the layout stores whichever id
+   * is active, and `normalizePanelWidths` keeps only entries whose value parses.
+   */
+  right?: Record<string, PanelWidth>;
 }
 
 /**
@@ -137,6 +143,31 @@ export function resolvePanelWidth(args: ResolveWidthArgs): number {
   return Math.min(Math.max(wanted, min), ceiling);
 }
 
+/**
+ * Width defaults for a plugin-contributed panel.
+ *
+ * A plugin declares its own `minWidth` / `defaultFraction`, but neither is
+ * trusted as the only source: a manifest can omit them or name a value that
+ * makes a panel unusable (a 40px floor clips every toolbar), so the chamber's
+ * own slot defaults are the floor under a declared value. A plugin panel is a
+ * right-panel view, so it shares that slot's defaults.
+ */
+export function resolvePluginPanelWidths(panel: {
+  minWidth?: number;
+  defaultFraction?: number;
+}): { min: number; fraction: number; px: number } {
+  return {
+    min: Math.max(MIN_PLUGIN_PANEL_WIDTH, Math.round(panel.minWidth ?? MIN_PLUGIN_PANEL_WIDTH)),
+    fraction: Math.min(0.9, Math.max(0.2, panel.defaultFraction ?? DEFAULT_PLUGIN_PANEL_FRACTION)),
+    px: DEFAULT_PLUGIN_PANEL_WIDTH,
+  };
+}
+
+/** Floor for a plugin panel: below this its own toolbar wraps into noise. */
+export const MIN_PLUGIN_PANEL_WIDTH = 320;
+const DEFAULT_PLUGIN_PANEL_FRACTION = 0.4;
+const DEFAULT_PLUGIN_PANEL_WIDTH = 560;
+
 function panelWidth(value: unknown): PanelWidth | undefined {
   if (typeof value === 'number') {
     return Number.isFinite(value) && value > 0 ? { px: Math.round(value) } : undefined;
@@ -167,7 +198,10 @@ function sidebarWidth(value: unknown): number | undefined {
  * - a single number under `right` is older still, holding one width shared by
  *   every view — it belongs to whichever view was open when it was written, so
  *   it seeds `legacyView` alone instead of being copied onto all eight;
- * - an unknown `right` key is dropped rather than trusted.
+ * - an unknown `right` key is dropped rather than trusted — but a plugin
+ *   panel's `plugin:<id>/<panel>` key is a real view, so it is kept. Dropping
+ *   it would reset a plugin panel's width on every reload, which reads as the
+ *   drag not having taken.
  *
  * Nothing is converted to a fraction here: this function is pure and the
  * conversion needs the group's measured area. The layout performs it once the
@@ -185,10 +219,10 @@ export function normalizePanelWidths(raw: unknown, legacyView: RightPanelType): 
     if (value !== undefined) widths[key] = value;
   }
 
-  const right: Partial<Record<RightPanelType, PanelWidth>> = {};
+  const right: Record<string, PanelWidth> = {};
   if (source.right && typeof source.right === 'object') {
     for (const [view, value] of Object.entries(source.right as Record<string, unknown>)) {
-      if (!isRightPanelType(view)) continue;
+      if (!isPanelId(view)) continue;
       const size = panelWidth(value);
       if (size !== undefined) right[view] = size;
     }
@@ -209,9 +243,9 @@ export function normalizePanelWidths(raw: unknown, legacyView: RightPanelType): 
 export function mergePanelWidths(current: PanelWidths, patch: PanelWidths): PanelWidths {
   const next: PanelWidths = { ...current, ...patch };
   if (patch.right) {
-    const right: Partial<Record<RightPanelType, PanelWidth>> = { ...current.right };
+    const right: Record<string, PanelWidth> = { ...current.right };
     for (const [view, value] of Object.entries(patch.right)) {
-      if (!isRightPanelType(view) || !value) continue;
+      if (!isPanelId(view) || !value) continue;
       right[view] = { ...current.right?.[view], ...value };
     }
     next.right = right;

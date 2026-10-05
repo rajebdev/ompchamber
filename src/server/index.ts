@@ -18,6 +18,7 @@ import { SHELL_ROUTE } from '@/server/lib/lifecycle/shell-route';
 import { isMockMode } from '@/server/mock.server';
 import { stopDiscoveryRootsWatch, syncDiscoveryRootsWatch } from '@/server/lib/omp/config/roots-watch.server';
 import { startScheduleRuntime, stopScheduleRuntime } from '@/server/lib/schedule/runtime.server';
+import { seedDefaultMarketplace } from '@/server/lib/panels/seed.server';
 
 // Refuse to run without a resolvable omp binary — before the listener opens and
 // before the first request can reach a route that shells out to it. The database
@@ -104,6 +105,20 @@ const app = new Elysia({ serve: { routes: { [SHELL_ROUTE]: shell } } })
   })
   .use(apiRoutes)
   .use(ssrRoutes);
+
+// The panel marketplace is seeded BEFORE the listener opens: the first request
+// for `/api/panels` must already see the bundled defaults, or the settings pane
+// flashes an empty marketplace and the activity bar omits a plugin that is
+// about to appear. Marker-guarded, so a plugin the user removed stays removed.
+try {
+  const seeded = await seedDefaultMarketplace();
+  if (seeded.seeded) console.log('[ompchamber] marketplace:   seeded the bundled panel plugins');
+  // A build failure leaves the plugin in place but unservable, and the pane
+  // offers a Rebuild — reported here so a headless start says why.
+  if (seeded.reason) console.error(`[panels] plugin build: ${seeded.reason}`);
+} catch (error) {
+  console.error('[panels] marketplace seed skipped:', error);
+}
 
 try {
   await claimPort({
