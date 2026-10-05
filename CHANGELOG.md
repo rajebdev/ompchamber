@@ -5,6 +5,12 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.1](https://github.com/rajebdev/ompchamber/compare/v4.0.0...v4.0.1) — 2026-10-05
+
+### Fixed
+
+* **panels:** resolve the SDK app subpath without the workspace symlink ([d16c018](https://github.com/rajebdev/ompchamber/commit/d16c0184e865d03bbaef599b8de92dbc08a163f5))
+
 ## [4.0.0](https://github.com/rajebdev/ompchamber/compare/v3.16.1...v4.0.0) — 2026-10-05
 
 ### BREAKING CHANGES
