@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import type {
+  PanelCatalogEntry,
   PanelMarketplaceItem,
   PanelPluginStatus,
   PanelRegistryEntry,
@@ -24,16 +25,19 @@ import type {
 export const PANELS_CHANGED_EVENT = 'omp:panels-changed';
 
 interface PanelRegistryState {
+  /** Contributions of ENABLED plugins — what the layouts render from. */
   panels: PanelRegistryEntry[];
   marketplaces: PanelMarketplaceItem[];
   errors: PanelRegistryPayload['errors'];
-  /** Build state per installed plugin. */
+  /** Build and enablement state per installed plugin. */
   plugins: PanelPluginStatus[];
+  /** The bundled marketplace's offers, installed or not. */
+  catalog: PanelCatalogEntry[];
   /** False until the first read settles, so a view can hold its placeholder. */
   ready: boolean;
 }
 
-const EMPTY: PanelRegistryPayload = { panels: [], marketplaces: [], errors: [], plugins: [] };
+const EMPTY: PanelRegistryPayload = { panels: [], marketplaces: [], errors: [], plugins: [], catalog: [] };
 
 let cached: Promise<PanelRegistryPayload> | null = null;
 
@@ -79,6 +83,7 @@ export function usePanelRegistry(): PanelRegistryState {
         marketplaces: payload.marketplaces ?? [],
         errors: payload.errors ?? [],
         plugins: payload.plugins ?? [],
+        catalog: payload.catalog ?? [],
         ready: true,
       });
     });
@@ -133,9 +138,14 @@ export interface PanelPluginActions {
   busy: string | null;
   error: string | null;
   clearError: () => void;
+  /** Install from a git URL. */
   install: (url: string) => Promise<boolean>;
+  /** Install one plugin the bundled marketplace offers, by id. */
+  installBundled: (pluginId: string) => Promise<boolean>;
   remove: (pluginId: string) => Promise<boolean>;
   build: (pluginId: string) => Promise<boolean>;
+  /** Switch a plugin's contributions on or off; its files stay on disk. */
+  setEnabled: (pluginId: string, enabled: boolean) => Promise<boolean>;
 }
 
 /**
@@ -189,8 +199,17 @@ export function usePanelPluginActions(): PanelPluginActions {
   }, []);
 
   const install = useCallback((url: string) => run('install', { type: 'install', url }), [run]);
+  const installBundled = useCallback(
+    (pluginId: string) => run(`install:${pluginId}`, { type: 'install', pluginId }),
+    [run],
+  );
   const remove = useCallback((pluginId: string) => run(`remove:${pluginId}`, { type: 'remove', pluginId }), [run]);
   const build = useCallback((pluginId: string) => run(`build:${pluginId}`, { type: 'build', pluginId }), [run]);
+  const setEnabled = useCallback(
+    (pluginId: string, enabled: boolean) =>
+      run(`${enabled ? 'enable' : 'disable'}:${pluginId}`, { type: enabled ? 'enable' : 'disable', pluginId }),
+    [run],
+  );
 
-  return { busy, error, clearError: () => setError(null), install, remove, build };
+  return { busy, error, clearError: () => setError(null), install, installBundled, remove, build, setEnabled };
 }

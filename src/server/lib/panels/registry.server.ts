@@ -36,11 +36,18 @@
 
 import { homedir } from 'os';
 import { join, resolve } from 'path';
-import type { PanelPluginManifest, PanelPluginStatus, PanelRegistryPayload } from '@/shared/types';
+import type {
+  PanelCatalogEntry,
+  PanelPluginManifest,
+  PanelPluginStatus,
+  PanelRegistryPayload,
+} from '@/shared/types';
 import { pathExists } from '@/server/lib/omp/core/paths';
-import { isRecord } from '@/shared/lib/util/guards';
+import { packageDir } from '@/server/lib/assets/fonts.server';
 import { slugForPanelKey } from '@/shared/lib/panels/asset-base';
 import { pluginPanelKey } from '@/shared/lib/workspace/panel-ids';
+import { readDisabledPlugins } from '@/server/lib/panels/state.server';
+import { readJsonBody, readPluginManifest, subdirectories } from '@/server/lib/panels/files.server';
 import { toManifest, toMarketplaceCatalog } from '@/server/lib/panels/manifest';
 
 /** The marketplace root: `~/.ompchamber/marketplace`, overridable for tests. */
@@ -58,6 +65,23 @@ export function getMarketplacePluginsDir(): string {
 /** The catalog file, which an install appends its entry to. */
 export function getMarketplaceCatalogPath(): string {
   return join(getMarketplaceDir(), 'marketplace.json');
+}
+
+/**
+ * The STORE: the marketplace bundled with the package.
+ *
+ * Read-only and never copied. The bundled plugins are what the Panel Plugins
+ * pane offers to install — an offer, not an install — so nothing here is
+ * scanned as a contribution and nothing here is built. Installing one copies
+ * its directory into the working marketplace and builds it there, exactly as a
+ * git install does, which is what keeps the two install paths one code path.
+ *
+ * Overridable so the seed and install tests can point at a fixture tree.
+ */
+export function getBundledMarketplaceDir(): string {
+  const override = Bun.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR;
+  if (override) return resolve(override);
+  return join(packageDir(), 'marketplace');
 }
 
 /** The marketplace's stable id, used to attribute panels and rejections. */
@@ -88,65 +112,10 @@ export function invalidatePanelScan(): void {
   globalThis.__ompChamberPanelScan = undefined;
 }
 
-/** Sorted directory names directly under `dir`; empty when it does not exist. */
-async function subdirectories(dir: string): Promise<string[]> {
-  if (!(await pathExists(dir))) return [];
-  try {
-    return (await Array.fromAsync(new Bun.Glob('*/').scan({ cwd: dir, onlyFiles: false })))
-      .map((name) => name.replace(/[/\\]+$/, ''))
-      .filter(Boolean)
-      .sort();
-  } catch {
-    return [];
-  }
-}
-
-async function readJsonBody(
-  file: string,
-): Promise<{ kind: 'none' } | { kind: 'unreadable' } | { kind: 'body'; value: unknown }> {
-  if (!(await pathExists(file))) return { kind: 'none' };
-  try {
-    return { kind: 'body', value: await Bun.file(file).json() };
-  } catch {
-    return { kind: 'unreadable' };
-  }
-}
-
-/**
- * Read a plugin's manifest.
- *
- * Two files can carry it, and both must be tried: `ompchamber.json` for a
- * hand-written plugin, and `package.json`'s `ompchamber` key for a Bun package —
- * which is what a plugin IS, so the second is the common case rather than a
- * legacy one. Every caller (the scan, the installer, the builder) goes through
- * this one function; when the installer had its own copy it read only the first
- * file and refused to install any package at all.
- *
- * Three answers, and the difference between the first two is load-bearing: a
- * directory with no manifest at all is not a plugin and is skipped in silence
- * (the root is a directory a user may drop a README into), while a manifest that
- * EXISTS but cannot be parsed is a plugin that was meant to be installed and
- * must be reported. Collapsing them made every stray folder show up as
- * "Rejected".
- */
-export async function readPluginManifest(
-  dir: string,
-): Promise<{ kind: 'none' } | { kind: 'error'; reason: string } | { kind: 'manifest'; value: unknown }> {
-  const own = await readJsonBody(join(dir, 'ompchamber.json'));
-  if (own.kind === 'unreadable') return { kind: 'error', reason: 'ompchamber.json is not valid JSON' };
-  if (own.kind === 'body') return { kind: 'manifest', value: own.value };
-
-  const pkg = await readJsonBody(join(dir, 'package.json'));
-  if (pkg.kind === 'unreadable') return { kind: 'error', reason: 'package.json is not valid JSON' };
-  if (pkg.kind === 'none') return { kind: 'none' };
-  if (!isRecord(pkg.value) || pkg.value.ompchamber === undefined) return { kind: 'none' };
-  return { kind: 'manifest', value: pkg.value.ompchamber };
-}
-
 async function runPanelScan(): Promise<PanelScan> {
   const root = getMarketplaceDir();
   const pluginsRoot = getMarketplacePluginsDir();
-  const scan: PanelScan = { panels: [], marketplaces: [], errors: [], plugins: [], dirs: {} };
+  const scan: PanelScan = { panels: [], marketplaces: [], errors: [], plugins: [], catalog: [], dirs: {} };
 
   // Rejections are tagged with the marketplace id so the pane groups by a value
   // rather than by matching on a path.
@@ -178,6 +147,10 @@ async function runPanelScan(): Promise<PanelScan> {
     }
   }
 
+  // Read once, before the loop: whether a plugin is ON decides whether its
+  // panels are published, and the flag is stored rather than derived.
+  const disabled = new Set(await readDisabledPlugins());
+
   const seenKeys = new Set<string>();
   const pluginStatus: PanelPluginStatus[] = [];
   for (const pluginName of await subdirectories(pluginsRoot)) {
@@ -200,13 +173,21 @@ async function runPanelScan(): Promise<PanelScan> {
     // the build — which is why this is a separate list from `errors`.
     const isPackage = await pathExists(join(pluginDir, 'package.json'));
     const missingEntry = await firstMissingEntry(pluginDir, manifest);
+    const enabled = !disabled.has(manifest.id);
     pluginStatus.push({
       pluginId: manifest.id,
       name: manifest.name,
       isPackage,
       built: !missingEntry,
+      enabled,
+      bundled: false,
       ...(missingEntry ? { reason: `the build produced no ${missingEntry}` } : {}),
     });
+
+    // A switched-off plugin contributes NOTHING: no button, no tab, and no
+    // directory for the asset route to serve a frame from. Its files stay on
+    // disk, which is the whole difference between disabling and removing.
+    if (!enabled) continue;
 
     for (const panel of manifest.panels) {
       const panelKey = pluginPanelKey(manifest.id, panel.id);
@@ -227,10 +208,53 @@ async function runPanelScan(): Promise<PanelScan> {
     }
   }
 
+  // The bundled marketplace is a STORE, so its plugins are listed whether or
+  // not they are installed — that is what gives the pane something to install
+  // FROM. They are never scanned as contributions and never built: installing
+  // copies one into the working marketplace, where the loop above picks it up.
+  const installed = new Set(pluginStatus.map((plugin) => plugin.pluginId));
+  scan.catalog = await readBundledCatalog(installed);
+  // `bundled` is a property of the SOURCE, not of the install: it is what makes
+  // the pane offer "Remove" for a bundled plugin rather than "Uninstall", and
+  // it is read off the store's own list so a plugin id that exists in both
+  // places cannot report the wrong one.
+  const bundledIds = new Set(scan.catalog.map((entry) => entry.pluginId));
+  for (const plugin of pluginStatus) plugin.bundled = bundledIds.has(plugin.pluginId);
+
   scan.marketplaces.push({ id: MARKETPLACE_ID, name, description, panelCount: scan.panels.length, errors: [] });
   scan.plugins = pluginStatus;
 
   return scan;
+}
+
+/**
+ * The bundled marketplace's offers, in directory order.
+ *
+ * A store entry is a plugin DIRECTORY with a valid manifest — the same rule the
+ * working scan follows, so the two agree about what a plugin is. An entry whose
+ * manifest is broken is reported as a rejection rather than dropped: a plugin
+ * the user cannot install for a reason is exactly the kind of silence this pane
+ * exists to break.
+ */
+async function readBundledCatalog(installed: ReadonlySet<string>): Promise<PanelCatalogEntry[]> {
+  const bundledRoot = join(getBundledMarketplaceDir(), 'plugins');
+  const entries: PanelCatalogEntry[] = [];
+  for (const pluginName of await subdirectories(bundledRoot)) {
+    const pluginDir = join(bundledRoot, pluginName);
+    const read = await readPluginManifest(pluginDir);
+    if (read.kind !== 'manifest') continue;
+    const manifest = toManifest(read.value, pluginDir);
+    if ('error' in manifest) continue;
+    entries.push({
+      pluginId: manifest.id,
+      name: manifest.name,
+      version: manifest.version,
+      ...(manifest.description ? { description: manifest.description } : {}),
+      panels: manifest.panels.map((panel) => ({ id: panel.id, title: panel.title, position: panel.position })),
+      installed: installed.has(manifest.id),
+    });
+  }
+  return entries;
 }
 
 async function cachedScan(): Promise<PanelScan> {
@@ -244,8 +268,8 @@ async function cachedScan(): Promise<PanelScan> {
 
 /** The client payload: the marketplace, its panels, and its rejections. */
 export async function discoverPanelPlugins(): Promise<PanelRegistryPayload> {
-  const { panels, marketplaces, errors, plugins } = await cachedScan();
-  return { panels, marketplaces, errors, plugins };
+  const { panels, marketplaces, errors, plugins, catalog } = await cachedScan();
+  return { panels, marketplaces, errors, plugins, catalog };
 }
 
 /**

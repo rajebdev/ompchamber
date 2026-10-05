@@ -24,8 +24,8 @@ import {
   discoverPanelPlugins,
   getMarketplacePluginsDir,
   invalidatePanelScan,
-  readPluginManifest,
 } from '@/server/lib/panels/registry.server';
+import { readPluginManifest } from '@/server/lib/panels/files.server';
 import { buildPanelPlugin } from '@/server/lib/panels/build.server';
 import { toManifest } from '@/server/lib/panels/manifest';
 

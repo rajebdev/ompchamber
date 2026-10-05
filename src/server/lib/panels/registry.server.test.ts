@@ -35,6 +35,7 @@ import {
   getMarketplacePluginsDir,
   invalidatePanelScan,
 } from '@/server/lib/panels/registry.server';
+import { setPluginEnabled } from '@/server/lib/panels/state.server';
 
 let root = '';
 
@@ -236,5 +237,104 @@ describe('discoverPanelPlugins', () => {
     writePlugin('second', { ...VALID, id: 'second' });
     invalidatePanelScan();
     expect((await discoverPanelPlugins()).panels).toHaveLength(2);
+  });
+
+  test('a second panel in the same position is refused by name', async () => {
+    writePlugin('two-right', {
+      ...VALID,
+      panels: [
+        { id: 'a', title: 'A', position: 'right', entry: 'index.html', capabilities: [] },
+        { id: 'b', title: 'B', position: 'right', entry: 'index.html', capabilities: [] },
+      ],
+    });
+    invalidatePanelScan();
+    const { panels, errors } = await discoverPanelPlugins();
+    // One plugin = one activity-bar button: two `right` panels would put two
+    // buttons on one plugin and fight over one width slot.
+    expect(panels).toEqual([]);
+    expect(errors[0].reason).toContain('more than one "right" panel');
+  });
+
+  test('one panel per position is accepted across the three slots', async () => {
+    writePlugin('all-slots', {
+      ...VALID,
+      panels: [
+        { id: 'r', title: 'Right', position: 'right', entry: 'index.html', capabilities: [] },
+        { id: 'e', title: 'Editor', position: 'editor', entry: 'index.html', capabilities: [] },
+        { id: 'h', title: 'Header', position: 'header', entry: 'index.html', capabilities: [] },
+      ],
+    });
+    invalidatePanelScan();
+    const { panels, errors } = await discoverPanelPlugins();
+    expect(errors).toEqual([]);
+    expect(panels.map((panel) => panel.position).sort()).toEqual(['editor', 'header', 'right']);
+  });
+
+  test('a disabled plugin contributes no panels and no dir map entry', async () => {
+    const dir = writePlugin('demo', VALID);
+    Bun.env.OMPCHAMBER_DB_PATH = join(root, 'db.sqlite');
+    try {
+      await setPluginEnabled('demo', false);
+      invalidatePanelScan();
+      const payload = await discoverPanelPlugins();
+      expect(payload.panels).toEqual([]);
+      // The asset route resolves its root from the same scan, so a disabled
+      // plugin's frame is unreachable as well as its button being gone.
+      expect(await findPanelDirBySlug('demo~main')).toBeUndefined();
+      // The row survives, with its switch off — that is what lets the user
+      // turn it back on.
+      expect(payload.plugins.find((plugin) => plugin.pluginId === 'demo')?.enabled).toBe(false);
+
+      await setPluginEnabled('demo', true);
+      invalidatePanelScan();
+      expect((await discoverPanelPlugins()).panels).toHaveLength(1);
+      expect(await findPanelDirBySlug('demo~main')).toBe(dir);
+    } finally {
+      globalThis.__ompChamberDb?.resolved?.raw.close();
+      globalThis.__ompChamberDb = undefined;
+      delete Bun.env.OMPCHAMBER_DB_PATH;
+    }
+  });
+});
+
+describe('the bundled marketplace catalog', () => {
+  test('lists bundled plugins that are not installed, without scanning them as panels', async () => {
+    const bundled = fs.mkdtempSync(join(root, 'bundled-'));
+    fs.mkdirSync(join(bundled, 'plugins', 'offer'), { recursive: true });
+    fs.writeFileSync(join(bundled, 'plugins', 'offer', 'ompchamber.json'), JSON.stringify({ ...VALID, id: 'offer' }));
+    const previous = process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR;
+    process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR = bundled;
+    try {
+      invalidatePanelScan();
+      const payload = await discoverPanelPlugins();
+      // Available, and nothing more: the store does not contribute a button.
+      expect(payload.catalog.map((entry) => entry.pluginId)).toEqual(['offer']);
+      expect(payload.catalog[0].installed).toBe(false);
+      expect(payload.catalog[0].panels).toEqual([{ id: 'main', title: 'Demo Panel', position: 'right' }]);
+      expect(payload.panels).toEqual([]);
+    } finally {
+      if (previous === undefined) delete process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR;
+      else process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR = previous;
+      fs.rmSync(bundled, { recursive: true, force: true });
+    }
+  });
+
+  test('marks a bundled plugin installed once it is present in the working marketplace', async () => {
+    const bundled = fs.mkdtempSync(join(root, 'bundled-'));
+    fs.mkdirSync(join(bundled, 'plugins', 'demo'), { recursive: true });
+    fs.writeFileSync(join(bundled, 'plugins', 'demo', 'ompchamber.json'), JSON.stringify(VALID));
+    const previous = process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR;
+    process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR = bundled;
+    try {
+      writePlugin('demo', VALID);
+      invalidatePanelScan();
+      const payload = await discoverPanelPlugins();
+      expect(payload.catalog[0].installed).toBe(true);
+      expect(payload.plugins[0].bundled).toBe(true);
+    } finally {
+      if (previous === undefined) delete process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR;
+      else process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR = previous;
+      fs.rmSync(bundled, { recursive: true, force: true });
+    }
   });
 });

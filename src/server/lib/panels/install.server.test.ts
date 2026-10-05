@@ -58,6 +58,26 @@ function makePluginRepo(manifest: unknown, extra: Record<string, string> = {}): 
 
 const hasGit = Boolean(Bun.which('git'));
 
+/** Run `fn` with the bundled marketplace pointed at `dir`, restoring it after. */
+async function withBundledStore<T>(dir: string, fn: () => Promise<T>): Promise<T> {
+  const previous = process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR;
+  process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR = dir;
+  try {
+    return await fn();
+  } finally {
+    if (previous === undefined) delete process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR;
+    else process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR = previous;
+  }
+}
+
+/** A bundled store holding one plugin directory. */
+function makeBundledStore(manifest: unknown = VALID): string {
+  const bundled = fs.mkdtempSync(join(work, 'bundled-'));
+  fs.mkdirSync(join(bundled, 'plugins', 'demo'), { recursive: true });
+  fs.writeFileSync(join(bundled, 'plugins', 'demo', 'ompchamber.json'), JSON.stringify(manifest));
+  return bundled;
+}
+
 beforeEach(() => {
   root = fs.mkdtempSync(join(tmpdir(), 'ompchamber-seed-'));
   work = fs.mkdtempSync(join(tmpdir(), 'ompchamber-repos-'));
@@ -93,59 +113,46 @@ describe('isGitUrl', () => {
 });
 
 describe('seedDefaultMarketplace', () => {
-  test('copies the bundled marketplace and writes the marker', async () => {
-    const bundled = fs.mkdtempSync(join(work, 'bundled-'));
-    fs.mkdirSync(join(bundled, 'plugins', 'demo'), { recursive: true });
+  test('creates an empty working marketplace and copies NO bundled plugin', async () => {
+    const bundled = makeBundledStore();
     fs.writeFileSync(join(bundled, 'marketplace.json'), JSON.stringify({ name: 'Bundled' }));
-    fs.writeFileSync(join(bundled, 'plugins', 'demo', 'ompchamber.json'), JSON.stringify(VALID));
 
-    const previous = process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR;
-    process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR = bundled;
-    try {
-      const result = await seedDefaultMarketplace();
-      expect(result.seeded).toBe(true);
+    await withBundledStore(bundled, async () => {
+      expect((await seedDefaultMarketplace()).seeded).toBe(true);
+      // The catalog exists so the scan has a store to read...
       expect(fs.existsSync(join(root, 'marketplace.json'))).toBe(true);
-      expect(fs.existsSync(join(root, 'plugins', 'demo', 'ompchamber.json'))).toBe(true);
-      expect(fs.existsSync(join(root, '.seeded'))).toBe(true);
+      // ...but the bundled plugin is NOT copied: the bundled marketplace is a
+      // store the user installs FROM, so a fresh chamber starts with nothing
+      // installed and an empty activity bar.
+      expect(fs.existsSync(join(root, 'plugins', 'demo'))).toBe(false);
 
       invalidatePanelScan();
-      expect((await discoverPanelPlugins()).panels.map((p) => p.panelKey)).toEqual(['plugin:from-git/main']);
-    } finally {
-      if (previous === undefined) delete process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR;
-      else process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR = previous;
-    }
+      const payload = await discoverPanelPlugins();
+      expect(payload.panels).toEqual([]);
+      expect(payload.catalog.map((entry) => entry.pluginId)).toEqual(['from-git']);
+      expect(payload.catalog[0].installed).toBe(false);
+    });
   });
 
-  test('a second run is a no-op, so a deleted plugin stays deleted', async () => {
-    const bundled = fs.mkdtempSync(join(work, 'bundled-'));
-    fs.mkdirSync(join(bundled, 'plugins', 'demo'), { recursive: true });
-    fs.writeFileSync(join(bundled, 'plugins', 'demo', 'ompchamber.json'), JSON.stringify(VALID));
-
-    const previous = process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR;
-    process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR = bundled;
-    try {
+  test('a second run leaves an existing marketplace alone', async () => {
+    await withBundledStore(makeBundledStore(), async () => {
       expect((await seedDefaultMarketplace()).seeded).toBe(true);
-      // The user removes the plugin; the marker is what keeps it removed.
-      fs.rmSync(join(root, 'plugins', 'demo'), { recursive: true, force: true });
+      // A plugin the user installed afterwards is never disturbed by a later
+      // boot, and the catalog the user's install appended to is not rewritten.
+      fs.mkdirSync(join(root, 'plugins', 'mine'), { recursive: true });
+      fs.writeFileSync(join(root, 'plugins', 'mine', 'ompchamber.json'), JSON.stringify({ ...VALID, id: 'mine' }));
       expect((await seedDefaultMarketplace()).seeded).toBe(false);
-      expect(fs.existsSync(join(root, 'plugins', 'demo'))).toBe(false);
-    } finally {
-      if (previous === undefined) delete process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR;
-      else process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR = previous;
-    }
+      expect(fs.existsSync(join(root, 'plugins', 'mine', 'ompchamber.json'))).toBe(true);
+    });
   });
 
   test('a missing bundled marketplace reports why, without throwing', async () => {
-    const previous = process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR;
-    process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR = join(work, 'nope');
-    try {
-      const result = await seedDefaultMarketplace();
-      expect(result.seeded).toBe(false);
-      expect(result.reason).toContain('no bundled marketplace');
-    } finally {
-      if (previous === undefined) delete process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR;
-      else process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR = previous;
-    }
+    await withBundledStore(join(work, 'nope'), async () => {
+      expect((await seedDefaultMarketplace()).reason).toContain('no bundled marketplace');
+      // The working directory is still usable: a package that ships no store
+      // simply offers nothing, which is not a failure to start.
+      expect(fs.existsSync(join(root, 'marketplace.json'))).toBe(true);
+    });
   });
 });
 
@@ -287,40 +294,15 @@ describe('installPanelPluginFromGit', () => {
 });
 
 describe('removePanelPlugin', () => {
-  test('removes the directory, the catalog entry, and drops the panel from the scan', async () => {
+  test('removes the directory and its catalog entry, keeping other entries', async () => {
     fs.mkdirSync(join(root, 'plugins', 'from-git'), { recursive: true });
     fs.writeFileSync(join(root, 'plugins', 'from-git', 'ompchamber.json'), JSON.stringify(VALID));
-    fs.writeFileSync(
-      getMarketplaceCatalogPath(),
-      JSON.stringify({ name: 'Keep', plugins: [{ name: 'from-git', source: 'plugins/from-git' }] }),
-    );
-    invalidatePanelScan();
-    expect((await discoverPanelPlugins()).panels).toHaveLength(1);
-
-    const result = await removePanelPlugin('from-git');
-    expect(result.ok).toBe(true);
-    expect(fs.existsSync(join(root, 'plugins', 'from-git'))).toBe(false);
-
-    // The catalog entry goes too: leaving it made every removal produce a
-    // permanent "listed in marketplace.json but no plugin was found there" row.
-    const catalog = JSON.parse(fs.readFileSync(getMarketplaceCatalogPath(), 'utf8')) as {
-      name: string;
-      plugins: unknown[];
-    };
-    expect(catalog.plugins).toEqual([]);
-    expect(catalog.name).toBe('Keep');
-
-    const after = await discoverPanelPlugins();
-    expect(after.panels).toEqual([]);
-    expect(after.errors).toEqual([]);
-  });
-
-  test('leaves other catalog entries alone', async () => {
-    fs.mkdirSync(join(root, 'plugins', 'from-git'), { recursive: true });
-    fs.writeFileSync(join(root, 'plugins', 'from-git', 'ompchamber.json'), JSON.stringify(VALID));
+    fs.mkdirSync(join(root, 'plugins', 'keep-me'), { recursive: true });
+    fs.writeFileSync(join(root, 'plugins', 'keep-me', 'ompchamber.json'), JSON.stringify({ ...VALID, id: 'keep-me' }));
     fs.writeFileSync(
       getMarketplaceCatalogPath(),
       JSON.stringify({
+        name: 'Keep',
         plugins: [
           { name: 'keep-me', source: 'plugins/keep-me' },
           { name: 'from-git', source: 'plugins/from-git' },
@@ -328,11 +310,24 @@ describe('removePanelPlugin', () => {
       }),
     );
     invalidatePanelScan();
-    await removePanelPlugin('from-git');
+    expect((await discoverPanelPlugins()).panels).toHaveLength(2);
+
+    expect((await removePanelPlugin('from-git')).ok).toBe(true);
+    expect(fs.existsSync(join(root, 'plugins', 'from-git'))).toBe(false);
+
+    // The catalog entry goes too: leaving it made every removal produce a
+    // permanent "listed in marketplace.json but no plugin was found there" row.
+    // Pruning is by SOURCE, so an entry the removal does not name survives.
     const catalog = JSON.parse(fs.readFileSync(getMarketplaceCatalogPath(), 'utf8')) as {
+      name: string;
       plugins: Array<{ source: string }>;
     };
-    expect(catalog.plugins.map((p) => p.source)).toEqual(['plugins/keep-me']);
+    expect(catalog.plugins.map((entry) => entry.source)).toEqual(['plugins/keep-me']);
+    expect(catalog.name).toBe('Keep');
+
+    const after = await discoverPanelPlugins();
+    expect(after.panels.map((panel) => panel.pluginId)).toEqual(['keep-me']);
+    expect(after.errors).toEqual([]);
   });
 
   test('refuses an id that is not installed', async () => {

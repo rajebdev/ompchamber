@@ -9,8 +9,17 @@
  * postMessage bridge rather than through the chamber's own fetch.
  */
 
-/** Where a contributed panel renders. Two slots, one manifest. */
-export type PanelPosition = 'right' | 'editor';
+/**
+ * Where a contributed panel renders. Three slots, one manifest.
+ *
+ * A plugin may contribute AT MOST ONE panel per position, and that rule is
+ * enforced at manifest validation rather than merely documented: two `right`
+ * panels would put two activity-bar buttons on one plugin (the layout keys the
+ * active view by `plugin:<id>/<panel>`, so both would also fight over one width
+ * slot), and two `header` panels would leave the navbar dropdown ambiguous about
+ * which one it opens.
+ */
+export type PanelPosition = 'right' | 'editor' | 'header';
 
 /**
  * What a panel may ask the host for. Each value is one method group on the
@@ -144,12 +153,48 @@ export interface PanelPluginStatus {
   reason?: string;
   /** Whether the plugin is a Bun package (has a package.json). */
   isPackage: boolean;
+  /**
+   * Whether the plugin's contributions are live.
+   *
+   * Installing and enabling are two separate steps on purpose: a bundled plugin
+   * arrives in the catalog UNINSTALLED (VS Code's model — the marketplace is a
+   * store, not a preinstalled set), and an installed plugin can be switched off
+   * without deleting its directory. A disabled plugin contributes nothing —
+   * no activity-bar button, no header button, no editor tab — while its files
+   * stay on disk for the next enable.
+   */
+  enabled: boolean;
+  /** Whether the plugin came from the bundled marketplace rather than a git URL. */
+  bundled: boolean;
+}
+
+/**
+ * One plugin the bundled marketplace offers, whether or not it is installed.
+ *
+ * The catalog is what the Panel Plugins pane lists as AVAILABLE: the bundled
+ * marketplace is a store the user installs from, so a plugin sitting in
+ * `<package>/marketplace/plugins/` is an offer, not an install. Its manifest is
+ * read for the panel summary so the pane can say what a plugin contributes
+ * before the user commits to installing it.
+ */
+export interface PanelCatalogEntry {
+  pluginId: string;
+  name: string;
+  version: string;
+  description?: string;
+  /** Panel summaries, so the row can name what the plugin would add. */
+  panels: { id: string; title: string; position: PanelPosition }[];
+  /** True once the plugin is installed — the row then offers Enable/Remove. */
+  installed: boolean;
 }
 
 export interface PanelRegistryPayload {
+  /** Contributions of ENABLED plugins only — what the layouts render from. */
   panels: PanelRegistryEntry[];
   marketplaces: PanelMarketplaceItem[];
   errors: PanelPluginError[];
-  /** Build state per installed plugin. */
+  /** Every installed plugin, with its build and enablement state. */
   plugins: PanelPluginStatus[];
+  /** The bundled marketplace's offers, installed or not. */
+  catalog: PanelCatalogEntry[];
 }

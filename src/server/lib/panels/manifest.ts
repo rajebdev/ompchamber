@@ -58,10 +58,11 @@ export function toContribution(raw: unknown, root: string): PanelContribution | 
   const id = trimmed(raw.id);
   const title = trimmed(raw.title);
   const entry = trimmed(raw.entry);
-  const position: PanelPosition | null = raw.position === 'right' || raw.position === 'editor' ? raw.position : null;
+  const position: PanelPosition | null =
+    raw.position === 'right' || raw.position === 'editor' || raw.position === 'header' ? raw.position : null;
   if (!id || !ID_RE.test(id)) return { error: `panel id ${JSON.stringify(raw.id)} is missing or invalid` };
   if (!title) return { error: `panel "${id}" has no title` };
-  if (!position) return { error: `panel "${id}" position must be "right" or "editor"` };
+  if (!position) return { error: `panel "${id}" position must be "right", "editor" or "header"` };
   if (!entry) return { error: `panel "${id}" has no entry` };
   if (!resolveInsideRoot(root, entry)) return { error: `panel "${id}" entry "${entry}" escapes the plugin directory` };
   const capabilities = toCapabilities(raw.capabilities);
@@ -96,9 +97,19 @@ export function toManifest(raw: unknown, root: string): PanelPluginManifest | { 
   if (!Array.isArray(raw.panels) || raw.panels.length === 0) return { error: 'manifest declares no panels' };
 
   const panels: PanelContribution[] = [];
+  // One panel per position, enforced rather than documented. The layout gives
+  // each plugin exactly one activity-bar button, one navbar button and one
+  // editor tab, so a second `right` panel would be unreachable — and a second
+  // `header` panel would leave the dropdown with two candidates for what to
+  // open. Refusing at scan time is what makes that visible instead of silent.
+  const positions = new Set<PanelPosition>();
   for (const item of raw.panels) {
     const panel = toContribution(item, root);
     if ('error' in panel) return { error: panel.error };
+    if (positions.has(panel.position)) {
+      return { error: `plugin "${id}" declares more than one "${panel.position}" panel` };
+    }
+    positions.add(panel.position);
     panels.push(panel);
   }
   return { id, name, version, description: trimmed(raw.description), homepage: trimmed(raw.homepage), panels };

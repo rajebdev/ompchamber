@@ -22,20 +22,21 @@
  *   with one key.
  */
 
-import { mkdir, rename, rm } from 'fs/promises';
+import { mkdir, rename, rm, cp } from 'fs/promises';
 import { join } from 'path';
 import { pathExists } from '@/server/lib/omp/core/paths';
 import { gitRun, firstLine } from '@/server/lib/wiki/git';
 import { toManifest } from '@/server/lib/panels/manifest';
-import { readPluginManifest } from '@/server/lib/panels/registry.server';
 import { buildPanelPlugin } from '@/server/lib/panels/build.server';
 import { isRecord } from '@/shared/lib/util/guards';
 import {
+  getBundledMarketplaceDir,
   getMarketplaceCatalogPath,
   getMarketplaceDir,
   getMarketplacePluginsDir,
   invalidatePanelScan,
 } from '@/server/lib/panels/registry.server';
+import { readPluginManifest } from '@/server/lib/panels/files.server';
 
 const CLONE_TIMEOUT_MS = 120_000;
 
@@ -75,12 +76,78 @@ function repoSlug(url: string): string {
 }
 
 /**
+ * Move a staged plugin into the working marketplace and register it.
+ *
+ * Shared by the two install sources — a git clone and a bundled plugin copy —
+ * because everything after staging is identical and the parts that matter are
+ * the ones a second copy would get wrong: the manifest is read through the
+ * scan's own reader, the destination name comes from the manifest's `id` rather
+ * than from the source, the build runs BEFORE the catalog entry is written, and
+ * a build failure leaves the directory in place so Rebuild can fix it.
+ */
+async function commitStagedInstall(stagingDir: string): Promise<InstallResult> {
+  const pluginsDir = getMarketplacePluginsDir();
+  const read = await readPluginManifest(stagingDir);
+  if (read.kind === 'none') {
+    await rm(stagingDir, { recursive: true, force: true });
+    return { ok: false, error: 'That plugin has no ompchamber.json, and no ompchamber key in package.json.' };
+  }
+  if (read.kind === 'error') {
+    await rm(stagingDir, { recursive: true, force: true });
+    return { ok: false, error: read.reason };
+  }
+
+  const manifest = toManifest(read.value, stagingDir);
+  if ('error' in manifest) {
+    await rm(stagingDir, { recursive: true, force: true });
+    return { ok: false, error: manifest.error };
+  }
+
+  await mkdir(pluginsDir, { recursive: true });
+  const destination = join(pluginsDir, manifest.id);
+  if (await pathExists(destination)) {
+    await rm(stagingDir, { recursive: true, force: true });
+    return { ok: false, error: `A plugin with id "${manifest.id}" is already installed.` };
+  }
+
+  await rename(stagingDir, destination);
+
+  // Build BEFORE registering: a package whose build FAILS would otherwise be
+  // listed as installed while every one of its frames 404s. A plugin that is
+  // not a package is a different answer — its files are served as they are,
+  // so it registers normally. The directory stays either way, so the pane can
+  // offer a Rebuild.
+  const build = await buildPanelPlugin(destination, manifest);
+  if (build.status === 'failed') {
+    invalidatePanelScan();
+    return { ok: true, pluginId: manifest.id, dir: destination, error: build.reason ?? 'the plugin did not build' };
+  }
+
+  const catalog = await appendCatalogEntry({
+    name: manifest.id,
+    source: `plugins/${manifest.id}`,
+    description: manifest.description,
+    version: manifest.version,
+  });
+
+  invalidatePanelScan();
+  if (!catalog.ok) {
+    // The plugin IS installed — the directory is in place and the scan will
+    // find it. Only the catalog entry failed, and the pane reports a missing
+    // catalog entry as an error, so the outcome is honest rather than clean.
+    return { ok: true, pluginId: manifest.id, dir: destination, error: catalog.error };
+  }
+  return { ok: true, pluginId: manifest.id, dir: destination };
+}
+
+/**
  * Clone `url` and install the plugin it contains.
  *
- * The order is: clone to a temp dir, read and validate its manifest, move it to
- * `plugins/<manifest.id>`, then append the catalog entry. Each step is a no-op
- * for the next if it fails, so a failure at any point leaves the marketplace in
- * a state the scan still describes correctly.
+ * The order is: clone to a temp dir, then `commitStagedInstall` — read and
+ * validate its manifest, move it to `plugins/<manifest.id>`, build it, and
+ * append the catalog entry. Each step is a no-op for the next if it fails, so a
+ * failure at any point leaves the marketplace in a state the scan still
+ * describes correctly.
  */
 export async function installPanelPluginFromGit(url: string): Promise<InstallResult> {
   if (!isGitUrl(url)) {
@@ -88,7 +155,6 @@ export async function installPanelPluginFromGit(url: string): Promise<InstallRes
   }
 
   const marketplaceDir = getMarketplaceDir();
-  const pluginsDir = getMarketplacePluginsDir();
   // The temp directory is a SIBLING of `plugins/`, not inside it: the scan
   // globs `plugins/*/`, so a half-cloned repository there would be reported as a
   // broken plugin for as long as the clone runs.
@@ -106,60 +172,45 @@ export async function installPanelPluginFromGit(url: string): Promise<InstallRes
       return { ok: false, error: firstLine(clone.stderr) || 'git clone failed' };
     }
 
-    // The same reader the scan uses, so a plugin whose manifest lives in
-    // `package.json#ompchamber` (a Bun package — the common shape) installs just
-    // as one with a standalone `ompchamber.json`.
-    const read = await readPluginManifest(stagingDir);
-    if (read.kind === 'none') {
-      await rm(stagingDir, { recursive: true, force: true });
-      return { ok: false, error: 'That repository has no ompchamber.json, and no ompchamber key in package.json.' };
-    }
-    if (read.kind === 'error') {
-      await rm(stagingDir, { recursive: true, force: true });
-      return { ok: false, error: read.reason };
-    }
+    return await commitStagedInstall(stagingDir);
+  } catch (error) {
+    await rm(stagingDir, { recursive: true, force: true }).catch(() => {});
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
 
-    const manifest = toManifest(read.value, stagingDir);
-    if ('error' in manifest) {
-      await rm(stagingDir, { recursive: true, force: true });
-      return { ok: false, error: manifest.error };
-    }
+/**
+ * Install one plugin the bundled marketplace offers.
+ *
+ * A COPY, not a symlink or a read-through: the bundled tree lives inside the
+ * package, which is read-only in a global install and replaced outright by an
+ * upgrade — a plugin served from there would vanish on the next update, and a
+ * build would write into `node_modules`. Copying into the working marketplace
+ * makes a bundled install and a git install the same thing afterwards, which is
+ * the property the whole pane rests on.
+ *
+ * The staging directory is a sibling of `plugins/` for the same reason the git
+ * clone stages there: the scan lists the subdirectories of `plugins`, so a
+ * half-copied plugin would be reported as broken while the copy runs.
+ */
+export async function installPanelPluginFromBundled(pluginId: string): Promise<InstallResult> {
+  if (!/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(pluginId)) return { ok: false, error: 'Invalid plugin id.' };
 
-    await mkdir(pluginsDir, { recursive: true });
-    const destination = join(pluginsDir, manifest.id);
-    if (await pathExists(destination)) {
-      await rm(stagingDir, { recursive: true, force: true });
-      return { ok: false, error: `A plugin with id "${manifest.id}" is already installed.` };
-    }
+  const source = join(getBundledMarketplaceDir(), 'plugins', pluginId);
+  if (!(await pathExists(source))) {
+    return { ok: false, error: `No bundled plugin with id "${pluginId}".` };
+  }
 
-    await rename(stagingDir, destination);
-
-    // Build BEFORE registering: a package whose build FAILS would otherwise be
-    // listed as installed while every one of its frames 404s. A plugin that is
-    // not a package is a different answer — its files are served as they are,
-    // so it registers normally. The directory stays either way, so the pane can
-    // offer a Rebuild.
-    const build = await buildPanelPlugin(destination, manifest);
-    if (build.status === 'failed') {
-      invalidatePanelScan();
-      return { ok: true, pluginId: manifest.id, dir: destination, error: build.reason ?? 'the plugin did not build' };
-    }
-
-    const catalog = await appendCatalogEntry({
-      name: manifest.id,
-      source: `plugins/${manifest.id}`,
-      description: manifest.description,
-      version: manifest.version,
-    });
-
-    invalidatePanelScan();
-    if (!catalog.ok) {
-      // The plugin IS installed — the directory is in place and the scan will
-      // find it. Only the catalog entry failed, and the pane reports a missing
-      // catalog entry as an error, so the outcome is honest rather than clean.
-      return { ok: true, pluginId: manifest.id, dir: destination, error: catalog.error };
-    }
-    return { ok: true, pluginId: manifest.id, dir: destination };
+  const marketplaceDir = getMarketplaceDir();
+  const stagingDir = join(marketplaceDir, `.installing-${pluginId}-${Date.now()}`);
+  try {
+    await mkdir(marketplaceDir, { recursive: true });
+    await rm(stagingDir, { recursive: true, force: true });
+    // A build output is never copied: `dist/` is gitignored, so the bundled
+    // copy carries sources and the build here produces the served files —
+    // identical to what the seed used to do, and to what a git install does.
+    await cp(source, stagingDir, { recursive: true, force: true });
+    return await commitStagedInstall(stagingDir);
   } catch (error) {
     await rm(stagingDir, { recursive: true, force: true }).catch(() => {});
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
