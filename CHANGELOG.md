@@ -5,6 +5,28 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0](https://github.com/rajebdev/ompchamber/compare/v3.16.1...v4.0.0) — 2026-10-05
+
+### BREAKING CHANGES
+
+* **panels:** panel plugins must be rewritten. A plugin is now a package with
+an `app` bundle exporting `definePluginApp`, not a directory of HTML documents;
+the `panels` and `capabilities` manifest fields are gone, and `editorPanel` is
+replaced by `panel`. Sandboxed panels are no longer supported.
+* **panels:** a manifest declaring two panels in the same position is now
+rejected with a reason instead of loading both, and bundled plugins are no
+longer copied into the working marketplace on first boot.
+
+### Added
+
+* **panels:** a store-and-installed pane, hideable activity bar, header and editor slots ([1b278f0](https://github.com/rajebdev/ompchamber/commit/1b278f04d46c7ce5268057c7c4246b128de027fa))
+* **panels:** install from the bundled store, enable/disable, one panel per position ([cd538b6](https://github.com/rajebdev/ompchamber/commit/cd538b6fd906590e1290bbb78c22424c6c36cdc5))
+* **panels:** run plugins in-process as Preact components, not sandboxed frames ([5018640](https://github.com/rajebdev/ompchamber/commit/50186400e5728192b6d977fdcc1b58e160f466de))
+
+### Fixed
+
+* **chat:** stop a follow-up from being lost when a run starts elsewhere ([ee15c02](https://github.com/rajebdev/ompchamber/commit/ee15c02b0280a4fb166d87081ca29e3e2718173b))
+
 ## [3.16.1](https://github.com/rajebdev/ompchamber/compare/v3.16.0...v3.16.1) — 2026-10-05
 
 ### Fixed
