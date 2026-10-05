@@ -1,0 +1,35 @@
+{
+  "name": "@ompchamber/plugin-sdk",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "The contract between a panel plugin and the OMPChamber host.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rajebdev/ompchamber.git",
+    "directory": "packages/plugin-sdk"
+  },
+  "homepage": "https://github.com/rajebdev/ompchamber#readme",
+  "bugs": {
+    "url": "https://github.com/rajebdev/ompchamber/issues"
+  },
+  "keywords": [
+    "ompchamber",
+    "panel",
+    "plugin",
+    "sdk",
+    "types"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "bun": ">=1.4.0"
+  }
+}

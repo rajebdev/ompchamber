@@ -6,6 +6,9 @@
       "name": "ompchamber",
       "dependencies": {
         "@fontsource/fira-code": "^5.3.0",
+        "@ompchamber/plugin-build": "workspace:*",
+        "@ompchamber/plugin-sdk": "workspace:*",
+        "@ompchamber/ui": "workspace:*",
         "@shikijs/langs": "^4.4.3",
         "@shikijs/themes": "^4.4.3",
         "@tailwindcss/postcss": "^4.1.14",
@@ -36,10 +39,33 @@
         "@semantic-release/release-notes-generator": "^14.1.1",
         "@types/bun": "^1.4.2",
         "@types/node": "^22.14.0",
+        "bun-types": "^1.4.2",
         "conventional-changelog-conventionalcommits": "^9.3.1",
         "happy-dom": "^20.14.5",
         "semantic-release": "^25.0.9",
         "typescript": "~5.8.2",
+      },
+    },
+    "packages/plugin-build": {
+      "name": "@ompchamber/plugin-build",
+      "version": "1.0.0",
+      "dependencies": {
+        "@ompchamber/plugin-sdk": "workspace:*",
+        "@tailwindcss/postcss": "^4.1.14",
+        "postcss": "^8.5.16",
+        "tailwindcss": "^4.1.14",
+      },
+    },
+    "packages/plugin-sdk": {
+      "name": "@ompchamber/plugin-sdk",
+      "version": "1.0.0",
+    },
+    "packages/ui": {
+      "name": "@ompchamber/ui",
+      "version": "1.0.0",
+      "dependencies": {
+        "@ompchamber/plugin-sdk": "workspace:*",
+        "preact": "^10.29.8",
       },
     },
   },
@@ -115,6 +141,12 @@
     "@octokit/request-error": ["@octokit/request-error@7.1.2", "", { "dependencies": { "@octokit/types": "^18.0.0" } }, "sha512-XZRuT3xZ84D3gYErI1DZvhJ33dCWVV6uzBtWkaBB4TvA/L6eOeTZodxLFVB44bBEEo3vEx7y00UfX1tBLrtLRg=="],
 
     "@octokit/types": ["@octokit/types@18.0.0", "", { "dependencies": { "@octokit/openapi-types": "^29.0.1" } }, "sha512-l6bAF43PNxkJp6g+W4PjoUSSkxHomXw2nOum5CTftJz1NlV3vu93NImgOYtLf6CbBUb5j+fiuzW0PPQ5JTSvZA=="],
+
+    "@ompchamber/plugin-build": ["@ompchamber/plugin-build@workspace:packages/plugin-build"],
+
+    "@ompchamber/plugin-sdk": ["@ompchamber/plugin-sdk@workspace:packages/plugin-sdk"],
+
+    "@ompchamber/ui": ["@ompchamber/ui@workspace:packages/ui"],
 
     "@pnpm/config.env-replace": ["@pnpm/config.env-replace@1.1.0", "", {}, "sha512-htyl8TWnKL7K/ESFa1oW2UB5lVDxuF5DpM7tBi6Hu2LNL3mWkIzNLG6N4zoCUP1lCKNxWy/3iu8mS8MvToGd6w=="],
 

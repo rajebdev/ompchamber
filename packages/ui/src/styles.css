@@ -1,0 +1,187 @@
+/**
+ * The UI kit's stylesheet.
+ *
+ * The frame has an opaque origin, so it cannot reach the chamber's stylesheet —
+ * the palette arrives as `data-theme` on `<html>` (set by `PanelProvider`) and
+ * this file maps it. That is the whole reason a kit ships CSS: without it, every
+ * panel would invent its own colours and drift from the app.
+ *
+ * The palette ids are the two the chamber ships most often. A plugin may add a
+ * block for a theme it wants to support; an unknown id leaves the defaults,
+ * which is a readable fallback rather than a broken one.
+ */
+
+:root {
+  --oc-bg: #faf8f3;
+  --oc-paper: #ffffff;
+  --oc-ink: #141310;
+  --oc-muted: rgba(20, 19, 16, 0.55);
+  --oc-faint: rgba(20, 19, 16, 0.38);
+  --oc-line: rgba(20, 19, 16, 0.14);
+  --oc-error: #b3261e;
+}
+
+:root[data-theme='one-dark-pro-soft'] {
+  --oc-bg: #21252b;
+  --oc-paper: #282c34;
+  --oc-ink: #d7dae0;
+  --oc-muted: rgba(215, 218, 224, 0.6);
+  --oc-faint: rgba(215, 218, 224, 0.42);
+  --oc-line: rgba(215, 218, 224, 0.16);
+  --oc-error: #e06c75;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--oc-bg);
+  color: var(--oc-ink);
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+}
+
+/* Panel chrome ------------------------------------------------------------ */
+
+.oc-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.oc-panel-header {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--oc-line);
+  flex-shrink: 0;
+}
+
+.oc-panel-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.oc-panel-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px 14px;
+  overflow: auto;
+}
+
+/* Fields ------------------------------------------------------------------ */
+
+.oc-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.oc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.oc-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--oc-muted);
+  font-family: ui-monospace, monospace;
+}
+
+.oc-value {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.oc-hint {
+  font-size: 11px;
+  color: var(--oc-muted);
+}
+
+/* Text field -------------------------------------------------------------- */
+
+.oc-textarea-field {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.oc-textarea {
+  flex: 1;
+  min-height: 80px;
+  resize: none;
+  border: 1px solid var(--oc-line);
+  border-radius: 6px;
+  padding: 8px;
+  font: 12px/1.6 ui-monospace, monospace;
+  background: transparent;
+  color: inherit;
+  outline: none;
+}
+
+.oc-textarea:focus {
+  border-color: var(--oc-ink);
+}
+
+.oc-textarea:disabled {
+  opacity: 0.5;
+}
+
+/* Button ------------------------------------------------------------------ */
+
+.oc-button {
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--oc-line);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.oc-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--oc-ink) 6%, transparent);
+}
+
+.oc-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.oc-button-primary {
+  background: var(--oc-ink);
+  color: var(--oc-bg);
+  border-color: var(--oc-ink);
+}
+
+/* Messages ---------------------------------------------------------------- */
+
+.oc-empty {
+  margin: 0;
+  padding: 24px 8px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--oc-faint);
+}
+
+.oc-note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--oc-muted);
+}
+
+.oc-note-error {
+  color: var(--oc-error);
+}

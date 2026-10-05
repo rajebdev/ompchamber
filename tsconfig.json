@@ -18,11 +18,18 @@
     "paths": {
       "@/*": ["./src/*"],
       "elkjs/lib/elk.bundled.js": ["./src/client/stubs/elkjs.ts"],
-      "elkjs": ["./src/client/stubs/elkjs.ts"]
+      "elkjs": ["./src/client/stubs/elkjs.ts"],
+      "@ompchamber/plugin-sdk": ["./packages/plugin-sdk/src/index.ts"],
+      "@ompchamber/ui": ["./packages/ui/src/index.tsx"],
+      "@ompchamber/ui/components": ["./packages/ui/src/components.tsx"],
+      "@ompchamber/ui/styles.css": ["./packages/ui/src/styles.css"],
+      "@ompchamber/plugin-build": ["./packages/plugin-build/src/index.ts"]
     },
     "types": ["bun-types"],
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "allowArbitraryExtensions": true
   },
+  "include": ["src", "packages", "marketplace/plugins/*/src"],
   "exclude": ["node_modules", "dist"]
 }

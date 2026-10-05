@@ -1,0 +1,41 @@
+{
+  "name": "@ompchamber/ui",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Preact hooks and components for OMPChamber panel plugins.",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./components": "./src/components.tsx",
+    "./styles.css": "./src/styles.css"
+  },
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+    "preact": "^10.29.8",
+    "@ompchamber/plugin-sdk": "workspace:*"
+  },
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rajebdev/ompchamber.git",
+    "directory": "packages/ui"
+  },
+  "homepage": "https://github.com/rajebdev/ompchamber#readme",
+  "bugs": {
+    "url": "https://github.com/rajebdev/ompchamber/issues"
+  },
+  "keywords": [
+    "ompchamber",
+    "panel",
+    "plugin",
+    "preact",
+    "ui"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "bun": ">=1.4.0"
+  }
+}
