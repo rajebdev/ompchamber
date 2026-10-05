@@ -5,6 +5,17 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.2](https://github.com/rajebdev/ompchamber/compare/v4.1.1...v4.1.2) — 2026-10-05
+
+### Changed
+
+* **release:** the workspace pin comes from the lock, not the manifest ([646b181](https://github.com/rajebdev/ompchamber/commit/646b181a50a540176efb948659674d0d8fb8d3da))
+
+### Fixed
+
+* **ci:** give each release workflow its own concurrency group ([0ba215e](https://github.com/rajebdev/ompchamber/commit/0ba215e6723f6a9ab4a856c07936c71b881fca72))
+* **plugins:** refresh bun.lock so a released package pins the new version ([0a9b503](https://github.com/rajebdev/ompchamber/commit/0a9b503dfe8c33b4bff2f3c0ee915bafec8ed334))
+
 ## [4.1.1](https://github.com/rajebdev/ompchamber/compare/v4.1.0...v4.1.1) — 2026-10-05
 
 ### Fixed
