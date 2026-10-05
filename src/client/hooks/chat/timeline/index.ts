@@ -18,6 +18,7 @@ import { readStreamTransport } from '@/shared/lib/chat/omp/transport';
 import { useChatTimelineAccessMode } from '@/client/hooks/chat/timeline/access-mode';
 import { useComposerModes } from '@/client/hooks/chat/timeline/composer-modes';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
+import { isSessionStreaming } from '@/client/hooks/chat/omp/session-statuses';
 
 interface UseChatTimelineOptions {
   folders?: any[];
@@ -72,6 +73,12 @@ export function useChatTimeline({
 
   const [isGenerating, setIsGenerating] = useState(false);
   const isGeneratingRef = useRef(false);
+  // One "a run is in flight" state for the whole chat: this client's own run OR
+  // the server-tracked `stream` status the sidebar spinner draws from. Every
+  // consumer that describes the RUN (the docked indicator, the withheld footer,
+  // the queue-vs-send decision, Stop) reads this one flag so they cannot
+  // disagree — `isGenerating` alone only knows the run THIS page started.
+  const timelineRunning = isGenerating || isSessionStreaming(folders, sessionId);
   // Mirror of localMessages for non-reactive reads (session-load merge path).
   const localMessagesRef = useRef<ChatMessageData[]>([]);
   localMessagesRef.current = localMessages;
@@ -259,6 +266,7 @@ export function useChatTimeline({
     setInputValue,
     setInputAttachments,
     isGenerating,
+    chatRunning: timelineRunning,
     isOmpSession,
     sessionId,
     appSettings,
@@ -292,6 +300,7 @@ export function useChatTimeline({
     sessionData,
     localMessages,
     isGenerating,
+    timelineRunning,
     hasMore,
     loadingOlder,
     loadOlderError,

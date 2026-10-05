@@ -89,6 +89,7 @@ function makeHarness(
     executeSend: async (text, attachments) => {
       sent.push({ text, attachments });
       settle();
+      return { ok: true, busy: false };
     },
     reportActionError: (message) => {
       errors.push(message);

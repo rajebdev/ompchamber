@@ -80,6 +80,25 @@ export interface AgentImage {
   mimeType: string;
 }
 
+/**
+ * Outcome of one prompt dispatch attempt.
+ *
+ * `ok: false` with `busy: true` is the one case a caller must act on: omp
+ * REFUSED the prompt because a turn is still streaming, so nothing was
+ * delivered and the caller may queue the message and re-send it when the run
+ * ends. Every other failure (`ok: false, busy: false`) may have been accepted
+ * already — a timed-out ack, a transport error — and must never be resent
+ * automatically. A bare boolean could not tell the two apart, which is how a
+ * mid-turn prompt was silently dropped.
+ */
+export interface PromptDispatchResult {
+  ok: boolean;
+  /** True only when the server reported omp's typed mid-turn refusal. */
+  busy: boolean;
+  /** Server-supplied reason, when one was returned. */
+  error?: string;
+}
+
 /** Command surface returned by useOmpAgent — the live omp session handle the
  *  chat timeline drives. */
 export interface OmpAgentHandle extends OmpAgentState {
@@ -87,7 +106,7 @@ export interface OmpAgentHandle extends OmpAgentState {
    *  `accessMode` rides the warmup + prompt bodies: omp has no RPC to change its
    *  tool-approval mode, so the CLI `--approval-mode` flag is applied at spawn
    *  time and the server reconciles an idle session by respawning it. */
-  sendPrompt: (message: string, images?: AgentImage[], options?: { accessMode?: ApprovalMode }) => Promise<boolean>;
+  sendPrompt: (message: string, images?: AgentImage[], options?: { accessMode?: ApprovalMode }) => Promise<PromptDispatchResult>;
   /** Spawn a brand-new omp session and send its first prompt; resolves with the
    *  adopted session id (or null on failure). */
   sendNewPrompt: (

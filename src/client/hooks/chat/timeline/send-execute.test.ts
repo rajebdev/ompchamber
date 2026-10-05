@@ -80,6 +80,8 @@ interface AgentCalls {
   levels: string[];
   interrupts: Array<{ text: string; images: unknown }>;
   sendPromptOk: boolean;
+  /** omp's typed mid-turn refusal (nothing delivered, safe to queue). */
+  sendPromptBusy: boolean;
   spawnResult: { sessionId: string; model?: { provider: string; modelId: string } } | null;
 }
 
@@ -96,13 +98,14 @@ function makeAgent(overrides: Partial<AgentCalls> = {}): AgentRecorder {
     levels: [],
     interrupts: [],
     sendPromptOk: true,
+    sendPromptBusy: false,
     spawnResult: null,
     ...overrides,
   };
   const agent = {
     sendPrompt: async (text: string, images: unknown, options: unknown) => {
       calls.prompts.push({ text, images, options });
-      return calls.sendPromptOk;
+      return { ok: calls.sendPromptOk, busy: calls.sendPromptBusy };
     },
     sendNewPrompt: async (text: string, cwd: string, _images: unknown, options: unknown) => {
       calls.newPrompts.push({ text, cwd, options });

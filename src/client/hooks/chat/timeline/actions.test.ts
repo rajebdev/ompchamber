@@ -97,6 +97,7 @@ function makeRecorded(overrides: Partial<ChatTimelineActionsDeps> = {}): Recorde
     },
     setInputAttachments: () => {},
     isGenerating: false,
+    chatRunning: false,
     isOmpSession: true,
     sessionId: 'sess-1',
     appSettings: {},
@@ -107,6 +108,7 @@ function makeRecorded(overrides: Partial<ChatTimelineActionsDeps> = {}): Recorde
     removeMessage: () => {},
     executeSend: async (text, attachments) => {
       sends.push({ text, attachments });
+      return { ok: true, busy: false };
     },
     steerOmpAgent: async () => {},
     ompAgent: {} as ChatTimelineActionsDeps['ompAgent'],
@@ -213,5 +215,43 @@ describe('handleSend', () => {
     expect(rec.queued).toHaveLength(1);
     expect(rec.queued[0]?.text).toBe('next please');
     expect(rec.queued[0]?.model).toEqual({ ...composerPick, accessMode: 'yolo' });
+  });
+
+  // The bug: a run this page did not start (a second tab, a scheduled task, the
+  // goal driver's continuation, a reload that never re-attached) leaves
+  // `isGenerating` false while the server streams. Reading only the local flag
+  // sent a PLAIN prompt into that run, omp refused it mid-turn, and the message
+  // was lost. The chat-level `chatRunning` is what the queue decision must use.
+  test('a submit during a run this page did NOT start is queued, not sent', async () => {
+    const rec = makeRecorded({
+      inputValue: 'do not lose me',
+      isGenerating: false,
+      chatRunning: true,
+    });
+    await (await mount(rec.deps)).clickSend();
+    expect(rec.sends).toEqual([]);
+    expect(rec.drafts).toEqual(['']);
+    expect(rec.queued).toHaveLength(1);
+    expect(rec.queued[0]?.text).toBe('do not lose me');
+  });
+
+  test('a mid-turn refusal from a plain send falls back to the queue', async () => {
+    // The local flag said idle, the chat flag said idle, so the send went out —
+    // and omp refused it (`agent_busy`). Nothing was delivered, so it must be
+    // queued rather than dropped.
+    const sends: Array<{ text: string; attachments: Attachment[] }> = [];
+    const rec = makeRecorded({
+      inputValue: 'raced the run',
+      isGenerating: false,
+      chatRunning: false,
+      executeSend: async (text, attachments) => {
+        sends.push({ text, attachments });
+        return { ok: false, busy: true, error: 'agent busy' };
+      },
+    });
+    await (await mount(rec.deps)).clickSend();
+    expect(sends).toEqual([{ text: 'raced the run', attachments: [] }]);
+    expect(rec.queued).toHaveLength(1);
+    expect(rec.queued[0]?.text).toBe('raced the run');
   });
 });

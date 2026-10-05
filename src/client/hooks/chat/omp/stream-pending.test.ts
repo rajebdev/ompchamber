@@ -160,7 +160,7 @@ describe('useOmpPromptSender arms the optimistic mark', () => {
     const marks = recordPendingMarks();
     const probe = mountSender(SID);
 
-    expect(await probe.sender().sendPrompt('hello')).toBe(true);
+    expect((await probe.sender().sendPrompt('hello')).ok).toBe(true);
 
     // Two arms, no disarm: the click covers the round trip, the second moves
     // the clock past the point where an authoritative snapshot can be trusted.
@@ -175,7 +175,7 @@ describe('useOmpPromptSender arms the optimistic mark', () => {
     const marks = recordPendingMarks();
     const probe = mountSender(SID);
 
-    expect(await probe.sender().sendPrompt('go')).toBe(false);
+    expect((await probe.sender().sendPrompt('go')).ok).toBe(false);
 
     // The refused prompt leaves no run behind, so a mark that survived would
     // spin the sidebar forever.

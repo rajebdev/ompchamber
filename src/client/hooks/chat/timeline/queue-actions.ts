@@ -14,7 +14,7 @@
  */
 
 import type { Dispatch, SetStateAction } from 'preact/compat';
-import type { Attachment, QueuedMessageModel } from '@/shared/types';
+import type { Attachment, PromptDispatchResult, QueuedMessageModel } from '@/shared/types';
 import type { QueuedMessage } from '@/client/components/workspace/chat-timeline/QueueList';
 
 export interface QueueActionsDeps {
@@ -32,7 +32,7 @@ export interface QueueActionsDeps {
     text: string,
     attachments: Attachment[],
     options?: { model?: QueuedMessageModel | null },
-  ) => Promise<void>;
+  ) => Promise<PromptDispatchResult>;
 }
 
 export interface QueueActions {

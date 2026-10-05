@@ -103,8 +103,8 @@ describe('useOmpPromptSender.sendPrompt', () => {
   test('refuses with no live session, without touching the network', async () => {
     const requests = installFetch({});
     const probe = mountSender(null);
-    const ok = await probe.sender().sendPrompt('hi');
-    expect(ok).toBe(false);
+    const result = await probe.sender().sendPrompt('hi');
+    expect(result.ok).toBe(false);
     expect(requests.length).toBe(0);
   });
 
@@ -116,9 +116,9 @@ describe('useOmpPromptSender.sendPrompt', () => {
       events.push((e as CustomEvent<{ sessionId: string }>).detail.sessionId);
     });
 
-    const ok = await probe.sender().sendPrompt('hello world');
+    const result = await probe.sender().sendPrompt('hello world');
 
-    expect(ok).toBe(true);
+    expect(result.ok).toBe(true);
     expect(requests.map((r) => [r.method, r.url])).toEqual([
       ['POST', `/api/agent/${encodeURIComponent(SID)}`],
       ['POST', `/api/agent/${encodeURIComponent(SID)}`],
@@ -153,9 +153,9 @@ describe('useOmpPromptSender.sendPrompt', () => {
       return new Response(JSON.stringify({ success: true }), { status: 200 });
     };
     const probe = mountSender(SID);
-    const ok = await probe.sender().sendPrompt('go');
+    const result = await probe.sender().sendPrompt('go');
 
-    expect(ok).toBe(true);
+    expect(result.ok).toBe(true);
     expect(probe.connected).toEqual([]);
     expect(requests[1].body).toEqual({ type: 'prompt', message: 'go' });
   });
@@ -171,9 +171,12 @@ describe('useOmpPromptSender.sendPrompt', () => {
       return new Response(JSON.stringify({ error: 'session_busy' }), { status: 200 });
     };
     const probe = mountSender(SID);
-    const ok = await probe.sender().sendPrompt('go');
+    const result = await probe.sender().sendPrompt('go');
 
-    expect(ok).toBe(false);
+    expect(result.ok).toBe(false);
+    // A bare `session_busy` (ack timed out) may already have been accepted, so
+    // it is NOT the typed refusal: the caller must not auto-requeue it.
+    expect(result.busy).toBe(false);
     expect(probe.state().isGenerating).toBe(false);
     expect(probe.state().error).toBe('session_busy');
   });
@@ -181,10 +184,32 @@ describe('useOmpPromptSender.sendPrompt', () => {
   test('a transport failure is reported, not thrown', async () => {
     installFetch({ [`/api/agent/${encodeURIComponent(SID)}`]: { reject: true } });
     const probe = mountSender(SID);
-    const ok = await probe.sender().sendPrompt('go');
+    const result = await probe.sender().sendPrompt('go');
 
-    expect(ok).toBe(false);
+    expect(result.ok).toBe(false);
+    expect(result.busy).toBe(false);
     expect(probe.state().error).toBe('network down');
+  });
+
+  test("omp's typed mid-turn refusal is reported as `busy` so the caller can queue it", async () => {
+    // The server maps omp's `AgentBusyError` ("Agent is already processing …")
+    // to `{ code: 'agent_busy' }`. Nothing was delivered, so the caller must be
+    // able to tell this apart from every other failure and re-send the message
+    // through the queue rather than lose it — the bug this pins.
+    let call = 0;
+    (globalThis as unknown as Record<string, unknown>).fetch = async () => {
+      call += 1;
+      if (call === 1) return new Response(JSON.stringify({ success: true }), { status: 200 });
+      return new Response(
+        JSON.stringify({ error: 'The agent is still working on the previous turn; the message was not sent.', code: 'agent_busy' }),
+        { status: 400 },
+      );
+    };
+    const probe = mountSender(SID);
+    const result = await probe.sender().sendPrompt('go');
+
+    expect(result.ok).toBe(false);
+    expect(result.busy).toBe(true);
   });
 });
 

@@ -20,8 +20,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { dispatchSessionCommand, type SessionCommandHost } from '@/server/lib/omp/rpc/session-commands';
-import { RpcCommandTimeoutError, type RpcProcess } from '@/server/lib/omp/rpc/process';
-import { AWAITING_AGENT_START_TIMEOUT_MS, RESTARTING_MESSAGE, SESSION_BUSY_MESSAGE, WebRpcError, type AgentEvent } from '@/server/lib/omp/rpc/constants';
+import { RpcCommandError, RpcCommandTimeoutError, type RpcProcess } from '@/server/lib/omp/rpc/process';
+import { AGENT_BUSY_MESSAGE, AWAITING_AGENT_START_TIMEOUT_MS, RESTARTING_MESSAGE, SESSION_BUSY_MESSAGE, WebRpcError, type AgentEvent } from '@/server/lib/omp/rpc/constants';
 import { cancelQueuedDelivery } from '@/server/lib/queue/delivery.server';
 
 function makeHarness(overrides: Record<string, unknown> = {}) {
@@ -206,7 +206,7 @@ describe('prompt', () => {
     expect(h.host.promptRunning).toBe(true);
   });
 
-  test('a timeout against a busy session keeps the process and refuses a retry', async () => {
+  test('a busy session refuses a retry, and omp\'s own mid-turn refusal is the typed `agent_busy`', async () => {
     const h = makeHarness({ isBusy: () => true });
     h.respond(() => {
       throw new RpcCommandTimeoutError('prompt', 1);
@@ -216,6 +216,9 @@ describe('prompt', () => {
     expect((error as WebRpcError).message).toBe(SESSION_BUSY_MESSAGE);
     expect(h.counters.destroys).toBe(0);
     expect(h.host.promptRunning).toBe(false);
+    h.respond(() => { throw new RpcCommandError('prompt', 'Agent is already processing.'); });
+    const busy = await rejectionOf(dispatchSessionCommand(h.host, { type: 'prompt', message: 'hi' })) as WebRpcError;
+    expect([busy.code, busy.message]).toEqual(['agent_busy', AGENT_BUSY_MESSAGE]);
   });
 
   test('a timeout against an idle session resets the child', async () => {

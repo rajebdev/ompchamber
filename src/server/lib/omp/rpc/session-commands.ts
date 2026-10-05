@@ -9,8 +9,8 @@
  * The host object exposes the wrapper's runtime state; behavior is unchanged.
  */
 
-import { RpcCommandTimeoutError, type RpcProcess } from '@/server/lib/omp/rpc/process';
-import { AWAITING_AGENT_START_TIMEOUT_MS, GET_STATE_TIMEOUT_MS, IMAGE_BEARING_COMMANDS, PASSTHROUGH_COMMANDS, PROMPT_ACK_TIMEOUT_MS, RESTARTING_MESSAGE, SESSION_BUSY_MESSAGE, WebRpcError, toImageContents, type AgentEvent, type RpcSessionState, validateAgentImages } from '@/server/lib/omp/rpc/constants';
+import { RpcCommandError, RpcCommandTimeoutError, type RpcProcess } from '@/server/lib/omp/rpc/process';
+import { AGENT_BUSY_MESSAGE, AGENT_BUSY_REFUSAL_RE, AWAITING_AGENT_START_TIMEOUT_MS, GET_STATE_TIMEOUT_MS, IMAGE_BEARING_COMMANDS, PASSTHROUGH_COMMANDS, PROMPT_ACK_TIMEOUT_MS, RESTARTING_MESSAGE, SESSION_BUSY_MESSAGE, WebRpcError, toImageContents, type AgentEvent, type RpcSessionState, validateAgentImages } from '@/server/lib/omp/rpc/constants';
 import { clearSessionFileCaches } from '@/server/lib/omp/session/files';
 import { scheduleQueueDelivery } from '@/server/lib/queue/delivery.server';
 import { clearStreamStatus, markStreamStatus, type SessionRunModel } from '@/shared/lib/omp/session/stream-state.server';
@@ -177,6 +177,15 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
         // prompt before the turn it starts. No reset, and the client must not
         // resend — a duplicate prompt would run twice.
         if (error instanceof RpcCommandTimeoutError) await settleCommandTimeout(host);
+        // omp's typed refusal for a PLAIN prompt dispatched mid-turn
+        // (`AgentBusyError`). Nothing was delivered, so this is not a command
+        // failure: the caller queues the message and re-sends it when the run
+        // ends. Reporting it as `session_busy` is what lets a client that did
+        // not know a run was in flight (a second tab, a reload, another
+        // instance) recover instead of losing the prompt.
+        if (error instanceof RpcCommandError && AGENT_BUSY_REFUSAL_RE.test(error.message)) {
+          throw new WebRpcError(AGENT_BUSY_MESSAGE, 'agent_busy');
+        }
         throw error;
       } finally {
         if (!streamingBehavior) {

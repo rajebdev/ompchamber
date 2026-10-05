@@ -21,7 +21,6 @@ import { ChatOverlays } from '@/client/components/workspace/chat-timeline/ChatOv
 import { ToastStack } from '@/client/components/common/ToastStack';
 import { composerRootFor } from '@/shared/lib/workspace/active-project';
 import { useSidebarData } from '@/client/hooks/chat/omp/session-list';
-import { isSessionStreaming } from '@/client/hooks/chat/omp/session-statuses';
 
 interface ChatTimelineProps {
   className?: string;
@@ -47,6 +46,7 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
     sessionData,
     localMessages,
     isGenerating,
+    timelineRunning,
     hasMore,
     loadingOlder, loadOlderError, sessionLoading,
     loadOlder,
@@ -173,18 +173,10 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
   const isPendingSession = Boolean(sessionId?.startsWith('new-'));
   const composerRoot = composerRootFor(folders, sessionId, selectedFolderId);
 
-  // The docked indicator's condition: the sidebar's own spinner state for this
-  // session — the server-tracked `stream` status, shared by every tab and
-  // chamber instance — OR this client's local run state. Local alone missed
-  // every run this page did not drive (a second tab, another instance, a page
-  // that never attached to the stream), so the sidebar spun while the timeline
-  // showed nothing.
-  const sessionStreaming = useMemo(() => isSessionStreaming(folders, sessionId), [folders, sessionId]);
-  // One "a run is in flight" state for the whole timeline: the indicator, the
-  // streaming row and the withheld run footer all read this. A local-only
-  // signal settled a run's footer while its answer was still arriving, for the
-  // same reason it hid the indicator.
-  const timelineRunning = isGenerating || sessionStreaming;
+  // The chat-level "a run is in flight" flag is computed in `useChatTimeline`
+  // (it owns the queue-vs-send decision that depends on it) and consumed here
+  // for the indicator, the streaming row and the withheld run footer, so the
+  // two cannot disagree.
 
   // Full-panel skeleton while a session's committed history is still loading:
   // covers the whole chat timeline (body + composer) so a session switch shows

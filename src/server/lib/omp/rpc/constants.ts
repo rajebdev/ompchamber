@@ -95,6 +95,23 @@ export const RESTARTING_MESSAGE = 'This session is restarting — retry in a mom
 // idle AND unresponsive is reset.
 export const SESSION_BUSY_MESSAGE = 'The OMP session is busy with the running turn; retry once it settles.';
 
+/**
+ * omp's typed refusal for a PLAIN prompt dispatched while a turn streams.
+ *
+ * `session.prompt()` with no `streamingBehavior` throws `AgentBusyError` when
+ * the session is streaming (measured on omp 18.6.1), and the RPC layer answers
+ * it as a FAILED `prompt` response carrying {@link AGENT_BUSY_REFUSAL_RE}'s
+ * phrase. Nothing was delivered, so the caller may safely queue the message and
+ * re-send it when the run ends.
+ *
+ * This is a DIFFERENT condition from {@link SESSION_BUSY_MESSAGE}, which the
+ * timeout path raises for a prompt whose ack was merely queued behind a running
+ * turn — that one may already have been accepted, so it must never be resent
+ * automatically. The two are deliberately separate codes.
+ */
+export const AGENT_BUSY_MESSAGE = 'The agent is still working on the previous turn; the message was not sent.';
+export const AGENT_BUSY_REFUSAL_RE = /already processing/i;
+
 export class WebRpcError extends Error {
   readonly code: string;
 

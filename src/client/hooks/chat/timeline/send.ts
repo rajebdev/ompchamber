@@ -12,7 +12,7 @@
 
 import { useCallback } from 'preact/hooks';
 import type { Dispatch, SetStateAction } from 'preact/compat';
-import type { AgentImage, Attachment, ChatMessageData, OmpAgentHandle, QueuedMessageModel } from '@/shared/types';
+import type { AgentImage, Attachment, ChatMessageData, OmpAgentHandle, PromptDispatchResult, QueuedMessageModel } from '@/shared/types';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { streamChatResponse } from '@/client/hooks/chat/stream';
 import { setStreamPending } from '@/client/hooks/chat/omp/stream-overlay';
@@ -76,12 +76,16 @@ export interface ChatTimelineSendDeps {
 export interface ChatTimelineSendResult {
   steerOmpAgent: (text: string, attachments: Attachment[]) => Promise<void>;
   /** `model` re-applies a queued item's snapshot before the prompt runs
-   *  (set_model / set_thinking_level RPC + prompt access mode). */
+   *  (set_model / set_thinking_level RPC + prompt access mode).
+   *
+   *  Resolves with the dispatch outcome. `busy: true` means omp REFUSED the
+   *  prompt mid-turn and nothing was delivered — the caller queues the message
+   *  rather than losing it. `ok: true` means the turn is running. */
   executeSend: (
     text: string,
     attachments: Attachment[],
     options?: { model?: QueuedMessageModel | null },
-  ) => Promise<void>;
+  ) => Promise<PromptDispatchResult>;
 }
 
 export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSendResult {
@@ -148,7 +152,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
     // queued item's "Send now", and `submitNewChat` — all of which can carry a
     // command that was typed before the guard existed, or that arrived from the
     // queue. Nothing has been rendered yet, so no rollback is needed.
-    if (blockTuiOnlySend(text, setLocalMessages)) return;
+    if (blockTuiOnlySend(text, setLocalMessages)) return { ok: false, busy: false, error: 'TUI-only command' };
     // A queued delivery replays the snapshot the item was queued with; a plain
     // send keeps the session's live picks. 'auto' thinking leaves omp alone.
     const modelOverride = options?.model ?? null;
@@ -232,15 +236,15 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
       // Inline text-file contents into the prompt: the model sees the full file
       // content as fenced blocks, not just the filename.
       const promptText = await buildPromptText(text, textFiles);
-      const ok = await ompAgent.sendPrompt(promptText, images.length ? images : undefined, { accessMode: effectiveAccessMode });
-      if (!ok) {
+      const result = await ompAgent.sendPrompt(promptText, images.length ? images : undefined, { accessMode: effectiveAccessMode });
+      if (!result.ok) {
         // Roll back the optimistic bubbles on a failed send.
         setLocalMessages(prev => prev.filter(m => m.id !== userMsgId && m.id !== aiPlaceholderId));
         aiPlaceholderIdRef.current = null;
         optimisticUserIdRef.current = null;
         setGenerating(false);
       }
-      return;
+      return result;
     }
 
     // No active session (fresh "New Session"): in real mode spawn a brand-new
@@ -303,7 +307,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
           // The sidebar already re-read at prompt dispatch (sendNewPrompt
           // signals it), so the new session shows its live badge without
           // waiting for the JSONL to carry the user turn.
-          return;
+          return { ok: true, busy: false };
         }
       }
     }
@@ -339,6 +343,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
         scrollToBottom,
       })
     );
+    return { ok: true, busy: false };
   }, [appSettings, folders, isOmpSession, ompAgent, selectedFolderId, sessionId, scrollToBottom, jumpToBottom, persistMessages, seedSession, pendingComposerModelRef, pendingThinkingLevelRef, deferredComposerPickRef, accessModeRef, setLocalMessages]);
   return { steerOmpAgent, executeSend };
 }

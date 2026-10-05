@@ -13,7 +13,7 @@
 
 import { useCallback, useMemo } from 'preact/hooks';
 import type { Dispatch, SetStateAction } from 'preact/compat';
-import type { Attachment, ChatMessageData, OmpAgentHandle, QueuedMessageModel } from '@/shared/types';
+import type { Attachment, ChatMessageData, OmpAgentHandle, PromptDispatchResult, QueuedMessageModel } from '@/shared/types';
 import type { QueuedMessage } from '@/client/components/workspace/chat-timeline/QueueList';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 import { applyComposerPick, consumeComposerPick, stashComposerPick, type DeferredModelStore } from '@/client/hooks/chat/timeline/deferred-model';
@@ -28,6 +28,12 @@ export interface ChatTimelineActionsDeps {
   setInputValue: (v: string) => void;
   setInputAttachments: Dispatch<SetStateAction<Attachment[]>>;
   isGenerating: boolean;
+  /** The CHAT-level "a run is in flight" flag (`timelineRunning`): the
+   *  server-tracked `stream` status OR this client's own run. The queue-vs-send
+   *  decision reads this, never `isGenerating` alone — a run this page did not
+   *  start (a second tab, a scheduled task, a reload that never re-attached)
+   *  still refuses a plain prompt mid-turn, and omp drops it. */
+  chatRunning: boolean;
   isOmpSession: boolean;
   /** Active session id (null on pending "new-…"); the omp undo path posts the
    *  rewind against it. */
@@ -37,7 +43,7 @@ export interface ChatTimelineActionsDeps {
   /** Server-backed per-item queue ops (append/remove/reorder). */
   enqueueMessage: (item: Omit<QueuedMessage, 'id'>) => void;
   removeMessage: (id: string) => void;
-  executeSend: (text: string, attachments: Attachment[], options?: { model?: QueuedMessageModel | null }) => Promise<void>;
+  executeSend: (text: string, attachments: Attachment[], options?: { model?: QueuedMessageModel | null }) => Promise<PromptDispatchResult>;
   steerOmpAgent: (text: string, attachments: Attachment[]) => Promise<void>;
   ompAgent: OmpAgentHandle;
   abortControllerRef: { current: AbortController | null };
@@ -90,6 +96,7 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     inputValue,
     setInputValue,
     isGenerating,
+    chatRunning,
     isOmpSession,
     sessionId,
     appSettings,
@@ -117,6 +124,18 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
   // they are built once per render from it rather than re-listing every field.
   const queueActions = useMemo(() => createQueueActions(deps), [deps]);
 
+  /** Snapshot the composer's model/thinking plus the live access mode onto a
+   *  queued item, so server-side auto-delivery replays exactly these settings.
+   *  The queue row is JSON — a `File` does not survive it — so text contents
+   *  and display fields are captured while the live handle still exists. */
+  const enqueueFollowUp = useCallback((text: string, attachments: Attachment[]) => {
+    const composerPick = composerModelRef.current;
+    const model = composerPick ? { ...composerPick, accessMode: accessModeRef.current } : null;
+    void prepareQueuedAttachments(attachments).then((prepared) => {
+      enqueueMessage({ text, attachments: prepared, model });
+    });
+  }, [composerModelRef, accessModeRef, enqueueMessage]);
+
   const handleSend = useCallback(async (attachments: Attachment[], options?: { steering?: boolean }) => {
     const textToSend = inputValue.trim();
     if (!textToSend && attachments.length === 0) return;
@@ -143,7 +162,13 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     // keep the draft so the user can edit or retype it.
     if (blockTuiOnlySend(textToSend, setLocalMessages)) return;
 
-    if (isGenerating) {
+    // "A run is in flight" is the CHAT-level flag, not this client's own:
+    // `isGenerating` only knows the run THIS page started, so a second tab, a
+    // scheduled task, the goal driver's continuation or a page that never
+    // re-attached would look idle here. A plain send into that run is refused
+    // by omp mid-turn and the prompt is lost — the reason this must read the
+    // same signal the sidebar spinner and the Stop button do.
+    if (isGenerating || chatRunning) {
       if (options?.steering) {
         // Explicit steering while a run is active.
         setInputValue('');
@@ -155,7 +180,7 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
             abortControllerRef.current = null;
           }
           setGenerating(false);
-          executeSend(textToSend, attachments);
+          void executeSend(textToSend, attachments);
         }
         return;
       }
@@ -167,28 +192,22 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
         await steerOmpAgent(textToSend, attachments);
         return;
       }
-      const composerPick = composerModelRef.current;
-      // Snapshot the composer's model/thinking plus the live access mode so
-      // server-side auto-delivery runs the item with exactly these settings.
-      const model = composerPick
-        ? { ...composerPick, accessMode: accessModeRef.current }
-        : null;
       // Both modes: the item is stored server-side (`queued_messages`) and the
       // panel is a view of it. Delivery happens when the run ends — the
       // wrapper's terminal `agent_end` claims the head and dispatches it.
       setInputValue('');
-      // The queue row is JSON: a `File` does not survive it. Capture the text
-      // contents and the display fields now, so delivery can inline the files
-      // and render the chips without a live handle.
-      void prepareQueuedAttachments(attachments).then((prepared) => {
-        enqueueMessage({ text: textToSend, attachments: prepared, model });
-      });
+      enqueueFollowUp(textToSend, attachments);
       return;
     }
 
     setInputValue('');
-    executeSend(textToSend, attachments);
-  }, [inputValue, isGenerating, executeSend, enqueueMessage, isOmpSession, appSettings, steerOmpAgent, setInputValue, abortControllerRef, setGenerating, stopHoldRef, composerModelRef, accessModeRef, setLocalMessages]);
+    const result = await executeSend(textToSend, attachments);
+    // The run we did not know about refused the prompt (omp answered
+    // `agent_busy`): nothing was delivered, so queue it exactly as the running
+    // branch would rather than losing the message. Every other failure may
+    // already have been accepted, and is reported by the send path instead.
+    if (result.busy) enqueueFollowUp(textToSend, attachments);
+  }, [inputValue, isGenerating, chatRunning, executeSend, enqueueMessage, enqueueFollowUp, isOmpSession, appSettings, steerOmpAgent, setInputValue, abortControllerRef, setGenerating, stopHoldRef, composerModelRef, accessModeRef, setLocalMessages]);
 
   const handleEditQueueItem = useCallback((item: QueuedMessage) => {
     queueActions.handleEditQueueItem(item);

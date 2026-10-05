@@ -25,7 +25,7 @@
  */
 
 import type { Dispatch, SetStateAction } from 'preact/compat';
-import type { Attachment, ChatMessageData, OmpAgentHandle } from '@/shared/types';
+import type { Attachment, ChatMessageData, OmpAgentHandle, PromptDispatchResult } from '@/shared/types';
 import { toAttachmentList } from '@/shared/lib/chat/attachments';
 import { requestRewind } from '@/client/hooks/chat/timeline/rewind';
 
@@ -43,7 +43,7 @@ export interface RewindActionsDeps {
    *  OUTSIDE a state updater, so the persist that follows cannot run twice. */
   localMessagesRef: { current: ChatMessageData[] };
   persistMessages: (messages: ChatMessageData[]) => void;
-  executeSend: (text: string, attachments: Attachment[]) => Promise<void>;
+  executeSend: (text: string, attachments: Attachment[]) => Promise<PromptDispatchResult>;
   /** Surface a refusal; Undo/Retry must not fail silently. */
   reportActionError: (message: string) => void;
 }

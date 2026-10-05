@@ -258,7 +258,10 @@ describe('createQueueActions', () => {
       steerOmpAgent: async () => { log.push('steer'); },
       abortControllerRef: { current: null },
       setGenerating: (v) => { log.push(`generating:${v}`); },
-      executeSend: async (text, _attachments, options) => { log.push(`send:${text}:${options?.model?.modelId ?? 'none'}`); },
+      executeSend: async (text, _attachments, options) => {
+        log.push(`send:${text}:${options?.model?.modelId ?? 'none'}`);
+        return { ok: true, busy: false };
+      },
       ...overrides,
     };
     return { actions: createQueueActions(deps), log };

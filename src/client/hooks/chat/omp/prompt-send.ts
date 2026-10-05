@@ -21,7 +21,7 @@ import { useCallback } from 'preact/hooks';
 import type { Dispatch, SetStateAction } from 'preact/compat';
 import { setSessionTitleHint, setStreamPending } from '@/client/hooks/chat/omp/stream-overlay';
 import { redirectToOwningInstance, type SessionOwnerConflict } from '@/client/hooks/chat/omp/owner-redirect';
-import type { AgentImage, OmpAgentState } from '@/shared/types';
+import type { AgentImage, OmpAgentState, PromptDispatchResult } from '@/shared/types';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
 
 export interface OmpPromptSenderDeps {
@@ -33,7 +33,7 @@ export interface OmpPromptSenderDeps {
 }
 
 export interface OmpPromptSender {
-  sendPrompt: (message: string, images?: AgentImage[], options?: { accessMode?: ApprovalMode }) => Promise<boolean>;
+  sendPrompt: (message: string, images?: AgentImage[], options?: { accessMode?: ApprovalMode }) => Promise<PromptDispatchResult>;
   sendNewPrompt: (
     message: string,
     cwd: string,
@@ -60,7 +60,7 @@ export function useOmpPromptSender(deps: OmpPromptSenderDeps): OmpPromptSender {
     options?: { accessMode?: ApprovalMode },
   ) => {
     const sid = sessionIdRef.current;
-    if (!sid) return false;
+    if (!sid) return { ok: false, busy: false, error: 'No session' };
     setState((prev) => ({ ...prev, isGenerating: true, error: null }));
     // The sidebar spinner starts on the CLICK, not when the server's dispatch
     // write lands a spawn/resume round trip later; the chat's own
@@ -92,16 +92,20 @@ export function useOmpPromptSender(deps: OmpPromptSenderDeps): OmpPromptSender {
           ...(options?.accessMode ? { accessMode: options.accessMode } : {}),
         }),
       });
-      const body = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string } & SessionOwnerConflict;
+      const body = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string; code?: string } & SessionOwnerConflict;
       if (!res.ok || body.error) {
         // Another chamber instance owns this session: send the tab there
         // instead of starting a second writer (which omp would fork).
-        if (redirectToOwningInstance(body, sid)) return false;
-        // `session_busy`: the ack timed out behind a still-running turn, so the
-        // prompt may already be accepted — never resend it automatically.
+        if (redirectToOwningInstance(body, sid)) return { ok: false, busy: false, error: 'Session is owned by another instance' };
+        // Release the optimistic mark: this dispatch started nothing. A run
+        // that IS streaming server-side draws the sidebar from its own row.
         setStreamPending(sid, false);
         setState((prev) => ({ ...prev, isGenerating: false, error: body.error ?? `HTTP ${res.status}` }));
-        return false;
+        // `agent_busy`: omp REFUSED the prompt because a turn is still
+        // streaming. Nothing was delivered, so the caller may queue it. Every
+        // other failure (a timed-out ack, a transport error) may already have
+        // been accepted and must never be resent automatically.
+        return { ok: false, busy: body.code === 'agent_busy', error: body.error ?? `HTTP ${res.status}` };
       }
       // Re-arm on the accepted dispatch: the authoritative row exists now, so
       // the mark's clock moves to a moment a later snapshot can be trusted
@@ -111,11 +115,11 @@ export function useOmpPromptSender(deps: OmpPromptSenderDeps): OmpPromptSender {
       // this session's live `stream` row at dispatch. Revalidation is
       // leading-edge throttled, so this lands immediately.
       window.dispatchEvent(new CustomEvent('omp:session-updated', { detail: { sessionId: sid } }));
-      return true;
+      return { ok: true, busy: false };
     } catch (e) {
       setStreamPending(sid, false);
       setState((prev) => ({ ...prev, isGenerating: false, error: e instanceof Error ? e.message : String(e) }));
-      return false;
+      return { ok: false, busy: false, error: e instanceof Error ? e.message : String(e) };
     }
   }, [connect, sessionIdRef, setState]);
 
