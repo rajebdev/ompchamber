@@ -1,7 +1,10 @@
 import { useState } from 'preact/hooks';
 import { Suspense } from 'preact/compat';
 import type { ReactNode } from 'preact/compat';
-import { BarChart3, BookOpen, Bot, ClipboardList, Files, GitBranch, Globe, Layers, ListTodo, Search, Terminal, X } from 'lucide-preact';
+import { BarChart3, BookOpen, Bot, ClipboardList, Files, GitBranch, Globe, Layers, ListTodo, Puzzle, Search, Terminal, X } from 'lucide-preact';
+import { usePanelRegistry } from '@/client/hooks/workspace/panel-registry';
+import { PluginPanelView } from '@/client/components/workspace/panel-host/view';
+import { panelAssetUrl } from '@/shared/lib/panels/asset-base';
 import { LazyBrowserPanel, LazyContextPanel, LazyFileExplorer, LazyGitPanel, LazyPlanPanel, LazySearchPanel, LazyTerminalPanel, LazyTodoPanel, LazyUsagePanel, LazyUserBrowserPanel, LazyWikiPanel } from '@/client/components/common/lazy-panels';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
 import { useResolvedRepo } from '@/client/hooks/workspace/repo-scope';
@@ -45,7 +48,12 @@ export function MobileRightSidebar({
   onOpenFile,
   onClose
 }: MobileRightSidebarProps) {
-  const [activeTab, setActiveTab] = useState<RightPanelType>('files');
+  const [activeTab, setActiveTab] = useState<string>('files');
+  // Plugin panels are added to the same tab strip as the built-in views: they
+  // are right-panel views like any other, and the phone must not be a second
+  // list that drifts from the desktop's.
+  const { panels: pluginPanels } = usePanelRegistry();
+  const activePluginKey = pluginPanels.find((p) => p.panelKey === activeTab)?.panelKey ?? null;
   // Same source the desktop activity bar uses — the Source Control view's own
   // repo pick, read shared so switching repos moves this dot too. Polls only
   // while this drawer is the mounted screen (the poll is visibility-gated).
@@ -92,6 +100,27 @@ export function MobileRightSidebar({
               )}
             </button>
           ))}
+          {pluginPanels.map((panel) => (
+            <button
+              key={panel.panelKey}
+              type="button"
+              onClick={() => setActiveTab(panel.panelKey)}
+              className={`relative flex items-center transition-all cursor-pointer ${
+                activeTab === panel.panelKey
+                  ? 'space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-ink text-canvas shadow-sm'
+                  : 'p-2 rounded-lg text-ink/70 hover:bg-ink/5'
+              }`}
+              title={`${panel.title} — ${panel.pluginName}`}
+              aria-label={`${panel.title} (plugin ${panel.pluginName})`}
+            >
+              {panel.icon ? (
+                <img src={panelAssetUrl(panel.panelKey, panel.icon)} alt="" className="w-3.5 h-3.5 flex-shrink-0" />
+              ) : (
+                <Puzzle size={14} className="flex-shrink-0" />
+              )}
+              {activeTab === panel.panelKey && <span className="truncate">{panel.title}</span>}
+            </button>
+          ))}
         </div>
 
         <button
@@ -115,7 +144,12 @@ export function MobileRightSidebar({
         className="flex-1 min-h-0 overflow-hidden relative"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
-        {!enabled && activeTab !== 'todo' && activeTab !== 'plan' ? (
+        {activePluginKey ? (
+          // A panel plugin owns its own frame, so it needs no workspace folder
+          // and no session: the frame reports what it does not have through the
+          // bridge, and gating it here would hide a panel that works.
+          <PluginPanelView panelKey={activePluginKey} active workspacePath={rootPath ?? null} />
+        ) : !enabled && activeTab !== 'todo' && activeTab !== 'plan' ? (
           <div className="h-full flex items-center justify-center text-ink/40">
             <span className="text-xs font-mono">No session selected</span>
           </div>

@@ -1,13 +1,16 @@
-import { BarChart3, BookOpen, Bot, ClipboardList, Files, GitBranch, Globe, Layers, ListTodo, Search, Terminal } from 'lucide-preact';
+import { BarChart3, BookOpen, Bot, ClipboardList, Files, GitBranch, Globe, Layers, ListTodo, Puzzle, Search, Terminal } from 'lucide-preact';
 import type { ReactNode } from 'preact/compat';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
 import { useResolvedRepo } from '@/client/hooks/workspace/repo-scope';
+import { usePanelRegistry } from '@/client/hooks/workspace/panel-registry';
+import { panelAssetUrl } from '@/shared/lib/panels/asset-base';
 import { GIT_STATUS_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
 import { RIGHT_PANEL_TYPES, type RightPanelType } from '@/shared/lib/workspace/right-panels';
 
 interface RightActivityBarProps {
-  activePanel: RightPanelType;
-  onChangePanel: (panel: RightPanelType) => void;
+  /** A built-in view id or a plugin panel key (`plugin:<id>/<panel>`). */
+  activePanel: string;
+  onChangePanel: (panel: string) => void;
   isPanelOpen: boolean;
   hasActiveContext: boolean;
   activeProjectPath?: string | null;
@@ -42,6 +45,12 @@ export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen, hasA
   const { changes } = useGitStatus(activeProjectPath ?? undefined, activeRepo, refreshKey, hasActiveContext, GIT_STATUS_POLL_MS);
   const hasGitChanges = changes.length > 0;
 
+  // Plugin panels sit below the built-in views: the built-in set is the
+  // chamber's own furniture and its positions are stable, while the plugin list
+  // changes with what the user installed. A plugin that declares an icon uses
+  // it; one that does not gets a generic mark rather than a blank button.
+  const { panels: pluginPanels } = usePanelRegistry();
+
   return (
     <nav className="w-11 flex-shrink-0 border-l border-ink/10 bg-paper flex flex-col items-center py-3 space-y-2 z-10">
       {/* Top Icons */}
@@ -65,6 +74,31 @@ export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen, hasA
                   className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-info"
                   title="Ada perubahan git"
                 />
+              )}
+            </button>
+          );
+        })}
+
+        {pluginPanels.length > 0 ? <div className="w-6 border-t border-ink/10 my-1" /> : null}
+
+        {pluginPanels.map((panel) => {
+          const isActive = isPanelOpen && activePanel === panel.panelKey;
+          return (
+            <button
+              key={panel.panelKey}
+              className={`relative w-full h-10 flex items-center justify-center transition-colors border-l-2 ${
+                isActive
+                  ? 'text-ink border-ink bg-ink/5'
+                  : 'text-ink/40 border-transparent hover:text-ink hover:bg-ink/5'
+              }`}
+              onClick={() => onChangePanel(panel.panelKey)}
+              title={`${panel.title} — ${panel.pluginName}`}
+              aria-label={`${panel.title} (plugin ${panel.pluginName})`}
+            >
+              {panel.icon ? (
+                <img src={panelAssetUrl(panel.panelKey, panel.icon)} alt="" className="w-4 h-4" />
+              ) : (
+                <Puzzle size={16} />
               )}
             </button>
           );

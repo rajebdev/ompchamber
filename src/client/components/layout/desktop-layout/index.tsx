@@ -2,7 +2,6 @@ import { useCallback, useMemo, useRef, useState } from 'preact/hooks';
 import { useSearchParams } from '@/client/lib/router/search-params';
 import { Group, Panel, type PanelImperativeHandle } from '@/client/components/layout/desktop-layout/resizer';
 import { SessionSidebar } from '@/client/components/layout/session-sidebar/index';
-import type { RightPanelType } from '@/shared/lib/workspace/right-panels';
 import { SettingsModal } from '@/client/components/settings/LazyModal';
 import type { SettingsCategoryId } from '@/shared/types';
 import { activeProjectForSession } from '@/shared/lib/workspace/active-project';
@@ -28,7 +27,7 @@ interface DesktopLayoutProps {
 export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }: DesktopLayoutProps) {
   const { folders } = useSidebarData();
   const [showRightPanel, setShowRightPanel] = useSessionState<boolean>('layout.showRightPanel', appSettings.showRightPanel ?? true);
-  const [activeRightPanel, setActiveRightPanel] = useSessionState<RightPanelType>('layout.activeRightPanel', (appSettings.activeRightPanel as RightPanelType) ?? 'files');
+  const [activeRightPanel, setActiveRightPanel] = useSessionState<string>('layout.activeRightPanel', (appSettings.activeRightPanel as string) ?? 'files');
   const [showLeftPanel, setShowLeftPanel] = useSessionState<boolean>('layout.showLeftPanel', appSettings.showLeftPanel ?? true);
   const { widths: panelWidths, commitWidths } = usePanelWidths(appSettings, activeRightPanel);
 
@@ -126,7 +125,7 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
     setSettingsOpen(true);
   });
 
-  const handleChangeRightPanel = (panel: RightPanelType) => {
+  const handleChangeRightPanel = (panel: string) => {
     let nextShow = showRightPanel;
     let nextActive = activeRightPanel;
 

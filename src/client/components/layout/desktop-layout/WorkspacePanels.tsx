@@ -4,6 +4,9 @@ import type { ReactNode, RefObject } from 'preact/compat';
 import { Group, Panel, type PanelImperativeHandle } from '@/client/components/layout/desktop-layout/resizer';
 import { ChatTimeline } from '@/client/components/workspace/chat-timeline/index';
 import { getDesktopPanelView } from '@/client/components/common/lazy-panels';
+import { PluginPanelView } from '@/client/components/workspace/panel-host/view';
+import { usePanelRegistry } from '@/client/hooks/workspace/panel-registry';
+import { pluginKeyOf } from '@/shared/lib/workspace/panel-ids';
 import { RightActivityBar } from '@/client/components/layout/RightActivityBar';
 import { ResizeHandle } from '@/client/components/layout/desktop-layout/ResizeHandle';
 import { useAvailableWidth } from '@/client/hooks/workspace/available-width';
@@ -20,6 +23,7 @@ import {
   MIN_CHAT_PANEL_WIDTH,
   MIN_EDITOR_PANEL_WIDTH,
   resolvePanelWidth,
+  resolvePluginPanelWidths,
   type EditorWidthMode,
   type PanelWidths,
 } from '@/shared/lib/workspace/panel-widths';
@@ -43,7 +47,8 @@ interface WorkspacePanelsProps {
   showEditor: boolean;
   editorPanelRef: RefObject<PanelImperativeHandle | null>;
   showRightPanel: boolean;
-  activeRightPanel: RightPanelType;
+  /** A built-in view id or a plugin panel key (`plugin:<id>/<panel>`). */
+  activeRightPanel: string;
   rightPanelRef: RefObject<PanelImperativeHandle | null>;
   /** Remembered width per panel, keyed the same way the layout reports them. */
   panelWidths: PanelWidths;
@@ -60,7 +65,7 @@ interface WorkspacePanelsProps {
   onConvertDiffToEditor: (id: number | string) => void;
   onOpenFile: (file: any) => void;
   onRefreshWorkspace: () => void;
-  onChangeRightPanel: (panel: RightPanelType) => void;
+  onChangeRightPanel: (panel: string) => void;
   onToggleRightPanel: () => void;
   onSessionTitle: (title: string | null) => void;
   onPanelWidths: (patch: PanelWidths) => void;
@@ -109,8 +114,24 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
     [viewScope],
   );
 
+  // Plugin-contributed panels come from the registry, not from the built-in
+  // list: they are installed and removed at runtime, so the bar and the stack
+  // read the same live payload rather than a compile-time union.
+  const { panels: pluginPanels } = usePanelRegistry();
+  const activePluginKey = pluginKeyOf(activeRightPanel);
+
   // Separators present in this group, which also consume width.
   const handleCount = (showEditor ? 1 : 0) + (showRightPanel ? 1 : 0);
+
+  // A plugin panel is not in the built-in maps, so its floor and open size come
+  // from its own manifest under the chamber's own bounds. Resolved once here
+  // rather than at each use, so the editor's sibling reservation and the right
+  // panel's own floor can never be computed from different values.
+  const activePluginPanel = activePluginKey
+    ? pluginPanels.find((entry) => entry.panelKey === activePluginKey)
+    : undefined;
+  const pluginWidths = activePluginPanel ? resolvePluginPanelWidths(activePluginPanel) : null;
+  const rightPanelMin = pluginWidths?.min ?? MIN_RIGHT_PANEL_WIDTHS[activeRightPanel as RightPanelType];
 
   const editorWidth = resolvePanelWidth({
     stored: panelWidths[editorWidthMode],
@@ -121,16 +142,16 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
     // The right panel renders after the editor, so it absorbs the remainder.
     // Reserving this view's own floor is enough: the editor's share is what
     // the ceiling subtracts.
-    siblingMin: showRightPanel ? MIN_RIGHT_PANEL_WIDTHS[activeRightPanel] : 0,
+    siblingMin: showRightPanel ? rightPanelMin : 0,
     handleCount,
   });
 
   const rightWidth = resolvePanelWidth({
     stored: panelWidths.right?.[activeRightPanel],
-    defaultFraction: DEFAULT_RIGHT_PANEL_FRACTIONS[activeRightPanel],
-    defaultPx: DEFAULT_RIGHT_PANEL_WIDTHS[activeRightPanel],
+    defaultFraction: pluginWidths?.fraction ?? DEFAULT_RIGHT_PANEL_FRACTIONS[activeRightPanel as RightPanelType],
+    defaultPx: pluginWidths?.px ?? DEFAULT_RIGHT_PANEL_WIDTHS[activeRightPanel as RightPanelType],
     available,
-    min: MIN_RIGHT_PANEL_WIDTHS[activeRightPanel],
+    min: rightPanelMin,
     // The editor took its share first; only its floor is reserved here.
     siblingMin: showEditor ? MIN_EDITOR_PANEL_WIDTH : 0,
     handleCount,
@@ -196,7 +217,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
         </Panel>
 
         {showRightPanel && <ResizeHandle />}
-        <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={rightWidth} minSize={MIN_RIGHT_PANEL_WIDTHS[activeRightPanel]} collapsed={!showRightPanel}>
+        <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={rightWidth} minSize={rightPanelMin} collapsed={!showRightPanel}>
           <PanelSuspense>
             {rightViews.map(({ view, Comp }) => {
               const isActiveView = activeRightPanel === view;
@@ -219,6 +240,17 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
                 </div>
               );
             })}
+            {/* A plugin panel is not in `rightViews`: its component comes from
+                the registry at render time, and only the active one is mounted
+                — a hidden plugin frame is a plugin process running for nobody. */}
+            {activePluginKey ? (
+              <PluginPanelView
+                key={activePluginKey}
+                panelKey={activePluginKey}
+                active
+                workspacePath={activeProjectPath ?? null}
+              />
+            ) : null}
           </PanelSuspense>
         </Panel>
       </Group>

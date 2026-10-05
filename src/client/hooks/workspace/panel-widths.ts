@@ -4,7 +4,7 @@ import {
   normalizePanelWidths,
   type PanelWidths,
 } from '@/shared/lib/workspace/panel-widths';
-import type { RightPanelType } from '@/shared/lib/workspace/right-panels';
+import { isRightPanelType } from '@/shared/lib/workspace/right-panels';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 
 /** Session-state key holding this session's own per-panel widths. */
@@ -37,10 +37,11 @@ interface PanelWidthsResult {
  */
 export function usePanelWidths(
   appSettings: Record<string, any>,
-  legacyView: RightPanelType,
+  /** The view the layout is on now; seeds a legacy single-width blob. A plugin panel key is not a valid seed, so it falls back to `files`. */
+  legacyView: string,
 ): PanelWidthsResult {
   const seed = useMemo(
-    () => normalizePanelWidths(appSettings.desktopLayoutSizes, legacyView),
+    () => normalizePanelWidths(appSettings.desktopLayoutSizes, isRightPanelType(legacyView) ? legacyView : 'files'),
     [appSettings.desktopLayoutSizes, legacyView],
   );
   const [widths, setWidths] = useSessionState<PanelWidths>(PANEL_WIDTHS_KEY, seed);
