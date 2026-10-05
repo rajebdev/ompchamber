@@ -7,7 +7,8 @@
 // own launcher).
 
 import { color, configure, error, log, ok, warn, printJson, isJson, isQuiet } from '@/cli/lib/output.js';
-import { listLiveInstances, findLiveInstance, stopInstance } from '@/cli/lib/runtime.js';
+import { listLiveInstances, stopInstance } from '@/cli/lib/runtime.js';
+import { selectRestartTargets } from '@/cli/lib/restart-scope.js';
 import { STOP_TIMEOUT_MS } from '@/cli/lib/process-lifecycle.js';
 import { run as runServe } from '@/cli/lib/commands/serve.js';
 import { skipRestartNote } from '@/server/lib/lifecycle/restart';
@@ -15,16 +16,12 @@ import { isCliManaged } from '@/server/lib/lifecycle/launch-mode';
 import { resolveInstallContext, resolveOmpChamberVersion, updateOmpChamber } from '@/server/lib/updates/install';
 
 /**
- * Live instances to restart after an update: every one with `--all`, otherwise
- * the first. Their recorded port/host/mode is reused, so a server started on a
- * non-default port comes back on that same port. Instances started outside the
- * CLI (`bun run dev`, `bun run start`, a supervisor) are reported and left
- * running — their own launcher is what applies the new files.
+ * Live instances to restart after an update. The selection rule lives in
+ * `restart-scope.js` so it is testable without a live server; the doc comment
+ * there explains why ownership — not port order — decides.
  */
 async function liveInstances(options) {
-  if (options?.all) return await listLiveInstances();
-  const live = await findLiveInstance(null);
-  return live ? [live] : [];
+  return selectRestartTargets(await listLiveInstances(), Boolean(options?.all));
 }
 
 async function restartInstances(options, ctx) {
