@@ -310,6 +310,10 @@ export class AgentSessionWrapper {
   async destroyAndWait(): Promise<void> {
     if (this.destroyPromise) return this.destroyPromise;
     if (!this._alive) return;
+    // Read the run flags BEFORE `_alive` flips: `isRunning()` consults it, so
+    // after the flip it can only ever answer false.
+    const wasRunning = this.isRunning();
+    const sessionId = this._sessionId;
     this._alive = false;
     this.idle.stop();
     this.unsubscribeFrames?.();
@@ -319,9 +323,22 @@ export class AgentSessionWrapper {
     this.awaitingAgentStart = false;
     this.awaitingAgentStartDeadline = 0;
     this.continuationGraceUntil = 0;
+    // A torn-down wrapper can never settle the run its row describes: no
+    // `agent_end` will arrive, and the row's owner (THIS process) stays alive,
+    // so neither half of the sidebar heal can ever reach it. Every destroy
+    // path lands here — the Stop escalation (`force_reset`), a rewind or
+    // delete that tears the child down before rewriting the file, and the
+    // timeout reset — so this is the one place that closes the leak for all of
+    // them. Released only while the wrapper still held a run: a destroy of an
+    // idle wrapper must not delete a row a fresh dispatch has already written.
+    //
+    // Concurrent with the process teardown, and awaited with it, so a caller
+    // that reads the row after `destroyAndWait` sees the released state while a
+    // wedged database can never keep the child alive.
+    const released = wasRunning && sessionId ? clearStreamStatus(sessionId) : Promise.resolve();
     const disposed = this.proc.dispose().catch(() => {});
     this.destroyPromise = disposed;
-    await disposed;
+    await Promise.all([disposed, released]);
     this.onDestroyCallback?.();
   }
 }
