@@ -20,9 +20,9 @@
       "elkjs/lib/elk.bundled.js": ["./src/client/stubs/elkjs.ts"],
       "elkjs": ["./src/client/stubs/elkjs.ts"],
       "@ompchamber/plugin-sdk": ["./packages/plugin-sdk/src/index.ts"],
+      "@ompchamber/plugin-sdk/app": ["./packages/plugin-sdk/src/app.ts"],
       "@ompchamber/ui": ["./packages/ui/src/index.tsx"],
-      "@ompchamber/ui/components": ["./packages/ui/src/components.tsx"],
-      "@ompchamber/ui/styles.css": ["./packages/ui/src/styles.css"]
+      "@ompchamber/ui/components": ["./packages/ui/src/components.tsx"]
     },
     "types": ["bun-types"],
     "skipLibCheck": true,
