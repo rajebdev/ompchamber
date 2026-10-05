@@ -35,7 +35,7 @@
  */
 
 import { getDb } from '@/server/db.server';
-import { isProcessAlive } from '@/server/lib/lifecycle/identity';
+import { getProcessState, isProcessAlive, type ProcessState } from '@/server/lib/lifecycle/identity';
 
 export type SessionStreamStatus = 'stream' | 'finish' | 'abort';
 
@@ -189,12 +189,26 @@ export async function loadStreamStatuses(): Promise<Record<string, SessionStream
 /**
  * Whether a `stream` row has no live run behind it and must heal to `finish`.
  *
- * The owner pid is the only input: a row is live exactly while the process that
- * wrote it is still running. EVERY chamber instance therefore reaches the same
+ * The owner pid is the only input, so EVERY chamber instance reaches the same
  * verdict from the same row — which is the point. Judging a row by the reader's
  * own runtime registry instead made instances disagree about one run: a second
  * instance opening its sidebar saw an empty registry, called the first
  * instance's working run stale, and cleared a spinner that was still turning.
+ *
+ * LIVENESS ALONE IS NOT ENOUGH, because a pid is recycled. An owner that has
+ * exited leaves its pid to be handed to an unrelated process, and a row written
+ * by that dead instance then reads as live forever: the run is gone, nothing
+ * will ever write its terminal status, and no other instance can heal it. That
+ * is the exact trap `lifecycle/identity` documents for the CLI's port registry
+ * — identity comes from the OS command line, never from `kill(pid, 0)`.
+ *
+ * So the question is "is this still the process that wrote the row?": `matched`
+ * (an ompchamber command line) is live, `unknown` (a host whose probe cannot
+ * answer) keeps the previous bias and is treated as live, and a `mismatched`
+ * pid is a stranger whose row is stale.
+ *
+ * The identity probe (a command line through libproc/`/proc`) is paid only for
+ * a pid that is alive, which is the rare case.
  *
  * A row with no owner predates the column and heals: new code always records a
  * pid for `stream`, so an ownerless `stream` row can only come from an older
@@ -202,10 +216,12 @@ export async function loadStreamStatuses(): Promise<Record<string, SessionStream
  */
 export function isStaleStreamRow(
   row: { session_id: string; owner_pid: number | null },
-  isOwnerAlive: (ownerPid: number) => boolean,
+  isOwnerAlive: (ownerPid: number) => boolean = isProcessAlive,
+  processState: (ownerPid: number) => ProcessState = getProcessState,
 ): boolean {
   if (row.owner_pid === null) return true;
-  return !isOwnerAlive(row.owner_pid);
+  if (!isOwnerAlive(row.owner_pid)) return true;
+  return processState(row.owner_pid) === 'mismatched';
 }
 
 /**
@@ -270,10 +286,11 @@ export function isOrphanStreamRow(
  * honest outcome: the run is not going to finish.
  *
  *  1. A `stream` row whose OWNER IS GONE — a chamber process that exited
- *     mid-run (crash, restart, SIGKILL). Nothing will ever write the terminal
- *     status for it. This half is judged from the row alone (`owner_pid` against
- *     OS liveness), so every instance reading the shared database reaches the
- *     same verdict, and it takes no caller context.
+ *     mid-run (crash, restart, SIGKILL), or whose pid was recycled by a
+ *     stranger. Nothing will ever write the terminal status for it. This half
+ *     is judged from the row alone (`owner_pid` against OS liveness AND
+ *     identity), so every instance reading the shared database reaches the same
+ *     verdict, and it takes no caller context.
  *
  *  2. A `stream` row THIS PROCESS OWNS while holding no live run for it — the
  *     orphan. The owner is alive, so half (1) can never reach it, and no other
@@ -303,7 +320,7 @@ export async function healStaleStreamStatuses(liveRunIds?: Set<string>): Promise
     }[];
     const released = new Set<string>();
     for (const row of rows) {
-      if (isStaleStreamRow(row, isProcessAlive) || isOrphanStreamRow(row, process.pid, liveRunIds)) {
+      if (isStaleStreamRow(row) || isOrphanStreamRow(row, process.pid, liveRunIds)) {
         released.add(row.session_id);
       }
     }

@@ -32,14 +32,16 @@ const OWNER = 4242;
 const otherInstance = 9999;
 /** OWNER and the other instance are alive; anything else, including 999999, is not. */
 const alive = (pid: number) => pid === OWNER || pid === otherInstance;
+/** Both live owners still run a chamber command line. */
+const ours = () => 'matched' as const;
 
 describe('isStaleStreamRow', () => {
   test('a row whose owner is alive is live, whoever is asking', () => {
-    expect(isStaleStreamRow({ session_id: 's1', owner_pid: OWNER }, alive)).toBe(false);
+    expect(isStaleStreamRow({ session_id: 's1', owner_pid: OWNER }, alive, ours)).toBe(false);
   });
 
   test('a row whose owner is gone is stale', () => {
-    expect(isStaleStreamRow({ session_id: 's1', owner_pid: 999999 }, alive)).toBe(true);
+    expect(isStaleStreamRow({ session_id: 's1', owner_pid: 999999 }, alive, ours)).toBe(true);
   });
 
   test('the verdict does not depend on which instance is asking', () => {
@@ -48,18 +50,32 @@ describe('isStaleStreamRow', () => {
     // made a second instance call another instance's live run stale — the row
     // is live here, and every asker must say so.
     const row = { session_id: 's1', owner_pid: otherInstance };
-    const verdicts = [otherInstance, OWNER, 12345].map(() => isStaleStreamRow(row, alive));
+    const verdicts = [otherInstance, OWNER, 12345].map(() => isStaleStreamRow(row, alive, ours));
     expect(verdicts).toEqual([false, false, false]);
   });
 
   test('an ownerless row is stale, because nothing can vouch for its run', () => {
-    expect(isStaleStreamRow({ session_id: 's1', owner_pid: null }, alive)).toBe(true);
+    expect(isStaleStreamRow({ session_id: 's1', owner_pid: null }, alive, ours)).toBe(true);
   });
 
   test('a row owned by the reader is judged by liveness like any other', () => {
     // Self-ownership is not special-cased: the reader's own pid is alive while
     // it runs, so its live rows survive.
-    expect(isStaleStreamRow({ session_id: 's1', owner_pid: OWNER }, (pid) => pid === OWNER)).toBe(false);
+    expect(isStaleStreamRow({ session_id: 's1', owner_pid: OWNER }, (pid) => pid === OWNER, ours)).toBe(false);
+  });
+
+  test('a RECYCLED owner pid is stale: liveness alone is not identity', () => {
+    // The owner exited and the OS handed its pid to an unrelated process. The
+    // pid answers `kill(pid, 0)`, so a liveness-only rule reports "live"
+    // forever: the run is gone, no terminal status will ever be written, and
+    // no other instance can heal the row. Identity comes from the command line.
+    const row = { session_id: 's1', owner_pid: OWNER };
+    expect(isStaleStreamRow(row, alive, () => 'mismatched')).toBe(true);
+  });
+
+  test('an unreadable owner identity keeps the previous bias and stays live', () => {
+    // A host whose probe cannot answer must not make a live instance look dead.
+    expect(isStaleStreamRow({ session_id: 's1', owner_pid: OWNER }, alive, () => 'unknown')).toBe(false);
   });
 });
 
