@@ -5,6 +5,12 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.16.1](https://github.com/rajebdev/ompchamber/compare/v3.16.0...v3.16.1) — 2026-10-05
+
+### Fixed
+
+* **panels:** resolve the plugin packages at runtime, ship the marketplace ([e6c2c81](https://github.com/rajebdev/ompchamber/commit/e6c2c81837d857448cc574d2843778c9c27e8c54))
+
 ## [3.16.0](https://github.com/rajebdev/ompchamber/compare/v3.15.0...v3.16.0) — 2026-10-05
 
 ### Added
