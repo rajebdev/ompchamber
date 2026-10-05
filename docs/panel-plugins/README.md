@@ -642,5 +642,7 @@ mkdir -p ~/.ompchamber/marketplace/plugins/my-panel/src
 ```
 
 Then press **Refresh** in Settings → Panel Plugins, and **Rebuild** if the pane
-says it is not built. The panel appears in the activity bar as a puzzle piece.
+says it is not built. The panel appears in the activity bar under the plugin's
+own mark — its `icon` when it ships one, and its initials otherwise (`Session
+Info` → `si.`), the same rule every other surface uses.
 

@@ -1,5 +1,4 @@
 import { useRef, useState } from 'preact/hooks';
-import { Puzzle } from 'lucide-preact';
 import { usePanelRegistry, usePanelSlots } from '@/client/hooks/workspace/panel-registry';
 import { panelOf, rightPanelOf } from '@/client/lib/plugins/slots';
 import { pluginPanelKey } from '@/shared/lib/workspace/panel-ids';
@@ -20,6 +19,13 @@ import { PluginMark } from '@/client/components/settings/categories/panel-plugin
  * any view, which is what lets a user move a right-panel plugin into the column
  * without the author having to register it twice. A `header` is the exception:
  * it is a navbar entry, not a view.
+ *
+ * The trigger is NOT a puzzle piece. A generic glyph here would be the one
+ * surface drawing an abstract "plugin" while every other one — the activity
+ * bar, the editor tab, the store and installed cards — draws the plugin's own
+ * mark. With one view it therefore IS that mark; with several they are drawn
+ * side by side, and the button carries the count, because a single mark cannot
+ * stand for a set without claiming to be one of them.
  */
 export function PanelLauncher({ onOpenPanel }: { onOpenPanel: (panelKey: string) => void }) {
   const { panels } = usePanelRegistry();
@@ -55,7 +61,16 @@ export function PanelLauncher({ onOpenPanel }: { onOpenPanel: (panelKey: string)
         aria-label="Open a panel plugin"
         aria-expanded={open}
       >
-        <Puzzle size={16} />
+        {entries.length === 1 ? (
+          <PluginMark name={entries[0].title} iconUrl={entries[0].iconUrl} size={16} />
+        ) : (
+          <span className="flex items-center gap-0.5">
+            {entries.slice(0, 3).map((entry) => (
+              <PluginMark key={entry.pluginId} name={entry.title} iconUrl={entry.iconUrl} size={14} />
+            ))}
+            <span className="ml-0.5 text-[10px] font-mono text-ink/50 leading-none">{entries.length}</span>
+          </span>
+        )}
       </button>
 
       {open ? (
