@@ -25,6 +25,7 @@ import { json, type ActionFunctionArgs } from '@/server/lib/remix-compat';
 import { methodNotAllowed } from '@/server/lib/route-adapter';
 import { discoverPanelPlugins, invalidatePanelScan } from '@/server/lib/panels/registry.server';
 import { installPanelPluginFromBundled, installPanelPluginFromGit, removePanelPlugin } from '@/server/lib/panels/install.server';
+import { forgetCatalogEntry } from '@/server/lib/panels/catalog.server';
 import { setPluginEnabled } from '@/server/lib/panels/state.server';
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -59,6 +60,25 @@ export async function action({ request }: ActionFunctionArgs) {
     // A removed plugin's disabled flag would otherwise outlive it and switch off
     // a future reinstall of the same id.
     if (result.ok) await setPluginEnabled(pluginId, true);
+    if (!result.ok) return json({ error: result.error, ...(await discoverPanelPlugins()) }, { status: 400 });
+    // The directory is gone, so the removal succeeded — but a catalog that could
+    // not be pruned leaves the dangling entry the scan reports, and that is
+    // exactly the row this action was meant to clear. It travels on the payload
+    // rather than only in the log, because the alternative is the pane showing
+    // "Rejected" over the user's own successful action with no explanation.
+    const payload = await discoverPanelPlugins();
+    if (result.error) return json({ ok: true, error: result.error, ...payload });
+    return json({ ok: true, ...payload });
+  }
+
+  if (type === 'forget') {
+    // The catalog entry is addressed by its SOURCE, not by a plugin id: the
+    // directory it names is gone, so there is no manifest to read an id from —
+    // and the row the user clicked came from a catalog entry, whose key is the
+    // source path.
+    const source = typeof body.source === 'string' ? body.source.trim() : '';
+    if (!source) return json({ error: 'A catalog source is required.' }, { status: 400 });
+    const result = await forgetCatalogEntry(source);
     if (!result.ok) return json({ error: result.error, ...(await discoverPanelPlugins()) }, { status: 400 });
     return json({ ok: true, ...(await discoverPanelPlugins()) });
   }

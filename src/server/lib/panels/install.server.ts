@@ -28,10 +28,9 @@ import { pathExists } from '@/server/lib/omp/core/paths';
 import { gitRun, firstLine } from '@/server/lib/wiki/git';
 import { toManifest } from '@/server/lib/panels/manifest';
 import { buildPanelPlugin } from '@/server/lib/panels/build.server';
-import { isRecord } from '@/shared/lib/util/guards';
+import { appendCatalogEntry, pruneCatalogEntry } from '@/server/lib/panels/catalog.server';
 import {
   getBundledMarketplaceDir,
-  getMarketplaceCatalogPath,
   getMarketplaceDir,
   getMarketplacePluginsDir,
   invalidatePanelScan,
@@ -218,47 +217,6 @@ export async function installPanelPluginFromBundled(pluginId: string): Promise<I
 }
 
 /**
- * Append an entry to the catalog, preserving everything already in it.
- *
- * Read-modify-write rather than a template: the file carries the marketplace's
- * name, description and every earlier install, and rewriting it from a template
- * would drop them. A missing or unparseable catalog is replaced with a minimal
- * one — the alternative is an install that succeeds on disk while the catalog
- * stays broken, which the scan then reports on every load.
- */
-async function appendCatalogEntry(entry: {
-  name: string;
-  source: string;
-  description?: string;
-  version?: string;
-}): Promise<{ ok: boolean; error?: string }> {
-  const catalogPath = getMarketplaceCatalogPath();
-  let body: Record<string, unknown> = {};
-  if (await pathExists(catalogPath)) {
-    try {
-      const parsed: unknown = await Bun.file(catalogPath).json();
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) body = parsed as Record<string, unknown>;
-    } catch {
-      body = {};
-    }
-  }
-
-  const existing: unknown[] = Array.isArray(body.plugins) ? body.plugins : [];
-  const already = existing.some((item) => isRecord(item) && item.name === entry.name);
-  const plugins = already ? existing : [...existing, { ...entry, category: 'installed' }];
-
-  try {
-    await Bun.write(
-      catalogPath,
-      JSON.stringify({ ...body, plugins }, null, 2) + '\n',
-    );
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
-  }
-}
-
-/**
  * Remove a plugin: its directory AND its catalog entry.
  *
  * Both, because an install writes both. Dropping only the directory left the
@@ -282,32 +240,6 @@ export async function removePanelPlugin(pluginId: string): Promise<{ ok: boolean
     // that could not be pruned is reported rather than hidden, because the scan
     // will keep flagging the dangling entry.
     return pruned.ok ? { ok: true } : { ok: true, error: pruned.error };
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
-  }
-}
-
-/** Drop the catalog entry whose resolved source is `source`, keeping the rest. */
-async function pruneCatalogEntry(source: string): Promise<{ ok: boolean; error?: string }> {
-  const catalogPath = getMarketplaceCatalogPath();
-  if (!(await pathExists(catalogPath))) return { ok: true };
-
-  let body: Record<string, unknown>;
-  try {
-    const parsed: unknown = await Bun.file(catalogPath).json();
-    if (!isRecord(parsed)) return { ok: true };
-    body = parsed;
-  } catch {
-    return { ok: false, error: 'marketplace.json is not valid JSON; its entry was left in place.' };
-  }
-
-  const existing: unknown[] = Array.isArray(body.plugins) ? body.plugins : [];
-  const kept = existing.filter((item) => !(isRecord(item) && item.source === source));
-  if (kept.length === existing.length) return { ok: true };
-
-  try {
-    await Bun.write(catalogPath, JSON.stringify({ ...body, plugins: kept }, null, 2) + '\n');
-    return { ok: true };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }

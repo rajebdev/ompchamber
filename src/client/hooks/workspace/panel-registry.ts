@@ -175,6 +175,13 @@ export function usePluginSlots(pluginId: string | null): PluginSlots | undefined
 interface PanelMutationResult {
   ok: boolean;
   error?: string;
+  /**
+   * A success that still has something to say — a remove whose directory went
+   * but whose catalog entry could not be pruned. The action succeeded and the
+   * payload is current; the pane would otherwise report the leftover entry as a
+   * rejection with no hint of where it came from.
+   */
+  warning?: string;
   payload?: PanelRegistryPayload;
 }
 
@@ -188,6 +195,8 @@ export interface PanelPluginActions {
   /** Install one plugin the bundled marketplace offers, by id. */
   installBundled: (pluginId: string) => Promise<boolean>;
   remove: (pluginId: string) => Promise<boolean>;
+  /** Drop a catalog entry whose directory is already gone, by its source path. */
+  forget: (source: string) => Promise<boolean>;
   build: (pluginId: string) => Promise<boolean>;
   /** Switch a plugin's contributions on or off; its files stay on disk. */
   setEnabled: (pluginId: string, enabled: boolean) => Promise<boolean>;
@@ -217,7 +226,7 @@ async function mutatePanelPlugin(body: Record<string, unknown>): Promise<PanelMu
     // The write invalidated the server's scan cache, so the shared client cache
     // is stale by definition.
     invalidatePanelRegistry();
-    return { ok: true, payload };
+    return { ok: true, ...(error ? { warning: error } : {}), payload };
   } catch (cause) {
     return { ok: false, error: cause instanceof Error ? cause.message : String(cause) };
   }
@@ -236,6 +245,10 @@ export function usePanelPluginActions(): PanelPluginActions {
       setError(result.error ?? 'The request failed.');
       return false;
     }
+    // A success with a warning is still a success — the payload is adopted and
+    // the pane re-reads — but the reason surfaces, because the leftover catalog
+    // entry it names shows up as a rejection row right below.
+    if (result.warning) setError(result.warning);
     // Every consumer of the list re-reads from the response, not from a second
     // fetch — the event carries no payload, so the store is seeded first.
     if (result.payload) seedPanelRegistry(result.payload);
@@ -249,6 +262,7 @@ export function usePanelPluginActions(): PanelPluginActions {
     [run],
   );
   const remove = useCallback((pluginId: string) => run(`remove:${pluginId}`, { type: 'remove', pluginId }), [run]);
+  const forget = useCallback((source: string) => run(`forget:${source}`, { type: 'forget', source }), [run]);
   const build = useCallback((pluginId: string) => run(`build:${pluginId}`, { type: 'build', pluginId }), [run]);
   const setEnabled = useCallback(
     (pluginId: string, enabled: boolean) =>
@@ -256,5 +270,5 @@ export function usePanelPluginActions(): PanelPluginActions {
     [run],
   );
 
-  return { busy, error, clearError: () => setError(null), install, installBundled, remove, build, setEnabled };
+  return { busy, error, clearError: () => setError(null), install, installBundled, remove, forget, build, setEnabled };
 }

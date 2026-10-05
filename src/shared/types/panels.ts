@@ -116,11 +116,21 @@ export interface PanelRegistryEntry {
  * `marketplace` is filled in by the scan so the pane can group a rejection under
  * the marketplace it came from. Deriving that in the UI would mean matching on
  * the path, which breaks the moment two marketplaces share a directory name.
+ *
+ * `source` is filled in for ONE rejection — a catalog entry naming a directory
+ * that is not there. That row is the only one a user can act on from the pane
+ * (forget the entry), and the entry is addressed by its source path, so the
+ * server has to say which one it read rather than letting the client rebuild the
+ * path from `dir`: the catalog's `source` is free-form relative text, and a path
+ * reconstructed from the resolved directory would be a second, lossy encoding of
+ * the same fact.
  */
 export interface PanelPluginError {
   dir: string;
   reason: string;
   marketplace?: string;
+  /** The catalog entry's `source`, on a dangling-entry rejection. */
+  source?: string;
 }
 
 /**

@@ -117,7 +117,8 @@ async function runPanelScan(): Promise<PanelScan> {
 
   // Rejections are tagged with the marketplace id so the pane groups by a value
   // rather than by matching on a path.
-  const fail = (dir: string, reason: string) => scan.errors.push({ dir, reason, marketplace: MARKETPLACE_ID });
+  const fail = (dir: string, reason: string, source?: string) =>
+    scan.errors.push({ dir, reason, marketplace: MARKETPLACE_ID, ...(source ? { source } : {}) });
 
   let name = 'OMPChamber';
   let description: string | undefined;
@@ -135,11 +136,12 @@ async function runPanelScan(): Promise<PanelScan> {
       // A catalog entry naming a directory that holds no plugin is reported: it
       // is the file saying "this is installed" while the scan found nothing, and
       // silence would make a failed install look like a plugin that refused to
-      // load.
+      // load. The entry's own `source` rides along so the pane can drop that one
+      // entry — the row is otherwise a dead end the user cannot clear.
       for (const entry of catalog.plugins ?? []) {
         const source = resolve(root, entry.source);
         if (!(await pathExists(source))) {
-          fail(source, `listed in marketplace.json but no plugin was found there (${entry.name})`);
+          fail(source, `listed in marketplace.json but no plugin was found there (${entry.name})`, entry.source);
         }
       }
     }

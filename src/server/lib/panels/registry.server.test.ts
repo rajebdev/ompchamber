@@ -138,6 +138,21 @@ describe('discoverPanelPlugins', () => {
     expect(errors).toHaveLength(1);
     expect(errors[0].reason).toContain('no plugin was found there');
     expect(errors[0].marketplace).toBe('ompchamber');
+    // The entry's own source rides along: that row is the only rejection a user
+    // can clear from the pane, and the entry is addressed by this path.
+    expect(errors[0].source).toBe('plugins/ghost');
+  });
+
+  test('a rejection that is not a dangling entry carries no source', async () => {
+    // Nothing to forget: the fault is in a manifest that will not parse, and a
+    // button that dropped the record would hide it rather than fix it.
+    const dir = join(getMarketplacePluginsDir(), 'corrupt');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(join(dir, 'ompchamber.json'), '{ not json');
+    invalidatePanelScan();
+    const { errors } = await discoverPanelPlugins();
+    expect(errors).toHaveLength(1);
+    expect(errors[0].source).toBeUndefined();
   });
 
   test('a catalog entry that escapes the marketplace root is refused', async () => {

@@ -118,6 +118,7 @@ Three separate things, and the pane keeps them separate:
 | **Install** | Copies/clones the plugin into the working marketplace, builds it, registers it. |
 | **Disable** | Flips a flag. The files stay; the plugin contributes NOTHING — no activity-bar button, no header button, no editor tab — and its bundle is no longer served. |
 | **Remove** | Deletes the directory and its catalog entry. Re-installing is the only way back. |
+| **Forget** | Drops one catalog entry whose directory is already gone. No files are touched. Offered on the rejection row, and nowhere else. |
 
 Enablement is stored in the chamber's own database, not in the plugin directory:
 the plugin's files are a third-party repository whose format the chamber does not
@@ -224,6 +225,42 @@ The catalog and the directory are independent, and **both directions matter**:
   That is what makes hand-copying a folder work.
 - A catalog entry naming a directory that holds no plugin is **reported**, with
   its reason. That is what makes a failed install visible instead of silent.
+
+### A dangling entry, and how to clear it
+
+The second case is the one a user can end up in without doing anything wrong. The
+catalog is a record; the directory is what makes a plugin exist. Delete the
+directory by any route other than **Remove** — a hand `rm`, a cleanup script, an
+install interrupted between the copy and the catalog write — and the file still
+claims an install that is not there, so Settings → Panel Plugins shows:
+
+```
+Rejected
+~/.ompchamber/marketplace/plugins/session-info
+listed in marketplace.json but no plugin was found there (session-info)
+```
+
+The row is honest, and it stays until the entry is dropped — so it carries
+**Forget this entry**, which deletes that one catalog entry and touches no files.
+The scan marks exactly the rows that can be repaired this way (the rejection
+carries the entry's own `source`); the other rejections — a manifest that will
+not parse, a catalog that is not JSON — name a fault in a file and get no button,
+because deleting the record would hide the fault rather than fix it.
+
+The same repair is available over the API, and it is also the right one to reach
+for when a removal could not prune its own entry:
+
+```bash
+curl -X POST http://127.0.0.1:<port>/api/panels/install \
+  -H 'content-type: application/json' \
+  -d '{"type":"forget","source":"plugins/session-info"}'
+```
+
+A **Remove** normally drops the directory and its entry together, so this case
+should not arise from the pane. When the prune itself fails, the removal still
+succeeds — the directory is gone — but the response carries the reason, and the
+pane reports it rather than letting the leftover entry read as an unexplained
+rejection.
 
 ## The manifest
 

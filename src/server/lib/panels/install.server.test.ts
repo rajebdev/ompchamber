@@ -23,7 +23,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { discoverPanelPlugins, getMarketplaceCatalogPath, invalidatePanelScan } from '@/server/lib/panels/registry.server';
-import { installPanelPluginFromGit, isGitUrl, removePanelPlugin } from '@/server/lib/panels/install.server';
+import { installPanelPluginFromGit, isGitUrl } from '@/server/lib/panels/install.server';
 import { seedDefaultMarketplace } from '@/server/lib/panels/seed.server';
 
 let root = '';
@@ -293,56 +293,5 @@ describe('installPanelPluginFromGit', () => {
     const again = await installPanelPluginFromGit(repo);
     expect(again.ok).toBe(false);
     expect(again.error).toContain('already installed');
-  });
-});
-
-describe('removePanelPlugin', () => {
-  test('removes the directory and its catalog entry, keeping other entries', async () => {
-    for (const id of ['from-git', 'keep-me']) {
-      fs.mkdirSync(join(root, 'plugins', id, 'dist'), { recursive: true });
-      fs.writeFileSync(join(root, 'plugins', id, 'ompchamber.json'), JSON.stringify({ ...VALID, id }));
-      fs.writeFileSync(join(root, 'plugins', id, 'dist', 'app.js'), 'export default {};');
-    }
-    fs.writeFileSync(
-      getMarketplaceCatalogPath(),
-      JSON.stringify({
-        name: 'Keep',
-        plugins: [
-          { name: 'keep-me', source: 'plugins/keep-me' },
-          { name: 'from-git', source: 'plugins/from-git' },
-        ],
-      }),
-    );
-    invalidatePanelScan();
-    expect((await discoverPanelPlugins()).panels).toHaveLength(2);
-
-    expect((await removePanelPlugin('from-git')).ok).toBe(true);
-    expect(fs.existsSync(join(root, 'plugins', 'from-git'))).toBe(false);
-
-    // The catalog entry goes too: leaving it made every removal produce a
-    // permanent "listed in marketplace.json but no plugin was found there" row.
-    // Pruning is by SOURCE, so an entry the removal does not name survives.
-    const catalog = JSON.parse(fs.readFileSync(getMarketplaceCatalogPath(), 'utf8')) as {
-      name: string;
-      plugins: Array<{ source: string }>;
-    };
-    expect(catalog.plugins.map((entry) => entry.source)).toEqual(['plugins/keep-me']);
-    expect(catalog.name).toBe('Keep');
-
-    const after = await discoverPanelPlugins();
-    expect(after.panels.map((panel) => panel.pluginId)).toEqual(['keep-me']);
-    expect(after.errors).toEqual([]);
-  });
-
-  test('refuses an id that is not installed', async () => {
-    const result = await removePanelPlugin('nope');
-    expect(result.ok).toBe(false);
-    expect(result.error).toContain('No installed plugin');
-  });
-
-  test('refuses an id that would escape the plugins directory', async () => {
-    const result = await removePanelPlugin('../../etc');
-    expect(result.ok).toBe(false);
-    expect(result.error).toContain('Invalid plugin id');
   });
 });

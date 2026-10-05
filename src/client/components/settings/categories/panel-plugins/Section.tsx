@@ -1,4 +1,5 @@
-import { AlertTriangle, RefreshCw } from 'lucide-preact';
+import { AlertTriangle, RefreshCw, Trash2 } from 'lucide-preact';
+import type { PanelPluginError } from '@/shared/types';
 import {
   PANELS_CHANGED_EVENT,
   usePanelPluginActions,
@@ -8,6 +9,55 @@ import {
 import { InstallForm } from '@/client/components/settings/categories/panel-plugins/InstallForm';
 import { AvailableList } from '@/client/components/settings/categories/panel-plugins/AvailableList';
 import { InstalledList } from '@/client/components/settings/categories/panel-plugins/InstalledList';
+
+/**
+ * One rejection, with the repair it has when there is one.
+ *
+ * The only rejection a user can act on is a catalog entry whose directory is
+ * gone, and the server marks exactly that row by carrying its `source` — the
+ * other rejections (a manifest that will not parse, a catalog that is not JSON)
+ * name a fault the user has to fix in the file, and offering a button that
+ * deleted the record would hide the fault rather than fix it. A directory that
+ * is already absent is the one case where dropping the record IS the fix.
+ */
+function RejectionRow({
+  error,
+  busy,
+  onForget,
+}: {
+  error: PanelPluginError;
+  busy: boolean;
+  onForget: (source: string) => Promise<boolean>;
+}) {
+  const source = error.source;
+  return (
+    <div className="border border-error/30 rounded p-3">
+      <div className="flex items-center gap-2 text-error">
+        <AlertTriangle size={14} className="flex-shrink-0" />
+        <span className="text-xs">Rejected</span>
+      </div>
+      <div className="mt-1 text-[11px] font-mono text-ink/50 break-all">{error.dir}</div>
+      <div className="mt-1 text-xs text-ink/70">{error.reason}</div>
+      {source ? (
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void onForget(source)}
+            className="flex items-center gap-1.5 px-2 py-1 text-[11px] rounded border border-error/40 text-error hover:bg-error/10 disabled:opacity-50"
+            title={`Drop the catalog entry "${source}" — the directory it names is already gone`}
+          >
+            <Trash2 size={12} />
+            Forget this entry
+          </button>
+          <span className="text-[11px] text-ink/45">
+            Removes the record from marketplace.json. No files are touched.
+          </span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 /**
  * The panel-plugin marketplace: what is available, what is installed, and how
@@ -98,14 +148,12 @@ export function PanelPluginsSection() {
       ) : null}
 
       {errors.map((error) => (
-        <div key={error.dir + error.reason} className="border border-error/30 rounded p-3">
-          <div className="flex items-center gap-2 text-error">
-            <AlertTriangle size={14} className="flex-shrink-0" />
-            <span className="text-xs">Rejected</span>
-          </div>
-          <div className="mt-1 text-[11px] font-mono text-ink/50 break-all">{error.dir}</div>
-          <div className="mt-1 text-xs text-ink/70">{error.reason}</div>
-        </div>
+        <RejectionRow
+          key={error.dir + error.reason}
+          error={error}
+          busy={actions.busy !== null}
+          onForget={actions.forget}
+        />
       ))}
     </div>
   );
