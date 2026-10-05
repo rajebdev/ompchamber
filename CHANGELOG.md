@@ -5,6 +5,19 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.0](https://github.com/rajebdev/ompchamber/compare/v4.1.2...v4.2.0) — 2026-10-05
+
+### Added
+
+* **ci:** release the packages and the app in one chained run ([e465215](https://github.com/rajebdev/ompchamber/commit/e465215086fef139fe0b95d8585c74c1dd2ff653))
+
+### Fixed
+
+* **cli:** restart the instances an update actually replaced ([3768524](https://github.com/rajebdev/ompchamber/commit/37685247509b11b10feec7ca381bb887ba7e14cb))
+* **server:** report and survive file-descriptor exhaustion ([fff8889](https://github.com/rajebdev/ompchamber/commit/fff8889967687b7c3d53a2dd9da7751d2edbbc14)), closes [bun#40706](https://github.com/rajebdev/bun/issues/40706)
+* **session:** judge a stream row by its owner's identity, not liveness alone ([8a64ee6](https://github.com/rajebdev/ompchamber/commit/8a64ee670e0b77cd6b3369113eba3af74b29530e))
+* **session:** release the stream row a destroyed wrapper leaves behind ([052eda7](https://github.com/rajebdev/ompchamber/commit/052eda73b321d4d75298d96df423d25c7b92879c))
+
 ## [4.1.2](https://github.com/rajebdev/ompchamber/compare/v4.1.1...v4.1.2) — 2026-10-05
 
 ### Changed
