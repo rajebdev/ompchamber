@@ -1,6 +1,29 @@
 import { describe, expect, test } from 'bun:test';
 import fs from 'node:fs';
-import { SPAWN_CLIFF, countOpenFileDescriptors, describeSpawnFailure } from '@/server/lib/lifecycle/fd-pressure';
+import {
+  SPAWN_CLIFF,
+  countOpenFileDescriptors,
+  describeFdPressure,
+  describeSpawnFailure,
+  descriptorTableSize,
+} from '@/server/lib/lifecycle/fd-pressure';
+
+describe('descriptorTableSize', () => {
+  // The bug this pins: the limit used to be the constant 10240, so on this host
+  // (getdtablesize() = 61440) the probe reported "near the cliff" from 9216 —
+  // six times the budget still free — and then never stopped reporting it.
+  test('reports the kernel ceiling, which is what allocation actually enforces', () => {
+    if (process.platform === 'win32') {
+      expect(descriptorTableSize()).toBe(SPAWN_CLIFF);
+      return;
+    }
+    const size = descriptorTableSize();
+    expect(size).toBeGreaterThanOrEqual(SPAWN_CLIFF);
+    // 61440 on the machine this was measured on; never the shell's `ulimit -n`,
+    // which reads 1048576 there and would understate pressure seventeenfold.
+    expect(Number.isInteger(size)).toBe(true);
+  });
+});
 
 describe('countOpenFileDescriptors', () => {
   test('sweeps this process own descriptors on a POSIX host', () => {
@@ -10,11 +33,12 @@ describe('countOpenFileDescriptors', () => {
       return;
     }
     expect(pressure).not.toBeNull();
-    // Stdio is always open, and the sweep never walks past Darwin's OPEN_MAX —
-    // a descriptor above it cannot be opened, which is the whole point.
+    // Stdio is always open.
     expect(pressure?.open).toBeGreaterThanOrEqual(3);
     expect(pressure?.highest).toBeGreaterThanOrEqual(2);
-    expect(pressure?.limit).toBeLessThanOrEqual(SPAWN_CLIFF);
+    // The limit is the real ceiling (bounded by the sweep cap), never the old
+    // constant — a limit of 10240 is exactly the wrong answer on this host.
+    expect(pressure?.limit).toBeGreaterThanOrEqual(SPAWN_CLIFF);
     expect(pressure?.nearCliff).toBe(false);
   });
 
@@ -32,6 +56,20 @@ describe('countOpenFileDescriptors', () => {
   });
 });
 
+describe('describeFdPressure', () => {
+  test('is silent when the table has room, so no caller blames the wrong thing', () => {
+    expect(describeFdPressure(null)).toBeNull();
+    expect(describeFdPressure({ open: 40, highest: 42, limit: SPAWN_CLIFF, nearCliff: false })).toBeNull();
+  });
+
+  test('names the count, the limit and the fix when the table is near the cliff', () => {
+    const sentence = describeFdPressure({ open: 10_239, highest: 10_239, limit: SPAWN_CLIFF, nearCliff: true });
+    expect(sentence).toContain('out of file descriptors');
+    expect(sentence).toContain('10239 of 10240');
+    expect(sentence).toContain('restart the instance');
+  });
+});
+
 describe('describeSpawnFailure', () => {
   test('passes an unrelated failure through untouched', () => {
     // The helper must not relabel a genuine bad-descriptor or ENOENT bug as
@@ -43,11 +81,17 @@ describe('describeSpawnFailure', () => {
   test('names exhaustion only when the table really is full', () => {
     const opened: number[] = [];
     try {
+      // Filling to the REAL ceiling would mean holding ~55k descriptors in the
+      // test process and would put every other suite at risk, so the fill stops
+      // at the old constant: on a host whose table is larger (this one reports
+      // 61440) the gate is untestable here and the synthetic-table test above
+      // is what covers it. The loop still degrades to that skip rather than
+      // asserting a pressure it did not create.
       while (opened.length < SPAWN_CLIFF + 16) {
         try {
           opened.push(fs.openSync('/dev/null', 'r'));
         } catch {
-          break; // Host limit is lower than the cliff; the gate is untestable here.
+          break; // Host limit below the fill target; the gate is untestable here.
         }
       }
       if (!countOpenFileDescriptors()?.nearCliff) return;

@@ -185,6 +185,7 @@ describe('fetchHealth', () => {
       host: '127.0.0.1',
       tls: false,
       authEnabled: true,
+      fds: { open: 3352, highest: 3351, limit: 61_440, nearCliff: false },
       extra: 'dropped',
     }));
 
@@ -203,7 +204,22 @@ describe('fetchHealth', () => {
       host: '127.0.0.1',
       tls: false,
       authEnabled: true,
+      // Carried, not dropped: `status` prints this as its warning line, and
+      // whitelisting it away left the report without one.
+      fds: { open: 3352, highest: 3351, limit: 61_440, nearCliff: false },
     });
+  });
+
+  test('reports a malformed fds field as null rather than a half-trusted object', async () => {
+    const partial = occupy(() => Response.json({
+      service: 'ompchamber',
+      fds: { open: 1, highest: 1, limit: 2 },
+    }));
+
+    const health = await fetchHealth(partial.port, '127.0.0.1', 1000, false);
+
+    expect(health?.service).toBe('ompchamber');
+    expect(health?.fds).toBeNull();
   });
 
   test('drops fields whose type is wrong rather than passing them on', async () => {

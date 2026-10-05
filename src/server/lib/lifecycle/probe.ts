@@ -15,8 +15,28 @@
  */
 
 import net from 'net';
+import type { FdPressure } from '@/server/lib/lifecycle/fd-pressure';
 
 const HEALTH_TIMEOUT_MS = 1500;
+
+/**
+ * Whether a payload's `fds` field is the shape `status` reads.
+ *
+ * A local guard rather than an import of the module that produces it: `probe.ts`
+ * is loaded by the CLI, and `fd-pressure` `dlopen`s libc — pulling that into
+ * every `ompchamber status` would be a syscall surface the CLI does not need.
+ * The type is imported as a TYPE only, so nothing of it survives to runtime.
+ */
+function isFdPressure(value: unknown): value is FdPressure {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.open === 'number'
+    && typeof candidate.highest === 'number'
+    && typeof candidate.limit === 'number'
+    && typeof candidate.nearCliff === 'boolean'
+  );
+}
 
 /**
  * Address a local probe should use for a bind host.
@@ -100,6 +120,14 @@ export interface HealthPayload {
   tls?: boolean;
   /** Whether a UI password is in force. Drives the `status` auth line. */
   authEnabled?: boolean;
+  /**
+   * Descriptor pressure, when the server could measure it. Must survive this
+   * whitelist: `status` prints it as the warning that arrives BEFORE the
+   * breakage, and dropping it here silently removed that line from every
+   * report — the field was in the payload and read by the CLI, but never
+   * carried across the probe.
+   */
+  fds?: FdPressure | null;
 }
 
 /**
@@ -141,6 +169,7 @@ async function probeHealthOver(
       host: typeof payload.host === 'string' ? payload.host : undefined,
       tls: typeof payload.tls === 'boolean' ? payload.tls : undefined,
       authEnabled: typeof payload.authEnabled === 'boolean' ? payload.authEnabled : undefined,
+      fds: isFdPressure(payload.fds) ? payload.fds : null,
     };
   } catch {
     return null;

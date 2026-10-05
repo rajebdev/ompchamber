@@ -13,11 +13,12 @@ const STARTED_ISO = new Date(STARTED_AT).toISOString();
  * GET /api/health — lightweight readiness probe for the `ompchamber status` CLI.
  * Dependency-light by design: never touches the database and never throws.
  *
- * It does sweep the descriptor table (`countOpenFileDescriptors`, ~1 ms): a dev
- * server walks toward the 10,240-descriptor point where every `Bun.spawn` in
- * the process fails, and the sweep is the only way to say so *before* the
- * terminal panel, the omp child and git all break at once. Null where the host
- * cannot answer.
+ * It does sweep the descriptor table (`countOpenFileDescriptors`, ~12 ms over
+ * the real 61440-entry table; ~2 ms when capped at the old constant): a dev
+ * server walks toward the descriptor ceiling where every `Bun.spawn` in the
+ * process fails, and the sweep is the only way to say so *before* the terminal
+ * panel, the omp child and git all break at once. Null where the host cannot
+ * answer.
  */
 export async function loader() {
   return json(
