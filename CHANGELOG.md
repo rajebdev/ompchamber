@@ -5,6 +5,19 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.16.0](https://github.com/rajebdev/ompchamber/compare/v3.15.0...v3.16.0) — 2026-10-05
+
+### Added
+
+* **panels:** render plugin panels in the right panel and the editor ([72d107f](https://github.com/rajebdev/ompchamber/commit/72d107f7180b5e2a845cbbee54401d12f4697d4e))
+* **panels:** serve sandboxed panel plugins from a marketplace ([3ea2ff9](https://github.com/rajebdev/ompchamber/commit/3ea2ff9639608f8f9a149c7132d559020177e653))
+* **plugins:** publish the panel SDK and UI kit as workspace packages ([cb121af](https://github.com/rajebdev/ompchamber/commit/cb121afd1635c77955c732e5082c11e95d4dbe6f))
+* **settings:** a Panel Plugins category, install and remove, bundled plugin ([6267690](https://github.com/rajebdev/ompchamber/commit/62676909b432caf86caaa19cf1cc8085ef44aeec))
+
+### Changed
+
+* **plugins:** document the panel plugin SDK, marketplace and publishing ([d3e6928](https://github.com/rajebdev/ompchamber/commit/d3e6928066df8a28dbd9bba7d34d4dc57747526a))
+
 ## [3.15.0](https://github.com/rajebdev/ompchamber/compare/v3.14.0...v3.15.0) — 2026-10-04
 
 ### Added
