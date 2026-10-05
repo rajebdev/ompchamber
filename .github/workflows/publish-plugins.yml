@@ -118,9 +118,15 @@ jobs:
           fi
           echo "Publishing $pkg at $have"
 
-      # What npm receives, asserted before the token is used: a tarball missing
-      # `src/` (the only thing it ships — these are source packages Bun executes
-      # directly) would publish a package that cannot be imported.
+      # What npm receives, asserted before the token is used: a package that
+      # resolves locally but ships without its entry points installs and then
+      # fails to import.
+      #
+      # The assertion reads the package's OWN `exports` map rather than naming
+      # files, because a hard-coded list goes stale in silence. It did: the UI
+      # kit's stylesheet was removed when panels moved in-process, the import went
+      # with it, and this step kept demanding `styles.d.css.ts` — so the next
+      # publish would have failed on a file that no longer had a reason to exist.
       #
       # The check `cd`s into each package. `bun pm pack --dry-run <dir>` does NOT
       # pack that directory: measured on 1.4.2 it ignores the argument and packs
@@ -130,17 +136,24 @@ jobs:
         run: |
           for dir in packages/plugin-sdk packages/ui; do
             (cd "$dir" && bun pm pack --dry-run) > /tmp/pack.txt
-            grep -q 'src/' /tmp/pack.txt || { echo "::error::$dir packs no src/"; exit 1; }
-            # The UI kit ships a stylesheet, and a consumer's `import
-            # '@ompchamber/ui/styles.css'` needs its declaration beside it or
-            # TypeScript refuses the import.
-            if [ "$dir" = "packages/ui" ]; then
-              grep -q 'styles.d.css.ts' /tmp/pack.txt || {
-                echo "::error::$dir packs no styles.d.css.ts — a consumer's CSS import would not typecheck"
+            targets="$(bun -e "
+              const pkg = await Bun.file('$dir/package.json').json();
+              const found = new Set();
+              const walk = (value) => {
+                if (typeof value === 'string') found.add(value);
+                else if (value && typeof value === 'object') for (const child of Object.values(value)) walk(child);
+              };
+              walk(pkg.exports ?? {});
+              console.log([...found].map((t) => t.replace(/^\.\//, '')).join(' '));
+            ")"
+            test -n "$targets" || { echo "::error::$dir declares no exports"; exit 1; }
+            for target in $targets; do
+              grep -qF "$target" /tmp/pack.txt || {
+                echo "::error::$dir packs no $target, which its exports map names"
                 exit 1
               }
-            fi
-            echo "--- $dir"; tail -3 /tmp/pack.txt
+            done
+            echo "--- $dir ($targets)"; tail -3 /tmp/pack.txt
           done
 
       # Which packages this run publishes: the tag names one, the dispatch input
