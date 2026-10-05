@@ -47,11 +47,11 @@
     },
     "packages/plugin-sdk": {
       "name": "@ompchamber/plugin-sdk",
-      "version": "1.0.0",
+      "version": "2.0.0",
     },
     "packages/ui": {
       "name": "@ompchamber/ui",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@ompchamber/plugin-sdk": "workspace:*",
         "preact": "^10.29.8",

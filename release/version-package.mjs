@@ -27,6 +27,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 /**
  * Read a package's manifest.
@@ -37,6 +38,70 @@ import { join } from 'node:path';
  */
 function readManifest(cwd, dir) {
   return JSON.parse(readFileSync(join(cwd, dir, 'package.json'), 'utf8'));
+}
+
+/**
+ * Refresh `bun.lock` so its recorded workspace versions match the manifests.
+ *
+ * **This is load-bearing, and its absence published a wrong dependency.**
+ * `bun.lock` records a version for every workspace package, and `bun publish`
+ * substitutes a `workspace:` spec from THAT record rather than from the
+ * manifest on disk. So bumping a package's version and packing a dependent
+ * package in the same run publishes the dependency at its PREVIOUS version:
+ * measured, `@ompchamber/ui@2.0.0` went to npm declaring
+ * `"@ompchamber/plugin-sdk": "1.0.0"` while the SDK was 2.0.0 on the registry —
+ * an install that resolves the old SDK, which is exactly the incompatibility
+ * the 2.0.0 release existed to announce.
+ *
+ * Reproduced in isolation: bump `packages/a/package.json` to 2.0.0 without
+ * running `bun install`, and `bun pm pack` in `packages/b` (which depends on
+ * `a` at `workspace:*`) still writes `"a": "1.0.0"`.
+ *
+ * `--lockfile-only` is deliberate: the release job has already installed, and
+ * the only thing that needs to change is the lock's record of the version, so
+ * `node_modules` is left alone.
+ *
+ * @param {string} cwd
+ */
+function refreshLockfile(cwd) {
+  const result = spawnSync('bun', ['install', '--lockfile-only'], {
+    cwd,
+    encoding: 'utf8',
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  if (result.status !== 0) {
+    throw new Error(`bun install --lockfile-only failed:\n${result.stderr}`);
+  }
+}
+
+/**
+ * The version `bun.lock` records for a workspace directory, or `null`.
+ *
+ * Read rather than parsed: the lockfile is Bun's own JSONC-ish format, and the
+ * only fact needed here is one version inside one entry.
+ *
+ * @param {string} cwd
+ * @param {string} dir
+ * @returns {string|null}
+ */
+function lockedVersion(cwd, dir) {
+  let lock;
+
+  try {
+    lock = readFileSync(join(cwd, 'bun.lock'), 'utf8');
+  } catch {
+    // A tree with no lockfile has nothing to refresh or verify.
+    return null;
+  }
+
+  const escaped = dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = new RegExp(`"${escaped}"\\s*:\\s*\\{[^}]*"version"\\s*:\\s*"([^"]+)"`).exec(lock);
+
+  return match ? match[1] : null;
 }
 
 /**
@@ -73,6 +138,22 @@ export function versionPackagePlugin(dir) {
       manifest.version = nextRelease.version;
       writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
       logger.log(`Wrote ${nextRelease.version} to ${dir}/package.json`);
+
+      refreshLockfile(cwd);
+
+      // Verified, not assumed. A `bun install` that did not actually move the
+      // record would leave the dependent package pinning the previous version —
+      // the failure this refresh exists to prevent — and the release would
+      // publish it silently. Failing here stops the release before the tag.
+      const locked = lockedVersion(cwd, dir);
+
+      if (locked !== null && locked !== nextRelease.version) {
+        throw new Error(
+          `bun.lock records ${locked} for ${dir} after refreshing; expected ${nextRelease.version}`,
+        );
+      }
+
+      logger.log(`Refreshed bun.lock (${dir} -> ${nextRelease.version})`);
     },
   };
 }

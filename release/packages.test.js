@@ -150,6 +150,12 @@ describe('package release pipeline', () => {
       '@semantic-release/changelog',
       { changelogFile: 'packages/plugin-sdk/CHANGELOG.md', changelogTitle: expect.stringContaining('# @ompchamber/plugin-sdk') },
     ]);
+
+    // `bun.lock` rides along, because the version plugin rewrites it and
+    // `bun publish` reads a `workspace:` substitution from the lock rather than
+    // from the manifest. An uncommitted refresh would re-publish the stale pin.
+    const git = config.plugins.find((plugin) => Array.isArray(plugin) && plugin[0] === '@semantic-release/git');
+    expect(git[1].assets).toContain('bun.lock');
   });
 });
 
@@ -173,6 +179,62 @@ describe('package catalog', () => {
   });
 });
 
+/**
+ * A two-package workspace where `b` depends on `a` at `workspace:*` — the shape
+ * `@ompchamber/ui` has on `@ompchamber/plugin-sdk`. Built from scratch so the
+ * test does not depend on this repository's own versions.
+ */
+function makeWorkspace(prefix) {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+
+  const write = (rel, content) => {
+    mkdirSync(join(dir, rel, '..'), { recursive: true });
+    writeFileSync(join(dir, rel), content);
+  };
+
+  const manifest = (extra) => `${JSON.stringify({ type: 'module', files: ['src'], exports: { '.': './src/index.js' }, ...extra }, null, 2)}\n`;
+
+  write('package.json', `${JSON.stringify({ name: 'fixture', private: true, workspaces: ['packages/*'] }, null, 2)}\n`);
+  write('packages/a/package.json', manifest({ name: 'a', version: '1.0.0' }));
+  write('packages/a/src/index.js', 'export const a = 1;\n');
+  write('packages/b/package.json', manifest({ name: 'b', version: '1.0.0', dependencies: { a: 'workspace:*' } }));
+  write('packages/b/src/index.js', 'export const b = 1;\n');
+
+  const installed = spawnSync('bun', ['install'], { cwd: dir, encoding: 'utf8' });
+
+  if (installed.status !== 0) {
+    throw new Error(`bun install failed:\n${installed.stderr}`);
+  }
+
+  return dir;
+}
+
+/** The version `b` declares for `a` in the tarball `bun pm pack` produces. */
+function packedDependency(dir) {
+  const cwd = join(dir, 'packages/b');
+  const pack = spawnSync('bun', ['pm', 'pack'], { cwd, encoding: 'utf8' });
+
+  if (pack.status !== 0) {
+    throw new Error(`bun pm pack failed:\n${pack.stderr}`);
+  }
+
+  // `bun pm pack` prints the tarball name and then a size summary, so the name
+  // is found by suffix rather than taken as the last line.
+  const tarball = pack.stdout.split('\n').map((line) => line.trim()).find((line) => line.endsWith('.tgz'));
+
+  if (!tarball) {
+    throw new Error(`bun pm pack named no tarball:\n${pack.stdout}`);
+  }
+
+  const extracted = spawnSync('tar', ['-xOzf', tarball, 'package/package.json'], { cwd, encoding: 'utf8' });
+
+  if (extracted.status !== 0) {
+    throw new Error(`tar failed:\n${extracted.stderr}`);
+  }
+
+  return JSON.parse(extracted.stdout).dependencies.a;
+}
+
 describe('the local version plugin', () => {
   test('writes the version into the package manifest, and nothing else', () => {
     const scratch = mkdtempSync(join(tmpdir(), 'ompchamber-version-'));
@@ -181,6 +243,8 @@ describe('the local version plugin', () => {
     try {
       mkdirSync(join(scratch, 'packages/plugin-sdk'), { recursive: true });
       writeFileSync(join(scratch, 'packages/plugin-sdk/package.json'), original);
+      // The plugin refreshes the lockfile, which needs a workspace root.
+      writeFileSync(join(scratch, 'package.json'), '{"name":"fixture","private":true}\n');
 
       const logs = [];
       versionPackagePlugin('packages/plugin-sdk').prepare({}, {
@@ -199,6 +263,36 @@ describe('the local version plugin', () => {
       expect({ ...after, version: before.version }).toEqual(before);
       expect(written.endsWith('}\n')).toBe(true);
       expect(logs.join('\n')).toContain('9.9.9');
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * The regression this plugin's lockfile refresh exists for.
+   *
+   * `bun.lock` records a version per workspace package, and `bun publish`
+   * substitutes a `workspace:` spec from THAT record rather than from the
+   * manifest. Measured in production: `@ompchamber/ui@2.0.0` went to npm
+   * declaring `"@ompchamber/plugin-sdk": "1.0.0"` while the SDK was 2.0.0 on the
+   * registry — an install that resolves the old SDK, which is precisely the
+   * incompatibility the 2.0.0 release announced. Bumping the manifest without
+   * refreshing the lock leaves the dependent package packing the old version.
+   */
+  test('refreshes bun.lock, so a dependent package packs the NEW version', () => {
+    const scratch = makeWorkspace('ompchamber-lock-');
+
+    try {
+      expect(packedDependency(scratch)).toBe('1.0.0');
+
+      versionPackagePlugin('packages/a').prepare({}, {
+        cwd: scratch,
+        nextRelease: { version: '2.0.0' },
+        logger: { log() {} },
+      });
+
+      expect(packedDependency(scratch)).toBe('2.0.0');
+      expect(readFileSync(join(scratch, 'bun.lock'), 'utf8')).toContain('2.0.0');
     } finally {
       rmSync(scratch, { recursive: true, force: true });
     }

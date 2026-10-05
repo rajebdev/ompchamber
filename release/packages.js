@@ -13,13 +13,13 @@
  * would make the agreement untestable.
  *
  * **Order is load-bearing.** `@ompchamber/ui` declares
- * `"@ompchamber/plugin-sdk": "workspace:*"`, which Bun rewrites to the exact
- * version at pack time (verified on 1.4.2: the published 1.0.0 tarball carries
- * `"@ompchamber/plugin-sdk": "1.0.0"`, not the protocol), so a `ui` release
- * pins whatever SDK version was current when it was cut. `release-packages.mjs`
- * therefore releases in this order and stops on the first failure — a `ui`
- * release must never follow a failed SDK release, or it publishes a package
- * whose dependency does not exist on npm.
+ * `"@ompchamber/plugin-sdk": "workspace:*"`, which Bun rewrites to an exact
+ * version at publish time from the version `bun.lock` records for the workspace
+ * package — not from the manifest on disk. So a `ui` release pins whatever SDK
+ * version the lock says, which is why the version plugin refreshes the lock and
+ * why `release-packages.mjs` releases in this order and stops on the first
+ * failure: a `ui` release must never follow a failed SDK release, or it
+ * publishes a package whose dependency is not the one it was built against.
  */
 export const RELEASE_PACKAGES = [
   {

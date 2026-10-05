@@ -197,7 +197,12 @@ export function packageReleaseConfig(entry) {
       [
         '@semantic-release/git',
         {
-          assets: [`${dir}/CHANGELOG.md`, `${dir}/package.json`],
+          // `bun.lock` is here because the version plugin rewrites it: it
+          // records a version per workspace package, and `bun publish`
+          // substitutes a `workspace:` spec from THAT record. Leaving the
+          // refreshed lock uncommitted would re-publish the stale pin on the
+          // next release (see version-package.mjs for the measurement).
+          assets: [`${dir}/CHANGELOG.md`, `${dir}/package.json`, 'bun.lock'],
           message: `chore(release): ${prefix}/v\${nextRelease.version} [skip ci]`,
         },
       ],
