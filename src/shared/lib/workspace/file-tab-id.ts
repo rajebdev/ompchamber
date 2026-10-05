@@ -27,15 +27,3 @@ export function diffTabId(path: string, staged: boolean): string {
 export function diffTabName(path: string): string {
   return `${path.split('/').pop() || path} (Diff)`;
 }
-
-/**
- * The tab id for a plugin panel opened in the EDITOR slot.
- *
- * A separate scheme from `fileTabId`/`diffTabId` because a panel is not a path
- * — it has no file to dedupe against, and a hash of its key would collide with
- * a real file's id only by accident, which is exactly the kind of collision
- * that is impossible to debug. One tab per panel key.
- */
-export function pluginPanelTabId(panelKey: string): string {
-  return `panel-${panelKey}`;
-}

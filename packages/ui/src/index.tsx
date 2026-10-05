@@ -4,54 +4,85 @@
  */
 
 /**
- * The Preact integration for a panel plugin: one provider, four hooks.
+ * The UI kit a plugin renders with, and the host services it reads through.
  *
- * A plugin used to hand-roll this — a context, a `ready` await, a theme handler,
- * a debounced session write — which meant every plugin re-derived the same two
- * behaviours that are easy to get wrong:
+ * Everything here runs IN THE HOST'S TREE — same Preact instance, same
+ * document, same theme — so the kit is plain Preact components, not a
+ * message-passing client. What it still must not do is reach into the host's
+ * own source: this is a published package, so the host INJECTS its services
+ * once at boot via `configureUiKit`, and the hooks read them.
  *
- * - **The provider owns BOTH bridge subscriptions.** Registering `onTheme` from
- *   a component only fires if that component mounts; a panel whose components
- *   never called `useTheme()` silently stopped following the palette.
- * - **The context arrives late.** `workspacePath` and `sessionId` are resolved
- *   asynchronously by the chamber, so they are usually empty when `ready`
- *   settles. A component that captured `info` once would show "none" over a real
- *   workspace.
+ * Two rules the hooks exist to enforce, because a plugin gets them wrong:
  *
- * Both are handled here so a plugin cannot get them wrong.
+ * - **Context arrives late.** The active session and workspace are resolved
+ *   asynchronously, so a component that captured them once would show "none"
+ *   over a real workspace. Every hook subscribes and re-renders.
+ * - **Session state is not component state.** The component is unmounted when
+ *   its panel is hidden, so a value kept in `useState` alone would be lost on
+ *   every tab switch. `useSessionValue` reads the chamber's store.
  */
 
-import { createContext } from 'preact';
-import { useContext, useEffect, useState } from 'preact/hooks';
-import type { ComponentChildren } from 'preact';
-import { acquirePanel, type ChamberPanelApi, type PanelInfo } from '@ompchamber/plugin-sdk';
+import { useCallback, useEffect, useState } from 'preact/hooks';
 
-interface PanelContextValue {
-  api: ChamberPanelApi;
-  info: PanelInfo;
-}
-
-const PanelContext = createContext<PanelContextValue | null>(null);
-
-function usePanelContext(): PanelContextValue {
-  const value = useContext(PanelContext);
-  if (!value) throw new Error('Panel hooks must be used inside <PanelProvider>');
-  return value;
+/** What the host seeds every plugin component with. */
+export interface PanelContext {
+  sessionId: string | null;
+  workspacePath: string | null;
+  theme: string;
 }
 
 /**
- * The live panel info.
+ * The host's own services, injected once.
  *
- * Read through a hook rather than off the context directly so a component
- * re-renders when the workspace arrives.
+ * Deliberately narrow: each field is something a plugin genuinely cannot do
+ * itself (read the chamber's per-session store, know the live palette, resolve
+ * the active workspace). Anything a plugin could read from the DOM it should.
  */
-export function usePanelInfo(): PanelInfo {
-  return usePanelContext().info;
+export interface UiKitServices {
+  /** The current panel context. */
+  context(): PanelContext;
+  /** Subscribe to context changes (a new session, a palette switch). */
+  subscribe(listener: (context: PanelContext) => void): () => void;
+  /** Read one per-session value. */
+  getSessionValue(sessionId: string | null, key: string): string | null;
+  /** Write one per-session value. */
+  setSessionValue(sessionId: string | null, key: string, value: string): void;
+  /** Read a text file inside the active workspace. Rejects with the reason. */
+  readWorkspaceFile(workspacePath: string | null, relativePath: string): Promise<string>;
 }
 
-/** The bridge itself, for `api.call(...)`. */
-export function usePanelApi(): ChamberPanelApi {
-  return usePanelContext().api;
+let services: UiKitServices | null = null;
+
+/** Called ONCE by the host at boot. A plugin must never call this. */
+export function configureUiKit(next: UiKitServices): void {
+  services = next;
+}
+
+function requireServices(): UiKitServices {
+  if (!services) {
+    throw new Error(
+      'The OMPChamber UI kit has no host services — this component must be rendered by the OMPChamber app.',
+    );
+  }
+  return services;
+}
+
+/**
+ * The live panel context, re-rendering on every change.
+ *
+ * `useState` is seeded from the service and updated by its subscription, which
+ * is what makes a workspace that arrives after the first paint show up.
+ */
+export function usePanelInfo(): PanelContext {
+  const [context, setContext] = useState<PanelContext>(() => requireServices().context());
+
+  useEffect(() => {
+    const api = requireServices();
+    setContext(api.context());
+    return api.subscribe(setContext);
+  }, []);
+
+  return context;
 }
 
 /** The live palette id. */
@@ -70,42 +101,31 @@ export interface SessionValue {
 /**
  * Per-session state, as a `useState` that persists.
  *
- * The value lives in the session store, not in the frame: the frame is destroyed
- * whenever the panel is hidden, so local state would be lost on every tab
- * switch. Reads once on mount, writes debounced — `input` fires per keystroke,
- * and each one would otherwise be a postMessage round trip.
+ * The write is debounced: `onInput` fires per keystroke, and each one would
+ * otherwise be a store write and a request.
  */
 export function useSessionValue(key: string, delayMs = 400): SessionValue {
-  const api = usePanelApi();
+  const { sessionId } = usePanelInfo();
   const [value, setValue] = useState<string | null>(null);
   const [status, setStatus] = useState<SessionValue['status']>('loading');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
     setStatus('loading');
-    api.call<string | null>('sessionState.get', { key }).then(
-      (stored) => {
-        if (cancelled) return;
-        setValue(stored ?? '');
-        setStatus('idle');
-      },
-      (cause: unknown) => {
-        if (cancelled) return;
-        setError(cause instanceof Error ? cause.message : String(cause));
-        setStatus('error');
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [api, key]);
+    try {
+      setValue(requireServices().getSessionValue(sessionId, key) ?? '');
+      setStatus('idle');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      setStatus('error');
+    }
+  }, [sessionId, key]);
 
   useEffect(() => {
     if (value === null || status !== 'saving') return;
-    const timer = setTimeout(async () => {
+    const timer = setTimeout(() => {
       try {
-        await api.call('sessionState.set', { key, value });
+        requireServices().setSessionValue(sessionId, key, value);
         setStatus('saved');
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
@@ -113,69 +133,51 @@ export function useSessionValue(key: string, delayMs = 400): SessionValue {
       }
     }, delayMs);
     return () => clearTimeout(timer);
-  }, [api, key, value, status, delayMs]);
+  }, [sessionId, key, value, status, delayMs]);
 
-  return {
-    value,
-    status,
-    error,
-    update: (next: string) => {
-      setValue(next);
-      setStatus('saving');
-    },
-  };
+  const update = useCallback((next: string) => {
+    setValue(next);
+    setStatus('saving');
+  }, []);
+
+  return { value, status, error, update };
 }
 
-/**
- * Mount a panel, rendering `children` once the host has answered.
- *
- * Renders nothing until `ready` resolves: the panel has no data to draw before
- * then, and a half-drawn first frame is worse than none.
- */
-export function PanelProvider({ children }: { children: ComponentChildren }) {
-  const [value, setValue] = useState<PanelContextValue | null>(null);
+export interface WorkspaceFile {
+  content: string | null;
+  loading: boolean;
+  error: string | null;
+}
+
+/** Read one text file inside the active workspace. */
+export function useWorkspaceFile(relativePath: string): WorkspaceFile {
+  const { workspacePath } = usePanelInfo();
+  const [content, setContent] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    let api: ChamberPanelApi;
-    try {
-      api = acquirePanel();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-      return;
-    }
-
-    /** Apply a palette id to the document, which is what `:root[data-theme]` keys off. */
-    const applyTheme = (theme: string) => document.documentElement.setAttribute('data-theme', theme);
-
-    api.ready.then(
-      (info) => {
-        if (cancelled) return;
-        applyTheme(info.theme);
-        api.onTheme = (theme) => {
-          applyTheme(theme);
-          setValue((current) => (current ? { ...current, info: { ...current.info, theme } } : current));
-        };
-        api.onContext = (next) => {
-          if (next.theme) applyTheme(next.theme);
-          setValue((current) => (current ? { ...current, info: { ...current.info, ...next } } : current));
-        };
-        setValue({ api, info });
-      },
-      (cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
-      },
-    );
-
+    setLoading(true);
+    setError(null);
+    requireServices()
+      .readWorkspaceFile(workspacePath, relativePath)
+      .then(
+        (text) => {
+          if (cancelled) return;
+          setContent(text);
+          setLoading(false);
+        },
+        (cause: unknown) => {
+          if (cancelled) return;
+          setError(cause instanceof Error ? cause.message : String(cause));
+          setLoading(false);
+        },
+      );
     return () => {
       cancelled = true;
-      api.onTheme = undefined;
-      api.onContext = undefined;
     };
-  }, []);
+  }, [workspacePath, relativePath]);
 
-  if (error) return <p class="oc-note oc-note-error">Could not attach to the chamber: {error}</p>;
-  if (!value) return null;
-  return <PanelContext.Provider value={value}>{children}</PanelContext.Provider>;
+  return { content, loading, error };
 }

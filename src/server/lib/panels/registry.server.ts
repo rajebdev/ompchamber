@@ -6,22 +6,23 @@
 /**
  * Panel-plugin discovery.
  *
- * There is ONE marketplace:
+ * There is ONE store and ONE working marketplace:
  *
- *   ~/.ompchamber/marketplace/
- *     marketplace.json        the catalog — the plugins registered by default
- *     plugins/
- *       session-info/
- *         ompchamber.json     a plugin manifest
- *         index.html
+ *   <package>/marketplace/            the STORE — what the app ships
+ *     plugins/session-info/           an offer, not an install
  *
- * It lives in the DATA directory rather than inside the package because that is
- * the only location both install shapes can write: a globally installed package
- * sits in a read-only `node_modules`, and the update flow replaces it outright,
- * so a plugin installed from a git URL there would vanish on the next upgrade.
- * The bundled copy under `<package>/marketplace/` is the SEED, applied once by
- * `seedDefaultMarketplace()` before the server listens — never re-applied, so a
- * plugin the user removes stays removed.
+ *   ~/.ompchamber/marketplace/        the WORKING copy — what is installed
+ *     marketplace.json                the catalog
+ *     plugins/session-info/           an installed plugin
+ *       package.json                  manifest under its `ompchamber` key
+ *       dist/app.js                   the built ESM bundle the host imports
+ *
+ * The working copy lives in the DATA directory rather than inside the package
+ * because that is the only location both install shapes can write: a globally
+ * installed package sits in a read-only `node_modules`, and the update flow
+ * replaces it outright, so a plugin installed there would vanish on the next
+ * upgrade. The bundled copy is the seed for the STORE list, never copied
+ * automatically.
  *
  * The catalog and the directory are independent, and both directions matter:
  * a plugin present under `plugins/` but absent from the catalog still loads
@@ -30,24 +31,21 @@
  * install visible instead of silent).
  *
  * Nothing here executes plugin code. The scan reads manifests, validates them,
- * and reports every rejection with its reason; the frame is loaded later, by the
- * browser, through the sandboxed asset route.
+ * and reports every rejection with its reason; the bundle is imported later, by
+ * the browser, from the bundle route.
  */
 
 import { homedir } from 'os';
 import { join, resolve } from 'path';
 import type {
   PanelCatalogEntry,
-  PanelPluginManifest,
   PanelPluginStatus,
   PanelRegistryPayload,
 } from '@/shared/types';
 import { pathExists } from '@/server/lib/omp/core/paths';
 import { packageDir } from '@/server/lib/assets/fonts.server';
-import { slugForPanelKey } from '@/shared/lib/panels/asset-base';
-import { pluginPanelKey } from '@/shared/lib/workspace/panel-ids';
 import { readDisabledPlugins } from '@/server/lib/panels/state.server';
-import { readJsonBody, readPluginManifest, subdirectories } from '@/server/lib/panels/files.server';
+import { findReadme, readJsonBody, readPluginManifest, subdirectories } from '@/server/lib/panels/files.server';
 import { toManifest, toMarketplaceCatalog } from '@/server/lib/panels/manifest';
 
 /** The marketplace root: `~/.ompchamber/marketplace`, overridable for tests. */
@@ -90,13 +88,13 @@ const MARKETPLACE_ID = 'ompchamber';
 const SCAN_CACHE_TTL_MS = 5_000;
 
 /**
- * A scan result: the payload the client renders, plus the panel → directory map
- * the asset route needs.
+ * A scan result: the payload the client renders, plus the plugin → directory
+ * map the bundle route needs.
  *
  * The two are deliberately separate. The directory is an absolute path on the
  * user's machine, and the payload is a browser response — publishing the install
- * layout to every plugin frame buys nothing, since the route resolves the root
- * from this map rather than from the request.
+ * layout to every plugin buys nothing, since the route resolves the root from
+ * this map rather than from the request.
  */
 interface PanelScan extends PanelRegistryPayload {
   dirs: Record<string, string>;
@@ -148,10 +146,9 @@ async function runPanelScan(): Promise<PanelScan> {
   }
 
   // Read once, before the loop: whether a plugin is ON decides whether its
-  // panels are published, and the flag is stored rather than derived.
+  // bundle is published, and the flag is stored rather than derived.
   const disabled = new Set(await readDisabledPlugins());
 
-  const seenKeys = new Set<string>();
   const pluginStatus: PanelPluginStatus[] = [];
   for (const pluginName of await subdirectories(pluginsRoot)) {
     const pluginDir = join(pluginsRoot, pluginName);
@@ -167,45 +164,37 @@ async function runPanelScan(): Promise<PanelScan> {
       continue;
     }
 
-    // A Bun package is served from its build output, so the entry it names must
-    // already exist. A plugin whose build has not run is reported as UNBUILT
-    // rather than as broken — the manifest is fine, and the pane offers to run
-    // the build — which is why this is a separate list from `errors`.
+    // A plugin is served from its build output, so the bundle its manifest
+    // names must already exist. A plugin whose build has not run is reported as
+    // UNBUILT rather than as broken — the manifest is fine, and the pane offers
+    // to run the build — which is why this is a separate list from `errors`.
     const isPackage = await pathExists(join(pluginDir, 'package.json'));
-    const missingEntry = await firstMissingEntry(pluginDir, manifest);
     const enabled = !disabled.has(manifest.id);
+    const built = await pathExists(join(pluginDir, manifest.app));
     pluginStatus.push({
       pluginId: manifest.id,
       name: manifest.name,
       isPackage,
-      built: !missingEntry,
+      built,
       enabled,
       bundled: false,
-      ...(missingEntry ? { reason: `the build produced no ${missingEntry}` } : {}),
+      ...(built ? {} : { reason: `the build produced no ${manifest.app}` }),
     });
 
     // A switched-off plugin contributes NOTHING: no button, no tab, and no
-    // directory for the asset route to serve a frame from. Its files stay on
-    // disk, which is the whole difference between disabling and removing.
-    if (!enabled) continue;
+    // bundle for the route to serve. Its files stay on disk, which is the whole
+    // difference between disabling and removing.
+    if (!enabled || !built) continue;
 
-    for (const panel of manifest.panels) {
-      const panelKey = pluginPanelKey(manifest.id, panel.id);
-      if (seenKeys.has(panelKey)) {
-        fail(pluginDir, `duplicate panel id ${panelKey}`);
-        continue;
-      }
-      seenKeys.add(panelKey);
-      scan.panels.push({
-        ...panel,
-        panelKey,
-        pluginId: manifest.id,
-        pluginName: manifest.name,
-        pluginVersion: manifest.version,
-        marketplace: MARKETPLACE_ID,
-      });
-      scan.dirs[panelKey] = pluginDir;
-    }
+    scan.panels.push({
+      pluginId: manifest.id,
+      name: manifest.name,
+      version: manifest.version,
+      appUrl: await bundleUrl(pluginDir, manifest.app),
+      ...(manifest.icon ? { iconUrl: await iconUrl(pluginDir, manifest.icon) } : {}),
+      ...(await readmeUrlFor(pluginDir, manifest)),
+    });
+    scan.dirs[manifest.id] = pluginDir;
   }
 
   // The bundled marketplace is a STORE, so its plugins are listed whether or
@@ -228,13 +217,58 @@ async function runPanelScan(): Promise<PanelScan> {
 }
 
 /**
+ * A plugin's bundle URL, carrying the file's content hash.
+ *
+ * The hash is not decoration: the browser caches an ES module by URL, so a
+ * REBUILT plugin imported from the same URL would return the first evaluation
+ * and never re-run its `setup`. A changed hash is a changed URL, which is what
+ * makes "Rebuild" actually reload the plugin.
+ */
+async function bundleUrl(pluginDir: string, app: string): Promise<string> {
+  const file = Bun.file(join(pluginDir, app));
+  const digest = Bun.hash(await file.arrayBuffer()).toString(36);
+  return `/api/panels/bundle/${encodeURIComponent(basenameOf(pluginDir))}.js?v=${digest}`;
+}
+
+/**
+ * A plugin's README URL, when it ships one — either the file its manifest names
+ * or the `README.md` at its root.
+ */
+async function readmeUrlFor(
+  pluginDir: string,
+  manifest: { readme?: string },
+): Promise<{ readmeUrl?: string }> {
+  const readme = await findReadme(pluginDir, manifest.readme);
+  if (!readme) return {};
+  const file = Bun.file(join(pluginDir, readme));
+  const digest = Bun.hash(await file.arrayBuffer()).toString(36);
+  return {
+    readmeUrl: `/api/panels/readme/${encodeURIComponent(basenameOf(pluginDir))}/${readme
+      .split('/')
+      .map(encodeURIComponent)
+      .join('/')}?v=${digest}`,
+  };
+}
+
+/** A plugin's icon URL, likewise content-addressed. */
+async function iconUrl(pluginDir: string, icon: string): Promise<string> {
+  const file = Bun.file(join(pluginDir, icon));
+  const digest = Bun.hash(await file.arrayBuffer()).toString(36);
+  return `/api/panels/icon/${encodeURIComponent(basenameOf(pluginDir))}/${icon.split('/').map(encodeURIComponent).join('/')}?v=${digest}`;
+}
+
+function basenameOf(dir: string): string {
+  return dir.split(/[/\\]/).filter(Boolean).pop() ?? '';
+}
+
+/**
  * The bundled marketplace's offers, in directory order.
  *
  * A store entry is a plugin DIRECTORY with a valid manifest — the same rule the
  * working scan follows, so the two agree about what a plugin is. An entry whose
- * manifest is broken is reported as a rejection rather than dropped: a plugin
- * the user cannot install for a reason is exactly the kind of silence this pane
- * exists to break.
+ * manifest is broken is skipped here rather than reported: the store is the
+ * app's own shipping list, so a broken entry is a packaging fault, and the pane
+ * has no install action that could repair it.
  */
 async function readBundledCatalog(installed: ReadonlySet<string>): Promise<PanelCatalogEntry[]> {
   const bundledRoot = join(getBundledMarketplaceDir(), 'plugins');
@@ -250,7 +284,11 @@ async function readBundledCatalog(installed: ReadonlySet<string>): Promise<Panel
       name: manifest.name,
       version: manifest.version,
       ...(manifest.description ? { description: manifest.description } : {}),
-      panels: manifest.panels.map((panel) => ({ id: panel.id, title: panel.title, position: panel.position })),
+      // The store's OWN icon and README, so a card can show the mark and the
+      // details before the plugin is installed. Both come from the bundled
+      // directory, which the routes resolve through the same registry.
+      ...(manifest.icon ? { iconUrl: await iconUrl(pluginDir, manifest.icon) } : {}),
+      ...(await readmeUrlFor(pluginDir, manifest)),
       installed: installed.has(manifest.id),
     });
   }
@@ -273,32 +311,31 @@ export async function discoverPanelPlugins(): Promise<PanelRegistryPayload> {
 }
 
 /**
- * The first entry a plugin's manifest names that is not on disk, or undefined
- * when every one of them is.
+ * The absolute file one plugin's bundle or icon is served from, addressed by the
+ * directory name the URL carries.
  *
- * The check is per panel, not per plugin: a package whose build emitted one
- * document and failed on the second would otherwise report as fully built, and
- * only the broken panel's frame would 404.
+ * The URL names a plugin DIRECTORY rather than an arbitrary path, so a caller
+ * can only ever reach a file inside a plugin the registry knows: the route
+ * resolves the root from this map and appends a relative path the manifest
+ * already had validated.
+ *
+ * TWO roots are searched, in this order, and the order is the whole point:
+ * the WORKING marketplace first, then the bundled STORE. A store card has to
+ * draw an icon for a plugin that is not installed yet, so the bundled directory
+ * must be reachable — while an installed plugin must win, or a card would keep
+ * showing the shipped icon after the user replaced it. A directory that is
+ * neither installed-and-enabled nor a bundled offer is not reachable at all,
+ * which is what makes disabling a plugin stop its code from loading rather than
+ * merely hiding its button.
  */
-async function firstMissingEntry(pluginDir: string, manifest: PanelPluginManifest): Promise<string | undefined> {
-  for (const panel of manifest.panels) {
-    if (!(await pathExists(join(pluginDir, panel.entry)))) return panel.entry;
+export async function findPluginDir(pluginName: string): Promise<string | undefined> {
+  const scan = await cachedScan();
+  for (const dir of Object.values(scan.dirs)) {
+    if (basenameOf(dir) === pluginName) return dir;
+  }
+  const bundledRoot = join(getBundledMarketplaceDir(), 'plugins');
+  for (const dir of await subdirectories(bundledRoot)) {
+    if (dir === pluginName) return join(bundledRoot, dir);
   }
   return undefined;
-}
-
-/**
- * The absolute directory one panel's assets are served from, addressed by the
- * slug the asset URL carries.
- *
- * The asset route resolves its root from here rather than from the request, so
- * a caller can only ever name a file inside an installed plugin. Both halves of
- * the lookup are here for the same reason: the slug→key mapping and the
- * key→directory map are one fact, and splitting them across modules is how the
- * two spellings drift.
- */
-export async function findPanelDirBySlug(slug: string): Promise<string | undefined> {
-  const scan = await cachedScan();
-  const panel = scan.panels.find((entry) => slugForPanelKey(entry.panelKey) === slug);
-  return panel ? scan.dirs[panel.panelKey] : undefined;
 }

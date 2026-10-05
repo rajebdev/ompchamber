@@ -1,63 +1,50 @@
 /**
  * Panel-plugin contribution types.
  *
- * A panel plugin is third-party code the chamber loads into an isolated iframe
- * and shows as a right-panel or editor-panel view. The shape deliberately
- * mirrors VS Code's `contributes.views` + webview model: the manifest is DATA
- * (declared in the plugin's `ompchamber.json`), the code only ever runs inside
- * a sandboxed frame, and every privileged read goes through a capability-gated
- * postMessage bridge rather than through the chamber's own fetch.
+ * A panel plugin is third-party code the chamber loads INTO ITS OWN PAGE: the
+ * bundle is a real ESM module, the host `import()`s it, and the components it
+ * registers are rendered in the host's Preact tree — the same document, the
+ * same theme, the same hooks. There is no iframe and no message channel, so a
+ * plugin is local code, trusted the way a VS Code extension is trusted.
+ *
+ * The manifest therefore carries only what the host needs BEFORE the code runs:
+ * an identity, an optional icon, and the bundle to import. Which panels exist,
+ * their titles and their positions are decided by the registrations the bundle
+ * makes when it loads.
  */
 
-/**
- * Where a contributed panel renders. Three slots, one manifest.
- *
- * A plugin may contribute AT MOST ONE panel per position, and that rule is
- * enforced at manifest validation rather than merely documented: two `right`
- * panels would put two activity-bar buttons on one plugin (the layout keys the
- * active view by `plugin:<id>/<panel>`, so both would also fight over one width
- * slot), and two `header` panels would leave the navbar dropdown ambiguous about
- * which one it opens.
- */
+/** Where a contributed panel renders. One panel per position, per plugin. */
 export type PanelPosition = 'right' | 'editor' | 'header';
 
 /**
- * What a panel may ask the host for. Each value is one method group on the
- * bridge; a panel that declares none gets only the lifecycle handshake.
+ * A plugin's own manifest (`ompchamber` in `package.json`, or a standalone
+ * `ompchamber.json`).
  */
-export type PanelCapability =
-  | 'theme'
-  | 'session-state'
-  | 'workspace-read';
-
-export const PANEL_CAPABILITIES: readonly PanelCapability[] = ['theme', 'session-state', 'workspace-read'];
-
-/** One panel a plugin declares. */
-export interface PanelContribution {
-  /** Unique within the plugin. The UI id is `plugin:<pluginId>/<panelId>`. */
-  id: string;
-  title: string;
-  position: PanelPosition;
-  /** HTML entry, relative to the plugin root. Served through the asset route. */
-  entry: string;
-  /** Optional icon file, relative to the plugin root. */
-  icon?: string;
-  /** Floor before the panel's content clips. Falls back to the slot default. */
-  minWidth?: number;
-  /** Share of the group's area the panel opens at. Falls back to the slot default. */
-  defaultFraction?: number;
-  /** Capability groups the host bridge will answer. */
-  capabilities: PanelCapability[];
-}
-
-/** A plugin's own manifest file (`ompchamber.json` at its root). */
 export interface PanelPluginManifest {
   id: string;
   name: string;
   version: string;
   description?: string;
   homepage?: string;
-  panels: PanelContribution[];
+  /**
+   * The built ESM bundle, relative to the plugin root — conventionally
+   * `dist/app.js`. It is what the host `import()`s; the module's default export
+   * must be a `definePluginApp(...)` definition.
+   */
+  app: string;
+  /** Optional icon file, relative to the plugin root. */
+  icon?: string;
+  /**
+   * Optional README, relative to the plugin root. Markdown, shown in the pane's
+   * reader so a user can judge a plugin before installing it.
+   *
+   * When it is absent the scan looks for `README.md` at the plugin root, which
+   * is the convention every package already follows — a plugin author should not
+   * have to declare a file they already wrote.
+   */
+  readme?: string;
+  /** Optional branding block; `icon` above is authoritative when both exist. */
+  branding?: { icon?: string };
 }
 
 /**
@@ -104,22 +91,23 @@ export interface PanelMarketplaceItem {
 }
 
 /**
- * One panel, flattened with the plugin that owns it — what the client renders
- * its activity-bar entry from, and what the host uses to build an asset URL.
+ * One installed plugin, as the client sees it.
  *
  * Deliberately carries no filesystem path: the plugin's directory is a
- * server-side detail the asset route resolves from the registry itself, and
- * sending it to the browser would publish the user's home directory layout to
- * every frame for no consumer.
+ * server-side detail the bundle route resolves from the registry itself, and
+ * sending it to the browser would publish the user's home directory layout for
+ * no consumer.
  */
-export interface PanelRegistryEntry extends PanelContribution {
-  /** `plugin:<manifest.id>/<panel.id>` — the id the layout stores and keys on. */
-  panelKey: string;
+export interface PanelRegistryEntry {
   pluginId: string;
-  pluginName: string;
-  pluginVersion: string;
-  /** The marketplace that supplied it. */
-  marketplace: string;
+  name: string;
+  version: string;
+  /** Absolute URL of the plugin's ESM bundle, content-addressed per build. */
+  appUrl: string;
+  /** Absolute URL of the plugin's icon, when it declares one. */
+  iconUrl?: string;
+  /** Absolute URL of the plugin's README, when it ships one. */
+  readmeUrl?: string;
 }
 
 /**
@@ -138,18 +126,18 @@ export interface PanelPluginError {
 /**
  * One installed plugin's build state.
  *
- * A plugin is a Bun package, so its panels are served from a BUILD output
- * (`dist/`) rather than from its sources. A plugin whose build has not run —
- * freshly cloned, or a build that failed — therefore has a valid manifest and no
- * servable entry, and that is a different condition from a rejected manifest:
+ * A plugin is a Bun package, so its UI is served from a BUILD output (`dist/`)
+ * rather than from its sources. A plugin whose build has not run — freshly
+ * cloned, or a build that failed — therefore has a valid manifest and no
+ * importable bundle, and that is a different condition from a rejected manifest:
  * the pane offers a Rebuild for it instead of reporting it as broken.
  */
 export interface PanelPluginStatus {
   pluginId: string;
   name: string;
-  /** True when the entry file its manifest names exists on disk. */
+  /** True when the bundle its manifest names exists on disk. */
   built: boolean;
-  /** Why the last build did not produce the entry, when it did not. */
+  /** Why the last build did not produce the bundle, when it did not. */
   reason?: string;
   /** Whether the plugin is a Bun package (has a package.json). */
   isPackage: boolean;
@@ -160,8 +148,8 @@ export interface PanelPluginStatus {
    * arrives in the catalog UNINSTALLED (VS Code's model — the marketplace is a
    * store, not a preinstalled set), and an installed plugin can be switched off
    * without deleting its directory. A disabled plugin contributes nothing —
-   * no activity-bar button, no header button, no editor tab — while its files
-   * stay on disk for the next enable.
+   * no activity-bar button, no header button, no editor tab — and its bundle is
+   * no longer served.
    */
   enabled: boolean;
   /** Whether the plugin came from the bundled marketplace rather than a git URL. */
@@ -173,23 +161,25 @@ export interface PanelPluginStatus {
  *
  * The catalog is what the Panel Plugins pane lists as AVAILABLE: the bundled
  * marketplace is a store the user installs from, so a plugin sitting in
- * `<package>/marketplace/plugins/` is an offer, not an install. Its manifest is
- * read for the panel summary so the pane can say what a plugin contributes
- * before the user commits to installing it.
+ * `<package>/marketplace/plugins/` is an offer, not an install. A catalog entry
+ * cannot describe what a plugin CONTRIBUTES — that is known only after its
+ * bundle loads — so the row carries the identity alone.
  */
 export interface PanelCatalogEntry {
   pluginId: string;
   name: string;
   version: string;
   description?: string;
-  /** Panel summaries, so the row can name what the plugin would add. */
-  panels: { id: string; title: string; position: PanelPosition }[];
+  /** Absolute URL of the plugin's icon, when the store's copy declares one. */
+  iconUrl?: string;
+  /** Absolute URL of the plugin's README, when the store's copy ships one. */
+  readmeUrl?: string;
   /** True once the plugin is installed — the row then offers Enable/Remove. */
   installed: boolean;
 }
 
 export interface PanelRegistryPayload {
-  /** Contributions of ENABLED plugins only — what the layouts render from. */
+  /** Installed, enabled plugins — the bundles the host should import. */
   panels: PanelRegistryEntry[];
   marketplaces: PanelMarketplaceItem[];
   errors: PanelPluginError[];

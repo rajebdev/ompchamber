@@ -10,107 +10,73 @@
  * goes unnoticed when it is wrong — a plugin that fails to load with no reason
  * reads as a plugin that was never installed. So each rejection is pinned with
  * the sentence the UI will show.
+ *
+ * A manifest no longer describes panels: its bundle does, when it loads. What
+ * is left to validate is the identity and the two paths that become filesystem
+ * reads.
  */
 
 import { test, expect, describe } from 'bun:test';
-import { toContribution, toManifest, toMarketplaceCatalog } from '@/server/lib/panels/manifest';
+import { toManifest, toMarketplaceCatalog } from '@/server/lib/panels/manifest';
 
 const ROOT = '/market/plugins/demo';
 
-const PANEL = {
-  id: 'main',
-  title: 'Demo',
-  position: 'right',
-  entry: 'index.html',
-  capabilities: ['theme'],
-};
+const MANIFEST = { id: 'demo', name: 'Demo', version: '1.0.0', app: 'dist/app.js' };
 
-describe('toContribution', () => {
-  test('accepts a minimal panel and defaults capabilities to none', () => {
-    const result = toContribution({ id: 'main', title: 'Demo', position: 'right', entry: 'a.html' }, ROOT);
-    expect(result).toMatchObject({ id: 'main', capabilities: [] });
-  });
-
-  test('keeps optional sizing when it is a positive number', () => {
-    const result = toContribution({ ...PANEL, minWidth: 400, defaultFraction: 0.5 }, ROOT);
-    expect(result).toMatchObject({ minWidth: 400, defaultFraction: 0.5 });
-  });
-
-  test('drops non-positive sizing rather than writing it', () => {
-    const result = toContribution({ ...PANEL, minWidth: 0, defaultFraction: -1 }, ROOT);
-    expect(result).not.toHaveProperty('minWidth');
-    expect(result).not.toHaveProperty('defaultFraction');
-  });
-
-  test('refuses a missing or malformed id', () => {
-    expect(toContribution({ ...PANEL, id: undefined }, ROOT)).toMatchObject({ error: expect.stringContaining('id') });
-    expect(toContribution({ ...PANEL, id: 'a b' }, ROOT)).toMatchObject({ error: expect.stringContaining('invalid') });
-  });
-
-  test('refuses an unknown position', () => {
-    expect(toContribution({ ...PANEL, position: 'bottom' }, ROOT)).toMatchObject({
-      error: expect.stringContaining('position must be'),
+describe('toManifest', () => {
+  test('accepts a minimal manifest and keeps its optional fields', () => {
+    expect(toManifest({ ...MANIFEST, description: 'A demo', icon: 'icon.svg' }, ROOT)).toEqual({
+      id: 'demo',
+      name: 'Demo',
+      version: '1.0.0',
+      app: 'dist/app.js',
+      description: 'A demo',
+      icon: 'icon.svg',
     });
   });
 
-  test('refuses an entry escaping the plugin root', () => {
-    expect(toContribution({ ...PANEL, entry: '../x.html' }, ROOT)).toMatchObject({
+  test('accepts the branding alias for an icon', () => {
+    expect(toManifest({ ...MANIFEST, branding: { icon: 'icons/mark.svg' } }, ROOT)).toMatchObject({
+      branding: { icon: 'icons/mark.svg' },
+    });
+  });
+
+  test('refuses a missing app bundle', () => {
+    expect(toManifest({ ...MANIFEST, app: undefined }, ROOT)).toMatchObject({
+      error: expect.stringContaining('no "app" bundle'),
+    });
+  });
+
+  test('refuses an app path escaping the plugin root', () => {
+    expect(toManifest({ ...MANIFEST, app: '../outside.js' }, ROOT)).toMatchObject({
       error: expect.stringContaining('escapes the plugin directory'),
     });
   });
 
-  test('refuses an absolute entry', () => {
-    expect(toContribution({ ...PANEL, entry: '/etc/passwd' }, ROOT)).toMatchObject({
+  test('refuses an absolute app path', () => {
+    expect(toManifest({ ...MANIFEST, app: '/etc/passwd' }, ROOT)).toMatchObject({
       error: expect.stringContaining('escapes the plugin directory'),
     });
   });
 
   test('refuses an icon escaping the root', () => {
-    expect(toContribution({ ...PANEL, icon: '../../x.svg' }, ROOT)).toMatchObject({
+    expect(toManifest({ ...MANIFEST, icon: '../x.svg' }, ROOT)).toMatchObject({
       error: expect.stringContaining('escapes the plugin directory'),
     });
   });
 
-  test('refuses an unknown capability instead of dropping it', () => {
-    expect(toContribution({ ...PANEL, capabilities: ['theme', 'nope'] }, ROOT)).toMatchObject({
-      error: expect.stringContaining('unknown capability'),
+  test('refuses a missing or malformed id', () => {
+    expect(toManifest({ ...MANIFEST, id: 'has space' }, ROOT)).toMatchObject({
+      error: expect.stringContaining('id'),
     });
   });
 
-  test('refuses a non-array capabilities field', () => {
-    expect(toContribution({ ...PANEL, capabilities: 'theme' }, ROOT)).toMatchObject({
-      error: expect.stringContaining('unknown capability'),
+  test('refuses a missing name and a missing version', () => {
+    expect(toManifest({ ...MANIFEST, name: undefined }, ROOT)).toMatchObject({
+      error: expect.stringContaining('name'),
     });
-  });
-
-  test('de-duplicates a repeated capability', () => {
-    const result = toContribution({ ...PANEL, capabilities: ['theme', 'theme'] }, ROOT);
-    expect(result).toMatchObject({ capabilities: ['theme'] });
-  });
-});
-
-describe('toManifest', () => {
-  const MANIFEST = { id: 'demo', name: 'Demo', version: '1.0.0', panels: [PANEL] };
-
-  test('accepts a valid manifest', () => {
-    expect(toManifest(MANIFEST, ROOT)).toMatchObject({ id: 'demo', panels: [expect.objectContaining({ id: 'main' })] });
-  });
-
-  test('refuses a manifest with no panels', () => {
-    expect(toManifest({ ...MANIFEST, panels: [] }, ROOT)).toMatchObject({
-      error: expect.stringContaining('declares no panels'),
-    });
-  });
-
-  test('refuses a missing version', () => {
     expect(toManifest({ ...MANIFEST, version: undefined }, ROOT)).toMatchObject({
       error: expect.stringContaining('version'),
-    });
-  });
-
-  test('propagates a panel-level refusal', () => {
-    expect(toManifest({ ...MANIFEST, panels: [{ ...PANEL, entry: '../x' }] }, ROOT)).toMatchObject({
-      error: expect.stringContaining('escapes the plugin directory'),
     });
   });
 
@@ -120,6 +86,7 @@ describe('toManifest', () => {
 });
 
 describe('toMarketplaceCatalog', () => {
+
   test('accepts a catalog with no plugins array as empty', () => {
     expect(toMarketplaceCatalog({ name: 'Acme' }, ROOT)).toMatchObject({ name: 'Acme', plugins: [] });
   });

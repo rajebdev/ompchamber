@@ -1,22 +1,24 @@
 # Panel Plugins
 
-A panel plugin adds its own view to OMPChamber — a view in the right panel, or a
-tab in the editor panel. **A plugin is a Preact + Bun package**, built the same
-way this app builds itself, and the chamber serves its build output into a
-sandboxed iframe with a small, capability-gated API.
+A panel plugin adds its own views to OMPChamber — a view in the right panel, a
+tab in the editor panel, a readout in the navbar, a block in its settings.
+**A plugin is a Preact + Bun package**, built the same way this app builds
+itself, and the chamber imports its build output into its own page and renders
+it in its own tree.
 
-You write TSX, import from `node_modules`, and get one self-contained output.
-Preact is what this app renders with, so a panel is built from the same runtime
-and the same hooks — and the bundle is small because Preact is.
+You write TSX, import from `node_modules`, and get one self-contained ESM bundle.
+Preact is what this app renders with, so a plugin's components are built from the
+same runtime and the same hooks — and the bundle is small because the shared
+runtime is not bundled at all.
 
 Two packages are provided by the chamber itself:
 
 | Import | What it gives you |
 |---|---|
-| `@ompchamber/plugin-sdk` | The bridge types, `acquirePanel()`, `assetUrl()`. |
-| `@ompchamber/ui` | `PanelProvider` + the hooks. |
+| `@ompchamber/plugin-sdk` | The contract: `definePluginApp`, the slot and props types. |
+| `@ompchamber/plugin-sdk/app` | The same contract, as the runtime slot the build shims to. |
+| `@ompchamber/ui` | The hooks: `usePanelInfo`, `useTheme`, `useSessionValue`, `useWorkspaceFile`. |
 | `@ompchamber/ui/components` | `Panel`, `Field`, `FieldList`, `TextAreaField`, `Button`, `Empty`, `Note`. |
-| `@ompchamber/ui/styles.css` | The kit's stylesheet, themed by `data-theme`. |
 
 They are published on npm (`@ompchamber/plugin-sdk`, `@ompchamber/ui`), and the
 chamber links them into a plugin's `node_modules` before building.
@@ -64,16 +66,12 @@ Two consequences worth knowing:
 ├── marketplace.json                the catalog — what is registered
 └── plugins/
     └── session-info/               an installed plugin (a Preact + Bun package)
-        ├── package.json            manifest + build script + preact
+        ├── package.json            the ompchamber manifest
         ├── tsconfig.json           jsxImportSource: "preact"
         ├── src/
-        │   ├── index.html          the panel document
-        │   ├── main.tsx            its Preact entry
-        │   └── scratch.html        a second panel
-        └── dist/                   the build output the chamber serves
-            ├── index.html
-            ├── index-<hash>.js
-            └── index-<hash>.css
+        │   └── app.tsx             definePluginApp(...) — the whole plugin
+        └── dist/                   the build output the chamber imports
+            └── app.js
 
 <package>/marketplace/              the STORE, shipped with the app
 ├── marketplace.json
@@ -82,8 +80,8 @@ Two consequences worth knowing:
 ```
 
 `dist/` is gitignored, so it is never committed: the chamber builds it. A plugin
-is built when it is INSTALLED — never at boot — and the manifest's `entry` names
-a file inside `dist/`, with the pane offering **Rebuild** whenever it is missing.
+is built when it is INSTALLED — never at boot — and the manifest's `app` names a
+file inside `dist/`, with the pane offering **Rebuild** whenever it is missing.
 
 **The bundled marketplace is a store, not a preinstalled set.** A plugin the
 package ships is available in Settings → Panel Plugins and contributes nothing
@@ -118,7 +116,7 @@ Three separate things, and the pane keeps them separate:
 | Action | What it changes |
 |---|---|
 | **Install** | Copies/clones the plugin into the working marketplace, builds it, registers it. |
-| **Disable** | Flips a flag. The files stay; the plugin contributes NO panel — no activity-bar button, no header button, no editor tab — and its frames are no longer served. |
+| **Disable** | Flips a flag. The files stay; the plugin contributes NOTHING — no activity-bar button, no header button, no editor tab — and its bundle is no longer served. |
 | **Remove** | Deletes the directory and its catalog entry. Re-installing is the only way back. |
 
 Enablement is stored in the chamber's own database, not in the plugin directory:
@@ -139,39 +137,35 @@ and the same bundler (`bun build`, `target: 'browser'`) it bundles its own clien
 with.
 
 - TSX needs `"jsx": "react-jsx"` and `"jsxImportSource": "preact"` in the plugin's
-  `tsconfig.json`. Without it Bun's transpiler emits `react/jsx-dev-runtime` and
-  the build fails — a plugin may not rely on the app's own tsconfig.
-- A plugin that imports `@ompchamber/ui/styles.css` needs
-  `"allowArbitraryExtensions": true` in its tsconfig, or TypeScript refuses the
-  side-effect import (`TS2882`). The kit ships the matching
-  `styles.d.css.ts`; the build itself does not care either way.
+  `tsconfig.json`. Without it the compiler emits `react/jsx-dev-runtime`, which is
+  not installed and never should be — a plugin may not rely on the app's own
+  tsconfig, and the pane reports that fix rather than the raw module error.
 - If `package.json` has a **`build` script**, that script runs. It wins, because a
   plugin may need a bundler pass the chamber knows nothing about (a framework, a
   template compiler).
-- Otherwise the conventional entry is bundled directly: `src/index.html`,
-  `src/index.ts(x)`, `src/index.js`, or `index.html`. A plain plugin needs no
-  build script at all.
+- Otherwise the chamber bundles `src/app.tsx` (or `src/app.ts`, or the same at
+  the plugin root) into the `app` file the manifest names. A plain plugin needs
+  no build script at all — and a plugin built this way gets the shared runtime
+  shimmed in, which a script-driven build must arrange for itself.
 - **Dependencies are installed first** (`bun install --ignore-scripts`) when
   `package.json` declares any. `--ignore-scripts` because a postinstall would run
-  arbitrary code on the SERVER, outside the sandbox the panel itself runs in.
+  arbitrary code on the SERVER.
 - **`@ompchamber/*` is linked into the plugin's `node_modules`** before the
   build. Those packages are workspace links inside this checkout, so a plugin
   cloned into the marketplace cannot resolve them from its own install — `bun
   install` would have to fetch them from a registry that does not carry them.
   Symlinks, one per package, written after the install so it cannot delete them.
-- **One Preact per bundle.** The linked UI kit resolves `preact` up from its own
-  path, which in a checkout finds a SECOND copy beside the plugin's — and two
-  copies means two option objects, so Preact's hooks die at render with
-  `Cannot read properties of undefined (reading '__H')`. The kit's own
-  `node_modules/preact` is therefore pointed at the plugin's copy.
-- `dist/` is **replaced**, never merged, so a chunk the current source no longer
+- **One Preact per bundle.** This matters only for a plugin that uses its own
+  build script: the chamber's bundler marks `preact` external, but a script
+  bundles whatever it resolves, and the linked UI kit would then pull a SECOND
+  copy beside the plugin's. Two copies means two option objects, so Preact's
+  hooks die at render with `Cannot read properties of undefined (reading '__H')`.
+  The kit's own `node_modules/preact` is therefore pointed at the plugin's copy.
+- `dist/` is **replaced**, never merged, so a file the current source no longer
   emits cannot survive.
-- Every entry the manifest names must exist after the build. One missing document
-  fails the whole build, because the alternative is a plugin that reports as
-  built while one of its panels 404s.
-
-A plugin with no `package.json` is served as-is. That is deliberate: a
-hand-written HTML plugin keeps working.
+- The bundle the manifest names must exist after the build. A build that produces
+  nothing fails outright, because the alternative is a plugin that reports as
+  built while every one of its panels is missing.
 
 ## Installing
 
@@ -237,31 +231,27 @@ A plugin's manifest is the `ompchamber` key in its `package.json`. A standalone
 `ompchamber.json` is also accepted — for a plugin that is not a package, and for
 a hand-written one — and is read first.
 
+It carries only what the host needs BEFORE the code runs: an identity, an
+optional icon, and the bundle to import. Which panels exist, their titles and
+their positions are decided by the registrations the bundle makes when it loads.
+
 ```json
 {
   "name": "session-info",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "scripts": {
-    "build": "bun build src/index.html src/scratch.html --outdir dist --target browser --minify"
-  },
   "ompchamber": {
     "id": "session-info",
     "name": "Session Info",
     "version": "1.0.0",
-    "panels": [
-    {
-      "id": "info",
-      "title": "Session Info",
-      "position": "right",
-        "entry": "dist/index.html",
-        "capabilities": ["theme", "session-state"],
-        "minWidth": 300,
-        "defaultFraction": 0.35
-      },
-      { "id": "scratch", "title": "Scratchpad", "position": "editor", "entry": "dist/scratch.html" }
-    ]
+    "description": "Shows the active workspace and keeps a note per session.",
+    "app": "dist/app.js"
+  },
+  "devDependencies": {
+    "preact": "^10.29.8",
+    "@ompchamber/plugin-sdk": "*",
+    "@ompchamber/ui": "*"
   }
 }
 ```
@@ -271,81 +261,68 @@ a hand-written one — and is read first.
 | `id` | yes | `[a-z0-9][a-z0-9._-]*`, ≤ 64 chars. The plugin's namespace. |
 | `name` | yes | Shown in the activity-bar tooltip and the settings pane. |
 | `version` | yes | Free-form string; displayed, not parsed. |
-| `panels[].id` | yes | Unique within the plugin. |
-| `panels[].title` | yes | The activity-bar tooltip / tab label. |
-| `panels[].position` | yes | `"right"`, `"editor"` or `"header"`. See below. |
-| `panels[].entry` | yes | HTML file, relative to the plugin root — for a package, a file inside `dist/`. |
-| `panels[].icon` | no | Image, relative to the plugin root. Omit for a default mark. |
-| `panels[].minWidth` | no | Floor in px. Never below 320. |
-| `panels[].defaultFraction` | no | Share of the panel group to open at. Clamped to 0.2–0.9. |
-| `panels[].capabilities` | no | Defaults to `[]`. See below. |
+| `app` | yes | The BUILT ESM bundle, relative to the plugin root — conventionally `dist/app.js`. Its default export must be a `definePluginApp(...)` definition. |
+| `icon` | no | Image, relative to the plugin root. Omit and the pane draws the plugin's initials. |
+| `readme` | no | Markdown, relative to the plugin root. Defaults to `README.md` at the root when it exists. |
+| `description` | no | Shown in the store list and the settings pane. |
+| `homepage` | no | Displayed, never fetched. |
+| `branding.icon` | no | An alias for `icon`; `icon` wins when both are present. |
 
-### Positions
-
-| Position | Where it appears |
-|---|---|
-| `right` | A button in the right-panel activity bar; the view opens in the right panel. |
-| `editor` | A tab in the editor panel — VS Code's webview-panel shape. |
-| `header` | A button in the DESKTOP navbar that expands into a dropdown; a stats readout that opens on click. |
-
-**A plugin may declare at most ONE panel per position**, and the manifest is
-refused (with the reason shown in the pane) if it declares two. The layout gives
-each plugin exactly one activity-bar button, one navbar button and one editor
-tab, so a second `right` panel would be unreachable — and two buttons on one
-plugin would fight over one width slot. A plugin may declare up to three panels,
-one in each slot:
-
-```json
-"panels": [
-  { "id": "main",  "title": "Demo",       "position": "right",  "entry": "dist/index.html",  "capabilities": ["theme", "session-state"] },
-  { "id": "stats", "title": "Demo Stats", "position": "header", "entry": "dist/stats.html",  "capabilities": ["theme"] },
-  { "id": "notes", "title": "Demo Notes", "position": "editor", "entry": "dist/notes.html" }
-]
-```
-
-`position` decides where a panel appears BY DEFAULT, not what it is: the editor
-slot is generic, and the navbar's panel launcher offers every panel — a
-right-panel view can be opened in the editor column without the plugin declaring
-it twice. A `header` panel is the one exception: it is a dropdown, not a view,
-so it is not offered as an editor tab.
-
-`header` panels are DESKTOP ONLY. A phone's navbar has no room for them and the
-phone's right-side drawer already carries every view, so the mobile navbar does
-not render them.
-
-A panel's UI id is `plugin:<plugin id>/<panel id>` — that is what the layout
-stores, what the width map keys on, and what appears in the activity bar.
-
-**Both `entry` and `icon` must stay inside the plugin directory.** An absolute
+**`app`, `icon` and `readme` must stay inside the plugin directory.** An absolute
 path or a `../` segment is refused at scan time and reported in the pane, because
-those values become filesystem reads on the asset route.
+those values become filesystem reads on the bundle, icon and README routes.
 
-## Isolation
+**An icon is optional, and its absence is drawn, not hidden.** A plugin with no
+`icon` is marked by its initials — `Session Info` → `si.`, the same rule the
+provider marks use — in the activity bar, the navbar, the editor tab, the store
+card and the installed card. A blank box would read as a broken plugin rather
+than one that chose not to ship a mark.
 
-A panel runs in an iframe with `sandbox="allow-scripts"` and **no**
-`allow-same-origin`. That gives it an opaque origin, so inside the frame:
+**A README is what a user judges a plugin by before installing it.** Ship one (or
+name another file with `readme`): the store card grows a **README** button that
+opens it in the pane's own reader, and an installed card gets the same button
+beside Remove. It renders through the chamber's markdown pipeline — sanitized,
+with the same Shiki highlighting, KaTeX and mermaid hydration the chat timeline
+has — so a plugin's README reads like the rest of the app. No button is drawn for
+a plugin that ships none.
 
-- `parent.document`, `localStorage`, `document.cookie` and `document.domain`
-  all throw `SecurityError`;
-- `fetch('/api/...')` fails — it is cross-origin with no credentials;
-- it cannot reach any other frame.
+## Running model: in-process, not sandboxed
 
-Everything the panel can learn about the chamber goes through the bridge.
+A plugin's bundle is a real ES module that the host `import()`s into the page,
+and the components it registers are rendered **in the host's own Preact tree** —
+the same Preact instance, the same document, the same theme. There is no iframe,
+no message channel and no separate realm.
 
-This is a sandbox, not a process boundary. Treat a plugin as untrusted code that
-can do anything *within* its own frame.
+That is the point: a plugin's UI looks and behaves like the chamber's own,
+because it *is* the chamber's own rendering. It also means a plugin is **local
+code you installed, trusted the way a VS Code extension is trusted** — it can
+read `localStorage`, call the chamber's API and touch the DOM. Install plugins
+you would run.
 
-## Writing a panel
+Two rules make it work, and both are enforced by the build:
 
-A whole panel, importing both packages:
+- **One Preact.** The build marks `preact`, `preact/hooks`, `preact/jsx-runtime`,
+  `preact/jsx-dev-runtime`, `preact/compat`, `@ompchamber/plugin-sdk/app`,
+  `@ompchamber/ui` and `@ompchamber/ui/components` EXTERNAL, and rewrites each to
+  read `globalThis.__ompchamberPluginRuntime` — the object the host publishes
+  before any bundle loads. A plugin that bundled its own Preact would create
+  components the host's tree cannot render (`Cannot read properties of undefined
+  (reading '__H')` at the first render), which is why this is correctness, not
+  size.
+- **The host owns the services.** `@ompchamber/ui` reads the active session, the
+  workspace and the palette through services the host injects at boot, so a
+  plugin gets the chamber's answers rather than its own guesses.
+
+## Writing a plugin
+
+One file, one bundle, one `definePluginApp` default export:
 
 ```tsx
-import { render } from 'preact';
-import { PanelProvider, usePanelInfo, useSessionValue } from '@ompchamber/ui';
+import { definePluginApp } from '@ompchamber/plugin-sdk/app';
+import { usePanelInfo, useSessionValue } from '@ompchamber/ui';
 import { Field, FieldList, Panel, TextAreaField } from '@ompchamber/ui/components';
-import '@ompchamber/ui/styles.css';
 
-function App() {
+function SessionInfo() {
   const info = usePanelInfo();
   const note = useSessionValue('note');
 
@@ -354,112 +331,151 @@ function App() {
       <FieldList>
         <Field label="workspace" value={info.workspacePath ?? 'none'} />
       </FieldList>
-      <TextAreaField id="n" label="note" value={note.value} hint={note.status} onInput={note.update} />
+      <TextAreaField id="n" label="note" value={note.value ?? ''} hint={note.status} onInput={note.update} />
     </Panel>
   );
 }
 
-render(<PanelProvider><App /></PanelProvider>, document.body);
+export default definePluginApp((app) => {
+  app.rightPanel({ id: 'info', title: 'Session Info', component: SessionInfo, minWidth: 300, defaultFraction: 0.35 });
+});
 ```
 
-That is the whole setup. The provider owns both bridge subscriptions, and the
-hooks read the merged state.
+The build compiles `src/app.tsx` (or `src/app.ts`, or the same at the plugin
+root) into the `app` file your manifest names. A plugin that declares its own
+`build` script owns its output instead — and then carries its own runtime unless
+it marks the shared specifiers external itself.
+
+**Do not declare `preact` as a dependency.** It is provided by the host, exactly
+like `@ompchamber/*`, and the shim makes the build read the host's instance
+rather than bundling one. Declaring it as an optional peer (for types) is fine;
+declaring it as a real dependency makes `bun install` fetch a second copy the
+plugin must not use.
+
+**JSX needs `"jsxImportSource": "preact"` in the plugin's `tsconfig.json`.**
+Without it TypeScript compiles JSX for React and the build fails on
+`react/jsx-dev-runtime`; the pane says exactly that rather than showing the raw
+module error.
+
+### Slots
+
+| Method | Where it appears | Props |
+|---|---|---|
+| `app.rightPanel({ id, title, component, minWidth?, defaultFraction? })` | A button in the right-panel activity bar; the view opens in the right panel. | `{ sessionId, workspacePath }` |
+| `app.panel({ id, title, component, minWidth?, defaultFraction? })` | The editor COLUMN, taken over whole. | `{ sessionId, workspacePath }` |
+| `app.headerPanel({ id, title, component, dropdown? })` | An entry in the DESKTOP navbar. | `{ sessionId, workspacePath }` |
+| `app.settingsSection({ id, title, component })` | A block in Settings → Panel Plugins, under the plugin's row. | `{ pluginId }` |
+
+**One registration per slot.** A second call THROWS: the layout gives a plugin
+one activity-bar button, one navbar entry and one column, so a second
+`rightPanel` could never be reached, and a quiet overwrite would hide a plugin
+that is broken.
+
+`position` in the old manifest is gone — a registration IS the position.
+
+### `panel` is a place, not an editor
+
+The editor column is the SECOND place a view can live. A plugin registered with
+`app.panel(...)` takes that column over WHOLE — full-bleed, with **no tab strip
+and no editor chrome**. The host supplies no tabs, no file tree, no split and no
+save/find/wrap toolbar: a plugin that wants any of those builds them inside its
+own component.
+
+That is why the slot is named `panel` rather than `editor`: it says where the
+component renders, not what it must look like. While a plugin owns the column,
+the host's file tabs are not drawn at all; the navbar's editor toggle is what
+gives the column back.
+
+### A header is a trigger, and optionally a dropdown
+
+A header registration is **two components**, because a navbar entry is a readout
+first and an interaction second:
+
+```tsx
+app.headerPanel({
+  id: 'stats',
+  title: 'Session Stats',
+  // What the navbar reads — text, an icon, a `10tps ⛁10GB` readout, anything.
+  component: SessionStatsTrigger,
+  // Optional. Without it the entry is a static readout, not a button.
+  dropdown: { component: SessionStatsDropdown },
+});
+```
+
+- **With `dropdown`** the host wraps your trigger in a real `<button>` —
+  keyboard reachable, `aria-expanded`, closed by Escape and by an outside click —
+  and renders the dropdown component below it while open. Only one header's
+  dropdown is open at a time, across every plugin, because the navbar is one row
+  and two would overlap.
+- **Without `dropdown`** the trigger is rendered as inert text. It is
+  deliberately not a button: making it one would advertise an interaction that
+  does not exist.
+
+Header entries are DESKTOP ONLY — a phone's navbar has no room for them, and the
+phone's drawer already carries every view.
+
+### Hooks
 
 | Hook | Returns |
 |---|---|
-| `usePanelInfo()` | The live info. Re-renders when the workspace arrives. |
-| `usePanelApi()` | The bridge itself, for `api.call(...)`. |
+| `usePanelInfo()` | `{ sessionId, workspacePath, theme }`, re-rendering when any of them changes. |
 | `useTheme()` | The live palette id. |
-| `useSessionValue(key)` | `{ value, status, error, update }` — per-session state, debounced. |
+| `useSessionValue(key, delayMs?)` | `{ value, status, error, update }` — per-session state, debounced. |
+| `useWorkspaceFile(relPath)` | `{ content, loading, error }` — a text file inside the active workspace. |
 
-Two behaviours the packages exist to encode:
+Two behaviours the kit exists to encode:
 
-- **The context arrives late.** `workspacePath` and `sessionId` are resolved
-  asynchronously by the chamber, so they are usually still empty when `ready`
-  settles. The host re-sends them as a `context` message and the provider merges
-  it — a component that captured `info` once would show "none" over a real
-  workspace.
-- **The theme is a delta.** The host sends only the id when the palette changes,
-  and the provider applies it to `<html>` so `@ompchamber/ui/styles.css` can key
-  off `:root[data-theme=…]`.
+- **The context arrives late.** The active session and workspace are resolved
+  asynchronously, so a component that captured them once would show "none" over
+  a real workspace. Every hook subscribes and re-renders.
+- **Session state is not component state.** A component is unmounted when its
+  panel is hidden, so a value kept in `useState` alone would be lost on every
+  tab switch. `useSessionValue` reads the chamber's store.
 
-### The raw bridge
+### Styling
 
-Underneath, it is one `postMessage` channel. `@ompchamber/plugin-sdk` is the
-typed surface over it; reach for it directly only when you are not rendering
-Preact.
+Use the chamber's Tailwind utilities and theme variables directly — `bg-paper`,
+`text-ink`, `border-ink/10`, `text-error`. A plugin renders in the host's
+document, so those classes are already in the stylesheet and the palette applies
+for free. There is no stylesheet to import and no `oc-*` class layer any more.
 
-```js
-const api = window.acquireChamberPanel();
+A plugin added to `~/.ompchamber/marketplace/` is **outside the project root**,
+so Tailwind's scan does not see its own class names. Prefer the kit's components
+(`Panel`, `Field`, `FieldList`, `TextAreaField`, `Button`, `Empty`, `Note`) and
+inline styles for anything the kit does not cover.
 
-const info = await api.ready;       // resolves once the host has seeded the frame
-info.title;                          // the panel's title
-info.panelKey;                       // "plugin:session-info/info"
-info.assetBase;                      // base URL for your own files
-info.theme;                          // the live palette id
-info.sessionId;                      // the active session, or null
-info.workspacePath;                  // the active workspace root, or null
-info.capabilities;                   // what this panel was granted
+## The bundle route
 
-api.onTheme = (theme) => { /* palette changed */ };
+`GET /api/panels/bundle/<plugin>.js` serves the built module, unmodified, as
+`text/javascript` with `no-store`. The URL carries a content hash, so a REBUILT
+plugin gets a new URL and is re-imported instead of being answered from the
+browser's module cache — which is what makes **Rebuild** actually reload it.
 
-const value = await api.call('sessionState.get', { key: 'count' });
-await api.call('sessionState.set', { key: 'count', value: 42 });
-```
+The plugin is named by its directory and the file comes from the registry, so a
+request can only reach a bundle inside an installed, **enabled** plugin. A
+disabled plugin's bundle is a `404`, which is what makes disabling stop the code
+rather than only hiding the button.
 
-The host repeats its `ready` greeting until it receives `init`, so a plugin that
-runs its first line before the host has mounted still attaches.
+`GET /api/panels/icon/<plugin>/<path>` serves an icon from the same directory,
+images only, with the path resolved inside the plugin root.
 
-`api.call` rejects with the host's reason. A method the panel was not granted,
-and a method that does not exist, both fail — the error text distinguishes them,
-but neither reveals anything a panel was not already told.
-
-### Methods
-
-| Method | Capability | Returns |
-|---|---|---|
-| `theme.get` | `theme` | The live palette id. |
-| `sessionState.get` `{ key }` | `session-state` | The stored value, or `undefined`. |
-| `sessionState.set` `{ key, value }` | `session-state` | `true`. |
-| `workspace.list` `{ path }` | `workspace-read` | Directory entries (the same shape the Files panel uses). |
-| `workspace.readText` `{ path }` | `workspace-read` | File contents, ≤ 512 KB. |
-
-Declaring a capability in the manifest is the grant; calling a method without it
-is refused by name. Keys are namespaced per panel under `panel.` in the session
-store, so two panels cannot overwrite each other's state.
-
-`workspace-read` is scoped to the **session's workspace** and goes through the
-chamber's own fs route, so it inherits every root check that route enforces. A
-session with no workspace folder answers "no workspace folder" rather than
-falling back to a directory the user did not choose.
-
-## Assets and URLs
-
-`index.html` is served with the SDK and a Content-Security-Policy injected into
-its `<head>`. Load your own files with relative URLs — the route's path is a real
-base, so `./main.js` and `../shared/style.css` both resolve inside your plugin:
-
-```html
-<link rel="stylesheet" href="./style.css">
-<script src="./main.js"></script>
-<img src="./assets/logo.svg">
-```
-
-`fetch('./data.json')` also works: plugin assets are served with
-`Access-Control-Allow-Origin: *` so the frame's opaque origin can read its own
-data files. That allowance covers only static files inside your plugin
-directory.
-
-Served types: `.html .htm .js .mjs .css .json .svg .png .jpg .jpeg .gif .webp
-.woff2 .woff .txt`. Anything else is refused with `415`. Individual files are
-capped at 8 MB.
+`GET /api/panels/readme/<plugin>/<path>` serves a plugin's README as
+`text/markdown`, markdown extensions only (`.md`, `.markdown`, `.mdx`, `.txt`),
+capped at 512 KB. Both routes resolve the plugin directory the same way the
+bundle route does — the working copy first, the bundled store second — which is
+what lets a card draw the mark and open the README for a plugin that is **not
+installed yet**. That is the whole point of the button: a user judges a plugin
+before committing to it.
 
 ## Theming
 
-The frame inherits nothing — not the chamber's CSS, not its fonts, not its
-variables. `info.theme` carries the palette id and `api.onTheme` reports changes,
-so a plugin can map the ids it cares about to its own variables.
+A plugin renders in the chamber's own document, so it inherits everything for
+free: `data-theme` on `<html>`, the CSS variables, the fonts, the Tailwind
+utilities. A plugin that only renders markup needs to do nothing.
 
+`useTheme()` returns the palette id for the cases where a plugin must know it in
+code — a chart's own colour scale, a swatch, an inline style. It re-renders when
+the palette changes.
 
 ## Publishing
 
@@ -491,18 +507,22 @@ by its owner.
 
 `marketplace/plugins/session-info/` in this repository is the bundled plugin and
 the reference implementation. It is a real Preact + Bun package: a
-`package.json` with a build script, `preact` as its dependency and the
-`ompchamber` manifest; a `tsconfig.json` pointing JSX at Preact; two TSX entries
-that import `@ompchamber/ui` and `@ompchamber/ui/components` and nothing else; and
-a `dist/` the chamber builds. It contributes both positions (one `right`, one
-`editor`).
+`package.json` with the `ompchamber` manifest, a `tsconfig.json` pointing JSX at
+Preact, and ONE `src/app.tsx` whose `definePluginApp` registers three slots (a
+right panel, a header readout, an editor tab). It declares no build script — the
+chamber bundles it.
 
 The packages themselves live in `packages/`:
 
 | Package | Published | Contents |
 |---|---|---|
-| `packages/plugin-sdk` | yes | The bridge contract and its two helpers. |
-| `packages/ui` | yes | The provider, the hooks, the components, the stylesheet. |
+| `packages/plugin-sdk` | yes | The app contract: `definePluginApp` and the slot/props types. |
+| `packages/ui` | yes | The hooks, the components, and the service seam the host fills. |
+
+The host half of that seam is `src/client/lib/plugins/`: `runtime.ts` publishes
+`globalThis.__ompchamberPluginRuntime`, `loader.ts` imports each enabled plugin's
+bundle, `slots.ts` keeps what the bundles registered, and `kit.ts` hands the UI
+kit the chamber's own services.
 
 `packages/` is the development home of the two published packages; it is **not**
 what the chamber reads at runtime. The chamber resolves them with
@@ -520,10 +540,9 @@ Copy its shape:
 ```bash
 mkdir -p ~/.ompchamber/marketplace/plugins/my-panel/src
 # write:
-#   package.json   name/version/scripts.build/dependencies: preact/ompchamber key
+#   package.json   name/version + the ompchamber key (id, name, version, app)
 #   tsconfig.json  jsx: react-jsx, jsxImportSource: preact
-#   src/index.html <script type="module" src="./main.tsx">
-#   src/main.tsx   render(<App />, document.body)
+#   src/app.tsx    export default definePluginApp((app) => { ... })
 ```
 
 Then press **Refresh** in Settings → Panel Plugins, and **Rebuild** if the pane

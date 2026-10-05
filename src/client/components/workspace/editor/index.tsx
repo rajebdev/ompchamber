@@ -17,7 +17,7 @@ import type { CodeSurfaceHandle } from '@/client/components/common/code-surface'
 import { resolveBinding } from '@/shared/lib/ui/key-binding';
 import { ImageViewer } from '@/client/components/common/image-viewer';
 import { DiffPanel } from '@/client/components/workspace/diff-panel';
-import { PluginPanelView } from '@/client/components/workspace/panel-host/view';
+import { useActiveEditorPanel } from '@/client/components/workspace/plugin-panel/resolve';
 import { FileDocument } from '@/client/components/workspace/editor/FileDocument';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { useSessionStateContext } from '@/client/hooks/workspace/session-state/context';
@@ -35,6 +35,15 @@ interface EditorProps {
   onConvertDiffToEditor: (id: number | string) => void;
   refreshKey?: number;
   onFileSaved?: () => void;
+  /**
+   * A `plugin:<id>` key while a plugin owns the column, or null.
+   *
+   * There is no tab for it: the plugin takes the WHOLE surface, so the host has
+   * no tab strip to draw and no file to show beside it. That is the difference
+   * between a `panel` and an editor tab — the column is a place a view can live,
+   * not a container the host fills with chrome.
+   */
+  activeEditorPanelKey?: string | null;
 }
 
 export function Editor({ 
@@ -45,7 +54,8 @@ export function Editor({
   onCloseFile, 
   onConvertDiffToEditor,
   refreshKey = 0,
-  onFileSaved 
+  onFileSaved,
+  activeEditorPanelKey = null,
 }: EditorProps) {
   const activeFile = openedFiles.find(f => f.id === activeFileId);
   
@@ -184,6 +194,19 @@ export function Editor({
     runCommand(command);
   };
 
+  // The column belongs to a plugin while the layout says so. There is no tab
+  // strip in that mode: the plugin owns the whole surface, the way a right-panel
+  // view does, and the layout's own toggle is what gives the column back.
+  const pluginColumn = useActiveEditorPanel(activeEditorPanelKey);
+
+  if (pluginColumn) {
+    return (
+      <div className={`flex flex-col h-full bg-canvas ${className}`}>
+        <pluginColumn.Component sessionId={sessionId ?? null} workspacePath={null} />
+      </div>
+    );
+  }
+
   if (openedFiles.length === 0) {
     return (
       <div className={`flex flex-col h-full bg-canvas items-center justify-center text-ink/40 ${className}`}>
@@ -210,14 +233,7 @@ export function Editor({
       />
 
       {activeFile ? (
-        activeFile.isPluginPanel ? (
-          <PluginPanelView
-            panelKey={activeFile.isPluginPanel}
-            active
-            workspacePath={activeFile.root ?? null}
-            className="flex-1 min-h-0"
-          />
-        ) : activeFile.isDiff ? (
+        activeFile.isDiff ? (
           <DiffPanel
             filePath={activeFile.path}
             status={activeFile.diffStatus || 'M'}

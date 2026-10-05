@@ -1,5 +1,8 @@
-import { Download, Loader2, Store } from 'lucide-preact';
+import { useState } from 'preact/hooks';
+import { BookOpen, Download, Loader2, Store } from 'lucide-preact';
 import type { PanelCatalogEntry } from '@/shared/types';
+import { PluginMark } from '@/client/components/settings/categories/panel-plugins/PluginMark';
+import { PluginReadmeModal } from '@/client/components/settings/categories/panel-plugins/ReadmeModal';
 
 interface AvailableListProps {
   entries: PanelCatalogEntry[];
@@ -8,66 +11,98 @@ interface AvailableListProps {
 }
 
 /**
- * What the bundled marketplace OFFERS.
+ * What the bundled marketplace OFFERS, as a grid of cards.
  *
- * This list is the store: a plugin the package ships is available here and
- * nothing more until the user installs it. That is deliberately the same shape
- * VS Code uses — an extension is not installed until you install it — and it is
- * why a fresh chamber starts with an empty activity bar rather than with
- * whatever the package happens to bundle.
+ * A grid rather than a list because the unit here is a plugin, not a field of
+ * one: a card has room for the mark, the name, the version and the description,
+ * and the eye scans a store by its marks. A row of stacked text fields made
+ * every plugin look alike.
  *
- * Each row names what the plugin would contribute, because "install" is a
- * decision about a button and a tab the user has not seen yet.
+ * A card cannot describe what the plugin CONTRIBUTES: its panels exist only once
+ * its bundle has loaded, and this plugin is not installed yet, so there is
+ * nothing to read. The description is what the author wrote for exactly this
+ * purpose.
  */
 export function AvailableList({ entries, busy, onInstall }: AvailableListProps) {
+  // Which README is open. A card's button is only rendered when the plugin
+  // ships one, so a plugin with no README offers no button rather than one that
+  // opens an error.
+  const [reading, setReading] = useState<PanelCatalogEntry | null>(null);
+
   if (entries.length === 0) return null;
 
   return (
-    <div className="border border-ink/10 rounded">
-      <div className="px-3 py-2 border-b border-ink/10 flex items-center gap-2">
+    <section>
+      <header className="flex items-center gap-2 mb-2">
         <Store size={14} className="text-ink/50 flex-shrink-0" />
-        <span className="text-sm font-medium text-ink">Available from OMPChamber</span>
+        <h3 className="text-sm font-medium text-ink">Available from OMPChamber</h3>
         <span className="ml-auto text-[11px] text-ink/50">
           {entries.length} plugin{entries.length === 1 ? '' : 's'}
         </span>
-      </div>
-      <div className="p-3 space-y-2">
+      </header>
+
+      <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]">
         {entries.map((entry) => (
-          <div key={entry.pluginId} className="border border-ink/10 rounded p-2.5">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-ink">{entry.name}</span>
-              <span className="text-[11px] text-ink/50">v{entry.version}</span>
-              <span className="text-[10px] font-mono text-ink/40">{entry.pluginId}</span>
+          <article
+            key={entry.pluginId}
+            className="flex flex-col gap-2 border border-ink/10 rounded-lg p-3 bg-paper hover:border-ink/20 transition-colors"
+          >
+            <div className="flex items-start gap-2.5">
+              <PluginMark name={entry.name} iconUrl={entry.iconUrl} />
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-medium text-ink truncate" title={entry.name}>
+                  {entry.name}
+                </div>
+                <div className="text-[11px] text-ink/45 font-mono truncate" title={entry.pluginId}>
+                  {entry.pluginId}
+                </div>
+              </div>
+              <span className="text-[10px] text-ink/40 font-mono flex-shrink-0">v{entry.version}</span>
+            </div>
+
+            {entry.description ? (
+              <p className="text-[11px] text-ink/60 leading-relaxed line-clamp-3">{entry.description}</p>
+            ) : null}
+
+            <div className="mt-auto flex items-center gap-1.5">
+              {entry.readmeUrl ? (
+                <button
+                  type="button"
+                  onClick={() => setReading(entry)}
+                  title={`Read ${entry.name}'s README`}
+                  aria-label={`Read ${entry.name}'s README`}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] rounded border border-ink/15 hover:bg-ink/5 text-ink/70"
+                >
+                  <BookOpen size={12} />
+                  README
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => void onInstall(entry.pluginId)}
                 disabled={busy !== null}
-                className="ml-auto flex items-center gap-1 px-2 py-0.5 text-[11px] rounded border border-ink/15 hover:bg-ink/5 disabled:opacity-40 flex-shrink-0"
+                className="flex-1 flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-[11px] rounded border border-ink/15 hover:bg-ink/5 disabled:opacity-40"
               >
                 {busy === `install:${entry.pluginId}` ? (
-                  <Loader2 size={11} className="animate-spin" />
+                  <Loader2 size={12} className="animate-spin" />
                 ) : (
-                  <Download size={11} />
+                  <Download size={12} />
                 )}
                 Install
               </button>
             </div>
-            {entry.description ? (
-              <p className="mt-1 text-[11px] text-ink/60">{entry.description}</p>
-            ) : null}
-            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px]">
-              {entry.panels.map((panel) => (
-                <span key={panel.id} className="flex items-center gap-1">
-                  <span className="text-ink/70">{panel.title}</span>
-                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-ink/10 text-ink/60">
-                    {panel.position}
-                  </span>
-                </span>
-              ))}
-            </div>
-          </div>
+          </article>
         ))}
       </div>
-    </div>
+
+      {reading?.readmeUrl ? (
+        <PluginReadmeModal
+          pluginId={reading.pluginId}
+          name={reading.name}
+          readmeUrl={reading.readmeUrl}
+          onClose={() => setReading(null)}
+        />
+      ) : null}
+    </section>
   );
 }

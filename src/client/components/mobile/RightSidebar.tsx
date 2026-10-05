@@ -1,16 +1,15 @@
 import { useState } from 'preact/hooks';
 import { Suspense } from 'preact/compat';
-import { X, Puzzle } from 'lucide-preact';
-import { usePanelRegistry } from '@/client/hooks/workspace/panel-registry';
+import { X } from 'lucide-preact';
+import { usePluginPanels, PluginPanelBody } from '@/client/components/workspace/plugin-panel/resolve';
 import { useHiddenPanels } from '@/client/hooks/workspace/panel-visibility';
-import { PluginPanelView } from '@/client/components/workspace/panel-host/view';
-import { panelAssetUrl } from '@/shared/lib/panels/asset-base';
 import { LazyBrowserPanel, LazyContextPanel, LazyFileExplorer, LazyGitPanel, LazyPlanPanel, LazySearchPanel, LazyTerminalPanel, LazyTodoPanel, LazyUsagePanel, LazyUserBrowserPanel, LazyWikiPanel } from '@/client/components/common/lazy-panels';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
 import { useResolvedRepo } from '@/client/hooks/workspace/repo-scope';
 import { GIT_STATUS_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
 import { RIGHT_PANEL_TYPES } from '@/shared/lib/workspace/right-panels';
 import { PANEL_META } from '@/client/components/layout/panel-meta';
+import { PluginMark } from '@/client/components/settings/categories/panel-plugins/PluginMark';
 
 interface MobileRightSidebarProps {
   enabled?: boolean;
@@ -44,7 +43,9 @@ export function MobileRightSidebar({
   // Plugin panels are added to the same tab strip as the built-in views: they
   // are right-panel views like any other, and the phone must not be a second
   // list that drifts from the desktop's.
-  const { panels: pluginPanels } = usePanelRegistry();
+  // The same resolver the desktop bar uses, so the phone lists exactly the
+  // plugins that loaded a right panel — not a second list that can drift.
+  const { panels: pluginPanels } = usePluginPanels(activeTab);
   // Visibility is the chamber's, not the layout's: a view hidden from the
   // desktop bar is hidden here too, and the desktop right-click menu is where
   // it is switched back on.
@@ -108,14 +109,10 @@ export function MobileRightSidebar({
                   ? 'space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-ink text-canvas shadow-sm'
                   : 'p-2 rounded-lg text-ink/70 hover:bg-ink/5'
               }`}
-              title={`${panel.title} — ${panel.pluginName}`}
-              aria-label={`${panel.title} (plugin ${panel.pluginName})`}
+              title={`${panel.title} — ${panel.name}`}
+              aria-label={`${panel.title} (plugin ${panel.name})`}
             >
-              {panel.icon ? (
-                <img src={panelAssetUrl(panel.panelKey, panel.icon)} alt="" className="w-3.5 h-3.5 flex-shrink-0" />
-              ) : (
-                <Puzzle size={14} className="flex-shrink-0" />
-              )}
+              <PluginMark name={panel.name} iconUrl={panel.iconUrl} size={14} />
               {activeTab === panel.panelKey && <span className="truncate">{panel.title}</span>}
             </button>
           ))}
@@ -143,10 +140,11 @@ export function MobileRightSidebar({
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
         {activePluginKey ? (
-          // A panel plugin owns its own frame, so it needs no workspace folder
-          // and no session: the frame reports what it does not have through the
-          // bridge, and gating it here would hide a panel that works.
-          <PluginPanelView panelKey={activePluginKey} active workspacePath={rootPath ?? null} />
+          // A plugin component renders in the host's tree like any other view,
+          // so it needs no workspace folder and no session: it reads whatever
+          // the host published and draws what it can. Gating it here would hide
+          // a panel that works.
+          <PluginPanelBody panelKey={activePluginKey} />
         ) : !enabled && activeTab !== 'todo' && activeTab !== 'plan' ? (
           <div className="h-full flex items-center justify-center text-ink/40">
             <span className="text-xs font-mono">No session selected</span>

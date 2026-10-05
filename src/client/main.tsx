@@ -4,6 +4,8 @@ import { bootSyntax } from '@/shared/lib/code/highlighter';
 import { primeChamberSettings } from '@/shared/lib/settings/client';
 import { initDocumentTheme } from '@/client/hooks/ui/theme';
 import { installAuthFetchBridge, primeAuthState } from '@/client/hooks/ui/auth';
+import { installPluginRuntime } from '@/client/lib/plugins/runtime';
+import { installUiKit } from '@/client/lib/plugins/kit';
 
 import '@/client/tailwind.css';
 import '@/shared/lib/markdown/katex-fonts.css';
@@ -25,6 +27,13 @@ primeChamberSettings(bootstrap?.appSettings);
 // the server writes them into the shell, so this only repairs a document served
 // by an older build.
 initDocumentTheme();
+
+// Both BEFORE the first render, and in this order: a plugin bundle reads the
+// runtime the moment it is imported, and the UI kit reads the services its
+// components call. Neither can wait for a panel to open, because the registry
+// read starts the imports as soon as the layout mounts.
+installPluginRuntime();
+installUiKit();
 
 // Fire-and-forget: warms the Shiki highlighter in parallel with hydration.
 bootSyntax();

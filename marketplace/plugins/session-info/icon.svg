@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="Session Info">
+  <title>Session Info</title>
+  <g fill="none" stroke="#8a8a8a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3.25" y="4.25" width="17.5" height="15.5" rx="2.5" />
+    <path d="M7 9.25h6" />
+    <path d="M7 12.75h9.5" />
+    <path d="M7 16.25h5" />
+  </g>
+</svg>

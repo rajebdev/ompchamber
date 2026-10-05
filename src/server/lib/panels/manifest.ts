@@ -11,108 +11,73 @@
  * refused. Nothing here touches the filesystem, which is what makes the rules
  * testable without a fixture tree — and the rules are the part that matters,
  * because every one of them is a refusal that would otherwise be silent.
+ *
+ * A manifest no longer declares PANELS. A plugin's UI is what its bundle
+ * registers when it loads, so the manifest carries only what the HOST needs
+ * before the code runs: an identity, an icon, and the bundle to import. Slot
+ * titles and positions come from the registration — which is also why the
+ * server cannot list a plugin's panels and the client lists what loaded.
  */
 
 import type {
-  PanelCapability,
-  PanelContribution,
   PanelMarketplaceManifest,
   PanelMarketplacePluginEntry,
   PanelPluginManifest,
-  PanelPosition,
 } from '@/shared/types';
-import { PANEL_CAPABILITIES } from '@/shared/types';
 import { isRecord } from '@/shared/lib/util/guards';
 import { resolveInsideRoot } from '@/shared/lib/panels/resolve-asset';
 
-/** An id segment: what a plugin or panel id may look like. */
+/** An id segment: what a plugin id may look like. */
 const ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/i;
 
 function trimmed(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
-function toCapabilities(value: unknown): PanelCapability[] | null {
-  if (value === undefined) return [];
-  if (!Array.isArray(value)) return null;
-  const out: PanelCapability[] = [];
-  for (const item of value) {
-    if (typeof item !== 'string' || !(PANEL_CAPABILITIES as readonly string[]).includes(item)) return null;
-    if (!out.includes(item as PanelCapability)) out.push(item as PanelCapability);
-  }
-  return out;
-}
-
 /**
- * Validate one panel entry.
+ * Parse a plugin manifest body.
  *
- * `entry` and `icon` become filesystem reads on the asset route, so both must
- * resolve inside the plugin root — an absolute path or a `../` segment would
- * turn one plugin's manifest into a read of any file the server can open.
- * Refused here rather than at the route because a manifest naming an escaping
- * path is not a panel, and rejecting it at scan time is what makes the refusal
- * visible in the UI.
+ * `app` names the BUILT bundle (`dist/app.js`), not a source file, and it must
+ * resolve inside the plugin's own directory: the value becomes a filesystem
+ * read on the asset route, so an absolute path or a `../` segment would turn
+ * one plugin's manifest into a read of any file the server can open. `icon` is
+ * held to the same rule for the same reason.
  */
-export function toContribution(raw: unknown, root: string): PanelContribution | { error: string } {
-  if (!isRecord(raw)) return { error: 'panel entry is not an object' };
-  const id = trimmed(raw.id);
-  const title = trimmed(raw.title);
-  const entry = trimmed(raw.entry);
-  const position: PanelPosition | null =
-    raw.position === 'right' || raw.position === 'editor' || raw.position === 'header' ? raw.position : null;
-  if (!id || !ID_RE.test(id)) return { error: `panel id ${JSON.stringify(raw.id)} is missing or invalid` };
-  if (!title) return { error: `panel "${id}" has no title` };
-  if (!position) return { error: `panel "${id}" position must be "right", "editor" or "header"` };
-  if (!entry) return { error: `panel "${id}" has no entry` };
-  if (!resolveInsideRoot(root, entry)) return { error: `panel "${id}" entry "${entry}" escapes the plugin directory` };
-  const capabilities = toCapabilities(raw.capabilities);
-  if (!capabilities) return { error: `panel "${id}" declares an unknown capability` };
-  const icon = trimmed(raw.icon);
-  if (icon && !resolveInsideRoot(root, icon)) return { error: `panel "${id}" icon "${icon}" escapes the plugin directory` };
-  const minWidth = typeof raw.minWidth === 'number' && raw.minWidth > 0 ? raw.minWidth : undefined;
-  const defaultFraction =
-    typeof raw.defaultFraction === 'number' && raw.defaultFraction > 0 ? raw.defaultFraction : undefined;
-
-  return {
-    id,
-    title,
-    position,
-    entry,
-    ...(icon ? { icon } : {}),
-    ...(minWidth ? { minWidth } : {}),
-    ...(defaultFraction ? { defaultFraction } : {}),
-    capabilities,
-  };
-}
-
-/** Parse a plugin manifest body. Returns the reason it is unusable, or the manifest. */
 export function toManifest(raw: unknown, root: string): PanelPluginManifest | { error: string } {
   if (!isRecord(raw)) return { error: 'manifest is not an object' };
   const id = trimmed(raw.id);
   const name = trimmed(raw.name);
   const version = trimmed(raw.version);
+  const app = trimmed(raw.app);
   if (!id || !ID_RE.test(id)) return { error: `manifest id ${JSON.stringify(raw.id)} is missing or invalid` };
   if (!name) return { error: 'manifest has no name' };
   if (!version) return { error: 'manifest has no version' };
-  if (!Array.isArray(raw.panels) || raw.panels.length === 0) return { error: 'manifest declares no panels' };
+  if (!app) return { error: 'manifest has no "app" bundle' };
+  if (!resolveInsideRoot(root, app)) return { error: `manifest app "${app}" escapes the plugin directory` };
 
-  const panels: PanelContribution[] = [];
-  // One panel per position, enforced rather than documented. The layout gives
-  // each plugin exactly one activity-bar button, one navbar button and one
-  // editor tab, so a second `right` panel would be unreachable — and a second
-  // `header` panel would leave the dropdown with two candidates for what to
-  // open. Refusing at scan time is what makes that visible instead of silent.
-  const positions = new Set<PanelPosition>();
-  for (const item of raw.panels) {
-    const panel = toContribution(item, root);
-    if ('error' in panel) return { error: panel.error };
-    if (positions.has(panel.position)) {
-      return { error: `plugin "${id}" declares more than one "${panel.position}" panel` };
-    }
-    positions.add(panel.position);
-    panels.push(panel);
+  const icon = trimmed(raw.icon);
+  if (icon && !resolveInsideRoot(root, icon)) {
+    return { error: `manifest icon "${icon}" escapes the plugin directory` };
   }
-  return { id, name, version, description: trimmed(raw.description), homepage: trimmed(raw.homepage), panels };
+
+  const readme = trimmed(raw.readme);
+  if (readme && !resolveInsideRoot(root, readme)) {
+    return { error: `manifest readme "${readme}" escapes the plugin directory` };
+  }
+
+  const branding = isRecord(raw.branding) ? trimmed(raw.branding.icon) : undefined;
+
+  return {
+    id,
+    name,
+    version,
+    app,
+    ...(trimmed(raw.description) ? { description: trimmed(raw.description) } : {}),
+    ...(trimmed(raw.homepage) ? { homepage: trimmed(raw.homepage) } : {}),
+    ...(icon ? { icon } : {}),
+    ...(readme ? { readme } : {}),
+    ...(branding ? { branding: { icon: branding } } : {}),
+  };
 }
 
 /**

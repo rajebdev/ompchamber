@@ -113,7 +113,7 @@ async function commitStagedInstall(stagingDir: string): Promise<InstallResult> {
   await rename(stagingDir, destination);
 
   // Build BEFORE registering: a package whose build FAILS would otherwise be
-  // listed as installed while every one of its frames 404s. A plugin that is
+  // listed as installed while its bundle 404s. A plugin that is
   // not a package is a different answer — its files are served as they are,
   // so it registers normally. The directory stays either way, so the pane can
   // offer a Rebuild.

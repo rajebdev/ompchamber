@@ -4,7 +4,8 @@
   "type": "module",
   "description": "The contract between a panel plugin and the OMPChamber host.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./app": "./src/app.ts"
   },
   "files": [
     "src"

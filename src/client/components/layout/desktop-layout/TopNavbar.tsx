@@ -25,12 +25,12 @@ interface TopNavbarProps {
   showRightPanel: boolean;
   /** Live agent event stream status; the indicator is WebSocket-only. */
   streamStatus?: AgentStreamStatus;
-  /** The active workspace, forwarded to a plugin header panel's frame. */
-  workspacePath?: string | null;
   onSwitchToMobile?: () => void;
   onToggleEditor: () => void;
   onToggleRightPanel: () => void;
   onToggleLeftPanel: () => void;
+  /** Open a plugin's view in the editor column. */
+  onOpenPluginPanel: (panelKey: string) => void;
 }
 
 export function TopNavbar({
@@ -39,11 +39,11 @@ export function TopNavbar({
   showEditor,
   showRightPanel,
   streamStatus,
-  workspacePath,
   onSwitchToMobile,
   onToggleEditor,
   onToggleRightPanel,
   onToggleLeftPanel,
+  onOpenPluginPanel,
 }: TopNavbarProps) {
   return (
     <header 
@@ -89,8 +89,8 @@ export function TopNavbar({
       <div className="flex items-center space-x-3 titlebar-no-drag">
         <div className="flex items-center space-x-1">
           <StreamStatusDot status={streamStatus} />
-          <HeaderPanelButtons workspacePath={workspacePath ?? null} />
-          <PanelLauncher />
+          <HeaderPanelButtons />
+          <PanelLauncher onOpenPanel={onOpenPluginPanel} />
           {onSwitchToMobile && (
             <button
               type="button"

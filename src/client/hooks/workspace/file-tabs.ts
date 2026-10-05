@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { useSessionStateContext } from '@/client/hooks/workspace/session-state/context';
 import { useChamberEvent } from '@/client/hooks/ui/window-event';
-import { diffTabId, diffTabName, fileTabId, pluginPanelTabId } from '@/shared/lib/workspace/file-tab-id';
+import { diffTabId, diffTabName, fileTabId } from '@/shared/lib/workspace/file-tab-id';
 import type { OpenedFile } from '@/shared/types/fs';
 
 export interface OpenFileInput {
@@ -54,32 +54,6 @@ export function useFileTabs(
       return [...prev, fileEntry];
     });
     setActiveFileId(fileEntry.id);
-    onOpenTab?.();
-  }, [activeProjectPath, onOpenTab, setOpenedFiles, setActiveFileId]);
-
-  /**
-   * Open a plugin panel as an EDITOR tab.
-   *
-   * A panel declared with `position: "editor"` is not a right-panel view, so it
-   * lives in the same tab strip as files — VS Code's webview-panel model, where
-   * a panel occupies an editor column. The tab dedupes on the panel key alone:
-   * two clicks on the same panel must not open two tabs, and a panel key can
-   * never equal a file id.
-   */
-  const handleOpenPanel = useCallback((panelKey: string, title: string) => {
-    const id = pluginPanelTabId(panelKey);
-    const entry: OpenedFile = {
-      id,
-      name: title,
-      path: '',
-      isPluginPanel: panelKey,
-      // Carried the way a file tab carries its root: the panel's
-      // `workspace-read` capability is scoped to the session's workspace, and a
-      // tab without one answers "no workspace folder" for every read.
-      root: activeProjectPath ?? undefined,
-    };
-    setOpenedFiles(prev => (prev.some(f => f.id === id) ? prev : [...prev, entry]));
-    setActiveFileId(id);
     onOpenTab?.();
   }, [activeProjectPath, onOpenTab, setOpenedFiles, setActiveFileId]);
 
@@ -205,20 +179,12 @@ export function useFileTabs(
     handleOpenDiff(customEvent.detail);
   });
 
-  useChamberEvent('omp:open-panel', (e) => {
-    const customEvent = e as CustomEvent<{ panelKey?: string; title?: string }>;
-    const panelKey = customEvent.detail?.panelKey;
-    if (!panelKey) return;
-    handleOpenPanel(panelKey, customEvent.detail?.title || panelKey);
-  });
-
   return {
     openedFiles,
     activeFileId,
     setActiveFileId,
     handleOpenFile,
     handleOpenDiff,
-    handleOpenPanel,
     handleCloseFile,
     convertDiffToEditor,
   };

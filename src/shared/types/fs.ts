@@ -22,12 +22,6 @@ export interface OpenedFile {
   isDiff?: boolean;
   diffStatus?: string;
   diffStaged?: boolean;
-  /**
-   * Set on a tab that holds a plugin-contributed panel rather than a file. The
-   * value is the panel's registry key; the editor renders the panel frame
-   * instead of a buffer, and the tab carries no path to save to.
-   */
-  isPluginPanel?: string;
 }
 
 export interface SearchResultItem {

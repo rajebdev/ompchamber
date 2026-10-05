@@ -29,7 +29,7 @@ import { join } from 'node:path';
 
 import {
   discoverPanelPlugins,
-  findPanelDirBySlug,
+  findPluginDir,
   getMarketplaceCatalogPath,
   getMarketplaceDir,
   getMarketplacePluginsDir,
@@ -43,7 +43,7 @@ const VALID = {
   id: 'demo',
   name: 'Demo',
   version: '1.0.0',
-  panels: [{ id: 'main', title: 'Demo Panel', position: 'right', entry: 'index.html', capabilities: ['theme'] }],
+  app: 'dist/app.js',
 };
 
 function writeCatalog(catalog: unknown): void {
@@ -53,9 +53,11 @@ function writeCatalog(catalog: unknown): void {
 
 function writePlugin(dirName: string, manifest: unknown): string {
   const dir = join(getMarketplacePluginsDir(), dirName);
-  fs.mkdirSync(dir, { recursive: true });
+  fs.mkdirSync(join(dir, 'dist'), { recursive: true });
   fs.writeFileSync(join(dir, 'ompchamber.json'), JSON.stringify(manifest));
-  fs.writeFileSync(join(dir, 'index.html'), '<html></html>');
+  // The scan only publishes a plugin whose bundle exists; an unbuilt one is
+  // reported as UNBUILT, which is a different list.
+  fs.writeFileSync(join(dir, 'dist', 'app.js'), 'export default {};');
   return dir;
 }
 
@@ -98,8 +100,8 @@ describe('discoverPanelPlugins', () => {
     const { panels, marketplaces, errors } = await discoverPanelPlugins();
     expect(errors).toEqual([]);
     expect(panels).toHaveLength(1);
-    expect(panels[0].panelKey).toBe('plugin:demo/main');
-    expect(panels[0].marketplace).toBe('ompchamber');
+    expect(panels[0].pluginId).toBe('demo');
+    expect(panels[0].appUrl).toContain('/api/panels/bundle/demo.js');
     expect(marketplaces[0].panelCount).toBe(1);
   });
 
@@ -117,7 +119,7 @@ describe('discoverPanelPlugins', () => {
     writePlugin('demo', VALID);
     invalidatePanelScan();
     const { panels, errors } = await discoverPanelPlugins();
-    expect(panels.map((p) => p.panelKey)).toEqual(['plugin:demo/main']);
+    expect(panels.map((p) => p.pluginId)).toEqual(['demo']);
     expect(errors).toEqual([]);
   });
 
@@ -173,15 +175,16 @@ describe('discoverPanelPlugins', () => {
 
   test('reads the manifest from package.json#ompchamber as well', async () => {
     const dir = join(getMarketplacePluginsDir(), 'from-pkg');
-    fs.mkdirSync(dir, { recursive: true });
+    fs.mkdirSync(join(dir, 'dist'), { recursive: true });
     fs.writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'x', ompchamber: VALID }));
+    fs.writeFileSync(join(dir, 'dist', 'app.js'), 'export default {};');
     invalidatePanelScan();
     const { panels } = await discoverPanelPlugins();
     expect(panels).toHaveLength(1);
   });
 
-  test('a plugin whose entry escapes its directory is rejected by name', async () => {
-    writePlugin('escape', { ...VALID, panels: [{ ...VALID.panels[0], entry: '../../etc/passwd' }] });
+  test('a plugin whose app escapes its directory is rejected by name', async () => {
+    writePlugin('escape', { ...VALID, app: '../../etc/passwd' });
     invalidatePanelScan();
     const { panels, errors } = await discoverPanelPlugins();
     expect(panels).toEqual([]);
@@ -189,10 +192,21 @@ describe('discoverPanelPlugins', () => {
   });
 
   test('a broken manifest is reported with its reason', async () => {
-    writePlugin('broken', { id: 'broken', name: 'Broken', version: '1.0.0', panels: [] });
+    writePlugin('broken', { id: 'broken', name: 'Broken', version: '1.0.0' });
     invalidatePanelScan();
     const { errors } = await discoverPanelPlugins();
-    expect(errors[0].reason).toContain('declares no panels');
+    expect(errors[0].reason).toContain('no "app" bundle');
+  });
+
+  test('an unbuilt plugin is listed as not built, not as a rejection', async () => {
+    const dir = join(getMarketplacePluginsDir(), 'unbuilt');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(join(dir, 'ompchamber.json'), JSON.stringify(VALID));
+    invalidatePanelScan();
+    const { panels, plugins, errors } = await discoverPanelPlugins();
+    expect(panels).toEqual([]);
+    expect(errors).toEqual([]);
+    expect(plugins[0]).toMatchObject({ pluginId: 'demo', built: false });
   });
 
   test('a manifest that exists but is not JSON is reported', async () => {
@@ -204,29 +218,31 @@ describe('discoverPanelPlugins', () => {
     expect(errors[0].reason).toContain('not valid JSON');
   });
 
-  test('an unknown capability is refused rather than dropped', async () => {
-    writePlugin('bad-cap', { ...VALID, panels: [{ ...VALID.panels[0], capabilities: ['theme', 'root-shell'] }] });
+  test('an icon escaping the root is refused rather than served', async () => {
+    writePlugin('bad-icon', { ...VALID, icon: '../../x.svg' });
     invalidatePanelScan();
     const { errors } = await discoverPanelPlugins();
-    expect(errors[0].reason).toContain('unknown capability');
+    expect(errors[0].reason).toContain('escapes the plugin directory');
   });
 
-  test('two plugins claiming one key: the second is dropped and reported', async () => {
+  test('two directories claiming one plugin id: both are listed, keyed by directory', async () => {
+    // The registry is addressed by DIRECTORY, because that is what the bundle
+    // route can resolve to a file. Two directories with one manifest id is a
+    // packaging mistake, and reporting both is more honest than dropping one.
     writePlugin('first', VALID);
     writePlugin('second', VALID);
     invalidatePanelScan();
-    const { panels, errors } = await discoverPanelPlugins();
-    expect(panels).toHaveLength(1);
-    expect(errors.some((e) => e.reason.includes('duplicate panel id'))).toBe(true);
+    const { panels } = await discoverPanelPlugins();
+    expect(panels.map((panel) => panel.pluginId)).toEqual(['demo', 'demo']);
   });
 
-  test('the payload carries no filesystem path, but the dir map resolves one', async () => {
+  test('the payload carries no filesystem path, but the dir lookup resolves one', async () => {
     const dir = writePlugin('demo', VALID);
     invalidatePanelScan();
     const { panels } = await discoverPanelPlugins();
     expect(Object.keys(panels[0])).not.toContain('pluginDir');
-    expect(await findPanelDirBySlug('demo~main')).toBe(dir);
-    expect(await findPanelDirBySlug('nope~x')).toBeUndefined();
+    expect(await findPluginDir('demo')).toBe(dir);
+    expect(await findPluginDir('nope')).toBeUndefined();
   });
 
   test('invalidatePanelScan makes a newly written plugin visible', async () => {
@@ -239,37 +255,6 @@ describe('discoverPanelPlugins', () => {
     expect((await discoverPanelPlugins()).panels).toHaveLength(2);
   });
 
-  test('a second panel in the same position is refused by name', async () => {
-    writePlugin('two-right', {
-      ...VALID,
-      panels: [
-        { id: 'a', title: 'A', position: 'right', entry: 'index.html', capabilities: [] },
-        { id: 'b', title: 'B', position: 'right', entry: 'index.html', capabilities: [] },
-      ],
-    });
-    invalidatePanelScan();
-    const { panels, errors } = await discoverPanelPlugins();
-    // One plugin = one activity-bar button: two `right` panels would put two
-    // buttons on one plugin and fight over one width slot.
-    expect(panels).toEqual([]);
-    expect(errors[0].reason).toContain('more than one "right" panel');
-  });
-
-  test('one panel per position is accepted across the three slots', async () => {
-    writePlugin('all-slots', {
-      ...VALID,
-      panels: [
-        { id: 'r', title: 'Right', position: 'right', entry: 'index.html', capabilities: [] },
-        { id: 'e', title: 'Editor', position: 'editor', entry: 'index.html', capabilities: [] },
-        { id: 'h', title: 'Header', position: 'header', entry: 'index.html', capabilities: [] },
-      ],
-    });
-    invalidatePanelScan();
-    const { panels, errors } = await discoverPanelPlugins();
-    expect(errors).toEqual([]);
-    expect(panels.map((panel) => panel.position).sort()).toEqual(['editor', 'header', 'right']);
-  });
-
   test('a disabled plugin contributes no panels and no dir map entry', async () => {
     const dir = writePlugin('demo', VALID);
     Bun.env.OMPCHAMBER_DB_PATH = join(root, 'db.sqlite');
@@ -278,9 +263,9 @@ describe('discoverPanelPlugins', () => {
       invalidatePanelScan();
       const payload = await discoverPanelPlugins();
       expect(payload.panels).toEqual([]);
-      // The asset route resolves its root from the same scan, so a disabled
-      // plugin's frame is unreachable as well as its button being gone.
-      expect(await findPanelDirBySlug('demo~main')).toBeUndefined();
+      // The bundle route resolves its root from the same scan, so a disabled
+      // plugin's code is unreachable as well as its button being gone.
+      expect(await findPluginDir('demo')).toBeUndefined();
       // The row survives, with its switch off — that is what lets the user
       // turn it back on.
       expect(payload.plugins.find((plugin) => plugin.pluginId === 'demo')?.enabled).toBe(false);
@@ -288,7 +273,7 @@ describe('discoverPanelPlugins', () => {
       await setPluginEnabled('demo', true);
       invalidatePanelScan();
       expect((await discoverPanelPlugins()).panels).toHaveLength(1);
-      expect(await findPanelDirBySlug('demo~main')).toBe(dir);
+      expect(await findPluginDir('demo')).toBe(dir);
     } finally {
       globalThis.__ompChamberDb?.resolved?.raw.close();
       globalThis.__ompChamberDb = undefined;
@@ -310,7 +295,8 @@ describe('the bundled marketplace catalog', () => {
       // Available, and nothing more: the store does not contribute a button.
       expect(payload.catalog.map((entry) => entry.pluginId)).toEqual(['offer']);
       expect(payload.catalog[0].installed).toBe(false);
-      expect(payload.catalog[0].panels).toEqual([{ id: 'main', title: 'Demo Panel', position: 'right' }]);
+      // What a plugin CONTRIBUTES is known only once its bundle loads, so a
+      // store entry carries the identity alone — there is nothing to promise.
       expect(payload.panels).toEqual([]);
     } finally {
       if (previous === undefined) delete process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR;

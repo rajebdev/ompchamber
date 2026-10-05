@@ -1,18 +1,18 @@
 import { useRef, useState } from 'preact/hooks';
 import type { TargetedMouseEvent } from 'preact';
-import { Puzzle } from 'lucide-preact';
+
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
 import { useResolvedRepo } from '@/client/hooks/workspace/repo-scope';
-import { usePanelRegistry } from '@/client/hooks/workspace/panel-registry';
+import { usePluginPanels } from '@/client/components/workspace/plugin-panel/resolve';
 import { useHiddenPanels } from '@/client/hooks/workspace/panel-visibility';
-import { panelAssetUrl } from '@/shared/lib/panels/asset-base';
 import { GIT_STATUS_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
 import { RIGHT_PANEL_TYPES } from '@/shared/lib/workspace/right-panels';
 import { PANEL_META } from '@/client/components/layout/panel-meta';
+import { PluginMark } from '@/client/components/settings/categories/panel-plugins/PluginMark';
 import { PanelVisibilityMenu, type PanelVisibilityItem } from '@/client/components/layout/PanelVisibilityMenu';
 
 interface RightActivityBarProps {
-  /** A built-in view id or a plugin panel key (`plugin:<id>/<panel>`). */
+  /** A built-in view id or a plugin panel key (`plugin:<pluginId>`). */
   activePanel: string;
   onChangePanel: (panel: string) => void;
   isPanelOpen: boolean;
@@ -33,9 +33,8 @@ interface RightActivityBarProps {
  * their row in that menu with the checkbox off, which is what makes hiding
  * reversible; the bar itself simply does not draw them.
  *
- * An icon is only ever drawn for a plugin that CONTRIBUTES one view per
- * position: the manifest refuses a second `right` panel, so one plugin cannot
- * produce two buttons here.
+ * A plugin contributes AT MOST ONE right panel, so one plugin can never produce
+ * two buttons here.
  */
 export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen, hasActiveContext, activeProjectPath, refreshKey }: RightActivityBarProps) {
   // The dot is the Source Control view's, so it follows the repo that view is
@@ -46,7 +45,7 @@ export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen, hasA
   const { changes } = useGitStatus(activeProjectPath ?? undefined, activeRepo, refreshKey, hasActiveContext, GIT_STATUS_POLL_MS);
   const hasGitChanges = changes.length > 0;
 
-  const { panels: pluginPanels } = usePanelRegistry();
+  const { panels: pluginPanels } = usePluginPanels(activePanel);
   const [hidden, setHidden] = useHiddenPanels();
   const [anchor, setAnchor] = useState<{ top: number; bottom: number; left: number; right: number } | null>(null);
   const navRef = useRef<HTMLElement>(null);
@@ -62,7 +61,7 @@ export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen, hasA
     ...RIGHT_PANEL_TYPES.map((panel) => ({ id: panel, title: PANEL_META[panel].title, removable: false })),
     ...pluginPanels.map((panel) => ({
       id: panel.panelKey,
-      title: `${panel.title} — ${panel.pluginName}`,
+      title: `${panel.title} — ${panel.name}`,
       removable: true,
     })),
   ];
@@ -124,14 +123,10 @@ export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen, hasA
                     : 'text-ink/40 border-transparent hover:text-ink hover:bg-ink/5'
                 }`}
                 onClick={() => onChangePanel(panel.panelKey)}
-                title={`${panel.title} — ${panel.pluginName}`}
-                aria-label={`${panel.title} (plugin ${panel.pluginName})`}
+                title={`${panel.title} — ${panel.name}`}
+                aria-label={`${panel.title} (plugin ${panel.name})`}
               >
-                {panel.icon ? (
-                  <img src={panelAssetUrl(panel.panelKey, panel.icon)} alt="" className="w-4 h-4" />
-                ) : (
-                  <Puzzle size={16} />
-                )}
+                <PluginMark name={panel.name} iconUrl={panel.iconUrl} size={16} />
               </button>
             );
           })}

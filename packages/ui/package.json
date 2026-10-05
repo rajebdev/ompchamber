@@ -5,8 +5,7 @@
   "description": "Preact hooks and components for OMPChamber panel plugins.",
   "exports": {
     ".": "./src/index.tsx",
-    "./components": "./src/components.tsx",
-    "./styles.css": "./src/styles.css"
+    "./components": "./src/components.tsx"
   },
   "files": [
     "src"

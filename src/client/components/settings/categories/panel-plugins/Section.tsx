@@ -1,9 +1,13 @@
 import { AlertTriangle, RefreshCw } from 'lucide-preact';
-import { PANELS_CHANGED_EVENT, usePanelPluginActions, usePanelRegistry } from '@/client/hooks/workspace/panel-registry';
+import {
+  PANELS_CHANGED_EVENT,
+  usePanelPluginActions,
+  usePanelRegistry,
+  usePanelSlots,
+} from '@/client/hooks/workspace/panel-registry';
 import { InstallForm } from '@/client/components/settings/categories/panel-plugins/InstallForm';
 import { AvailableList } from '@/client/components/settings/categories/panel-plugins/AvailableList';
 import { InstalledList } from '@/client/components/settings/categories/panel-plugins/InstalledList';
-import type { PanelRegistryEntry } from '@/shared/types';
 
 /**
  * The panel-plugin marketplace: what is available, what is installed, and how
@@ -13,36 +17,38 @@ import type { PanelRegistryEntry } from '@/shared/types';
  * bundled marketplace — a STORE, so a plugin the package ships is an offer and
  * nothing more until the user installs it (VS Code's model). **Installed** is
  * what is on disk, each row carrying the switch that turns its contributions on
- * or off without deleting anything. Rejections are listed last, because a
- * plugin that fails to load with no reason reads as a plugin that was never
- * installed — the single most confusing failure this surface can have.
+ * or off without deleting anything, and the slots its bundle registered.
+ * Rejections are listed last, because a plugin that fails to load with no reason
+ * reads as a plugin that was never installed — the single most confusing
+ * failure this surface can have.
  *
  * The installed rows come from the INSTALLED list rather than from the
- * contributed panels: a plugin that is switched off publishes no panels, so a
- * panel-derived list would drop the row the user needs to switch it back on.
+ * registrations: a plugin that is switched off publishes no component, so a
+ * registration-derived list would drop the row the user needs to switch it back
+ * on.
  */
 export function PanelPluginsSection() {
   const { panels, errors, plugins, catalog, ready } = usePanelRegistry();
+  const { slots, failures } = usePanelSlots();
   const actions = usePanelPluginActions();
 
   const refresh = () => window.dispatchEvent(new CustomEvent(PANELS_CHANGED_EVENT, { detail: { force: true } }));
 
-  // Contributions grouped by plugin, for the installed rows that have any.
-  const panelsByPlugin = new Map<string, PanelRegistryEntry[]>();
-  for (const panel of panels) {
-    const list = panelsByPlugin.get(panel.pluginId) ?? [];
-    list.push(panel);
-    panelsByPlugin.set(panel.pluginId, list);
-  }
-
   const available = catalog.filter((entry) => !entry.installed);
+  const failureMap = new Map(failures.map((failure) => [failure.pluginId, failure.reason]));
+  // An installed plugin's icon and README, for the card. Both come from the
+  // registry rather than from the manifest, because the URLs are
+  // content-addressed server-side.
+  const iconUrls = new Map(panels.map((panel) => [panel.pluginId, panel.iconUrl]));
+  const readmeUrls = new Map(panels.map((panel) => [panel.pluginId, panel.readmeUrl]));
 
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
         <p className="text-xs text-ink/60 max-w-xl">
-          Panels bundled with OMPChamber, plus the ones you install from a git URL. Each panel runs in its own
-          sandboxed frame and reaches the chamber only through the capabilities its manifest declares.
+          Panels bundled with OMPChamber, plus the ones you install from a git URL. A plugin is local code the
+          chamber loads into this page and renders in its own tree, so it looks and behaves like the rest of the
+          app — treat it the way you would a VS Code extension.
         </p>
         <button
           type="button"
@@ -70,7 +76,7 @@ export function PanelPluginsSection() {
           <p className="font-mono text-[11px] text-ink/45 leading-relaxed">
             ~/.ompchamber/marketplace/marketplace.json
             <br />
-            ~/.ompchamber/marketplace/plugins/&lt;plugin&gt;/ompchamber.json
+            ~/.ompchamber/marketplace/plugins/&lt;plugin&gt;/package.json
           </p>
         </div>
       ) : null}
@@ -80,7 +86,10 @@ export function PanelPluginsSection() {
       {plugins.length > 0 ? (
         <InstalledList
           plugins={plugins}
-          panelsByPlugin={panelsByPlugin}
+          slots={slots}
+          failures={failureMap}
+          iconUrls={iconUrls}
+          readmeUrls={readmeUrls}
           busy={actions.busy}
           onBuild={actions.build}
           onRemove={actions.remove}

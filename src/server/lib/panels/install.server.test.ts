@@ -34,14 +34,17 @@ const VALID = {
   name: 'From Git',
   version: '2.0.0',
   description: 'Installed from a repository.',
-  panels: [{ id: 'main', title: 'From Git', position: 'right', entry: 'index.html', capabilities: ['theme'] }],
+  app: 'dist/app.js',
 };
 
 /** Create a git repository holding a plugin, and return its path as a URL. */
 function makePluginRepo(manifest: unknown, extra: Record<string, string> = {}): string {
   const dir = fs.mkdtempSync(join(work, 'repo-'));
   fs.writeFileSync(join(dir, 'ompchamber.json'), JSON.stringify(manifest));
-  fs.writeFileSync(join(dir, 'index.html'), '<html></html>');
+  // The bundle is committed with the plugin here: the install only builds when
+  // the plugin is a package, and this fixture is a plain directory.
+  fs.mkdirSync(join(dir, 'dist'), { recursive: true });
+  fs.writeFileSync(join(dir, 'dist', 'app.js'), 'export default {};');
   for (const [name, content] of Object.entries(extra)) {
     const target = join(dir, name);
     fs.mkdirSync(join(target, '..'), { recursive: true });
@@ -179,7 +182,7 @@ describe('installPanelPluginFromGit', () => {
     invalidatePanelScan();
     const { panels, errors } = await discoverPanelPlugins();
     expect(errors).toEqual([]);
-    expect(panels.map((p) => p.panelKey)).toEqual(['plugin:from-git/main']);
+    expect(panels.map((p) => p.pluginId)).toEqual(['from-git']);
   });
 
   test.skipIf(!hasGit)('preserves the catalog it already had', async () => {
@@ -221,23 +224,23 @@ describe('installPanelPluginFromGit', () => {
   });
 
   test.skipIf(!hasGit)('refuses a manifest that does not validate', async () => {
-    const repo = makePluginRepo({ ...VALID, panels: [] });
+    const repo = makePluginRepo({ ...VALID, app: '../outside.js' });
     const result = await installPanelPluginFromGit(repo);
     expect(result.ok).toBe(false);
-    expect(result.error).toContain('declares no panels');
+    expect(result.error).toContain('escapes the plugin directory');
   });
 
   test.skipIf(!hasGit)('builds a Bun-package plugin before registering it', async () => {
     const repo = makePluginRepo(
-      { ...VALID, panels: [{ ...VALID.panels[0], entry: 'dist/index.html' }] },
+      VALID,
       {
         'package.json': JSON.stringify({
           name: 'from-git',
           version: '2.0.0',
-          scripts: { build: 'bun build src/index.html --outdir dist --target browser' },
-          ompchamber: { ...VALID, panels: [{ ...VALID.panels[0], entry: 'dist/index.html' }] },
+          scripts: { build: 'bun build src/entry.ts --outfile dist/app.js --target browser' },
+          ompchamber: VALID,
         }),
-        'src/index.html': '<!doctype html><html><body>built</body></html>',
+        'src/entry.ts': 'export default { built: true };',
       },
     );
     // Remove the plain manifest so the package's own `ompchamber` key is used.
@@ -245,25 +248,25 @@ describe('installPanelPluginFromGit', () => {
 
     const result = await installPanelPluginFromGit(repo);
     expect(result.ok).toBe(true);
-    expect(fs.existsSync(join(root, 'plugins', 'from-git', 'dist', 'index.html'))).toBe(true);
+    expect(fs.existsSync(join(root, 'plugins', 'from-git', 'dist', 'app.js'))).toBe(true);
 
     invalidatePanelScan();
     const { panels, plugins, errors } = await discoverPanelPlugins();
     expect(errors).toEqual([]);
-    expect(panels.map((p) => p.panelKey)).toEqual(['plugin:from-git/main']);
+    expect(panels.map((p) => p.pluginId)).toEqual(['from-git']);
     expect(plugins[0].built).toBe(true);
     expect(plugins[0].isPackage).toBe(true);
   });
 
   test.skipIf(!hasGit)('a package whose build fails stays installed but unregistered', async () => {
     const repo = makePluginRepo(
-      { ...VALID, panels: [{ ...VALID.panels[0], entry: 'dist/index.html' }] },
+      VALID,
       {
         'package.json': JSON.stringify({
           name: 'from-git',
           version: '2.0.0',
-          scripts: { build: 'bun build src/missing.ts --outdir dist' },
-          ompchamber: { ...VALID, panels: [{ ...VALID.panels[0], entry: 'dist/index.html' }] },
+          scripts: { build: 'bun build src/missing.ts --outfile dist/app.js' },
+          ompchamber: VALID,
         }),
       },
     );
@@ -281,7 +284,7 @@ describe('installPanelPluginFromGit', () => {
     invalidatePanelScan();
     const { plugins } = await discoverPanelPlugins();
     expect(plugins[0].built).toBe(false);
-    expect(plugins[0].reason).toContain('dist/index.html');
+    expect(plugins[0].reason).toContain('dist/app.js');
   });
 
   test.skipIf(!hasGit)('refuses an id that is already installed', async () => {
@@ -295,10 +298,11 @@ describe('installPanelPluginFromGit', () => {
 
 describe('removePanelPlugin', () => {
   test('removes the directory and its catalog entry, keeping other entries', async () => {
-    fs.mkdirSync(join(root, 'plugins', 'from-git'), { recursive: true });
-    fs.writeFileSync(join(root, 'plugins', 'from-git', 'ompchamber.json'), JSON.stringify(VALID));
-    fs.mkdirSync(join(root, 'plugins', 'keep-me'), { recursive: true });
-    fs.writeFileSync(join(root, 'plugins', 'keep-me', 'ompchamber.json'), JSON.stringify({ ...VALID, id: 'keep-me' }));
+    for (const id of ['from-git', 'keep-me']) {
+      fs.mkdirSync(join(root, 'plugins', id, 'dist'), { recursive: true });
+      fs.writeFileSync(join(root, 'plugins', id, 'ompchamber.json'), JSON.stringify({ ...VALID, id }));
+      fs.writeFileSync(join(root, 'plugins', id, 'dist', 'app.js'), 'export default {};');
+    }
     fs.writeFileSync(
       getMarketplaceCatalogPath(),
       JSON.stringify({

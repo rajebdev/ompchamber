@@ -1,4 +1,9 @@
 /**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
  * The installed panel plugins, fetched once per layout and shared.
  *
  * The registry is a server read, so it is cached in a module-level promise the
@@ -10,6 +15,10 @@
  * The cache is invalidated by the `omp:panels-changed` event, which the panel
  * settings surface dispatches after a plugin file is written. A reload of the
  * page naturally refetches.
+ *
+ * The registry says which BUNDLES to load, not what they contain: a plugin's
+ * panels exist only once its bundle has run, so `usePanelSlots` below is the
+ * other half of this picture.
  */
 
 import { useCallback, useEffect, useState } from 'preact/hooks';
@@ -20,12 +29,18 @@ import type {
   PanelRegistryEntry,
   PanelRegistryPayload,
 } from '@/shared/types';
+import { loadPluginBundles } from '@/client/lib/plugins/loader';
+import {
+  pluginSlotState,
+  subscribePluginSlots,
+  type PluginSlots,
+} from '@/client/lib/plugins/slots';
 
 /** Dispatched after a panel plugin is installed, removed or edited. */
 export const PANELS_CHANGED_EVENT = 'omp:panels-changed';
 
 interface PanelRegistryState {
-  /** Contributions of ENABLED plugins — what the layouts render from. */
+  /** Installed, enabled plugins — the bundles to import. */
   panels: PanelRegistryEntry[];
   marketplaces: PanelMarketplaceItem[];
   errors: PanelRegistryPayload['errors'];
@@ -86,6 +101,13 @@ export function usePanelRegistry(): PanelRegistryState {
         catalog: payload.catalog ?? [],
         ready: true,
       });
+      // The bundles are imported right after the list that names them: a panel
+      // only exists once its module has run, so the layout has nothing to draw
+      // until this settles. A failure is recorded per plugin and surfaced in
+      // the pane, never swallowed.
+      void loadPluginBundles(
+        (payload.panels ?? []).map((panel) => ({ pluginId: panel.pluginId, url: panel.appUrl })),
+      );
     });
     return () => {
       cancelled = true;
@@ -113,10 +135,33 @@ export function usePanelRegistry(): PanelRegistryState {
   return state;
 }
 
-/** One panel by key, for a view that has the id but not the entry. */
-export function usePanelEntry(panelKey: string): { panel?: PanelRegistryEntry; ready: boolean } {
-  const { panels, ready } = usePanelRegistry();
-  return { panel: panels.find((entry) => entry.panelKey === panelKey), ready };
+export interface PanelSlotSnapshot {
+  /** Registrations by plugin id, for the plugins whose bundles have loaded. */
+  slots: Map<string, PluginSlots>;
+  /** Plugins whose bundle could not load, with the reason. */
+  failures: { pluginId: string; reason: string }[];
+}
+
+/**
+ * What the loaded bundles registered.
+ *
+ * Separate from `usePanelRegistry` because the two settle at different times:
+ * the registry is a fetch, the slots are an import. A surface that needs a
+ * component reads this; a surface that lists plugins reads that.
+ */
+export function usePanelSlots(): PanelSlotSnapshot {
+  const [snapshot, setSnapshot] = useState<PanelSlotSnapshot>(pluginSlotState);
+  useEffect(() => {
+    setSnapshot(pluginSlotState());
+    return subscribePluginSlots(() => setSnapshot(pluginSlotState()));
+  }, []);
+  return snapshot;
+}
+
+/** One plugin's registrations, once its bundle has loaded. */
+export function usePluginSlots(pluginId: string | null): PluginSlots | undefined {
+  const { slots } = usePanelSlots();
+  return pluginId ? slots.get(pluginId) : undefined;
 }
 
 /**
@@ -149,7 +194,7 @@ export interface PanelPluginActions {
 }
 
 /**
- * A plugin is a Bun package, so its panels are served from a build output. That
+ * A plugin is a Bun package, so its UI is served from a build output. That
  * makes "the manifest is valid but the build has not run" a state a user can be
  * in — a fresh clone, an interrupted install, a source edit — and `build` is the
  * one action that resolves it without re-installing.

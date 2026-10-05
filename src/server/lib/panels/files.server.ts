@@ -22,6 +22,23 @@ import { join } from 'path';
 import { pathExists } from '@/server/lib/omp/core/paths';
 import { isRecord } from '@/shared/lib/util/guards';
 
+/**
+ * The README a plugin ships, or undefined.
+ *
+ * The manifest may name one; when it does not, `README.md` at the plugin root is
+ * the convention — the file an author has already written for the repository,
+ * which is exactly the material a user wants before installing. Only the two
+ * spellings a package realistically uses are tried; anything else must be
+ * declared.
+ */
+export async function findReadme(root: string, declared?: string): Promise<string | undefined> {
+  if (declared) return (await pathExists(join(root, declared))) ? declared : undefined;
+  for (const candidate of ['README.md', 'readme.md']) {
+    if (await pathExists(join(root, candidate))) return candidate;
+  }
+  return undefined;
+}
+
 /** Sorted directory names directly under `dir`; empty when it does not exist. */
 export async function subdirectories(dir: string): Promise<string[]> {
   if (!(await pathExists(dir))) return [];

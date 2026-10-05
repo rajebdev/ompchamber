@@ -7,10 +7,10 @@
  * A panel plugin is a Bun package, and this is its build.
  *
  * The plugin directory is a normal Bun project — `package.json`, a TSX entry and
- * whatever dependencies it declares — and the chamber bundles it with the SAME
- * tool the app bundles itself with. That is the point of the shape: a plugin
- * author writes TypeScript, imports from `node_modules`, and gets one
- * self-contained output, exactly as this repo does for its own client.
+ * whatever dependencies it declares — and the chamber bundles it into ONE ESM
+ * file that the host `import()`s into its own page. That is the point of the
+ * shape: a plugin author writes TypeScript, imports from `node_modules`, and
+ * gets one self-contained module, exactly as this repo does for its own client.
  *
  * Four properties are load-bearing:
  *
@@ -25,81 +25,50 @@
  *   bundler a plugin might use, rather than only for `bun build`: a `--preload`
  *   resolver was measured NOT to reach the CLI's build at all (Bun 1.4.2), and
  *   `BUN_OPTIONS` breaks `bun run` itself.
- * - **Output goes to `dist/`, which the asset route serves as the document root
- *   for a built plugin.** The manifest's `entry` therefore names a BUILT file
- *   (`dist/index.html`), and every asset the bundle emits sits beside it with a
- *   relative URL — which is what the sandboxed frame needs, since its opaque
- *   origin cannot resolve anything absolute.
+ * - **The shared runtime is EXTERNAL.** `preact`, its hooks and JSX runtimes,
+ *   `@ompchamber/plugin-sdk/app` and `@ompchamber/ui` are rewritten to read the
+ *   host's `globalThis.__ompchamberPluginRuntime` (see `shim.ts`). A plugin that
+ *   bundled its own Preact would create components the host's tree cannot
+ *   render, which is why this is a correctness rule and not a size optimisation.
  * - **`bun install` runs first, with lifecycle scripts disabled.** A plugin's
  *   dependencies are its own; without the install a fresh clone has no
  *   `node_modules` and every import fails. `--ignore-scripts` because a
- *   postinstall would execute arbitrary code on the SERVER, outside the sandbox
- *   that the panel itself runs in.
- * - **A plugin declares `@ompchamber/*` as OPTIONAL PEER dependencies.** They are
- *   provided by the host and linked in below, never fetched. The `optional` flag
- *   is the load-bearing half: measured on Bun 1.4.2 with the package absent from
- *   the registry, `dependencies` exits 1, a plain `peerDependencies` entry exits
- *   1 with the same 404, and only `peerDependenciesMeta.optional` exits 0. A
- *   plugin cloned into the marketplace is built before npm is guaranteed to
- *   carry these, so without the flag the install would fail outright.
+ *   postinstall would execute arbitrary code on the SERVER.
  *
- * A plugin that ships no `package.json`, or one with no `build` script and no
- * entry Bun can infer, is NOT built: its files are served as-is. That keeps a
- * hand-written HTML plugin working, which is what the scan's "directory is what
- * makes a plugin exist" rule has always promised.
+ * A plugin may instead declare its own `build` script. That script WINS: it may
+ * need a bundler pass this module knows nothing about, and second-guessing it
+ * would break the plugins that need it most. Such a plugin owns its output and
+ * must produce the file its manifest names; it also carries its own runtime
+ * unless it marks the shared specifiers external itself.
  */
 
-import { mkdir, rm, stat, symlink } from 'fs/promises';
-import { dirname, join, relative, resolve } from 'path';
+import { mkdir, rm, stat } from 'fs/promises';
+import { join, relative } from 'path';
 import type { PanelPluginManifest } from '@/shared/types';
 import { pathExists } from '@/server/lib/omp/core/paths';
 import { resolveBunBin } from '@/server/lib/lifecycle/bun';
 import { runShell } from '@/server/lib/fs/shell';
+import { runtimeShimPlugin } from '@/server/lib/panels/shim';
+import { linkChamberPackages } from '@/server/lib/panels/link.server';
 
 /** Where a built plugin's output lands, relative to the plugin root. */
 export const PLUGIN_BUILD_DIR = 'dist';
 
 /**
- * The `@ompchamber/*` packages a plugin may import, as installed on THIS machine.
- *
- * Resolved at runtime rather than listed as paths, because the two install shapes
- * put them in different places: a source checkout has `packages/`, while a
- * published install has them under `node_modules/` with `packages/` not shipped
- * at all. `Bun.resolveSync` answers both — it consults the `workspaces` map in a
- * checkout and `node_modules` in an install.
- *
- * Resolved from THIS module's directory, not the cwd: a plugin's build runs with
- * the plugin's directory as its working directory, so a cwd-relative lookup
- * would search the marketplace and find nothing.
- */
-export function chamberPackageDirs(): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const name of ['@ompchamber/plugin-sdk', '@ompchamber/ui']) {
-    try {
-      out[name] = dirname(Bun.resolveSync(`${name}/package.json`, import.meta.dir));
-    } catch {
-      // Not installed: the plugin's build fails with its own module-not-found,
-      // which names the specifier the plugin actually wrote.
-    }
-  }
-  return out;
-}
-
-/**
  * The outcome of a build attempt.
  *
  * Three states, not two, and the difference is load-bearing at the call site: a
- * plugin that is NOT a package (a hand-written HTML plugin) is perfectly
- * servable as-is and must install normally, while a build that FAILED means
- * there is nothing to serve. Collapsing them into one `built: false` made every
- * non-package plugin refuse to register.
+ * plugin whose files are already a servable bundle (a hand-written one with no
+ * source to compile) is not a FAILURE, while a build that ran and produced
+ * nothing means there is no bundle at all. Collapsing them into one
+ * `built: false` made every non-package plugin refuse to register.
  */
 export type PluginBuildStatus =
-  /** The output exists and the manifest's entries resolve inside it. */
+  /** The bundle the manifest names exists. */
   | 'built'
-  /** No package.json build script or source entry — the files are served as they are. */
+  /** Nothing to build: no build script, and no app source to bundle. */
   | 'not-a-package'
-  /** A build ran and did not produce what the manifest names. */
+  /** A build ran and did not produce the bundle. */
   | 'failed';
 
 export interface PluginBuildResult {
@@ -114,104 +83,44 @@ const INSTALL_TIMEOUT_MS = 300_000;
 const BUILD_TIMEOUT_MS = 180_000;
 
 /**
- * Symlink the chamber's own packages into a plugin's `node_modules`.
+ * The source file the shimmed bundle is built from.
  *
- * Symlinks rather than copies: the packages are developed in place, and a copy
- * taken at install time would pin a plugin to whatever the sources said that
- * day. A pre-existing entry is replaced, because a plugin that shipped its own
- * (stale) copy of the SDK would otherwise shadow the chamber's.
- *
- * Best-effort: a plugin that imports none of them builds fine without this, so a
- * failure here is not a build failure.
+ * The manifest names the OUTPUT (`dist/app.js`), so the source has to come from
+ * a convention. `src/app.tsx` is the documented one; the root-level fallbacks
+ * cover a hand-written plugin that has no `src/`.
  */
-export async function linkChamberPackages(root: string): Promise<void> {
-  const dirs = chamberPackageDirs();
-  if (Object.keys(dirs).length === 0) return;
+const APP_SOURCE_CANDIDATES = ['src/app.tsx', 'src/app.ts', 'app.tsx', 'app.ts'];
 
-  const scope = join(root, 'node_modules', '@ompchamber');
-  try {
-    await mkdir(scope, { recursive: true });
-  } catch {
-    return;
+async function findAppSource(root: string): Promise<string | null> {
+  for (const candidate of APP_SOURCE_CANDIDATES) {
+    if (await pathExists(join(root, candidate))) return candidate;
   }
-
-  for (const [name, packageRoot] of Object.entries(dirs)) {
-    const target = join(scope, name.split('/')[1]);
-    try {
-      await rm(target, { recursive: true, force: true });
-      await symlink(packageRoot, target, 'junction');
-    } catch {
-      // A filesystem without symlink support: the plugin's own build may still
-      // work, so this is not fatal.
-    }
-  }
-
-  await linkPeerRuntime(root);
+  return null;
 }
 
 /**
- * Make the plugin's `preact` the one the LINKED packages resolve.
+ * Whether the plugin's package.json declares a `build` script.
  *
- * A panel bundle must contain exactly ONE Preact. The linked UI kit lives at its
- * own path, so its `import 'preact'` resolves up from `packages/ui/` — which in
- * this checkout finds the chamber's copy, while the plugin's own `import 'preact'`
- * finds the plugin's. Two copies means two module-level option objects, and
- * Preact's hooks read the current component from a shared one: the panel died at
- * render with `Cannot read properties of undefined (reading '__H')`.
- *
- * Pointing the package's own `node_modules/preact` at the plugin's copy makes
- * both sides resolve the same files. A plugin that declares no `preact` is left
- * alone — it does not render, so it has no second copy to reconcile.
+ * A script WINS over the chamber's own bundler: a plugin may need a pass this
+ * module knows nothing about (a framework, a template compiler, a CSS pipeline),
+ * and second-guessing it would break the plugins that need it most. Such a
+ * plugin is responsible for producing the manifest's `app` file itself, and the
+ * runtime shim does not apply to it — it must mark the shared specifiers
+ * external on its own if it wants them, or accept its own Preact copy.
  */
-async function linkPeerRuntime(root: string): Promise<void> {
-  const pluginPreact = join(root, 'node_modules', 'preact');
-  if (!(await pathExists(join(pluginPreact, 'package.json')))) return;
-
-  for (const packageRoot of Object.values(chamberPackageDirs())) {
-    const scope = join(packageRoot, 'node_modules');
-    try {
-      await mkdir(scope, { recursive: true });
-      const target = join(scope, 'preact');
-      await rm(target, { recursive: true, force: true });
-      await symlink(resolve(pluginPreact), target, 'junction');
-    } catch {
-      // Best effort: a checkout whose packages already resolve one preact needs
-      // nothing here.
-    }
-  }
-}
-
-/** A plugin is buildable when it declares a package.json with a build script or a source entry. */
-async function buildCommand(root: string): Promise<string[] | null> {
+async function hasBuildScript(root: string): Promise<boolean> {
   const pkgPath = join(root, 'package.json');
-  if (!(await pathExists(pkgPath))) return null;
-
-  let scripts: Record<string, unknown> = {};
+  if (!(await pathExists(pkgPath))) return false;
   try {
     const parsed: unknown = await Bun.file(pkgPath).json();
-    if (parsed && typeof parsed === 'object') {
-      const record = parsed as Record<string, unknown>;
-      if (record.scripts && typeof record.scripts === 'object') scripts = record.scripts as Record<string, unknown>;
-    }
+    if (!parsed || typeof parsed !== 'object') return false;
+    const scripts = (parsed as Record<string, unknown>).scripts;
+    if (!scripts || typeof scripts !== 'object') return false;
+    const build = (scripts as Record<string, unknown>).build;
+    return typeof build === 'string' && build.trim().length > 0;
   } catch {
-    return null;
+    return false;
   }
-
-  // An explicit `build` script wins: a plugin may need a bundler pass this
-  // module knows nothing about (a framework, a template compiler), and second-
-  // guessing it would break the plugins that need it most.
-  if (typeof scripts.build === 'string' && scripts.build.trim()) {
-    return [resolveBunBin(), 'run', 'build'];
-  }
-  // No build script: the conventional entry is bundled directly, which covers
-  // the common case (a TSX entry plus a stylesheet import) without asking the
-  // author to write a build script at all.
-  for (const candidate of ['src/index.html', 'src/index.tsx', 'src/index.ts', 'src/index.js', 'index.html']) {
-    if (await pathExists(join(root, candidate))) {
-      return [resolveBunBin(), 'build', candidate, '--outdir', PLUGIN_BUILD_DIR, '--target', 'browser', '--minify'];
-    }
-  }
-  return null;
 }
 
 /** Whether a plugin's package.json declares anything to install. */
@@ -233,12 +142,30 @@ async function declaresDependencies(root: string): Promise<boolean> {
 /**
  * Install and build one plugin. Never throws: a failure is a value, because the
  * caller reports it in the pane rather than failing a request.
+ *
+ * Two paths, and which one runs is decided by the plugin:
+ *
+ * - **Its own `build` script.** Run as-is; the plugin owns its output and must
+ *   produce the file the manifest names. The chamber's shim does not apply, so
+ *   such a plugin carries its own runtime unless it marks the shared specifiers
+ *   external itself.
+ * - **The chamber's bundler.** A shimmed `Bun.build` over the conventional app
+ *   source, emitting ONE ESM file at the manifest's `app` path. Every shared
+ *   specifier is rewritten to read the host runtime, so the bundle carries no
+ *   Preact, no UI kit and no SDK.
  */
 export async function buildPanelPlugin(root: string, manifest: PanelPluginManifest): Promise<PluginBuildResult> {
-  const command = await buildCommand(root);
-  if (!command) return { status: 'not-a-package', reason: 'no package.json build script or source entry' };
+  const outPath = join(root, manifest.app);
+  const usesOwnScript = await hasBuildScript(root);
+  const source = usesOwnScript ? null : await findAppSource(root);
+  if (!usesOwnScript && !source) {
+    return {
+      status: 'not-a-package',
+      reason: `no build script, and none of ${APP_SOURCE_CANDIDATES.join(', ')} exists`,
+    };
+  }
 
-  // A stale output is worse than no output: the asset route would serve chunks
+  // A stale output is worse than no output: the bundle route would serve code
   // the current source no longer produces.
   await rm(join(root, PLUGIN_BUILD_DIR), { recursive: true, force: true });
   await mkdir(join(root, PLUGIN_BUILD_DIR), { recursive: true });
@@ -256,22 +183,72 @@ export async function buildPanelPlugin(root: string, manifest: PanelPluginManife
   }
   await linkChamberPackages(root);
 
-  const build = await runShell(command.map(shellQuote).join(' '), { cwd: root, timeout: BUILD_TIMEOUT_MS });
-  if (build.exitCode !== 0) {
-    return { status: 'failed', reason: firstLine(build.stderr) || firstLine(build.stdout) || 'build failed' };
-  }
-
-  // EVERY entry the manifest names must exist after the build, not just the
-  // first: a package whose build emitted one document and failed on the second
-  // would otherwise report as built, and only the missing panel's frame would
-  // 404 — the failure surfacing at the one place it cannot be explained.
-  for (const panel of manifest.panels) {
-    const entryPath = join(root, panel.entry);
-    if (!(await pathExists(entryPath))) {
-      return { status: 'failed', reason: `the build produced no ${relative(root, entryPath)}` };
+  if (usesOwnScript) {
+    const build = await runShell(
+      [resolveBunBin(), 'run', 'build'].map(shellQuote).join(' '),
+      { cwd: root, timeout: BUILD_TIMEOUT_MS },
+    );
+    if (build.exitCode !== 0) {
+      return { status: 'failed', reason: firstLine(build.stderr) || firstLine(build.stdout) || 'build failed' };
+    }
+  } else {
+    try {
+      const result = await Bun.build({
+        entrypoints: [join(root, source as string)],
+        target: 'browser',
+        format: 'esm',
+        minify: true,
+        // Naming is fixed rather than hashed: the manifest names the output, and
+        // the bundle route adds a content hash to the URL so a rebuilt plugin is
+        // re-imported instead of being served from the browser's module cache.
+        naming: '[dir]/[name].[ext]',
+        outdir: join(root, PLUGIN_BUILD_DIR),
+        plugins: [runtimeShimPlugin()],
+      });
+      if (!result.success) {
+        return { status: 'failed', reason: describeBuildFailure(result.logs) };
+      }
+    } catch (error) {
+      // An UNRESOLVABLE import throws rather than answering `success: false`
+      // (measured on Bun 1.4.2), and the thrown error is the only place the
+      // specifier that could not be found appears.
+      return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
     }
   }
+
+  if (!(await pathExists(outPath))) {
+    return { status: 'failed', reason: `the build produced no ${relative(root, outPath)}` };
+  }
   return { status: 'built', outDir: PLUGIN_BUILD_DIR };
+}
+
+/**
+ * The first line that explains a bundler failure.
+ *
+ * `Bun.build` reports through `logs`, and the useful entry is a message with a
+ * file position — a bare "Bundle failed" would name neither the file nor the
+ * reason, which is the one thing the pane has to show.
+ *
+ * One failure gets a rewritten message: a TSX plugin whose tsconfig does not set
+ * `jsxImportSource: "preact"` compiles to `react/jsx-dev-runtime`, which is not
+ * installed and never should be. The raw error names a package the author never
+ * wrote and cannot find, so the fix is spelled out instead.
+ */
+function describeBuildFailure(logs: readonly { message?: string; position?: unknown }[]): string {
+  for (const log of logs) {
+    const message = log.message ?? '';
+    if (/react\/jsx(-dev)?-runtime/.test(message)) {
+      return 'the plugin compiles JSX for React — set "jsxImportSource": "preact" in its tsconfig.json';
+    }
+  }
+  for (const log of logs) {
+    const position = log.position as { file?: string; line?: number } | null | undefined;
+    if (log.message && position?.file) {
+      return `${relative(process.cwd(), position.file)}:${position.line ?? 0}  ${log.message}`;
+    }
+  }
+  const first = logs.find((log) => log.message);
+  return first?.message ?? 'the bundle failed';
 }
 
 /**

@@ -1,38 +1,49 @@
 import { useRef, useState } from 'preact/hooks';
 import { Puzzle } from 'lucide-preact';
-import type { PanelRegistryEntry } from '@/shared/types';
-import { usePanelRegistry } from '@/client/hooks/workspace/panel-registry';
-import { panelAssetUrl } from '@/shared/lib/panels/asset-base';
+import { usePanelRegistry, usePanelSlots } from '@/client/hooks/workspace/panel-registry';
+import { panelOf, rightPanelOf } from '@/client/lib/plugins/slots';
+import { pluginPanelKey } from '@/shared/lib/workspace/panel-ids';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
+import { PluginMark } from '@/client/components/settings/categories/panel-plugins/PluginMark';
 
 /**
- * The navbar entry point for panels that can occupy the EDITOR slot.
+ * The navbar entry point for panels that can occupy the `panel` slot.
  *
- * A right-panel panel gets an activity-bar button, but an editor panel has no
- * such home — it opens as a TAB, the way VS Code's webview panels occupy an
- * editor column. The menu is hidden entirely when no plugin contributes a
- * panel, so a user with no panel plugins sees an unchanged navbar.
+ * A right-panel plugin gets an activity-bar button, but a `panel` has no such
+ * home — it takes over the editor column. The menu is hidden entirely when no
+ * plugin contributes a view, so a user with no panel plugins sees an unchanged
+ * navbar.
  *
- * The list is every plugin panel, not only the ones declared `position:
- * "editor"`. The manifest's position decides where a panel appears BY DEFAULT;
- * the editor slot is generic and can hold any of them, which is what lets a
- * user move a right-panel view into the editor column without the plugin
- * author having to declare it twice.
+ * The list is every plugin that registered either a `panel` or a `rightPanel`,
+ * not only the ones whose registration named `panel`. A registration's slot
+ * decides where a view appears BY DEFAULT; the column is generic and can hold
+ * any view, which is what lets a user move a right-panel plugin into the column
+ * without the author having to register it twice. A `header` is the exception:
+ * it is a navbar entry, not a view.
  */
-export function PanelLauncher() {
+export function PanelLauncher({ onOpenPanel }: { onOpenPanel: (panelKey: string) => void }) {
   const { panels } = usePanelRegistry();
+  const { slots } = usePanelSlots();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useOnClickOutside(ref, () => setOpen(false));
 
-  if (panels.length === 0) return null;
+  const entries: { pluginId: string; title: string; iconUrl?: string; hasPanelSlot: boolean }[] = [];
+  for (const panel of panels) {
+    const entry = slots.get(panel.pluginId);
+    if (!entry) continue;
+    if (!panelOf(entry) && !rightPanelOf(entry)) continue;
+    entries.push({
+      pluginId: panel.pluginId,
+      title: entry.titles.panel ?? entry.titles.rightPanel ?? panel.name,
+      ...(panel.iconUrl ? { iconUrl: panel.iconUrl } : {}),
+      hasPanelSlot: Boolean(panelOf(entry)),
+    });
+  }
 
-  // A `header` panel is a navbar dropdown, not a view: offering it as an editor
-  // tab would open the same plugin twice from two unrelated affordances.
-  const openable = panels.filter((panel) => panel.position !== 'header');
-  if (openable.length === 0) return null;
-  const editorPanels = openable.filter((panel) => panel.position === 'editor');
-  const others = openable.filter((panel) => panel.position !== 'editor');
+  if (entries.length === 0) return null;
+
+  const panelFirst = [...entries].sort((a, b) => Number(b.hasPanelSlot) - Number(a.hasPanelSlot));
 
   return (
     <div className="relative" ref={ref}>
@@ -52,54 +63,27 @@ export function PanelLauncher() {
           <div className="px-3 py-1 text-[10px] uppercase font-mono text-ink/40 border-b border-ink/10 mb-1">
             Panel Plugins
           </div>
-          {editorPanels.map((panel) => (
-            <PanelLauncherRow key={panel.panelKey} panel={panel} onOpen={handleOpen} setOpen={setOpen} />
-          ))}
-          {editorPanels.length > 0 && others.length > 0 ? (
-            <div className="my-1 border-t border-ink/10" />
-          ) : null}
-          {others.map((panel) => (
-            <PanelLauncherRow key={panel.panelKey} panel={panel} onOpen={handleOpen} setOpen={setOpen} />
+          {panelFirst.map((entry) => (
+            <button
+              key={entry.pluginId}
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                // One call into the layout, which owns both the column and the
+                // right panel — the two places a view can live.
+                onOpenPanel(pluginPanelKey(entry.pluginId));
+              }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-ink/5 cursor-pointer"
+            >
+              <PluginMark name={entry.title} iconUrl={entry.iconUrl} size={14} />
+              <span className="truncate">{entry.title}</span>
+              <span className="ml-auto text-[10px] text-ink/40 truncate">
+                {entry.hasPanelSlot ? entry.pluginId : `${entry.pluginId} → panel`}
+              </span>
+            </button>
           ))}
         </div>
       ) : null}
     </div>
-  );
-
-  function handleOpen(panelKey: string, title: string) {
-    // The file-tabs hook owns the tab strip, so a panel is opened through the
-    // same window event a file link uses — one path into the tab list, not two.
-    window.dispatchEvent(new CustomEvent('omp:open-panel', { detail: { panelKey, title } }));
-  }
-}
-
-function PanelLauncherRow({
-  panel,
-  onOpen,
-  setOpen,
-}: {
-  panel: PanelRegistryEntry;
-  onOpen: (panelKey: string, title: string) => void;
-  setOpen: (open: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        setOpen(false);
-        onOpen(panel.panelKey, panel.title);
-      }}
-      className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-ink/5 cursor-pointer"
-    >
-      {panel.icon ? (
-        <img src={panelAssetUrl(panel.panelKey, panel.icon)} alt="" className="w-3.5 h-3.5 flex-shrink-0" />
-      ) : (
-        <Puzzle size={13} className="flex-shrink-0 text-ink/50" />
-      )}
-      <span className="truncate">{panel.title}</span>
-      <span className="ml-auto text-[10px] text-ink/40 truncate">
-        {panel.position === 'editor' ? panel.pluginName : `${panel.position} → editor`}
-      </span>
-    </button>
   );
 }

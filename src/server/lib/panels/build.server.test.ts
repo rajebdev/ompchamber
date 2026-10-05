@@ -23,13 +23,8 @@ import fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import {
-  buildPanelPlugin,
-  chamberPackageDirs,
-  describeInstallFailure,
-  linkChamberPackages,
-  PLUGIN_BUILD_DIR,
-} from '@/server/lib/panels/build.server';
+import { buildPanelPlugin, describeInstallFailure, PLUGIN_BUILD_DIR } from '@/server/lib/panels/build.server';
+import { chamberPackageDirs, linkChamberPackages } from '@/server/lib/panels/link.server';
 import type { PanelPluginManifest } from '@/shared/types';
 
 let root = '';
@@ -38,7 +33,7 @@ const manifest: PanelPluginManifest = {
   id: 'demo',
   name: 'Demo',
   version: '1.0.0',
-  panels: [{ id: 'main', title: 'Demo', position: 'right', entry: `${PLUGIN_BUILD_DIR}/index.html`, capabilities: [] }],
+  app: `${PLUGIN_BUILD_DIR}/app.js`,
 };
 
 function writeFile(relative: string, content: string): void {
@@ -56,26 +51,39 @@ afterEach(() => {
 });
 
 describe('buildPanelPlugin', () => {
-  test('a directory with no package.json is not-a-package, not a failure', async () => {
-    writeFile('index.html', '<html></html>');
-    const result = await buildPanelPlugin(root, manifest);
-    expect(result.status).toBe('not-a-package');
-  });
-
-  test('a package.json with neither a build script nor a known entry is not-a-package', async () => {
+  test('a directory with no app source is not-a-package, not a failure', async () => {
     writeFile('package.json', JSON.stringify({ name: 'x', version: '1.0.0' }));
     const result = await buildPanelPlugin(root, manifest);
     expect(result.status).toBe('not-a-package');
+    expect(result.reason).toContain('src/app.tsx');
   });
 
-  test('builds an HTML entry with no build script at all', async () => {
+  test('bundles src/app.tsx into the manifest app path with the runtime shimmed', async () => {
     writeFile('package.json', JSON.stringify({ name: 'x', version: '1.0.0' }));
-    writeFile('src/index.html', '<!doctype html><html><body><script src="./main.ts"></script></body></html>');
-    writeFile('src/main.ts', 'document.body.dataset.ready = "yes";');
+    writeFile(
+      'src/app.tsx',
+      [
+        "import { definePluginApp } from '@ompchamber/plugin-sdk/app';",
+        "import { useState } from 'preact/hooks';",
+        'export default definePluginApp((app) => { app.rightPanel({ id: "x", component: () => useState(0) && null }); });',
+      ].join('\n'),
+    );
 
     const result = await buildPanelPlugin(root, manifest);
     expect(result.status).toBe('built');
-    expect(fs.existsSync(join(root, PLUGIN_BUILD_DIR, 'index.html'))).toBe(true);
+    const bundle = fs.readFileSync(join(root, PLUGIN_BUILD_DIR, 'app.js'), 'utf8');
+    // The shared runtime is READ, not bundled: no Preact and no SDK copy in the
+    // output, and the shim's own guard is what names a host that is missing.
+    expect(bundle).toContain('__ompchamberPluginRuntime');
+    expect(bundle).not.toContain('preact.module');
+  });
+
+  test('a bundle that fails to build reports the file and the message', async () => {
+    writeFile('package.json', JSON.stringify({ name: 'x', version: '1.0.0' }));
+    writeFile('src/app.tsx', 'import { missing } from "./nope";\nexport default missing;\n');
+    const result = await buildPanelPlugin(root, manifest);
+    expect(result.status).toBe('failed');
+    expect(result.reason).toBeTruthy();
   });
 
   test('runs an explicit build script and honours its output', async () => {
@@ -84,15 +92,14 @@ describe('buildPanelPlugin', () => {
       JSON.stringify({
         name: 'x',
         version: '1.0.0',
-        scripts: { build: 'bun build src/index.html --outdir dist --target browser' },
+        scripts: { build: 'bun build src/entry.ts --outfile dist/app.js --target browser' },
       }),
     );
-    writeFile('src/index.html', '<!doctype html><html><body>built</body></html>');
+    writeFile('src/entry.ts', 'export default { built: true };');
 
     const result = await buildPanelPlugin(root, manifest);
     expect(result.status).toBe('built');
-    const html = fs.readFileSync(join(root, PLUGIN_BUILD_DIR, 'index.html'), 'utf8');
-    expect(html).toContain('built');
+    expect(fs.readFileSync(join(root, PLUGIN_BUILD_DIR, 'app.js'), 'utf8')).toContain('built');
   });
 
   test('a failing build script reports failed with the compiler message', async () => {
@@ -105,38 +112,29 @@ describe('buildPanelPlugin', () => {
     expect(result.reason).toBeTruthy();
   });
 
-  test('a build that produces no entry the manifest names is failed', async () => {
+  test('a build that produces no bundle the manifest names is failed', async () => {
     writeFile(
       'package.json',
       JSON.stringify({
         name: 'x',
         version: '1.0.0',
-        scripts: { build: 'bun build src/index.html --outdir dist --target browser' },
+        scripts: { build: 'bun build src/entry.ts --outfile dist/other.js --target browser' },
       }),
     );
-    writeFile('src/index.html', '<!doctype html><html><body>ok</body></html>');
-
-    // The manifest names a second document the build never emits.
-    const demanding: PanelPluginManifest = {
-      ...manifest,
-      panels: [
-        ...manifest.panels,
-        { id: 'extra', title: 'Extra', position: 'editor', entry: `${PLUGIN_BUILD_DIR}/extra.html`, capabilities: [] },
-      ],
-    };
-    const result = await buildPanelPlugin(root, demanding);
+    writeFile('src/entry.ts', 'export default {};');
+    const result = await buildPanelPlugin(root, manifest);
     expect(result.status).toBe('failed');
-    expect(result.reason).toContain('extra.html');
+    expect(result.reason).toContain('app.js');
   });
 
   test('a stale dist is replaced, not merged', async () => {
     writeFile('package.json', JSON.stringify({ name: 'x', version: '1.0.0' }));
-    writeFile('src/index.html', '<!doctype html><html><body>fresh</body></html>');
-    writeFile(`${PLUGIN_BUILD_DIR}/stale.html`, '<html>from a previous build</html>');
+    writeFile('src/app.tsx', 'export default { fresh: true };');
+    writeFile(`${PLUGIN_BUILD_DIR}/stale.js`, 'export default "from a previous build";');
 
     const result = await buildPanelPlugin(root, manifest);
     expect(result.status).toBe('built');
-    expect(fs.existsSync(join(root, PLUGIN_BUILD_DIR, 'stale.html'))).toBe(false);
+    expect(fs.existsSync(join(root, PLUGIN_BUILD_DIR, 'stale.js'))).toBe(false);
   });
 });
 
@@ -160,6 +158,38 @@ describe('linkChamberPackages', () => {
     // The directory is created, not required: a plugin that imports nothing from
     // the chamber still builds, so a missing node_modules must not throw.
     await expect(linkChamberPackages(join(root, 'nested'))).resolves.toBeUndefined();
+  });
+
+  test('never rewrites the HOST packages own dependency tree', async () => {
+    // The regression this pins: an earlier version pointed each linked package's
+    // `node_modules/preact` at the PLUGIN's copy. `packages/ui` and
+    // `packages/plugin-sdk` are the host's own packages, so that replaced the
+    // host's Preact with the plugin's — and because the runtime shim hands the
+    // host's `preact/hooks` to every plugin, a plugin declaring `preact` made the
+    // host hand out the WRONG hooks instance. Every plugin render then died with
+    // `Cannot read properties of undefined (reading '__H')`, inside the host's
+    // own UI kit, and the whole app went blank.
+    //
+    // The shim makes it unnecessary too: `preact` is external, so the chamber's
+    // bundler never resolves it through a linked package.
+    const hostPackages = Object.values(chamberPackageDirs());
+    expect(hostPackages.length).toBeGreaterThan(0);
+
+    // A plugin that ships its own Preact, which is the shape that triggered it.
+    const pluginPreact = join(root, 'node_modules', 'preact');
+    fs.mkdirSync(pluginPreact, { recursive: true });
+    fs.writeFileSync(join(pluginPreact, 'package.json'), JSON.stringify({ name: 'preact', version: '9.0.0' }));
+
+    await linkChamberPackages(root);
+
+    for (const packageRoot of hostPackages) {
+      const hijacked = join(packageRoot, 'node_modules', 'preact');
+      if (!fs.existsSync(hijacked)) continue;
+      // If the host package resolves a Preact at all, it must be its OWN — never
+      // a symlink into the plugin directory.
+      const stat = fs.lstatSync(hijacked);
+      expect(stat.isSymbolicLink() && fs.realpathSync(hijacked) === fs.realpathSync(pluginPreact)).toBe(false);
+    }
   });
 });
 
@@ -199,12 +229,12 @@ describe('optional peer dependencies', () => {
       JSON.stringify({
         name: 'x',
         version: '1.0.0',
-        scripts: { build: 'bun build src/index.html --outdir dist --target browser' },
+        scripts: { build: 'bun build src/entry.ts --outfile dist/app.js --target browser' },
         peerDependencies: { '@ompchamber/ui': '*' },
         peerDependenciesMeta: { '@ompchamber/ui': { optional: true } },
       }),
     );
-    writeFile('src/index.html', '<!doctype html><html><body>ok</body></html>');
+    writeFile('src/entry.ts', 'export default { ok: true };');
     const result = await buildPanelPlugin(root, manifest);
     // The peer is absent from npm, so an install that tried to fetch it would
     // fail here — this is the regression guard for declaring it as a dependency.
@@ -222,12 +252,12 @@ describe('peer dependency declaration', () => {
       JSON.stringify({
         name: 'x',
         version: '1.0.0',
-        scripts: { build: 'bun build src/index.html --outdir dist --target browser' },
+        scripts: { build: 'bun build src/entry.ts --outfile dist/app.js --target browser' },
         peerDependencies: { '@ompchamber/definitely-not-published': '*' },
         peerDependenciesMeta: { '@ompchamber/definitely-not-published': { optional: true } },
       }),
     );
-    writeFile('src/index.html', '<!doctype html><html><body>ok</body></html>');
+    writeFile('src/entry.ts', 'export default { ok: true };');
 
     const result = await buildPanelPlugin(root, manifest);
     expect(result.status).toBe('built');

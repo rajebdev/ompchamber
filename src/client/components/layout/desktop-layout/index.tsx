@@ -15,6 +15,7 @@ import { useSidebarData } from '@/client/hooks/chat/omp/session-list';
 import { DEFAULT_LEFT_PANEL_WIDTH, MAX_LEFT_PANEL_WIDTH, MIN_LEFT_PANEL_WIDTH, type EditorWidthMode } from '@/shared/lib/workspace/panel-widths';
 import { ResizeHandle } from '@/client/components/layout/desktop-layout/ResizeHandle';
 import { useChamberEvent, useWindowEvent } from '@/client/hooks/ui/window-event';
+import { PluginBootstrap } from '@/client/lib/plugins/bootstrap';
 import { WORKSPACE_KEY_BINDINGS } from '@/shared/lib/workspace/keymap';
 import { resolveBinding } from '@/shared/lib/ui/key-binding';
 
@@ -148,6 +149,19 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
     setShowRightPanel(!showRightPanel);
   };
 
+  /**
+   * Open a plugin's view in the editor column.
+   *
+   * The column is the SECOND place a view can live, so this is the one place
+   * that knows about both: it makes the plugin the active right panel (which is
+   * what the column resolves against) and opens the editor column. There is no
+   * tab to add — the plugin takes the whole surface.
+   */
+  const handleOpenPluginPanel = (panelKey: string) => {
+    setActiveRightPanel(panelKey);
+    setUserToggledEditor(true);
+  };
+
   const handleToggleEditor = () => {
     setUserToggledEditor(!showEditor);
     // The editor panel keeps its own remembered width per tab kind, so a
@@ -175,17 +189,18 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
           {/* Right stack: top navbar + resizable workspace (the group's filler) */}
           <Panel id="main-right-stack" filler minSize={0}>
             <div className="flex flex-col h-full">
+              <PluginBootstrap workspacePath={activeProjectPath} />
               <TopNavbar
                 sessionTitle={sessionTitle}
                 showLeftPanel={showLeftPanel}
                 showEditor={showEditor}
                 showRightPanel={showRightPanel}
                 streamStatus={streamStatus}
-                workspacePath={activeProjectPath}
                 onSwitchToMobile={onSwitchToMobile}
                 onToggleEditor={handleToggleEditor}
                 onToggleRightPanel={handleToggleRightPanel}
                 onToggleLeftPanel={() => handleToggleLeftPanel(!showLeftPanel)}
+                onOpenPluginPanel={handleOpenPluginPanel}
               />
 
               <WorkspacePanels

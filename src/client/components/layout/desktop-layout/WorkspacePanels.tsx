@@ -4,8 +4,7 @@ import type { ReactNode, RefObject } from 'preact/compat';
 import { Group, Panel, type PanelImperativeHandle } from '@/client/components/layout/desktop-layout/resizer';
 import { ChatTimeline } from '@/client/components/workspace/chat-timeline/index';
 import { getDesktopPanelView } from '@/client/components/common/lazy-panels';
-import { PluginPanelView } from '@/client/components/workspace/panel-host/view';
-import { usePanelRegistry } from '@/client/hooks/workspace/panel-registry';
+import { usePluginPanels, PluginPanelBody } from '@/client/components/workspace/plugin-panel/resolve';
 import { pluginKeyOf } from '@/shared/lib/workspace/panel-ids';
 import { RightActivityBar } from '@/client/components/layout/RightActivityBar';
 import { ResizeHandle } from '@/client/components/layout/desktop-layout/ResizeHandle';
@@ -114,23 +113,24 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
     [viewScope],
   );
 
-  // Plugin-contributed panels come from the registry, not from the built-in
-  // list: they are installed and removed at runtime, so the bar and the stack
-  // read the same live payload rather than a compile-time union.
-  const { panels: pluginPanels } = usePanelRegistry();
+  // Plugin-contributed panels come from the registry AND the loaded bundles:
+  // the registry says which plugins are installed, the slots say which
+  // components registered. A plugin whose bundle has not loaded yet has no
+  // component, so it is absent here and its panel key renders the notice.
+  const { panels: pluginPanels } = usePluginPanels(activeRightPanel);
   const activePluginKey = pluginKeyOf(activeRightPanel);
+  const activePlugin = activePluginKey
+    ? pluginPanels.find((entry) => entry.panelKey === activePluginKey)
+    : undefined;
 
   // Separators present in this group, which also consume width.
   const handleCount = (showEditor ? 1 : 0) + (showRightPanel ? 1 : 0);
 
   // A plugin panel is not in the built-in maps, so its floor and open size come
-  // from its own manifest under the chamber's own bounds. Resolved once here
-  // rather than at each use, so the editor's sibling reservation and the right
-  // panel's own floor can never be computed from different values.
-  const activePluginPanel = activePluginKey
-    ? pluginPanels.find((entry) => entry.panelKey === activePluginKey)
-    : undefined;
-  const pluginWidths = activePluginPanel ? resolvePluginPanelWidths(activePluginPanel) : null;
+  // from its own declared sizing under the chamber's own bounds. Resolved once
+  // here rather than at each use, so the editor's sibling reservation and the
+  // right panel's own floor can never be computed from different values.
+  const pluginWidths = activePlugin ? resolvePluginPanelWidths(activePlugin) : null;
   const rightPanelMin = pluginWidths?.min ?? MIN_RIGHT_PANEL_WIDTHS[activeRightPanel as RightPanelType];
 
   const editorWidth = resolvePanelWidth({
@@ -205,6 +205,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
           <PanelSuspense>
             <Editor
               className="w-full h-full"
+              activeEditorPanelKey={activePluginKey}
               openedFiles={openedFiles}
               activeFileId={activeFileId}
               onSelectFile={onSetActiveFileId}
@@ -241,15 +242,12 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
               );
             })}
             {/* A plugin panel is not in `rightViews`: its component comes from
-                the registry at render time, and only the active one is mounted
-                — a hidden plugin frame is a plugin process running for nobody. */}
+                the loaded bundle, and only the active one is mounted — a hidden
+                plugin is a component nobody is looking at. */}
             {activePluginKey ? (
-              <PluginPanelView
-                key={activePluginKey}
-                panelKey={activePluginKey}
-                active
-                workspacePath={activeProjectPath ?? null}
-              />
+              <div className="w-full h-full">
+                <PluginPanelBody panelKey={activePluginKey} />
+              </div>
             ) : null}
           </PanelSuspense>
         </Panel>

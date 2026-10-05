@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { FileIcon } from '@/client/components/common/file-icon';
-import { ChevronDown, GitCompare, Puzzle, X } from 'lucide-preact';
+import { ChevronDown, GitCompare, X } from 'lucide-preact';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 import { getGitStatusInfo } from '@/shared/lib/fs/git-status';
 
@@ -73,9 +73,7 @@ export function EditorTabs({ openedFiles, activeFileId, onSelectFile, onCloseFil
               }`}
               title={file.path}
             >
-              {file.isPluginPanel ? (
-                <Puzzle size={14} className={isActive ? 'text-info flex-shrink-0' : 'text-info/70 flex-shrink-0'} />
-              ) : isDiff ? (
+              {isDiff ? (
                 <GitCompare size={14} className={isActive ? 'text-info flex-shrink-0' : 'text-info/70 flex-shrink-0'} />
               ) : (
                 <FileIcon name={file.name} size={14} className={isActive ? 'flex-shrink-0' : 'opacity-60 flex-shrink-0'} />
