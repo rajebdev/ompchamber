@@ -22,8 +22,7 @@
       "@ompchamber/plugin-sdk": ["./packages/plugin-sdk/src/index.ts"],
       "@ompchamber/ui": ["./packages/ui/src/index.tsx"],
       "@ompchamber/ui/components": ["./packages/ui/src/components.tsx"],
-      "@ompchamber/ui/styles.css": ["./packages/ui/src/styles.css"],
-      "@ompchamber/plugin-build": ["./packages/plugin-build/src/index.ts"]
+      "@ompchamber/ui/styles.css": ["./packages/ui/src/styles.css"]
     },
     "types": ["bun-types"],
     "skipLibCheck": true,

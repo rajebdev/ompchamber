@@ -431,7 +431,13 @@ The packages themselves live in `packages/`:
 |---|---|---|
 | `packages/plugin-sdk` | yes | The bridge contract and its two helpers. |
 | `packages/ui` | yes | The provider, the hooks, the components, the stylesheet. |
-| `packages/plugin-build` | no (internal) | `chamberPackagePaths()` / `chamberPackageDirs()` — where the chamber finds the other two to link. |
+
+`packages/` is the development home of the two published packages; it is **not**
+what the chamber reads at runtime. The chamber resolves them with
+`Bun.resolveSync` from its own tree, which answers both shapes: a checkout (via
+the `workspaces` map) and a published install (via `node_modules`). A fixed path
+would be wrong for one of them — the app's `files` list does not ship `packages/`,
+and a plugin cannot fetch these from a registry on its own.
 
 The two published packages are released by
 `.github/workflows/publish-plugins.yml`, on a `plugin-sdk/vX.Y.Z` or `ui/vX.Y.Z`

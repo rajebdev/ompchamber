@@ -6,7 +6,6 @@
       "name": "ompchamber",
       "dependencies": {
         "@fontsource/fira-code": "^5.3.0",
-        "@ompchamber/plugin-build": "workspace:*",
         "@ompchamber/plugin-sdk": "workspace:*",
         "@ompchamber/ui": "workspace:*",
         "@shikijs/langs": "^4.4.3",
@@ -44,16 +43,6 @@
         "happy-dom": "^20.14.5",
         "semantic-release": "^25.0.9",
         "typescript": "~5.8.2",
-      },
-    },
-    "packages/plugin-build": {
-      "name": "@ompchamber/plugin-build",
-      "version": "1.0.0",
-      "dependencies": {
-        "@ompchamber/plugin-sdk": "workspace:*",
-        "@tailwindcss/postcss": "^4.1.14",
-        "postcss": "^8.5.16",
-        "tailwindcss": "^4.1.14",
       },
     },
     "packages/plugin-sdk": {
@@ -141,8 +130,6 @@
     "@octokit/request-error": ["@octokit/request-error@7.1.2", "", { "dependencies": { "@octokit/types": "^18.0.0" } }, "sha512-XZRuT3xZ84D3gYErI1DZvhJ33dCWVV6uzBtWkaBB4TvA/L6eOeTZodxLFVB44bBEEo3vEx7y00UfX1tBLrtLRg=="],
 
     "@octokit/types": ["@octokit/types@18.0.0", "", { "dependencies": { "@octokit/openapi-types": "^29.0.1" } }, "sha512-l6bAF43PNxkJp6g+W4PjoUSSkxHomXw2nOum5CTftJz1NlV3vu93NImgOYtLf6CbBUb5j+fiuzW0PPQ5JTSvZA=="],
-
-    "@ompchamber/plugin-build": ["@ompchamber/plugin-build@workspace:packages/plugin-build"],
 
     "@ompchamber/plugin-sdk": ["@ompchamber/plugin-sdk@workspace:packages/plugin-sdk"],
 

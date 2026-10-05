@@ -18,10 +18,10 @@
  *   and `package.json` from the cwd of the build, so building elsewhere would
  *   silently fail to resolve the plugin's own dependencies.
  * - **`@ompchamber/*` is linked into the plugin's `node_modules` before the
- *   build.** The SDK and the UI kit are workspace packages inside this checkout,
- *   so a plugin cloned into the marketplace cannot resolve them from its own
- *   install — `bun install` would have to fetch them from a registry that does
- *   not carry them. Linking them is the boring answer that works for every
+ *   build.** The SDK and the UI kit are installed packages, so a plugin cloned
+ *   into the marketplace cannot resolve them from its own install — `bun install`
+ *   would have to fetch them from a registry, and the chamber must link the
+ *   copies IT runs with. Linking is the boring answer that works for every
  *   bundler a plugin might use, rather than only for `bun build`: a `--preload`
  *   resolver was measured NOT to reach the CLI's build at all (Bun 1.4.2), and
  *   `BUN_OPTIONS` breaks `bun run` itself.
@@ -50,15 +50,40 @@
  */
 
 import { mkdir, rm, stat, symlink } from 'fs/promises';
-import { join, relative, resolve } from 'path';
+import { dirname, join, relative, resolve } from 'path';
 import type { PanelPluginManifest } from '@/shared/types';
 import { pathExists } from '@/server/lib/omp/core/paths';
 import { resolveBunBin } from '@/server/lib/lifecycle/bun';
 import { runShell } from '@/server/lib/fs/shell';
-import { chamberPackageDirs } from '@ompchamber/plugin-build';
 
 /** Where a built plugin's output lands, relative to the plugin root. */
 export const PLUGIN_BUILD_DIR = 'dist';
+
+/**
+ * The `@ompchamber/*` packages a plugin may import, as installed on THIS machine.
+ *
+ * Resolved at runtime rather than listed as paths, because the two install shapes
+ * put them in different places: a source checkout has `packages/`, while a
+ * published install has them under `node_modules/` with `packages/` not shipped
+ * at all. `Bun.resolveSync` answers both — it consults the `workspaces` map in a
+ * checkout and `node_modules` in an install.
+ *
+ * Resolved from THIS module's directory, not the cwd: a plugin's build runs with
+ * the plugin's directory as its working directory, so a cwd-relative lookup
+ * would search the marketplace and find nothing.
+ */
+export function chamberPackageDirs(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of ['@ompchamber/plugin-sdk', '@ompchamber/ui']) {
+    try {
+      out[name] = dirname(Bun.resolveSync(`${name}/package.json`, import.meta.dir));
+    } catch {
+      // Not installed: the plugin's build fails with its own module-not-found,
+      // which names the specifier the plugin actually wrote.
+    }
+  }
+  return out;
+}
 
 /**
  * The outcome of a build attempt.

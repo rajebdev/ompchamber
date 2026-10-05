@@ -25,6 +25,7 @@ import { join } from 'node:path';
 
 import {
   buildPanelPlugin,
+  chamberPackageDirs,
   describeInstallFailure,
   linkChamberPackages,
   PLUGIN_BUILD_DIR,
@@ -230,5 +231,26 @@ describe('peer dependency declaration', () => {
 
     const result = await buildPanelPlugin(root, manifest);
     expect(result.status).toBe('built');
+  });
+});
+
+describe('chamberPackageDirs', () => {
+  test('resolves the packages the chamber actually runs with', () => {
+    const dirs = chamberPackageDirs();
+    // Resolved at runtime, not listed as paths: a source checkout keeps them
+    // under `packages/` while a published install has them in `node_modules`,
+    // and `packages/` is not shipped at all. `Bun.resolveSync` answers both.
+    expect(Object.keys(dirs).sort()).toEqual(['@ompchamber/plugin-sdk', '@ompchamber/ui']);
+    for (const dir of Object.values(dirs)) {
+      expect(fs.existsSync(join(dir, 'package.json'))).toBe(true);
+    }
+  });
+
+  test('every resolved directory is one a symlink can point at', () => {
+    // The link target must be the package ROOT, not its entry file — linking a
+    // `.ts` file would leave the specifier's subpath exports unresolvable.
+    for (const dir of Object.values(chamberPackageDirs())) {
+      expect(fs.lstatSync(dir).isDirectory()).toBe(true);
+    }
   });
 });
