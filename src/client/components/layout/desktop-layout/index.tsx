@@ -181,6 +181,7 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
                 showEditor={showEditor}
                 showRightPanel={showRightPanel}
                 streamStatus={streamStatus}
+                workspacePath={activeProjectPath}
                 onSwitchToMobile={onSwitchToMobile}
                 onToggleEditor={handleToggleEditor}
                 onToggleRightPanel={handleToggleRightPanel}

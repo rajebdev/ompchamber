@@ -57,46 +57,80 @@ Two consequences worth knowing:
   other host-provided runtime declares itself this way, so a plugin author
   recognises the shape and tooling treats it correctly.
 
-## One marketplace
+## One store, one working marketplace
 
 ```
-~/.ompchamber/marketplace/
-├── marketplace.json              the catalog — what is registered
+~/.ompchamber/marketplace/          the WORKING marketplace (installed plugins)
+├── marketplace.json                the catalog — what is registered
 └── plugins/
-    └── session-info/             a plugin (a Preact + Bun package)
-        ├── package.json          manifest + build script + preact
-        ├── tsconfig.json         jsxImportSource: "preact"
+    └── session-info/               an installed plugin (a Preact + Bun package)
+        ├── package.json            manifest + build script + preact
+        ├── tsconfig.json           jsxImportSource: "preact"
         ├── src/
-        │   ├── index.html        the panel document
-        │   ├── main.tsx          its Preact entry
-        │   └── scratch.html      a second panel
-        └── dist/                 the build output the chamber serves
+        │   ├── index.html          the panel document
+        │   ├── main.tsx            its Preact entry
+        │   └── scratch.html        a second panel
+        └── dist/                   the build output the chamber serves
             ├── index.html
             ├── index-<hash>.js
             └── index-<hash>.css
+
+<package>/marketplace/              the STORE, shipped with the app
+├── marketplace.json
+└── plugins/
+    └── session-info/               offered, NOT installed
 ```
 
-`dist/` is gitignored, so it is never committed: the chamber builds it. A
-bundled plugin is built during the seed, and an installed one is built during the
-install — either way the manifest's `entry` names a file inside `dist/`, and the
-panel pane offers **Rebuild** whenever it is missing.
+`dist/` is gitignored, so it is never committed: the chamber builds it. A plugin
+is built when it is INSTALLED — never at boot — and the manifest's `entry` names
+a file inside `dist/`, with the pane offering **Rebuild** whenever it is missing.
 
-There is one marketplace, and it holds two kinds of plugin:
+**The bundled marketplace is a store, not a preinstalled set.** A plugin the
+package ships is available in Settings → Panel Plugins and contributes nothing
+until you install it, which is the shape VS Code uses: an extension is not
+installed until you install it. A fresh chamber therefore starts with an empty
+activity bar, and nothing is ever copied into your data directory behind your
+back.
 
-- **Bundled.** The defaults ship with the app in `<package>/marketplace/` and are
-  copied into `~/.ompchamber/marketplace/` **once**, on first start. The copy is
-  marker-guarded (`.seeded`), so a plugin you remove stays removed rather than
-  being restored on the next boot.
-- **Installed.** A git URL cloned into `plugins/` and registered in the catalog.
-  Afterwards it is indistinguishable from a bundled one — same directory shape,
-  same catalog entry, same scan.
+Install takes two sources and they converge:
 
-The working copy lives in your data directory rather than inside the package
-because a globally installed package sits in a read-only `node_modules` and the
-update flow replaces it outright: a plugin installed there would vanish on the
-next upgrade.
+- **Bundled.** The plugin's directory is COPIED out of `<package>/marketplace/`
+  into the working marketplace and built there. Copying rather than serving from
+  the package is required, not stylistic: a globally installed package sits in a
+  read-only `node_modules`, the update flow replaces it outright, and a build
+  would write into it.
+- **Git URL.** A shallow clone into a staging directory, then the same commit
+  step.
 
-`OMPCHAMBER_MARKETPLACE_DIR` overrides the location (useful for testing).
+Afterwards the two are indistinguishable — same directory shape, same catalog
+entry, same scan — which is what lets the pane treat them identically.
+
+The working copy lives in your data directory because that is the only location
+both install shapes can write.
+
+`OMPCHAMBER_MARKETPLACE_DIR` overrides the working location and
+`OMPCHAMBER_BUNDLED_MARKETPLACE_DIR` the store (both useful for testing).
+
+## Installing, enabling, removing
+
+Three separate things, and the pane keeps them separate:
+
+| Action | What it changes |
+|---|---|
+| **Install** | Copies/clones the plugin into the working marketplace, builds it, registers it. |
+| **Disable** | Flips a flag. The files stay; the plugin contributes NO panel — no activity-bar button, no header button, no editor tab — and its frames are no longer served. |
+| **Remove** | Deletes the directory and its catalog entry. Re-installing is the only way back. |
+
+Enablement is stored in the chamber's own database, not in the plugin directory:
+the plugin's files are a third-party repository whose format the chamber does not
+own. It is stored as the DISABLED set, so absent means enabled — which is what
+makes a freshly installed plugin live immediately and keeps a database written
+before this feature from switching everything off.
+
+Hiding is a fourth, unrelated axis: **right-click the activity bar** to hide or
+show a view (VS Code's own affordance). A hidden view keeps its row in that menu
+with the checkbox off, which is where it is switched back on. The built-in views
+are pinned there — the panel toggles in the navbar are what control those.
 
 ## Building
 
@@ -139,30 +173,38 @@ with.
 A plugin with no `package.json` is served as-is. That is deliberate: a
 hand-written HTML plugin keeps working.
 
-## Installing from a git URL
+## Installing
 
-Settings → **Panel Plugins** → paste a URL → **Install**.
+Settings → **Panel Plugins**. Two ways in, one install step out:
+
+- **Available from OMPChamber** — the bundled store. **Install** copies that
+  plugin out of the package and builds it.
+- **Install from a git URL** — paste a URL → **Install**.
 
 The repository root must carry a manifest — an `ompchamber` key in
 `package.json` (the usual case for a package), or a standalone `ompchamber.json`.
 Accepted sources are what `git clone` accepts: `https://`, `ssh://`, the
 `git@host:path` form, and a local path.
 
-The install is a shallow clone into a **staging directory outside `plugins/`**,
-and it is moved into place only after its manifest validates. A clone that fails
-halfway, or a repository that is not a plugin, therefore leaves the marketplace
-exactly as it was instead of adding a directory the scan then reports as broken.
-The destination name comes from the manifest's `id`, not from the URL — the
-repository's name says nothing about the plugin's identity.
+Either source stages OUTSIDE `plugins/` (a clone in a staging directory, a copy
+in one) and moves into place only after its manifest validates. A clone that
+fails halfway, or a repository that is not a plugin, therefore leaves the
+marketplace exactly as it was instead of adding a directory the scan then reports
+as broken. The destination name comes from the manifest's `id`, not from the URL
+or the directory name — those say nothing about the plugin's identity.
 
-Install clones, **builds**, and only then registers. A package whose build fails
+Install stages, **builds**, and only then registers. A package whose build fails
 is left on disk — so **Rebuild** can fix it — but is not written to the catalog,
 which is why the pane reports it as *not built* rather than as a broken install.
 
 Installing writes two things, and **Remove** undoes both: the directory and the
 catalog entry. Removing only the directory would leave the catalog naming a path
 that no longer exists, which the scan reports as a fault — the pane showing your
-own successful removal as an error.
+own successful removal as an error. Remove also clears the plugin's disabled
+flag, so re-installing the same id comes back enabled rather than silently off.
+
+**Disable** is not Remove: it leaves the files in place and stops the plugin
+contributing. Use it to switch a plugin off without losing a hand-edited build.
 
 ## `marketplace.json`
 
@@ -231,15 +273,45 @@ a hand-written one — and is read first.
 | `version` | yes | Free-form string; displayed, not parsed. |
 | `panels[].id` | yes | Unique within the plugin. |
 | `panels[].title` | yes | The activity-bar tooltip / tab label. |
-| `panels[].position` | yes | `"right"` or `"editor"`. |
+| `panels[].position` | yes | `"right"`, `"editor"` or `"header"`. See below. |
 | `panels[].entry` | yes | HTML file, relative to the plugin root — for a package, a file inside `dist/`. |
 | `panels[].icon` | no | Image, relative to the plugin root. Omit for a default mark. |
 | `panels[].minWidth` | no | Floor in px. Never below 320. |
 | `panels[].defaultFraction` | no | Share of the panel group to open at. Clamped to 0.2–0.9. |
 | `panels[].capabilities` | no | Defaults to `[]`. See below. |
 
-One plugin can contribute several panels, in either position — `entry` is per
-panel, so the views share the plugin's manifest and its assets.
+### Positions
+
+| Position | Where it appears |
+|---|---|
+| `right` | A button in the right-panel activity bar; the view opens in the right panel. |
+| `editor` | A tab in the editor panel — VS Code's webview-panel shape. |
+| `header` | A button in the DESKTOP navbar that expands into a dropdown; a stats readout that opens on click. |
+
+**A plugin may declare at most ONE panel per position**, and the manifest is
+refused (with the reason shown in the pane) if it declares two. The layout gives
+each plugin exactly one activity-bar button, one navbar button and one editor
+tab, so a second `right` panel would be unreachable — and two buttons on one
+plugin would fight over one width slot. A plugin may declare up to three panels,
+one in each slot:
+
+```json
+"panels": [
+  { "id": "main",  "title": "Demo",       "position": "right",  "entry": "dist/index.html",  "capabilities": ["theme", "session-state"] },
+  { "id": "stats", "title": "Demo Stats", "position": "header", "entry": "dist/stats.html",  "capabilities": ["theme"] },
+  { "id": "notes", "title": "Demo Notes", "position": "editor", "entry": "dist/notes.html" }
+]
+```
+
+`position` decides where a panel appears BY DEFAULT, not what it is: the editor
+slot is generic, and the navbar's panel launcher offers every panel — a
+right-panel view can be opened in the editor column without the plugin declaring
+it twice. A `header` panel is the one exception: it is a dropdown, not a view,
+so it is not offered as an editor tab.
+
+`header` panels are DESKTOP ONLY. A phone's navbar has no room for them and the
+phone's right-side drawer already carries every view, so the mobile navbar does
+not render them.
 
 A panel's UI id is `plugin:<plugin id>/<panel id>` — that is what the layout
 stores, what the width map keys on, and what appears in the activity bar.

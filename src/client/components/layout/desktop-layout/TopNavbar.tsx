@@ -1,6 +1,7 @@
 import { LayoutTemplate, MoreHorizontal, PanelLeft, PanelRight, PanelRightClose, Smartphone } from 'lucide-preact';
 import { PWAInstallButton } from '@/client/components/common/PWAInstallButton';
 import { PanelLauncher } from '@/client/components/layout/desktop-layout/PanelLauncher';
+import { HeaderPanelButtons } from '@/client/components/layout/desktop-layout/HeaderPanelButtons';
 import { StreamStatusDot } from '@/client/components/common/StreamStatusDot';
 import type { AgentStreamStatus } from '@/shared/lib/chat/omp/status';
 import { WORKSPACE_KEY_BINDINGS, type WorkspaceCommand } from '@/shared/lib/workspace/keymap';
@@ -24,6 +25,8 @@ interface TopNavbarProps {
   showRightPanel: boolean;
   /** Live agent event stream status; the indicator is WebSocket-only. */
   streamStatus?: AgentStreamStatus;
+  /** The active workspace, forwarded to a plugin header panel's frame. */
+  workspacePath?: string | null;
   onSwitchToMobile?: () => void;
   onToggleEditor: () => void;
   onToggleRightPanel: () => void;
@@ -36,6 +39,7 @@ export function TopNavbar({
   showEditor,
   showRightPanel,
   streamStatus,
+  workspacePath,
   onSwitchToMobile,
   onToggleEditor,
   onToggleRightPanel,
@@ -85,6 +89,7 @@ export function TopNavbar({
       <div className="flex items-center space-x-3 titlebar-no-drag">
         <div className="flex items-center space-x-1">
           <StreamStatusDot status={streamStatus} />
+          <HeaderPanelButtons workspacePath={workspacePath ?? null} />
           <PanelLauncher />
           {onSwitchToMobile && (
             <button

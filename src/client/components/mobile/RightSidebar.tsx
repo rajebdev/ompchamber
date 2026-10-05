@@ -1,15 +1,16 @@
 import { useState } from 'preact/hooks';
 import { Suspense } from 'preact/compat';
-import type { ReactNode } from 'preact/compat';
-import { BarChart3, BookOpen, Bot, ClipboardList, Files, GitBranch, Globe, Layers, ListTodo, Puzzle, Search, Terminal, X } from 'lucide-preact';
+import { X, Puzzle } from 'lucide-preact';
 import { usePanelRegistry } from '@/client/hooks/workspace/panel-registry';
+import { useHiddenPanels } from '@/client/hooks/workspace/panel-visibility';
 import { PluginPanelView } from '@/client/components/workspace/panel-host/view';
 import { panelAssetUrl } from '@/shared/lib/panels/asset-base';
 import { LazyBrowserPanel, LazyContextPanel, LazyFileExplorer, LazyGitPanel, LazyPlanPanel, LazySearchPanel, LazyTerminalPanel, LazyTodoPanel, LazyUsagePanel, LazyUserBrowserPanel, LazyWikiPanel } from '@/client/components/common/lazy-panels';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
 import { useResolvedRepo } from '@/client/hooks/workspace/repo-scope';
 import { GIT_STATUS_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
-import { RIGHT_PANEL_TYPES, type RightPanelType } from '@/shared/lib/workspace/right-panels';
+import { RIGHT_PANEL_TYPES } from '@/shared/lib/workspace/right-panels';
+import { PANEL_META } from '@/client/components/layout/panel-meta';
 
 interface MobileRightSidebarProps {
   enabled?: boolean;
@@ -22,24 +23,15 @@ interface MobileRightSidebarProps {
 }
 
 /**
- * Wording per view: the title is the desktop activity bar's, the label is the
- * short chip the phone shows beside the icon. The *order* is not restated here
- * — it comes from RIGHT_PANEL_TYPES, so both layouts list the views the same way.
+ * The phone's right-side drawer.
+ *
+ * Same views, same order and same titles as the desktop activity bar: the
+ * catalog and the meta table are shared, so the two layouts cannot list the
+ * views differently. Visibility is shared too — a view hidden from the desktop
+ * bar is hidden here, because that choice is about the CHAMBER, not about one
+ * layout — and a hidden view keeps its row in the desktop right-click menu,
+ * which is where it is switched back on.
  */
-const PANEL_META: Record<RightPanelType, { title: string; label: string; icon: ReactNode }> = {
-  context: { title: 'Context & Telemetry', label: 'Context', icon: <Layers size={14} className="flex-shrink-0" /> },
-  files: { title: 'Files Explorer', label: 'Files', icon: <Files size={14} className="flex-shrink-0" /> },
-  search: { title: 'Search Workspace', label: 'Search', icon: <Search size={14} className="flex-shrink-0" /> },
-  git: { title: 'GIT', label: 'GIT', icon: <GitBranch size={14} className="flex-shrink-0" /> },
-  terminal: { title: 'Bun Terminal', label: 'Terminal', icon: <Terminal size={14} className="flex-shrink-0" /> },
-  'user-browser': { title: 'Browser (Anda)', label: 'Browser', icon: <Globe size={14} className="flex-shrink-0" /> },
-  browser: { title: 'Browser Agent', label: 'Agent', icon: <Bot size={14} className="flex-shrink-0" /> },
-  usage: { title: 'Usage', label: 'Usage', icon: <BarChart3 size={14} className="flex-shrink-0" /> },
-  todo: { title: 'Todos', label: 'Todos', icon: <ListTodo size={14} className="flex-shrink-0" /> },
-  wiki: { title: 'Wiki', label: 'Wiki', icon: <BookOpen size={14} className="flex-shrink-0" /> },
-  plan: { title: 'Plan (sesi ini)', label: 'Plan', icon: <ClipboardList size={14} className="flex-shrink-0" /> },
-};
-
 export function MobileRightSidebar({
   enabled = true,
   rootPath,
@@ -53,7 +45,13 @@ export function MobileRightSidebar({
   // are right-panel views like any other, and the phone must not be a second
   // list that drifts from the desktop's.
   const { panels: pluginPanels } = usePanelRegistry();
-  const activePluginKey = pluginPanels.find((p) => p.panelKey === activeTab)?.panelKey ?? null;
+  // Visibility is the chamber's, not the layout's: a view hidden from the
+  // desktop bar is hidden here too, and the desktop right-click menu is where
+  // it is switched back on.
+  const [hidden] = useHiddenPanels();
+  const visibleBuiltIns = RIGHT_PANEL_TYPES.filter((panel) => !hidden.includes(panel));
+  const visiblePlugins = pluginPanels.filter((panel) => !hidden.includes(panel.panelKey));
+  const activePluginKey = visiblePlugins.find((p) => p.panelKey === activeTab)?.panelKey ?? null;
   // Same source the desktop activity bar uses — the Source Control view's own
   // repo pick, read shared so switching repos moves this dot too. Polls only
   // while this drawer is the mounted screen (the poll is visibility-gated).
@@ -76,7 +74,7 @@ export function MobileRightSidebar({
       >
 
         <div className="flex items-center space-x-1.5 overflow-x-auto no-scrollbar py-1">
-          {RIGHT_PANEL_TYPES.map((panel) => (
+          {visibleBuiltIns.map((panel) => (
             <button
               key={panel}
               type="button"
@@ -100,7 +98,7 @@ export function MobileRightSidebar({
               )}
             </button>
           ))}
-          {pluginPanels.map((panel) => (
+          {visiblePlugins.map((panel) => (
             <button
               key={panel.panelKey}
               type="button"

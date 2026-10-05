@@ -1,41 +1,41 @@
-import { AlertTriangle, Hammer, Loader2, Package, RefreshCw, Store } from 'lucide-preact';
+import { AlertTriangle, RefreshCw } from 'lucide-preact';
 import { PANELS_CHANGED_EVENT, usePanelPluginActions, usePanelRegistry } from '@/client/hooks/workspace/panel-registry';
-import { InstallForm, RemovePluginButton } from '@/client/components/settings/categories/panel-plugins/InstallForm';
+import { InstallForm } from '@/client/components/settings/categories/panel-plugins/InstallForm';
+import { AvailableList } from '@/client/components/settings/categories/panel-plugins/AvailableList';
+import { InstalledList } from '@/client/components/settings/categories/panel-plugins/InstalledList';
+import type { PanelRegistryEntry } from '@/shared/types';
 
 /**
- * The panel-plugin marketplace: what is installed, and how to change it.
+ * The panel-plugin marketplace: what is available, what is installed, and how
+ * to change either.
  *
- * There is one marketplace and it holds the bundled plugins plus anything
- * installed from a git URL, so this pane is the whole install surface — no
- * marketplace picker, because there is nothing to pick between.
+ * Three lists, and the split between them is the feature. **Available** is the
+ * bundled marketplace — a STORE, so a plugin the package ships is an offer and
+ * nothing more until the user installs it (VS Code's model). **Installed** is
+ * what is on disk, each row carrying the switch that turns its contributions on
+ * or off without deleting anything. Rejections are listed last, because a
+ * plugin that fails to load with no reason reads as a plugin that was never
+ * installed — the single most confusing failure this surface can have.
  *
- * Its most important job is reporting what it REFUSED. A plugin that fails to
- * load with no reason reads as a plugin that was never installed, which is the
- * single most confusing failure this surface can have — and an install writes
- * two things (a directory and a catalog entry), so a half-finished one has to
- * be visible rather than inferred.
+ * The installed rows come from the INSTALLED list rather than from the
+ * contributed panels: a plugin that is switched off publishes no panels, so a
+ * panel-derived list would drop the row the user needs to switch it back on.
  */
 export function PanelPluginsSection() {
-  const { panels, marketplaces, errors, plugins, ready } = usePanelRegistry();
+  const { panels, errors, plugins, catalog, ready } = usePanelRegistry();
   const actions = usePanelPluginActions();
 
   const refresh = () => window.dispatchEvent(new CustomEvent(PANELS_CHANGED_EVENT, { detail: { force: true } }));
-  const marketplace = marketplaces[0];
 
-  // The scan tags each rejection with its marketplace, so grouping is a value
-  // lookup. An untagged rejection is listed at the end rather than dropped.
-  const owned = panels.filter((panel) => !marketplace || panel.marketplace === marketplace.id);
-  const rejected = errors.filter((error) => !marketplace || error.marketplace === marketplace.id);
-  const unclaimed = errors.filter((error) => !error.marketplace);
-
-  // One row per PLUGIN, not per panel: a plugin may contribute several views,
-  // and removing is a per-directory action.
-  const byPlugin = new Map<string, typeof owned>();
-  for (const panel of owned) {
-    const list = byPlugin.get(panel.pluginId) ?? [];
+  // Contributions grouped by plugin, for the installed rows that have any.
+  const panelsByPlugin = new Map<string, PanelRegistryEntry[]>();
+  for (const panel of panels) {
+    const list = panelsByPlugin.get(panel.pluginId) ?? [];
     list.push(panel);
-    byPlugin.set(panel.pluginId, list);
+    panelsByPlugin.set(panel.pluginId, list);
   }
+
+  const available = catalog.filter((entry) => !entry.installed);
 
   return (
     <div className="space-y-4">
@@ -64,7 +64,7 @@ export function PanelPluginsSection() {
 
       {!ready ? <p className="text-xs text-ink/50">Reading…</p> : null}
 
-      {ready && owned.length === 0 && rejected.length === 0 && unclaimed.length === 0 ? (
+      {ready && available.length === 0 && plugins.length === 0 && errors.length === 0 ? (
         <div className="text-xs text-ink/60 space-y-1.5">
           <p>No panel plugins installed.</p>
           <p className="font-mono text-[11px] text-ink/45 leading-relaxed">
@@ -75,95 +75,20 @@ export function PanelPluginsSection() {
         </div>
       ) : null}
 
-      {byPlugin.size > 0 ? (
-        <div className="border border-ink/10 rounded">
-          <div className="px-3 py-2 border-b border-ink/10 flex items-center gap-2">
-            <Store size={14} className="text-ink/50 flex-shrink-0" />
-            <span className="text-sm font-medium text-ink">{marketplace?.name ?? 'Marketplace'}</span>
-            <span className="ml-auto text-[11px] text-ink/50">
-              {byPlugin.size} plugin{byPlugin.size === 1 ? '' : 's'}
-            </span>
-          </div>
-          {marketplace?.description ? (
-            <p className="px-3 pt-2 text-xs text-ink/60">{marketplace.description}</p>
-          ) : null}
-          <div className="p-3 space-y-2">
-            {[...byPlugin.entries()].map(([pluginId, pluginPanels]) => {
-              const status = plugins.find((entry) => entry.pluginId === pluginId);
-              return (
-              <div key={pluginId} className="border border-ink/10 rounded p-2.5">
-                <div className="flex items-center gap-2">
-                  <Package size={13} className="text-ink/50 flex-shrink-0" />
-                  <span className="text-xs font-medium text-ink">{pluginPanels[0].pluginName}</span>
-                  <span className="text-[11px] text-ink/50">v{pluginPanels[0].pluginVersion}</span>
-                  <span className="text-[10px] font-mono text-ink/40">{pluginId}</span>
-                  <span className="ml-auto">
-                    <span className="flex items-center gap-1">
-                      {status && !status.built ? (
-                        <button
-                          type="button"
-                          onClick={() => void actions.build(pluginId)}
-                          disabled={actions.busy !== null}
-                          title={status.reason ? `Rebuild — ${status.reason}` : 'Rebuild this plugin'}
-                          className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded border border-ink/15 hover:bg-ink/5 disabled:opacity-40"
-                        >
-                          {actions.busy === `build:${pluginId}` ? (
-                            <Loader2 size={11} className="animate-spin" />
-                          ) : (
-                            <Hammer size={11} />
-                          )}
-                          Rebuild
-                        </button>
-                      ) : null}
-                      <RemovePluginButton
-                        pluginId={pluginId}
-                        disabled={actions.busy !== null}
-                        onRemove={actions.remove}
-                      />
-                    </span>
-                  </span>
-                </div>
-                <div className="mt-1.5 space-y-1">
-                  {pluginPanels.map((panel) => (
-                    <div key={panel.panelKey} className="flex items-center gap-2 text-[11px]">
-                      <span className="text-ink/70">{panel.title}</span>
-                      <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-ink/10 text-ink/60">
-                        {panel.position}
-                      </span>
-                      <span className="font-mono text-ink/40 truncate">{panel.panelKey}</span>
-                      <span className="text-ink/45 ml-auto flex-shrink-0">
-                        {panel.capabilities.length > 0 ? panel.capabilities.join(', ') : 'no capabilities'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                {/* An unbuilt plugin is a distinct state from a rejected one:
-                    the manifest is fine and the build is what is missing, so
-                    the reason and the Rebuild action belong on the row. */}
-                {status && !status.built ? (
-                  <p className="mt-1.5 text-[11px] text-warning">
-                    Not built{status.reason ? ` — ${status.reason}` : ''}. Panels will 404 until it is built.
-                  </p>
-                ) : null}
-              </div>
-              );
-            })}
-          </div>
-        </div>
+      <AvailableList entries={available} busy={actions.busy} onInstall={actions.installBundled} />
+
+      {plugins.length > 0 ? (
+        <InstalledList
+          plugins={plugins}
+          panelsByPlugin={panelsByPlugin}
+          busy={actions.busy}
+          onBuild={actions.build}
+          onRemove={actions.remove}
+          onSetEnabled={actions.setEnabled}
+        />
       ) : null}
 
-      {rejected.map((error) => (
-        <div key={error.dir} className="border border-error/30 rounded p-3">
-          <div className="flex items-center gap-2 text-error">
-            <AlertTriangle size={14} className="flex-shrink-0" />
-            <span className="text-xs">Rejected</span>
-          </div>
-          <div className="mt-1 text-[11px] font-mono text-ink/50 break-all">{error.dir}</div>
-          <div className="mt-1 text-xs text-ink/70">{error.reason}</div>
-        </div>
-      ))}
-
-      {unclaimed.map((error) => (
+      {errors.map((error) => (
         <div key={error.dir + error.reason} className="border border-error/30 rounded p-3">
           <div className="flex items-center gap-2 text-error">
             <AlertTriangle size={14} className="flex-shrink-0" />
