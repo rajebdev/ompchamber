@@ -73,7 +73,15 @@ afterAll(() => {
 });
 
 afterEach(() => {
-  container?.remove();
+  // UNMOUNT, not just detach. A detached container keeps its Preact tree alive,
+  // and any effect that subscribes to a module-level store will re-render it —
+  // which throws once `afterAll` has restored the runner's globals and there is
+  // no `window`. The panel under test reads a plugin store now, so a detached
+  // tree is a live tree that fails in a later file.
+  if (container) {
+    render(null, container);
+    container.remove();
+  }
   statusUrls.length = 0;
 });
 
