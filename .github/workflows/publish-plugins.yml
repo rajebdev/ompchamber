@@ -17,6 +17,13 @@ name: Publish Plugin Packages
 # skips any package already at its version, so a job that died after the first
 # package finishes the second rather than failing on the first.
 #
+# **An app release does not republish these.** `release.yml` tags `vX.Y.Z` from
+# the app's Conventional Commits, and that tag does not match the patterns above
+# — so a `feat(panels)` commit ships the app and leaves the library alone. That
+# is the intended split: the packages change when their own version changes, not
+# on the app's cadence. To ship a library change, bump the version in its
+# package.json and push `plugin-sdk/vX.Y.Z` (or `ui/vX.Y.Z`).
+#
 # Required repo secret: NPM_TOKEN — a granular access token with "Read and write"
 # on BOTH @ompchamber packages, or an automation token. Bun reads it from
 # NPM_CONFIG_TOKEN, so the token never lands in a file.
