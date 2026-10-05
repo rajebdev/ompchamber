@@ -481,22 +481,59 @@ the palette changes.
 
 Maintainers only. `@ompchamber/plugin-sdk` and `@ompchamber/ui` are released
 independently of the app, because they are a library surface with its own
-cadence:
+cadence.
+
+**The version is derived from your commits — do not bump it by hand.**
+`.github/workflows/release-packages.yml` runs on every push to `main`, right
+beside the app's own release, and each package gets a release only from the
+commits that touched its directory:
 
 ```bash
-# 1. bump the version in the package you are releasing
-#    packages/plugin-sdk/package.json  or  packages/ui/package.json
-# 2. tag it — the tag must name the package and match its version
+# ships the app, and NOT the packages: no file under packages/ changed
+git commit -m 'feat(panels): add a slot'
+
+# ships the SDK (a minor bump) — and the UI kit, because the version moves with it
+git commit -m 'feat(sdk): add a capability flag' -- packages/plugin-sdk
+
+# ships the SDK as 2.0.0
+git commit -m 'feat(sdk)!: drop the old slot name
+
+BREAKING CHANGE: ...' -- packages/plugin-sdk
+```
+
+The version rules are the app's, reused rather than restated
+(`release/release-rules.js`), so `feat` is a minor, `fix` is a patch, `!` on a
+`feat`/`fix`/`perf`/`refactor` is a major, and `chore`/`docs`/`test`/`ci` alone
+release nothing. A package's release range starts at its own last tag, so a
+package that was not touched since then is left alone — and because the analyzer
+only ever sees that package's commits, an app `feat` in between cannot bump it.
+
+The release cuts a tag (`plugin-sdk/v2.0.0`) and a GitHub Release, writes the
+package's `CHANGELOG.md`, and commits the version into its `package.json`. That
+push is made with `GITHUB_TOKEN`, which raises no workflow run, so the workflow
+then **dispatches** `publish-plugins.yml` for exactly the packages it released.
+The two are one pipeline split in two for the same reason the app's are: the npm
+side keeps the `npm` environment's approval gate, the gates and the tarball
+check in one place.
+
+`ui` pins the SDK version at pack time (`workspace:*` becomes the exact version
+in the published tarball), so the packages are released in order and a failed
+SDK release stops the run rather than publishing a `ui` whose dependency is not
+on npm.
+
+**To publish by hand** — a re-run after a failed publish, or a package cut from
+a branch — bump the version in the package's `package.json`, push a matching tag,
+and the same workflow publishes it:
+
+```bash
 git tag plugin-sdk/v1.1.0     # or ui/v1.1.0
 git push origin plugin-sdk/v1.1.0
 ```
 
-The workflow refuses a tag whose version does not match the package, runs the
-same gates as CI, and then publishes. It is **idempotent**: a package already at
-that version on npm is skipped, so a run that died after the first package can be
-re-run (or dispatched manually with the `package` input) to finish the second
-rather than failing on the first. `ui` depends on `plugin-sdk` at the exact
-version, so a `both` run puts the SDK up first.
+A tag whose version does not match the package is refused. Publishing is
+**idempotent**: a package already at that version on npm is skipped, so a run
+that died after the first package can be re-run to finish the second rather than
+failing on the first.
 
 Requires the `NPM_TOKEN` environment secret — a granular token with read/write on
 both packages. A scoped package defaults to restricted, so each package's
@@ -531,9 +568,11 @@ the `workspaces` map) and a published install (via `node_modules`). A fixed path
 would be wrong for one of them — the app's `files` list does not ship `packages/`,
 and a plugin cannot fetch these from a registry on its own.
 
-The two published packages are released by
-`.github/workflows/publish-plugins.yml`, on a `plugin-sdk/vX.Y.Z` or `ui/vX.Y.Z`
-tag (or a manual run). See [Publishing](#publishing).
+The two published packages are released automatically by
+`.github/workflows/release-packages.yml` on every push to `main`, from the
+Conventional Commits that touched each package; `.github/workflows/publish-plugins.yml`
+is what puts them on npm, and also accepts a `plugin-sdk/vX.Y.Z` or `ui/vX.Y.Z`
+tag for a manual release. See [Publishing](#publishing).
 
 Copy its shape:
 

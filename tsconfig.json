@@ -4,7 +4,11 @@
     "module": "ESNext",
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
-    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ES2022"
+    ],
     "isolatedModules": true,
     "esModuleInterop": true,
     "jsx": "react-jsx",
@@ -16,19 +20,42 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "elkjs/lib/elk.bundled.js": ["./src/client/stubs/elkjs.ts"],
-      "elkjs": ["./src/client/stubs/elkjs.ts"],
-      "@ompchamber/plugin-sdk": ["./packages/plugin-sdk/src/index.ts"],
-      "@ompchamber/plugin-sdk/app": ["./packages/plugin-sdk/src/app.ts"],
-      "@ompchamber/ui": ["./packages/ui/src/index.tsx"],
-      "@ompchamber/ui/components": ["./packages/ui/src/components.tsx"]
+      "@/*": [
+        "./src/*"
+      ],
+      "elkjs/lib/elk.bundled.js": [
+        "./src/client/stubs/elkjs.ts"
+      ],
+      "elkjs": [
+        "./src/client/stubs/elkjs.ts"
+      ],
+      "@ompchamber/plugin-sdk": [
+        "./packages/plugin-sdk/src/index.ts"
+      ],
+      "@ompchamber/plugin-sdk/app": [
+        "./packages/plugin-sdk/src/app.ts"
+      ],
+      "@ompchamber/ui": [
+        "./packages/ui/src/index.tsx"
+      ],
+      "@ompchamber/ui/components": [
+        "./packages/ui/src/components.tsx"
+      ]
     },
-    "types": ["bun-types"],
+    "types": [
+      "bun-types"
+    ],
     "skipLibCheck": true,
     "noEmit": true,
     "allowArbitraryExtensions": true
   },
-  "include": ["src", "packages", "marketplace/plugins/*/src"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src",
+    "packages",
+    "marketplace/plugins/*/src"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }
