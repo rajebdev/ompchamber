@@ -5,6 +5,14 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.1](https://github.com/rajebdev/ompchamber/compare/v4.2.0...v4.2.1) — 2026-10-05
+
+### Fixed
+
+* **panels:** draw the navbar panel trigger with the plugin mark ([6fb0791](https://github.com/rajebdev/ompchamber/commit/6fb0791e938bf5a325cecaddd479fc637b28e10c))
+* **panels:** make a dangling catalog entry clearable from the pane ([e11e3aa](https://github.com/rajebdev/ompchamber/commit/e11e3aacbc53e12666938ee68bf9ab1c5d8daee8))
+* **ui:** let useSessionValue follow writes from other components ([de33442](https://github.com/rajebdev/ompchamber/commit/de33442f357bd6381c97af4b0758b647d5a0410a))
+
 ## [4.2.0](https://github.com/rajebdev/ompchamber/compare/v4.1.2...v4.2.0) — 2026-10-05
 
 ### Added
