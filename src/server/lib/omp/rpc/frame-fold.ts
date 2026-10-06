@@ -205,6 +205,12 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
         // the realtime layer republishes whichever workspace topics are
         // actually watched (see `republishWatchedWorkspaceTopics`).
         emitRealtimeSignal('workspace-dirty');
+        // The run's DATA moved too: a `todo` call commits its snapshot to the
+        // transcript, and the plan/telemetry/queue topics are read off the same
+        // session. Published at the turn boundary rather than per tool for the
+        // same reason the workspace topics are: one run emits many, and only
+        // the watched topics are re-read.
+        if (host.sessionId) emitRealtimeSignal('session-data-dirty', host.sessionId);
       } else {
         host.continuationGraceUntil = Date.now() + NON_TERMINAL_CONTINUATION_GRACE_MS;
       }

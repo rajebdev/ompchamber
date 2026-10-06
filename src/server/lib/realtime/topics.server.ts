@@ -19,7 +19,6 @@ import {
   TOPIC_SCHEDULE,
   TOPIC_SIDEBAR,
   TOPIC_SIDEBAR_STATUS,
-  TOPIC_UPDATES,
   TOPIC_USAGE,
   isValidTopic,
   reposTopic,
@@ -76,7 +75,6 @@ const EXACT_TOPICS = new Map<string, TopicDescriptor>([
   [TOPIC_USAGE, { resolve: () => globalDescriptor(TOPIC_USAGE).resolve(TOPIC_USAGE) }],
   [TOPIC_PANELS, { resolve: () => globalDescriptor(TOPIC_PANELS).resolve(TOPIC_PANELS) }],
   [TOPIC_MODELS, { resolve: () => globalDescriptor(TOPIC_MODELS).resolve(TOPIC_MODELS) }],
-  [TOPIC_UPDATES, { resolve: () => globalDescriptor(TOPIC_UPDATES).resolve(TOPIC_UPDATES) }],
 ]);
 
 /** Suffixes a `session:<id>:<suffix>` topic may carry. */
@@ -171,6 +169,7 @@ export function initRealtimeTopics(): void {
     else if (signal === 'panels-changed') publishTopic(TOPIC_PANELS);
     else if (signal === 'models-changed') publishTopic(TOPIC_MODELS);
     else if (signal === 'workspace-dirty') republishWatchedWorkspaceTopics();
+    else if (signal === 'session-data-dirty' && sessionId) republishSessionDataTopics(sessionId);
     else if (signal === 'repos-scanned' && root) publishTopic(reposTopic(root));
   });
 }
@@ -210,6 +209,23 @@ export function publishTopic(topic: string): void {
 export function republishWatchedWorkspaceTopics(): void {
   for (const topic of getRealtimeHub().activeTopics()) {
     if (topic.startsWith('git:') || topic.startsWith('fs:')) publishTopic(topic);
+  }
+}
+
+/**
+ * Republish every watched DATA topic of one session (`todos`, `plan`,
+ * `telemetry`, `queue`).
+ *
+ * The list is the SUBSCRIBED set, not all four: a tab that never opened the
+ * todo panel pays nothing, and the topic's own resolver is the only reader that
+ * knows how expensive it is (`todos` parses a whole transcript, `telemetry`
+ * scans it). Publishing unconditionally would run both for every turn of every
+ * session, which is the polling this channel replaced.
+ */
+export function republishSessionDataTopics(sessionId: string): void {
+  const prefix = `session:${sessionId}:`;
+  for (const topic of getRealtimeHub().activeTopics()) {
+    if (topic.startsWith(prefix)) publishTopic(topic);
   }
 }
 

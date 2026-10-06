@@ -20,8 +20,8 @@
 import { afterEach, describe, expect, test, vi } from 'bun:test';
 
 import { getRealtimeHub, registerTopics, resetRealtimeHub, type RealtimeConnection } from '@/server/lib/realtime/hub.server';
-import { publishTopic } from '@/server/lib/realtime/topics.server';
-import { gitTopic, type RealtimeServerFrame } from '@/shared/lib/realtime/protocol';
+import { publishTopic, republishSessionDataTopics } from '@/server/lib/realtime/topics.server';
+import { gitTopic, sessionQueueTopic, sessionTodosTopic, type RealtimeServerFrame } from '@/shared/lib/realtime/protocol';
 
 interface FakeConnection extends RealtimeConnection {
   frames: RealtimeServerFrame[];
@@ -99,5 +99,63 @@ describe('publishTopic', () => {
 
     expect(calls).toBe(2);
     expect(connection.frames[0]).toMatchObject({ t: 'delta', payload: { marker: 'registered' } });
+  });
+});
+
+describe('republishSessionDataTopics', () => {
+  /**
+   * The four `session:<id>:<suffix>` topics are served by a resolver and nothing
+   * else — no writer calls them. Without a republish they answered their
+   * snapshot and then never moved, so the todo/plan/telemetry/queue panels
+   * showed whatever existed when they subscribed and only a reload showed the
+   * new state. This is that gap.
+   */
+  test('every WATCHED data topic of one session is re-resolved', async () => {
+    vi.useFakeTimers();
+    const sessionId = 'sess-1';
+    const todos = sessionTodosTopic(sessionId);
+    const queue = sessionQueueTopic(sessionId);
+    const other = sessionTodosTopic('sess-2');
+    let todosCalls = 0;
+    let queueCalls = 0;
+    registerTopics(new Map([
+      [todos, { resolve: async () => { todosCalls += 1; return { todos: todosCalls }; } }],
+      [queue, { resolve: async () => { queueCalls += 1; return { queue: queueCalls }; } }],
+      [other, { resolve: async () => ({ todos: 'other' }) }],
+    ]));
+
+    const hub = getRealtimeHub();
+    const connection = connect();
+    hub.subscribe(connection, todos);
+    hub.subscribe(connection, queue);
+    for (let tick = 0; tick < 32; tick += 1) await Promise.resolve();
+    expect(connection.frames).toHaveLength(2);
+
+    connection.frames.length = 0;
+    republishSessionDataTopics(sessionId);
+    await flushPublish();
+
+    expect(connection.frames).toEqual([
+      { t: 'delta', topic: todos, seq: 1, payload: { todos: 2 } },
+      { t: 'delta', topic: queue, seq: 1, payload: { queue: 2 } },
+    ]);
+    // Another session's topic is untouched, and an UNWATCHED topic of this one
+    // is never resolved — the whole point of reading the subscribed set.
+    expect(todosCalls).toBe(2);
+    expect(queueCalls).toBe(2);
+  });
+
+  test('a session with nothing watched resolves nothing', async () => {
+    vi.useFakeTimers();
+    const sessionId = 'sess-1';
+    let calls = 0;
+    registerTopics(new Map([
+      [sessionTodosTopic(sessionId), { resolve: async () => { calls += 1; return null; } }],
+    ]));
+
+    republishSessionDataTopics(sessionId);
+    await flushPublish();
+
+    expect(calls).toBe(0);
   });
 });

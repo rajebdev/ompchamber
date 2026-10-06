@@ -4,7 +4,8 @@ One WebSocket per browser tab carries every server-originated event. Polling,
 per-session SSE, and the client-side event bus that mirrored server state are all
 replaced by a single hub with per-topic subscriptions.
 
-Status: **in progress**. See the phase table at the bottom.
+Status: **complete**. All four phases shipped; see the phase table at the
+bottom for what each one verified.
 
 ## Decisions
 
@@ -34,15 +35,14 @@ a new consistency model — every consumer already does "GET, repeat".
 // server → client
 { t: 'snapshot',   topic: string, seq: number, payload: unknown }
 { t: 'delta',      topic: string, seq: number, payload: unknown }
-{ t: 'invalidate', topic: string, seq: number }   // payload is large / rarely changing
 { t: 'pong',       id: number }
 { t: 'error',      code: string, message: string }
 ```
 
-`invalidate` exists for two concrete reasons: the `models` and `panels` payloads
-are large and change rarely, so shipping them whole on every change is waste; and
-some topics (`updates`) are produced by an external process that is cheaper to
-re-read than to stream.
+There is no `invalidate` frame: it was specified for payloads "too large to
+ship", and the two topics that would have used it (`models`, `panels`) are
+republished as an ordinary snapshot on demand instead. A third frame kind would
+have needed a client branch for no payload the snapshot path cannot carry.
 
 ## Topics
 
@@ -51,9 +51,9 @@ re-read than to stream.
 | `sidebar` | `loadSidebarData()` | stream-status writes, `invalidateOmpSidebarData` (`delete.server.ts:129`), session JSONL writes | `omp:session-updated`, `omp:workspace-updated`, `useStreamPoll` (8s), `useSidebarRevalidation` (1s), idle poll (30s) |
 | `sidebar:status` | status map only | every stream-status write | the fast-changing half of `sidebar` |
 | `session:<id>` | `buildWebState` + queue + modes | `EventFanout.emit` (`manager.ts:256`) | agent WS + SSE, `omp:stream-pending`, `omp:session-renamed`, `omp:session-title-hint`, `omp:chamber-mode`, `subagent_*` |
-| `session:<id>:todos` / `:plan` | reader per panel | turn boundary from the fold | `useChamberFetch` + `omp:session-updated` |
-| `session:<id>:telemetry` | `/api/telemetry/context` | `message_end` frame | `usePanelRefresh` (5s) |
-| `session:<id>:queue` | `listQueue` | queue writes | `QUEUE_POLL_INTERVAL_MS` (3s) |
+| `session:<id>:todos` / `:plan` | reader per panel | turn boundary from the fold (`session-data-dirty`) | `useChamberFetch` + `omp:session-updated` |
+| `session:<id>:telemetry` | `/api/telemetry/context` | turn boundary from the fold | `usePanelRefresh` (5s) |
+| `session:<id>:queue` | `listQueue` | every queue write, including the server's own delivery claim | `QUEUE_POLL_INTERVAL_MS` (3s) as a queue READ; the timer survives only as a delivery nudge |
 | `git:<root>\0<repo>` | `buildGitStatusMaps` | file-mutating tool completion | `GIT_STATUS_POLL_MS` (15s), `omp:files-mutated` |
 | `fs:<root>\0<repo>` | listing | same (invalidate) | `usePanelRefresh` (5s) |
 | `repos:<root>` | `?reposOnly=1` | discovery settles | `REPO_DISCOVERY_POLL_MS` (1.5s) |
@@ -63,6 +63,13 @@ re-read than to stream.
 | `models` | `loadModelsWithCache()` | `invalidateModelsCache` | `omp:models-updated` |
 | `wiki:<scope>` | wiki tree | mirror change | `usePanelRefresh` (5s) |
 | `btw:<id>` | `btwStateFor()` | `publishBtw` (`registry.server.ts:92`) | btw WS + SSE |
+
+The four `session:<id>:<suffix>` topics share ONE delta trigger, the
+`session-data-dirty` signal. It is raised at a turn boundary rather than per
+tool — a `todo` call commits its snapshot inside the run, so the transcript only
+tells the truth once the turn settles — and by every queue write. The
+republisher reads the SUBSCRIBED set, so a tab that never opened the todo panel
+pays nothing for a topic whose resolver parses a whole transcript.
 
 The socket's own connection status is deliberately **not** a topic: a transport
 reporting its own health over itself is self-referential. It stays local state
@@ -117,8 +124,8 @@ read off the socket object.
 |---|---|---|
 | 1 ✅ | Protocol, hub, route, client singleton, `useRealtimeTopic`; topics `sidebar` + `sidebar:status`; the sidebar's two polls deleted | **Done.** 4627 tests pass; lint/tsc-unused/350-line/build all clean; verified against a live server: `snapshot seq=2 (4 sessions)` → an external `omp -p` wrote a session → `delta seq=3 (5 sessions)` at 4.3s, with no polling |
 | 2 ✅ | `session:<id>` + `btw:<id>`; agent and BTW streams migrated; both WS + SSE routes and the `streamTransport` setting deleted | **Done.** 4599 tests pass; gates clean; verified against a live server: a real spawn + prompt produced **12 frames on ONE socket** (`snapshot` → `agent_start` → `turn_start` → `message_*` → `agent_end`), and `btw:<id>` answers its own snapshot |
-| 3 ✅ | Data topics: session todos/plan/telemetry/queue, the global `usage`/`schedule`/`panels`/`models`/`updates`, and the workspace `git`/`fs`/`repos`/`wiki` — with their client consumers (todo/plan/usage/wiki panels, files/git/search/terminal, schedule modal + badge, models invalidation, repo picker). The repo-discovery retry timer and the wiki's duplicate GET are gone | **Done.** 4598 tests pass; gates clean; verified against a live server: one socket delivered `sidebar` (4 folders), `git:<root>` (152 changes), `repos:<root>` (`pending:true` → a `delta` when the walk settled), and a `POST /api/folders` produced a fresh `sidebar` delta carrying the new folder |
-| 4 ✅ | The emptied `visibility-refresh`/`panel-refresh`/`revalidation-throttle`/`stream-poll` hooks and every server-origin `omp:*` event (`session-updated`, `workspace-updated`, `renamed`, `stream-pending`, `session-title-hint`, `chamber-mode`, `panels-changed`, `models-updated`, `schedule-updated`, `files-mutated`) plus the 3 `subagent_*` window events — replaced by server signals (structure writes) and a client signal bus (UI-local coordination). The ten UI-local navigation events stay, as the table below requires | **Done.** No server-origin event string remains; every file under 350 lines; 4598 tests pass; lint/tsc-unused/build clean |
+| 3 ✅ | Data topics: session todos/plan/telemetry/queue, the global `usage`/`schedule`/`panels`/`models`, and the workspace `git`/`fs`/`repos`/`wiki` — with their client consumers (todo/plan/usage/wiki panels, files/git/search/terminal, schedule modal + badge, models invalidation, repo picker). The repo-discovery retry timer and the wiki's duplicate GET are gone | **Done.** 4600 tests pass; gates clean; verified against a live server: one socket delivered `sidebar` (4 folders), `git:<root>` (152 changes), `repos:<root>` (`pending:true` → a `delta` when the walk settled), and a `POST /api/folders` produced a fresh `sidebar` delta carrying the new folder. The four session DATA topics originally had no publisher; they now ride `session-data-dirty` and were re-verified end to end (a live run moved the Todo panel with no reload) |
+| 4 ✅ | The emptied `visibility-refresh`/`panel-refresh`/`revalidation-throttle`/`stream-poll` hooks and every server-origin `omp:*` event (`session-updated`, `workspace-updated`, `renamed`, `stream-pending`, `session-title-hint`, `chamber-mode`, `panels-changed`, `models-updated`, `schedule-updated`, `files-mutated`) plus the 3 `subagent_*` window events — replaced by server signals (structure writes) and a client signal bus (UI-local coordination). The ten UI-local navigation events stay, as the table below requires | **Done.** No server-origin event string remains; every file under 350 lines; 4600 tests pass; lint/tsc-unused/build clean. An audit after the phase found the session DATA topics had no publisher and the `updates` topic had no consumer, both fixed in the same pass (see the phase 3 notes) |
 
 Every phase must pass: `bun run lint`, `bunx tsc --noEmit --noUnusedLocals
 --noUnusedParameters`, the 350-line check, and `bun run build`.
@@ -218,6 +225,27 @@ snapshot, then a `delta` with the settled list.
 resolver reads the cached mirror, so "go to the network" (the panel's own
 Refresh) is the one thing it cannot express — that request re-fetches the mirror
 over HTTP and then re-snapshots the topic, so both paths converge on one payload.
+
+**A session's DATA topics needed a publisher, and the first cut had none.**
+`session:<id>:todos/:plan/:telemetry/:queue` were registered with resolvers and
+then never republished by anything — the panels rendered their subscribe-time
+snapshot and stayed there, so a `todo` call that landed mid-run was invisible
+until a reload (verified against a live server: a real run wrote two snapshots
+into the transcript, `probe-task` in_progress → completed, and the subscribed
+topics received ZERO deltas). They now ride `session-data-dirty`, raised at a
+turn boundary and by every queue write, and the republisher walks the SUBSCRIBED
+set rather than the four known names — the `todos` resolver parses a whole
+transcript (7.2 MB on a real session), so resolving it for a tab that never
+opened the panel is the polling this design removed. Verified after the fix: one
+queue write produced three deltas (`queue`, `todos`, `telemetry`), and a live
+run moved the Todo panel from `probe-task` to `live-probe` with no reload.
+
+**The `updates` topic was removed rather than wired.** It had a resolver, a
+documented row and no subscriber and no publisher: the update popup is a
+request/response surface (`useUpdates` checks once on mount and applies over
+SSE), so nothing ever wanted a push. `invalidate` went with it — the frame kind
+was specified for "payloads too large to ship", and the two topics that would
+have used it are republished as an ordinary snapshot on demand.
 
 ## Phase 4 notes
 

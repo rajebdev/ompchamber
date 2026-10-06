@@ -22,6 +22,7 @@
 import { getDb } from '@/server/db.server';
 import { withTransaction } from '@/shared/lib/db/transaction.server';
 import { isApprovalMode } from '@/shared/lib/omp/config/access-mode';
+import { emitRealtimeSignal } from '@/server/lib/realtime/signals.server';
 import type { QueuedMessage, QueuedMessageModel } from '@/shared/types/chat';
 
 interface QueueRow {
@@ -103,6 +104,7 @@ export async function appendQueueItem(sessionId: string, input: QueueItemInput):
     [id, sessionId, sessionId, input.text, serializeAttachments(input.attachments),
       model?.provider ?? null, model?.modelId ?? null, model?.thinkingLevel ?? null, model?.accessMode ?? null],
   );
+  emitRealtimeSignal('session-data-dirty', sessionId);
   return listQueue(sessionId);
 }
 
@@ -130,6 +132,7 @@ export async function patchQueueItem(
     [...values, sessionId, id],
   );
   if (!result.changes) return null;
+  emitRealtimeSignal('session-data-dirty', sessionId);
   return listQueue(sessionId);
 }
 
@@ -137,6 +140,7 @@ export async function patchQueueItem(
 export async function deleteQueueItem(sessionId: string, id: string): Promise<boolean> {
   const db = await getDb();
   const result = await db.run('DELETE FROM queued_messages WHERE session_id = ? AND id = ?', [sessionId, id]);
+  if (result.changes > 0) emitRealtimeSignal('session-data-dirty', sessionId);
   return result.changes > 0;
 }
 
@@ -147,6 +151,7 @@ export async function reorderQueue(sessionId: string, orderedIds: string[]): Pro
     const update = db.raw.query('UPDATE queued_messages SET position = ? WHERE session_id = ? AND id = ?');
     orderedIds.forEach((id, index) => update.run(index, sessionId, id));
   });
+  emitRealtimeSignal('session-data-dirty', sessionId);
   return listQueue(sessionId);
 }
 
@@ -174,6 +179,9 @@ export async function claimHeadQueueItem(sessionId: string): Promise<QueuedMessa
       .get(sessionId) as QueueRow | undefined;
     if (!row) return null;
     db.raw.run('DELETE FROM queued_messages WHERE id = ?', [row.id]);
+    // The head left the queue: a panel showing it must be told, or it keeps
+    // rendering an item that is already being sent.
+    emitRealtimeSignal('session-data-dirty', sessionId);
     return rowToQueuedMessage(row);
   });
 }
@@ -207,4 +215,5 @@ export async function requeueHeadQueueItem(sessionId: string, item: QueuedMessag
     [item.id, sessionId, sessionId, item.text, serializeAttachments(item.attachments),
       item.model?.provider ?? null, item.model?.modelId ?? null, item.model?.thinkingLevel ?? null, item.model?.accessMode ?? null],
   );
+  emitRealtimeSignal('session-data-dirty', sessionId);
 }

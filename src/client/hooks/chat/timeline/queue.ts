@@ -20,6 +20,8 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { QueuedMessage } from '@/shared/types';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
+import { useRealtimeTopic } from '@/client/hooks/ui/realtime';
+import { sessionQueueTopic } from '@/shared/lib/realtime/protocol';
 
 const STEERING_STATE_KEY = 'chat.steeringQueue';
 
@@ -73,6 +75,22 @@ export function useChatTimelineQueue(sessionId: string | null): ChatTimelineQueu
   const [messageQueue, setMessageQueueState] = useState<QueuedMessage[]>([]);
   const [steeringQueue, setSteeringQueue] = useSessionState<QueuedMessage[]>(STEERING_STATE_KEY, []);
 
+  /**
+   * The queue rides `session:<id>:queue`: every write (this tab's, a second
+   * tab's, the server's own claim for delivery) republishes it, so the panel
+   * reconciles from the server instead of only from its own mutation responses.
+   * The HTTP `refresh` below stays as the mount read and the manual fallback —
+   * a topic with no resolver (MOCK) answers nothing.
+   */
+  const queueTopic = useRealtimeTopic<QueuedMessage[]>(
+    sessionId ? sessionQueueTopic(sessionId) : null,
+  );
+  useEffect(() => {
+    const pushed = queueTopic.data;
+    if (!Array.isArray(pushed)) return;
+    setMessageQueueState(pushed);
+  }, [queueTopic.data]);
+
   // Hydrate from the table once per session, and re-read when the tab
   // regains focus (a second tab may have claimed/delivered the head). A
   // generation-safe ref skips the stale-response race on quick switches.
@@ -83,6 +101,9 @@ export function useChatTimelineQueue(sessionId: string | null): ChatTimelineQueu
       setMessageQueueState([]);
       return;
     }
+    // A manual refresh asks the topic too: the server's answer and the HTTP
+    // one are the same reader, so both paths converge.
+    queueTopic.refresh();
     const epoch = ++hydrateEpochRef.current;
     fetch(queueUrl(sessionId))
       .then((res) => readQueueResponse(res))
@@ -91,7 +112,7 @@ export function useChatTimelineQueue(sessionId: string | null): ChatTimelineQueu
         setMessageQueueState(queue ?? []);
       })
       .catch(() => {});
-  }, [sessionId]);
+  }, [sessionId, queueTopic.refresh]);
   // Offer the server a delivery slot for this session. The server-side claim
   // makes this harmless when a run is active or another tab already took the
   // head — this used to be the client auto-delivery effect, which fired into

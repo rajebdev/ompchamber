@@ -45,7 +45,18 @@ export type RealtimeSignal =
    * nothing writes it — the completion is the only moment the list becomes
    * final, and without this signal the client would have to poll for it.
    */
-  | 'repos-scanned';
+  | 'repos-scanned'
+  /**
+   * One session's DATA changed: its todo snapshot, plan artifacts, context
+   * telemetry or follow-up queue.
+   *
+   * Raised at a turn boundary (a `todo` call commits inside the run, so the
+   * transcript only tells the truth once the turn settles) and by every queue
+   * write. Without it the four `session:<id>:<suffix>` topics were served as a
+   * snapshot and then never moved — the panels rendered whatever existed when
+   * they subscribed and only a reload showed the new state.
+   */
+  | 'session-data-dirty';
 
 export interface RealtimeSignalEvent {
   signal: RealtimeSignal;

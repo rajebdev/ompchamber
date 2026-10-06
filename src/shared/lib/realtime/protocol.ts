@@ -107,9 +107,6 @@ export const TOPIC_PANELS = 'panels';
 /** The model catalog. */
 export const TOPIC_MODELS = 'models';
 
-/** Update availability. */
-export const TOPIC_UPDATES = 'updates';
-
 // ---------------------------------------------------------------------------
 // Frames
 // ---------------------------------------------------------------------------
