@@ -5,6 +5,29 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.0](https://github.com/rajebdev/ompchamber/compare/v4.2.1...v4.3.0) — 2026-10-06
+
+### Added
+
+* **chat:** name an omp provider retry in the timeline ([d3b8718](https://github.com/rajebdev/ompchamber/commit/d3b87189b646584ceb719e4a4b6f6f6def54cf04))
+* **cli:** run the production build by default and build it on demand ([3e442ed](https://github.com/rajebdev/ompchamber/commit/3e442ed7a798943bb00444209892d7f74b54a3f1))
+* **git:** expand the full commit message from a history row ([ec107ac](https://github.com/rajebdev/ompchamber/commit/ec107ace87fd7e0309679b6e97a7e47bbc0c7e35))
+* **nav:** badge the desktop stream indicator on the wordmark ([160bb84](https://github.com/rajebdev/ompchamber/commit/160bb844299f6ebd04e245e5fcd022a4bfba05d4))
+* **nav:** change height into h-9 for same with PWA browser ([b486e5e](https://github.com/rajebdev/ompchamber/commit/b486e5e3d89a590b683ba62572351aba6d1c1955))
+* **sidebar:** default session sort to latest session activity ([a10c36e](https://github.com/rajebdev/ompchamber/commit/a10c36e826e1edcbcb0e60d82f139ae1a3cccd8f))
+* **ui:** give panels a fetch reader, a host scope and a markdown passthrough ([6e59def](https://github.com/rajebdev/ompchamber/commit/6e59defa3f6d976d86849e810243cecdfa27adc8))
+
+### Changed
+
+* **panels:** make every right-panel view a plugin with one enablement axis ([5b7f4a3](https://github.com/rajebdev/ompchamber/commit/5b7f4a36e68fbb0a40a5623db41b9905d14bca2f))
+* record the run settle and the provider-retry phrase ([b64e344](https://github.com/rajebdev/ompchamber/commit/b64e344fd7ef992ae561a5792e0e6dedf8c021db))
+
+### Fixed
+
+* **auth:** keep a session across restarts and off the login screen ([1b33b19](https://github.com/rajebdev/ompchamber/commit/1b33b19ad316df454466c5a3c5df54f9e3f74181))
+* **providers:** let "fetch models" replace the model list instead of appending ([ac9ba48](https://github.com/rajebdev/ompchamber/commit/ac9ba48dd3bf21e666f4304bd7a36e071bd03b68))
+* **session:** settle a run omp no longer owns ([1f24622](https://github.com/rajebdev/ompchamber/commit/1f24622ca42fbfe193e97298d29e2fd9b42d63aa))
+
 ## [4.2.1](https://github.com/rajebdev/ompchamber/compare/v4.2.0...v4.2.1) — 2026-10-05
 
 ### Fixed
