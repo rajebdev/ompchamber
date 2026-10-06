@@ -175,7 +175,16 @@ export async function getAgentState({ params, request }: LoaderFunctionArgs) {
   // the running turn (omp runs RPC handlers one at a time), and a timeout there
   // is no reason to reset a session that is demonstrably working — subagents
   // included. These flags are all the client needs to reattach its stream.
-  if (session.isBusy()) return json(busySessionPayload(session));
+  //
+  // The flags are also the ONLY evidence a stranded run ever leaves behind (a
+  // non-terminal `agent_end` whose continuation never came), so they are given a
+  // chance to settle before they are trusted: this probe is exactly where the
+  // user's own click lands. A live run pays nothing — `RunSettle` probes only
+  // after 30s of quiet and settles only on omp's own `isSettled`.
+  if (session.isBusy()) {
+    await session.runSettle.reconcile('request');
+    if (session.isBusy()) return json(busySessionPayload(session));
+  }
 
   try {
     const state = await session.send({ type: 'get_state' });

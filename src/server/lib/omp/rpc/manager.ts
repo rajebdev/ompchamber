@@ -23,10 +23,11 @@ import { SubagentLiveness } from '@/server/lib/omp/rpc/subagent-liveness';
 import { ModeMirror } from '@/server/lib/omp/rpc/mode-mirror';
 import { IdleReaper } from '@/server/lib/omp/rpc/idle-reaper';
 import { AgentStartWatchdog } from '@/server/lib/omp/rpc/agent-start-watchdog';
+import { RunSettle, handleChildExit } from '@/server/lib/omp/rpc/run-settle.server';
 import { EventFanout } from '@/server/lib/omp/rpc/event-fanout';
 import { syncRunModel as syncRunModelFor } from '@/server/lib/omp/rpc/run-model';
 import { reloadChildPlugins } from '@/server/lib/omp/rpc/reload-plugins';
-import { clearStreamStatus, markStreamStatus, type SessionRunModel } from '@/shared/lib/omp/session/stream-state.server';
+import { clearStreamStatus, type SessionRunModel } from '@/shared/lib/omp/session/stream-state.server';
 import { GET_STATE_TIMEOUT_MS, IDLE_REAP_MS, READY_TIMEOUT_MS, SUBAGENT_STALE_MS, type AgentEvent, type EventListener, type RpcSessionState } from '@/server/lib/omp/rpc/constants';
 
 export type {
@@ -53,6 +54,8 @@ export class AgentSessionWrapper {
   /** Watches the deadline above so a dispatch whose turn never opens cannot
    *  strand the session (see `AgentStartWatchdog`). */
   private readonly agentStartWatchdog: AgentStartWatchdog;
+  /** Settles a run omp no longer owns (see `run-settle.server.ts`). */
+  readonly runSettle: RunSettle;
   continuationGraceUntil = 0;
   bashRunning = false;
   streaming = false;
@@ -118,6 +121,7 @@ export class AgentSessionWrapper {
       this.awaitingAgentStartDeadline = 0;
       if (this.sessionId) void clearStreamStatus(this.sessionId);
     });
+    this.runSettle = new RunSettle(this);
   }
 
   get sessionId(): string {
@@ -215,18 +219,7 @@ export class AgentSessionWrapper {
   }
 
   handleProcessExit(stderrTail: string): void {
-    if (!this._alive || this.restarting) return;
-    const detail = stderrTail.trim().split('\n').pop() ?? '';
-    this.emit({
-      type: 'notice',
-      level: 'error',
-      message: `The omp process for this session exited unexpectedly${detail ? `: ${detail}` : '.'}`,
-    });
-    if (this.streaming || this.promptRunning) {
-      this.emit({ type: 'agent_end', isTerminal: true, messages: [] });
-      if (this.sessionId) void markStreamStatus(this.sessionId, 'finish');
-    }
-    this.destroy();
+    handleChildExit(this, stderrTail);
   }
 
   /** SessionFrameHost adapter: remember a blocking dialog for reattaching clients. */
@@ -245,6 +238,10 @@ export class AgentSessionWrapper {
     // The state machine and its settle-time side effects live in frame-fold.ts;
     // this method owns only the wrapper's own bookkeeping around it.
     const { suppressForward } = foldSessionFrame(this, event);
+    // The run-settle clock reads every frame: it is what tells a quiet run from
+    // one whose event stream stopped, and it is fed the retry waits omp
+    // announces. See `run-settle.server.ts`.
+    this.runSettle.noteFrame(event);
     // A frame settled the dispatch (agent_start cleared `awaitingAgentStart` and
     // set `streaming`; prompt_result cleared it too), so the watchdog has
     // nothing left to do.
@@ -319,6 +316,7 @@ export class AgentSessionWrapper {
     this.unsubscribeFrames?.();
     this.pendingUiDialogs.clear();
     this.agentStartWatchdog.stop();
+    this.runSettle.stop();
     this.promptDispatchPendingCount = 0;
     this.awaitingAgentStart = false;
     this.awaitingAgentStartDeadline = 0;

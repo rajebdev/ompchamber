@@ -22,7 +22,7 @@ import { DEFAULT_SESSION_SORT_OPTION, isValidSessionSortOption, sortFolders } fr
 import { loadOmpSidebarData } from '@/server/lib/omp/session/reader';
 import { sessionHasSubagents } from '@/server/lib/omp/session/subagent-presence';
 import { healStaleStreamStatuses, loadStreamStates, type SessionRunModel } from '@/shared/lib/omp/session/stream-state.server';
-import { getAwaitingInputSessionIds, getLiveRunSessionIds } from '@/server/lib/omp/rpc/session-registry';
+import { getAwaitingInputSessionIds, getLiveRunSessionIds, listRpcSessions } from '@/server/lib/omp/rpc/session-registry';
 import type { SessionItemData, SessionSortOption, WorkspaceFolderData } from '@/shared/types';
 import type { OmpSession } from '@/shared/types/omp/session';
 
@@ -139,6 +139,12 @@ export async function loadSidebarData(): Promise<SessionListPayload> {
     // owns. It is deliberately not the staleness rule, which must stay
     // instance-independent.
     await healStaleStreamStatuses(getLiveRunSessionIds());
+    // The heal judges a row from its owner pid alone; a row this process owns
+    // while no run is behind it needs the OWNER's view of the child, which only
+    // a `get_state` can give (see `run-settle.server.ts`) — and the sidebar is
+    // where a stale spinner is actually looked at. Fire-and-forget: the list
+    // never waits on a probe, and the next load carries the settled status.
+    for (const session of listRpcSessions()) void session.runSettle.reconcile('request');
     for (const [id, state] of Object.entries(await loadStreamStates())) {
       streamStatuses[id] = state.status;
       if (state.model) runModels[id] = state.model;

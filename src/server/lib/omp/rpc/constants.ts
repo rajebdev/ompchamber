@@ -26,6 +26,10 @@ export interface RpcSessionState {
   sessionFile?: string;
   sessionName?: string;
   isStreaming: boolean;
+  /** omp's own quiescence verdict: no live, admitted or scheduled turn, nothing
+   *  queued, and no background work that could wake the session again. Absent on
+   *  builds that do not report it — read as "not settled". */
+  isSettled?: boolean;
   isCompacting: boolean;
   autoCompactionEnabled: boolean;
   autoRetryEnabled?: boolean;
