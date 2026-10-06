@@ -25,6 +25,8 @@ interface FileDocumentProps {
   editorFontFamily: string;
   occurrences: readonly TextRange[];
   onOccurrencesChange: (next: readonly TextRange[]) => void;
+  /** Markdown preview is on for the active file — render it, not the source. */
+  isPreview: boolean;
 }
 
 /**
@@ -51,6 +53,7 @@ export function FileDocument({
   editorFontFamily,
   occurrences,
   onOccurrencesChange,
+  isPreview,
 }: FileDocumentProps) {
   const isMd = activeFile.name.endsWith('.md');
 
@@ -59,7 +62,7 @@ export function FileDocument({
       {find.open ? <FindWidget find={find} /> : null}
       {paletteOpen ? <CommandPalette onRun={onRunCommand} onClose={onClosePalette} /> : null}
       <div onScroll={onScroll} className={`flex-1 overflow-auto bg-paper flex ${scrollbarFadeClass(isScrolling)}`}>
-        {isMd ? (
+        {isMd && isPreview ? (
           // No `prose` wrapper: markdown is styled by `.prose-content` alone
           // (the same system the chat timeline uses). The typography plugin
           // fought it — `.prose img` added 2em vertical margins that ballooned

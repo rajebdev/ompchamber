@@ -303,6 +303,7 @@ export function Editor({
                 editorFontFamily={editorFontFamily}
                 occurrences={occurrences}
                 onOccurrencesChange={setOccurrences}
+                isPreview={Boolean(isPreview)}
               />
             )}
           </>
