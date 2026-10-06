@@ -21,7 +21,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { ChatMessageData } from '@/shared/types';
 import type { StreamChunkCallbacks } from '@/client/hooks/chat/stream';
 import { createMockStreamCallbacks } from '@/shared/lib/chat/timeline/stream-callbacks';
-import { appendCommandOutputNotice } from '@/shared/lib/chat/timeline/command-output';
+import { appendNoticeRow } from '@/shared/lib/chat/timeline/command-output';
 import {
   bindStreamingCoalescer,
   cancelStreamingCoalescer,
@@ -226,14 +226,14 @@ describe('createMockStreamCallbacks', () => {
   });
 });
 
-describe('appendCommandOutputNotice', () => {
+describe('appendNoticeRow', () => {
   test('inserts the notice row before the streaming placeholder and persists without it', () => {
     let messages: ChatMessageData[] = [
       { id: 'u1', role: 'user', content: '/context' },
       { id: 'ph', role: 'ai', content: '' },
     ];
     const persisted: ChatMessageData[][] = [];
-    appendCommandOutputNotice('Context: 12k tokens', {
+    appendNoticeRow('Context: 12k tokens', {
       setLocalMessages: (update) => {
         messages = typeof update === 'function' ? update(messages) : update;
       },
@@ -252,7 +252,7 @@ describe('appendCommandOutputNotice', () => {
 
   test('appends at the tail when nothing is streaming', () => {
     let messages: ChatMessageData[] = [{ id: 'u1', role: 'user', content: '/usage' }];
-    appendCommandOutputNotice('/usage output', {
+    appendNoticeRow('/usage output', {
       setLocalMessages: (update) => {
         messages = typeof update === 'function' ? update(messages) : update;
       },
@@ -268,7 +268,7 @@ describe('appendCommandOutputNotice', () => {
     const existing: ChatMessageData = { id: 'cmdout-1', role: 'ai', content: '', notice: '/usage output' };
     let messages: ChatMessageData[] = [{ id: 'u1', role: 'user', content: '/usage' }, existing];
     let persisted = 0;
-    appendCommandOutputNotice('/usage output', {
+    appendNoticeRow('/usage output', {
       setLocalMessages: (update) => {
         messages = typeof update === 'function' ? update(messages) : update;
       },

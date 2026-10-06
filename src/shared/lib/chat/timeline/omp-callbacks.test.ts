@@ -100,6 +100,7 @@ describe('createOmpAgentCallbacks first-assistant sidebar signal', () => {
       lastToolMessageRef: { current: null },
       interruptPendingRef: { current: false },
       activityRef: { current: '' },
+      providerRetryVerbRef: { current: null },
       currentThinkingLevelRef: { current: undefined },
       fileMutatingCallsRef: { current: new Set<string>() },
     };

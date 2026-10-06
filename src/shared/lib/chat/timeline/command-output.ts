@@ -5,7 +5,8 @@
 
 /**
  * The `command_output` fold step: a builtin command's result becomes a notice
- * row, and that row is PERSISTED.
+ * row — and the shared helper every notice row goes through (a provider retry
+ * saga uses the same one; see `provider-retry.ts`).
  *
  * Persistence is the point. omp answers a builtin on the command path and
  * writes nothing to the session JSONL — the output exists only in this frame —
@@ -20,7 +21,7 @@
 import type { Dispatch, SetStateAction } from 'preact/compat';
 import type { ChatMessageData } from '@/shared/types';
 
-export interface CommandOutputDeps {
+export interface NoticeRowDeps {
   setLocalMessages: Dispatch<SetStateAction<ChatMessageData[]>>;
   /** The optimistic AI bubble this run is streaming into, if any. */
   aiPlaceholderIdRef: { current: string | null };
@@ -28,14 +29,20 @@ export interface CommandOutputDeps {
 }
 
 /**
- * Append a command's output as a notice row, before the active placeholder.
+ * Append a notice row to the timeline, before the active placeholder.
+ *
+ * The row is PERSISTED for the same reason every notice is: the frame that
+ * carries it exists only on the live stream (omp writes no entry for a builtin
+ * command, and a provider retry is not conversation at all), so a timeline
+ * rebuilt from the session file would have forgotten it. `mergeOmpAttachments`
+ * splices it back under the turn that produced it.
  *
  * Placing it before the placeholder is what keeps it under the turn that
  * produced it: the placeholder becomes the assistant's answer, and the notice
  * must read as the command's result rather than as part of that answer. With no
  * placeholder the row goes at the tail.
  */
-export function appendCommandOutputNotice(text: string, deps: CommandOutputDeps): void {
+export function appendNoticeRow(text: string, deps: NoticeRowDeps): void {
   const { setLocalMessages, aiPlaceholderIdRef, persistMessages } = deps;
   const row: ChatMessageData = {
     id: `cmdout-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,

@@ -26,6 +26,7 @@ function makeDeps(sessionId: string, events: unknown[]): OmpAgentFoldDeps {
       if (typeof updater === 'function') Object.assign(state, (updater as (prev: unknown) => unknown)(state));
     },
     activityRef: { current: '' },
+    providerRetryVerbRef: { current: null },
     currentThinkingLevelRef: { current: undefined },
     toolResultsRef: { current: new Map() },
     fileMutatingCallsRef: { current: new Set() },

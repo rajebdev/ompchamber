@@ -30,14 +30,39 @@ export interface OmpAgentFoldDeps extends ToolResultHost {
   /** Thinking level in effect for the live run (last `thinking_level_changed`
    *  frame); stamped onto assistant turns as they stream. */
   currentThinkingLevelRef: RefObject<string | undefined>;
+  /** Phrase for an OPEN provider-retry saga, or null. Set and cleared by
+   *  `provider-retry.ts`, which owns the saga's lifetime.
+   *
+   *  While it is set it outranks the activity the attempt itself names: a
+   *  retried request spends ~10s inside a call that will fail, and the frames
+   *  in that stretch are the doomed attempt's own (`turn_start` → "Thinking…"),
+   *  so the honest phrase was replaced by the generic one a second after it
+   *  appeared. Measured on a real quota wall: both samples of a live saga read
+   *  "Thinking…", which is exactly the uninformative spinner this replaced. */
+  providerRetryVerbRef: RefObject<string | null>;
   /** toolCallIds of in-flight file-mutating calls, cleared on `agent_start`. */
   fileMutatingCallsRef: RefObject<Set<string>>;
 }
 
 /** Publish a new indicator phrase, skipping repeats (thinking/text deltas
- *  arrive per token and would otherwise re-set state on every frame). */
+ *  arrive per token and would otherwise re-set state on every frame).
+ *
+ *  An open provider-retry saga wins over whatever the frame names: see
+ *  `providerRetryVerbRef`. That case publishes even when the mirror already
+ *  holds the phrase, because the mirror and the indicator can disagree — the
+ *  run-start callback writes the indicator directly ("Thinking…"), so the
+ *  mirror reads "no change" while the screen has just lost the phrase the user
+ *  needs. Measured on a real quota wall: the phrase held for ~3s and was gone
+ *  by the next attempt. */
 export function setActivity(verb: string | undefined, deps: OmpAgentFoldDeps): void {
-  if (!verb || verb === deps.activityRef.current) return;
+  if (!verb) return;
+  const retryVerb = deps.providerRetryVerbRef.current;
+  if (retryVerb && retryVerb !== verb) {
+    deps.activityRef.current = retryVerb;
+    deps.callbacksRef.current?.onActivity?.(retryVerb);
+    return;
+  }
+  if (verb === deps.activityRef.current) return;
   deps.activityRef.current = verb;
   deps.callbacksRef.current?.onActivity?.(verb);
 }

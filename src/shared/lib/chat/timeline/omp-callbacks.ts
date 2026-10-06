@@ -22,7 +22,8 @@ import {
   flushStreamingUpdates,
   queueStreamingUpdate,
 } from '@/shared/lib/chat/timeline/stream-coalescer';
-import { appendCommandOutputNotice } from '@/shared/lib/chat/timeline/command-output';
+import { appendNoticeRow } from '@/shared/lib/chat/timeline/command-output';
+import { retryNotice } from '@/shared/lib/chat/timeline/provider-retry';
 import { setStreamPending } from '@/client/hooks/chat/omp/stream-overlay';
 import { handleAgentStart, handleResumeStream, handleTurnStart } from '@/shared/lib/chat/timeline/run-signals';
 
@@ -303,7 +304,13 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
     // Built-in slash command output: a notice row, persisted — see the module
     // doc for why the chamber's own copy is the only place it can survive.
     onCommandOutput: (text) => {
-      appendCommandOutputNotice(text, { setLocalMessages, aiPlaceholderIdRef, persistMessages });
+      appendNoticeRow(text, { setLocalMessages, aiPlaceholderIdRef, persistMessages });
+    },
+    // A provider retry saga: one row per saga (the fold calls this on the
+    // frame's `attempt === 1`), so a session reloaded afterwards still records
+    // why an answer took minutes to arrive. See `provider-retry.ts`.
+    onProviderRetry: (info) => {
+      appendNoticeRow(retryNotice(info), { setLocalMessages, aiPlaceholderIdRef, persistMessages });
     },
     // omp renamed the session — the auto-title generation the chamber asks for
     // after a settled run, a `/rename`, or an RPC set_session_name. The slot

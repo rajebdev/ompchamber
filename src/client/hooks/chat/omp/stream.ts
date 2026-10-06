@@ -29,6 +29,8 @@ export interface OmpStreamRefs {
   activityRef: RefObject<string>;
   /** Live thinking level (last `thinking_level_changed` frame). */
   currentThinkingLevelRef: RefObject<string | undefined>;
+  /** Phrase for an open provider-retry saga, or null (see `fold-deps.ts`). */
+  providerRetryVerbRef: RefObject<string | null>;
   /** toolCallIds of in-flight file-mutating calls (see file-mutations.ts). */
   fileMutatingCallsRef: RefObject<Set<string>>;
 }
@@ -52,6 +54,7 @@ export function useOmpAgentStream({
   interruptPendingRef,
   activityRef,
   currentThinkingLevelRef,
+  providerRetryVerbRef,
   fileMutatingCallsRef,
   transport,
 }: UseOmpAgentStreamOptions) {
@@ -91,6 +94,7 @@ export function useOmpAgentStream({
           interruptPendingRef,
           activityRef,
           currentThinkingLevelRef,
+          providerRetryVerbRef,
           fileMutatingCallsRef,
         });
       },
@@ -100,7 +104,7 @@ export function useOmpAgentStream({
       },
     };
     connectionRef.current = CONNECTORS[transport](sid, handlers);
-  }, [disconnect, setState, callbacksRef, toolResultsRef, lastToolMessageRef, interruptPendingRef, activityRef, currentThinkingLevelRef, fileMutatingCallsRef, transport]);
+  }, [disconnect, setState, callbacksRef, toolResultsRef, lastToolMessageRef, interruptPendingRef, activityRef, currentThinkingLevelRef, providerRetryVerbRef, fileMutatingCallsRef, transport]);
 
   return { connect, disconnect };
 }

@@ -18,6 +18,19 @@ export interface OmpAgentEvent {
   [key: string]: unknown;
 }
 
+/** One retry omp announced on `auto_retry_start` — a transient provider error
+ *  (rate limit, outage, quota wall) it is replaying by itself. */
+export interface ProviderRetryInfo {
+  /** 1-based retry number within the run's retry budget. */
+  attempt?: number;
+  /** The budget (`retry.maxRetries`), absent when omp does not report one. */
+  maxAttempts?: number;
+  /** The wait omp takes before this attempt, in ms. */
+  delayMs?: number;
+  /** The provider's own message for the failed attempt. */
+  errorMessage?: string;
+}
+
 /** Callbacks the timeline hands to useOmpAgent; every frame the stream folds
  *  into ChatMessageData lands on one of these. */
 export interface OmpAgentCallbacks {
@@ -59,6 +72,11 @@ export interface OmpAgentCallbacks {
   /** Live activity phrase for the generating indicator ("Editing app/x.ts"),
    *  derived from the tool call or assistant phase the stream is on. */
   onActivity?: (verb: string) => void;
+  /** omp is replaying a transient provider error (rate limit, outage, quota
+   *  wall) — `auto_retry_start`. Called once per retry SAGA (the frame's
+   *  `attempt === 1`), because the run stays open across the retries and the
+   *  timeline would otherwise show ten rows for one stall. */
+  onProviderRetry?: (info: ProviderRetryInfo) => void;
 }
 
 export interface OmpAgentState {

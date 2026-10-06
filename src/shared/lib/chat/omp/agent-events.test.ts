@@ -48,6 +48,7 @@ function makeDeps() {
     lastToolMessageRef: { current: null },
     interruptPendingRef: { current: false },
     activityRef: { current: '' },
+    providerRetryVerbRef: { current: null },
     currentThinkingLevelRef: { current: undefined },
     fileMutatingCallsRef: { current: new Set<string>() },
   };
@@ -262,5 +263,24 @@ describe('foldAgentEvent agent_end', () => {
     foldAgentEvent({ type: 'agent_end', messages: [] }, deps);
     expect(state().isGenerating).toBe(false);
     expect(runEnds()).toBe(1);
+  });
+
+  test('an attempt re-entering the loop does not wipe the retry phrase', () => {
+    // Every retry of a provider-error saga opens a fresh `agent_start`, and
+    // `onAgentStart` publishes "Thinking" itself — so the fold's ref-aware
+    // publish has to come after the callback, or the phrase the user needs is
+    // replaced a frame after it appears (measured on a real quota wall).
+    const { deps, activity } = makeDeps();
+    deps.providerRetryVerbRef.current = 'Retrying after a provider error 2/3 · next in 4s';
+    foldAgentEvent({ type: 'agent_start' }, deps);
+    expect(activity.at(-1)).toBe('Retrying after a provider error 2/3 · next in 4s');
+  });
+
+  test('a terminal run end closes the retry saga', () => {
+    const { deps, activity } = makeDeps();
+    deps.providerRetryVerbRef.current = 'Retrying after a provider error 3/3 · next in 4s';
+    foldAgentEvent({ type: 'agent_end', isTerminal: true, messages: [] }, deps);
+    expect(deps.providerRetryVerbRef.current).toBeNull();
+    expect(activity.at(-1)).toBe('Thinking');
   });
 });

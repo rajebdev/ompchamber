@@ -22,6 +22,7 @@ import { materializeTerminalMessages } from '@/shared/lib/chat/omp/terminal-mess
 import { invalidateComposerCache } from '@/shared/lib/chat/composer/client';
 import { setActivity, toolHost, type OmpAgentFoldDeps } from '@/shared/lib/chat/omp/fold-deps';
 import { normalizeThinkingLevel } from '@/shared/lib/models/thinking-levels';
+import { endRetrySaga, foldAutoRetry } from '@/shared/lib/chat/timeline/provider-retry';
 import { PHASE_VERBS } from '@/shared/lib/chat/timeline/tool-phrases';
 import { describeAssistantPhase, describeToolActivity } from '@/shared/lib/chat/timeline/tool-verbs';
 import { FILE_MUTATION_EVENT, isFileMutatingTool } from '@/shared/lib/chat/omp/file-mutations';
@@ -51,8 +52,12 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       // A fresh run restarts level tracking; the first turn relies on the
       // session-level value until omp emits thinking_level_changed (or not).
       deps.currentThinkingLevelRef.current = undefined;
-      setActivity(PHASE_VERBS.thinking, deps);
+      // The callback publishes its own "Thinking" phrase, so the fold's one has
+      // to come AFTER it: every retry of a saga re-enters here with an
+      // `agent_start`, and a direct write would otherwise wipe the retry phrase
+      // `setActivity` exists to keep (see `providerRetryVerbRef`).
       callbacks?.onAgentStart?.();
+      setActivity(PHASE_VERBS.thinking, deps);
       break;
 
     case 'turn_start':
@@ -183,6 +188,9 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       // showing a live child. The server's own fold gates on the same field
       // (frame-fold.ts), so the two ends now agree.
       if (data.isTerminal === false) break;
+      // A retry saga cannot survive the run: a terminal end may arrive with no
+      // `auto_retry_end` in front of it.
+      endRetrySaga(deps);
       deps.setState((prev) => ({ ...prev, isGenerating: false }));
       deps.activityRef.current = '';
       const terminal = materializeTerminalMessages(data, deps, callbacks ?? undefined);
@@ -219,6 +227,17 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       }
       break;
     }
+
+    // omp replays a transient provider error by itself — rate limit, outage,
+    // quota wall — and keeps the RUN open across the attempts: each retry
+    // announces itself here and opens a fresh `agent_start`, with no `agent_end`
+    // in between. Without this the indicator stayed on the generic "Thinking…"
+    // for the whole stall, over a transcript whose last row was the failure.
+    // See `provider-retry.ts` for the phrase and the one-row-per-saga rule.
+    case 'auto_retry_start':
+    case 'auto_retry_end':
+      foldAutoRetry(data, deps);
+      break;
 
     // Built-in slash command output (/usage, /compact result, …). Rendered as
     // a notice row — see the callback type note: this frame is the ONLY copy.

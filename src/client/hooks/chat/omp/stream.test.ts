@@ -135,6 +135,7 @@ function mountStream(transport: StreamTransport) {
       interruptPendingRef: useRef(false),
       activityRef: useRef(''),
       currentThinkingLevelRef: useRef<string | undefined>(undefined),
+      providerRetryVerbRef: useRef<string | null>(null),
       fileMutatingCallsRef: useRef(new Set<string>()),
       transport,
     });

@@ -24,6 +24,7 @@ function foldDeps(): OmpAgentFoldDeps {
     lastToolMessageRef: ref(null),
     interruptPendingRef: ref(false),
     activityRef: ref(''),
+    providerRetryVerbRef: ref(null),
     currentThinkingLevelRef: ref(undefined),
     fileMutatingCallsRef: ref(new Set()),
   } as unknown as OmpAgentFoldDeps;

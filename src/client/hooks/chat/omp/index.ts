@@ -34,6 +34,9 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
   // per-token frames cannot spam state updates with the same string.
   const activityRef = useRef('');
   const currentThinkingLevelRef = useRef<string | undefined>(undefined); // live thinking level (last `thinking_level_changed`)
+  // Phrase for an open provider-retry saga; while set it outranks the activity
+  // the doomed attempt names (see `fold-deps.ts`).
+  const providerRetryVerbRef = useRef<string | null>(null);
   // toolCallIds of in-flight file-mutating tool calls; cleared per run in the
   // fold so a completed edit/write/bash signals the right panels once.
   const fileMutatingCallsRef = useRef<Set<string>>(new Set());
@@ -46,6 +49,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     interruptPendingRef,
     activityRef,
     currentThinkingLevelRef,
+    providerRetryVerbRef,
     fileMutatingCallsRef,
     transport,
   });
