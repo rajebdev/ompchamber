@@ -22,8 +22,16 @@ import type { ProviderModel } from '@/shared/types';
  * for the providers settings auto-fetch, and optionally registers the provider
  * in omp's own models.yml. Body:
  * { baseUrl: string, apiKey?: string, providerSlug?: string, persistToOmp?: boolean,
- *   api?: OmpProviderApi, auth?: ProviderAuthMode, discovery?: ProviderDiscoveryType,
- *   registerOnly?: boolean } → { ok, models, omp? } | { ok: false, error }.
+ *   replaceModels?: boolean, api?: OmpProviderApi, auth?: ProviderAuthMode,
+ *   discovery?: ProviderDiscoveryType, registerOnly?: boolean }
+ *   → { ok, models, omp? } | { ok: false, error }.
+ *
+ * `replaceModels` makes the listing the provider's WHOLE model list: the
+ * entries it still carries are refreshed and the ids it dropped are removed
+ * from models.yml. It is what "fetch models" sends — an endpoint's `/models`
+ * answer describes what it serves NOW, and an add-only merge left the panel
+ * offering models that no longer exist. The add-provider path omits it, since
+ * it is creating an entry rather than syncing one.
  *
  * `api` picks the dialect, which decides both the auth header the listing probe
  * sends and the `api` written to models.yml; when it is omitted the endpoint is
@@ -83,6 +91,7 @@ export async function action({ request }: ActionFunctionArgs) {
       auth?: unknown;
       discovery?: unknown;
       registerOnly?: unknown;
+      replaceModels?: unknown;
     };
     const baseUrl = typeof body.baseUrl === 'string' ? body.baseUrl.trim() : '';
     const rawApiKey = typeof body.apiKey === 'string' && body.apiKey.trim().length > 0 ? body.apiKey.trim() : undefined;
@@ -133,6 +142,7 @@ export async function action({ request }: ActionFunctionArgs) {
       written: boolean;
       addedCount: number;
       backfilledCount: number;
+      removedCount: number;
       reason?: string;
     } | undefined;
     if (persistToOmp && providerSlug) {
@@ -146,8 +156,9 @@ export async function action({ request }: ActionFunctionArgs) {
           // An override/discovery provider keeps omp's own model list; writing
           // ids here would freeze a snapshot omp would then serve twice.
           overrideOnly: skipListing,
-          // Fetch-model path should overwrite existing model metadata
-          overwrite: true,
+          // The endpoint's answer is the whole list: refresh the entries it
+          // still carries and drop the ones it no longer serves.
+          ...(body.replaceModels === true ? { replaceModels: true } : {}),
           models: enriched.map(toOmpSeed),
         });
         if (upsert.written) invalidateModelsCaches();
@@ -155,6 +166,7 @@ export async function action({ request }: ActionFunctionArgs) {
           written: upsert.written,
           addedCount: upsert.addedModels.length,
           backfilledCount: upsert.backfilledModels.length,
+          removedCount: upsert.removedModels.length,
           reason: upsert.reason,
         };
       } catch (error) {
@@ -162,6 +174,7 @@ export async function action({ request }: ActionFunctionArgs) {
           written: false,
           addedCount: 0,
           backfilledCount: 0,
+          removedCount: 0,
           reason: error instanceof Error ? error.message : 'models.yml write failed',
         };
       }

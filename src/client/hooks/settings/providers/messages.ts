@@ -49,12 +49,44 @@ export function addProviderMessage(
 }
 
 /**
+ * The line reported after a fetch REPLACED the provider's model list: what the
+ * listing brought in, and what left because the endpoint no longer serves it.
+ * One line, because a fetch that only removed ids is as much a result as one
+ * that only added them — and the user has to be able to tell them apart.
+ */
+export function fetchModelsMessage(counts: { addedCount: number; removedCount: number }): {
+  text: string;
+  tone: 'success' | 'error';
+} {
+  const plural = (count: number) => (count === 1 ? '' : 's');
+  if (counts.addedCount > 0 && counts.removedCount > 0) {
+    return {
+      text: `Fetched ${counts.addedCount} new model${plural(counts.addedCount)} and removed ${counts.removedCount} the provider no longer serves.`,
+      tone: 'success',
+    };
+  }
+  if (counts.addedCount > 0) {
+    return {
+      text: `Fetched ${counts.addedCount} new model${plural(counts.addedCount)} from the provider.`,
+      tone: 'success',
+    };
+  }
+  if (counts.removedCount > 0) {
+    return {
+      text: `Removed ${counts.removedCount} model${plural(counts.removedCount)} the provider no longer serves.`,
+      tone: 'success',
+    };
+  }
+  return { text: 'Models refreshed — the list already matches the provider.', tone: 'success' };
+}
+
+/**
  * The extra line reported after a manual "fetch models": what the chamber wrote
  * into `models.yml` versus what omp already had. A file write and a model-count
  * change are different outcomes, and conflating them hid a failed write.
  */
 export function fetchModelsNote(result: {
-  omp?: { written: boolean; addedCount: number; backfilledCount: number; reason?: string };
+  omp?: { written: boolean; addedCount: number; backfilledCount: number; removedCount?: number; reason?: string };
 }): { text: string; tone: 'success' | 'error' } | null {
   if (!result.omp) return null;
   if (result.omp.written) {
@@ -64,6 +96,9 @@ export function fetchModelsNote(result: {
     }
     if (result.omp.backfilledCount > 0) {
       parts.push(`${result.omp.backfilledCount} model${result.omp.backfilledCount === 1 ? '' : 's'} enriched`);
+    }
+    if ((result.omp.removedCount ?? 0) > 0) {
+      parts.push(`${result.omp.removedCount} model${result.omp.removedCount === 1 ? '' : 's'} removed`);
     }
     return {
       text: `omp models.yml updated${parts.length > 0 ? `: ${parts.join(', ')}` : ''}.`,

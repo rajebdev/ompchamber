@@ -59,7 +59,7 @@ export function ProviderModelsList({
             type="button"
             onClick={onFetchModels}
             disabled={Boolean(fetchBlockReason) || isFetchingModels}
-            title={fetchBlockReason ?? 'Fetch models from provider endpoint'}
+            title={fetchBlockReason ?? 'Fetch models from the provider endpoint — replaces the list with what it serves now'}
             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-ink text-canvas text-[11px] font-medium hover:opacity-90 transition-opacity cursor-pointer border border-ink disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <RefreshCw size={12} className={isFetchingModels ? 'animate-spin' : ''} />

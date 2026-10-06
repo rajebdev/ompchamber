@@ -175,8 +175,8 @@ export function ReconnectModal({
         <DownloadCloud size={13} className="mt-0.5 flex-shrink-0 text-ink/50" />
         <span>
           {isKeyless
-            ? 'On save, models are fetched from the endpoint and merged into the list below — a keyless server needs none to answer.'
-            : 'On save, models are fetched from the endpoint and merged into the list below — existing models are kept, only new ones are added.'}
+            ? 'On save, models are fetched from the endpoint and become this provider’s list — a keyless server needs no credential to answer.'
+            : 'On save, models are fetched from the endpoint and become this provider’s list — ids it no longer serves are removed.'}
         </span>
       </div>
     </Modal>

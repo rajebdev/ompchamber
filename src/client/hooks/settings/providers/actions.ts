@@ -22,11 +22,11 @@ import {
 } from '@/shared/lib/models/provider/connection';
 import {
   fetchProviderModelsRemote,
-  mergeProviderModels,
+  replaceProviderModels,
   syncProviderModelsToCatalog,
 } from '@/shared/lib/models/provider/models';
 import { removeLegacyKenariModels } from '@/shared/lib/models/provider/cleanup';
-import { addProviderMessage, fetchModelsNote } from '@/client/hooks/settings/providers/messages';
+import { addProviderMessage, fetchModelsMessage, fetchModelsNote } from '@/client/hooks/settings/providers/messages';
 import { saveModelOverrideRemote } from '@/client/hooks/settings/providers/api';
 
 export interface ProviderActionsDeps {
@@ -144,9 +144,15 @@ export function createProviderActions(deps: ProviderActionsDeps) {
   };
 
   /**
-   * The listing probe plus its reporting. Kept as one unit because the three
-   * outcomes — models added, legacy models pruned, nothing new — each have their
-   * own message, and a partial report reads as a failed fetch.
+   * The listing probe plus its reporting. Kept as one unit because the outcomes
+   * — models added, models the endpoint no longer serves, legacy fallbacks
+   * pruned, nothing changed — each have their own message, and a partial report
+   * reads as a failed fetch.
+   *
+   * The listing REPLACES the provider's model list: the endpoint's answer is
+   * what it serves now, so an id it dropped is removed here and from
+   * `models.yml` (the request's `replaceModels`). An add-only merge is what
+   * left models that no longer exist in the panel.
    */
   const fetchModelsFor = async (
     provider: ProviderItem,
@@ -158,6 +164,8 @@ export function createProviderActions(deps: ProviderActionsDeps) {
       apiKey: credential || provider.apiKey,
       providerSlug: provider.slug,
       persistToOmp: true,
+      // The endpoint's list is the new list, not an addition to the old one.
+      replaceModels: true,
       // The provider's own dialect decides the auth header the probe sends;
       // falling back to the URL classifier would send a Bearer header to an
       // Anthropic-shaped proxy that only accepts x-api-key.
@@ -169,21 +177,17 @@ export function createProviderActions(deps: ProviderActionsDeps) {
       return null;
     }
     const cleaned = removeLegacyKenariModels(provider, provider.models);
-    const removedCount = provider.models.length - cleaned.length;
-    const { merged, addedCount } = mergeProviderModels(cleaned, result.models);
-    if (addedCount > 0 || removedCount > 0) {
-      await handleReconnect({ models: merged });
+    const legacyRemoved = provider.models.length - cleaned.length;
+    const { models, added, addedCount, removedCount } = replaceProviderModels(cleaned, result.models);
+    const droppedCount = removedCount + legacyRemoved;
+    if (addedCount > 0 || droppedCount > 0) {
+      await handleReconnect({ models });
     }
-    if (addedCount > 0) {
-      pushToast(`Fetched ${addedCount} new model${addedCount === 1 ? '' : 's'} from the provider.`, 'success');
-    } else if (removedCount > 0) {
-      pushToast('Removed legacy fallback models from the provider.', 'success');
-    } else {
-      pushToast('No new models found — all fetched models already exist.', 'success');
-    }
+    const message = fetchModelsMessage({ addedCount, removedCount: droppedCount });
+    pushToast(message.text, message.tone);
     const note = fetchModelsNote(result);
     if (note) pushToast(note.text, note.tone);
-    if (addedCount > 0) void syncProviderModelsToCatalog(provider.name, result.models);
+    if (addedCount > 0) void syncProviderModelsToCatalog(provider.name, added);
     return { omp: result.omp };
   };
 

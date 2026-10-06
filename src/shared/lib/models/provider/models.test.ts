@@ -4,14 +4,15 @@
  */
 
 /**
- * The provider-models client is the write path into `models.yml`. Its two
- * failure modes are both destructive: the add-only merge must NEVER drop or
- * modify an existing entry (the user's hand-edited visibility/config lives
- * there), and the fetch/add requests must turn a broken server response into a
- * `{ ok: false }`/`{ success: false }` envelope instead of a rejected promise —
- * a thrown error would leave the settings dialog stuck with no message. The
- * catalog sync's defaults are pinned too, because a model registered without a
- * context label silently renders as the wrong size in the picker.
+ * The provider-models client is the write path into `models.yml`. Its failure
+ * modes are destructive in both directions: a REPLACE must not lose the user's
+ * hand-edited per-model config for an id the endpoint still serves, and must
+ * not keep an id it no longer serves — while the fetch/add requests must turn a
+ * broken server response into a `{ ok: false }`/`{ success: false }` envelope
+ * instead of a rejected promise, since a thrown error would leave the settings
+ * dialog stuck with no message. The catalog sync's defaults are pinned too,
+ * because a model registered without a context label silently renders as the
+ * wrong size in the picker.
  */
 
 import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
@@ -19,7 +20,7 @@ import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
 import {
   addProviderModel,
   fetchProviderModelsRemote,
-  mergeProviderModels,
+  replaceProviderModels,
   syncProviderModelsToCatalog,
 } from '@/shared/lib/models/provider/models';
 import type { ProviderModel } from '@/shared/types';
@@ -78,55 +79,60 @@ afterAll(() => {
   globalScope.window = realWindow;
 });
 
-describe('mergeProviderModels', () => {
-  test('appends unknown ids in incoming order and reports the count', () => {
-    const existing = [model({ id: 'a' })];
-    const result = mergeProviderModels(existing, [model({ id: 'b' }), model({ id: 'c' })]);
+describe('replaceProviderModels', () => {
+  test('the fetched list becomes the model list, in fetched order', () => {
+    const existing = [model({ id: 'a' }), model({ id: 'b' })];
+    const result = replaceProviderModels(existing, [model({ id: 'c' }), model({ id: 'b' })]);
 
-    expect(result.merged.map((m) => m.id)).toEqual(['a', 'b', 'c']);
-    expect(result.added.map((m) => m.id)).toEqual(['b', 'c']);
-    expect(result.addedCount).toBe(2);
-  });
-
-  test('existing entries pass through by reference, untouched', () => {
-    // The overlay (visibility + sampling config) lives on these objects; a
-    // rebuilt copy would silently reset the user's edits.
-    const existing = [model({ id: 'a', isVisible: false })];
-    const result = mergeProviderModels(existing, [model({ id: 'b' })]);
-
-    expect(result.merged[0]).toBe(existing[0]);
-    expect(result.merged[0].isVisible).toBe(false);
-  });
-
-  test('added entries are clones, so a later mutation cannot alias the input', () => {
-    const incoming = model({ id: 'b' });
-    const result = mergeProviderModels([], [incoming]);
-
-    expect(result.added[0]).toEqual(incoming);
-    expect(result.added[0]).not.toBe(incoming);
-  });
-
-  test('skips ids already known and duplicates inside the incoming list', () => {
-    const result = mergeProviderModels([model({ id: 'a' })], [model({ id: 'a' }), model({ id: 'b' }), model({ id: 'b' })]);
-
-    expect(result.merged.map((m) => m.id)).toEqual(['a', 'b']);
+    expect(result.models.map((m) => m.id)).toEqual(['c', 'b']);
+    expect(result.added.map((m) => m.id)).toEqual(['c']);
     expect(result.addedCount).toBe(1);
   });
 
-  test('skips entries with no id', () => {
-    const result = mergeProviderModels([], [model({ id: '' }), model({ id: 'b' })]);
+  test('drops ids the endpoint no longer serves', () => {
+    // The whole point of a fetch: the endpoint's answer IS the list. An
+    // add-only merge left every withdrawn id in the panel.
+    const result = replaceProviderModels([model({ id: 'gone' }), model({ id: 'kept' })], [model({ id: 'kept' })]);
 
-    expect(result.merged.map((m) => m.id)).toEqual(['b']);
-    expect(result.addedCount).toBe(1);
-  });
-
-  test('an empty incoming list changes nothing', () => {
-    const existing = [model({ id: 'a' })];
-    const result = mergeProviderModels(existing, []);
-
-    expect(result.merged).toEqual(existing);
-    expect(result.added).toEqual([]);
+    expect(result.models.map((m) => m.id)).toEqual(['kept']);
+    expect(result.removed).toEqual(['gone']);
+    expect(result.removedCount).toBe(1);
     expect(result.addedCount).toBe(0);
+  });
+
+  test('the user\'s per-model choices survive on the ids that stay', () => {
+    // Visibility and sampling config live on the previous objects; a rebuilt
+    // copy would silently reset the user's edits.
+    const existing = [model({ id: 'a', isVisible: false, maxTokens: 4096, reasoningEffort: 'high' })];
+    const result = replaceProviderModels(existing, [model({ id: 'a', name: 'A Fresh' })]);
+
+    expect(result.models[0].isVisible).toBe(false);
+    expect(result.models[0].maxTokens).toBe(4096);
+    expect(result.models[0].reasoningEffort).toBe('high');
+    // The fetched metadata still wins where it exists.
+    expect(result.models[0].name).toBe('A Fresh');
+  });
+
+  test('a fresh entry carries no leftover config', () => {
+    const result = replaceProviderModels([], [model({ id: 'a' })]);
+    expect(result.models[0].maxTokens).toBeUndefined();
+    expect(result.models[0].temperature).toBeUndefined();
+  });
+
+  test('skips entries with no id and duplicates inside the fetched list', () => {
+    const result = replaceProviderModels([model({ id: 'a' })], [model({ id: '' }), model({ id: 'b' }), model({ id: 'b' })]);
+
+    expect(result.models.map((m) => m.id)).toEqual(['b']);
+    expect(result.addedCount).toBe(1);
+    // `a` is not in the fetched list, so it leaves with the replace.
+    expect(result.removed).toEqual(['a']);
+  });
+
+  test('an empty fetched list empties the provider', () => {
+    const result = replaceProviderModels([model({ id: 'a' })], []);
+    expect(result.models).toEqual([]);
+    expect(result.removed).toEqual(['a']);
+    expect(result.removedCount).toBe(1);
   });
 });
 

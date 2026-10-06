@@ -21,6 +21,7 @@ import {
   backfillableIds,
   backfillEntry,
   knownModelIds,
+  prunableIds,
   toModelEntry,
   updateEntry,
   updatableIds,
@@ -58,12 +59,16 @@ export interface OmpProviderUpsertInput {
    */
   overrideOnly?: boolean;
   /**
-   * When true, existing model entries are overwritten with the fresh data
-   * from `models` rather than being skipped or only backfilled with missing
-   * fields. Used by the "Fetch models" path where the user expects refreshed
-   * metadata (context, pricing, reasoning, capabilities).
+   * Treat `models` as the provider's WHOLE list rather than an addition: the
+   * survivors are refreshed from the fresh seeds, and any registered id the
+   * listing no longer carries is REMOVED. Used by "fetch models", whose answer
+   * describes what the endpoint serves now — without it an id the endpoint
+   * dropped stayed in the file and in the chat picker.
+   *
+   * Omitted by the add-only paths (register a provider, add one model by hand),
+   * where an existing entry belongs to the user and is never pruned.
    */
-  overwrite?: boolean;
+  replaceModels?: boolean;
   models: OmpProviderModelSeed[];
 }
 
@@ -72,18 +77,20 @@ export interface OmpProviderUpsertResult {
   addedModels: string[];
   /** Existing bare entries whose missing metadata got filled from this fetch. */
   backfilledModels: string[];
+  /** Registered ids this fetch removed because the listing no longer carries them. */
+  removedModels: string[];
   skippedModels: string[];
   reason?: string;
 }
 
 /**
- * Add-only upsert of a provider (and its models) into the native omp
- * models.yml — the agent's own registry, where per-model cost feeds usage
- * tracking. Existing provider fields (apiKey, baseUrl, api) and existing model
- * entries are never modified; only models whose id is not yet registered are
- * appended, and only fields the entry is MISSING are filled. Merges preserve
- * unrelated keys, comments and formatting (document model), and the write is
- * atomic and mode-preserving.
+ * Upsert of a provider (and its models) into the native omp models.yml — the
+ * agent's own registry, where per-model cost feeds usage tracking. Existing
+ * provider fields (apiKey, baseUrl, api) are never modified; model entries are
+ * APPENDED unless `replaceModels` is set, in which case `models` is the whole
+ * list — the survivors are refreshed and ids the listing dropped are removed.
+ * Merges preserve unrelated keys, comments and formatting (document model),
+ * and the write is atomic and mode-preserving.
  *
  * Three provider shapes are written here, and omp's rules differ for each:
  *
@@ -146,6 +153,7 @@ export async function upsertOmpProviderModels(
           written: false,
           addedModels: [],
           backfilledModels: [],
+          removedModels: [],
           skippedModels: input.models.map((model) => model.id),
           reason: 'provider not yet in models.yml and no api key available to register it',
         },
@@ -162,6 +170,7 @@ export async function upsertOmpProviderModels(
           written: false,
           addedModels: [],
           backfilledModels: [],
+          removedModels: [],
           skippedModels: input.models.map((model) => model.id),
           reason: 'the supplied API key is a masked placeholder, not a credential',
         },
@@ -169,14 +178,19 @@ export async function upsertOmpProviderModels(
       };
     }
 
-    // Existing entries — when `overwrite` is true, every known model gets
-    // refreshed from the incoming seed (fetch path). Otherwise, only bare ids
-    // with missing metadata are backfilled (add-only path).
+    // Existing entries — when `replaceModels` is true, the listing is the whole
+    // list: every known model gets refreshed from its fresh seed and ids the
+    // listing no longer carries are pruned. Otherwise only bare ids with
+    // missing metadata are backfilled (add-only path).
+    const replaceModels = input.replaceModels === true;
     const backfillIds = overrideOnly ? [] : (
-      input.overwrite
+      replaceModels
         ? updatableIds(existing?.models, incomingById)
         : backfillableIds(existing?.models, incomingById)
     );
+    const pruneIds = overrideOnly || !replaceModels
+      ? []
+      : prunableIds(existing?.models, incomingById);
 
     // A provider the user re-saves without any new model and without a dialect
     // change has nothing to write — reporting `written: true` there would claim
@@ -189,14 +203,15 @@ export async function upsertOmpProviderModels(
       || (input.discovery && !existing.discovery),
     );
 
-    if (additions.length === 0 && backfillIds.length === 0 && !providerChanged) {
+    if (additions.length === 0 && backfillIds.length === 0 && pruneIds.length === 0 && !providerChanged) {
       return {
         result: {
           written: false,
           addedModels: [],
           backfilledModels: [],
+          removedModels: [],
           skippedModels: input.models.map((model) => model.id),
-          reason: existing ? (input.overwrite ? undefined : 'all models already registered') : undefined,
+          reason: existing ? (replaceModels ? undefined : 'all models already registered') : undefined,
         },
         changed: false,
       };
@@ -252,12 +267,20 @@ export async function upsertOmpProviderModels(
         if (typeof id !== 'string' || !backfillIds.includes(id)) continue;
         const seed = incomingById.get(id);
         if (seed) {
-          if (input.overwrite) {
+          if (replaceModels) {
             updateEntry(doc, entry, seed);
           } else {
             backfillEntry(doc, entry, seed);
           }
         }
+      }
+      // Prune LAST and from the end: `delete(index)` splices the sequence, so
+      // removing while walking forwards would skip the entry after each hit.
+      for (let index = targetModels.items.length - 1; index >= 0; index--) {
+        const entry = targetModels.items[index];
+        if (!isMap(entry)) continue;
+        const id = entry.get('id');
+        if (typeof id === 'string' && pruneIds.includes(id)) targetModels.delete(index);
       }
     }
 
@@ -278,6 +301,7 @@ export async function upsertOmpProviderModels(
         written: true,
         addedModels: additions.map((model) => model.id),
         backfilledModels: backfillIds,
+        removedModels: pruneIds,
         skippedModels: input.models.filter((model) => known.has(model.id)).map((model) => model.id),
       },
       changed: true,

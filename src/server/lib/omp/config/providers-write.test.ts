@@ -4,8 +4,9 @@
  */
 
 /**
- * The add-only provider upsert into `models.yml`, driven through a temp agent
- * dir so the real registry is never touched.
+ * The `models.yml` provider upsert, driven through a temp agent dir so the real
+ * registry is never touched. Two modes: add-only (register a provider, add one
+ * model by hand) and `replaceModels` (a fetch, where the listing IS the list).
  *
  * The rules worth pinning are the ones that protect a hand-authored file:
  * - an EXISTING provider keeps its `baseUrl`/`apiKey`/`api` — a re-save must
@@ -15,7 +16,9 @@
  * - a new models-carrying provider without a usable key is refused (never
  *   written half-configured), and a masked placeholder is refused outright;
  * - a map-form `models` entry aborts the write instead of being flattened;
- * - a discovery provider keeps an empty model list (omp owns those models).
+ * - a discovery provider keeps an empty model list (omp owns those models);
+ * - `replaceModels` prunes the ids the listing dropped, while the add-only path
+ *   keeps an id the listing omits — a hand-added model is the user's.
  */
 
 import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
@@ -79,6 +82,7 @@ describe('upsertOmpProviderModels — new providers', () => {
       written: true,
       addedModels: ['gpt-x'],
       backfilledModels: [],
+      removedModels: [],
       skippedModels: [],
     });
     const providers = providersOf(await readModels());
@@ -195,6 +199,7 @@ describe('upsertOmpProviderModels — add-only against an existing provider', ()
       written: false,
       addedModels: [],
       backfilledModels: [],
+      removedModels: [],
       skippedModels: ['m1'],
       reason: 'all models already registered',
     });
@@ -220,6 +225,102 @@ describe('upsertOmpProviderModels — add-only against an existing provider', ()
     })).rejects.toThrow(OmpConfigError);
     // The user's file is untouched.
     expect(await fs.promises.readFile(modelsPath(), 'utf8')).toContain('a:\n        name: A');
+  });
+});
+
+describe('upsertOmpProviderModels — replaceModels against an existing provider', () => {
+  const seed = [
+    'providers:',
+    '  gw:',
+    '    baseUrl: https://gw.example/v1',
+    '    apiKey: sk-live',
+    '    api: openai-completions',
+    '    models:',
+    '      - id: withdrawn',
+    '      - id: kept',
+    '        name: Old Name',
+    '',
+  ].join('\n');
+
+  test('prunes the ids the listing no longer carries and refreshes the rest', async () => {
+    await Bun.write(modelsPath(), seed);
+    const result = await upsertOmpProviderModels('gw', {
+      baseUrl: 'https://gw.example/v1',
+      apiKey: 'sk-live',
+      replaceModels: true,
+      models: [
+        { id: 'kept', name: 'New Name', contextWindow: 64000 },
+        { id: 'brand-new' },
+      ],
+    });
+
+    expect(result.written).toBe(true);
+    expect(result.addedModels).toEqual(['brand-new']);
+    expect(result.backfilledModels).toEqual(['kept']);
+    expect(result.removedModels).toEqual(['withdrawn']);
+    const entry = providersOf(await readModels()).gw ?? {} as unknown as unknown as ProviderEntry;
+    expect(entry.models?.map((m) => m.id)).toEqual(['kept', 'brand-new']);
+    expect(entry.models?.[0].name).toBe('New Name');
+  });
+
+  test('the add-only path still keeps an id the listing omits', async () => {
+    // Registering a provider (or adding one model by hand) must never prune:
+    // the existing entry belongs to the user.
+    await Bun.write(modelsPath(), seed);
+    const result = await upsertOmpProviderModels('gw', {
+      baseUrl: 'https://gw.example/v1',
+      apiKey: 'sk-live',
+      models: [{ id: 'brand-new' }],
+    });
+
+    expect(result.removedModels).toEqual([]);
+    const entry = providersOf(await readModels()).gw ?? {} as unknown as unknown as ProviderEntry;
+    expect(entry.models?.map((m) => m.id)).toEqual(['withdrawn', 'kept', 'brand-new']);
+  });
+
+  test('an override-only entry never prunes omp\'s own catalog list', async () => {
+    await Bun.write(modelsPath(), seed);
+    const result = await upsertOmpProviderModels('gw', {
+      baseUrl: 'https://gw.example/v1',
+      overrideOnly: true,
+      replaceModels: true,
+      models: [],
+    });
+
+    expect(result.removedModels).toEqual([]);
+    const entry = providersOf(await readModels()).gw ?? {} as unknown as unknown as ProviderEntry;
+    expect(entry.models?.map((m) => m.id)).toEqual(['withdrawn', 'kept']);
+  });
+
+  test('a listing that only prunes still counts as a write', async () => {
+    await Bun.write(modelsPath(), seed);
+    const result = await upsertOmpProviderModels('gw', {
+      baseUrl: 'https://gw.example/v1',
+      apiKey: 'sk-live',
+      replaceModels: true,
+      models: [{ id: 'kept' }],
+    });
+
+    expect(result.written).toBe(true);
+    expect(result.addedModels).toEqual([]);
+    expect(result.removedModels).toEqual(['withdrawn']);
+    const entry = providersOf(await readModels()).gw ?? {} as unknown as unknown as ProviderEntry;
+    expect(entry.models?.map((m) => m.id)).toEqual(['kept']);
+  });
+
+  test('a listing that matches the file keeps every id', async () => {
+    await Bun.write(modelsPath(), seed);
+    const result = await upsertOmpProviderModels('gw', {
+      baseUrl: 'https://gw.example/v1',
+      apiKey: 'sk-live',
+      replaceModels: true,
+      models: [{ id: 'withdrawn' }, { id: 'kept' }],
+    });
+
+    expect(result.addedModels).toEqual([]);
+    expect(result.removedModels).toEqual([]);
+    const entry = providersOf(await readModels()).gw ?? {} as unknown as unknown as ProviderEntry;
+    expect(entry.models?.map((m) => m.id)).toEqual(['withdrawn', 'kept']);
   });
 });
 

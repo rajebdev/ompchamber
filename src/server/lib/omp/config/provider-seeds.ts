@@ -147,6 +147,23 @@ export function updatableIds(
 }
 
 /**
+ * Existing entries the listing no longer carries — the ids a replace removes.
+ * An entry with no usable `id` is never pruned: it is not addressable, and
+ * dropping it would delete a model the user wrote by hand without saying so.
+ */
+export function prunableIds(
+  existingModels: unknown,
+  incomingById: Map<string, OmpProviderModelSeed>,
+): string[] {
+  if (!Array.isArray(existingModels)) return [];
+  return existingModels
+    .filter((model): model is Record<string, unknown> => (
+      isRecord(model) && typeof model.id === 'string' && !incomingById.has(model.id)
+    ))
+    .map((model) => String(model.id));
+}
+
+/**
  * A model seed built from MANUAL user input (the "Add model" dialog) rather
  * than a provider listing.
  *

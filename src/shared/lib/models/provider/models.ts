@@ -1,7 +1,9 @@
 /**
  * Auto-fetch helpers for the providers settings: remote model listing via
- * POST /api/settings/provider-models, and the add-only merge — existing
- * models are never removed or modified, only unknown ids get appended.
+ * POST /api/settings/provider-models, and the REPLACE that follows it — the
+ * fetched list becomes the provider's model list, so an id the endpoint no
+ * longer serves leaves with it. The user's per-model choices (visibility,
+ * sampling) are carried over for the ids that survive.
  */
 
 import type { ProviderModel } from '@/shared/types';
@@ -21,6 +23,8 @@ export interface ProviderModelsFetchResult {
     written: boolean;
     addedCount: number;
     backfilledCount: number;
+    /** Ids this fetch removed from models.yml because the endpoint dropped them. */
+    removedCount?: number;
     reason?: string;
   };
 }
@@ -30,6 +34,13 @@ export interface ProviderModelsFetchRequest {
   apiKey?: string;
   providerSlug?: string;
   persistToOmp?: boolean;
+  /**
+   * Treat the listing as the provider's WHOLE model list: ids the endpoint no
+   * longer serves are removed from `models.yml`. Sent by "fetch models", whose
+   * answer describes the endpoint's current catalog; the add-provider path
+   * leaves it off, because it is registering an entry, not syncing one.
+   */
+  replaceModels?: boolean;
   /** Wire dialect to probe and to write into models.yml. */
   api?: OmpProviderApi;
   /** omp auth mode; `none` marks a keyless local server. */
@@ -62,10 +73,14 @@ export async function fetchProviderModelsRemote(
   }
 }
 
-export interface ProviderModelsMergeResult {
-  merged: ProviderModel[];
+export interface ProviderModelsReplaceResult {
+  /** The provider's new model list: the fetched entries, in fetched order. */
+  models: ProviderModel[];
   added: ProviderModel[];
   addedCount: number;
+  /** Ids the endpoint no longer lists; the replace dropped them. */
+  removed: string[];
+  removedCount: number;
 }
 
 /** One model registered by hand — the Add Model dialog's payload. */
@@ -131,21 +146,44 @@ export async function addProviderModel(request: ManualModelRequest): Promise<Man
 }
 
 /**
- * Existing entries pass through untouched (visibility/config survive); the
- * chat model catalog is synced from the newly added entries only.
+ * Replace a provider's model list with a freshly fetched listing.
+ *
+ * "Fetch models" asks the endpoint what it serves NOW, so its answer is the
+ * list — an add-only merge left every id the endpoint had dropped behind, and
+ * the panel then offered models that no longer exist. The user's per-model
+ * choices (visibility, sampling config) live on the previous objects, so they
+ * are carried onto the entries that survive; a genuinely new id starts from
+ * the fetched entry.
  */
-export function mergeProviderModels(
+export function replaceProviderModels(
   existing: ProviderModel[],
-  incoming: ProviderModel[],
-): ProviderModelsMergeResult {
-  const known = new Set(existing.map((model) => model.id));
+  fetched: ProviderModel[],
+): ProviderModelsReplaceResult {
+  const previousById = new Map(existing.map((model) => [model.id, model]));
+  const seen = new Set<string>();
+  const models: ProviderModel[] = [];
   const added: ProviderModel[] = [];
-  for (const model of incoming) {
-    if (!model.id || known.has(model.id)) continue;
-    known.add(model.id);
-    added.push({ ...model });
+  for (const model of fetched) {
+    if (!model.id || seen.has(model.id)) continue;
+    seen.add(model.id);
+    const previous = previousById.get(model.id);
+    if (!previous) {
+      const fresh = { ...model };
+      added.push(fresh);
+      models.push(fresh);
+      continue;
+    }
+    models.push({
+      ...model,
+      isVisible: previous.isVisible !== false,
+      ...(previous.temperature !== undefined ? { temperature: previous.temperature } : {}),
+      ...(previous.maxTokens !== undefined ? { maxTokens: previous.maxTokens } : {}),
+      ...(previous.topP !== undefined ? { topP: previous.topP } : {}),
+      ...(previous.reasoningEffort !== undefined ? { reasoningEffort: previous.reasoningEffort } : {}),
+    });
   }
-  return { merged: [...existing, ...added], added, addedCount: added.length };
+  const removed = existing.filter((model) => !seen.has(model.id)).map((model) => model.id);
+  return { models, added, addedCount: added.length, removed, removedCount: removed.length };
 }
 
 /**
