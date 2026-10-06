@@ -47,7 +47,7 @@ export function TopNavbar({
 }: TopNavbarProps) {
   return (
     <header 
-      className="h-14 flex-shrink-0 border-b border-ink/10 bg-paper flex items-center justify-between pr-4 z-20 titlebar-drag-region select-none"
+      className="h-9 flex-shrink-0 border-b border-ink/10 bg-paper flex items-center justify-between pr-4 z-20 titlebar-drag-region select-none"
       style={{
         paddingLeft: !showLeftPanel ? 'max(1rem, env(titlebar-area-x, 0px))' : undefined,
         paddingRight: 'max(1rem, calc(100vw - env(titlebar-area-width, 100vw)))',
