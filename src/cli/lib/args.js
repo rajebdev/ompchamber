@@ -7,6 +7,7 @@
 
 const BOOLEAN_LONG = new Set([
   'lan',
+  'dev',
   'prod',
   'foreground',
   'no-daemon',
@@ -69,6 +70,7 @@ export function parseArgs(argv) {
     port: null,
     host: null,
     lan: false,
+    dev: false,
     prod: false,
     foreground: false,
     tls: false,
@@ -212,7 +214,8 @@ OPTIONS:
   --tls                   Serve over HTTPS with a self-signed certificate (generated once)
   --ui-password [value]   Require a password for the browser UI (generates one when omitted)
   --no-ui-password        Disable the UI password for this start
-  --prod                  Run the production build instead of the dev server
+  --prod                  Accepted for compatibility; production is the default
+  --dev                   Run the dev server from source (HMR, unminified)
   --foreground            Run the server in the foreground (no daemon)
   --no-daemon             Alias for --foreground
   --all                   Every instance, including ones started outside the CLI
@@ -236,10 +239,10 @@ ENVIRONMENT:
   NPM_CONFIG_REGISTRY     Registry the update check reads (default: registry.npmjs.org)
 
 EXAMPLES:
-  ompchamber                       # Start the server on the default port
+  ompchamber                       # Start the production server on the default port
   ompchamber serve --port 8080     # Start on port 8080
   ompchamber serve --lan           # Start and expose the server on the LAN
-  ompchamber serve --prod          # Serve the production build
+  ompchamber serve --dev           # Run the dev server from source instead
   ompchamber update --check        # Is a newer release available?
   ompchamber update                # Update, then restart a running instance
   ompchamber stop                  # Stop the instances the CLI started

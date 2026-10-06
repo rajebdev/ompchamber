@@ -44,14 +44,15 @@ export async function run(options, ctx) {
     await stopInstance(live, { timeoutMs: STOP_TIMEOUT_MS });
 
     // Reuse the recorded port/host/mode so an instance started on a non-default
-    // port, or bound to the LAN, comes back the way it was found.
+    // port, or bound to the LAN, comes back the way it was found. Production is
+    // the default, so only a recorded dev instance asks for `--dev`.
     await runServe(
       {
         ...options,
         port: live.port,
         host: live.host,
         lan: live.host === '0.0.0.0',
-        prod: live.mode === 'prod',
+        dev: live.mode === 'dev',
         foreground: false,
         all: false,
       },

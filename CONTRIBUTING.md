@@ -23,7 +23,7 @@ The server is the only entry point. It imports `index.html`, so Bun bundles that
 styles and assets on demand in development (with HMR) and serves them from its own routing table —
 there is no separate client watcher, and no build needed before the first request. `bun run build`
 exists for the production artifact: it bundles the server together with the page's assets into
-`dist/client`, which is what `serve --prod` executes.
+`dist/client`, which is what `ompchamber serve` executes (the CLI builds it on demand when absent).
 
 For UI work that does not need a real agent, `MOCK=true bun run dev` starts the same server against
 simulated data — no `omp` install required. With `MOCK=false` (the default) `serve` refuses to start
@@ -61,7 +61,7 @@ completeness. Its headings are the Handoff checklist: `## What changed`, `## Why
 `**Handoff:** incomplete — <missing template sections>`.
 
 **Evidence.** A change to behavior a user can reach at run time needs a live-run statement: how the
-author started the app (`bun run dev`, `bun run start`, `ompchamber serve --prod`), which data mode it
+author started the app (`bun run dev`, `bun run start`, `ompchamber serve`), which data mode it
 ran in (`MOCK=true`, or a real `omp` session), the browser and the OS, and what they observed on the
 changed path. On top of that:
 

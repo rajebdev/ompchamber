@@ -7,10 +7,12 @@ import {
   waitForHealth,
   findLiveInstance,
 } from '@/cli/lib/runtime.js';
+import { buildProductionBundle } from '@/cli/lib/build.js';
 import { probeHost } from '@/server/lib/lifecycle/probe';
 import { log, ok, warn, fail, printJson, isJson, isQuiet } from '@/cli/lib/output.js';
 import { wireChildProcessLifecycle } from '@/cli/lib/process-lifecycle.js';
 import { reportUiAuth, resolveUiPassword, uiPasswordEnv } from '@/cli/lib/ui-password.js';
+import { resolveServeMode } from '@/cli/lib/serve-mode.js';
 import { ompStartupError } from '@/server/lib/omp/core/startup';
 
 const DEFAULT_PORT = 3000;
@@ -42,7 +44,7 @@ export function resolveHost(options) {
 export async function run(options, ctx) {
   const port = resolvePort(options);
   const host = resolveHost(options);
-  const mode = options?.prod ? 'prod' : 'dev';
+  const mode = resolveServeMode(options);
   const json = isJson();
   const quiet = isQuiet();
   const pkgRoot = ctx?.pkgRoot ?? process.cwd();
@@ -63,7 +65,17 @@ export async function run(options, ctx) {
     // the server itself (its HTML route is what emits the markup), and running
     // it is what serves the assets beside it.
     if (!(await Bun.file(builtServer).exists())) {
-      fail(`Production build not found at ${builtServer}.\nRun \`bun run build\` first, then retry with --prod.`);
+      if (!quiet && !json) log('No production build found — building it (this runs once)...');
+      try {
+        buildProductionBundle(pkgRoot, {
+          onLine: quiet || json ? undefined : (chunk) => process.stdout.write(chunk),
+        });
+      } catch (err) {
+        fail(`${err?.message ?? String(err)}\n  Or start the dev server from source:  ompchamber serve --dev`);
+      }
+      if (!(await Bun.file(builtServer).exists())) {
+        fail(`Build finished but ${builtServer} is still missing.\n  Or start the dev server from source:  ompchamber serve --dev`);
+      }
     }
   }
 

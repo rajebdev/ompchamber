@@ -104,7 +104,7 @@ OMPChamber is published to npm and runs on Bun, not Node:
 
 ```bash
 bun add -g ompchamber     # puts the `ompchamber` command on your PATH
-ompchamber serve --prod   # start the server on :3000
+ompchamber serve         # start the server on :3000
 ```
 
 The published tarball carries the source, the CLI and the prebuilt client bundle, so there is no
@@ -165,7 +165,8 @@ instance serving that console.
 | `--tls` | Serve HTTPS from a self-signed certificate, generated once into `~/.ompchamber/tls/` |
 | `--ui-password [value]` | Require a password for the browser UI; generates one when the value is omitted |
 | `--no-ui-password` | Ignore `OMPCHAMBER_UI_PASSWORD` for this start |
-| `--prod` | Serve the production build instead of the dev server |
+| `--prod` | Accepted for compatibility — production is the default |
+| `--dev` | Run the dev server from source (HMR, unminified) instead |
 | `--foreground` (`--no-daemon`) | Run in the foreground (no daemon) |
 | `--all` | Apply the command to every running instance |
 | `-c, --check` | Report whether a newer release exists without installing it |
@@ -299,8 +300,9 @@ One process. Bun serves the HTML shell and bundles its assets itself, so there i
 client watcher to run and no build step before the first request: saving a server file restarts the
 server, saving a client file is pushed to the browser over HMR (`import.meta.hot`, wired by Bun).
 
-`bun run build` is only needed to produce the production bundle — `scripts/build-client.ts` writes
-`dist/client`, which `serve --prod` runs.
+`bun run build` produces the production bundle — `scripts/build-client.ts` writes `dist/client`, which
+`ompchamber serve` runs. The CLI builds it on demand the first time when it is missing, so a source
+checkout needs no manual build; `--dev` skips the bundle entirely.
 
 Verification gates, all mandatory:
 
