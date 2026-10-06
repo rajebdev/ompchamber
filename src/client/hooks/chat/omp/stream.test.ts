@@ -169,6 +169,24 @@ describe('useOmpAgentStream over the session topic', () => {
     probe.server.stop();
   });
 
+  test('a `busy` snapshot with no run must NOT resume the generating UI', async () => {
+    // The server sets `busy` for a probe that would queue behind work already in
+    // flight — including a live subagent whose parent turn has ended. Reading it
+    // as "a run is in flight" drew `•Thinking…` over a finished session and only
+    // released it when the subagent went stale (SUBAGENT_STALE_MS, 30 min).
+    const probe = await mountStream({
+      running: true,
+      busy: true,
+      state: { isStreaming: false, isPromptRunning: false },
+    });
+    await act(async () => { probe.api().connect('s1'); });
+    await settleTopic(probe.server, sessionTopic('s1'));
+
+    expect(probe.calls).toEqual(['connected']);
+    expect(probe.state().isGenerating).toBe(false);
+    probe.server.stop();
+  });
+
   test('reconnecting to another session releases the previous subscription', async () => {
     const probe = await mountStream({ running: false });
     await act(async () => { probe.api().connect('s1'); });

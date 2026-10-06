@@ -218,6 +218,33 @@ describe('settling a run omp no longer owns', () => {
     }
   });
 
+  test('a stranded subagent roster is retired on omp\'s quiescence verdict', async () => {
+    // A subagent whose terminal frame was lost leaves a roster entry that makes
+    // `isBusy()` true with no run in flight — the shape that made a FINISHED
+    // session report `busy` to every client that opened it (and, through the
+    // client's snapshot handler, drew a phantom generating indicator).
+    const { host, sent } = makeHost(sessionState());
+    let roster = 1;
+    host.subagents = { liveCount: () => roster, clear: () => { roster = 0; } };
+    host.streaming = false;
+    host.promptRunning = false;
+
+    expect(await settle(host).reconcile('request')).toBe(false);
+    expect(sent).toEqual(['get_state']);
+    expect(roster).toBe(0);
+  });
+
+  test('a non-quiescent verdict leaves the roster alone', async () => {
+    const { host } = makeHost(sessionState({ isSettled: false }));
+    let roster = 1;
+    host.subagents = { liveCount: () => roster, clear: () => { roster = 0; } };
+    host.streaming = false;
+    host.promptRunning = false;
+
+    expect(await settle(host).reconcile('request')).toBe(false);
+    expect(roster).toBe(1);
+  });
+
   test('the row behind a stranded run is released, not left at `stream`', async () => {
     const sessionId = 'sess-stranded';
     const proc = {

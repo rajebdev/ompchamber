@@ -72,6 +72,17 @@ export class SubagentLiveness {
     return this.lastSeen.size;
   }
 
+  /**
+   * Drop the whole roster. Called when omp itself reports the session quiescent
+   * (`isSettled: true`), which is authoritative proof that no subagent is still
+   * working — a terminal frame lost to a protocol hiccup otherwise kept this
+   * roster non-empty and the session reading as busy for the full stale window.
+   */
+  clear(): void {
+    this.lastSeen.clear();
+    this.keyByIndex.clear();
+  }
+
   private mark(key: string, index: number | undefined, now: number): void {
     this.lastSeen.set(key, now);
     if (index === undefined) return;

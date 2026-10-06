@@ -47,7 +47,7 @@
 
 import type { RpcProcess } from '@/server/lib/omp/rpc/process';
 import { buildWebState, type WebStateHost } from '@/server/lib/omp/rpc/web-state';
-import { GET_STATE_TIMEOUT_MS, type AgentEvent, type RpcSessionState } from '@/server/lib/omp/rpc/constants';
+import { GET_STATE_TIMEOUT_MS, SUBAGENT_STALE_MS, type AgentEvent, type RpcSessionState } from '@/server/lib/omp/rpc/constants';
 import { markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
 
 /**
@@ -81,6 +81,12 @@ export interface RunSettleHost extends WebStateHost {
   isRunning(): boolean;
   getPendingUiDialogs(): unknown[];
   emit(event: AgentEvent): void;
+  /** The live-subagent roster. Optional so a test host can omit it; the real
+   *  wrapper always provides it. `RunSettle` retires a stranded entry on omp's
+   *  own quiescence verdict — a lost terminal frame otherwise holds `isBusy()`
+   *  true for the whole stale window, which is what made a FINISHED session
+   *  report `busy` to every client that opened it. */
+  subagents?: { liveCount(now: number, staleMs: number): number; clear(): void };
 }
 
 /** The surface the child-exit path needs. */
@@ -156,6 +162,12 @@ export class RunSettle {
     const host = this.#host;
     if (this.#probing || !host.isAlive() || host.restarting || !host.sessionId) return false;
     if (!host.isRunning()) {
+      // No run in flight — but a subagent entry may still be on the roster
+      // (its terminal frame was lost). omp's quiescence verdict is the only
+      // thing that can retire it, and `isBusy()` reads the roster, so without
+      // this probe a FINISHED session keeps reporting `busy` to every client
+      // that opens it for the whole SUBAGENT_STALE_MS window.
+      if (host.subagents && host.subagents.liveCount(Date.now(), SUBAGENT_STALE_MS) > 0) await this.#probeRoster();
       this.stop();
       return false;
     }
@@ -191,6 +203,33 @@ export class RunSettle {
       // out) is not evidence the run is over. The next frame or trigger retries.
       this.#arm();
       return false;
+    } finally {
+      this.#probing = false;
+    }
+  }
+
+  /**
+   * Ask omp whether the session is quiescent, and retire the subagent roster
+   * when it says yes.
+   *
+   * Used on the no-run path: the roster can hold an entry whose terminal frame
+   * was lost, which makes `isBusy()` true and every client that opens the
+   * session read `busy` for the whole stale window. omp's `isSettled` covers
+   * "nothing admitted, scheduled, queued or awaiting background work", so it is
+   * authoritative proof no subagent is still working. A false verdict, a
+   * timeout, or a wedged child leaves the roster untouched — the entries then
+   * age out on their own window.
+   */
+  async #probeRoster(): Promise<void> {
+    if (this.#probing) return;
+    const roster = this.#host.subagents;
+    if (!roster) return;
+    this.#probing = true;
+    try {
+      const state = await this.#host.proc.sendCommand<RpcSessionState>({ type: 'get_state' }, GET_STATE_TIMEOUT_MS);
+      if (state?.isSettled === true) roster.clear();
+    } catch {
+      // A probe that cannot answer is not evidence the roster is stale.
     } finally {
       this.#probing = false;
     }

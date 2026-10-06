@@ -77,7 +77,9 @@ export class AgentSessionWrapper {
   // Live subagents, folded from the frames omp streams after the subscription
   // set in initialize(). No other flag on this wrapper can see them, and an
   // idle reclaim or a spawn-mode reconcile must never kill a running subagent.
-  private readonly subagents = new SubagentLiveness();
+  // Public so `RunSettle` can retire a stranded entry on omp's own quiescence
+  // verdict (see `run-settle.server.ts`).
+  readonly subagents = new SubagentLiveness();
   // One background `/rename` at a time. The first run makes up to two attempts
   // (the early one at the first user message, the fallback at run end), and two
   // overlapping generations would race to write the same title slot.

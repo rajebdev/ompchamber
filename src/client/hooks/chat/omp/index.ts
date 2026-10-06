@@ -77,8 +77,19 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
       } | null) => {
         if (cancelled || !data?.running) return;
         const probe = data.state;
+        // Attach when there is anything live to receive: a run, or work a probe
+        // would queue behind (a subagent, an unanswered dialog). Attaching is
+        // how this tab starts receiving that session's frames.
         if (data.busy || probe?.isStreaming || probe?.isPromptRunning) {
           connect(sessionId);
+        }
+        // Resuming the GENERATING UI is a different question, and `busy` is not
+        // run evidence: the server sets it for a live subagent whose parent turn
+        // has already ended, and for a dialog a reloaded client has not answered.
+        // Reading it as "a run is in flight" drew `•Thinking…` over a finished
+        // session until the subagent went stale (SUBAGENT_STALE_MS, 30 min).
+        // A real run always sets one of these two flags.
+        if (probe?.isStreaming || probe?.isPromptRunning) {
           callbacksRef.current.onResumeStream?.();
         }
         // An ask/approval dialog raised before the reload is still blocking the

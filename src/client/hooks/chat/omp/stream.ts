@@ -94,7 +94,15 @@ export function useOmpAgentStream({
         callbacks?.onConnected?.();
         if (!snapshot?.running) return;
         const probe = snapshot.state;
-        if (snapshot.busy || probe?.isStreaming || probe?.isPromptRunning) {
+        // `busy` is NOT run evidence, and must never resume the generating UI.
+        // The server sets it whenever a probe would otherwise have to queue a
+        // `get_state` behind work already in flight — which includes a live
+        // SUBAGENT whose parent turn has ended, and a dialog a reloaded client
+        // has not answered yet. Reading it as "a run is in flight" drew the
+        // `•Thinking…` indicator over a finished session and only released it
+        // when the child's subagent went stale (SUBAGENT_STALE_MS, 30 min).
+        // A real run always shows up in one of these two flags.
+        if (probe?.isStreaming || probe?.isPromptRunning) {
           callbacks?.onResumeStream?.();
         }
         // An ask/approval dialog raised before the reload is still blocking the
