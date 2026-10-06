@@ -235,6 +235,44 @@ describe('useInlineRename', () => {
     expect(seen.current!.isEditing).toBe(false);
   });
 
+  test('the blur after an Enter commit does not commit a second time', () => {
+    const { seen, commits } = setup();
+    act(() => {
+      seen.current!.startRename();
+      seen.current!.setDraft('once');
+    });
+
+    // Enter commits and unmounts the field; the blur that follows is the SAME
+    // commit and used to fire the rename request twice (two POSTs, two signals).
+    act(() => {
+      renameInput().dispatchEvent(new (win.KeyboardEvent as unknown as typeof KeyboardEvent)('keydown', { key: 'Enter', cancelable: true }));
+    });
+    act(() => seen.current!.handleBlur());
+
+    expect(commits).toEqual(['once']);
+  });
+
+  test('a later rename still commits after an earlier Enter', () => {
+    const { seen, commits } = setup();
+    act(() => {
+      seen.current!.startRename();
+      seen.current!.setDraft('first');
+    });
+    act(() => {
+      renameInput().dispatchEvent(new (win.KeyboardEvent as unknown as typeof KeyboardEvent)('keydown', { key: 'Enter', cancelable: true }));
+    });
+    act(() => seen.current!.handleBlur());
+
+    // The one-shot guard is reset by the next startRename, not left armed.
+    act(() => {
+      seen.current!.startRename();
+      seen.current!.setDraft('second');
+    });
+    act(() => seen.current!.commitRename());
+
+    expect(commits).toEqual(['first', 'second']);
+  });
+
   test('other keys neither commit nor prevent the default', () => {
     const { seen, commits } = setup();
     act(() => {

@@ -38,6 +38,9 @@ export function useInlineRename(
   const inputRef = useRef<HTMLInputElement>(null);
   // Escape flips this so the ensuing blur is a no-op (no accidental commit).
   const cancelRef = useRef(false);
+  // Enter commits and closes the field; the blur that follows the unmount is
+  // the SAME commit, and without this flag it fired the rename request twice.
+  const committedRef = useRef(false);
 
   useEffect(() => {
     if (isEditing) inputRef.current?.select();
@@ -45,11 +48,14 @@ export function useInlineRename(
 
   const startRename = () => {
     cancelRef.current = false;
+    committedRef.current = false;
     setDraft(value);
     setIsEditing(true);
   };
 
   const commitRename = () => {
+    if (committedRef.current) return;
+    committedRef.current = true;
     const trimmed = draft.trim();
     setIsEditing(false);
     if (!trimmed || trimmed === value) return;
