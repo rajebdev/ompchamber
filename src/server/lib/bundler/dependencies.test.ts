@@ -52,8 +52,8 @@ const BUILTINS = new Set(builtinModules);
  * The package root, derived from this file's own location (`src/server/lib/
  * bundler` → four levels up) rather than the cwd.
  *
- * `packageRoot()` from `lib/assets/fonts.server.ts` is deliberately NOT used
- * here: it answers "where are the dependencies installed", which is the first
+ * `packageRoot()` from `lib/fs/package-root.ts` is deliberately NOT used here:
+ * it answers "where are the dependencies installed", which is the first
  * directory up from the module that holds `node_modules`. In a published
  * install the package has no `node_modules` of its own — its dependencies are
  * hoisted to the consumer's root — so that helper returns the CONSUMER's
@@ -61,9 +61,10 @@ const BUILTINS = new Set(builtinModules);
  * this package's. Measured: run from an installed copy it resolved
  * `/private/tmp/npmcheck/tsconfig.json` and died with `ENOENT`.
  *
- * The path depth is the same fact `lib/updates/install.ts` encodes in its
- * `DEFAULT_PKG_ROOT`, for the same reason: `src/server/lib/<domain>/<file>`
- * is always four levels below the package.
+ * A test file is never bundled, so this fixed depth is sound where the
+ * shipped `DEFAULT_PKG_ROOT` (`lib/updates/install.ts`) could not be: that one
+ * had to walk up, because the AOT bundle collapses every server module into
+ * `dist/client/index.js`.
  */
 const ROOT = resolve(import.meta.dir, '..', '..', '..', '..');
 

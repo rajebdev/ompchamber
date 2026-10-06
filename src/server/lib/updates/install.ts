@@ -15,6 +15,7 @@
 import { join as joinPath, resolve as resolvePath } from 'node:path';
 
 import { resolveBunBin } from '@/server/lib/lifecycle/bun';
+import { packageDir } from '@/server/lib/fs/package-root';
 import { fetchNpmLatest, OMPCHAMBER_PACKAGE } from '@/server/lib/updates/npm';
 import { releaseTagUrl } from '@/server/lib/updates/release-url';
 import {
@@ -26,8 +27,15 @@ import {
 } from '@/server/lib/updates/install-method';
 import { isNewer } from '@/shared/lib/updates/semver';
 
-/** Package root of the running copy: src/server/lib/updates -> four levels up. */
-const DEFAULT_PKG_ROOT = resolvePath(import.meta.dir, '..', '..', '..', '..');
+/**
+ * Package root of the running copy — the directory holding its `package.json`.
+ *
+ * Resolved by walking up from this module, never by counting `..` segments: the
+ * AOT bundle flattens every server module into `dist/client/index.js`, so a
+ * fixed depth names a different directory in a published install than in a
+ * checkout. `packageDir()` finds the real one in both.
+ */
+const DEFAULT_PKG_ROOT = packageDir();
 /** A client rebuild is slow, but a hung child is worse. */
 const STEP_TIMEOUT_MS = 600_000;
 /** Cap on the captured output returned to the console. */

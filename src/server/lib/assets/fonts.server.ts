@@ -25,9 +25,10 @@
  * plus the cwd. Whichever one holds `node_modules` is the package root.
  */
 
-import { existsSync } from 'fs';
-import { basename, dirname, join, parse, resolve } from 'path';
+import { basename, join } from 'path';
 import { Glob } from 'bun';
+
+import { searchRoots } from '@/server/lib/fs/package-root';
 
 /** Path prefix every rewritten font url carries. */
 export const FONT_ROUTE_PREFIX = '/fonts/';
@@ -42,77 +43,8 @@ const FONT_SOURCES = [
   'src/shared/lib/fonts',
 ] as const;
 
-/**
- * Directories a package root may be found under, nearest first.
- *
- * `import.meta.dir` is the running file's directory — the repo root for the
- * TypeScript entry, `dist/client` for the AOT bundle — and walking up from it
- * finds `node_modules` in both. The cwd is included because a source checkout
- * run from elsewhere still resolves its dependencies through it.
- */
-function searchRoots(): string[] {
-  const roots: string[] = [];
-  const seen = new Set<string>();
-  const add = (dir: string) => {
-    if (dir && !seen.has(dir)) {
-      seen.add(dir);
-      roots.push(dir);
-    }
-  };
-
-  let dir = import.meta.dir;
-  const { root } = parse(dir);
-  for (;;) {
-    add(dir);
-    if (dir === root) break;
-    dir = dirname(dir);
-  }
-  add(resolve(process.cwd()));
-  return roots;
-}
-
 /** Basename -> absolute path. Built once; the packages do not change at runtime. */
 let index: Record<string, string> | null = null;
-
-/**
- * The package root — the first search root that holds `node_modules`.
- *
- * The AOT bundle runs from `dist/client` while a source checkout runs from the
- * repo, and both resolve their dependencies through this. Falling back to the
- * cwd keeps a checkout with no `node_modules` (a publish dry-run) working.
- *
- * This answers "where are the DEPENDENCIES", which is not the same question as
- * `packageDir()` below: a hoisted install keeps the package's own files under
- * `node_modules/ompchamber/` while its dependencies sit in the parent
- * `node_modules/`, so the first root holding `node_modules` is the PARENT.
- */
-function packageRoot(): string {
-  for (const root of searchRoots()) {
-    // `existsSync` rather than `Bun.file().exists()`: the latter is async and
-    // file-only, and `node_modules` is a directory.
-    if (existsSync(join(root, 'node_modules'))) return root;
-  }
-  return process.cwd();
-}
-
-/**
- * The package's own directory — the first search root that holds `src/`.
- *
- * The source stylesheets `lib/assets/font-css.server.ts` reads for `/fonts.css`
- * live there, and they must be found in every install shape. In a source
- * checkout and a non-hoisted install this is the same directory
- * `packageRoot()` returns; in a hoisted install it is the package under
- * `node_modules/`, one level BELOW the root that holds the dependencies.
- * Resolving the source tree through `packageRoot()` there would look for
- * `src/` beside the hoisted packages and find nothing, which serves an empty
- * stylesheet and silently drops every `@font-face`.
- */
-export function packageDir(): string {
-  for (const root of searchRoots()) {
-    if (existsSync(join(root, 'src'))) return root;
-  }
-  return packageRoot();
-}
 
 async function buildIndex(): Promise<Record<string, string>> {
   const found: Record<string, string> = {};

@@ -40,7 +40,7 @@ import type {
   PanelRegistryPayload,
 } from '@/shared/types';
 import { pathExists } from '@/server/lib/omp/core/paths';
-import { packageDir } from '@/server/lib/assets/fonts.server';
+import { packageDir } from '@/server/lib/fs/package-root';
 import { readDisabledPlugins } from '@/server/lib/panels/state.server';
 import { findReadme, readJsonBody, readPluginManifest, subdirectories } from '@/server/lib/panels/files.server';
 import { toManifest, toMarketplaceCatalog } from '@/server/lib/panels/manifest';

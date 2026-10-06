@@ -21,14 +21,21 @@
  */
 
 import { existsSync } from 'node:fs';
-import { join as joinPath, resolve as resolvePath } from 'node:path';
+import { join as joinPath } from 'node:path';
 
 import { resolveBunBin } from '@/server/lib/lifecycle/bun';
+import { packageDir } from '@/server/lib/fs/package-root';
 import { listInstanceRecords } from '@/server/lib/lifecycle/instance';
 import { isCliManaged, resolveLaunchMode, unmanagedReason } from '@/server/lib/lifecycle/launch-mode';
 
-/** Package root of the running copy: src/server/lib/lifecycle -> four levels up. */
-const PKG_ROOT = resolvePath(import.meta.dir, '..', '..', '..', '..');
+/**
+ * Package root of the running copy — the directory holding its `package.json`
+ * and `src/cli/ompchamber.js`. Resolved by walking up from this module, never
+ * by counting `..` segments: the AOT bundle flattens every server module into
+ * `dist/client/index.js`, so a fixed depth names a different directory in a
+ * published install than in a checkout.
+ */
+const PKG_ROOT = packageDir();
 
 /**
  * Time between answering the update request and stopping the server. The

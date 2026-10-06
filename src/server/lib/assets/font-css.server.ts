@@ -40,7 +40,8 @@ import { dirname, join } from 'path';
 import { Glob } from 'bun';
 
 import { splitFontFaces } from '@/server/lib/assets/font-faces';
-import { packageDir, resolveFontFile } from '@/server/lib/assets/fonts.server';
+import { resolveFontFile } from '@/server/lib/assets/fonts.server';
+import { packageDir } from '@/server/lib/fs/package-root';
 
 /** The route the assembled stylesheet is served on. */
 export const FONT_STYLESHEET_ROUTE = '/fonts.css';

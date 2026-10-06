@@ -33,7 +33,7 @@
 import { join, relative } from 'path';
 import type { BuildOutput, BunPlugin } from 'bun';
 
-import { packageDir } from '@/server/lib/assets/fonts.server';
+import { packageDir } from '@/server/lib/fs/package-root';
 
 /** The shell bundle's entrypoint, relative to the package directory. */
 const SHELL_ENTRYPOINT = 'index.html';

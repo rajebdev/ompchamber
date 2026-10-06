@@ -26,7 +26,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { fontStylesheet, serveFontFile } from '@/server/lib/assets/font-css.server';
-import { packageDir } from '@/server/lib/assets/fonts.server';
+import { packageDir } from '@/server/lib/fs/package-root';
 
 const sheet = await fontStylesheet();
 

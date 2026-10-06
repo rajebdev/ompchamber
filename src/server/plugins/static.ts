@@ -2,7 +2,8 @@ import { extname, join, normalize, resolve, sep } from 'path';
 
 import { notModified } from '@/server/lib/assets/conditional.server';
 import { FONT_STYLESHEET_ROUTE, serveFontFile, serveFontStylesheet } from '@/server/lib/assets/font-css.server';
-import { FONT_ROUTE_PREFIX, packageDir } from '@/server/lib/assets/fonts.server';
+import { FONT_ROUTE_PREFIX } from '@/server/lib/assets/fonts.server';
+import { packageDir } from '@/server/lib/fs/package-root';
 
 /**
  * File serving for `public/` and the font routes.
