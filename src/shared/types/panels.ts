@@ -197,4 +197,17 @@ export interface PanelRegistryPayload {
   plugins: PanelPluginStatus[];
   /** The bundled marketplace's offers, installed or not. */
   catalog: PanelCatalogEntry[];
+  /**
+   * Every panel id whose contributions are switched OFF.
+   *
+   * ONE set for both kinds of panel, because enablement is one question: a
+   * plugin is named by `plugin:<pluginId>`, and a BUILT-IN view by its bare id
+   * (`git`, `files`, …). The server only ever stores these ids — it has no
+   * built-in panel list, and does not need one, because the client is what
+   * resolves a bare id to a component. Carrying the set here rather than in the
+   * chamber settings blob is what keeps ONE store: the activity-bar menu and
+   * the Panel Plugins switches write the same ids through the same endpoint,
+   * so the two surfaces cannot disagree about whether a panel is on.
+   */
+  disabledPanels: string[];
 }

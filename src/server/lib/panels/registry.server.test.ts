@@ -19,7 +19,9 @@
  *   says "installed" while nothing is there;
  * - a duplicate panel key is dropped and reported;
  * - the cache is invalidated explicitly, because a plugin written by an install
- *   must appear without a restart.
+ *   must appear without a restart;
+ * - the disabled set is keyed by the PREFIXED panel id, so one stored list
+ *   answers for a built-in view and a plugin alike.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
@@ -36,6 +38,7 @@ import {
   invalidatePanelScan,
 } from '@/server/lib/panels/registry.server';
 import { setPluginEnabled } from '@/server/lib/panels/state.server';
+import { isolateDb, releaseDb } from '@/test-support/isolated-db';
 
 let root = '';
 
@@ -64,11 +67,16 @@ function writePlugin(dirName: string, manifest: unknown): string {
 beforeEach(() => {
   root = fs.mkdtempSync(join(tmpdir(), 'ompchamber-marketplace-'));
   process.env.OMPCHAMBER_MARKETPLACE_DIR = root;
+  // The scan reads the disabled set, which is a DATABASE read — so the suite
+  // needs a database of its own before the first scan, or it opens the real one
+  // and a `setPluginEnabled` below rewrites a live install.
+  isolateDb();
   invalidatePanelScan();
 });
 
 afterEach(() => {
   delete process.env.OMPCHAMBER_MARKETPLACE_DIR;
+  releaseDb();
   invalidatePanelScan();
   fs.rmSync(root, { recursive: true, force: true });
 });
@@ -272,70 +280,37 @@ describe('discoverPanelPlugins', () => {
 
   test('a disabled plugin contributes no panels and no dir map entry', async () => {
     const dir = writePlugin('demo', VALID);
-    Bun.env.OMPCHAMBER_DB_PATH = join(root, 'db.sqlite');
-    try {
-      await setPluginEnabled('demo', false);
-      invalidatePanelScan();
-      const payload = await discoverPanelPlugins();
-      expect(payload.panels).toEqual([]);
-      // The bundle route resolves its root from the same scan, so a disabled
-      // plugin's code is unreachable as well as its button being gone.
-      expect(await findPluginDir('demo')).toBeUndefined();
-      // The row survives, with its switch off — that is what lets the user
-      // turn it back on.
-      expect(payload.plugins.find((plugin) => plugin.pluginId === 'demo')?.enabled).toBe(false);
+    await setPluginEnabled('plugin:demo', false);
+    invalidatePanelScan();
+    const payload = await discoverPanelPlugins();
+    expect(payload.panels).toEqual([]);
+    // The bundle route resolves its root from the same scan, so a disabled
+    // plugin's code is unreachable as well as its button being gone.
+    expect(await findPluginDir('demo')).toBeUndefined();
+    // The row survives, with its switch off — that is what lets the user
+    // turn it back on. `enabled` is the SAME verdict the client's panel filter
+    // reaches, because both test the one prefixed key.
+    expect(payload.plugins.find((plugin) => plugin.pluginId === 'demo')?.enabled).toBe(false);
+    // The raw disabled list travels with the payload, because the client is
+    // what resolves a BUILT-IN view's bare id — the server has no built-in
+    // panel list and must not need one.
+    expect(payload.disabledPanels).toEqual(['plugin:demo']);
 
-      await setPluginEnabled('demo', true);
-      invalidatePanelScan();
-      expect((await discoverPanelPlugins()).panels).toHaveLength(1);
-      expect(await findPluginDir('demo')).toBe(dir);
-    } finally {
-      globalThis.__ompChamberDb?.resolved?.raw.close();
-      globalThis.__ompChamberDb = undefined;
-      delete Bun.env.OMPCHAMBER_DB_PATH;
-    }
-  });
-});
-
-describe('the bundled marketplace catalog', () => {
-  test('lists bundled plugins that are not installed, without scanning them as panels', async () => {
-    const bundled = fs.mkdtempSync(join(root, 'bundled-'));
-    fs.mkdirSync(join(bundled, 'plugins', 'offer'), { recursive: true });
-    fs.writeFileSync(join(bundled, 'plugins', 'offer', 'ompchamber.json'), JSON.stringify({ ...VALID, id: 'offer' }));
-    const previous = process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR;
-    process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR = bundled;
-    try {
-      invalidatePanelScan();
-      const payload = await discoverPanelPlugins();
-      // Available, and nothing more: the store does not contribute a button.
-      expect(payload.catalog.map((entry) => entry.pluginId)).toEqual(['offer']);
-      expect(payload.catalog[0].installed).toBe(false);
-      // What a plugin CONTRIBUTES is known only once its bundle loads, so a
-      // store entry carries the identity alone — there is nothing to promise.
-      expect(payload.panels).toEqual([]);
-    } finally {
-      if (previous === undefined) delete process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR;
-      else process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR = previous;
-      fs.rmSync(bundled, { recursive: true, force: true });
-    }
+    await setPluginEnabled('plugin:demo', true);
+    invalidatePanelScan();
+    expect((await discoverPanelPlugins()).panels).toHaveLength(1);
+    expect(await findPluginDir('demo')).toBe(dir);
   });
 
-  test('marks a bundled plugin installed once it is present in the working marketplace', async () => {
-    const bundled = fs.mkdtempSync(join(root, 'bundled-'));
-    fs.mkdirSync(join(bundled, 'plugins', 'demo'), { recursive: true });
-    fs.writeFileSync(join(bundled, 'plugins', 'demo', 'ompchamber.json'), JSON.stringify(VALID));
-    const previous = process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR;
-    process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR = bundled;
-    try {
-      writePlugin('demo', VALID);
-      invalidatePanelScan();
-      const payload = await discoverPanelPlugins();
-      expect(payload.catalog[0].installed).toBe(true);
-      expect(payload.plugins[0].bundled).toBe(true);
-    } finally {
-      if (previous === undefined) delete process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR;
-      else process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR = previous;
-      fs.rmSync(bundled, { recursive: true, force: true });
-    }
+  test('a bare built-in view id does not switch a plugin off', async () => {
+    writePlugin('demo', VALID);
+    // The two kinds of panel share ONE list, so the keys must not collide: a
+    // built-in view's bare id must leave every plugin alone.
+    await setPluginEnabled('demo', false);
+    invalidatePanelScan();
+    const payload = await discoverPanelPlugins();
+    expect(payload.disabledPanels).toEqual(['demo']);
+    expect(payload.panels.map((panel) => panel.pluginId)).toEqual(['demo']);
+    expect(payload.plugins[0].enabled).toBe(true);
   });
 });

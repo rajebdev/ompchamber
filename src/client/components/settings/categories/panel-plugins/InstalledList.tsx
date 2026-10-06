@@ -5,6 +5,7 @@ import { RemovePluginButton } from '@/client/components/settings/categories/pane
 import { PluginMark } from '@/client/components/settings/categories/panel-plugins/PluginMark';
 import { PluginReadmeModal } from '@/client/components/settings/categories/panel-plugins/ReadmeModal';
 import type { PluginSlots, SlotName } from '@/client/lib/plugins/slots';
+import { pluginPanelKey } from '@/shared/lib/workspace/panel-ids';
 
 /** The four slots a plugin may fill, in the order a card lists them. */
 const SLOT_ORDER: readonly SlotName[] = ['rightPanel', 'panel', 'headerPanel', 'settingsSection'];
@@ -64,7 +65,11 @@ export function InstalledList({
         {plugins.map((plugin) => {
           const entry = slots.get(plugin.pluginId);
           const failure = failures.get(plugin.pluginId);
-          const toggling = busy === `enable:${plugin.pluginId}` || busy === `disable:${plugin.pluginId}`;
+          // The ENABLEMENT key is the panel key, not the plugin id: it is the
+          // id the client filters its panel catalog by, so a switch that wrote
+          // the bare id would report success while the panel stayed hidden.
+          const panelKey = pluginPanelKey(plugin.pluginId);
+          const toggling = busy === `enable:${panelKey}` || busy === `disable:${panelKey}`;
           const contributed = entry ? SLOT_ORDER.filter((slot) => entry.components[slot]) : [];
 
           return (
@@ -94,7 +99,7 @@ export function InstalledList({
                   aria-checked={plugin.enabled}
                   aria-label={`${plugin.enabled ? 'Disable' : 'Enable'} ${plugin.name}`}
                   disabled={busy !== null}
-                  onClick={() => void onSetEnabled(plugin.pluginId, !plugin.enabled)}
+                  onClick={() => void onSetEnabled(panelKey, !plugin.enabled)}
                   title={plugin.enabled ? 'Disable — keep the files, remove its buttons' : 'Enable this plugin'}
                   className={`relative w-8 h-4 rounded-full transition-colors flex-shrink-0 mt-0.5 disabled:opacity-40 ${
                     plugin.enabled ? 'bg-ink/70' : 'bg-ink/20'

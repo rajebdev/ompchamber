@@ -9,6 +9,7 @@ import {
 import { InstallForm } from '@/client/components/settings/categories/panel-plugins/InstallForm';
 import { AvailableList } from '@/client/components/settings/categories/panel-plugins/AvailableList';
 import { InstalledList } from '@/client/components/settings/categories/panel-plugins/InstalledList';
+import { BuiltinList } from '@/client/components/settings/categories/panel-plugins/BuiltinList';
 
 /**
  * One rejection, with the repair it has when there is one.
@@ -78,7 +79,7 @@ function RejectionRow({
  * on.
  */
 export function PanelPluginsSection() {
-  const { panels, errors, plugins, catalog, ready } = usePanelRegistry();
+  const { panels, errors, plugins, catalog, disabledPanels, ready } = usePanelRegistry();
   const { slots, failures } = usePanelSlots();
   const actions = usePanelPluginActions();
 
@@ -119,6 +120,10 @@ export function PanelPluginsSection() {
       />
 
       {!ready ? <p className="text-xs text-ink/50">Reading…</p> : null}
+
+      {/* Built-ins first, and always — they are the chamber's own views, so
+          they are listed whether or not the registry read settled. */}
+      <BuiltinList disabled={disabledPanels} busy={actions.busy} onSetEnabled={actions.setEnabled} />
 
       {ready && available.length === 0 && plugins.length === 0 && errors.length === 0 ? (
         <div className="text-xs text-ink/60 space-y-1.5">

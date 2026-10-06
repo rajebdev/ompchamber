@@ -1,11 +1,18 @@
 import { useMemo } from 'preact/hooks';
-import type { ComponentType } from 'preact';
+import type { ComponentType, ReactNode } from 'preact/compat';
 import type { RightPanelProps } from '@ompchamber/plugin-sdk/app';
 import { usePanelRegistry, usePanelSlots } from '@/client/hooks/workspace/panel-registry';
 import { pluginIdOf, pluginPanelKey } from '@/shared/lib/workspace/panel-ids';
+import { resolvePluginPanelWidths } from '@/shared/lib/workspace/panel-widths';
 import { panelOf, rightPanelOf } from '@/client/lib/plugins/slots';
-import { useSessionStateContext } from '@/client/hooks/workspace/session-state/context';
 import { PluginError } from '@/client/components/workspace/plugin-panel/Error';
+import {
+  enabledBuiltinPanels,
+  type BuiltinPanelView,
+  type PanelBodyProps,
+} from '@/client/components/workspace/panels/builtin';
+
+export type { PanelBodyProps };
 
 /** One plugin's right-panel component, ready to render. */
 export interface ResolvedPluginPanel {
@@ -83,22 +90,17 @@ export function usePluginPanels(activePanel: string): PluginPanels {
 }
 
 /**
- * Render the active plugin panel, or the notice explaining why it is not there.
+ * The notice a panel position shows when the selection names no drawable panel.
  *
- * A component that throws takes the whole app down with it, so the panel is
- * wrapped: a plugin is local code the user installed, and one broken plugin
- * must not cost them the chamber.
+ * A panel that IS available is drawn by the catalog's own `render`, which is the
+ * only place that holds the props a body needs (its workspace, refresh key and
+ * close handler). This is the other outcome: a selection naming a panel that is
+ * switched off, uninstalled, or whose bundle has not loaded — three different
+ * causes the user cannot tell apart from a blank column.
  */
 export function PluginPanelBody({ panelKey }: { panelKey: string }) {
-  const { panels, unresolved } = usePluginPanels(panelKey);
-  const { sessionId } = useSessionStateContext();
-  const resolved = panels.find((panel) => panel.panelKey === panelKey);
-
-  if (!resolved) {
-    return <PluginError pluginId={unresolved?.pluginId ?? panelKey} reason={unresolved?.reason ?? 'not loaded'} />;
-  }
-
-  return <resolved.Component sessionId={sessionId ?? null} workspacePath={null} />;
+  const { unresolved } = usePluginPanels(panelKey);
+  return <PluginError pluginId={unresolved?.pluginId ?? panelKey} reason={unresolved?.reason ?? 'not loaded'} />;
 }
 
 /**
@@ -147,4 +149,102 @@ export function usePanelSlotPlugins(): ResolvedPluginPanel[] {
 export function useActiveEditorPanel(activeKey: string | null): ResolvedPluginPanel | null {
   const plugins = usePanelSlotPlugins();
   return activeKey ? plugins.find((panel) => panel.panelKey === activeKey) ?? null : null;
+}
+
+/** A built-in view's catalog entry, with its renderer closed over its component. */
+function builtinEntry(view: BuiltinPanelView): ResolvedPanel {
+  const View = view.Component;
+  return {
+    id: view.id,
+    title: view.title,
+    label: view.label,
+    icon: view.icon,
+    name: '',
+    builtin: true,
+    requiresWorkspace: view.requiresWorkspace,
+    liveWhileHidden: view.liveWhileHidden === true,
+    minWidth: view.minWidth,
+    defaultWidth: view.defaultWidth,
+    defaultFraction: view.defaultFraction,
+    render: (props) => <View {...props} />,
+  };
+}
+
+/** One panel in the merged catalog — a built-in view or an installed plugin. */
+export interface ResolvedPanel {
+  /** The panel id: a bare built-in view id, or `plugin:<pluginId>`. */
+  id: string;
+  /** The activity bar's tooltip. */
+  title: string;
+  /** The phone's chip label. */
+  label: string;
+  /** A built-in view's own icon; a plugin draws its mark instead. */
+  icon?: ReactNode;
+  /** A plugin's icon URL, when its manifest declares one. */
+  iconUrl?: string;
+  /** The plugin's display name; empty for a built-in view. */
+  name: string;
+  builtin: boolean;
+  requiresWorkspace: boolean;
+  liveWhileHidden: boolean;
+  minWidth: number;
+  /** The px width the view opens at before the group's area is measured. */
+  defaultWidth: number;
+  defaultFraction: number;
+  /** Render the body. One call, so both layouts draw a view the same way. */
+  render: (props: PanelBodyProps) => ReactNode;
+}
+
+/**
+ * The panel catalog the activity bar and the panel stack render.
+ *
+ * ONE list, two sources: the built-in views (in `RIGHT_PANEL_TYPES` order) and
+ * the installed plugins (in the registry's order, below a divider). Enablement
+ * is ONE set of ids — a built-in view is off by its bare id and a plugin by
+ * `plugin:<id>` — so a view the user switched off disappears from the bar, the
+ * phone's strip and the right-click menu alike, whichever kind it is.
+ *
+ * Built-ins come first and keep their positions; the plugins follow. That order
+ * is what makes the bar stable across reloads rather than following whichever
+ * import finished first.
+ */
+export function usePanelCatalog(): ResolvedPanel[] {
+  const { panels, disabledPanels } = usePanelRegistry();
+  const { slots } = usePanelSlots();
+
+  return useMemo(() => {
+    const out: ResolvedPanel[] = [];
+
+    for (const view of enabledBuiltinPanels(disabledPanels)) {
+      out.push(builtinEntry(view));
+    }
+
+    for (const panel of panels) {
+      const entry = slots.get(panel.pluginId);
+      const Component = entry ? rightPanelOf(entry) : undefined;
+      if (!Component) continue;
+      const key = pluginPanelKey(panel.pluginId);
+      if (disabledPanels.includes(key)) continue;
+      const size = entry?.sizing.rightPanel;
+      const widths = resolvePluginPanelWidths({ ...size });
+      out.push({
+        id: key,
+        title: `${entry?.titles.rightPanel ?? panel.name} — ${panel.name}`,
+        label: entry?.titles.rightPanel ?? panel.name,
+        name: panel.name,
+        builtin: false,
+        // A plugin reads whatever the host published and draws what it can, so
+        // gating it on a workspace folder would hide a panel that works.
+        requiresWorkspace: false,
+        liveWhileHidden: false,
+        minWidth: widths.min,
+        defaultWidth: widths.px,
+        defaultFraction: widths.fraction,
+        ...(panel.iconUrl ? { iconUrl: panel.iconUrl } : {}),
+        render: (props) => <Component sessionId={props.sessionId ?? null} workspacePath={null} />,
+      });
+    }
+
+    return out;
+  }, [panels, slots, disabledPanels]);
 }

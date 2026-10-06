@@ -48,11 +48,17 @@ interface PanelRegistryState {
   plugins: PanelPluginStatus[];
   /** The bundled marketplace's offers, installed or not. */
   catalog: PanelCatalogEntry[];
+  /**
+   * Every panel id switched off — a bare built-in view id, or `plugin:<id>`.
+   * Read by the built-in registrations and the activity bar; the single source
+   * of "is this panel on", shared with the Panel Plugins switches.
+   */
+  disabledPanels: string[];
   /** False until the first read settles, so a view can hold its placeholder. */
   ready: boolean;
 }
 
-const EMPTY: PanelRegistryPayload = { panels: [], marketplaces: [], errors: [], plugins: [], catalog: [] };
+const EMPTY: PanelRegistryPayload = { panels: [], marketplaces: [], errors: [], plugins: [], catalog: [], disabledPanels: [] };
 
 let cached: Promise<PanelRegistryPayload> | null = null;
 
@@ -99,6 +105,7 @@ export function usePanelRegistry(): PanelRegistryState {
         errors: payload.errors ?? [],
         plugins: payload.plugins ?? [],
         catalog: payload.catalog ?? [],
+        disabledPanels: payload.disabledPanels ?? [],
         ready: true,
       });
       // The bundles are imported right after the list that names them: a panel

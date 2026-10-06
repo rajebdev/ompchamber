@@ -6,7 +6,7 @@
 /**
  * Panel-plugin discovery.
  *
- * There is ONE store and ONE working marketplace:
+ * ONE store and ONE working marketplace:
  *
  *   <package>/marketplace/            the STORE — what the app ships
  *     plugins/session-info/           an offer, not an install
@@ -17,22 +17,19 @@
  *       package.json                  manifest under its `ompchamber` key
  *       dist/app.js                   the built ESM bundle the host imports
  *
- * The working copy lives in the DATA directory rather than inside the package
- * because that is the only location both install shapes can write: a globally
- * installed package sits in a read-only `node_modules`, and the update flow
- * replaces it outright, so a plugin installed there would vanish on the next
- * upgrade. The bundled copy is the seed for the STORE list, never copied
- * automatically.
+ * The working copy lives in the DATA directory because that is the only location
+ * both install shapes can write: a globally installed package sits in a
+ * read-only `node_modules`, and the update flow replaces it outright.
  *
- * The catalog and the directory are independent, and both directions matter:
- * a plugin present under `plugins/` but absent from the catalog still loads
- * (that is what makes a hand-copied folder work), and a catalog entry naming a
+ * The catalog and the directory are independent, and both directions matter: a
+ * plugin present under `plugins/` but absent from the catalog still loads (that
+ * is what makes a hand-copied folder work), and a catalog entry naming a
  * directory that holds no plugin is REPORTED (that is what makes a failed
  * install visible instead of silent).
  *
- * Nothing here executes plugin code. The scan reads manifests, validates them,
- * and reports every rejection with its reason; the bundle is imported later, by
- * the browser, from the bundle route.
+ * Nothing here executes plugin code: the scan reads manifests, validates them
+ * and reports every rejection with its reason, and the browser imports the
+ * bundle later from the bundle route.
  */
 
 import { homedir } from 'os';
@@ -47,6 +44,7 @@ import { packageDir } from '@/server/lib/assets/fonts.server';
 import { readDisabledPlugins } from '@/server/lib/panels/state.server';
 import { findReadme, readJsonBody, readPluginManifest, subdirectories } from '@/server/lib/panels/files.server';
 import { toManifest, toMarketplaceCatalog } from '@/server/lib/panels/manifest';
+import { pluginPanelKey } from '@/shared/lib/workspace/panel-ids';
 
 /** The marketplace root: `~/.ompchamber/marketplace`, overridable for tests. */
 export function getMarketplaceDir(): string {
@@ -113,7 +111,7 @@ export function invalidatePanelScan(): void {
 async function runPanelScan(): Promise<PanelScan> {
   const root = getMarketplaceDir();
   const pluginsRoot = getMarketplacePluginsDir();
-  const scan: PanelScan = { panels: [], marketplaces: [], errors: [], plugins: [], catalog: [], dirs: {} };
+  const scan: PanelScan = { panels: [], marketplaces: [], errors: [], plugins: [], catalog: [], disabledPanels: [], dirs: {} };
 
   // Rejections are tagged with the marketplace id so the pane groups by a value
   // rather than by matching on a path.
@@ -149,8 +147,13 @@ async function runPanelScan(): Promise<PanelScan> {
 
   // Read once, before the loop: whether a plugin is ON decides whether its
   // bundle is published, and the flag is stored rather than derived.
-  const disabled = new Set(await readDisabledPlugins());
-
+  const disabledList = await readDisabledPlugins();
+  const disabled = new Set(disabledList);
+  // The raw list travels with the payload: a BUILT-IN view is named by its bare
+  // id and the server has no built-in list to resolve it against, so the client
+  // is what filters its own views. The scan itself only ever asks about plugin
+  // ids, which is why the membership test above is the `Set`.
+  scan.disabledPanels = disabledList;
   const pluginStatus: PanelPluginStatus[] = [];
   for (const pluginName of await subdirectories(pluginsRoot)) {
     const pluginDir = join(pluginsRoot, pluginName);
@@ -171,7 +174,11 @@ async function runPanelScan(): Promise<PanelScan> {
     // UNBUILT rather than as broken — the manifest is fine, and the pane offers
     // to run the build — which is why this is a separate list from `errors`.
     const isPackage = await pathExists(join(pluginDir, 'package.json'));
-    const enabled = !disabled.has(manifest.id);
+    // A plugin's enablement key carries the SAME prefix the client uses for its
+    // panel id (`plugin:<id>`), so one stored list answers for both kinds. Testing
+    // the bare manifest id here made a disabled plugin still report `enabled:
+    // true` while its panel stayed hidden — two answers for one question.
+    const enabled = !disabled.has(pluginPanelKey(manifest.id));
     const built = await pathExists(join(pluginDir, manifest.app));
     pluginStatus.push({
       pluginId: manifest.id,
@@ -308,8 +315,8 @@ async function cachedScan(): Promise<PanelScan> {
 
 /** The client payload: the marketplace, its panels, and its rejections. */
 export async function discoverPanelPlugins(): Promise<PanelRegistryPayload> {
-  const { panels, marketplaces, errors, plugins, catalog } = await cachedScan();
-  return { panels, marketplaces, errors, plugins, catalog };
+  const { panels, marketplaces, errors, plugins, catalog, disabledPanels } = await cachedScan();
+  return { panels, marketplaces, errors, plugins, catalog, disabledPanels };
 }
 
 /**

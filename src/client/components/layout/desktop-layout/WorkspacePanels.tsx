@@ -1,28 +1,19 @@
-import { useMemo, useRef } from 'preact/hooks';
+import { useRef } from 'preact/hooks';
 import { Suspense, lazy } from 'preact/compat';
 import type { ReactNode, RefObject } from 'preact/compat';
 import { Group, Panel, type PanelImperativeHandle } from '@/client/components/layout/desktop-layout/resizer';
 import { ChatTimeline } from '@/client/components/workspace/chat-timeline/index';
-import { getDesktopPanelView } from '@/client/components/common/lazy-panels';
-import { usePluginPanels, PluginPanelBody } from '@/client/components/workspace/plugin-panel/resolve';
-import { pluginKeyOf } from '@/shared/lib/workspace/panel-ids';
+import { usePanelCatalog, PluginPanelBody, type PanelBodyProps } from '@/client/components/workspace/plugin-panel/resolve';
 import { RightActivityBar } from '@/client/components/layout/RightActivityBar';
 import { ResizeHandle } from '@/client/components/layout/desktop-layout/ResizeHandle';
 import { useAvailableWidth } from '@/client/hooks/workspace/available-width';
-import {
-  DEFAULT_RIGHT_PANEL_FRACTIONS,
-  DEFAULT_RIGHT_PANEL_WIDTHS,
-  MIN_RIGHT_PANEL_WIDTHS,
-  RIGHT_PANEL_TYPES,
-  type RightPanelType,
-} from '@/shared/lib/workspace/right-panels';
+import { useSessionStateContext } from '@/client/hooks/workspace/session-state/context';
 import {
   DEFAULT_EDITOR_FRACTIONS,
   DEFAULT_EDITOR_WIDTHS,
   MIN_CHAT_PANEL_WIDTH,
   MIN_EDITOR_PANEL_WIDTH,
   resolvePanelWidth,
-  resolvePluginPanelWidths,
   type EditorWidthMode,
   type PanelWidths,
 } from '@/shared/lib/workspace/panel-widths';
@@ -103,35 +94,24 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
   const groupRef = useRef<HTMLDivElement>(null);
   const available = useAvailableWidth(groupRef);
 
-  // One cached lazy per view, scoped to this layout instance: switching the
-  // right panel toggles CSS visibility instead of unmounting, so a view's
-  // state (tree expansion, search results, terminal buffer) survives switches
-  // and no panel re-fetches its data just because the user looked away.
-  const viewScope = useMemo(() => ({}), []);
-  const rightViews = useMemo(
-    () => RIGHT_PANEL_TYPES.map((view) => ({ view, Comp: getDesktopPanelView(viewScope, view) })),
-    [viewScope],
-  );
-
-  // Plugin-contributed panels come from the registry AND the loaded bundles:
-  // the registry says which plugins are installed, the slots say which
-  // components registered. A plugin whose bundle has not loaded yet has no
-  // component, so it is absent here and its panel key renders the notice.
-  const { panels: pluginPanels } = usePluginPanels(activeRightPanel);
-  const activePluginKey = pluginKeyOf(activeRightPanel);
-  const activePlugin = activePluginKey
-    ? pluginPanels.find((entry) => entry.panelKey === activePluginKey)
-    : undefined;
+  // ONE catalog for both kinds of panel. The list is memoised per render pass
+  // and the components inside it are `lazy()` at module scope, so switching the
+  // right panel toggles CSS visibility instead of unmounting: a view's state
+  // (tree expansion, search results, terminal buffer) survives switches and no
+  // panel re-fetches its data just because the user looked away.
+  const catalog = usePanelCatalog();
+  const { sessionId } = useSessionStateContext();
+  const activePanel = catalog.find((panel) => panel.id === activeRightPanel);
 
   // Separators present in this group, which also consume width.
   const handleCount = (showEditor ? 1 : 0) + (showRightPanel ? 1 : 0);
 
-  // A plugin panel is not in the built-in maps, so its floor and open size come
-  // from its own declared sizing under the chamber's own bounds. Resolved once
-  // here rather than at each use, so the editor's sibling reservation and the
-  // right panel's own floor can never be computed from different values.
-  const pluginWidths = activePlugin ? resolvePluginPanelWidths(activePlugin) : null;
-  const rightPanelMin = pluginWidths?.min ?? MIN_RIGHT_PANEL_WIDTHS[activeRightPanel as RightPanelType];
+  // The active view's own floor and open size, resolved once here rather than
+  // at each use, so the editor's sibling reservation and the right panel's own
+  // floor can never be computed from different values. A view that is switched
+  // off (or a plugin that has not loaded) has no entry, and the right panel
+  // falls back to the editor's own floor — it renders the notice, not a view.
+  const rightPanelMin = activePanel?.minWidth ?? MIN_EDITOR_PANEL_WIDTH;
 
   const editorWidth = resolvePanelWidth({
     stored: panelWidths[editorWidthMode],
@@ -148,8 +128,8 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
 
   const rightWidth = resolvePanelWidth({
     stored: panelWidths.right?.[activeRightPanel],
-    defaultFraction: pluginWidths?.fraction ?? DEFAULT_RIGHT_PANEL_FRACTIONS[activeRightPanel as RightPanelType],
-    defaultPx: pluginWidths?.px ?? DEFAULT_RIGHT_PANEL_WIDTHS[activeRightPanel as RightPanelType],
+    defaultFraction: activePanel?.defaultFraction ?? DEFAULT_EDITOR_FRACTIONS[editorWidthMode],
+    defaultPx: activePanel?.defaultWidth ?? MIN_EDITOR_PANEL_WIDTH,
     available,
     min: rightPanelMin,
     // The editor took its share first; only its floor is reserved here.
@@ -205,7 +185,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
           <PanelSuspense>
             <Editor
               className="w-full h-full"
-              activeEditorPanelKey={activePluginKey}
+              activeEditorPanelKey={null}
               openedFiles={openedFiles}
               activeFileId={activeFileId}
               onSelectFile={onSetActiveFileId}
@@ -220,33 +200,43 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
         {showRightPanel && <ResizeHandle />}
         <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={rightWidth} minSize={rightPanelMin} collapsed={!showRightPanel}>
           <PanelSuspense>
-            {rightViews.map(({ view, Comp }) => {
-              const isActiveView = activeRightPanel === view;
-              const base = {
+            {/* ONE renderer for both kinds of panel. Each view stays MOUNTED
+                while another is on screen (hidden with CSS), so a tree's
+                expansion, a search's results and a terminal's buffer survive a
+                switch. A plugin panel is mounted only while it is the active
+                one: a hidden plugin is a component nobody is looking at, and
+                the host owns no state of its own to preserve. */}
+            {catalog.map((panel) => {
+              const isActiveView = activeRightPanel === panel.id;
+              if (!panel.builtin && !isActiveView) return null;
+              const body: PanelBodyProps = {
                 className: 'w-full h-full',
-                // The terminal must stay enabled while hidden: swapping it
-                // to the placeholder mid-command would unmount the live
-                // stream. Everything else polls/re-reads only while shown.
-                enabled: view === 'terminal' ? hasActiveContext : hasActiveContext && isActiveView,
+                sessionId,
+                // A view that stays live while hidden keeps reading even when
+                // another view is on screen — the terminal owns a live PTY and
+                // swapping it to the placeholder mid-command would drop the
+                // stream. Everything else polls only while shown.
+                enabled: panel.liveWhileHidden
+                  ? hasActiveContext
+                  : hasActiveContext && isActiveView,
                 active: isActiveView,
                 refreshKey,
-                rootPath: activeProjectPath ?? undefined,
+                ...(activeProjectPath ? { rootPath: activeProjectPath } : {}),
                 onRefresh: onRefreshWorkspace,
                 onOpenFile,
                 onClose: onToggleRightPanel,
               };
               return (
-                <div key={view} className={isActiveView ? 'w-full h-full' : 'hidden'}>
-                  <Comp {...base} />
+                <div key={panel.id} className={isActiveView ? 'w-full h-full' : 'hidden'}>
+                  {panel.render(body)}
                 </div>
               );
             })}
-            {/* A plugin panel is not in `rightViews`: its component comes from
-                the loaded bundle, and only the active one is mounted — a hidden
-                plugin is a component nobody is looking at. */}
-            {activePluginKey ? (
+            {/* The selection names a panel that is switched off, uninstalled, or
+                whose bundle has not loaded — a notice, never a blank column. */}
+            {!activePanel ? (
               <div className="w-full h-full">
-                <PluginPanelBody panelKey={activePluginKey} />
+                <PluginPanelBody panelKey={activeRightPanel} />
               </div>
             ) : null}
           </PanelSuspense>

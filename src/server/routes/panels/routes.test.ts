@@ -37,6 +37,7 @@ import { loader as readmeLoader } from '@/server/routes/panels/readme';
 import { action as installAction } from '@/server/routes/panels/install';
 import { discoverPanelPlugins, getMarketplacePluginsDir, invalidatePanelScan } from '@/server/lib/panels/registry.server';
 import { setPluginEnabled } from '@/server/lib/panels/state.server';
+import { isolateDb, releaseDb } from '@/test-support/isolated-db';
 
 const MANIFEST = { id: 'demo', name: 'Demo', version: '1.0.0', app: 'dist/app.js', icon: 'icon.svg' };
 
@@ -76,16 +77,17 @@ beforeEach(() => {
   bundled = fs.mkdtempSync(join(tmpdir(), 'omc-panel-store-'));
   process.env.OMPCHAMBER_MARKETPLACE_DIR = root;
   process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR = bundled;
-  Bun.env.OMPCHAMBER_DB_PATH = join(root, 'db.sqlite');
+  // A database of this suite's own, BEFORE the first scan: the scan reads the
+  // disabled set, and a path set while a cached handle exists is never read —
+  // which is how an earlier version of this file wrote into the real install.
+  isolateDb();
   invalidatePanelScan();
 });
 
 afterEach(() => {
-  globalThis.__ompChamberDb?.resolved?.raw.close();
-  globalThis.__ompChamberDb = undefined;
+  releaseDb();
   delete process.env.OMPCHAMBER_MARKETPLACE_DIR;
   delete process.env.OMPCHAMBER_BUNDLED_MARKETPLACE_DIR;
-  delete Bun.env.OMPCHAMBER_DB_PATH;
   invalidatePanelScan();
   fs.rmSync(root, { recursive: true, force: true });
   fs.rmSync(bundled, { recursive: true, force: true });
@@ -116,7 +118,7 @@ describe('the bundle route', () => {
     invalidatePanelScan();
     expect((await call(bundleLoader, { plugin: 'demo.js' })).status).toBe(200);
 
-    await setPluginEnabled('demo', false);
+    await setPluginEnabled('plugin:demo', false);
     invalidatePanelScan();
     expect((await call(bundleLoader, { plugin: 'demo.js' })).status).toBe(404);
   });

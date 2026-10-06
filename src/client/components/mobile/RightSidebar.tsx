@@ -1,14 +1,10 @@
 import { useState } from 'preact/hooks';
 import { Suspense } from 'preact/compat';
 import { X } from 'lucide-preact';
-import { usePluginPanels, PluginPanelBody } from '@/client/components/workspace/plugin-panel/resolve';
-import { useHiddenPanels } from '@/client/hooks/workspace/panel-visibility';
-import { LazyBrowserPanel, LazyContextPanel, LazyFileExplorer, LazyGitPanel, LazyPlanPanel, LazySearchPanel, LazyTerminalPanel, LazyTodoPanel, LazyUsagePanel, LazyUserBrowserPanel, LazyWikiPanel } from '@/client/components/common/lazy-panels';
+import { usePanelCatalog } from '@/client/components/workspace/plugin-panel/resolve';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
 import { useResolvedRepo } from '@/client/hooks/workspace/repo-scope';
 import { GIT_STATUS_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
-import { RIGHT_PANEL_TYPES } from '@/shared/lib/workspace/right-panels';
-import { PANEL_META } from '@/client/components/layout/panel-meta';
 import { PluginMark } from '@/client/components/settings/categories/panel-plugins/PluginMark';
 
 interface MobileRightSidebarProps {
@@ -40,19 +36,12 @@ export function MobileRightSidebar({
   onClose
 }: MobileRightSidebarProps) {
   const [activeTab, setActiveTab] = useState<string>('files');
-  // Plugin panels are added to the same tab strip as the built-in views: they
-  // are right-panel views like any other, and the phone must not be a second
-  // list that drifts from the desktop's.
-  // The same resolver the desktop bar uses, so the phone lists exactly the
-  // plugins that loaded a right panel — not a second list that can drift.
-  const { panels: pluginPanels } = usePluginPanels(activeTab);
-  // Visibility is the chamber's, not the layout's: a view hidden from the
-  // desktop bar is hidden here too, and the desktop right-click menu is where
-  // it is switched back on.
-  const [hidden] = useHiddenPanels();
-  const visibleBuiltIns = RIGHT_PANEL_TYPES.filter((panel) => !hidden.includes(panel));
-  const visiblePlugins = pluginPanels.filter((panel) => !hidden.includes(panel.panelKey));
-  const activePluginKey = visiblePlugins.find((p) => p.panelKey === activeTab)?.panelKey ?? null;
+  // ONE catalog, the same one the desktop bar reads: the built-in views and the
+  // installed plugins are one list, in one order, so the phone cannot become a
+  // second list that drifts from the desktop's. A view switched off is absent
+  // here for the same reason it is absent there.
+  const catalog = usePanelCatalog();
+  const activePanel = catalog.find((panel) => panel.id === activeTab);
   // Same source the desktop activity bar uses — the Source Control view's own
   // repo pick, read shared so switching repos moves this dot too. Polls only
   // while this drawer is the mounted screen (the poll is visibility-gated).
@@ -75,45 +64,28 @@ export function MobileRightSidebar({
       >
 
         <div className="flex items-center space-x-1.5 overflow-x-auto no-scrollbar py-1">
-          {visibleBuiltIns.map((panel) => (
+          {catalog.map((panel) => (
             <button
-              key={panel}
+              key={panel.id}
               type="button"
-              onClick={() => setActiveTab(panel)}
+              onClick={() => setActiveTab(panel.id)}
               className={`relative flex items-center transition-all cursor-pointer ${
-                activeTab === panel
+                activeTab === panel.id
                   ? 'space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-ink text-canvas shadow-sm'
                   : 'p-2 rounded-lg text-ink/70 hover:bg-ink/5'
               }`}
-              title={PANEL_META[panel].title}
+              title={panel.title}
             >
-              {PANEL_META[panel].icon}
-              {activeTab === panel && (
-                <span className={panel === 'git' ? 'tracking-wide' : undefined}>{PANEL_META[panel].label}</span>
+              {panel.builtin ? panel.icon : <PluginMark name={panel.name} iconUrl={panel.iconUrl} size={14} />}
+              {activeTab === panel.id && (
+                <span className={panel.id === 'git' ? 'tracking-wide' : undefined}>{panel.label}</span>
               )}
-              {panel === 'git' && hasGitChanges && (
+              {panel.id === 'git' && hasGitChanges && (
                 <span
                   className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-info"
                   title="Uncommitted changes"
                 />
               )}
-            </button>
-          ))}
-          {visiblePlugins.map((panel) => (
-            <button
-              key={panel.panelKey}
-              type="button"
-              onClick={() => setActiveTab(panel.panelKey)}
-              className={`relative flex items-center transition-all cursor-pointer ${
-                activeTab === panel.panelKey
-                  ? 'space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-ink text-canvas shadow-sm'
-                  : 'p-2 rounded-lg text-ink/70 hover:bg-ink/5'
-              }`}
-              title={`${panel.title} — ${panel.name}`}
-              aria-label={`${panel.title} (plugin ${panel.name})`}
-            >
-              <PluginMark name={panel.name} iconUrl={panel.iconUrl} size={14} />
-              {activeTab === panel.panelKey && <span className="truncate">{panel.title}</span>}
             </button>
           ))}
         </div>
@@ -129,52 +101,40 @@ export function MobileRightSidebar({
         </button>
       </div>
 
-      {/* Main Tab Content — shared components so mobile == desktop features.
-          The workspace gate below applies per TAB, not to the whole drawer: a
-          todo list and a plan both belong to the SESSION, not to the folder its
-          cwd resolves to, so those tabs stay reachable for a session running
-          outside every registered workspace. Every other view here reads the
-          working tree and genuinely needs one. */}
+      {/* Main Tab Content — the same catalog entries the desktop stack draws,
+          through the same `render`, so the two layouts cannot hand a view
+          different props. The workspace gate below applies per VIEW, not to the
+          whole drawer: a todo list and a plan both belong to the SESSION, not to
+          the folder its cwd resolves to, so those stay reachable for a session
+          running outside every registered workspace. */}
       <div
         className="flex-1 min-h-0 overflow-hidden relative"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
-        {activePluginKey ? (
+        {activePanel ? (
           // A plugin component renders in the host's tree like any other view,
           // so it needs no workspace folder and no session: it reads whatever
           // the host published and draws what it can. Gating it here would hide
           // a panel that works.
-          <PluginPanelBody panelKey={activePluginKey} />
-        ) : !enabled && activeTab !== 'todo' && activeTab !== 'plan' ? (
+          <Suspense fallback={<div className="h-full flex items-center justify-center text-ink/40"><span className="text-xs font-mono">Loading…</span></div>}>
+            {activePanel.render({
+              className: 'h-full w-full',
+              enabled: enabled || !activePanel.requiresWorkspace,
+              active: true,
+              refreshKey,
+              ...(rootPath ? { rootPath } : {}),
+              onRefresh,
+              onOpenFile,
+              onClose,
+              // The drawer draws its own tab bar, so a view's own header would be
+              // a second one.
+              showHeader: false,
+            })}
+          </Suspense>
+        ) : (
           <div className="h-full flex items-center justify-center text-ink/40">
             <span className="text-xs font-mono">No session selected</span>
           </div>
-        ) : (
-          <>
-            <Suspense fallback={<div className="h-full flex items-center justify-center text-ink/40"><span className="text-xs font-mono">Loading…</span></div>}>
-              {activeTab === 'files' && (
-                <LazyFileExplorer className="h-full w-full" enabled={enabled} rootPath={rootPath} refreshKey={refreshKey} onRefresh={onRefresh} onOpenFile={onOpenFile} />
-              )}
-              {activeTab === 'search' && (
-                <LazySearchPanel className="h-full w-full" enabled={enabled} rootPath={rootPath} />
-              )}
-              {activeTab === 'git' && (
-                <LazyGitPanel className="h-full w-full" enabled={enabled} rootPath={rootPath} refreshKey={refreshKey} />
-              )}
-              {activeTab === 'context' && (
-                <LazyContextPanel className="h-full w-full" enabled={enabled} refreshKey={refreshKey} onClose={onClose} />
-              )}
-              {activeTab === 'terminal' && (
-                <LazyTerminalPanel className="h-full w-full" enabled={enabled} rootPath={rootPath} showHeader={false} />
-              )}
-              {activeTab === 'user-browser' && <LazyUserBrowserPanel className="h-full w-full" />}
-              {activeTab === 'browser' && <LazyBrowserPanel className="h-full w-full" active />}
-              {activeTab === 'usage' && <LazyUsagePanel className="h-full w-full" />}
-              {activeTab === 'todo' && <LazyTodoPanel className="h-full w-full" />}
-              {activeTab === 'plan' && <LazyPlanPanel className="h-full w-full" active />}
-              {activeTab === 'wiki' && <LazyWikiPanel className="h-full w-full" rootPath={rootPath} enabled={enabled} active />}
-            </Suspense>
-          </>
         )}
       </div>
 

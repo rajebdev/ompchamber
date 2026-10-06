@@ -3,11 +3,11 @@ import type { TargetedMouseEvent } from 'preact';
 
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
 import { useResolvedRepo } from '@/client/hooks/workspace/repo-scope';
-import { usePluginPanels } from '@/client/components/workspace/plugin-panel/resolve';
-import { useHiddenPanels } from '@/client/hooks/workspace/panel-visibility';
+import { usePanelCatalog, type ResolvedPanel } from '@/client/components/workspace/plugin-panel/resolve';
+import { usePanelPluginActions, usePanelRegistry } from '@/client/hooks/workspace/panel-registry';
 import { GIT_STATUS_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
-import { RIGHT_PANEL_TYPES } from '@/shared/lib/workspace/right-panels';
-import { PANEL_META } from '@/client/components/layout/panel-meta';
+import { pluginPanelKey } from '@/shared/lib/workspace/panel-ids';
+import { BUILTIN_PANELS } from '@/client/components/workspace/panels/builtin';
 import { PluginMark } from '@/client/components/settings/categories/panel-plugins/PluginMark';
 import { PanelVisibilityMenu, type PanelVisibilityItem } from '@/client/components/layout/PanelVisibilityMenu';
 
@@ -24,14 +24,19 @@ interface RightActivityBarProps {
 /**
  * The right developer panel's activity bar.
  *
- * Two groups, and the split is deliberate: the built-in views are the chamber's
- * own furniture and keep stable positions, while the plugin panels sit below a
- * divider because the list changes with what the user installed.
+ * ONE list of buttons: the built-in views and the installed plugins both come
+ * from `usePanelCatalog`, so the bar cannot draw one kind from a table and the
+ * other from a fetch. The built-ins keep the top positions (that order is the
+ * catalog's) and the plugins follow below a divider, because the built-ins are
+ * the chamber's own furniture while the plugin list changes with what the user
+ * installed.
  *
- * Right-clicking the bar opens the visibility menu — VS Code's own affordance —
- * so a view can be hidden without uninstalling anything. Hidden views keep
- * their row in that menu with the checkbox off, which is what makes hiding
- * reversible; the bar itself simply does not draw them.
+ * Right-clicking the bar opens the enablement menu — VS Code's own affordance,
+ * with its own semantics here: a view that is switched off leaves the bar but
+ * stays in that menu with its checkbox off, which is the only place it can be
+ * switched back on. EVERY view is switchable, built-in or plugin, because
+ * enablement is one set of ids and a built-in view can be put away exactly like
+ * an installed one.
  *
  * A plugin contributes AT MOST ONE right panel, so one plugin can never produce
  * two buttons here.
@@ -45,26 +50,22 @@ export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen, hasA
   const { changes } = useGitStatus(activeProjectPath ?? undefined, activeRepo, refreshKey, hasActiveContext, GIT_STATUS_POLL_MS);
   const hasGitChanges = changes.length > 0;
 
-  const { panels: pluginPanels } = usePluginPanels(activePanel);
-  const [hidden, setHidden] = useHiddenPanels();
+  const catalog = usePanelCatalog();
+  const { disabledPanels } = usePanelRegistry();
+  const { setEnabled } = usePanelPluginActions();
   const [anchor, setAnchor] = useState<{ top: number; bottom: number; left: number; right: number } | null>(null);
   const navRef = useRef<HTMLElement>(null);
 
-  const visibleBuiltIns = RIGHT_PANEL_TYPES.filter((panel) => !hidden.includes(panel));
-  const visiblePlugins = pluginPanels.filter((panel) => !hidden.includes(panel.panelKey));
+  const visibleBuiltIns = catalog.filter((panel) => panel.builtin);
+  const visiblePlugins = catalog.filter((panel) => !panel.builtin);
 
-  // The menu lists EVERY view, hidden or not — a hidden view must stay
-  // reachable, and this list is the only place it can be switched back on. The
-  // built-ins are pinned (hiding them is what the panel toggles in the navbar
-  // are for); plugin panels are the removable ones.
-  const menuItems: PanelVisibilityItem[] = [
-    ...RIGHT_PANEL_TYPES.map((panel) => ({ id: panel, title: PANEL_META[panel].title, removable: false })),
-    ...pluginPanels.map((panel) => ({
-      id: panel.panelKey,
-      title: `${panel.title} — ${panel.name}`,
-      removable: true,
-    })),
-  ];
+  // The menu lists EVERY panel, off or on — a switched-off view must stay
+  // reachable, and this list is the only place it can be switched back on. It
+  // is built from the FULL id list rather than from the catalog, because a
+  // switched-off view is not in the catalog at all. The entry is keyed by the
+  // SAME id the disabled set stores, so the checkbox and the write cannot
+  // address different panels.
+  const allItems = useAllPanelItems();
 
   const openMenu = (event: TargetedMouseEvent<HTMLElement>) => {
     event.preventDefault();
@@ -85,51 +86,27 @@ export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen, hasA
         className="w-11 flex-shrink-0 border-l border-ink/10 bg-paper flex flex-col items-center py-3 space-y-2 z-10"
       >
         <div className="flex flex-col items-center space-y-1 w-full">
-          {visibleBuiltIns.map((panel) => {
-            const isActive = isPanelOpen && activePanel === panel;
-            return (
-              <button
-                key={panel}
-                className={`relative w-full h-10 flex items-center justify-center transition-colors border-l-2 ${
-                  isActive
-                    ? 'text-ink border-ink bg-ink/5'
-                    : 'text-ink/40 border-transparent hover:text-ink hover:bg-ink/5'
-                }`}
-                onClick={() => onChangePanel(panel)}
-                title={PANEL_META[panel].title}
-                aria-label={PANEL_META[panel].title}
-              >
-                {PANEL_META[panel].icon}
-                {panel === 'git' && hasGitChanges && (
-                  <span
-                    className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-info"
-                    title="Ada perubahan git"
-                  />
-                )}
-              </button>
-            );
-          })}
+          {visibleBuiltIns.map((panel) => (
+            <PanelButton
+              key={panel.id}
+              panel={panel}
+              isActive={isPanelOpen && activePanel === panel.id}
+              onClick={() => onChangePanel(panel.id)}
+              showGitDot={panel.id === 'git' && hasGitChanges}
+            />
+          ))}
 
           {visiblePlugins.length > 0 ? <div className="w-6 border-t border-ink/10 my-1" /> : null}
 
-          {visiblePlugins.map((panel) => {
-            const isActive = isPanelOpen && activePanel === panel.panelKey;
-            return (
-              <button
-                key={panel.panelKey}
-                className={`relative w-full h-10 flex items-center justify-center transition-colors border-l-2 ${
-                  isActive
-                    ? 'text-ink border-ink bg-ink/5'
-                    : 'text-ink/40 border-transparent hover:text-ink hover:bg-ink/5'
-                }`}
-                onClick={() => onChangePanel(panel.panelKey)}
-                title={`${panel.title} — ${panel.name}`}
-                aria-label={`${panel.title} (plugin ${panel.name})`}
-              >
-                <PluginMark name={panel.name} iconUrl={panel.iconUrl} size={16} />
-              </button>
-            );
-          })}
+          {visiblePlugins.map((panel) => (
+            <PanelButton
+              key={panel.id}
+              panel={panel}
+              isActive={isPanelOpen && activePanel === panel.id}
+              onClick={() => onChangePanel(panel.id)}
+              showGitDot={false}
+            />
+          ))}
         </div>
 
         <div className="flex-1" />
@@ -138,12 +115,66 @@ export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen, hasA
       {anchor ? (
         <PanelVisibilityMenu
           anchor={anchor}
-          items={menuItems}
-          hidden={hidden}
-          onToggle={(id, visible) => setHidden(visible ? hidden.filter((entry) => entry !== id) : [...hidden, id])}
+          items={allItems}
+          hidden={disabledPanels}
+          onToggle={(id, visible) => void setEnabled(id, visible)}
           onClose={() => setAnchor(null)}
         />
       ) : null}
     </>
+  );
+}
+
+/**
+ * Every panel the menu can offer, including the ones switched off.
+ *
+ * A switched-off panel is NOT in the catalog (the catalog is what the bar
+ * draws), so reading the menu off the catalog alone would make a hidden view
+ * unreachable — the one thing the menu exists to prevent. The built-ins are a
+ * static list, so they are always listed; a plugin is listed while it is
+ * INSTALLED, read from `plugins` rather than from `panels`, because `panels`
+ * holds only the enabled ones and a disabled plugin would lose its row.
+ */
+function useAllPanelItems(): PanelVisibilityItem[] {
+  const { plugins } = usePanelRegistry();
+  return [
+    ...BUILTIN_PANELS.map((panel) => ({ id: panel.id, title: panel.title, removable: true })),
+    ...plugins.map((plugin) => ({
+      id: pluginPanelKey(plugin.pluginId),
+      title: plugin.name,
+      removable: true,
+    })),
+  ];
+}
+
+/** One activity-bar button, drawn from the catalog entry it belongs to. */
+function PanelButton({
+  panel,
+  isActive,
+  onClick,
+  showGitDot,
+}: {
+  panel: ResolvedPanel;
+  isActive: boolean;
+  onClick: () => void;
+  showGitDot: boolean;
+}) {
+  return (
+    <button
+      className={`relative w-full h-10 flex items-center justify-center transition-colors border-l-2 ${
+        isActive ? 'text-ink border-ink bg-ink/5' : 'text-ink/40 border-transparent hover:text-ink hover:bg-ink/5'
+      }`}
+      onClick={onClick}
+      title={panel.title}
+      aria-label={panel.title}
+    >
+      {panel.builtin ? panel.icon : <PluginMark name={panel.name} iconUrl={panel.iconUrl} size={16} />}
+      {showGitDot ? (
+        <span
+          className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-info"
+          title="Ada perubahan git"
+        />
+      ) : null}
+    </button>
   );
 }

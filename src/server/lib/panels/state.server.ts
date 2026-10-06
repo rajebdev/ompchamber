@@ -29,6 +29,9 @@ import { readSettingsJson, writeSettingsJson } from '@/server/lib/db/settings-st
 /** `app_settings` key holding the disabled plugin ids. */
 const PANEL_PLUGINS_KEY = 'omp_panel_plugins';
 
+/** The chamber settings blob, which used to hold the HIDDEN panel ids. */
+const CHAMBER_SETTINGS_KEY = 'omp_chamber_settings';
+
 interface PanelPluginState {
   /** Plugin ids whose contributions are switched off. */
   disabled: string[];
@@ -44,10 +47,44 @@ function normalize(raw: unknown): PanelPluginState {
   return { disabled: list.filter((id): id is string => typeof id === 'string' && id.length > 0) };
 }
 
+/**
+ * Fold the retired `hiddenRightPanels` list into the disabled set, once.
+ *
+ * Hiding a panel and disabling it were two different things with two different
+ * stores, and hiding was the built-ins' only axis. There is now ONE axis and one
+ * store, so a list of hidden ids has to become a list of disabled ones or a view
+ * the user had switched off would come back on their next load.
+ *
+ * The migration is guarded by the PRESENCE of the old key rather than by a
+ * marker, and it deletes the key as it goes: a marker would leave the list in
+ * place for a database that migrated under an older build, and deleting it is
+ * what makes the pass idempotent — a second read finds nothing to fold, so a
+ * value written afterwards cannot be re-adopted. Values already in the disabled
+ * set win: they are the newer store.
+ */
+async function migrateHiddenPanels(state: PanelPluginState): Promise<PanelPluginState> {
+  const db = await getDb();
+  const blob = await readSettingsJson<Record<string, unknown>>(db, CHAMBER_SETTINGS_KEY, {});
+  const hidden = blob.hiddenRightPanels;
+  if (!Array.isArray(hidden)) return state;
+
+  const { hiddenRightPanels: _retired, ...rest } = blob;
+  const merged = new Set(state.disabled);
+  for (const id of hidden) {
+    if (typeof id === 'string' && id.length > 0) merged.add(id);
+  }
+
+  await writeSettingsJson(db, CHAMBER_SETTINGS_KEY, rest);
+  const next = { disabled: [...merged] };
+  await writeSettingsJson(db, PANEL_PLUGINS_KEY, next);
+  return next;
+}
+
 /** The ids switched off, in the order they were written. */
 export async function readDisabledPlugins(): Promise<string[]> {
   const db = await getDb();
-  return normalize(await readSettingsJson<unknown>(db, PANEL_PLUGINS_KEY, EMPTY)).disabled;
+  const stored = normalize(await readSettingsJson<unknown>(db, PANEL_PLUGINS_KEY, EMPTY));
+  return (await migrateHiddenPanels(stored)).disabled;
 }
 
 /**
