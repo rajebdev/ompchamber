@@ -65,9 +65,15 @@ export function TopNavbar({
             >
               <PanelLeft size={16} />
             </button>
-            <span className="font-bold text-sm tracking-tight hidden sm:flex items-center flex-shrink-0">
+            <span className="relative font-bold text-sm tracking-tight hidden sm:flex items-center flex-shrink-0">
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-500 font-extrabold text-[15px] tracking-tighter">OMP</span>
               <span className="ml-[1px]">Chamber</span>
+              {/* Same badge placement the sidebar header and the phone use:
+                  the stream indicator belongs to the wordmark, not to the
+                  control cluster. */}
+              <span className="absolute -top-0.5 -right-1.5 flex">
+                <StreamStatusDot status={streamStatus} />
+              </span>
             </span>
             {sessionTitle && (
               <span className="text-ink/30 text-xs select-none flex-shrink-0">/</span>
@@ -88,7 +94,6 @@ export function TopNavbar({
 
       <div className="flex items-center space-x-3 titlebar-no-drag">
         <div className="flex items-center space-x-1">
-          <StreamStatusDot status={streamStatus} />
           <HeaderPanelButtons />
           <PanelLauncher onOpenPanel={onOpenPluginPanel} />
           {onSwitchToMobile && (

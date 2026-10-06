@@ -17,8 +17,9 @@ import { useUpdates } from '@/client/hooks/ui/updates';
 import { UPDATE_REQUEST_EVENT } from '@/shared/lib/updates/popup-state';
 import { useSessionSidebarController } from '@/client/hooks/chat/omp/session-sidebar-controller';
 import { useScheduledTaskCount } from '@/client/hooks/workspace/scheduled-tasks';
+import type { AgentStreamStatus } from '@/shared/lib/chat/omp/status';
 
-export function SessionSidebar({ className = '', onClose, appSettings = {} }: { className?: string, onClose?: () => void, appSettings?: Record<string, any> }) {
+export function SessionSidebar({ className = '', onClose, appSettings = {}, streamStatus }: { className?: string, onClose?: () => void, appSettings?: Record<string, any>, streamStatus?: AgentStreamStatus }) {
   const {
     folders,
     initializing,
@@ -109,7 +110,7 @@ export function SessionSidebar({ className = '', onClose, appSettings = {} }: { 
   return (
     <>
       <aside className={`flex flex-col bg-paper h-full ${className}`}>
-        <SessionSidebarHeader onNewSession={handleNewSession} />
+        <SessionSidebarHeader onNewSession={handleNewSession} streamStatus={streamStatus} />
 
         <SessionSidebarToolbar
           isSearchVisible={isSearchVisible}

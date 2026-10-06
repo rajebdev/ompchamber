@@ -182,7 +182,7 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
           }}
         >
           <Panel panelRef={leftPanelRef} id="left-panel" defaultSize={panelWidths.left ?? DEFAULT_LEFT_PANEL_WIDTH} minSize={MIN_LEFT_PANEL_WIDTH} maxSize={MAX_LEFT_PANEL_WIDTH} collapsed={!showLeftPanel}>
-            <SessionSidebar className="w-full h-full" onClose={() => handleToggleLeftPanel(false)} appSettings={appSettings} />
+            <SessionSidebar className="w-full h-full" onClose={() => handleToggleLeftPanel(false)} appSettings={appSettings} streamStatus={streamStatus} />
           </Panel>
           {showLeftPanel && <ResizeHandle />}
 
