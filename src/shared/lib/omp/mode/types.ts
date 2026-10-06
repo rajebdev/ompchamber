@@ -142,8 +142,9 @@ export const CHAMBER_GOAL_CONTINUATION_MARKER = 'CHAMBER_GOAL_CONTINUATION:';
  *  that is not a model turn. */
 export const CHAMBER_GOAL_EVALUATING_MARKER = 'CHAMBER_GOAL_EVALUATING:';
 
-/** Window event a `CHAMBER_*_MARKER` notice is re-dispatched on, scoped by
- *  session id. Same shape as the subagent frames: the fold converts a frame
- *  into a browser signal so a feature hook can subscribe without the timeline
- *  threading a payload it never reads through its component tree. */
-export const CHAMBER_MODE_EVENT = 'omp:chamber-mode';
+/**
+ * A `CHAMBER_*_MARKER` notice is re-published on the client signal bus
+ * (`chamber-mode`, see `@/client/lib/signals`), scoped by session id. The fold
+ * converts a frame into a signal so a feature hook can subscribe without the
+ * timeline threading a payload it never reads through its component tree.
+ */

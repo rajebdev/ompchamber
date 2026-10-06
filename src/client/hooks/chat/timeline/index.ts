@@ -14,7 +14,6 @@ import { useUserTurns } from '@/client/hooks/chat/timeline/user-turns';
 import { useBrowserPageContextInsert } from '@/client/hooks/chat/timeline/browser-context';
 import { createOmpAgentCallbacks } from '@/shared/lib/chat/timeline/omp-callbacks';
 import { cancelStreamingCoalescer } from '@/shared/lib/chat/timeline/stream-coalescer';
-import { readStreamTransport } from '@/shared/lib/chat/omp/transport';
 import { useChatTimelineAccessMode } from '@/client/hooks/chat/timeline/access-mode';
 import { useComposerModes } from '@/client/hooks/chat/timeline/composer-modes';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
@@ -106,10 +105,6 @@ export function useChatTimeline({
   // responding (agent_start = first chunk) — the omp JSONL now carries the
   // user turn, so the sidebar item + real title appear immediately.
   const metaRefreshedRef = useRef<string | null>(null);
-  // Per-run guard for the "first assistant answer landed" sidebar signal
-  // (omp-callbacks onMessageEnd): the sidebar refreshes once per run on the
-  // completed first assistant turn, not on every assistant segment.
-  const firstAssistantRef = useRef(false);
   // Optimistic user bubble awaiting omp's echo (reconciled by the callbacks).
   const optimisticUserIdRef = useRef<string | null>(null);
   // Raw composer text for steer/follow-up echoes (those paths have no bubble).
@@ -205,7 +200,6 @@ export function useChatTimeline({
     adoptedSessionIdRef,
     sessionIdRef,
     metaRefreshedRef,
-    firstAssistantRef,
     refreshSessionMeta,
     setLocalMessages,
     aiPlaceholderIdRef,
@@ -216,7 +210,7 @@ export function useChatTimeline({
     appSettings,
     enqueueExtensionDialog,
     withdrawExtensionDialog,
-  }), readStreamTransport(appSettings));
+  }));
   const { steerOmpAgent, executeSend } = useChatTimelineSend({
     folders,
     selectedFolderId,

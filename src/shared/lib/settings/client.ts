@@ -16,7 +16,7 @@
  *
  * Reads are flat: top-level `app_settings` keys (`omp_sidebar_sort`,
  * `desktopLayoutSizes`, …) and the `omp_chamber_settings` blob (`theme`,
- * `streamTransport`, …) share one namespace, with the blob's keys overlaid.
+ * `chatCompletionSound`, …) share one namespace, with the blob's keys overlaid.
  */
 
 const CHAMBER_SETTINGS_KEY = 'omp_chamber_settings';
@@ -76,7 +76,7 @@ export function writeSetting(key: string, value: unknown): void {
 }
 
 /**
- * Write a patch of chamber-blob keys (`theme`, `streamTransport`, …). The
+ * Write a patch of chamber-blob keys (`theme`, `chatCompletionSound`, …). The
  * snapshot exposes the blob's keys flat, so an edit applies to the next read
  * without a round-trip.
  *

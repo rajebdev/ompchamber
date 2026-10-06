@@ -23,6 +23,8 @@ import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
 import { useChatTimelineModes } from '@/client/hooks/chat/timeline/modes';
 import { GoalBanner } from '@/client/components/workspace/chat-timeline/chat-input/GoalBanner';
+import { CHAMBER_MODE_SIGNAL } from '@/shared/lib/omp/mode/client-signal';
+import { publishClientSignal } from '@/client/lib/signals';
 
 const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'Event', 'CustomEvent'] as const;
 /** The runner's own globals, restored on teardown — deleting them would strip natives (Event/CustomEvent) every later file needs. */const nativeGlobals: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
@@ -175,17 +177,13 @@ describe('useChatTimelineModes hydration', () => {
   test('an accepted Resume drops the last "stopped" verdict', async () => {
     const el = await mount(WITH_GOAL);
     await act(async () => {
-      window.dispatchEvent(
-        new CustomEvent('omp:chamber-mode', {
-          detail: {
-            sessionId: WITH_GOAL,
-            marker: {
-              marker: 'CHAMBER_GOAL_CONTINUATION:',
-              payload: { turn: 25, maxTurns: 25, stopped: 'max-turns' },
-            },
-          },
-        }),
-      );
+      publishClientSignal(CHAMBER_MODE_SIGNAL, {
+        sessionId: WITH_GOAL,
+        marker: {
+          marker: 'CHAMBER_GOAL_CONTINUATION:',
+          payload: { turn: 25, maxTurns: 25, stopped: 'max-turns' },
+        },
+      });
     });
     expect(el.textContent).toContain('stopped at 25 turns');
 
@@ -215,21 +213,19 @@ describe('useChatTimelineModes hydration', () => {
   test('the loop deciding is visible: the evaluating frame spins the row', async () => {
     const el = await mount(LIVE_GOAL);
     await act(async () => {
-      window.dispatchEvent(
-        new CustomEvent('omp:chamber-mode', {
-          detail: { sessionId: LIVE_GOAL, marker: { marker: 'CHAMBER_GOAL_EVALUATING:', payload: { evaluating: true } } },
-        }),
-      );
+      publishClientSignal(CHAMBER_MODE_SIGNAL, {
+        sessionId: LIVE_GOAL,
+        marker: { marker: 'CHAMBER_GOAL_EVALUATING:', payload: { evaluating: true } },
+      });
     });
     expect(el.textContent).toContain('evaluating');
     expect(el.querySelector('.animate-spin')).not.toBeNull();
 
     await act(async () => {
-      window.dispatchEvent(
-        new CustomEvent('omp:chamber-mode', {
-          detail: { sessionId: LIVE_GOAL, marker: { marker: 'CHAMBER_GOAL_EVALUATING:', payload: { evaluating: false } } },
-        }),
-      );
+      publishClientSignal(CHAMBER_MODE_SIGNAL, {
+        sessionId: LIVE_GOAL,
+        marker: { marker: 'CHAMBER_GOAL_EVALUATING:', payload: { evaluating: false } },
+      });
     });
     expect(el.textContent).not.toContain('evaluating');
   });
@@ -271,17 +267,13 @@ describe('the Plan toggle', () => {
     expect(el.querySelector('#plan')?.getAttribute('data-pressed')).toBe('true');
 
     await act(async () => {
-      window.dispatchEvent(
-        new CustomEvent('omp:chamber-mode', {
-          detail: {
-            sessionId: WITH_GOAL,
-            marker: {
-              marker: 'CHAMBER_MODE_ERROR:',
-              payload: { scope: 'plan', reason: 'Cannot enter plan mode while a goal is active.' },
-            },
-          },
-        }),
-      );
+      publishClientSignal(CHAMBER_MODE_SIGNAL, {
+        sessionId: WITH_GOAL,
+        marker: {
+          marker: 'CHAMBER_MODE_ERROR:',
+          payload: { scope: 'plan', reason: 'Cannot enter plan mode while a goal is active.' },
+        },
+      });
     });
     expect(el.querySelector('#error')?.textContent).toContain('Cannot enter plan mode');
     expect(el.querySelector('#plan')?.getAttribute('data-pressed')).toBe('false');
@@ -298,14 +290,10 @@ describe('the Plan toggle', () => {
     // A goal-side refusal reports its own scope; rolling Plan back for it would
     // turn a working mode off because an unrelated command failed.
     await act(async () => {
-      window.dispatchEvent(
-        new CustomEvent('omp:chamber-mode', {
-          detail: {
-            sessionId: WITH_GOAL,
-            marker: { marker: 'CHAMBER_MODE_ERROR:', payload: { scope: 'goal', reason: 'an objective is required' } },
-          },
-        }),
-      );
+      publishClientSignal(CHAMBER_MODE_SIGNAL, {
+        sessionId: WITH_GOAL,
+        marker: { marker: 'CHAMBER_MODE_ERROR:', payload: { scope: 'goal', reason: 'an objective is required' } },
+      });
     });
     expect(el.querySelector('#plan')?.getAttribute('data-pressed')).toBe('true');
   });

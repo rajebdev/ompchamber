@@ -26,7 +26,6 @@ import { useBtwSession, type BtwLiveAnswer } from '@/client/hooks/chat/btw';
 import { useChamberEvent } from '@/client/hooks/ui/window-event';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { useSearchParams } from '@/client/lib/router/search-params';
-import { readStreamTransport } from '@/shared/lib/chat/omp/transport';
 import { PHASE_VERBS } from '@/shared/lib/chat/timeline/tool-phrases';
 
 /** Question sent when a question arrived carrying only images. */
@@ -68,7 +67,7 @@ export interface BtwMode {
   clearError: () => void;
 }
 
-export function useBtwMode(sessionId: string | null, appSettings: Record<string, unknown>): BtwMode {
+export function useBtwMode(sessionId: string | null): BtwMode {
   /**
    * Whether the panel is on screen. Deliberately NOT restored from session
    * state: a panel that reopens itself on every load leaves the user with no
@@ -88,10 +87,7 @@ export function useBtwMode(sessionId: string | null, appSettings: Record<string,
 
   // `enabled` only gates the stream: the commands must work the moment the form
   // opens, which is before the stream has attached.
-  const session = useBtwSession(sessionId, {
-    enabled: open && Boolean(sessionId),
-    transport: readStreamTransport(appSettings),
-  });
+  const session = useBtwSession(sessionId, { enabled: open && Boolean(sessionId) });
 
   const topics = session.state?.topics ?? [];
   const activeTopic = topics.find((topic) => topic.id === selectedTopicId) ?? topics[topics.length - 1] ?? null;
@@ -161,7 +157,6 @@ export function useBtwMode(sessionId: string | null, appSettings: Record<string,
       if (next.has('subagent')) next.delete('subagent');
       return next;
     });
-    window.dispatchEvent(new CustomEvent('omp:session-updated', { detail: { sessionId: created } }));
     return created;
   }, [activeTopic, session, setOpen, setSelectedTopicId, setSearchParams]);
 

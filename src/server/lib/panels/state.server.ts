@@ -25,6 +25,7 @@
 
 import { getDb } from '@/server/db.server';
 import { readSettingsJson, writeSettingsJson } from '@/server/lib/db/settings-store';
+import { emitRealtimeSignal } from '@/server/lib/realtime/signals.server';
 
 /** `app_settings` key holding the disabled plugin ids. */
 const PANEL_PLUGINS_KEY = 'omp_panel_plugins';
@@ -95,6 +96,9 @@ export async function readDisabledPlugins(): Promise<string[]> {
  * user did not ask for.
  */
 export async function setPluginEnabled(pluginId: string, enabled: boolean): Promise<string[]> {
+  // The `panels` topic is republished from here rather than at each route: a
+  // switch flipped in one tab must move every other tab's catalog, and this is
+  // the one writer of that state.
   const current = await readDisabledPlugins();
   const next = enabled
     ? current.filter((id) => id !== pluginId)
@@ -103,5 +107,6 @@ export async function setPluginEnabled(pluginId: string, enabled: boolean): Prom
       : [...current, pluginId];
   const db = await getDb();
   await writeSettingsJson(db, PANEL_PLUGINS_KEY, { disabled: next } satisfies PanelPluginState);
+  emitRealtimeSignal('panels-changed');
   return next;
 }

@@ -14,13 +14,9 @@
  * SERVER makes — a fire that just happened. A closed modal costs nothing.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import { usePanelRefresh } from '@/client/hooks/workspace/panel-refresh';
-import {
-  SCHEDULE_BADGE_POLL_MS,
-  SCHEDULE_POLL_MS,
-  SCHEDULE_UPDATED_EVENT,
-} from '@/shared/lib/workspace/refresh-cadence';
+import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
+import { useRealtimeTopic } from '@/client/hooks/ui/realtime';
+import { TOPIC_SCHEDULE } from '@/shared/lib/realtime/protocol';
 import type { ScheduleKind, ScheduledTask, ScheduledTaskModel, ScheduledTaskRun } from '@/shared/types/schedule';
 
 export interface ScheduleDraft {
@@ -55,7 +51,6 @@ export function useScheduledTasks(active: boolean): ScheduleController {
   const [tasks, setTasks] = useState<ScheduledTask[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const loadedRef = useRef(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -74,15 +69,16 @@ export function useScheduledTasks(active: boolean): ScheduleController {
     }
   }, []);
 
-  // Load once on open, then keep up with the runtime's own writes while the
-  // modal is visible. `usePanelRefresh` skips the first tick by design, which
-  // is why the mount effect exists separately.
+  // The schedule topic is the read path: a snapshot on subscribe, then a push
+  // whenever a task is written — by this tab, another tab, or the runtime's own
+  // fire. `refresh` stays for a caller that needs an immediate re-read.
+  const topic = useRealtimeTopic<ScheduledTask[]>(TOPIC_SCHEDULE, { enabled: active });
   useEffect(() => {
-    if (!active || loadedRef.current) return;
-    loadedRef.current = true;
-    void refresh();
-  }, [active, refresh]);
-  usePanelRefresh(() => refresh(), active, SCHEDULE_POLL_MS);
+    if (!topic.data) return;
+    setTasks(topic.data);
+    setLoading(false);
+    setError(null);
+  }, [topic.data]);
 
   /** One write path for every mutation: POST/PATCH/DELETE all answer with the
    *  canonical list, so a success never needs a second round trip. */
@@ -95,12 +91,10 @@ export function useScheduledTasks(active: boolean): ScheduleController {
         setError(message);
         return message;
       }
+      // Adopted for the immediate response; the server's own republish is what
+      // reaches every other tab and the badge.
       if (data.tasks) setTasks(data.tasks);
       setError(null);
-      // Every write is announced: the toolbar badge polls on a slower cadence
-      // than this modal, and without the event a task the user just paused
-      // would keep its count until that poll came round.
-      window.dispatchEvent(new CustomEvent(SCHEDULE_UPDATED_EVENT));
       return null;
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -158,25 +152,8 @@ export function useScheduledTasks(active: boolean): ScheduleController {
  * button that opens a list you cannot see the state of is what the mock was.
  */
 export function useScheduledTaskCount(): number {
-  const [count, setCount] = useState(0);
-  const refresh = useCallback(async () => {
-    try {
-      const res = await fetch('/api/schedule');
-      const data = (await res.json().catch(() => null)) as { tasks?: ScheduledTask[] } | null;
-      if (!res.ok || !data?.tasks) return;
-      setCount(data.tasks.filter((task) => task.enabled).length);
-    } catch {
-      // A badge is decorative: a failed read leaves the last known count.
-    }
-  }, []);
-  usePanelRefresh(refresh, true, SCHEDULE_BADGE_POLL_MS);
-  useEffect(() => {
-    void refresh();
-    // The badge is a derived read of the same table the modal writes to, so it
-    // follows that write rather than waiting out its own interval.
-    const onUpdate = () => void refresh();
-    window.addEventListener(SCHEDULE_UPDATED_EVENT, onUpdate);
-    return () => window.removeEventListener(SCHEDULE_UPDATED_EVENT, onUpdate);
-  }, [refresh]);
-  return count;
+  // Derived from the SAME topic the modal reads, so the badge cannot disagree
+  // with the list, and the modal's own writes reach it without an event.
+  const topic = useRealtimeTopic<ScheduledTask[]>(TOPIC_SCHEDULE);
+  return useMemo(() => (topic.data ?? []).filter((task) => task.enabled).length, [topic.data]);
 }

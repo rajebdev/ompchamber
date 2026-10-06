@@ -12,7 +12,9 @@
  * list for another 60 seconds.
  */
 
-import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
+
+import { fetchModelsData, invalidateModelsCache } from '@/shared/lib/models/client';
 
 import {
   providerLabel,
@@ -30,21 +32,39 @@ import type { ProviderItem, ProviderModel } from '@/shared/types';
 /** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
 const realFetch = Bun.fetch;
 
-// Bun has no `window`; the connection writes dispatch a CustomEvent on it, so
-// the test installs a stub through this single named handle.
-const globalScope = globalThis as unknown as { window?: unknown };
-const realWindow = globalScope.window;
-
 let calls: Array<{ url: string; init: RequestInit }> = [];
-let events: string[] = [];
+/** How many times a read of the model catalog actually reached the network. */
+let modelReads = 0;
 
 function stubFetch(handler: (url: string, init: RequestInit) => Response | Promise<Response>): void {
   calls = [];
+  modelReads = 0;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString();
     calls.push({ url, init: init ?? {} });
+    if (url.includes('/api/models')) {
+      modelReads += 1;
+      return jsonResponse({ models: {}, providers: {} });
+    }
     return handler(url, init ?? {});
   }) as typeof fetch;
+}
+
+/**
+ * Whether a write dropped the picker's cache.
+ *
+ * The window event this used to assert is gone: the SERVER republishes the
+ * `models` topic on the same write, and the client's half is to stop answering
+ * from its own 60s cache. Asserted behaviourally — a primed cache answers
+ * locally, and a notified one does not.
+ */
+async function cacheDroppedBy(mutate: () => Promise<unknown>): Promise<boolean> {
+  invalidateModelsCache();
+  await fetchModelsData();
+  modelReads = 0;
+  await mutate();
+  await fetchModelsData();
+  return modelReads === 1;
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -73,19 +93,8 @@ function model(overrides: Partial<ProviderModel> & { id: string }): ProviderMode
   };
 }
 
-beforeEach(() => {
-  events = [];
-  globalScope.window = {
-    dispatchEvent: (event: { type?: string }) => {
-      events.push(String(event?.type ?? event));
-      return true;
-    },
-  };
-});
-
 afterAll(() => {
   globalThis.fetch = realFetch;
-  globalScope.window = realWindow;
 });
 
 describe('titleCaseProviderSlug', () => {
@@ -214,7 +223,11 @@ describe('saveProviderOverlay / setProviderEnabled', () => {
     expect(calls[0].init.method).toBe('POST');
     expect(JSON.parse(String(calls[0].init.body))).toEqual({ providers });
     expect(result).toEqual(providers);
-    expect(events).toEqual(['omp:models-updated']);
+  });
+
+  test('a successful overlay write drops the picker cache', async () => {
+    stubFetch(() => jsonResponse({ providers: [] }));
+    expect(await cacheDroppedBy(() => saveProviderOverlay([]))).toBe(true);
   });
 
   test('enable/disable send the slug under the right key', async () => {
@@ -225,21 +238,19 @@ describe('saveProviderOverlay / setProviderEnabled', () => {
 
     await setProviderEnabled('kenari', false);
     expect(JSON.parse(String(calls[1].init.body))).toEqual({ disableProvider: 'kenari' });
-    expect(events).toEqual(['omp:models-updated', 'omp:models-updated']);
   });
 
   test('a response with no providers array resolves to null, not an error', async () => {
     stubFetch(() => jsonResponse({}));
 
     expect(await saveProviderOverlay([])).toBeNull();
-    expect(events).toEqual(['omp:models-updated']);
   });
 
   test('a non-ok response throws the server error before notifying', async () => {
     stubFetch(() => jsonResponse({ error: 'overlay rejected' }, 400));
 
     await expect(saveProviderOverlay([])).rejects.toThrow('overlay rejected');
-    expect(events).toEqual([]);
+    expect(await cacheDroppedBy(() => saveProviderOverlay([]).catch(() => null))).toBe(false);
   });
 
   test('a non-ok response without an error names the HTTP status', async () => {
@@ -258,7 +269,11 @@ describe('deleteProvider', () => {
     expect(calls[0].url).toBe('/api/settings/providers?id=id%20kenari%2F1');
     expect(calls[0].init.method).toBe('DELETE');
     expect(result).toEqual({ ok: true, removedFromOmp: true, modelsRemoved: 3 });
-    expect(events).toEqual(['omp:models-updated']);
+  });
+
+  test('a successful delete drops the picker cache', async () => {
+    stubFetch(() => jsonResponse({ ok: true }));
+    expect(await cacheDroppedBy(() => deleteProvider('id-1'))).toBe(true);
   });
 
   test('a warning about a partial cleanup is surfaced, not swallowed', async () => {
@@ -274,7 +289,7 @@ describe('deleteProvider', () => {
     stubFetch(() => jsonResponse({ error: 'not found' }, 404));
 
     expect(await deleteProvider('id-1')).toEqual({ ok: false, error: 'not found' });
-    expect(events).toEqual([]);
+    expect(await cacheDroppedBy(() => deleteProvider('id-1'))).toBe(false);
   });
 
   test('a non-ok response without an error names the HTTP status', async () => {

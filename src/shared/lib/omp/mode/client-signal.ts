@@ -14,14 +14,16 @@
  * use, and the mode hook subscribes once.
  */
 
-import { CHAMBER_MODE_EVENT } from '@/shared/lib/omp/mode/types';
+import { publishClientSignal } from '@/client/lib/signals';
 
 export interface ChamberModeSignal {
   marker: string;
   payload: Record<string, unknown>;
 }
 
+/** The chamber-mode signal name, for a consumer that subscribes. */
+export const CHAMBER_MODE_SIGNAL = 'chamber-mode' as const;
+
 export function emitChamberModeSignal(sessionId: string | undefined, signal: ChamberModeSignal): void {
-  if (typeof window === 'undefined') return;
-  window.dispatchEvent(new CustomEvent(CHAMBER_MODE_EVENT, { detail: { sessionId, marker: signal } }));
+  publishClientSignal(CHAMBER_MODE_SIGNAL, { sessionId, marker: signal });
 }

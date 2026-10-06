@@ -15,7 +15,8 @@
  * wrong size in the picker.
  */
 
-import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
+import { fetchModelsData, notifyModelsUpdated } from '@/shared/lib/models/client';
 
 import {
   addProviderModel,
@@ -28,23 +29,7 @@ import type { ProviderModel } from '@/shared/types';
 /** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
 const realFetch = Bun.fetch;
 
-// Bun has no `window`; the module under test dispatches a CustomEvent on it, so
-// the test installs a stub through this single named handle.
-const globalScope = globalThis as unknown as { window?: unknown };
-const realWindow = globalScope.window;
-
 let calls: Array<{ url: string; init: RequestInit }> = [];
-let events: string[] = [];
-
-function stubWindow(): void {
-  events = [];
-  globalScope.window = {
-    dispatchEvent: (event: { type?: string }) => {
-      events.push(String(event?.type ?? event));
-      return true;
-    },
-  };
-}
 
 function stubFetch(handler: (url: string, init: RequestInit) => Response | Promise<Response>): void {
   calls = [];
@@ -70,13 +55,8 @@ function model(overrides: Partial<ProviderModel> & { id: string }): ProviderMode
   };
 }
 
-beforeEach(() => {
-  stubWindow();
-});
-
 afterAll(() => {
   globalThis.fetch = realFetch;
-  globalScope.window = realWindow;
 });
 
 describe('replaceProviderModels', () => {
@@ -187,6 +167,30 @@ describe('fetchProviderModelsRemote', () => {
   });
 });
 
+describe('notifyModelsUpdated', () => {
+  test('drops the client cache, so the next read goes back to the server', async () => {
+    // The window event this used to dispatch is gone: the SERVER republishes
+    // the `models` topic (see `invalidateModelsCaches`), and the client's half
+    // is to stop answering from its own 60s cache. Asserted behaviourally: a
+    // primed cache answers locally, and a notified one does not.
+    let reads = 0;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/api/models')) reads += 1;
+      return jsonResponse({ models: {}, providers: {} });
+    }) as typeof fetch;
+
+    await fetchModelsData();
+    reads = 0;
+    await fetchModelsData();
+    expect(reads).toBe(0);
+
+    notifyModelsUpdated();
+    await fetchModelsData();
+    expect(reads).toBe(1);
+  });
+});
+
 describe('addProviderModel', () => {
   test('notifies the picker only after a successful write', async () => {
     stubFetch(() => jsonResponse({ success: true, written: true, addedModels: ['m1'] }));
@@ -196,8 +200,7 @@ describe('addProviderModel', () => {
     expect(calls[0].url).toBe('/api/settings/provider-model');
     expect(JSON.parse(String(calls[0].init.body))).toEqual({ provider: 'p', id: 'm1' });
     expect(result).toEqual({ success: true, written: true, addedModels: ['m1'] });
-    expect(events).toEqual(['omp:models-updated']);
-  });
+    });
 
   test('a non-ok response is downgraded to success:false without notifying', async () => {
     stubFetch(() => jsonResponse({ success: true, written: true, error: 'nope' }, 400));
@@ -205,7 +208,6 @@ describe('addProviderModel', () => {
     const result = await addProviderModel({ provider: 'p', id: 'm1' });
 
     expect(result).toEqual({ success: false, written: false, error: 'nope' });
-    expect(events).toEqual([]);
   });
 
   test('a rejection reason is surfaced as the error when no error field exists', async () => {
@@ -267,8 +269,8 @@ describe('syncProviderModelsToCatalog', () => {
         outputFormats: ['text'],
       },
     });
-    expect(events).toEqual(['omp:models-updated']);
-  });
+    // The sync wrote, so the cache must be dropped: the read goes to the server.
+    });
 
   test('a missing context label falls back to 128K', async () => {
     stubFetch(() => jsonResponse({ ok: true }));
@@ -295,12 +297,10 @@ describe('syncProviderModelsToCatalog', () => {
         throw new Error('down');
       });
 
-      await syncProviderModelsToCatalog('p', [model({ id: 'm1' })]);
+        await syncProviderModelsToCatalog('p', [model({ id: 'm1' })]);
     } finally {
       console.error = realError;
     }
 
-    // No notify: the catalog was not actually updated.
-    expect(events).toEqual([]);
   });
 });

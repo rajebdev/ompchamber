@@ -8,7 +8,8 @@ import { LastMessageCard } from '@/client/components/workspace/context-panel/Las
 import { TokenDistributionBar } from '@/client/components/workspace/context-panel/TokenDistributionBar';
 import { RawMessagesList } from '@/client/components/workspace/context-panel/RawMessagesList';
 import { useScrollbarFade, scrollbarFadeClass } from '@/client/hooks/ui/scrollbar-fade';
-import { usePanelRefresh, useFileMutationRefresh } from '@/client/hooks/workspace/panel-refresh';
+import { useRealtimeTopic } from '@/client/hooks/ui/realtime';
+import { sessionTelemetryTopic } from '@/shared/lib/realtime/protocol';
 
 interface ContextPanelProps {
   className?: string;
@@ -59,13 +60,17 @@ export function ContextPanel({
     };
   }, [enabled, refreshKey, loadTelemetry]);
 
-  // Auto refresh: telemetry (context usage, tokens, cost) advances per
-  // assistant turn — re-read on a short cadence so the panel tracks it without
-  // the user switching panels.
-  usePanelRefresh(loadTelemetry, enabled);
-  // An AI turn can advance token/cost telemetry mid-poll-cycle: re-read right
-  // after a file-mutating tool (edit / write / ast_edit / bash) completes.
-  useFileMutationRefresh(loadTelemetry, enabled);
+  // Telemetry rides the `session:<id>:telemetry` topic: the server pushes a
+  // fresh snapshot when the turn's usage lands, so neither the poll nor the
+  // file-mutation hook is needed. The HTTP read above stays as the fallback for
+  // MOCK mode and for a session whose topic has no resolver.
+  const topicTelemetry = useRealtimeTopic<SessionContextTelemetry>(
+    sessionId ? sessionTelemetryTopic(sessionId) : null,
+    { enabled },
+  );
+  useEffect(() => {
+    if (topicTelemetry.data) setTelemetry(topicTelemetry.data);
+  }, [topicTelemetry.data]);
 
   if (!enabled) {
     return (

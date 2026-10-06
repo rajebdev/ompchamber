@@ -4,23 +4,16 @@
  */
 
 /**
- * Client for a session's BTW API: the frame stream, plus the commands that
- * create, continue, cancel and promote a side question.
+ * Client for a session's BTW API: the commands that create, continue, cancel
+ * and promote a side question.
  *
- * The stream reuses the generic JSON connectors the agent stream introduced
- * (they are transport-only: URL in, decoded frames out), so a session's side
- * questions follow the same transport setting — WebSocket by default, SSE
- * where the upgrade is blocked — instead of forking a third stream flavour.
+ * The FRAMES are no longer here: they ride the unified realtime socket's
+ * `btw:<id>` topic (see `@/client/hooks/chat/btw`). What remains is the command
+ * surface, which is request/response and stays on HTTP.
  */
 
-import type { AgentImage, BtwFrame, BtwState, StreamTransport } from '@/shared/types';
+import type { AgentImage, BtwState } from '@/shared/types';
 import type { AttachedTextFileData } from '@/shared/lib/chat/attachments';
-import { connectEvents } from '@/shared/lib/chat/omp/sse';
-import { connectSocket } from '@/shared/lib/chat/omp/socket';
-import { btwEventsUrl, btwSocketUrl } from '@/shared/lib/chat/omp/transport';
-import type { StreamConnection, StreamHandlers } from '@/shared/lib/chat/omp/transport';
-
-export type BtwStreamHandlers = StreamHandlers<BtwFrame>;
 
 /** A rejected command, carrying the server's machine-readable reason. */
 export class BtwRequestError extends Error {
@@ -31,14 +24,6 @@ export class BtwRequestError extends Error {
     this.name = 'BtwRequestError';
     this.code = code;
   }
-}
-
-export function connectBtwStream(
-  sessionId: string,
-  transport: StreamTransport,
-  handlers: BtwStreamHandlers,
-): StreamConnection {
-  return transport === 'sse' ? connectEvents(btwEventsUrl(sessionId), handlers) : connectSocket(btwSocketUrl(sessionId), handlers);
 }
 
 interface BtwResponseBody {

@@ -1,8 +1,6 @@
 import type { ThemeId } from '@/shared/lib/theme/catalog';
 
 /** Wire protocol for the live agent event stream (chat timeline). */
-export type StreamTransport = 'websocket' | 'sse';
-
 export type SettingsCategoryId =
   // OMPCHAMBER
   | 'appearance'
@@ -50,7 +48,6 @@ export interface SettingsState {
    * cannot render a broken editor, only a different one.
    */
   editorFont: string;
-  streamTransport: StreamTransport;
   /** Generate a session title from the first run. omp suppresses its
    *  own auto-titling under `--mode rpc-ui` (PI_NO_TITLE), so without this a
    *  chamber session keeps its `New Session - <timestamp>` placeholder. Asked

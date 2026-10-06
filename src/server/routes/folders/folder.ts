@@ -5,6 +5,7 @@ import { getDb } from '@/server/db.server';
 import { deleteWorkspaceFolder, parseFolderSettingsPatch, updateWorkspaceFolder } from '@/shared/lib/workspace/project-settings';
 import { revealInFileManager } from '@/server/lib/fs/reveal';
 import { syncDiscoveryRootsWatch } from '@/server/lib/omp/config/roots-watch.server';
+import { emitRealtimeSignal } from '@/server/lib/realtime/signals.server';
 
 export async function pinFolder({ request, params }: ActionFunctionArgs) {
   if (request.method !== 'POST') {
@@ -18,6 +19,8 @@ export async function pinFolder({ request, params }: ActionFunctionArgs) {
   const isPinned = formData.get('isPinned') === 'true' ? 1 : 0;
 
   await db.run('UPDATE workspace_folders SET is_pinned = ? WHERE id = ?', [isPinned, folderId]);
+  // Pinning reorders the sidebar: the list is the sidebar's own structure.
+  emitRealtimeSignal('sidebar-structure');
 
   return json({ success: true, isPinned });
 }
@@ -34,6 +37,9 @@ export async function toggleFolder({ request, params }: ActionFunctionArgs) {
   const isExpanded = formData.get('isExpanded') === 'true' ? 1 : 0;
 
   await db.run('UPDATE workspace_folders SET is_expanded = ? WHERE id = ?', [isExpanded, folderId]);
+  // The expansion flag rides the sidebar's folder rows, so a toggle is a
+  // structure change like any other.
+  emitRealtimeSignal('sidebar-structure');
 
   return json({ success: true, isExpanded });
 }
@@ -83,6 +89,7 @@ export async function deleteFolder({ request, params }: ActionFunctionArgs) {
   // watcher set has to shrink — a lingering watcher would keep broadcasting
   // reloads for a tree the chamber no longer reads.
   void syncDiscoveryRootsWatch();
+  emitRealtimeSignal('sidebar-structure');
 
   return json({ success: true });
 }
@@ -111,5 +118,7 @@ export async function updateFolderSettings({ request, params }: ActionFunctionAr
     return json({ success: true, changed: false });
   }
 
+  // A settings patch can rename or re-icon the folder, so the sidebar re-reads.
+  emitRealtimeSignal('sidebar-structure');
   return json({ success: true, changed: true });
 }

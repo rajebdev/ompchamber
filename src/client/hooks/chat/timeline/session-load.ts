@@ -124,13 +124,10 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
         .then(data => {
           if (!data?.session || !isActive()) return;
           applySessionData(data.session);
-          // Signal the sidebar only on a settled read: the early attempts of a
-          // fresh spawn see zero messages, and dispatching on those would reset
-          // the sidebar's throttle window for the whole spawn.
-          if ((data.session.messages?.length ?? 0) > 0) {
-            window.dispatchEvent(new CustomEvent('omp:session-updated', { detail: { sessionId: sid } }));
-            return;
-          }
+          // A settled read (one that actually carries messages) is the last
+          // attempt: the sidebar follows the realtime topics, so nothing here
+          // needs to signal it.
+          if ((data.session.messages?.length ?? 0) > 0) return;
           const delay = SESSION_META_RETRY_SCHEDULE_MS[attempt];
           attempt += 1;
           if (delay !== undefined) setTimeout(tryFetch, delay);

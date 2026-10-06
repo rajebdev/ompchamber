@@ -34,9 +34,6 @@ export interface OmpAgentCallbacksDeps {
   adoptedSessionIdRef: { current: string | null };
   sessionIdRef: { current: string | null };
   metaRefreshedRef: { current: string | null };
-  /** Per-run guard: the sidebar is signalled once, on the run's first completed
-   *  assistant turn. Reset at every run start (and on stream reattach). */
-  firstAssistantRef: { current: boolean };
   refreshSessionMeta: (sid: string) => void;
   setLocalMessages: Dispatch<SetStateAction<ChatMessageData[]>>;
   aiPlaceholderIdRef: { current: string | null };
@@ -58,7 +55,6 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
     scrollToBottom,
     adoptedSessionIdRef,
     sessionIdRef,
-    firstAssistantRef,
     refreshSessionMeta,
     setLocalMessages,
     aiPlaceholderIdRef,
@@ -175,25 +171,6 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
       }, msg.id);
     },
     onMessageEnd: (msg) => {
-      // The run's first COMPLETED assistant turn. omp has durably written the
-      // turn by now — and, for a session it just titled, the auto title slot —
-      // so signal the sidebar here instead of waiting for agent_end (the whole
-      // run, tools included) or the 8s stream poll. A token-level
-      // (`onMessageUpdate`) signal would fire before the JSONL write and
-      // re-fetch the same scan; the completed turn is the first point where the
-      // refresh can actually return the new title/updated_at.
-      //
-      // Role is 'ai' here: toChatMessage collapses every non-user omp role to
-      // 'ai'. Notice rows (developer/system/custom) also carry 'ai', so they are
-      // excluded — a system-reminder row is not an answer.
-      if (msg.role === 'ai' && !isNoticeRow(msg) && !firstAssistantRef.current) {
-        firstAssistantRef.current = true;
-        const sid = adoptedSessionIdRef.current ?? sessionIdRef.current;
-        // Guarded: the fold also runs headless under `bun test` (no window).
-        if (sid && typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('omp:session-updated', { detail: { sessionId: sid } }));
-        }
-      }
       // Apply any coalesced update before the terminal frame so the last chunk
       // is never dropped and the end always runs after it.
       flushStreamingUpdates();
@@ -263,8 +240,8 @@ export function createOmpAgentCallbacks(deps: OmpAgentCallbacksDeps): OmpAgentCa
       // metadata so navbar/context panel show the real title. A fresh spawn
       // ("new-…" → UUID) may not have re-rendered the URL yet, so prefer the
       // adopted id like onAgentStart/onModelChanged do — otherwise this
-      // fetches the pending id, finds no session, and never dispatches
-      // `omp:session-updated` (sidebar keeps the placeholder).
+      // fetches the pending id and finds no session, so the sidebar keeps its
+      // placeholder until the realtime scan surfaces the row.
       const sid = adoptedSessionIdRef.current ?? sessionIdRef.current;
       if (sid) refreshSessionMeta(sid);
     },

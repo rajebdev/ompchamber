@@ -32,6 +32,7 @@ import { act } from 'preact/test-utils';
 import { useTimelineScope } from '@/client/hooks/chat/timeline/scope';
 import { useSessionTitle } from '@/client/hooks/chat/timeline/session-title';
 import { formatNewSessionTitle } from '@/shared/lib/omp/session/default-title';
+import { publishClientSignal } from '@/client/lib/signals';
 
 const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'Event', 'CustomEvent'] as const;
 /** The runner's own globals, restored on teardown so later files still have them. */
@@ -177,7 +178,7 @@ describe('useSessionTitle', () => {
   }
 
   function rename(sessionId: string, title: string): void {
-    window.dispatchEvent(new CustomEvent('omp:session-renamed', { detail: { sessionId, title } }));
+    publishClientSignal('session-renamed', { sessionId, title });
   }
 
   async function paint(sessionId: string | null, serverTitle: string | null): Promise<void> {
@@ -231,7 +232,7 @@ describe('useSessionTitle', () => {
     titles.length = 0;
     await paint('s1', 'Server');
     await act(async () => {
-      window.dispatchEvent(new CustomEvent('omp:session-renamed', { detail: { sessionId: 's1' } }));
+      publishClientSignal('session-renamed', { sessionId: 's1', title: '' });
     });
     expect(titles.at(-1)).toBe('Server');
   });

@@ -4,6 +4,7 @@
  */
 
 import { json, type LoaderFunctionArgs } from '@/server/lib/remix-compat';
+import { listDirectoryEntries } from '@/server/lib/fs/listing';
 import { errorResponse } from '@/server/lib/route-adapter';
 import { homedir } from 'os';
 import { dirname, isAbsolute, join, resolve } from 'path';
@@ -11,7 +12,6 @@ import fs from 'fs';
 import path from 'path';
 import { isMockMode } from '@/server/mock.server';
 import { getDefaultFsRoot, resolveReferencedPath, resolveRoot, resolveWithinRoot } from '@/server/lib/fs/root';
-import { collectIgnoredPaths } from '@/server/lib/fs/git-ignore';
 import { getImageMimeType } from '@/shared/lib/fs/file-kind';
 
 /**
@@ -78,7 +78,6 @@ export async function browseDirectories({ request }: LoaderFunctionArgs) {
  * object database. Skipped for being noise, not for being hidden — every other
  * entry is listed, dot-prefixed files and folders included.
  */
-const NOISE_DIRS: Record<string, true> = { node_modules: true, '.git': true, dist: true, build: true };
 
 // Lazy listing: return only the immediate children of a directory. Folders are
 // emitted with `children: null` meaning "not loaded yet" so the client can
@@ -87,40 +86,6 @@ const NOISE_DIRS: Record<string, true> = { node_modules: true, '.git': true, dis
 // the listing: lazy children keep `.github`, `.config`, `.env`, … cheap.
 // Entries git would refuse to track carry `ignored: true` so the panel can dim
 // them; that is one `git check-ignore` per listing, never one per entry.
-async function listEntries(dirPath: string, rootPath: string): Promise<any[]> {
-  const listed = (await fs.promises.readdir(dirPath))
-    .filter(child => !NOISE_DIRS[child])
-    .map(child => {
-      const full = path.join(dirPath, child);
-      return { child, full, rel: path.relative(rootPath, full) };
-    });
-
-  const ignored = await collectIgnoredPaths(rootPath, listed.map(entry => entry.rel));
-
-  const mapped = await Promise.all(listed.map(async ({ child, full, rel }) => {
-    try {
-      const st = await Bun.file(full).stat();
-      const isIgnored = ignored.has(rel);
-      if (st.isDirectory()) {
-        return { id: rel, name: child, type: 'folder', path: rel, children: null, is_expanded: 0, ignored: isIgnored };
-      }
-      return { id: rel, name: child, type: 'file', path: rel, ignored: isIgnored };
-    } catch {
-      return null; // unreadable entry / broken symlink — skip
-    }
-  }));
-
-  const result = mapped.filter((x): x is any => Boolean(x));
-
-  result.sort((a, b) => {
-    if (a.type === 'folder' && b.type === 'file') return -1;
-    if (a.type === 'file' && b.type === 'folder') return 1;
-    return a.name.localeCompare(b.name);
-  });
-
-  return result;
-}
-
 export async function listDirectory({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const mock = isMockMode();
@@ -145,7 +110,7 @@ export async function listDirectory({ request }: LoaderFunctionArgs) {
   }
 
   try {
-    const files = await listEntries(fullPath, baseDir);
+    const files = await listDirectoryEntries(fullPath, baseDir);
     return json({ files, isMock: mock, root: baseDir, path: targetPath });
   } catch (error) {
     console.error(error);

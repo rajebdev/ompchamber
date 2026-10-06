@@ -19,7 +19,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import { CHAMBER_MODE_EVENT, type PlanProposal } from '@/shared/lib/omp/mode/types';
+import type { PlanProposal } from '@/shared/lib/omp/mode/types';
+import { CHAMBER_MODE_SIGNAL } from '@/shared/lib/omp/mode/client-signal';
+import { subscribeClientSignal } from '@/client/lib/signals';
 import type { ParsedMarker } from '@/shared/lib/omp/mode/markers';
 import { isPendingSessionId } from '@/shared/lib/omp/session/default-title';
 
@@ -82,11 +84,8 @@ export function usePlanReview(sessionId: string | null): PlanReviewState {
     };
   }, [sessionId]);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const listener = (event: Event) => {
-      const detail = (event as CustomEvent<{ sessionId?: string; marker?: ParsedMarker }>).detail;
-      const marker = detail?.marker;
+  useEffect(() => subscribeClientSignal(CHAMBER_MODE_SIGNAL, (detail) => {
+      const marker = detail?.marker as ParsedMarker | undefined;
       if (!marker) return;
       if (sessionId && detail.sessionId && detail.sessionId !== sessionId) return;
       if (marker.marker === 'CHAMBER_PLAN_PROPOSAL:') {
@@ -113,10 +112,7 @@ export function usePlanReview(sessionId: string | null): PlanReviewState {
         setDeciding(false);
         setError(typeof marker.payload.reason === 'string' ? marker.payload.reason : 'Mode command failed');
       }
-    };
-    window.addEventListener(CHAMBER_MODE_EVENT, listener);
-    return () => window.removeEventListener(CHAMBER_MODE_EVENT, listener);
-  }, [sessionId]);
+  }), [sessionId]);
 
   const decide = useCallback(async (choice: string, feedback: string) => {
     const current = sessionRef.current;

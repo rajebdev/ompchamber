@@ -36,6 +36,7 @@ import {
   invalidatePanelScan,
 } from '@/server/lib/panels/registry.server';
 import { readPluginManifest } from '@/server/lib/panels/files.server';
+import { emitRealtimeSignal } from '@/server/lib/realtime/signals.server';
 
 const CLONE_TIMEOUT_MS = 120_000;
 
@@ -134,8 +135,10 @@ async function commitStagedInstall(stagingDir: string): Promise<InstallResult> {
     // The plugin IS installed — the directory is in place and the scan will
     // find it. Only the catalog entry failed, and the pane reports a missing
     // catalog entry as an error, so the outcome is honest rather than clean.
+    emitRealtimeSignal('panels-changed');
     return { ok: true, pluginId: manifest.id, dir: destination, error: catalog.error };
   }
+  emitRealtimeSignal('panels-changed');
   return { ok: true, pluginId: manifest.id, dir: destination };
 }
 
@@ -236,6 +239,7 @@ export async function removePanelPlugin(pluginId: string): Promise<{ ok: boolean
     await rm(dir, { recursive: true, force: true });
     const pruned = await pruneCatalogEntry(`plugins/${pluginId}`);
     invalidatePanelScan();
+    emitRealtimeSignal('panels-changed');
     // The directory is gone either way, so the removal succeeded; a catalog
     // that could not be pruned is reported rather than hidden, because the scan
     // will keep flagging the dangling entry.

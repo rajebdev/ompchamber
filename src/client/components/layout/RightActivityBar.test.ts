@@ -9,6 +9,10 @@
  * the dot answered for the root's repository, and it kept answering for the repo
  * the user had just left until the next poll.
  *
+ * The dot now reads the `git:<root>\0<repo>` topic, so this drives it through a
+ * real realtime server: the topic a scope is subscribed to IS the assertion —
+ * a dot that answers for the wrong tree subscribes to the wrong topic.
+ *
  * Rendered with `h()` (no JSX) against happy-dom.
  */
 
@@ -19,10 +23,12 @@ import { act } from 'preact/test-utils';
 import { RightActivityBar } from '@/client/components/layout/RightActivityBar';
 import { SessionStateProvider } from '@/client/components/common/session-state-provider/index';
 import { useRepoScope } from '@/client/hooks/workspace/repo-scope';
+import { resetRealtimeClient } from '@/shared/lib/realtime/client';
+import { gitTopic } from '@/shared/lib/realtime/protocol';
+import { startRealtimeTestServer, type RealtimeTestServer } from '@/test-support/realtime-server';
+import { installDomGlobals, pristineWebSocket, restoreDomGlobals } from '@/test-support/pristine-globals';
+import type { TopicResolver } from '@/server/lib/realtime/hub.server';
 
-const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'HTMLInputElement', 'Event', 'MouseEvent', 'KeyboardEvent'] as const;
-/** The runner's own globals, restored on teardown — deleting them would strip natives (Event/CustomEvent) every later file needs. */const nativeGlobals: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
-/** The runner's own fetch — this file replaces it for the whole process. */
 /** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
 const nativeFetch = Bun.fetch;
 
@@ -30,7 +36,9 @@ const ROOT = '/ws';
 const SESSION = 'new-activity-dot';
 
 let container: HTMLElement;
-const statusUrls: string[] = [];
+let server: RealtimeTestServer;
+/** Every scope the dot subscribed to, so the topic it asked for is assertable. */
+const subscribedScopes: string[] = [];
 
 /** The picker the panel owns: writes the slot the dot follows. */
 function Picker({ repo }: { repo: string }) {
@@ -41,13 +49,22 @@ function Picker({ repo }: { repo: string }) {
 // Installed per CASE, not per file: another suite's teardown can strip
 // `window` mid-file when the runner interleaves files, and this hook's
 // first render would then throw `window is not defined`.
-beforeEach(() => {
-  const win = new Window({ url: 'http://localhost' });
+beforeEach(async () => {
+  // Only `projects/a` has anything to report, so the dot is a verdict on which
+  // scope it asked about.
+  const status = (changes: unknown[]) => ({ changes, branch: 'main', branches: ['main'], remoteBranches: [] });
+  const resolver: TopicResolver = async (topic) => {
+    subscribedScopes.push(topic);
+    return topic === gitTopic(`${ROOT}\u0000projects/a`) ? status([{ path: 'a.ts', status: ' M' }]) : status([]);
+  };
+  server = await startRealtimeTestServer(new Map<string, TopicResolver>([
+    [gitTopic(`${ROOT}\u0000.`), resolver],
+    [gitTopic(`${ROOT}\u0000projects/a`), resolver],
+  ]));
+  const win = new Window({ url: `http://127.0.0.1:${server.port}` });
+  installDomGlobals(win);
   const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) {
-    if (!(key in nativeGlobals)) nativeGlobals[key] = target[key];
-    target[key] = (win as unknown as Record<string, unknown>)[key];
-  }
+  target.WebSocket = pristineWebSocket;
   target.fetch = async (input: unknown) => {
     const url = String(input);
     const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
@@ -55,21 +72,14 @@ beforeEach(() => {
       return json({ sessionId: SESSION, state: { 'workspace.activeRepo': { root: ROOT, repo: 'projects/a' } } });
     }
     if (url.includes('reposOnly')) return json({ repos: ['.', 'projects/a', 'projects/b'] });
-    statusUrls.push(url);
-    // Only the selected repo has anything to report, so the dot is a verdict.
-    return json({ changes: url.includes('repo=projects%2Fa') ? [{ path: 'a.ts', status: ' M' }] : [] });
+    return json({ changes: [] });
   };
 });
 
 afterAll(() => {
   const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) {
-    if (nativeGlobals[key] === undefined) delete target[key];
-    else target[key] = nativeGlobals[key];
-  }
-  // The runner's own fetch comes back: `delete` removed the global outright,
-  // so every suite after this one had no `fetch` at all.
   target.fetch = nativeFetch;
+  restoreDomGlobals();
 });
 
 afterEach(() => {
@@ -82,7 +92,9 @@ afterEach(() => {
     render(null, container);
     container.remove();
   }
-  statusUrls.length = 0;
+  subscribedScopes.length = 0;
+  resetRealtimeClient();
+  server?.stop();
 });
 
 async function mount() {
@@ -104,6 +116,7 @@ async function mount() {
       container,
     );
   });
+  await server.waitForTopic(gitTopic(`${ROOT}\u0000projects/a`), (value) => value !== null);
   for (let i = 0; i < 20; i += 1) await act(async () => {});
   return container;
 }
@@ -114,17 +127,21 @@ describe('RightActivityBar git dot', () => {
   test('reports the selected repo, and follows the picker to the root', async () => {
     await mount();
 
-    // The stored pick is projects/a, so the dot answers for it — not for /ws.
-    expect(statusUrls.some((url) => url.includes('repo=projects%2Fa'))).toBe(true);
+    // The stored pick is projects/a, so the dot asked about THAT topic — not
+    // the workspace root's.
+    expect(subscribedScopes).toContain(gitTopic(`${ROOT}\u0000projects/a`));
     expect(dot()).toBe(true);
 
     await act(async () => {
       (container.querySelector('#pick') as HTMLButtonElement).click();
     });
+    await server.waitForTopic(gitTopic(`${ROOT}\u0000.`), (value) => value !== null);
+    await act(async () => {
+      for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    });
 
-    const last = statusUrls.at(-1);
-    expect(last).toContain(`root=${encodeURIComponent(ROOT)}`);
-    expect(last).not.toContain('repo=');
+    // The picker moved to the root: the dot follows to that topic and clears.
+    expect(subscribedScopes).toContain(gitTopic(`${ROOT}\u0000.`));
     expect(dot()).toBe(false);
   });
 });

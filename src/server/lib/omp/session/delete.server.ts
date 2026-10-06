@@ -33,6 +33,7 @@ import type { DbClient } from '@/server/lib/db/client';
 import { findSessionFileById } from '@/server/lib/omp/session/locator';
 import { clearSessionFileCaches } from '@/server/lib/omp/session/files';
 import { invalidateOmpSidebarData } from '@/server/lib/omp/session/reader';
+import { emitRealtimeSignal } from '@/server/lib/realtime/signals.server';
 import { siblingDirForSession } from '@/server/lib/omp/subagent/history/paths';
 import { isSinglePathSegment } from '@/server/lib/fs/path-segment';
 
@@ -127,6 +128,8 @@ export async function purgeSessionData(sessionId: string): Promise<SessionPurgeR
   // row is served back to the refresh that follows the delete.
   clearSessionFileCaches();
   invalidateOmpSidebarData();
+
+  emitRealtimeSignal('sidebar-structure');
 
   return {
     found: Boolean(filePath) || rowChanges > 0,

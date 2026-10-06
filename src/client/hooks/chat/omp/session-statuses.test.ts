@@ -4,10 +4,9 @@
  */
 
 /**
- * The sidebar/navbar live-status cluster: `session-statuses`, `stream-poll`,
- * `revalidation-throttle` and `status`.
+ * The sidebar/navbar live-status cluster: `session-statuses` and `status`.
  *
- * These four small modules are the only wiring between a server-tracked run
+ * These two small modules are the only wiring between a server-tracked run
  * state and the pixels the user watches, so each case pins a way the UI could
  * silently disagree with reality:
  *
@@ -17,13 +16,12 @@
  *   `finish`/`abort` badge must not.
  * - `useSessionStatusAck` must POST exactly once per (session, status) so the
  *   one-shot terminal check cannot flicker, and must never ack a live row.
- * - `useStreamPoll` must revalidate only while something actually streams —
- *   a stale snapshot keeping the timer hot is a background request leak.
- * - `useSidebarRevalidation` is a LEADING+trailing throttle, not a debounce:
- *   the first event of a quiet period must land immediately or a spawn feels
- *   frozen, and a 250ms burst must collapse instead of revalidating per frame.
  * - `useAgentStreamStatus` seeds from the last published value so a navbar
  *   mounted mid-run paints the current transport instead of waiting.
+ *
+ * The sidebar's own poll and throttle used to be pinned here; both are gone,
+ * replaced by the realtime socket's `sidebar:status` topic (see
+ * `session-list.test.ts`, which drives them through a real server).
  *
  * Rendered with `h()` against happy-dom, the way the other hook tests do.
  */
@@ -38,20 +36,13 @@ import {
   isSessionStreaming,
   useSessionStatusAck,
 } from '@/client/hooks/chat/omp/session-statuses';
-import { useStreamPoll } from '@/client/hooks/chat/omp/stream-poll';
-import { useSidebarRevalidation } from '@/client/hooks/chat/omp/revalidation-throttle';
-import { useAgentStreamStatus } from '@/client/hooks/chat/omp/status';
-import {
-  SIDEBAR_REVALIDATE_THROTTLE_MS,
-  SIDEBAR_STREAM_POLL_MS,
-} from '@/shared/lib/workspace/refresh-cadence';
+import { useAgentStreamStatus, type AgentStreamStatus } from '@/client/hooks/chat/omp/status';
+import { realtimeClient, resetRealtimeClient } from '@/shared/lib/realtime/client';
+import { installDomGlobals, pristineWebSocket, restoreDomGlobals } from '@/test-support/pristine-globals';
+import { startRealtimeTestServer } from '@/test-support/realtime-server';
+import type { TopicResolver } from '@/server/lib/realtime/hub.server';
 import type { SessionItemData } from '@/shared/types';
-import { AGENT_STREAM_STATUS_EVENT, publishAgentStreamStatus, type AgentStreamStatus } from '@/shared/lib/chat/omp/status';
-import { DEFAULT_STREAM_TRANSPORT } from '@/shared/lib/chat/omp/transport';
 
-const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'Event', 'CustomEvent'] as const;
-/** The runner's own globals, restored on teardown (see the matching afterAll at the end of this file) so later files still see native Event/CustomEvent/window. */
-const nativeGlobals: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
 /** The runner's own fetch — `installFetch` replaces it for the whole process. */
 /** The runner's own fetch, reached through `Bun` so a stub leaked onto the global cannot be mistaken for it. */
 const nativeFetch = Bun.fetch;
@@ -59,13 +50,10 @@ const nativeFetch = Bun.fetch;
 let container: HTMLElement;
 
 beforeAll(() => {
-  const win = new Window({ url: 'http://localhost' });
-  const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) {
-    if (!(key in nativeGlobals)) nativeGlobals[key] = target[key];
-    target[key] = (win as unknown as Record<string, unknown>)[key];
-  }
+  installDomGlobals(new Window({ url: 'http://localhost' }));
 });
+
+
 
 afterEach(() => {
   if (container) render(null, container);
@@ -77,7 +65,6 @@ afterEach(() => {
   globalThis.fetch = nativeFetch;
   // The status store is module state too: a suite that asserts the pristine
   // seed must not read this file's `sse` transition.
-  publishAgentStreamStatus({ transport: DEFAULT_STREAM_TRANSPORT, connected: false });
 });
 
 async function mount(vnode: Parameters<typeof render>[0]) {
@@ -207,133 +194,45 @@ describe('useSessionStatusAck', () => {
   });
 });
 
-describe('useStreamPoll', () => {
-  function PollProbe({ status, onTick }: { status: Record<string, 'stream' | 'finish' | 'abort'>; onTick: () => void }) {
-    useStreamPoll(status, onTick);
-    return null;
-  }
-
-  test('revalidates on every tick while a session streams', async () => {
-    jest.useFakeTimers();
-    let ticks = 0;
-    await mount(h(PollProbe, { status: { s1: 'stream' }, onTick: () => { ticks += 1; } }));
-
-    await act(async () => { jest.advanceTimersByTime(SIDEBAR_STREAM_POLL_MS); });
-    expect(ticks).toBe(1);
-    await act(async () => { jest.advanceTimersByTime(SIDEBAR_STREAM_POLL_MS); });
-    expect(ticks).toBe(2);
-  });
-
-  test('stays silent when nothing is streaming', async () => {
-    jest.useFakeTimers();
-    let ticks = 0;
-    await mount(h(PollProbe, { status: { s1: 'finish' }, onTick: () => { ticks += 1; } }));
-    await act(async () => { jest.advanceTimersByTime(SIDEBAR_STREAM_POLL_MS * 3); });
-    expect(ticks).toBe(0);
-  });
-
-  test('reads the LIVE status each tick, not the one captured at mount', async () => {
-    jest.useFakeTimers();
-    let ticks = 0;
-    const onTick = () => { ticks += 1; };
-    await mount(h(PollProbe, { status: { s1: 'finish' }, onTick }));
-    await act(async () => { jest.advanceTimersByTime(SIDEBAR_STREAM_POLL_MS); });
-    expect(ticks).toBe(0);
-
-    await act(async () => { render(h(PollProbe, { status: { s1: 'stream' }, onTick }), container as HTMLElement); });
-    await act(async () => { jest.advanceTimersByTime(SIDEBAR_STREAM_POLL_MS); });
-    expect(ticks).toBe(1);
-  });
-
-  test('stops polling after unmount', async () => {
-    jest.useFakeTimers();
-    let ticks = 0;
-    await mount(h(PollProbe, { status: { s1: 'stream' }, onTick: () => { ticks += 1; } }));
-    render(null, container as HTMLElement);
-    await act(async () => { jest.advanceTimersByTime(SIDEBAR_STREAM_POLL_MS * 2); });
-    expect(ticks).toBe(0);
-  });
-});
-
-describe('useSidebarRevalidation', () => {
-  function RevalidateProbe({ onRevalidate }: { onRevalidate: () => void }) {
-    useSidebarRevalidation(onRevalidate);
-    return null;
-  }
-
-  test('fires the leading edge immediately, then collapses a burst into one trailing call', async () => {
-    jest.useFakeTimers();
-    let calls = 0;
-    await mount(h(RevalidateProbe, { onRevalidate: () => { calls += 1; } }));
-
-    await act(async () => { window.dispatchEvent(new CustomEvent('omp:session-updated')); });
-    expect(calls).toBe(1);
-
-    // Two more events inside the window: neither may revalidate yet.
-    await act(async () => {
-      window.dispatchEvent(new CustomEvent('omp:session-updated'));
-      window.dispatchEvent(new CustomEvent('omp:session-updated'));
-    });
-    expect(calls).toBe(1);
-    await act(async () => { jest.advanceTimersByTime(SIDEBAR_REVALIDATE_THROTTLE_MS); });
-    expect(calls).toBe(2);
-  });
-
-  test('an event past the window revalidates immediately, not after a delay', async () => {
-    jest.useFakeTimers();
-    let calls = 0;
-    await mount(h(RevalidateProbe, { onRevalidate: () => { calls += 1; } }));
-
-    await act(async () => { window.dispatchEvent(new CustomEvent('omp:session-updated')); });
-    await act(async () => { jest.advanceTimersByTime(SIDEBAR_REVALIDATE_THROTTLE_MS); });
-    await act(async () => { window.dispatchEvent(new CustomEvent('omp:session-updated')); });
-    expect(calls).toBe(2);
-  });
-
-  test('unmount cancels a pending trailing call', async () => {
-    jest.useFakeTimers();
-    let calls = 0;
-    await mount(h(RevalidateProbe, { onRevalidate: () => { calls += 1; } }));
-    await act(async () => { window.dispatchEvent(new CustomEvent('omp:session-updated')); });
-    await act(async () => { window.dispatchEvent(new CustomEvent('omp:session-updated')); });
-    render(null, container as HTMLElement);
-    await act(async () => { jest.advanceTimersByTime(SIDEBAR_REVALIDATE_THROTTLE_MS); });
-    expect(calls).toBe(1);
-  });
-});
-
 describe('useAgentStreamStatus', () => {
   function StatusProbe({ seen }: { seen: { current: AgentStreamStatus | null } }) {
     seen.current = useAgentStreamStatus();
     return null;
   }
 
-  test('seeds from the last published status, so a mid-run mount is not blank', async () => {
-    publishAgentStreamStatus({ transport: 'sse', connected: true });
+  test('reports the shared channel, not a per-session transport', async () => {
+    // The status now describes the ONE realtime socket, so it is driven by the
+    // client itself. A real listener is what makes the transition observable:
+    // the value flips when the handshake completes, which is event-loop work.
+    const server = await startRealtimeTestServer(new Map<string, TopicResolver>([
+      ['sidebar', async () => ({ folders: [], isMock: false })],
+    ]));
+    // The client builds its socket URL from `window.location`, so the DOM must
+    // sit on the listener's origin — this file's `beforeAll` window is a bare
+    // `http://localhost`, which would dial port 80 and never connect.
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      writable: true,
+      value: new Window({ url: `http://127.0.0.1:${server.port}` }),
+    });
+    (globalThis as unknown as Record<string, unknown>).WebSocket = pristineWebSocket;
     const seen: { current: AgentStreamStatus | null } = { current: null };
     await mount(h(StatusProbe, { seen }));
-    expect(seen.current).toEqual({ transport: 'sse', connected: true });
-  });
+    expect(seen.current?.connected).toBe(false);
 
-  test('follows published transitions and ignores a detail-less event', async () => {
-    publishAgentStreamStatus({ transport: 'sse', connected: false });
-    const seen: { current: AgentStreamStatus | null } = { current: null };
-    await mount(h(StatusProbe, { seen }));
+    // Subscribing is what dials; the harness waits on the client's own value.
+    const stop = realtimeClient.subscribe('sidebar', () => {});
+    await server.waitForTopic('sidebar', (value) => value !== null);
+    await act(async () => { await settle(); });
+    expect(seen.current?.connected).toBe(true);
 
-    await act(async () => { publishAgentStreamStatus({ transport: 'websocket', connected: true }); });
-    expect(seen.current).toEqual({ transport: 'websocket', connected: true });
-
-    const before = seen.current;
-    await act(async () => { window.dispatchEvent(new CustomEvent(AGENT_STREAM_STATUS_EVENT)); });
-    expect(seen.current).toBe(before);
+    stop();
+    server.stop();
+    resetRealtimeClient();
   });
 });
 
 afterAll(() => {
   globalThis.fetch = nativeFetch;
-  const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) {
-    if (nativeGlobals[key] === undefined) delete target[key];
-    else target[key] = nativeGlobals[key];
-  }
+  restoreDomGlobals();
 });

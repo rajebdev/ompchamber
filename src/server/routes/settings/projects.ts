@@ -5,6 +5,7 @@ import { getDb } from '@/server/db.server';
 import { ACCENT_COLOR_OPTIONS, AVAILABLE_PROJECT_MODELS } from '@/client/data/settings/project';
 import { deleteWorkspaceFolder, parseFolderSettingsPatch, projectConfigFromFolder, updateWorkspaceFolder } from '@/shared/lib/workspace/project-settings';
 import { isRecord } from '@/shared/lib/util/guards';
+import { emitRealtimeSignal } from '@/server/lib/realtime/signals.server';
 
 function projectPatch(project: Record<string, unknown>) {
   return parseFolderSettingsPatch({
@@ -51,6 +52,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     const deleted = await deleteWorkspaceFolder(db, folderId);
     if (!deleted) return json({ error: 'Workspace not found' }, { status: 404 });
+    emitRealtimeSignal('sidebar-structure');
     return json({ success: true });
   }
 
@@ -80,5 +82,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   const folder = await db.get('SELECT * FROM workspace_folders WHERE id = ?', [folderId]);
+  // A project field (name, model, accent, icon, pin) rides the sidebar's own
+  // folder rows, so this write is a structure change there.
+  emitRealtimeSignal('sidebar-structure');
   return json({ success: true, project: folder ? projectConfigFromFolder(folder) : null });
 }

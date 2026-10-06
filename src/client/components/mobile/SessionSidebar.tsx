@@ -101,9 +101,6 @@ export function MobileSessionSidebar({
     })
       .then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        window.dispatchEvent(new CustomEvent('omp:workspace-updated', {
-          detail: { folderId },
-        }));
       })
       .catch((error: unknown) => {
         console.error('Failed to save mobile workspace state:', error);

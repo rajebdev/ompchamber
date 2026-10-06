@@ -16,11 +16,12 @@ import fs from 'fs';
 import path from 'path';
 import { COMMIT_PAGE_SIZE } from '@/shared/lib/fs/commit-page';
 import { resolveRoot } from '@/server/lib/fs/root';
-import { runShell } from '@/server/lib/fs/shell';
 import { discoveredRepos, rescanRepos, startRepoScan } from '@/server/lib/fs/git-repos';
 import { fetchFileDiff, fetchGitCommits } from '@/server/lib/fs/git-log';
 import { fetchWorkingFileDiff } from '@/server/lib/fs/git-diff';
-import { gitSyncCount, invalidateRemoteRefs, markRemoteRefsFresh, refreshRemoteRefs } from '@/server/lib/fs/git-sync';
+import { invalidateRemoteRefs, markRemoteRefsFresh } from '@/server/lib/fs/git-sync';
+import { runShell } from '@/server/lib/fs/shell';
+import { readGitStatus } from '@/server/lib/fs/git-status-read';
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
@@ -82,119 +83,17 @@ export async function loader({ request }: LoaderFunctionArgs) {
   // Ahead/behind are only requested by the git panel (`?sync=1`); the
   // status-only polls (activity bar, file explorer) must not trigger a network
   // fetch, and must not pay for a count they never read.
-  const syncRequested = url.searchParams.get('sync') === '1';
+  //
+  // The read itself lives in `lib/fs/git-status-read.ts`, so the realtime `git:`
+  // topic and this route answer from one implementation.
+  const status = await readGitStatus(targetDir, { sync: url.searchParams.get('sync') === '1' });
 
-  try {
-    // Started before the local probes below so the fetch overlaps them instead
-    // of adding up; TTL'd inside the helper, so the panel's 5s poll is not a 5s
-    // fetch loop.
-    const remoteRefresh = syncRequested ? refreshRemoteRefs(targetDir) : Promise.resolve();
-
-    // Use --porcelain=v1 -uall so all individual edited/untracked files are listed
-    const statusOut = (await runShell('git status --porcelain=v1 -uall', { cwd: targetDir, maxBuffer: 1024 * 1024 })).stdout;
-
-    let branch = 'main';
-    // Seeded empty, not `['main']`: the seed used to be pushed as a real local
-    // branch, so a repository whose only branch is `main` listed it twice.
-    const branches: string[] = [];
-    const remoteBranches: string[] = [];
-    try {
-      // One `for-each-ref` answers all three questions the three previous
-      // spawns asked separately (`rev-parse --abbrev-ref HEAD`, `branch`,
-      // `branch -r`): `%(HEAD)` marks the checked-out branch with `*`, and the
-      // two refspecs cover local and remote in one listing. Measured 8.15 ms
-      // against 19.63 ms for the three-call form, on a 5s poll.
-      //
-      // Classification reads the FULL refname: `%(refname:short)` maps
-      // `refs/remotes/origin/HEAD` to the bare `origin`, which has no slash and
-      // would otherwise be listed as a local branch.
-      const refsOut = (await runShell(
-        'git for-each-ref --format="%(refname)%09%(refname:short)%09%(HEAD)" refs/heads refs/remotes',
-        { cwd: targetDir },
-      )).stdout;
-      let sawHead = false;
-      for (const line of refsOut.split('\n')) {
-        const [full, short, head] = line.split('\t');
-        if (!full || !short) continue;
-        // `refs/remotes/origin/HEAD` is a symbolic alias, not a branch.
-        if (full.endsWith('/HEAD')) continue;
-        if (full.startsWith('refs/remotes/')) {
-          remoteBranches.push(short);
-          continue;
-        }
-        branches.push(short);
-        if (head === '*') {
-          branch = short;
-          sawHead = true;
-        }
-      }
-      // Detached HEAD: no local ref is marked, and the branch is the sha
-      // `rev-parse --abbrev-ref HEAD` prints. Ask for it rather than reporting
-      // a branch the checkout is not on.
-      if (!sawHead) {
-        const headOut = await runShell('git rev-parse --abbrev-ref HEAD', { cwd: targetDir });
-        branch = headOut.stdout.trim() || 'main';
-      }
-    } catch {
-      // ignore branch resolution errors
-    }
-    // `main` remains the answer only when nothing could be read (a non-repo
-    // directory, git missing) — a real listing always supplies its own refs.
-    if (branches.length === 0) branches.push('main');
-    else if (!branches.includes(branch)) branches.unshift(branch);
-
-    const changes = statusOut
-      .split('\n')
-      .filter(Boolean)
-      .map(line => {
-        const status = line.slice(0, 2);
-        let file = line.slice(2).trim();
-
-        if (file.startsWith('"') && file.endsWith('"')) {
-          try {
-            file = JSON.parse(file);
-          } catch {}
-        }
-        if (file.includes(' -> ')) {
-          file = file.split(' -> ')[1].trim();
-        }
-
-        const isStaged = status[0] !== ' ' && status[0] !== '?';
-
-        return {
-          status,
-          file,
-          staged: isStaged,
-          additions: 1,
-          deletions: 0,
-        };
-      });
-
-    await remoteRefresh;
-    const syncCount = syncRequested ? await gitSyncCount(targetDir) : undefined;
-
-    // No `repos`/`reposPending`/`activeRepo` here: the repo list travels on the
-    // `?reposOnly=1` branch, keyed to the root it was discovered for. Echoing a
-    // repo back in a status response is what let a panel adopt a repo it had
-    // never chosen — and adopt it under whichever workspace was active when the
-    // echo arrived.
-    return json({
-      changes,
-      branch: branch || 'main',
-      branches: branches.length ? branches : ['main'],
-      remoteBranches,
-      syncCount,
-    });
-  } catch (error: any) {
-    return json({
-      changes: [],
-      branch: 'main',
-      branches: ['main'],
-      remoteBranches: [],
-      syncCount: { ahead: 0, behind: 0 },
-      error: error?.message || 'Git error',
-    }, { status: 200 });
-  }
+  // No `repos`/`reposPending`/`activeRepo` here: the repo list travels on the
+  // `?reposOnly=1` branch, keyed to the root it was discovered for. Echoing a
+  // repo back in a status response is what let a panel adopt a repo it had
+  // never chosen — and adopt it under whichever workspace was active when the
+  // echo arrived.
+  return json(status);
 }
 
 export async function action({ request }: ActionFunctionArgs) {

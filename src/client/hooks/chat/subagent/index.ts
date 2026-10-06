@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { ChatMessageData, SubagentInfo } from '@/shared/types';
 import { isRecord } from '@/shared/lib/util/guards';
 import { parseSubagentLifecycle, readSubagentProgressFrame } from '@/shared/lib/omp/subagent/parse';
+import { subscribeSubagentFrame, type SubagentFrame } from '@/shared/lib/chat/omp/subagent-frames';
 import { convertMessages, mergeMessages, requestHistoryPage, requestSubagentPage } from '@/shared/lib/omp/subagent/transcript-client';
 
 /**
@@ -25,11 +26,6 @@ export interface UseSubagentTranscriptResult {
   isLoading: boolean;
   status: SubagentInfo | null;
   isActive: boolean;
-}
-
-interface SubagentFrameDetail {
-  sessionId?: string;
-  payload?: unknown;
 }
 
 const PROGRESS_STATUS: Record<string, SubagentInfo['status']> = {
@@ -239,25 +235,22 @@ export function useSubagentTranscript(
       }
     };
 
-    const readDetail = (event: Event): SubagentFrameDetail | null => {
-      const detail = (event as CustomEvent<SubagentFrameDetail>).detail;
-      return detail && detail.sessionId === sessionId ? detail : null;
+    /** The payload of a frame that belongs to THIS session, or null. */
+    const payloadFor = (frame: SubagentFrame): Record<string, unknown> | null => {
+      if (frame.sessionId !== sessionId) return null;
+      return isRecord(frame.payload) ? frame.payload : null;
     };
 
-    const onLifecycle = (event: Event) => {
-      const detail = readDetail(event);
-      if (!detail) return;
-      const parsed = parseSubagentLifecycle(detail.payload);
+    const onLifecycle = (frame: SubagentFrame) => {
+      const parsed = parseSubagentLifecycle(payloadFor(frame));
       if (!parsed || parsed.id !== subagentId) return;
       setStatus(prev => mergeStatus(prev, parsed));
       // A terminal frame means the child wrote its last turns — pull them.
       scheduleTail();
     };
 
-    const onProgress = (event: Event) => {
-      const detail = readDetail(event);
-      if (!detail) return;
-      const payload = isRecord(detail.payload) ? detail.payload : null;
+    const onProgress = (frame: SubagentFrame) => {
+      const payload = payloadFor(frame);
       if (!payload) return;
       // `subagent_progress` nests the child's AgentProgress under `progress`
       // (SubagentProgressPayload), and only the NESTED snapshot carries the id
@@ -281,19 +274,23 @@ export function useSubagentTranscript(
       });
     };
 
-    const onActivity = (event: Event) => {
-      const detail = readDetail(event);
-      if (!detail) return;
-      const payload = isRecord(detail.payload) ? detail.payload : null;
+    const onActivity = (frame: SubagentFrame) => {
+      const payload = payloadFor(frame);
       if (!payload || payload.id !== subagentId) return;
       scheduleTail();
     };
 
     // Dead-session history emits no live frames — skip the listeners entirely.
+    let unsubscribeFrames: (() => void) | null = null;
     if (!historySource) {
-      window.addEventListener('subagent_lifecycle', onLifecycle);
-      window.addEventListener('subagent_progress', onProgress);
-      window.addEventListener('subagent_event', onActivity);
+      const unsubLifecycle = subscribeSubagentFrame('subagent_lifecycle', onLifecycle);
+      const unsubProgress = subscribeSubagentFrame('subagent_progress', onProgress);
+      const unsubActivity = subscribeSubagentFrame('subagent_event', onActivity);
+      unsubscribeFrames = () => {
+        unsubLifecycle();
+        unsubProgress();
+        unsubActivity();
+      };
     }
     void loadInitial();
 
@@ -304,11 +301,7 @@ export function useSubagentTranscript(
         window.clearTimeout(flushTimerRef.current);
         flushTimerRef.current = null;
       }
-      if (!historySource) {
-        window.removeEventListener('subagent_lifecycle', onLifecycle);
-        window.removeEventListener('subagent_progress', onProgress);
-        window.removeEventListener('subagent_event', onActivity);
-      }
+      unsubscribeFrames?.();
     };
   }, [sessionId, subagentId, runTailFetch]);
 

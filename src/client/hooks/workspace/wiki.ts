@@ -24,7 +24,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import { usePanelRefresh } from '@/client/hooks/workspace/panel-refresh';
+import { useRealtimeTopic } from '@/client/hooks/ui/realtime';
+import { wikiTopic } from '@/shared/lib/realtime/protocol';
 import type { WikiPagePayload, WikiRepoPayload } from '@/shared/types/wiki';
 
 /** `root\0repo` — the working tree a wiki read belongs to. */
@@ -66,62 +67,69 @@ export function useWikiTree(
 ): WikiTreeState {
   const { rootPath, repo, enabled, active, revisionKey = 0 } = args;
   const scope = wikiScopeKey(rootPath, repo);
-  const [state, setState] = useState<{ scope: string; data: WikiRepoPayload | null }>({ scope, data: null });
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const requestRef = useRef(0);
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
 
-  const load = useCallback(
+  // The wiki tree rides the `wiki:<root>\0<repo>` topic: the server re-reads
+  // the mirror when a fetch settles, so the panel renders what it is handed
+  // instead of asking on a timer. The topic is scoped, so a tree that arrives
+  // for another repository cannot be rendered here.
+  const topic = useRealtimeTopic<WikiRepoPayload>(wikiTopic(scope), { enabled: enabled && active });
+  const { refresh: refreshTopic } = topic;
+
+  // A scope switch is a different wiki: drop the previous read's error, or the
+  // new repository's panel would open under the old one's message.
+  useEffect(() => {
+    setError(null);
+  }, [scope]);
+
+  /**
+   * Re-read the tree. `force` is the panel's own Refresh: it re-fetches the
+   * remote mirror over HTTP (the topic's resolver reads the cached mirror and
+   * cannot express "go to the network"), then re-snapshots the topic from it.
+   */
+  const reload = useCallback(
     (opts?: { force?: boolean }) => {
       if (!enabled) return;
+      if (!opts?.force) {
+        refreshTopic();
+        return;
+      }
       const requested = scopeRef.current;
-      const request = ++requestRef.current;
-      setIsLoading(true);
       const params = wikiParams(rootPath, repo);
-      if (opts?.force) params.set('refresh', '1');
-      params.set('t', String(Date.now()));
+      params.set('refresh', '1');
       fetch(`/api/wiki?${params.toString()}`)
         .then(async (response) => {
           const payload = (await response.json()) as WikiRepoPayload & { error?: string };
           if (!response.ok) throw new Error(payload?.error || `Wiki request failed (${response.status})`);
-          return payload;
         })
-        .then((payload) => {
-          if (requestRef.current !== request) return;
-          setState({ scope: requested, data: payload });
+        .then(() => {
+          if (scopeRef.current !== requested) return;
           setError(null);
+          // The mirror is fresh now; the topic's re-read picks it up, so both
+          // paths converge on one payload and cannot disagree.
+          refreshTopic();
         })
         .catch((err: unknown) => {
-          if (requestRef.current !== request) return;
+          if (scopeRef.current !== requested) return;
           setError(err instanceof Error ? err.message : 'Failed to load the wiki');
-        })
-        .finally(() => {
-          if (requestRef.current === request) setIsLoading(false);
         });
     },
-    [enabled, rootPath, repo],
+    [enabled, rootPath, repo, refreshTopic],
   );
 
-  // A scope switch is a different wiki: drop the previous one's tree before the
-  // new read lands, or the page list would briefly describe another project.
+  // A workspace refresh re-lists the wiki (a write anywhere may have moved it).
   useEffect(() => {
-    setState({ scope, data: null });
-    setError(null);
-  }, [scope]);
-
-  useEffect(() => {
-    load();
-  }, [load, revisionKey]);
-
-  usePanelRefresh(load, enabled && active);
+    if (revisionKey > 0) refreshTopic();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revisionKey]);
 
   return {
-    data: state.scope === scope ? state.data : null,
-    isLoading,
+    data: topic.data,
+    isLoading: topic.isLoading,
     error,
-    reload: load,
+    reload,
   };
 }
 

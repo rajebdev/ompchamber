@@ -12,6 +12,7 @@
  */
 
 import type { ModelsData, ProviderItem } from '@/shared/types';
+import { emitRealtimeSignal } from '@/server/lib/realtime/signals.server';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -20,8 +21,17 @@ declare global {
   var __ompChamberProvidersRpcCache: { data: ProviderItem[]; expiresAt: number } | undefined;
 }
 
-/** Drops every cached model + provider registry snapshot. */
+/**
+ * Drops every cached model + provider registry snapshot, and tells the realtime
+ * layer to republish the `models` topic.
+ *
+ * The signal rides HERE rather than at each of the ~8 call sites: every one of
+ * them means "the catalog changed", and a caller that forgot it would leave
+ * every open picker on the pre-change list until its cache TTL expired — the
+ * exact staleness this function exists to prevent.
+ */
 export function invalidateModelsCaches(): void {
   globalThis.__ompChamberModelsCache = undefined;
   globalThis.__ompChamberProvidersRpcCache = undefined;
+  emitRealtimeSignal('models-changed');
 }

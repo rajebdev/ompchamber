@@ -11,7 +11,9 @@ import { ToastStack } from '@/client/components/common/ToastStack';
 import { useToasts } from '@/client/hooks/ui/toasts';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { resolveRepoForPanel, useRepoList, useRepoScope } from '@/client/hooks/workspace/repo-scope';
-import { usePanelRefresh, useFileMutationRefresh } from '@/client/hooks/workspace/panel-refresh';
+import { useRealtimeTopic } from '@/client/hooks/ui/realtime';
+import { gitTopic } from '@/shared/lib/realtime/protocol';
+import type { GitStatusPayload } from '@/server/lib/fs/git-status-read';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
 
 interface GitPanelProps {
@@ -52,12 +54,25 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
     lastPayloadRef.current = fetcher.data;
     payloadScopeRef.current = requestedScopeRef.current;
   }
+  // The change list rides the `git:<root>\0<repo>` topic: the server pushes a
+  // fresh status when a file-mutating tool completes, so neither the poll nor
+  // the event-driven re-read is needed. `loadRepo` stays for the toolbar's own
+  // Refresh (which also asks for the ahead/behind count).
+  const gitTopicName = enabled && activeRepoReady
+    ? gitTopic(`${rootPath ?? ''}\u0000${activeRepo}`)
+    : null;
+  const git = useRealtimeTopic<GitStatusPayload>(gitTopicName);
+
   // A switch leaves the previous repo's branch, changes and branch list in
   // `fetcher.data` until the new read lands. Rendering those under the new
   // repo's header would claim the new working tree is on the old branch with
   // the old changes, so the payload is used only while it describes the scope
   // on screen.
-  const data = payloadScopeRef.current === scopeRef.current ? fetcher.data : undefined;
+  const fetched = payloadScopeRef.current === scopeRef.current ? fetcher.data : undefined;
+  // The topic's snapshot is the same payload shape, so a panel renders the same
+  // list whichever path delivered it; the fetcher wins when it has a fresher
+  // answer (a user Refresh that also asked for the ahead/behind count).
+  const data = fetched ?? git.data;
 
   const loadRepo = (repo?: string) => {
     if (!enabled) return;
@@ -114,14 +129,6 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
     loadRepo();
   }, [refreshKey, rootPath, enabled, activeRepoReady, activeRepo]);
 
-  // Auto refresh: keep the change list in step with external mutations
-  // (terminal commits, agent edits) that never bump `refreshKey`. `loadRepo`
-  // re-reads via `fetcher.load`, whose `t` param busts the cache; a load
-  // already in flight is ignored by the loader so polls cannot pile up.
-  usePanelRefresh(() => loadRepo(), enabled && activeRepoReady);
-  // Agent edits/commits land between poll ticks: re-read right after a
-  // file-mutating tool finishes so the change list tracks the AI's work.
-  useFileMutationRefresh(() => loadRepo(), enabled && activeRepoReady);
 
   // Focus input when branch prompt opens
   useEffect(() => {

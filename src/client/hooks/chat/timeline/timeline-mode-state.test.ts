@@ -37,7 +37,9 @@ import { act } from 'preact/test-utils';
 import { goalMarkerPatch, useModeMarkers } from '@/client/hooks/chat/timeline/mode-markers';
 import { useChatTimelineAccessMode } from '@/client/hooks/chat/timeline/access-mode';
 import { useComposerModes } from '@/client/hooks/chat/timeline/composer-modes';
-import { CHAMBER_MODE_EVENT, type GoalRecord } from '@/shared/lib/omp/mode/types';
+import { type GoalRecord } from '@/shared/lib/omp/mode/types';
+import { CHAMBER_MODE_SIGNAL } from '@/shared/lib/omp/mode/client-signal';
+import { publishClientSignal } from '@/client/lib/signals';
 import type { ParsedMarker } from '@/shared/lib/omp/mode/markers';
 import { primeChamberSettings } from '@/shared/lib/settings/client';
 
@@ -182,8 +184,8 @@ describe('useModeMarkers', () => {
     return null;
   }
 
-  function dispatch(detail: unknown): void {
-    window.dispatchEvent(new CustomEvent(CHAMBER_MODE_EVENT, { detail }));
+  function dispatch(detail: { sessionId?: string; marker?: unknown }): void {
+    publishClientSignal(CHAMBER_MODE_SIGNAL, detail);
   }
 
   async function mount(sessionId: string | null): Promise<void> {
@@ -294,14 +296,10 @@ describe('useComposerModes', () => {
     expect(el.querySelector('#proposal')?.textContent).toBe('none');
 
     await act(async () => {
-      window.dispatchEvent(
-        new CustomEvent(CHAMBER_MODE_EVENT, {
-          detail: {
-            sessionId: 's1',
-            marker: { marker: 'CHAMBER_PLAN_PROPOSAL:', payload: { title: 'The plan', planFilePath: '/p.md' } },
-          },
-        }),
-      );
+      publishClientSignal(CHAMBER_MODE_SIGNAL, {
+        sessionId: 's1',
+        marker: { marker: 'CHAMBER_PLAN_PROPOSAL:', payload: { title: 'The plan', planFilePath: '/p.md' } },
+      });
     });
     expect(el.querySelector('#proposal')?.textContent).toBe('The plan');
   });

@@ -98,7 +98,7 @@ export function ComposerDock({
   // Side questions take over the composer entirely: the chat's own input is
   // hidden while the form is open, so a stray Enter cannot send to the wrong
   // conversation.
-  const btw = useBtwMode(sessionId, appSettings);
+  const btw = useBtwMode(sessionId);
 
   return (
     <div

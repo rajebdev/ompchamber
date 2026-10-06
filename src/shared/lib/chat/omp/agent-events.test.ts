@@ -50,7 +50,6 @@ function makeDeps() {
     activityRef: { current: '' },
     providerRetryVerbRef: { current: null },
     currentThinkingLevelRef: { current: undefined },
-    fileMutatingCallsRef: { current: new Set<string>() },
   };
   return { deps, ended, updates, activity, commandOutputs, settled: () => settledCount, runEnds: () => runEnds, state: () => state };
 }

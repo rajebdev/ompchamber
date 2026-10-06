@@ -4,29 +4,28 @@
  */
 
 /**
- * The live omp agent bridge: transport lifecycle (`useOmpAgentStream`) and the
- * RPC command surface (`useOmpAgent`).
+ * The live omp agent bridge over the unified realtime channel.
  *
- * What each case pins is a way the bridge could lie to the timeline:
- * - the transport is chosen from the setting and dials the right endpoint, and
- *   every decoded frame reaches the shared fold (`agent_start` must flip
- *   `isGenerating`) — a socket that opens but drops frames looks "connected"
- *   while the timeline sits still;
- * - reconnecting must CLOSE the previous socket and detach its handlers, or a
- *   late close from the stale socket flips the navbar to disconnected mid-run;
- * - the reload probe may only reattach when the server says the run is live
- *   (`running` + streaming/prompt-running/busy); reattaching on a finished
- *   session loops refusals, and skipping it freezes an in-flight response;
- * - pending ask/approval dialogs remembered by the server must be replayed or
- *   the run hangs with no modal;
- * - every command posts the exact RPC body (`follow_up`, `abort_and_prompt`,
- *   `set_model`, `set_thinking_level`, `extension_ui_response`) and a failed
- *   interrupt must release the guard that keeps the run alive.
+ * The session's frames now arrive on the `session:<id>` topic, so the bridge's
+ * contract is about the TOPIC, not about dialing a socket of its own. What each
+ * case pins is a way the bridge could lie to the timeline:
  *
- * The WebSocket/EventSource constructors are stubbed; no real network is used.
+ * - subscribing is safe before the session's omp child exists: the snapshot is
+ *   `running:false`, and the spawn path re-snapshots the topic once the child is
+ *   reachable — the case the old 409-refusal workaround existed to dodge;
+ * - every DELTA reaches the shared fold (`agent_start` must flip
+ *   `isGenerating`), because the topic is an event stream: a client that kept
+ *   only the latest payload would drop the run;
+ * - the SNAPSHOT is the reattach payload: it decides whether to resume the
+ *   generating UI and replays the ask/approval dialogs omp never re-emits;
+ * - a session switch releases the previous subscription, or the timeline keeps
+ *   folding another session's frames.
+ *
+ * Driven through a REAL server and socket: the frames are the hub's, and a
+ * stubbed WebSocket would only prove the stub's timing.
  */
 
-import { afterEach, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { h, render } from 'preact';
 import { useRef, useState } from 'preact/hooks';
@@ -34,81 +33,32 @@ import type { RefObject } from 'preact/compat';
 import { act } from 'preact/test-utils';
 
 import { useOmpAgentStream } from '@/client/hooks/chat/omp/stream';
-import { pristineWebSocket } from '@/test-support/pristine-globals';
-import { readAgentStreamStatus } from '@/shared/lib/chat/omp/status';
-import type { ChatMessageData, OmpAgentCallbacks, OmpAgentEvent, OmpAgentState, StreamTransport } from '@/shared/types';
+import { resetRealtimeClient } from '@/shared/lib/realtime/client';
+import { sessionTopic } from '@/shared/lib/realtime/protocol';
+import { startRealtimeTestServer, type RealtimeTestServer } from '@/test-support/realtime-server';
+import { installDomGlobals, restoreDomGlobals } from '@/test-support/pristine-globals';
+import type { TopicResolver } from '@/server/lib/realtime/hub.server';
+import type { ChatMessageData, OmpAgentCallbacks, OmpAgentState } from '@/shared/types';
 
-const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'Event', 'CustomEvent', 'WebSocket', 'EventSource'] as const;
-/** The runner's own globals, restored on teardown (see the matching afterAll at the end of this file) so later files still see native Event/CustomEvent/window. */
-const nativeGlobals: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
 
-let container: HTMLElement;
+let container: HTMLElement | undefined;
 
-/** Minimal WebSocket double: records instances and lets a test drive events. */
-class StubSocket {
-  static latest: StubSocket[] = [];
-  url: string;
-  closed = false;
-  onopen: (() => void) | null = null;
-  onmessage: ((event: { data: string }) => void) | null = null;
-  onclose: (() => void) | null = null;
-  onerror: unknown = null;
-
-  constructor(url: string) {
-    this.url = url;
-    StubSocket.latest.push(this);
-  }
-
-  close() { this.closed = true; }
-  open() { this.onopen?.(); }
-  frame(data: OmpAgentEvent) { this.onmessage?.({ data: JSON.stringify(data) }); }
-  drop() { this.onclose?.(); }
+function installDom(origin: string): void {
+  installDomGlobals(new Window({ url: origin }));
 }
-
-class StubEventSource {
-  static latest: StubEventSource[] = [];
-  static CLOSED = 2;
-  static readonly instances: StubEventSource[] = StubEventSource.latest;
-  url: string;
-  readyState = 0;
-  closed = false;
-  onopen: (() => void) | null = null;
-  onmessage: ((event: { data: string }) => void) | null = null;
-  onerror: (() => void) | null = null;
-
-  constructor(url: string) {
-    this.url = url;
-    StubEventSource.latest.push(this);
-  }
-
-  close() { this.closed = true; }
-  open() { this.readyState = 1; this.onopen?.(); }
-  frame(data: OmpAgentEvent) { this.onmessage?.({ data: JSON.stringify(data) }); }
-}
-
-beforeAll(() => {
-  const win = new Window({ url: 'http://localhost' });
-  const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) {
-    if (!(key in nativeGlobals)) nativeGlobals[key] = target[key];
-  nativeGlobals.WebSocket = pristineWebSocket;   // never the fake another suite left
-    target[key] = (win as unknown as Record<string, unknown>)[key];
-  }
-  target.WebSocket = StubSocket;
-  target.EventSource = StubEventSource;
-});
 
 afterEach(() => {
   if (container) render(null, container);
   container?.remove();
-  StubSocket.latest = [];
-  StubEventSource.latest = [];
+  container = undefined;
+  resetRealtimeClient();
 });
 
-function mount(vnode: Parameters<typeof render>[0]) {
-  container ??= document.body.appendChild(document.createElement('div'));
-  return act(async () => { render(vnode, container as HTMLElement); });
-}
+afterAll(() => {
+  restoreDomGlobals();
+});
+
+
 
 const EMPTY_STATE: OmpAgentState = { isGenerating: false, connected: false, error: null };
 
@@ -117,15 +67,32 @@ interface StreamApi {
   disconnect: () => void;
 }
 
-/** Mounts `useOmpAgentStream` with fresh refs and exposes its api + state. */
-function mountStream(transport: StreamTransport) {
+interface Harness {
+  server: RealtimeTestServer;
+  api: () => StreamApi;
+  state: () => OmpAgentState;
+  calls: string[];
+}
+
+/** Mount the real stream hook against a real realtime server. */
+async function mountStream(snapshot: unknown): Promise<Harness> {
+  const server = await startRealtimeTestServer(new Map<string, TopicResolver>([
+    [sessionTopic('s1'), async () => snapshot],
+    [sessionTopic('s2'), async () => snapshot],
+  ]));
+  installDom(`http://127.0.0.1:${server.port}`);
+
   const seen: { api: StreamApi | null } = { api: null };
   const state: { current: OmpAgentState } = { current: EMPTY_STATE };
   const calls: string[] = [];
 
   function Probe() {
     const [next, setState] = useState<OmpAgentState>(EMPTY_STATE);
-    const callbacksRef = useRef<OmpAgentCallbacks>({ onConnected: () => { calls.push('connected'); } });
+    const callbacksRef = useRef<OmpAgentCallbacks>({
+      onConnected: () => { calls.push('connected'); },
+      onResumeStream: () => { calls.push('resume'); },
+      onExtensionUiRequest: (request) => { calls.push(`dialog:${request.id}`); },
+    });
     state.current = next;
     seen.api = useOmpAgentStream({
       setState,
@@ -136,91 +103,104 @@ function mountStream(transport: StreamTransport) {
       activityRef: useRef(''),
       currentThinkingLevelRef: useRef<string | undefined>(undefined),
       providerRetryVerbRef: useRef<string | null>(null),
-      fileMutatingCallsRef: useRef(new Set<string>()),
-      transport,
     });
     return null;
   }
 
-  return { mount: () => mount(h(Probe, null)), api: () => seen.api as StreamApi, state: () => state.current, calls };
+  container ??= document.body.appendChild(document.createElement('div'));
+  await act(async () => { render(h(Probe, null), container as HTMLElement); });
+  return { server, api: () => seen.api as StreamApi, state: () => state.current, calls };
 }
 
-describe('useOmpAgentStream', () => {
-  test('dials the websocket endpoint and reports the connection', async () => {
-    const probe = mountStream('websocket');
-    await probe.mount();
-    expect(readAgentStreamStatus()).toEqual({ transport: 'websocket', connected: false });
+/** Wait until the client holds a value for `topic`, then flush Preact. */
+async function settleTopic(server: RealtimeTestServer, topic: string): Promise<void> {
+  await server.waitForTopic(topic, (value) => value !== null);
+  await act(async () => {
+    for (let i = 0; i < 8; i += 1) await Promise.resolve();
+  });
+}
 
+describe('useOmpAgentStream over the session topic', () => {
+  test('a session with no child subscribes cleanly and reports disconnected state', async () => {
+    const probe = await mountStream({ running: false });
     await act(async () => { probe.api().connect('s1'); });
-    expect(StubSocket.latest.length).toBe(1);
-    expect(StubSocket.latest[0].url).toBe('ws://localhost/api/agent/s1/ws');
+    await settleTopic(probe.server, sessionTopic('s1'));
 
-    await act(async () => { StubSocket.latest[0].open(); });
+    // Subscribing must NOT be refused: there is simply nothing running yet.
     expect(probe.state().connected).toBe(true);
+    expect(probe.state().isGenerating).toBe(false);
     expect(probe.calls).toEqual(['connected']);
-    expect(readAgentStreamStatus()).toEqual({ transport: 'websocket', connected: true });
+    probe.server.stop();
   });
 
-  test('folds decoded frames into agent state', async () => {
-    const probe = mountStream('websocket');
-    await probe.mount();
+  test('folds every delta frame into agent state', async () => {
+    const probe = await mountStream({ running: true, state: { isStreaming: true } });
     await act(async () => { probe.api().connect('s1'); });
-    await act(async () => { StubSocket.latest[0].frame({ type: 'agent_start' }); });
+    await settleTopic(probe.server, sessionTopic('s1'));
+
+    await act(async () => {
+      probe.server.publish(sessionTopic('s1'), { type: 'agent_start' });
+      await probe.server.waitForTopic(sessionTopic('s1'), (value) => (value as { type?: string } | null)?.type === 'agent_start');
+    });
     expect(probe.state().isGenerating).toBe(true);
+    probe.server.stop();
   });
 
-  test('reconnecting closes the old socket, whose late close cannot flip state', async () => {
-    const probe = mountStream('websocket');
-    await probe.mount();
+  test('a live snapshot resumes the generating UI and replays blocked dialogs', async () => {
+    const probe = await mountStream({
+      running: true,
+      state: { isStreaming: true },
+      pendingUiRequests: [{ id: 'ask-1' }],
+    });
     await act(async () => { probe.api().connect('s1'); });
-    await act(async () => { StubSocket.latest[0].open(); });
+    await settleTopic(probe.server, sessionTopic('s1'));
+
+    expect(probe.calls).toEqual(['connected', 'resume', 'dialog:ask-1']);
+    probe.server.stop();
+  });
+
+  test('a finished snapshot reattaches without resuming', async () => {
+    const probe = await mountStream({ running: true, state: { isStreaming: false, isPromptRunning: false } });
+    await act(async () => { probe.api().connect('s1'); });
+    await settleTopic(probe.server, sessionTopic('s1'));
+
+    expect(probe.calls).toEqual(['connected']);
+    expect(probe.state().isGenerating).toBe(false);
+    probe.server.stop();
+  });
+
+  test('reconnecting to another session releases the previous subscription', async () => {
+    const probe = await mountStream({ running: false });
+    await act(async () => { probe.api().connect('s1'); });
+    await settleTopic(probe.server, sessionTopic('s1'));
+
     await act(async () => { probe.api().connect('s2'); });
+    await settleTopic(probe.server, sessionTopic('s2'));
 
-    expect(StubSocket.latest.length).toBe(2);
-    expect(StubSocket.latest[0].closed).toBe(true);
-    expect(StubSocket.latest[1].url).toBe('ws://localhost/api/agent/s2/ws');
-
-    await act(async () => { StubSocket.latest[1].open(); });
-    await act(async () => { StubSocket.latest[0].drop(); });
-    expect(probe.state().connected).toBe(true);
+    // A frame on the RELEASED topic must not reach the fold any more.
+    const before = probe.state().isGenerating;
+    await act(async () => {
+      probe.server.publish(sessionTopic('s1'), { type: 'agent_start' });
+      for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    });
+    expect(probe.state().isGenerating).toBe(before);
+    probe.server.stop();
   });
 
-  test('disconnect releases the socket and publishes the retraction', async () => {
-    const probe = mountStream('websocket');
-    await probe.mount();
+  test('disconnect releases the subscription', async () => {
+    const probe = await mountStream({ running: true, state: { isStreaming: true } });
     await act(async () => { probe.api().connect('s1'); });
-    await act(async () => { StubSocket.latest[0].open(); });
+    await settleTopic(probe.server, sessionTopic('s1'));
 
     await act(async () => { probe.api().disconnect(); });
-    expect(StubSocket.latest[0].closed).toBe(true);
     expect(probe.state().connected).toBe(false);
-    expect(readAgentStreamStatus()).toEqual({ transport: 'websocket', connected: false });
-  });
 
-  test('the sse transport dials the events endpoint and folds identically', async () => {
-    const probe = mountStream('sse');
-    await probe.mount();
-    await act(async () => { probe.api().connect('s2'); });
-
-    expect(StubSocket.latest.length).toBe(0);
-    expect(StubEventSource.latest.length).toBe(1);
-    expect(StubEventSource.latest[0].url).toBe('/api/agent/s2/events');
-
-    await act(async () => { StubEventSource.latest[0].open(); });
-    await act(async () => { StubEventSource.latest[0].frame({ type: 'agent_start' }); });
-    expect(probe.state().isGenerating).toBe(true);
-  });
-
-  test('unmount retracts the published status', async () => {
-    const probe = mountStream('websocket');
-    await probe.mount();
-    await act(async () => { probe.api().connect('s1'); });
-    await act(async () => { StubSocket.latest[0].open(); });
-    expect(readAgentStreamStatus().connected).toBe(true);
-
-    render(null, container as HTMLElement);
-    // The raw stream hook owns no teardown beyond the status retraction —
-    // closing the socket is `useOmpAgent`'s unmount cleanup.
-    expect(readAgentStreamStatus()).toEqual({ transport: 'websocket', connected: false });
+    const before = probe.state().isGenerating;
+    await act(async () => {
+      probe.server.publish(sessionTopic('s1'), { type: 'agent_start' });
+      for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    });
+    expect(probe.state().isGenerating).toBe(before);
+    probe.server.stop();
   });
 });

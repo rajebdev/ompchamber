@@ -4,22 +4,40 @@
  */
 
 /**
- * Live agent stream wiring for the omp bridge. Owns the transport lifecycle —
- * the WebSocket socket by default, Server-Sent Events when the Chat setting
- * asks for it — and hands every decoded frame to the shared folder in
- * `@/lib/chat/omp/agent-events`, so both transports produce identical timeline
- * behavior. Kept out of useOmpAgent so that hook only owns RPC command sends +
- * agent state.
+ * Live agent stream wiring for the omp bridge.
+ *
+ * The session's frames ride the unified realtime socket's `session:<id>` topic
+ * — the same connection the sidebar and every panel use — instead of a socket
+ * or SSE stream of its own. One tab therefore holds ONE socket regardless of
+ * how many features are live.
+ *
+ * The topic is an EVENT STREAM, not a value, so it is consumed through
+ * `subscribeFrames`: every `message_update` / `tool_execution_end` must be
+ * folded, and the value API's "keep the latest payload" would drop the run.
+ *
+ * The topic's SNAPSHOT is the reattach payload (`buildAgentSnapshot`, the same
+ * builder `GET /api/agent/:sessionId` answers from): it says whether the run is
+ * live, and it replays the ask/approval dialogs omp will never re-emit. That
+ * makes subscribing safe BEFORE the child exists — the snapshot is
+ * `running:false`, and the spawn path re-snapshots the topic once the child is
+ * reachable — which is what the old 409-refusal workaround existed to avoid.
  */
 
 import { useCallback, useEffect, useRef } from 'preact/hooks';
 import type { Dispatch, RefObject, SetStateAction } from 'preact/compat';
-import type { ChatMessageData, OmpAgentCallbacks, OmpAgentEvent, OmpAgentState, StreamTransport } from '@/shared/types';
+import type { ChatMessageData, OmpAgentCallbacks, OmpAgentEvent, OmpAgentState } from '@/shared/types';
+import type { ExtensionUiDialogRequest } from '@/shared/types/omp/agent';
 import { foldAgentEvent, type ToolResultRecord } from '@/shared/lib/chat/omp/agent-events';
-import { connectAgentSocket } from '@/shared/lib/chat/omp/socket';
-import { connectAgentEvents } from '@/shared/lib/chat/omp/sse';
-import type { AgentStreamConnection, AgentStreamHandlers } from '@/shared/lib/chat/omp/transport';
-import { publishAgentStreamStatus } from '@/shared/lib/chat/omp/status';
+import { realtimeClient, type RealtimeFrame } from '@/shared/lib/realtime/client';
+import { sessionTopic } from '@/shared/lib/realtime/protocol';
+
+/** The reattach payload `session:<id>`'s snapshot carries. */
+interface AgentTopicSnapshot {
+  running?: boolean;
+  busy?: boolean;
+  state?: { isStreaming?: boolean; isPromptRunning?: boolean };
+  pendingUiRequests?: ExtensionUiDialogRequest[];
+}
 
 export interface OmpStreamRefs {
   toolResultsRef: RefObject<Map<string, ToolResultRecord>>;
@@ -31,20 +49,12 @@ export interface OmpStreamRefs {
   currentThinkingLevelRef: RefObject<string | undefined>;
   /** Phrase for an open provider-retry saga, or null (see `fold-deps.ts`). */
   providerRetryVerbRef: RefObject<string | null>;
-  /** toolCallIds of in-flight file-mutating calls (see file-mutations.ts). */
-  fileMutatingCallsRef: RefObject<Set<string>>;
 }
 
 interface UseOmpAgentStreamOptions extends OmpStreamRefs {
   setState: Dispatch<SetStateAction<OmpAgentState>>;
   callbacksRef: RefObject<OmpAgentCallbacks>;
-  transport: StreamTransport;
 }
-
-const CONNECTORS = {
-  websocket: connectAgentSocket,
-  sse: connectAgentEvents,
-} as const;
 
 export function useOmpAgentStream({
   setState,
@@ -55,56 +65,66 @@ export function useOmpAgentStream({
   activityRef,
   currentThinkingLevelRef,
   providerRetryVerbRef,
-  fileMutatingCallsRef,
-  transport,
 }: UseOmpAgentStreamOptions) {
-  const connectionRef = useRef<AgentStreamConnection | null>(null);
-
-  // The navbar indicator needs the transport in force even before the first
-  // dial, and a transport switch invalidates any live socket — so announce it
-  // on mount/change and retract on unmount.
-  useEffect(() => {
-    publishAgentStreamStatus({ transport, connected: false });
-    return () => publishAgentStreamStatus({ transport, connected: false });
-  }, [transport]);
+  /** The session this hook is currently attached to, or null. */
+  const attachedRef = useRef<string | null>(null);
+  /** Cleanup of the live frame subscription. */
+  const unsubscribeRef = useRef<(() => void) | null>(null);
 
   const disconnect = useCallback(() => {
-    const connection = connectionRef.current;
-    connectionRef.current = null;
-    connection?.close();
+    const unsubscribe = unsubscribeRef.current;
+    unsubscribeRef.current = null;
+    attachedRef.current = null;
+    unsubscribe?.();
     setState((prev) => ({ ...prev, connected: false }));
-    publishAgentStreamStatus({ transport, connected: false });
-  }, [setState, transport]);
+  }, [setState]);
 
   const connect = useCallback((sid: string) => {
+    if (attachedRef.current === sid) return;
     disconnect();
-    const handlers: AgentStreamHandlers = {
-      onOpen: () => {
+    attachedRef.current = sid;
+
+    unsubscribeRef.current = realtimeClient.subscribeFrames(sessionTopic(sid), (frame: RealtimeFrame) => {
+      // The snapshot is the reattach payload, not an omp event: it decides
+      // whether to resume the generating UI and replays blocked dialogs.
+      if (frame.kind === 'snapshot') {
+        const snapshot = frame.payload as AgentTopicSnapshot | null;
+        const callbacks = callbacksRef.current;
         setState((prev) => ({ ...prev, connected: true }));
-        publishAgentStreamStatus({ transport, connected: true });
-        callbacksRef.current?.onConnected?.();
-      },
-      onFrame: (data: OmpAgentEvent) => {
-        foldAgentEvent(data, {
-          sessionId: sid,
-          setState,
-          callbacksRef,
-          toolResultsRef,
-          lastToolMessageRef,
-          interruptPendingRef,
-          activityRef,
-          currentThinkingLevelRef,
-          providerRetryVerbRef,
-          fileMutatingCallsRef,
-        });
-      },
-      onClose: () => {
-        setState((prev) => ({ ...prev, connected: false }));
-        publishAgentStreamStatus({ transport, connected: false });
-      },
-    };
-    connectionRef.current = CONNECTORS[transport](sid, handlers);
-  }, [disconnect, setState, callbacksRef, toolResultsRef, lastToolMessageRef, interruptPendingRef, activityRef, currentThinkingLevelRef, providerRetryVerbRef, fileMutatingCallsRef, transport]);
+        callbacks?.onConnected?.();
+        if (!snapshot?.running) return;
+        const probe = snapshot.state;
+        if (snapshot.busy || probe?.isStreaming || probe?.isPromptRunning) {
+          callbacks?.onResumeStream?.();
+        }
+        // An ask/approval dialog raised before the reload is still blocking the
+        // agent, and omp never re-sends the frame: replay what the server
+        // remembered so the modal reappears instead of the run hanging.
+        for (const request of snapshot.pendingUiRequests ?? []) {
+          callbacks?.onExtensionUiRequest?.(request);
+        }
+        return;
+      }
+
+      foldAgentEvent(frame.payload as OmpAgentEvent, {
+        sessionId: sid,
+        setState,
+        callbacksRef,
+        toolResultsRef,
+        lastToolMessageRef,
+        interruptPendingRef,
+        activityRef,
+        currentThinkingLevelRef,
+        providerRetryVerbRef,
+      });
+    });
+
+    setState((prev) => ({ ...prev, connected: true }));
+  }, [disconnect, setState, callbacksRef, toolResultsRef, lastToolMessageRef, interruptPendingRef, activityRef, currentThinkingLevelRef, providerRetryVerbRef]);
+
+  // The subscription outlives a session switch only through `connect`'s own
+  // disconnect, so an unmount has to release it explicitly.
+  useEffect(() => () => disconnect(), [disconnect]);
 
   return { connect, disconnect };
 }

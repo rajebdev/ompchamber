@@ -21,27 +21,27 @@ import { h, render } from 'preact';
 import {
   applyStreamOverlay,
   releaseObservedPending,
-  STREAM_PENDING_EVENT,
+  STREAM_PENDING_SIGNAL,
   type StreamPendingDetail,
 } from '@/client/hooks/chat/omp/stream-overlay';
+import { subscribeClientSignal } from '@/client/lib/signals';
+import { installDomGlobals, restoreDomGlobals } from '@/test-support/pristine-globals';
 import { useOmpPromptSender } from '@/client/hooks/chat/omp/prompt-send';
 import type { OmpPromptSender, OmpPromptSenderDeps } from '@/client/hooks/chat/omp/prompt-send';
 import type { OmpAgentState, WorkspaceFolderData } from '@/shared/types';
 
-const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'Event', 'CustomEvent'] as const;
-/** The runner's own globals, restored on teardown — deleting them would strip natives (Event/CustomEvent) every later file needs. */
-const nativeGlobals: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
 
 let container: HTMLElement | undefined;
 
 beforeAll(() => {
-  const win = new Window({ url: 'http://localhost' });
-  const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) {
-    if (!(key in nativeGlobals)) nativeGlobals[key] = target[key];
-    target[key] = (win as unknown as Record<string, unknown>)[key];
-  }
+  installDomGlobals(new Window({ url: 'http://localhost' }));
 });
+
+afterAll(() => {
+  restoreDomGlobals();
+});
+
+
 
 afterEach(() => {
   if (container) render(null, container);
@@ -49,13 +49,7 @@ afterEach(() => {
   container = undefined;
 });
 
-afterAll(() => {
-  const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) {
-    if (nativeGlobals[key] === undefined) delete target[key];
-    else target[key] = nativeGlobals[key];
-  }
-});
+
 
 type Status = 'stream' | 'finish' | 'abort';
 
@@ -143,11 +137,11 @@ function mountSender(sessionId: string | null) {
   return { sender: () => seen.current as OmpPromptSender, state: () => state };
 }
 
-/** Every `omp:stream-pending` arm/disarm seen from here on, in order. */
+/** Every stream-pending arm/disarm seen from here on, in order. */
 function recordPendingMarks(): StreamPendingDetail[] {
   const marks: StreamPendingDetail[] = [];
-  window.addEventListener(STREAM_PENDING_EVENT, (event) => {
-    marks.push((event as CustomEvent<StreamPendingDetail>).detail);
+  subscribeClientSignal(STREAM_PENDING_SIGNAL, (detail) => {
+    marks.push(detail);
   });
   return marks;
 }

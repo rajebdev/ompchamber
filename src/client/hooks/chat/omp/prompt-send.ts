@@ -113,8 +113,6 @@ export function useOmpPromptSender(deps: OmpPromptSenderDeps): OmpPromptSender {
       setStreamPending(sid, true);
       // Tell the sidebars to re-read the session list now — the server wrote
       // this session's live `stream` row at dispatch. Revalidation is
-      // leading-edge throttled, so this lands immediately.
-      window.dispatchEvent(new CustomEvent('omp:session-updated', { detail: { sessionId: sid } }));
       return { ok: true, busy: false };
     } catch (e) {
       setStreamPending(sid, false);
@@ -199,7 +197,6 @@ export function useOmpPromptSender(deps: OmpPromptSenderDeps): OmpPromptSender {
       // session's live badge must not wait for agent_start + the first JSONL
       // write.
       setStreamPending(sid, true);
-      window.dispatchEvent(new CustomEvent('omp:session-updated', { detail: { sessionId: sid } }));
       return { sessionId: sid, model: createdBody.model ?? null };
     } catch (e) {
       if (sid) setStreamPending(sid, false);

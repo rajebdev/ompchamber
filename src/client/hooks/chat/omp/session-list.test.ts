@@ -4,72 +4,82 @@
  */
 
 /**
- * The mounted `SidebarDataProvider` — the half of the optimistic `stream`
- * overlay that only a real render can exercise: the mark arming, the hand-over
- * to the loader's own row, the title hint, and the coalesced refresh.
+ * The mounted `SidebarDataProvider` over the unified realtime channel.
  *
- * Split from `stream-pending.test.ts` (which owns the pure overlay functions
- * and the sender's arm/disarm calls) to keep both files under the repo's
- * per-file size ceiling. The DOM bootstrap is duplicated deliberately: each
- * file runs in its own module registry, so sharing it would mean a shared
- * mutable global.
+ * Driven through a REAL server and a real socket rather than a stubbed fetch,
+ * because what the provider does now is merge two topics and apply the
+ * optimistic overlays — the parts that used to be "does it re-read". A stubbed
+ * socket would only prove the fake's timing.
+ *
+ * Kept: the mark arming, the hand-over to the authoritative row, the title
+ * hint, and the run-end disarm (the fresh-spawn case, where no snapshot can
+ * carry the session at all).
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
 
 import {
-  SESSION_TITLE_HINT_EVENT,
+  SESSION_TITLE_HINT_SIGNAL,
   setStreamPending,
-  type SessionTitleHintDetail,
 } from '@/client/hooks/chat/omp/stream-overlay';
+import { publishClientSignal } from '@/client/lib/signals';
 import { SidebarDataProvider, useSidebarData } from '@/client/hooks/chat/omp/session-list';
 import type { SidebarDataHandle } from '@/client/hooks/chat/omp/session-list';
+import { resetRealtimeClient } from '@/shared/lib/realtime/client';
+import { TOPIC_SIDEBAR, TOPIC_SIDEBAR_STATUS } from '@/shared/lib/realtime/protocol';
+import { startRealtimeTestServer, type RealtimeTestServer } from '@/test-support/realtime-server';
+import type { TopicResolver } from '@/server/lib/realtime/hub.server';
+import { installDomGlobals, pristineWebSocket, restoreDomGlobals } from '@/test-support/pristine-globals';
+import type { SidebarPayload, SidebarStatusPayload } from '@/client/hooks/chat/omp/session-list';
 
-const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'Event', 'CustomEvent'] as const;
-/** The runner's own globals, restored on teardown — deleting them would strip natives (Event/CustomEvent) every later file needs. */
-const nativeGlobals: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
 
 let container: HTMLElement | undefined;
 
-beforeAll(() => {
-  const win = new Window({ url: 'http://localhost' });
-  const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) {
-    if (!(key in nativeGlobals)) nativeGlobals[key] = target[key];
-    target[key] = (win as unknown as Record<string, unknown>)[key];
-  }
-});
+/**
+ * Point the DOM globals at a happy-dom window whose origin is the test
+ * listener, because the client builds its socket URL from `window.location` —
+ * a window on a different port would dial a server that is not there, and the
+ * test would be measuring a connection failure rather than the channel.
+ */
+function installDom(origin: string): void {
+  const win = new Window({ url: origin });
+  installDomGlobals(win);
+  // happy-dom's WebSocket does not reach a real listener, and the channel is
+  // what is under test, so the real implementation wins this global.
+  (globalThis as unknown as Record<string, unknown>).WebSocket = pristineWebSocket;
+}
+
+
 
 afterEach(() => {
   if (container) render(null, container);
   container?.remove();
   container = undefined;
+  resetRealtimeClient();
 });
 
 afterAll(() => {
-  const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) {
-    if (nativeGlobals[key] === undefined) delete target[key];
-    else target[key] = nativeGlobals[key];
-  }
+  restoreDomGlobals();
 });
 
-/** Let queued promises (a stubbed fetch's `Response.json()` chain, Preact's
- *  effects) settle. A microtask drain, not a delay: nothing here is waiting on
- *  a duration, and `act` already flushes the effects. */
-const tick = () => Promise.resolve().then(() => Promise.resolve());
+
 
 type Status = 'stream' | 'finish' | 'abort';
 
-/** A session-list payload carrying one session, `a`, with the given fields. */
-function listBody(session: { streamStatus?: Status } = {}): unknown {
+/** A structure payload carrying one session, `a`. */
+function structureBody(): SidebarPayload {
   return {
-    folders: [{ id: 1, name: 'ws', sessions: [{ id: 'a', folder_id: 1, title: 'A', ...session }] }],
+    folders: [{ id: 1, name: 'ws', isExpanded: true, hasMore: false, totalSessions: 1, sessions: [{ id: 'a', folder_id: 1, title: 'A' }] }],
     isMock: false,
   };
+}
+
+/** The volatile map for `a`. */
+function statusBody(status?: Status): SidebarStatusPayload {
+  return status ? { a: { streamStatus: status } } : {};
 }
 
 /** The status the provider currently renders for session `a`. */
@@ -77,16 +87,32 @@ function renderedStatus(api: SidebarDataHandle | null): Status | undefined {
   return api?.folders[0]?.sessions?.[0].streamStatus;
 }
 
-/** Mount the real provider over a stubbed `/api/sessions/list`. */
-async function mountProvider(body: () => unknown) {
-  const calls: string[] = [];
-  (globalThis as unknown as Record<string, unknown>).fetch = async (input: unknown) => {
-    calls.push(String(input));
-    return new Response(JSON.stringify(body()), {
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-    });
-  };
+/**
+ * Let Preact's queued effects run.
+ *
+ * A microtask drain, and deliberately nothing more: the socket's own progress
+ * is awaited through the harness (`waitForFrames`), so this only has to flush
+ * the render a received frame queued.
+ */
+async function flush(): Promise<void> {
+  for (let i = 0; i < 8; i += 1) await Promise.resolve();
+}
+
+interface Harness {
+  server: RealtimeTestServer;
+  holder: { api: SidebarDataHandle | null };
+  /** Republish both topics from the current bodies. */
+  push: (structure?: SidebarPayload, status?: SidebarStatusPayload) => Promise<void>;
+}
+
+/** Mount the real provider against a real realtime server. */
+async function mountProvider(): Promise<Harness> {
+  const server = await startRealtimeTestServer(new Map<string, TopicResolver>([
+    [TOPIC_SIDEBAR, async () => structureBody()],
+    [TOPIC_SIDEBAR_STATUS, async () => statusBody()],
+  ]));
+  installDom(`http://127.0.0.1:${server.port}`);
+
   const holder: { api: SidebarDataHandle | null } = { api: null };
   function Probe() {
     holder.api = useSidebarData();
@@ -97,70 +123,91 @@ async function mountProvider(body: () => unknown) {
   container = el;
   await act(async () => {
     render(h(SidebarDataProvider, { children: h(Probe, null) }), el);
-    await tick();
   });
-  return { calls, holder };
+  // The structure snapshot must have landed before the provider can report a
+  // value at all; the subscription is opened by the render above, so this
+  // awaits the client's own state rather than a duration.
+  await server.waitForTopic<SidebarPayload>(TOPIC_SIDEBAR, (value) => value !== null);
+  await act(async () => {
+    await flush();
+  });
+
+  return {
+    server,
+    holder,
+    push: async (structure, status) => {
+      // Await the CLIENT's value, not just the publish: the socket round trip
+      // and the provider's merge are the things under test, so resolving on the
+      // send would assert against a state that has not happened yet.
+      if (structure) {
+        server.publish(TOPIC_SIDEBAR, structure);
+        await server.waitForTopic(TOPIC_SIDEBAR, (value) => JSON.stringify(value) === JSON.stringify(structure));
+      }
+      if (status) {
+        server.publish(TOPIC_SIDEBAR_STATUS, status);
+        await server.waitForTopic(TOPIC_SIDEBAR_STATUS, (value) => JSON.stringify(value) === JSON.stringify(status));
+      }
+      await act(async () => {
+        await flush();
+      });
+    },
+  };
 }
 
-describe('SidebarDataProvider renders the armed mark and hands over to the row', () => {
-  test('shows `stream` for a click-armed session the loader still reports as idle', async () => {
-    const harness = await mountProvider(() => listBody());
+describe('SidebarDataProvider reads both sidebar topics', () => {
+  test('paints the structure from the snapshot, without any fetch', async () => {
+    const { holder, server } = await mountProvider();
+    expect(holder.api?.initializing).toBe(false);
+    expect(holder.api?.folders).toHaveLength(1);
+    expect(holder.api?.folders[0]?.sessions[0]?.title).toBe('A');
+    server.stop();
+  });
+
+  test('merges the volatile status onto the session it belongs to', async () => {
+    const harness = await mountProvider();
     expect(renderedStatus(harness.holder.api)).toBeUndefined();
 
-    await act(async () => {
-      setStreamPending('a', true);
-    });
-
-    expect(renderedStatus(harness.holder.api)).toBe('stream');
-  });
-
-  test('exposes the armed mark, so a placeholder row can paint the spinner', async () => {
-    // The sidebar's "New Session …" row is built OUTSIDE the loader's folders,
-    // so the overlay cannot reach it: the predicate is the only way that row
-    // shows a spinner before the real row is scanned in.
-    const harness = await mountProvider(() => listBody());
-    expect(harness.holder.api?.isStreamPending('a')).toBe(false);
-
-    await act(async () => {
-      setStreamPending('a', true);
-    });
-
-    expect(harness.holder.api?.isStreamPending('a')).toBe(true);
-    expect(harness.holder.api?.isStreamPending('b')).toBe(false);
-    expect(harness.holder.api?.isStreamPending(null)).toBe(false);
-  });
-
-  test('hands the session back to the row, and does not pin a finished run', async () => {
-    let body = listBody({ streamStatus: 'stream' });
-    const harness = await mountProvider(() => body);
-
-    await act(async () => {
-      setStreamPending('a', true);
-    });
-    await act(async () => {
-      harness.holder.api?.refresh();
-      await tick();
-    });
+    await harness.push(undefined, statusBody('stream'));
     expect(renderedStatus(harness.holder.api)).toBe('stream');
 
-    // The run ended and the server row was acked away (or never landed): the
-    // mark must be gone, or the spinner would turn forever.
-    body = listBody();
-    await act(async () => {
-      harness.holder.api?.refresh();
-      await tick();
-    });
+    // A terminal badge, then cleared — the map is authoritative for removals.
+    await harness.push(undefined, statusBody('finish'));
+    expect(renderedStatus(harness.holder.api)).toBe('finish');
+    await harness.push(undefined, statusBody());
     expect(renderedStatus(harness.holder.api)).toBeUndefined();
+
+    harness.server.stop();
   });
 
-  test('a run that ENDS clears the mark even while the session is still absent from the list', async () => {
-    // The fresh-spawn case this exists for: omp creates the session file only
-    // when the first assistant message settles (~17s), so until then the loader
-    // answers NO row for the session and no snapshot can release the mark. The
-    // chat's own run end is the only signal that arrives, and without it the
-    // spinner outlived the finished run by up to a full list refresh.
-    const harness = await mountProvider(() => listBody());
+  test('shows `stream` for a click-armed session the topics still report as idle', async () => {
+    const harness = await mountProvider();
+    await act(async () => {
+      setStreamPending('a', true);
+    });
+    expect(renderedStatus(harness.holder.api)).toBe('stream');
+    harness.server.stop();
+  });
 
+  test('hands the session back to the authoritative status once it arrives', async () => {
+    const harness = await mountProvider();
+    await act(async () => {
+      setStreamPending('a', true);
+    });
+    await harness.push(undefined, statusBody('stream'));
+    expect(renderedStatus(harness.holder.api)).toBe('stream');
+
+    // The run ended and the server row is gone: the mark must release, or the
+    // spinner would turn forever.
+    await harness.push(undefined, statusBody());
+    expect(renderedStatus(harness.holder.api)).toBeUndefined();
+    harness.server.stop();
+  });
+
+  test('a run that ENDS clears the mark even while the session is absent from the list', async () => {
+    // The fresh-spawn case: omp creates the session file only when the first
+    // assistant message settles, so until then no snapshot carries the session
+    // and the chat's own run end is the only signal that arrives.
+    const harness = await mountProvider();
     await act(async () => {
       setStreamPending('omp-1', true);
     });
@@ -170,61 +217,29 @@ describe('SidebarDataProvider renders the armed mark and hands over to the row',
       setStreamPending('omp-1', false);
     });
     expect(harness.holder.api?.isStreamPending('omp-1')).toBe(false);
+    harness.server.stop();
   });
 
-  test('a refresh coalesced behind an in-flight load still runs afterwards', async () => {
-    const resolvers: Array<() => void> = [];
-    let calls = 0;
-    (globalThis as unknown as Record<string, unknown>).fetch = () => {
-      calls += 1;
-      const { promise, resolve } = Promise.withResolvers<Response>();
-      resolvers.push(() => resolve(new Response(JSON.stringify(listBody()), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })));
-      return promise;
-    };
-    const holder: { api: SidebarDataHandle | null } = { api: null };
-    function Probe() {
-      holder.api = useSidebarData();
-      return null;
-    }
-    const el = document.createElement('div');
-    document.body.appendChild(el);
-    container = el;
+  test('exposes the armed mark, so a placeholder row can paint the spinner', async () => {
+    const harness = await mountProvider();
     await act(async () => {
-      render(h(SidebarDataProvider, { children: h(Probe, null) }), el);
-      await tick();
+      setStreamPending('a', true);
     });
-    expect(calls).toBe(1);
-
-    // Two refreshes land while the mount's load is still in flight. They must
-    // coalesce into ONE trailing load — neither vanish (the send's live row is
-    // what such a refresh carries) nor duplicate.
-    await act(async () => {
-      holder.api?.refresh();
-      holder.api?.refresh();
-    });
-    expect(calls).toBe(1);
-
-    await act(async () => {
-      resolvers[0]();
-      await tick();
-    });
-    expect(calls).toBe(2);
+    expect(harness.holder.api?.isStreamPending('a')).toBe(true);
+    expect(harness.holder.api?.isStreamPending('b')).toBe(false);
+    expect(harness.holder.api?.isStreamPending(null)).toBe(false);
+    harness.server.stop();
   });
 });
 
 describe('SidebarDataProvider carries the sent text for a placeholder row', () => {
-  /** Fire the hint the send path dispatches for a session omp has not scanned. */
+  /** Fire the hint the send path publishes for a session omp has not scanned. */
   function hint(sessionId: string, title: string): void {
-    window.dispatchEvent(new CustomEvent<SessionTitleHintDetail>(SESSION_TITLE_HINT_EVENT, {
-      detail: { sessionId, title },
-    }));
+    publishClientSignal(SESSION_TITLE_HINT_SIGNAL, { sessionId, title });
   }
 
   test('exposes the text the user just sent, by session id', async () => {
-    const harness = await mountProvider(() => listBody());
+    const harness = await mountProvider();
     expect(harness.holder.api?.titleHint('omp-1')).toBeUndefined();
 
     await act(async () => {
@@ -234,10 +249,11 @@ describe('SidebarDataProvider carries the sent text for a placeholder row', () =
     expect(harness.holder.api?.titleHint('omp-1')).toBe('Perbaiki tombol stop');
     expect(harness.holder.api?.titleHint('omp-2')).toBeUndefined();
     expect(harness.holder.api?.titleHint(null)).toBeUndefined();
+    harness.server.stop();
   });
 
-  test('ignores a blank hint and drops one once omp lists the session', async () => {
-    const harness = await mountProvider(() => listBody());
+  test('ignores a blank hint and drops one once the session is listed', async () => {
+    const harness = await mountProvider();
     await act(async () => {
       hint('a', '   ');
     });
@@ -248,12 +264,11 @@ describe('SidebarDataProvider carries the sent text for a placeholder row', () =
     });
     expect(harness.holder.api?.titleHint('a')).toBe('sent text');
 
-    // The real row exists now, so the placeholder is not drawn and the hint has
-    // nothing left to stand in for.
-    await act(async () => {
-      harness.holder.api?.refresh();
-      await tick();
-    });
+    // The session is in the structure, so the placeholder is not drawn and the
+    // hint has nothing left to stand in for. A status delta is enough: the
+    // cleanup runs on every snapshot, and the structure already carries `a`.
+    await harness.push(undefined, statusBody('stream'));
     expect(harness.holder.api?.titleHint('a')).toBeUndefined();
+    harness.server.stop();
   });
 });

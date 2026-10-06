@@ -14,7 +14,9 @@
  */
 
 import { useEffect, useRef } from 'preact/hooks';
-import { CHAMBER_MODE_EVENT, type ChamberModeSelection, type GoalContinuation, type GoalRecord } from '@/shared/lib/omp/mode/types';
+import type { ChamberModeSelection, GoalContinuation, GoalRecord } from '@/shared/lib/omp/mode/types';
+import { CHAMBER_MODE_SIGNAL } from '@/shared/lib/omp/mode/client-signal';
+import { subscribeClientSignal } from '@/client/lib/signals';
 import {
   continuationFromMarker,
   goalEnabledFromMarker,
@@ -35,17 +37,12 @@ export interface ModesResponse {
 export function useModeMarkers(sessionId: string | null, handler: (marker: ParsedMarker) => void): void {
   const handlerRef = useRef(handler);
   handlerRef.current = handler;
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const listener = (event: Event) => {
-      const detail = (event as CustomEvent<{ sessionId?: string; marker?: ParsedMarker }>).detail;
-      if (!detail?.marker) return;
-      if (sessionId && detail.sessionId && detail.sessionId !== sessionId) return;
-      handlerRef.current(detail.marker);
-    };
-    window.addEventListener(CHAMBER_MODE_EVENT, listener);
-    return () => window.removeEventListener(CHAMBER_MODE_EVENT, listener);
-  }, [sessionId]);
+  useEffect(() => subscribeClientSignal(CHAMBER_MODE_SIGNAL, (detail) => {
+    const marker = detail?.marker as ParsedMarker | undefined;
+    if (!marker) return;
+    if (sessionId && detail.sessionId && detail.sessionId !== sessionId) return;
+    handlerRef.current(marker);
+  }), [sessionId]);
 }
 
 /** What one goal marker moves. `null` when the marker is not a goal frame. */

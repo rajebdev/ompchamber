@@ -11,15 +11,13 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { h, render } from 'preact';
+import { installDomGlobals, restoreDomGlobals } from '@/test-support/pristine-globals';
 import { act } from 'preact/test-utils';
 import { useOmpAgent } from '@/client/hooks/chat/omp/index';
-import { pristineWebSocket } from '@/test-support/pristine-globals';
-import type { OmpAgentCallbacks, OmpAgentEvent, OmpAgentHandle, StreamTransport } from '@/shared/types';
+
+import type { OmpAgentCallbacks, OmpAgentEvent, OmpAgentHandle } from '@/shared/types';
 
 
-const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'Event', 'CustomEvent', 'WebSocket', 'EventSource'] as const;
-/** The runner's own globals, restored on teardown (see the matching afterAll at the end of this file) so later files still see native Event/CustomEvent/window. */
-const nativeGlobals: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
 
 let container: HTMLElement;
 
@@ -66,13 +64,10 @@ class StubEventSource {
 }
 
 beforeAll(() => {
-  const win = new Window({ url: 'http://localhost' });
+  installDomGlobals(new Window({ url: 'http://localhost' }));
+  // The RPC commands are exercised through stubs; the agent stream's own
+  // transport is covered by `stream.test.ts` against a real socket.
   const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) {
-    if (!(key in nativeGlobals)) nativeGlobals[key] = target[key];
-  nativeGlobals.WebSocket = pristineWebSocket;   // never the fake another suite left
-    target[key] = (win as unknown as Record<string, unknown>)[key];
-  }
   target.WebSocket = StubSocket;
   target.EventSource = StubEventSource;
 });
@@ -107,11 +102,11 @@ function stubFetch(answers: Record<string, unknown>) {
 }
 
 /** Mounts `useOmpAgent` and exposes the handle plus the refs it owns. */
-function mountAgent(sessionId: string | null, callbacks: OmpAgentCallbacks = {}, transport: StreamTransport = 'websocket') {
+function mountAgent(sessionId: string | null, callbacks: OmpAgentCallbacks = {}) {
   const seen: { handle: OmpAgentHandle | null } = { handle: null };
 
   function Probe({ id }: { id: string | null }) {
-    seen.handle = useOmpAgent(id, callbacks, transport);
+    seen.handle = useOmpAgent(id, callbacks);
     return null;
   }
 
@@ -196,9 +191,5 @@ describe('useOmpAgent RPC commands', () => {
 });
 
 afterAll(() => {
-  const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) {
-    if (nativeGlobals[key] === undefined) delete target[key];
-    else target[key] = nativeGlobals[key];
-  }
+  restoreDomGlobals();
 });

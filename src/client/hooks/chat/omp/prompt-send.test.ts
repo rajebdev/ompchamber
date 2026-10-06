@@ -13,8 +13,9 @@
  * session with `ensure_session` — model/thinking/mode picks must ride THAT body
  * so omp applies them before the first prompt — then prompts through the normal
  * route. A failure at any step must leave `isGenerating` false with the server's
- * error surfaced, and a success must dispatch `omp:session-updated` so the
- * sidebar badge does not wait for `agent_start`.
+ * error surfaced. The sidebar is NOT signalled from here: it follows the
+ * realtime `sidebar:status` topic, which the server publishes on the status
+ * write the dispatch performs.
  *
  * Every case asserts the request stream (method, url, JSON body) against a
  * stubbed fetch, which is the observable contract of this hook.
@@ -23,24 +24,17 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { h, render } from 'preact';
+import { installDomGlobals, restoreDomGlobals } from '@/test-support/pristine-globals';
 
 import { useOmpPromptSender } from '@/client/hooks/chat/omp/prompt-send';
 import type { OmpPromptSender, OmpPromptSenderDeps } from '@/client/hooks/chat/omp/prompt-send';
 import type { AgentImage, OmpAgentState } from '@/shared/types';
 
-const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'Event', 'CustomEvent'] as const;
-/** The runner's own globals, restored on teardown (see the matching afterAll at the end of this file) so later files still see native Event/CustomEvent/window. */
-const nativeGlobals: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
 
 let container: HTMLElement;
 
 beforeAll(() => {
-  const win = new Window({ url: 'http://localhost' });
-  const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) {
-    if (!(key in nativeGlobals)) nativeGlobals[key] = target[key];
-    target[key] = (win as unknown as Record<string, unknown>)[key];
-  }
+  installDomGlobals(new Window({ url: 'http://localhost' }));
 });
 
 afterEach(() => {
@@ -111,10 +105,6 @@ describe('useOmpPromptSender.sendPrompt', () => {
   test('warms the session, attaches the stream, then prompts — in that order', async () => {
     const requests = installFetch({});
     const probe = mountSender(SID);
-    const events: string[] = [];
-    window.addEventListener('omp:session-updated', (e) => {
-      events.push((e as CustomEvent<{ sessionId: string }>).detail.sessionId);
-    });
 
     const result = await probe.sender().sendPrompt('hello world');
 
@@ -128,7 +118,6 @@ describe('useOmpPromptSender.sendPrompt', () => {
     // Prompt: message only — no images key for an empty/absent list.
     expect(requests[1].body).toEqual({ type: 'prompt', message: 'hello world' });
     expect(probe.connected).toEqual([SID]);
-    expect(events).toEqual([SID]);
     expect(probe.state()).toEqual({ isGenerating: true, connected: false, error: null });
   });
 
@@ -221,10 +210,6 @@ describe('useOmpPromptSender.sendNewPrompt', () => {
       [NEW]: { body: { success: true, sessionId: 'omp-9', model: { provider: 'anthropic', modelId: 'claude' } } },
     });
     const probe = mountSender(null);
-    const events: string[] = [];
-    window.addEventListener('omp:session-updated', (e) => {
-      events.push((e as CustomEvent<{ sessionId: string }>).detail.sessionId);
-    });
 
     const result = await probe.sender().sendNewPrompt('first', '/work/tree', [IMAGE], {
       model: { provider: 'anthropic', modelId: 'claude' },
@@ -248,7 +233,6 @@ describe('useOmpPromptSender.sendNewPrompt', () => {
     expect(requests[1].url).toBe('/api/agent/omp-9');
     expect(requests[1].body).toEqual({ type: 'prompt', message: 'first', images: [IMAGE] });
     expect(probe.connected).toEqual(['omp-9']);
-    expect(events).toEqual(['omp-9']);
   });
 
   test('omits every unset pick so a bare spawn behaves as before', async () => {
@@ -292,9 +276,5 @@ describe('useOmpPromptSender.sendNewPrompt', () => {
 });
 
 afterAll(() => {
-  const target = globalThis as unknown as Record<string, unknown>;
-  for (const key of DOM_GLOBALS) {
-    if (nativeGlobals[key] === undefined) delete target[key];
-    else target[key] = nativeGlobals[key];
-  }
+  restoreDomGlobals();
 });

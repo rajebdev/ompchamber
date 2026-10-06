@@ -11,6 +11,7 @@ import { setSessionTitle } from '@/server/lib/omp/session/title-slot';
 import { renameSessionWithAi } from '@/server/lib/omp/session/rename-with-ai.server';
 import { isSinglePathSegment } from '@/server/lib/fs/path-segment';
 import { loadPersistedModes } from '@/server/lib/omp/session/modes';
+import { emitRealtimeSignal } from '@/server/lib/realtime/signals.server';
 
 /**
  * GET /api/sessions/:sessionId/modes — the plan/goal mode selection persisted
@@ -68,6 +69,9 @@ export async function archiveSession({ request, params }: ActionFunctionArgs) {
     await db.run('DELETE FROM archived_sessions WHERE session_id = ?', [sessionId]);
   }
 
+  // Archiving moves the session between the sidebar's archive view and its
+  // normal list, so the structure changed.
+  emitRealtimeSignal('sidebar-structure');
   return json({ success: true, sessionId, archived });
 }
 
@@ -118,6 +122,7 @@ export async function renameSession({ request, params }: ActionFunctionArgs) {
       if (!result.changes) {
         return json({ error: 'Session not found' }, { status: 404 });
       }
+      emitRealtimeSignal('sidebar-structure');
       return json({ success: true, sessionId, name });
     }
 
@@ -127,6 +132,7 @@ export async function renameSession({ request, params }: ActionFunctionArgs) {
     if (rpc?.isAlive()) {
       try {
         await rpc.send({ type: 'set_session_name', name });
+        emitRealtimeSignal('sidebar-structure');
         return json({ success: true, sessionId, name });
       } catch {
         // Fall through to the on-disk title slot below.
@@ -140,6 +146,7 @@ export async function renameSession({ request, params }: ActionFunctionArgs) {
     await setSessionTitle(filePath, name, 'user');
     // The mtime-keyed scan cache cannot see an in-place 256-byte slot write.
     clearSessionFileCaches();
+    emitRealtimeSignal('sidebar-structure');
     return json({ success: true, sessionId, name });
   } catch (error) {
     return json(

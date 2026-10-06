@@ -6,9 +6,9 @@
 /**
  * Workspace-folder mutations shared by the desktop category header and the
  * mobile category item: pin/unpin, delete, session archive, and session
- * rename. The fetchers, the `omp:workspace-updated` dispatch that follows a
- * successful folder mutation, and the delete confirmation flag all live here
- * so the two sidebars cannot drift on URLs, bodies, or event names.
+ * rename. The fetchers and the delete confirmation flag all live here so the
+ * two sidebars cannot drift on URLs or bodies; a successful mutation is
+ * announced by the server (the `sidebar` topic) or on the client signal bus.
  *
  * The folder expand toggle is deliberately NOT here: the desktop submits it
  * through `useFetcher` (and re-dispatches on the response), while the mobile
@@ -19,7 +19,8 @@
  * hook is about the request + refresh, not the local UI toggles.
  */
 
-import { useEffect, useState } from 'preact/hooks';
+import { useState } from 'preact/hooks';
+import { publishClientSignal } from '@/client/lib/signals';
 import { useFetcher } from '@/client/lib/router/fetcher';
 import type { SessionItemData } from '@/shared/types';
 
@@ -70,12 +71,6 @@ export function useWorkspaceFolderActions(
   const pinFetcher = useFetcher<{ success?: boolean }>();
   const deleteFetcher = useFetcher<{ success?: boolean }>();
   const archiveFetcher = useFetcher();
-
-  useEffect(() => {
-    if (pinFetcher.data?.success || deleteFetcher.data?.success) {
-      window.dispatchEvent(new CustomEvent('omp:workspace-updated'));
-    }
-  }, [deleteFetcher.data, pinFetcher.data]);
 
   const handlePin = () => {
     if (typeof folder.id !== 'number') return;
@@ -130,7 +125,7 @@ export function useWorkspaceFolderActions(
     } catch {
       return;
     }
-    window.dispatchEvent(new CustomEvent('omp:session-renamed', { detail: { sessionId: String(session.id), title: name } }));
+    publishClientSignal('session-renamed', { sessionId: String(session.id), title: name });
     refresh();
   };
 
@@ -140,8 +135,8 @@ export function useWorkspaceFolderActions(
    * Unlike `handleRename` this one has a wait in it (a model call, a few
    * seconds) and can legitimately be refused — a mid-run session, a transcript
    * too thin to title — so the outcome is reported rather than assumed, and
-   * the title it produces is announced on the same `omp:session-renamed` event
-   * a manual rename uses, so the navbar follows it without a refetch.
+   * the title it produces is announced on the same `session-renamed` signal a
+   * manual rename uses, so the navbar follows it without a refetch.
    */
   const handleRenameWithAi = async (session: SessionItemData) => {
     try {
@@ -151,7 +146,7 @@ export function useWorkspaceFolderActions(
         reportError?.(data.error || `Could not generate a name (HTTP ${res.status}).`);
         return;
       }
-      window.dispatchEvent(new CustomEvent('omp:session-renamed', { detail: { sessionId: String(session.id), title: data.name } }));
+      publishClientSignal('session-renamed', { sessionId: String(session.id), title: data.name });
       refresh();
     } catch (error) {
       reportError?.(error instanceof Error ? error.message : String(error));

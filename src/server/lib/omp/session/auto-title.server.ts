@@ -66,7 +66,7 @@ import { readSettingsJson } from '@/server/lib/db/settings-store';
 import { getDb } from '@/server/db.server';
 import { GET_STATE_TIMEOUT_MS, PROMPT_ACK_TIMEOUT_MS, type RpcSessionState } from '@/server/lib/omp/rpc/constants';
 
-/** Chamber settings blob key; mirrors `streamTransport` and friends. */
+/** Chamber settings blob key; mirrors the other chamber-blob keys. */
 const CHAMBER_SETTINGS_KEY = 'omp_chamber_settings';
 
 /** Auto-titling is opt-in per chamber install. Default ON: an unnamed session

@@ -16,6 +16,8 @@
 
 import { describe, expect, test } from 'bun:test';
 import { foldAgentEvent, type OmpAgentFoldDeps } from '@/shared/lib/chat/omp/agent-events';
+import { CHAMBER_MODE_SIGNAL } from '@/shared/lib/omp/mode/client-signal';
+import { subscribeClientSignal } from '@/client/lib/signals';
 import type { OmpAgentEvent } from '@/shared/types/omp/agent';
 
 function makeDeps(sessionId: string, events: unknown[]): OmpAgentFoldDeps {
@@ -41,13 +43,10 @@ function makeDeps(sessionId: string, events: unknown[]): OmpAgentFoldDeps {
 }
 
 describe('chamber mode markers', () => {
-  test('a notify frame carrying a marker becomes a window event, not a dialog', () => {
+  test('a notify frame carrying a marker becomes a mode signal, not a dialog', () => {
     const seen: unknown[] = [];
-    const dispatched: unknown[] = [];
-    const target = globalThis as unknown as { window?: unknown };
-    const hadWindow = 'window' in target;
-    const previous = target.window;
-    target.window = { dispatchEvent: (event: unknown) => dispatched.push(event) };
+    const signals: unknown[] = [];
+    const unsubscribe = subscribeClientSignal(CHAMBER_MODE_SIGNAL, (payload) => { signals.push(payload); });
 
     try {
       const deps = makeDeps('s1', seen);
@@ -61,10 +60,9 @@ describe('chamber mode markers', () => {
         deps,
       );
       expect(seen).toHaveLength(0);
-      expect(dispatched).toHaveLength(1);
+      expect(signals).toHaveLength(1);
     } finally {
-      if (hadWindow) target.window = previous;
-      else delete target.window;
+      unsubscribe();
     }
   });
 

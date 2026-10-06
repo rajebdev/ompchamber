@@ -23,10 +23,11 @@
 import { useMemo } from 'preact/hooks';
 import { AlertCircle, ListTodo, RefreshCw } from 'lucide-preact';
 import { useSearchParams } from '@/client/lib/router/search-params';
-import { useChamberFetch, useSessionState } from '@ompchamber/ui';
+import { useSessionState } from '@ompchamber/ui';
 import { TodoPhaseGroup } from '@/client/components/workspace/todo-panel/PhaseGroup';
 import { currentTaskLocation, todoProgressLabel, todoProgressPercent } from '@/shared/lib/chat/todo/progress';
-import { TODO_REFRESH_EVENT_THROTTLE_MS } from '@/shared/lib/workspace/refresh-cadence';
+import { useRealtimeTopic } from '@/client/hooks/ui/realtime';
+import { sessionTodosTopic } from '@/shared/lib/realtime/protocol';
 import type { SessionTodosPayload } from '@/shared/types/todo';
 
 interface TodoPanelProps {
@@ -52,11 +53,12 @@ export function TodoPanel({ className = '', active = true }: TodoPanelProps) {
     'todo.collapsedPhases',
     {},
   );
-  // The kit's generic reader: the poll, the visibility pause and the
-  // `omp:session-updated` re-read are exactly what this panel hand-rolled.
-  const { data, isLoading, error, reload } = useChamberFetch<SessionTodosPayload>(
-    sessionId ? `/api/omp/session-todos?sessionId=${encodeURIComponent(sessionId)}` : null,
-    { enabled: active, events: ['omp:session-updated'], eventThrottleMs: TODO_REFRESH_EVENT_THROTTLE_MS },
+  // The session's own topic, pushed by the server on every turn boundary —
+  // the poll and the event-driven re-read this panel used to hand-roll are
+  // both gone.
+  const { data, isLoading, stale, refresh } = useRealtimeTopic<SessionTodosPayload>(
+    sessionId ? sessionTodosTopic(sessionId) : null,
+    { enabled: active },
   );
 
   const snapshot = data?.snapshot ?? null;
@@ -95,7 +97,7 @@ export function TodoPanel({ className = '', active = true }: TodoPanelProps) {
         </div>
         <button
           type="button"
-          onClick={reload}
+          onClick={refresh}
           disabled={isLoading}
           title="Refresh todos"
           aria-label="Refresh todos"
@@ -117,10 +119,10 @@ export function TodoPanel({ className = '', active = true }: TodoPanelProps) {
       )}
 
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto scrollbar-overlay-container scrollbar-overlay-static p-3.5">
-        {error && (
-          <div className="flex items-start gap-2 rounded-lg border border-error/30 bg-error/5 px-3 py-2 text-[11px] text-error">
+        {stale && (
+          <div className="flex items-start gap-2 rounded-lg border border-ink/15 bg-ink/5 px-3 py-2 text-[11px] text-ink/60">
             <AlertCircle size={13} className="mt-[1px] shrink-0" />
-            <span className="min-w-0 break-words">{error}</span>
+            <span className="min-w-0 break-words">Reconnecting — this list may be out of date.</span>
           </div>
         )}
 

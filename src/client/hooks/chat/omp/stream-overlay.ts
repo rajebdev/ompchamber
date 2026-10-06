@@ -22,9 +22,10 @@
  */
 
 import type { WorkspaceFolderData } from '@/shared/types';
+import { publishClientSignal } from '@/client/lib/signals';
 
-/** Window event carrying one session's optimistic mark arm/disarm. */
-export const STREAM_PENDING_EVENT = 'omp:stream-pending';
+/** The optimistic stream-mark signal name, for a consumer that subscribes. */
+export const STREAM_PENDING_SIGNAL = 'stream-pending' as const;
 
 export interface StreamPendingDetail {
   sessionId: string;
@@ -45,16 +46,11 @@ export interface StreamPendingDetail {
  * already settled.
  */
 export function setStreamPending(sessionId: string, pending: boolean): void {
-  window.dispatchEvent(
-    new CustomEvent<StreamPendingDetail>(STREAM_PENDING_EVENT, {
-      detail: { sessionId, pending },
-    }),
-  );
+  publishClientSignal(STREAM_PENDING_SIGNAL, { sessionId, pending });
 }
 
-/** Window event carrying the text a session's sidebar row should show until
- *  omp's own title lands. */
-export const SESSION_TITLE_HINT_EVENT = 'omp:session-title-hint';
+/** The title-hint signal name, for a consumer that subscribes. */
+export const SESSION_TITLE_HINT_SIGNAL = 'session-title-hint' as const;
 
 export interface SessionTitleHintDetail {
   sessionId: string;
@@ -78,11 +74,7 @@ export interface SessionTitleHintDetail {
 export function setSessionTitleHint(sessionId: string, title: string): void {
   const trimmed = title.trim();
   if (!trimmed) return;
-  window.dispatchEvent(
-    new CustomEvent<SessionTitleHintDetail>(SESSION_TITLE_HINT_EVENT, {
-      detail: { sessionId, title: trimmed },
-    }),
-  );
+  publishClientSignal(SESSION_TITLE_HINT_SIGNAL, { sessionId, title: trimmed });
 }
 
 /**

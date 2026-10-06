@@ -6,7 +6,7 @@
 /**
  * The goal loop's own settings, read where the loop runs.
  *
- * They live in the chamber settings blob beside `streamTransport` and
+ * They live in the chamber settings blob beside the other chamber keys and
  * `autoSessionTitle`, and the server reads them straight from SQLite on every
  * decision — a goal can run for an hour across several turns, so a cached read
  * would keep an old choice alive for exactly the window the operator was

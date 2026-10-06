@@ -16,7 +16,7 @@ import { GLOBAL_SCOPE_ID, useWorkspaceRoots, type WorkspaceRoots } from '@/clien
 import { useChamberSettingsWriter } from '@/client/hooks/settings/use-chamber-setting';
 import { useSettingsMasterDetail } from '@/client/hooks/settings/master-detail';
 import { primeChamberSettings, readChamberSetting } from '@/shared/lib/settings/client';
-type Settings = { theme?: string; streamTransport?: string };
+type Settings = { theme?: string; editorFont?: string };
 import { diffSettings } from '@/shared/lib/settings/diff';
 
 const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'Event', 'CustomEvent'] as const;
@@ -150,10 +150,10 @@ describe('useWorkspaceRoots', () => {
 
 describe('useChamberSettingsWriter', () => {
   test('persists only the keys a diff reports as moved', async () => {
-    primeChamberSettings({ omp_chamber_settings: { theme: 'dark', streamTransport: 'websocket' } });
+    primeChamberSettings({ omp_chamber_settings: { theme: 'dark', editorFont: 'Menlo' } });
     await mount(h(WriterProbe, {}));
-    const prev: Settings = { theme: 'dark', streamTransport: 'websocket' };
-    const next: Settings = { theme: 'light', streamTransport: 'websocket' };
+    const prev: Settings = { theme: 'dark', editorFont: 'Menlo' };
+    const next: Settings = { theme: 'light', editorFont: 'Menlo' };
 
     await flush(() => writeSettings?.(diffSettings(prev, next, { theme: 'light' })));
 

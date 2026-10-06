@@ -26,6 +26,7 @@ import { homedir } from 'os';
 import { getDb } from '@/server/db.server';
 import { projectPathKey } from '@/server/lib/omp/core/paths';
 import { syncDiscoveryRootsWatch } from '@/server/lib/omp/config/roots-watch.server';
+import { emitRealtimeSignal } from '@/server/lib/realtime/signals.server';
 
 function expandHome(value: string): string {
   if (value === '~') return homedir();
@@ -99,6 +100,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
   // watcher set has to grow with it — otherwise a skill created there stays
   // invisible to a live session until the server restarts.
   void syncDiscoveryRootsWatch();
+  // The sidebar lists workspaces, so a new folder is a structure change.
+  emitRealtimeSignal('sidebar-structure');
 
   return json({ success: true, folder: { id: result.lastID, name, project_path: projectPath } });
 }

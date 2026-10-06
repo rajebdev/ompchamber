@@ -25,8 +25,8 @@ import { normalizeThinkingLevel } from '@/shared/lib/models/thinking-levels';
 import { endRetrySaga, foldAutoRetry } from '@/shared/lib/chat/timeline/provider-retry';
 import { PHASE_VERBS } from '@/shared/lib/chat/timeline/tool-phrases';
 import { describeAssistantPhase, describeToolActivity } from '@/shared/lib/chat/timeline/tool-verbs';
-import { FILE_MUTATION_EVENT, isFileMutatingTool } from '@/shared/lib/chat/omp/file-mutations';
 import { extractToolImages } from '@/shared/lib/omp/session/tool-images';
+import { publishSubagentFrame } from '@/shared/lib/chat/omp/subagent-frames';
 import {
   pairToolOutputs,
   putToolResult,
@@ -46,7 +46,6 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
     case 'agent_start':
       deps.setState((prev) => ({ ...prev, isGenerating: true, error: null }));
       deps.toolResultsRef.current?.clear();
-      deps.fileMutatingCallsRef.current?.clear();
       deps.lastToolMessageRef.current = null;
       deps.interruptPendingRef.current = false;
       // A fresh run restarts level tracking; the first turn relies on the
@@ -128,11 +127,6 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
         intent: typeof data.intent === 'string' ? data.intent : undefined,
       }), deps);
       if (callId) deps.toolResultsRef.current?.set(callId, { output: '' });
-      // Remember whether this call can change workspace files; the end frame
-      // then signals the data panels to re-read (see file-mutations.ts).
-      if (callId && isFileMutatingTool({ toolName: data.toolName, args: data.args })) {
-        deps.fileMutatingCallsRef.current?.add(callId);
-      }
       const last = deps.lastToolMessageRef.current;
       if (last?.toolCalls?.some(tc => tc.id === callId)) {
         deps.lastToolMessageRef.current = {
@@ -166,14 +160,6 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
         ...(images.length > 0 ? { images } : {}),
       });
       refreshToolMessage(callId, toolHost(deps));
-      // A file-mutating tool just finished — tell the data-bearing right panels
-      // (files / git / context) to re-read now, not on their next poll tick.
-      // Guarded: the fold also runs headless under `bun test` (no window).
-      if (typeof window !== 'undefined' && deps.fileMutatingCallsRef.current?.delete(callId)) {
-        window.dispatchEvent(new CustomEvent(FILE_MUTATION_EVENT, {
-          detail: { sessionId: deps.sessionId },
-        }));
-      }
       break;
     }
 
@@ -310,13 +296,12 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
     case 'subagent_lifecycle':
     case 'subagent_progress':
     case 'subagent_event': {
-      // Forward live subagent frames to feature listeners as scoped window
-      // events (same pattern as the other omp:* signals).
+      // Forward live subagent frames to the subagent views through the module
+      // bus. The frames already arrived over the `session:<id>` topic; this is
+      // the second hop to the surfaces that render one child.
       const payload = data.payload;
       if (payload === undefined || payload === null || typeof payload !== 'object') break;
-      window.dispatchEvent(new CustomEvent(data.type, {
-        detail: { sessionId: deps.sessionId, payload },
-      }));
+      publishSubagentFrame(data.type, { sessionId: deps.sessionId, payload });
       break;
     }
 

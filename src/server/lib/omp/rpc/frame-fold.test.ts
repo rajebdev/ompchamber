@@ -20,7 +20,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { foldSessionFrame, type SessionFrameHost } from '@/server/lib/omp/rpc/frame-fold';
-import { releasesStreamRowOnPromptResult } from '@/shared/lib/omp/session/stream-state.server';
+import { releasesStreamRowOnPromptResult } from '@/shared/lib/omp/session/stream-heal.server';
 import type { AgentEvent } from '@/server/lib/omp/rpc/constants';
 import { ModeMirror } from '@/server/lib/omp/rpc/mode-mirror';
 

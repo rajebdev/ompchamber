@@ -11,8 +11,8 @@
  * view exists for the time after that: reading what the plan says, and seeing it
  * change when the agent rewrites it (a refine pass, or an approved plan the
  * model keeps editing). The panel therefore re-reads on the same triggers the
- * Todo view does: a poll while visible, and `omp:session-updated` at every turn
- * boundary.
+ * Todo view does: the session's own `plan` topic, pushed by the server at every
+ * turn boundary.
  *
  * Scope is the SESSION, not the workspace. A plan belongs to the conversation
  * that produced it and lives in that session's artifact directory, so this view
@@ -27,10 +27,11 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { AlertCircle, FileText, Loader2, RefreshCw } from 'lucide-preact';
 import { useSearchParams } from '@/client/lib/router/search-params';
-import { useChamberFetch, useSessionState } from '@ompchamber/ui';
+import { useSessionState } from '@ompchamber/ui';
 import { PlanNav } from '@/client/components/workspace/plan-panel/Nav';
 import { PlanPageView } from '@/client/components/workspace/plan-panel/PageView';
-import { PLAN_REFRESH_EVENT_THROTTLE_MS } from '@/shared/lib/workspace/refresh-cadence';
+import { useRealtimeTopic } from '@/client/hooks/ui/realtime';
+import { sessionPlanTopic } from '@/shared/lib/realtime/protocol';
 import type { SessionPlanPayload } from '@/shared/types/plan';
 
 interface PlanPanelProps {
@@ -59,20 +60,13 @@ export function PlanPanel({ className = '', active = true }: PlanPanelProps) {
   const [narrowShowingPage, setNarrowShowingPage] = useState(false);
 
   const storedPath = pick && pick.sessionId === sessionId ? pick.path : null;
-  // A plan switch changes the QUERY, which the kit's reader treats as a new
-  // question — it drops the previous plan and re-reads at once, so the poll
-  // cannot leave the old one on screen.
-  const planUrl = useMemo(() => {
-    if (!sessionId) return null;
-    const query = new URLSearchParams({ sessionId });
-    if (storedPath) query.set('path', storedPath);
-    return `/api/omp/session-plan?${query.toString()}`;
-  }, [sessionId, storedPath]);
-  const plan = useChamberFetch<SessionPlanPayload>(planUrl, {
-    enabled: active,
-    events: ['omp:session-updated'],
-    eventThrottleMs: PLAN_REFRESH_EVENT_THROTTLE_MS,
-  });
+  // The session's own topic. A plan SWITCH is a different session topic — no
+  // query to rebuild, because the chosen path is part of the payload the topic
+  // already carries (`current`), and the panel picks from it below.
+  const plan = useRealtimeTopic<SessionPlanPayload>(
+    sessionId ? sessionPlanTopic(sessionId) : null,
+    { enabled: active },
+  );
 
   const files = plan.data?.files ?? [];
   const current = plan.data?.current ?? null;
@@ -129,7 +123,7 @@ export function PlanPanel({ className = '', active = true }: PlanPanelProps) {
         </div>
         <button
           type="button"
-          onClick={plan.reload}
+          onClick={plan.refresh}
           disabled={plan.isLoading}
           title="Re-read the plan"
           aria-label="Re-read the plan"
@@ -139,11 +133,11 @@ export function PlanPanel({ className = '', active = true }: PlanPanelProps) {
         </button>
       </div>
 
-      {plan.error && !plan.data ? (
+      {plan.stale && !plan.data ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
           <AlertCircle size={16} className="text-error" />
-          <p className="text-error">{plan.error}</p>
-          <button type="button" onClick={plan.reload} className="text-[11px] font-semibold text-ink/70 underline underline-offset-2 hover:text-ink">
+          <p className="text-error">The plan could not be read.</p>
+          <button type="button" onClick={plan.refresh} className="text-[11px] font-semibold text-ink/70 underline underline-offset-2 hover:text-ink">
             Try again
           </button>
         </div>
@@ -182,7 +176,7 @@ export function PlanPanel({ className = '', active = true }: PlanPanelProps) {
               file={selectedFile}
               content={plan.data.content}
               isLoading={plan.isLoading}
-              error={plan.error}
+              error={plan.stale ? 'The plan could not be read.' : null}
               truncated={plan.data.truncated}
               onBack={() => setNarrowShowingPage(false)}
             />

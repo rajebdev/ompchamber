@@ -1,0 +1,317 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * The topic registry: which topics exist, how each produces its snapshot, and
+ * the named publishers a producer calls instead of knowing about the hub.
+ *
+ * Split from `hub.server.ts` (which owns the delivery mechanics) so this file
+ * stays about WHAT is served and that one stays about HOW. Every resolver is
+ * read-only by contract — subscribing must never spawn an omp child for a
+ * session nobody is driving (see the plan's server-side invariants).
+ */
+
+import {
+  TOPIC_MODELS,
+  TOPIC_PANELS,
+  TOPIC_SCHEDULE,
+  TOPIC_SIDEBAR,
+  TOPIC_SIDEBAR_STATUS,
+  TOPIC_UPDATES,
+  TOPIC_USAGE,
+  isValidTopic,
+  reposTopic,
+  sessionPlanTopic,
+  sessionQueueTopic,
+  sessionTelemetryTopic,
+  sessionTodosTopic,
+  sessionTopic,
+} from '@/shared/lib/realtime/protocol';
+import type { SidebarPayload, SidebarStatusPayload } from '@/shared/types/realtime';
+import { getRealtimeHub, registerTopics, type TopicDescriptor } from '@/server/lib/realtime/hub.server';
+import { onRealtimeSignal } from '@/server/lib/realtime/signals.server';
+import { invalidateOmpSidebarData } from '@/server/lib/omp/session/reader';
+import { loadSidebarStatus, loadSidebarStructure } from '@/server/lib/omp/session/sidebar-data.server';
+import { sessionDescriptor } from '@/server/lib/realtime/topics/session.server';
+import { btwDescriptor } from '@/server/lib/realtime/topics/btw.server';
+import { SESSION_DATA_TOPICS } from '@/server/lib/realtime/topics/session-data.server';
+import { globalDescriptor } from '@/server/lib/realtime/topics/global.server';
+import { workspaceDescriptor } from '@/server/lib/realtime/topics/workspace.server';
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __ompChamberRealtimeTopicsReady: boolean | undefined;
+}
+
+/**
+ * Window a burst of change signals collapses into one publish. A single run
+ * writes the stream status several times within milliseconds, and each write
+ * would otherwise cost a status read plus a fan-out to every tab.
+ */
+const PUBLISH_COALESCE_MS = 120;
+
+/**
+ * The scoped families, keyed by their topic PREFIX (without the separator).
+ *
+ * A table rather than a chain of `startsWith` calls: each family's descriptor
+ * lives in its own file, and adding one is a row here rather than another
+ * branch. A family whose descriptor is missing means the prefix is not served.
+ */
+const SCOPED_FAMILIES: Record<string, (scope: string) => TopicDescriptor> = {
+  session: sessionDescriptor,
+  btw: btwDescriptor,
+  git: workspaceDescriptor('git'),
+  fs: workspaceDescriptor('fs'),
+  repos: workspaceDescriptor('repos'),
+  wiki: workspaceDescriptor('wiki'),
+};
+
+/** The exact-name topics, plus the per-session DATA families keyed by suffix. */
+const EXACT_TOPICS = new Map<string, TopicDescriptor>([
+  [TOPIC_SIDEBAR, { resolve: async (): Promise<SidebarPayload> => loadSidebarStructure() }],
+  [TOPIC_SIDEBAR_STATUS, { resolve: async (): Promise<SidebarStatusPayload> => loadSidebarStatus() }],
+  [TOPIC_SCHEDULE, { resolve: () => globalDescriptor(TOPIC_SCHEDULE).resolve(TOPIC_SCHEDULE) }],
+  [TOPIC_USAGE, { resolve: () => globalDescriptor(TOPIC_USAGE).resolve(TOPIC_USAGE) }],
+  [TOPIC_PANELS, { resolve: () => globalDescriptor(TOPIC_PANELS).resolve(TOPIC_PANELS) }],
+  [TOPIC_MODELS, { resolve: () => globalDescriptor(TOPIC_MODELS).resolve(TOPIC_MODELS) }],
+  [TOPIC_UPDATES, { resolve: () => globalDescriptor(TOPIC_UPDATES).resolve(TOPIC_UPDATES) }],
+]);
+
+/** Suffixes a `session:<id>:<suffix>` topic may carry. */
+const SESSION_DATA_SUFFIXES = new Map<string, (sessionId: string) => TopicDescriptor>([
+  ['todos', (id) => SESSION_DATA_TOPICS[sessionTodosTopic('')](id)],
+  ['plan', (id) => SESSION_DATA_TOPICS[sessionPlanTopic('')](id)],
+  ['telemetry', (id) => SESSION_DATA_TOPICS[sessionTelemetryTopic('')](id)],
+  ['queue', (id) => SESSION_DATA_TOPICS[sessionQueueTopic('')](id)],
+]);
+
+
+/**
+ * Whether `topic` is one this hub serves.
+ *
+ * Prefixes are structural: a scoped topic must be asked about for a scope whose
+ * snapshot a resolver can produce, and an unknown prefix is refused so a typo
+ * reports itself rather than subscribing to nothing.
+ */
+function isKnownTopicName(topic: string): boolean {
+  if (EXACT_TOPICS.has(topic)) return true;
+  const separator = topic.indexOf(':');
+  if (separator === -1) return false;
+  const family = topic.slice(0, separator);
+  const scope = topic.slice(separator + 1);
+  if (!scope) return false;
+  if (family === 'session') {
+    // A session topic is either the session itself or one of its data families.
+    const nested = scope.indexOf(':');
+    return nested === -1 || SESSION_DATA_SUFFIXES.has(scope.slice(nested + 1));
+  }
+  return family in SCOPED_FAMILIES;
+}
+
+/** The descriptor for `topic`, building a scoped one on first use. */
+function descriptorFor(topic: string): TopicDescriptor | undefined {
+  const exact = EXACT_TOPICS.get(topic);
+  if (exact) return exact;
+  const separator = topic.indexOf(':');
+  if (separator === -1) return undefined;
+  const family = topic.slice(0, separator);
+  const scope = topic.slice(separator + 1);
+  if (!scope) return undefined;
+
+  if (family === 'session') {
+    const nested = scope.indexOf(':');
+    if (nested === -1) return sessionDescriptor(scope);
+    const build = SESSION_DATA_SUFFIXES.get(scope.slice(nested + 1));
+    return build ? build(scope.slice(0, nested)) : undefined;
+  }
+
+  const build = SCOPED_FAMILIES[family];
+  return build ? build(scope) : undefined;
+}
+
+/**
+ * Build the descriptor map the hub serves.
+ *
+ * Scoped topics are resolved LAZILY through a proxy map: the hub asks for a
+ * topic's descriptor by name at subscribe time, and building every possible
+ * `session:<uuid>` up front is impossible. The proxy answers `get`/`has` for any
+ * known-prefix name, which are the only operations the hub performs.
+ */
+function buildDescriptors(): Map<string, TopicDescriptor> {
+  const map = new Map(EXACT_TOPICS);
+  return new Proxy(map, {
+    get(target, property, receiver) {
+      if (property === 'get') {
+        return (topic: string) => target.get(topic) ?? (isKnownTopicName(topic) ? descriptorFor(topic) : undefined);
+      }
+      if (property === 'has') {
+        return (topic: string) => target.has(topic) || isKnownTopicName(topic);
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  });
+}
+
+/**
+ * Register the topic set with the hub. Idempotent: a `bun --hot` reload
+ * re-registers the same map rather than accumulating descriptors, and a second
+ * call from the route's boot path is a no-op.
+ */
+export function initRealtimeTopics(): void {
+  if (globalThis.__ompChamberRealtimeTopicsReady) return;
+  globalThis.__ompChamberRealtimeTopicsReady = true;
+  registerTopics(buildDescriptors());
+  onRealtimeSignal(({ signal, sessionId, root }) => {
+    if (signal === 'stream-status') publishSidebarStatus();
+    else if (signal === 'sidebar-structure') publishSidebarStructure();
+    else if (signal === 'session-attached' && sessionId) publishSessionState(sessionId);
+    else if (signal === 'schedule-changed') publishTopic(TOPIC_SCHEDULE);
+    else if (signal === 'panels-changed') publishTopic(TOPIC_PANELS);
+    else if (signal === 'models-changed') publishTopic(TOPIC_MODELS);
+    else if (signal === 'workspace-dirty') republishWatchedWorkspaceTopics();
+    else if (signal === 'repos-scanned' && root) publishTopic(reposTopic(root));
+  });
+}
+
+/** Whether this hub serves `topic`. Consulted before a subscribe is accepted. */
+export function isKnownTopic(topic: string): boolean {
+  return isValidTopic(topic) && getRealtimeHub().knows(topic);
+}
+
+/**
+ * Re-resolve a topic whose producer just changed it, coalescing a burst.
+ *
+ * Used by the GLOBAL topics and by the workspace families: their payloads are
+ * produced on demand, so a write is reported by re-resolving rather than by
+ * streaming the change.
+ *
+ * The resolve goes through the HUB's own descriptor table, never this module's
+ * `EXACT_TOPICS`/`descriptorFor`: the registry is what the hub was actually
+ * given, and re-resolving from a private copy answered from a different map —
+ * a `git:`/`fs:`/`repos:`/`wiki:` name is absent from `EXACT_TOPICS`, so the
+ * lookup returned `null` and every subscriber's panel was BLANKED instead of
+ * re-read. (In a test with its own topic set it also ran the production
+ * resolver, which is how that surfaced.)
+ */
+export function publishTopic(topic: string): void {
+  schedulePublish(topic, () => getRealtimeHub().resolve(topic));
+}
+
+/**
+ * Republish every workspace topic that someone is watching.
+ *
+ * A turn boundary means the working tree and the session's usage may both have
+ * moved, but the topics are scoped to trees this process does not know about
+ * until it is asked — so the SUBSCRIBED set is the list, not a guess. Only
+ * watched topics are re-read, so a tab with no git panel pays nothing.
+ */
+export function republishWatchedWorkspaceTopics(): void {
+  for (const topic of getRealtimeHub().activeTopics()) {
+    if (topic.startsWith('git:') || topic.startsWith('fs:')) publishTopic(topic);
+  }
+}
+
+/**
+ * A session's live state changed outside its own frame stream — it was just
+ * spawned, adopted, or its run settled.
+ *
+ * Sent as a fresh SNAPSHOT rather than a delta: the interesting transition is
+ * "this topic had no source and now has one", which no delta can express (there
+ * was nothing to publish from). Called from the spawn path, where the child
+ * becomes reachable.
+ */
+export function publishSessionState(sessionId: string): void {
+  getRealtimeHub().republishSnapshot(sessionTopic(sessionId));
+}
+
+// ---------------------------------------------------------------------------
+// Publishers — the names a producer calls
+// ---------------------------------------------------------------------------
+
+/**
+ * Coalescing and dedupe state, on `globalThis` for the reason the hub is: a
+ * hot reload must not leave a pending timer writing into a discarded map.
+ */
+interface PublishState {
+  timers: Map<string, number | NodeJS.Timeout>;
+  /** JSON of the last payload published per topic, to skip no-op republishes. */
+  last: Map<string, string>;
+}
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __ompChamberRealtimePublish: PublishState | undefined;
+}
+
+function publishState(): PublishState {
+  return (globalThis.__ompChamberRealtimePublish ??= { timers: new Map(), last: new Map() });
+}
+
+/**
+ * Publish a topic's freshly produced payload, coalescing a burst into one send
+ * and skipping a payload identical to the last one.
+ *
+ * Both halves are load-bearing. A single run writes the stream status several
+ * times (`turn_start`, `agent_start`, `message_start`, `message_end`), and each
+ * write would otherwise cost a full status read plus a fan-out to every tab —
+ * more work than the 8s poll this replaces. Dedupe catches the common case
+ * where the row did not actually move (the status was already `stream`).
+ */
+export function schedulePublish(topic: string, produce: () => Promise<unknown>): void {
+  const state = publishState();
+  if (state.timers.has(topic)) return;
+  state.timers.set(
+    topic,
+    setTimeout(() => {
+      state.timers.delete(topic);
+      const hub = getRealtimeHub();
+      if (!hub.knows(topic)) return;
+      void produce().then(
+        (payload) => {
+          const encoded = JSON.stringify(payload);
+          if (state.last.get(topic) === encoded) return;
+          state.last.set(topic, encoded);
+          hub.publish(topic, payload);
+        },
+        () => {
+          // A failed read leaves subscribers on their last good value; the next
+          // signal republishes. Publishing an empty payload would blank every
+          // spinner in every tab over a transient database hiccup.
+        },
+      );
+    }, PUBLISH_COALESCE_MS),
+  );
+}
+
+/**
+ * A sidebar session's volatile fields changed (a run started, ended, aborted,
+ * or the session became blocked on a dialog).
+ *
+ * Publishes the whole status map rather than one entry: it is one SQLite read
+ * and a small object, and a per-entry delta would need the client to merge
+ * removals — a session that finished has its badge CLEARED when opened, which
+ * is a deletion, not a value.
+ */
+export function publishSidebarStatus(): void {
+  schedulePublish(TOPIC_SIDEBAR_STATUS, loadSidebarStatus);
+}
+
+/**
+ * The sidebar's STRUCTURE changed: a session was created, deleted, renamed, a
+ * folder was added or removed, or a JSONL grew a new session.
+ *
+ * Separate from `publishSidebarStatus` because producing it runs a full omp
+ * discovery scan — so it is published on structure events only, never on a
+ * status flip.
+ *
+ * The scan cache is dropped FIRST, and that is not an optimisation: the signal
+ * says something structural moved, while the discovery scan is TTL'd (4s) and
+ * would otherwise answer with the snapshot taken before the change — a new
+ * session would not appear in the very publish that announced it.
+ */
+export function publishSidebarStructure(): void {
+  invalidateOmpSidebarData();
+  schedulePublish(TOPIC_SIDEBAR, loadSidebarStructure);
+}

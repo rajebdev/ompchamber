@@ -6,11 +6,8 @@
 /**
  * Visibility-driven polling, the clipboard, and the open-file event.
  *
- * `useVisibilityRefresh` must never tick while the tab is hidden, and must
- * re-read once on the way back: a background poll is wasted work, and a missing
- * catch-up leaves the UI stale until the next interval. Its `guardInFlight` arm
- * must also release its lock on the rejection arm — a poller that only unlocked
- * on resolve would freeze forever after one failed read.
+ * The visibility-driven poller this file used to cover is gone with the polls
+ * it served: every data-backed panel reads a realtime topic now.
  *
  * Clipboard has two paths — the async API only in a secure context, otherwise
  * the `execCommand` textarea — and neither may silently report success.
@@ -18,21 +15,16 @@
 
 import { afterAll, afterEach, beforeAll, describe, expect, jest, test } from 'bun:test';
 import { Window } from 'happy-dom';
-import { h, render } from 'preact';
-import { act } from 'preact/test-utils';
 
 import { copyToClipboard, readClipboardText } from '@/client/hooks/ui/clipboard';
 import { openFileInEditor } from '@/client/hooks/ui/open-file';
 import type { OpenFilePayload } from '@/client/hooks/ui/open-file';
-import { useVisibilityRefresh } from '@/client/hooks/ui/visibility-refresh';
-import type { VisibilityRefreshOptions } from '@/client/hooks/ui/visibility-refresh';
 
 const DOM_GLOBALS = ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'Event', 'CustomEvent'] as const;
 /** The runner's own globals, restored on teardown (see the matching afterAll at the end of this file) so later files still see native Event/CustomEvent/window. */
 const nativeGlobals: Partial<Record<(typeof DOM_GLOBALS)[number], unknown>> = {};
 
 let win: Window;
-let container: HTMLElement;
 
 beforeAll(() => {
   win = new Window({ url: 'http://localhost' });
@@ -44,171 +36,8 @@ beforeAll(() => {
 });
 
 afterEach(() => {
-  if (container) render(null, container);
-  container?.remove();
   document.body.innerHTML = '';
   jest.useRealTimers();
-});
-
-function mount(vnode: Parameters<typeof render>[0]) {
-  container ??= document.body.appendChild(document.createElement('div'));
-  act(() => {
-    render(vnode, container as HTMLElement);
-  });
-}
-
-function setVisibility(state: 'visible' | 'hidden') {
-  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
-}
-
-interface RefreshProbeProps {
-  options: VisibilityRefreshOptions;
-  calls: string[];
-}
-
-function RefreshProbe({ options, calls }: RefreshProbeProps) {
-  useVisibilityRefresh(() => {
-    calls.push('tick');
-  }, options);
-  return h('span', null, String(calls.length));
-}
-
-/** Mounts a poller and returns its call log. */
-function mountPoller(options: VisibilityRefreshOptions) {
-  const calls: string[] = [];
-  mount(h(RefreshProbe, { options, calls }));
-  return calls;
-}
-
-describe('useVisibilityRefresh', () => {
-  test('does not fire on mount and ticks on each interval while visible', () => {
-    jest.useFakeTimers();
-    setVisibility('visible');
-    const calls = mountPoller({ enabled: true, intervalMs: 100 });
-    expect(calls).toEqual([]);
-
-    act(() => {
-      jest.advanceTimersByTime(100);
-    });
-    expect(calls).toEqual(['tick']);
-    act(() => {
-      jest.advanceTimersByTime(250);
-    });
-    expect(calls).toEqual(['tick', 'tick', 'tick']);
-  });
-
-  test('skips every tick while the document is hidden', () => {
-    jest.useFakeTimers();
-    setVisibility('hidden');
-    const calls = mountPoller({ enabled: true, intervalMs: 100 });
-
-    act(() => {
-      jest.advanceTimersByTime(500);
-    });
-    expect(calls).toEqual([]);
-  });
-
-  test('re-reads exactly once on the transition back to visible', () => {
-    jest.useFakeTimers();
-    setVisibility('hidden');
-    const calls = mountPoller({ enabled: true, intervalMs: 100 });
-
-    act(() => {
-      setVisibility('visible');
-      document.dispatchEvent(new (win.Event as unknown as typeof Event)('visibilitychange'));
-    });
-    expect(calls).toEqual(['tick']);
-
-    // A second visible->visible notification is not another read.
-    act(() => {
-      document.dispatchEvent(new (win.Event as unknown as typeof Event)('visibilitychange'));
-    });
-    expect(calls).toEqual(['tick']);
-  });
-
-  test('a disabled hook binds neither an interval nor a listener', () => {
-    jest.useFakeTimers();
-    setVisibility('hidden');
-    const calls = mountPoller({ enabled: false, intervalMs: 100 });
-
-    act(() => {
-      jest.advanceTimersByTime(500);
-      setVisibility('visible');
-      document.dispatchEvent(new (win.Event as unknown as typeof Event)('visibilitychange'));
-    });
-    expect(calls).toEqual([]);
-  });
-
-  test('a non-positive interval disables polling', () => {
-    jest.useFakeTimers();
-    setVisibility('visible');
-    const calls = mountPoller({ enabled: true, intervalMs: 0 });
-
-    act(() => {
-      jest.advanceTimersByTime(1000);
-    });
-    expect(calls).toEqual([]);
-  });
-
-  test('unmounting stops the interval', () => {
-    jest.useFakeTimers();
-    setVisibility('visible');
-    const calls = mountPoller({ enabled: true, intervalMs: 100 });
-    act(() => {
-      jest.advanceTimersByTime(100);
-    });
-    expect(calls).toEqual(['tick']);
-
-    render(null, container as HTMLElement);
-    act(() => {
-      jest.advanceTimersByTime(500);
-    });
-    expect(calls).toEqual(['tick']);
-  });
-
-  test('guardInFlight skips ticks until the previous call settles, and unlocks on rejection', async () => {
-    jest.useFakeTimers();
-    setVisibility('visible');
-    let reject!: (error: Error) => void;
-    const gate = new Promise<void>((_resolve, rejectFn) => {
-      reject = rejectFn;
-    });
-    const guarded: string[] = [];
-    function GuardedProbe() {
-      useVisibilityRefresh(() => {
-        guarded.push('tick');
-        return gate;
-      }, { enabled: true, intervalMs: 100, guardInFlight: true });
-      return h('span', null, String(guarded.length));
-    }
-    const node = document.body.appendChild(document.createElement('div'));
-    act(() => {
-      render(h(GuardedProbe, {}), node);
-    });
-
-    act(() => {
-      jest.advanceTimersByTime(100);
-    });
-    expect(guarded).toEqual(['tick']);
-    act(() => {
-      jest.advanceTimersByTime(300);
-    });
-    expect(guarded).toEqual(['tick']);
-
-    // The callback owns its error surface, so a rejection must still unlock.
-    // Awaiting is load-bearing: `inFlight` is cleared on the promise's
-    // rejection callback, which only runs once this test yields.
-    await act(async () => {
-      reject(new Error('poll failed'));
-      await Promise.resolve();
-    });
-    act(() => {
-      jest.advanceTimersByTime(100);
-    });
-    expect(guarded).toEqual(['tick', 'tick']);
-    render(null, node);
-    node.remove();
-  });
 });
 
 function setSecureContext(value: boolean) {

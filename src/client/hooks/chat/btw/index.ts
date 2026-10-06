@@ -19,18 +19,18 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import type { AgentImage, Attachment, BtwState, ChatMessageData, StreamTransport } from '@/shared/types';
+import type { AgentImage, Attachment, BtwFrame, BtwState, ChatMessageData } from '@/shared/types';
+import { realtimeClient } from '@/shared/lib/realtime/client';
+import { btwTopic } from '@/shared/lib/realtime/protocol';
 import { attachmentImage, readTextAttachments } from '@/shared/lib/chat/attachments';
 import {
   BtwRequestError,
   abortBtwQuestion,
   askBtwQuestion,
-  connectBtwStream,
   deleteBtwTopic,
   fetchBtwState,
   promoteBtwTopic,
 } from '@/shared/lib/chat/btw/client';
-import type { StreamConnection } from '@/shared/lib/chat/omp/transport';
 
 /** Images the side session accepts, already read as base64. */
 export type BtwImage = AgentImage;
@@ -68,7 +68,6 @@ export interface BtwSessionHandle {
 export interface BtwSessionOptions {
   /** Attach the frame stream (the panel is open). */
   enabled: boolean;
-  transport: StreamTransport;
 }
 
 export function useBtwSession(sessionId: string | null, options: BtwSessionOptions): BtwSessionHandle {
@@ -76,7 +75,7 @@ export function useBtwSession(sessionId: string | null, options: BtwSessionOptio
   const [live, setLive] = useState<BtwLiveAnswer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const { enabled, transport } = options;
+  const { enabled } = options;
 
   // Commands must not be bound to the render that produced them: `/btw <q>`
   // asks from the same tick that opens the form, before the stream attached and
@@ -88,10 +87,13 @@ export function useBtwSession(sessionId: string | null, options: BtwSessionOptio
   useEffect(() => {
     if (!enabled || !sessionId) return;
 
-    const connection: StreamConnection = connectBtwStream(sessionId, transport, {
-      onOpen: () => {},
-      onFrame: (frame) => {
-        switch (frame.type) {
+    // The side-question frames ride the shared realtime socket's `btw:<id>`
+    // topic. Its SNAPSHOT is the same `btw_state` the server used to send as the
+    // stream's first frame, so a client attaching mid-turn (a reload, a second
+    // tab) still shows the answer the child already produced.
+    const unsubscribe = realtimeClient.subscribeFrames(btwTopic(sessionId), ({ payload }) => {
+      const frame = payload as BtwFrame;
+      switch (frame.type) {
           case 'btw_state':
             setState(frame.state);
             // The snapshot carries the running turn's conversation, so a client
@@ -132,19 +134,20 @@ export function useBtwSession(sessionId: string | null, options: BtwSessionOptio
           case 'btw_error':
             setError(frame.message);
             break;
-          default:
-            break;
-        }
-      },
-      onClose: () => {},
+        default:
+          break;
+      }
     });
 
+    // The topic snapshot is delivered on subscribe, so this is only a fallback
+    // for a session whose topic has no resolver (MOCK mode, or a btw id the
+    // server does not serve) — the frames are authoritative when they arrive.
     void fetchBtwState(sessionId)
       .then(setState)
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
 
-    return () => connection.close();
-  }, [enabled, sessionId, transport]);
+    return () => unsubscribe();
+  }, [enabled, sessionId]);
 
   const run = useCallback(
     async (operation: (id: string) => Promise<BtwState>): Promise<BtwState | null> => {

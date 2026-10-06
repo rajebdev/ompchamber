@@ -13,8 +13,8 @@
  *
  * Two follow-ups are load-bearing and both happen only on success:
  *
- *   - `omp:workspace-updated` refreshes the sidebar list. The deleted row is
- *     gone from disk, but the client still holds the previous snapshot.
+ *   - the server's own `sidebar` republish refreshes the list. The deleted row
+ *     is gone from disk, but the client still holds the previous snapshot.
  *   - when the deleted session is the one on screen, `?sessionId=` is dropped.
  *     Leaving the URL pointing at a removed session renders the chat's "not
  *     found" state over a row the user just deleted, and every panel keyed to
@@ -82,7 +82,6 @@ export function useSessionDelete(): SessionDeleteActions {
         }, { replace: true });
       }
       setPending(null);
-      window.dispatchEvent(new CustomEvent('omp:workspace-updated'));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not reach the server.');
     } finally {

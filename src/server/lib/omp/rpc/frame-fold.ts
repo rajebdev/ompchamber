@@ -26,8 +26,10 @@ import {
   type AutoTitleHost,
 } from '@/server/lib/omp/session/auto-title.server';
 import { scheduleQueueDelivery, type QueueDeliveryHost } from '@/server/lib/queue/delivery.server';
-import { clearStreamStatus, loadStreamStatuses, markStreamStatus, releasesStreamRowOnPromptResult } from '@/shared/lib/omp/session/stream-state.server';
+import { clearStreamStatus, loadStreamStatuses, markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
+import { releasesStreamRowOnPromptResult } from '@/shared/lib/omp/session/stream-heal.server';
 import { driveGoalAfterTurn } from '@/server/lib/omp/session/goal-driver.server';
+import { emitRealtimeSignal } from '@/server/lib/realtime/signals.server';
 import { NON_TERMINAL_CONTINUATION_GRACE_MS, type AgentEvent } from '@/server/lib/omp/rpc/constants';
 import type { ModeMirror } from '@/server/lib/omp/rpc/mode-mirror';
 
@@ -199,6 +201,10 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
         // queued follow-up goes out next. A user-aborted run holds the queue
         // (stop-all semantics): the next run end or an explicit send picks it up.
         if (!aborted) scheduleQueueDelivery(host);
+        // A run's work may have touched files and certainly advanced usage;
+        // the realtime layer republishes whichever workspace topics are
+        // actually watched (see `republishWatchedWorkspaceTopics`).
+        emitRealtimeSignal('workspace-dirty');
       } else {
         host.continuationGraceUntil = Date.now() + NON_TERMINAL_CONTINUATION_GRACE_MS;
       }

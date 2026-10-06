@@ -5,14 +5,13 @@ import { isRecord } from '@/shared/lib/util/guards';
 import { fetchSubagentHistory, historyEntryToSubagentInfo } from '@/shared/lib/omp/subagent/history/client';
 import { subagentRowLabel } from '@/shared/lib/omp/subagent/label';
 import { mergeSubagentRoster, parseSubagentLifecycle, parseSubagentRosterResponse, readSubagentProgressFrame } from '@/shared/lib/omp/subagent/parse';
+import { subscribeSubagentFrame, type SubagentFrame } from '@/shared/lib/chat/omp/subagent-frames';
 import type { SubagentInfo, SubagentProgress } from '@/shared/types';
 
 type SubagentListProps = {
   sessionId: string | number;
   isActiveSession: boolean;
 };
-
-type SubagentFrameDetail = { sessionId?: string; payload?: unknown };
 
 const PROGRESS_STATUS: Record<NonNullable<SubagentProgress['status']>, SubagentInfo['status']> = {
   pending: 'started', running: 'started', completed: 'completed', failed: 'failed', aborted: 'aborted',
@@ -67,24 +66,19 @@ export function SubagentList({ sessionId, isActiveSession }: SubagentListProps) 
     let cancelled = false;
     const sid = String(sessionId);
     const requestedAt = Date.now();
-    const detailOf = (event: Event): SubagentFrameDetail | null => {
-      const detail = (event as CustomEvent<SubagentFrameDetail>).detail;
-      return detail && detail.sessionId === sid ? detail : null;
-    };
+    const forThisSession = (frame: SubagentFrame) =>
+      frame.sessionId === sid ? frame.payload : null;
 
-    const onLifecycle = (event: Event) => {
-      const entry = parseSubagentLifecycle(detailOf(event)?.payload);
+    const unsubLifecycle = subscribeSubagentFrame('subagent_lifecycle', (frame) => {
+      const entry = parseSubagentLifecycle(forThisSession(frame));
       if (entry) {
         setSubagents((prev) => mergeSubagentRoster(prev, [entry]));
       }
-    };
-    const onProgress = (event: Event) => {
-      const progress = readSubagentProgressFrame(detailOf(event)?.payload);
+    });
+    const unsubProgress = subscribeSubagentFrame('subagent_progress', (frame) => {
+      const progress = readSubagentProgressFrame(forThisSession(frame));
       if (progress) setSubagents((prev) => applyProgress(prev, progress));
-    };
-
-    window.addEventListener('subagent_lifecycle', onLifecycle);
-    window.addEventListener('subagent_progress', onProgress);
+    });
 
     // Snapshot the LIVE registry. This POST is the spawn path, so the server
     // refuses it (409) for a session it does not manage — an observer read must
@@ -105,8 +99,8 @@ export function SubagentList({ sessionId, isActiveSession }: SubagentListProps) 
 
     return () => {
       cancelled = true;
-      window.removeEventListener('subagent_lifecycle', onLifecycle);
-      window.removeEventListener('subagent_progress', onProgress);
+      unsubLifecycle();
+      unsubProgress();
     };
   }, [isActiveSession, sessionId]);
 

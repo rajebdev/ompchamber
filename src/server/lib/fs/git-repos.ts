@@ -26,6 +26,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { emitRealtimeSignal } from '@/server/lib/realtime/signals.server';
 
 const MAX_GIT_DEPTH = 8;
 
@@ -81,7 +82,11 @@ export function startRepoScan(rootDir: string): void {
   repoDiscovery.set(rootDir, d);
   void getRepos(rootDir)
     .then(repos => { d.repos = repos; d.done = true; })
-    .catch(() => { d.repos = ['.']; d.done = true; });
+    .catch(() => { d.repos = ['.']; d.done = true; })
+    // The walk is STARTED by a read, so this completion is the only moment the
+    // list becomes final — the `repos:` topic is re-snapshotted from it, and a
+    // client watching the root never has to poll for the answer.
+    .finally(() => emitRealtimeSignal('repos-scanned', undefined, rootDir));
 }
 
 /**

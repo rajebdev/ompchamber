@@ -2,6 +2,8 @@ import { Elysia } from 'elysia';
 import pkg from '@/../package.json';
 import shell from '@/../index.html';
 import { apiRoutes } from '@/server/routes';
+import { initRealtimeTopics } from '@/server/lib/realtime/topics.server';
+import { startSessionsWatch } from '@/server/lib/omp/session/sessions-watch.server';
 import { authGate, initAuth } from '@/server/lib/auth/guard';
 import { resolveRunPassword } from '@/server/lib/auth/env-password';
 import { ssrRoutes } from '@/server/plugins/ssr';
@@ -119,6 +121,17 @@ try {
 } catch (error) {
   console.error('[panels] marketplace seed skipped:', error);
 }
+
+// The realtime hub's topics and its change-signal subscriptions are registered
+// before the listener opens, so a client connecting in the first second gets a
+// snapshot rather than an `unknown_topic`. Idempotent: a hot reload re-runs it.
+initRealtimeTopics();
+
+// A session FILE appearing is what makes a session visible in the sidebar, and
+// omp writes it only when the first assistant message settles — a moment no
+// chamber write reports. Watching the sessions root is what replaces the 30s
+// idle poll that used to cover it.
+startSessionsWatch();
 
 try {
   await claimPort({

@@ -22,6 +22,7 @@ import { json, NO_STORE_HEADERS } from '@/server/lib/remix-compat';
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@/server/lib/remix-compat';
 import { methodNotAllowed } from '@/server/lib/route-adapter';
 import { runScheduledTask } from '@/server/lib/schedule/runtime.server';
+import { emitRealtimeSignal } from '@/server/lib/realtime/signals.server';
 import {
   createScheduledTask,
   deleteScheduledTask,
@@ -63,6 +64,7 @@ async function createTask({ request }: ActionFunctionArgs) {
       sessionId: body.sessionId,
       model: body.model ?? (await resolveDefaultTaskModel()),
     });
+    emitRealtimeSignal('schedule-changed');
     return json({ task, tasks: await listScheduledTasks() });
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 });
@@ -102,6 +104,7 @@ async function patchTask({ request }: ActionFunctionArgs) {
 
   try {
     const task = await updateScheduledTask(id, patch);
+    if (task) emitRealtimeSignal('schedule-changed');
     if (!task) return json({ error: 'Task not found' }, { status: 404 });
     return json({ task, tasks: await listScheduledTasks() });
   } catch (error) {
@@ -114,6 +117,7 @@ async function removeTask({ request }: ActionFunctionArgs) {
   const id = optionalText(new URL(request.url).searchParams.get('id'));
   if (!id) return json({ error: 'id is required' }, { status: 400 });
   const removed = await deleteScheduledTask(id);
+  if (removed) emitRealtimeSignal('schedule-changed');
   if (!removed) return json({ error: 'Task not found' }, { status: 404 });
   return json({ tasks: await listScheduledTasks() });
 }

@@ -6,7 +6,9 @@ import { formatDateTime } from '@/client/components/settings/categories/usage-se
 import { ProviderSelect } from '@/client/components/workspace/usage-panel/ProviderSelect';
 import { useUsageReport } from '@/client/hooks/settings/useUsageReport';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
-import { usePanelRefresh } from '@/client/hooks/workspace/panel-refresh';
+import { useRealtimeTopic } from '@/client/hooks/ui/realtime';
+import { TOPIC_USAGE } from '@/shared/lib/realtime/protocol';
+import type { UsageReport } from '@/shared/types';
 
 interface UsagePanelProps {
   className?: string;
@@ -17,21 +19,22 @@ interface UsagePanelProps {
 
 /** Right-panel Usage: the selected provider's quota and balance via a dropdown. */
 export function UsagePanel({ className = '', active = true }: UsagePanelProps) {
-  const { report, isLoading, error, reload } = useUsageReport();
+  const { report: fetched, isLoading, error, reload } = useUsageReport();
   const [selectedProviderId, setSelectedProviderId] = useSessionState<UsageProviderId>(
     'usage.selectedProviderId',
     '',
   );
 
+  // The server pushes a fresh report when a provider or key changes, so the
+  // panel needs no poll. The HTTP read stays as the fallback for the first paint
+  // (and for MOCK mode, where the topic has no resolver).
+  const usage = useRealtimeTopic<UsageReport>(TOPIC_USAGE, { enabled: active });
+  const report = usage.data ?? fetched;
+
   // Derived before every early return: a hook must not sit behind a conditional
   // return, or the hook count changes between the loading and loaded renders.
   const providers = report ? buildProviders(report) : [];
   const selected = providers.find((provider) => provider.id === selectedProviderId) ?? providers[0];
-
-  // Auto refresh: keep quota current without a manual reload. Silent — the
-  // spinner stays reserved for the user's own refresh button. Polls only while
-  // the panel is actually visible.
-  usePanelRefresh(() => reload({ silent: true }), active);
 
   // A provider can disappear from the report (its key was removed) or a new one
   // can take the first slot; keep the persisted selection valid.

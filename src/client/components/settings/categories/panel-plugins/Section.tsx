@@ -1,7 +1,7 @@
 import { AlertTriangle, RefreshCw, Trash2 } from 'lucide-preact';
 import type { PanelPluginError } from '@/shared/types';
 import {
-  PANELS_CHANGED_EVENT,
+  refreshPanelRegistry,
   usePanelPluginActions,
   usePanelRegistry,
   usePanelSlots,
@@ -83,7 +83,7 @@ export function PanelPluginsSection() {
   const { slots, failures } = usePanelSlots();
   const actions = usePanelPluginActions();
 
-  const refresh = () => window.dispatchEvent(new CustomEvent(PANELS_CHANGED_EVENT, { detail: { force: true } }));
+  const refresh = () => void refreshPanelRegistry();
 
   const available = catalog.filter((entry) => !entry.installed);
   const failureMap = new Map(failures.map((failure) => [failure.pluginId, failure.reason]));

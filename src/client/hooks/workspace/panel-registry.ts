@@ -4,7 +4,7 @@
  */
 
 /**
- * The installed panel plugins, fetched once per layout and shared.
+ * The installed panel plugins, read from the realtime `panels` topic.
  *
  * The registry is a server read, so it is cached in a module-level promise the
  * way the repo list is: every consumer (the activity bar, the panel stack, the
@@ -12,9 +12,12 @@
  * three requests behind one page load and let them disagree while one is in
  * flight.
  *
- * The cache is invalidated by the `omp:panels-changed` event, which the panel
- * settings surface dispatches after a plugin file is written. A reload of the
- * page naturally refetches.
+ * The topic is what makes the list move: the server republishes `panels` after
+ * every install, remove, enable/disable and plugin-file write, so a change made
+ * in ANOTHER tab reaches this one too — a window event only ever reached the
+ * tab that dispatched it. The one local signal left is the pane's own Refresh,
+ * which must bypass the server's scan cache and is therefore a module-level
+ * notify rather than a topic frame.
  *
  * The registry says which BUNDLES to load, not what they contain: a plugin's
  * panels exist only once its bundle has run, so `usePanelSlots` below is the
@@ -30,14 +33,13 @@ import type {
   PanelRegistryPayload,
 } from '@/shared/types';
 import { loadPluginBundles } from '@/client/lib/plugins/loader';
+import { useRealtimeTopic } from '@/client/hooks/ui/realtime';
+import { TOPIC_PANELS } from '@/shared/lib/realtime/protocol';
 import {
   pluginSlotState,
   subscribePluginSlots,
   type PluginSlots,
 } from '@/client/lib/plugins/slots';
-
-/** Dispatched after a panel plugin is installed, removed or edited. */
-export const PANELS_CHANGED_EVENT = 'omp:panels-changed';
 
 interface PanelRegistryState {
   /** Installed, enabled plugins — the bundles to import. */
@@ -60,86 +62,85 @@ interface PanelRegistryState {
 
 const EMPTY: PanelRegistryPayload = { panels: [], marketplaces: [], errors: [], plugins: [], catalog: [], disabledPanels: [] };
 
-let cached: Promise<PanelRegistryPayload> | null = null;
-
-function fetchRegistry(force: boolean): Promise<PanelRegistryPayload> {
-  // A forced read bypasses the shared promise as well as the server's cache: the
-  // point of the button is to see the disk NOW, and reusing an in-flight read
-  // that started before the plugin was written would answer with the old list.
-  if (force) {
-    cached = null;
-  }
-  cached ??= fetch(force ? '/api/panels?refresh=1' : '/api/panels', { credentials: 'same-origin' })
-    .then((response) => (response.ok ? response.json() : EMPTY))
-    .catch(() => EMPTY)
-    .then((payload: PanelRegistryPayload) => payload);
-  return cached;
+/**
+ * The shared registry state, module-level so a payload is adopted once (its
+ * bundles are imported exactly once, keyed by URL) and a mutation's own
+ * response can seed every consumer before the topic republish lands.
+ */
+interface RegistryStore {
+  payload: PanelRegistryPayload;
+  ready: boolean;
 }
 
-/** Drop the shared cache so the next read reflects the disk. */
-export function invalidatePanelRegistry(): void {
-  cached = null;
+function store(): RegistryStore {
+  return (globalThis.__ompChamberPanelRegistry ??= { payload: EMPTY, ready: false });
+}
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __ompChamberPanelRegistry: RegistryStore | undefined;
+}
+
+/** Adopt a payload and load the bundles it names. */
+export function adoptPanelRegistry(payload: PanelRegistryPayload): void {
+  const host = store();
+  host.payload = payload;
+  host.ready = true;
+  // The bundles are imported right after the list that names them: a panel only
+  // exists once its module has run, so the layout has nothing to draw until
+  // this settles. A failure is recorded per plugin and surfaced in the pane.
+  void loadPluginBundles(
+    (payload.panels ?? []).map((panel) => ({ pluginId: panel.pluginId, url: panel.appUrl })),
+  );
 }
 
 /**
- * Seed the shared cache with a payload a mutation already returned.
+ * Seed the shared state with a payload a mutation already returned.
  *
- * Without this the event handler would force a second read, and the two answers
- * could differ — the mutation's response is the server's state at the moment the
- * write committed, which is strictly better than a re-read that races it.
+ * The mutation's response is the server's state at the moment the write
+ * committed, which is strictly better than waiting for the topic's own
+ * republish — and both carry the same shape, so the two cannot disagree.
  */
 export function seedPanelRegistry(payload: PanelRegistryPayload): void {
-  cached = Promise.resolve(payload);
+  adoptPanelRegistry(payload);
+}
+
+/**
+ * Re-read the marketplace from disk, bypassing the server's scan cache.
+ *
+ * A topic refresh cannot express this: the scan is TTL'd, so a plugin copied in
+ * moments ago would still be missing. Only the pane's own Refresh sends it.
+ */
+export async function refreshPanelRegistry(): Promise<void> {
+  try {
+    const response = await fetch('/api/panels?refresh=1', { credentials: 'same-origin' });
+    if (response.ok) adoptPanelRegistry((await response.json()) as PanelRegistryPayload);
+  } catch {
+    // A failed refresh leaves the last good list on screen; the next topic
+    // publish repairs it.
+  }
 }
 
 export function usePanelRegistry(): PanelRegistryState {
-  const [state, setState] = useState<PanelRegistryState>({ ...EMPTY, ready: false });
-
-  const read = useCallback((force = false) => {
-    let cancelled = false;
-    fetchRegistry(force).then((payload) => {
-      if (cancelled) return;
-      setState({
-        panels: payload.panels ?? [],
-        marketplaces: payload.marketplaces ?? [],
-        errors: payload.errors ?? [],
-        plugins: payload.plugins ?? [],
-        catalog: payload.catalog ?? [],
-        disabledPanels: payload.disabledPanels ?? [],
-        ready: true,
-      });
-      // The bundles are imported right after the list that names them: a panel
-      // only exists once its module has run, so the layout has nothing to draw
-      // until this settles. A failure is recorded per plugin and surfaced in
-      // the pane, never swallowed.
-      void loadPluginBundles(
-        (payload.panels ?? []).map((panel) => ({ pluginId: panel.pluginId, url: panel.appUrl })),
-      );
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // The initial read reuses the cache: several consumers mount together and the
-  // list is the same for all of them.
-  useEffect(() => read(false), [read]);
-
-  // Two kinds of "changed", and they need different reads. A MUTATION already
-  // has the server's post-write payload seeded into the cache, so it re-reads
-  // without forcing — forcing would throw that answer away and race a fresh
-  // fetch. A manual Refresh has no payload, so its event carries `force` and
-  // the read goes back to the disk.
+  // The topic is the read path: a snapshot on subscribe, then a push whenever
+  // the server writes a plugin. Every consumer subscribes, so each re-renders
+  // on its own; adopting into the module store is what loads new bundles once.
+  const topic = useRealtimeTopic<PanelRegistryPayload>(TOPIC_PANELS);
   useEffect(() => {
-    const onChange = (event: Event) => {
-      const detail = (event as CustomEvent<{ force?: boolean }>).detail;
-      read(detail?.force === true);
-    };
-    window.addEventListener(PANELS_CHANGED_EVENT, onChange);
-    return () => window.removeEventListener(PANELS_CHANGED_EVENT, onChange);
-  }, [read]);
+    if (topic.data) adoptPanelRegistry(topic.data);
+  }, [topic.data]);
 
-  return state;
+  const host = store();
+  const payload = topic.data ?? host.payload;
+  return {
+    panels: payload.panels ?? [],
+    marketplaces: payload.marketplaces ?? [],
+    errors: payload.errors ?? [],
+    plugins: payload.plugins ?? [],
+    catalog: payload.catalog ?? [],
+    disabledPanels: payload.disabledPanels ?? [],
+    ready: host.ready || topic.data !== null,
+  };
 }
 
 export interface PanelSlotSnapshot {
@@ -230,9 +231,6 @@ async function mutatePanelPlugin(body: Record<string, unknown>): Promise<PanelMu
     if (!parsed) return { ok: false, error: `Request failed (${response.status})` };
     const { error, ...payload } = parsed;
     if (!response.ok) return { ok: false, error: error ?? `Request failed (${response.status})` };
-    // The write invalidated the server's scan cache, so the shared client cache
-    // is stale by definition.
-    invalidatePanelRegistry();
     return { ok: true, ...(error ? { warning: error } : {}), payload };
   } catch (cause) {
     return { ok: false, error: cause instanceof Error ? cause.message : String(cause) };
@@ -256,10 +254,10 @@ export function usePanelPluginActions(): PanelPluginActions {
     // the pane re-reads — but the reason surfaces, because the leftover catalog
     // entry it names shows up as a rejection row right below.
     if (result.warning) setError(result.warning);
-    // Every consumer of the list re-reads from the response, not from a second
-    // fetch — the event carries no payload, so the store is seeded first.
+    // Every consumer re-reads from the response, not from a second fetch — the
+    // server's own republish of the `panels` topic follows, and both carry the
+    // same payload.
     if (result.payload) seedPanelRegistry(result.payload);
-    window.dispatchEvent(new CustomEvent(PANELS_CHANGED_EVENT));
     return true;
   }, []);
 

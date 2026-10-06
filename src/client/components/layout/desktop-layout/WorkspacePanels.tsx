@@ -192,7 +192,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
               onSelectFile={onSetActiveFileId}
               onCloseFile={onCloseFile}
               onConvertDiffToEditor={onConvertDiffToEditor}
-              refreshKey={refreshKey}
+             
               onFileSaved={onRefreshWorkspace}
             />
           </PanelSuspense>
@@ -244,7 +244,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
         </Panel>
       </Group>
 
-      <RightActivityBar activePanel={activeRightPanel} onChangePanel={onChangeRightPanel} isPanelOpen={showRightPanel} hasActiveContext={hasActiveContext} activeProjectPath={activeProjectPath} refreshKey={refreshKey} />
+      <RightActivityBar activePanel={activeRightPanel} onChangePanel={onChangeRightPanel} isPanelOpen={showRightPanel} hasActiveContext={hasActiveContext} activeProjectPath={activeProjectPath} />
     </div>
   );
 }

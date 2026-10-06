@@ -16,13 +16,11 @@
  * a workspace write refreshes the git panel on every LSP call.
  */
 
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import type { ChatMessageData } from '@/shared/types';
 import type { OmpAgentFoldDeps } from '@/shared/lib/chat/omp/fold-deps';
 import { setActivity, toolHost } from '@/shared/lib/chat/omp/fold-deps';
 import { materializeTerminalMessages } from '@/shared/lib/chat/omp/terminal-messages';
-import { AGENT_STREAM_STATUS_EVENT, publishAgentStreamStatus, readAgentStreamStatus, resetAgentStreamStatus } from '@/shared/lib/chat/omp/status';
-import { FILE_MUTATION_EVENT, isFileMutatingTool } from '@/shared/lib/chat/omp/file-mutations';
 import {
   pairToolOutputs,
   putToolResult,
@@ -244,64 +242,5 @@ describe('materializeTerminalMessages', () => {
 
     expect(ends[0].toolCalls?.[0]).toMatchObject({ id: 'c1', output: 'log tail', status: 'success' });
     expect(deps.lastToolMessageRef.current).toBe(ends[0]);
-  });
-});
-
-describe('stream status event', () => {
-  // The store is module state shared by the whole `bun test` process, so each
-  // case starts from "nothing published yet".
-  beforeEach(resetAgentStreamStatus);
-
-  test('seeds the latest status from the transport default, disconnected', () => {
-    expect(readAgentStreamStatus()).toEqual({ transport: 'websocket', connected: false });
-  });
-
-  test('publishes a transition once, skipping repeats, and updates the seed', () => {
-    const events: unknown[] = [];
-    (globalThis as Record<string, unknown>).window = {
-      dispatchEvent: (event: unknown) => {
-        events.push(event);
-        return true;
-      },
-    };
-    try {
-      publishAgentStreamStatus({ transport: 'sse', connected: true });
-      publishAgentStreamStatus({ transport: 'sse', connected: true });
-      publishAgentStreamStatus({ transport: 'sse', connected: false });
-
-      expect(events.length).toBe(2);
-      expect((events[0] as CustomEvent).type).toBe(AGENT_STREAM_STATUS_EVENT);
-      expect((events[0] as CustomEvent).detail).toEqual({ transport: 'sse', connected: true });
-      expect((events[1] as CustomEvent).detail).toEqual({ transport: 'sse', connected: false });
-      expect(readAgentStreamStatus()).toEqual({ transport: 'sse', connected: false });
-    } finally {
-      delete (globalThis as Record<string, unknown>).window;
-    }
-  });
-});
-
-describe('file-mutation signal', () => {
-  test('recognises the mutating builtins and their legacy aliases', () => {
-    for (const toolName of ['edit', 'write', 'ast_edit', 'bash', 'edit_file', 'write_to_file', 'terminal', 'run_command']) {
-      expect(isFileMutatingTool({ toolName })).toBe(true);
-    }
-  });
-
-  test('a read-only tool or a missing name never counts', () => {
-    for (const toolName of ['read', 'grep', 'web_search', undefined, 42]) {
-      expect(isFileMutatingTool({ toolName })).toBe(false);
-    }
-  });
-
-  test('a write to an xd:// device is not a workspace mutation', () => {
-    expect(isFileMutatingTool({ toolName: 'write', args: { path: 'xd://lsp' } })).toBe(false);
-    expect(isFileMutatingTool({ toolName: 'write', args: { target: 'xd://ast_edit/proposal' } })).toBe(false);
-    expect(isFileMutatingTool({ toolName: 'write', args: { path: 'src/a.ts' } })).toBe(true);
-    // Only `write` is special-cased; an edit naming an xd:// target still counts.
-    expect(isFileMutatingTool({ toolName: 'edit', args: { path: 'xd://lsp' } })).toBe(true);
-  });
-
-  test('the event name the fold dispatches is stable', () => {
-    expect(FILE_MUTATION_EVENT).toBe('omp:files-mutated');
   });
 });

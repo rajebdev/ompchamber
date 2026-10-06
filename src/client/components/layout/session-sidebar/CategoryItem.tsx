@@ -67,14 +67,6 @@ export function Category({
   } = useWorkspaceFolderActions(folder, refresh, onToast);
   const sessionDelete = useSessionDelete();
 
-  // Desktop's expand toggle keeps its own fetcher: unlike pin/delete it
-  // dispatches on the *response* (not immediately) and carries no folderId.
-  useEffect(() => {
-    if (toggleFetcher.data?.success) {
-      window.dispatchEvent(new CustomEvent('omp:workspace-updated'));
-    }
-  }, [toggleFetcher.data]);
-
   useOnClickOutside(menuRef, () => {
     setShowMenu(false);
     cancelDelete();

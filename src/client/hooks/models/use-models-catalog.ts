@@ -4,7 +4,7 @@ import { fetchModelsData, subscribeModelsUpdated } from '@/shared/lib/models/cli
 
 /**
  * Live projection of the shared `/api/models` catalog: fetches once, then
- * re-projects on every `omp:models-updated` broadcast, so a picker's display
+ * re-projects on every `models` topic change, so a picker's display
  * names stay in step with the composer without each consumer re-implementing
  * the fetch/subscribe/`active` dance.
  *

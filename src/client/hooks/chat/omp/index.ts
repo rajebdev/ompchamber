@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import type { AgentImage, ChatMessageData, OmpAgentCallbacks, OmpAgentHandle, OmpAgentState, StreamTransport } from '@/shared/types';
+import type { AgentImage, ChatMessageData, OmpAgentCallbacks, OmpAgentHandle, OmpAgentState } from '@/shared/types';
 import type { ExtensionUiDialogRequest } from '@/shared/types/omp/agent';
 import { type ToolResultRecord, useOmpAgentStream } from '@/client/hooks/chat/omp/stream';
 import { useOmpPromptSender } from '@/client/hooks/chat/omp/prompt-send';
@@ -9,14 +9,14 @@ import { stopAgentSession } from '@/shared/lib/chat/omp/abort';
  * Live omp agent bridge for the chamber chat (real mode, MOCK=false). Mirrors
  * the omp-web useAgentSession streaming surface: send a prompt over the RPC
  * bridge (POST /api/agent/:sessionId), consume agent events over the configured
- * transport, and fold them into ChatMessageData — one "current assistant
+ * the realtime channel, and fold them into ChatMessageData — one "current assistant
  * message" replaced per message_update, finalized on message_end / agent_end.
  */
 
 export type { ExtensionUiDialogMethod, ExtensionUiDialogRequest, IncomingExtensionUiRequest } from '@/shared/types/omp/agent';
 export type { OmpAgentCallbacks, OmpAgentEvent, OmpAgentState } from '@/shared/types/omp/agent';
 
-export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbacks, transport: StreamTransport): OmpAgentHandle {
+export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbacks): OmpAgentHandle {
   const [state, setState] = useState<OmpAgentState>({ isGenerating: false, connected: false, error: null });
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
@@ -37,10 +37,6 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
   // Phrase for an open provider-retry saga; while set it outranks the activity
   // the doomed attempt names (see `fold-deps.ts`).
   const providerRetryVerbRef = useRef<string | null>(null);
-  // toolCallIds of in-flight file-mutating tool calls; cleared per run in the
-  // fold so a completed edit/write/bash signals the right panels once.
-  const fileMutatingCallsRef = useRef<Set<string>>(new Set());
-
   const { connect, disconnect } = useOmpAgentStream({
     setState,
     callbacksRef,
@@ -50,8 +46,6 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     activityRef,
     currentThinkingLevelRef,
     providerRetryVerbRef,
-    fileMutatingCallsRef,
-    transport,
   });
 
   useEffect(() => {
@@ -60,7 +54,6 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     // results. On first mount the refs are already empty, so this cannot disturb
     // a resumed session's reattach below.
     toolResultsRef.current.clear();
-    fileMutatingCallsRef.current.clear();
     lastToolMessageRef.current = null;
     activityRef.current = '';
     // Do NOT auto-connect here: the stream endpoint refuses (409) until the

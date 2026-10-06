@@ -10,7 +10,7 @@ import {
 const bootstrap = {
   omp_sidebar_sort: 'A-Z',
   desktopLayoutSizes: { sidebar: 268 },
-  omp_chamber_settings: { theme: 'paper', streamTransport: 'websocket' },
+  omp_chamber_settings: { theme: 'paper', editorFont: 'Menlo' },
 };
 
 beforeEach(() => {
@@ -20,7 +20,7 @@ beforeEach(() => {
 test('reads expose top-level keys and blob keys flat', () => {
   expect(readChamberSetting<string>('omp_sidebar_sort')).toBe('A-Z');
   expect(readChamberSetting<string>('theme')).toBe('paper');
-  expect(readChamberSetting<string>('streamTransport')).toBe('websocket');
+  expect(readChamberSetting<string>('editorFont')).toBe('Menlo');
   expect(readChamberSetting('absent')).toBeUndefined();
 });
 
@@ -50,7 +50,7 @@ test('writeSetting updates the snapshot so the next read sees it', () => {
 test('writeChamberSettings updates flat keys and keeps sibling blob keys', () => {
   writeChamberSettings({ theme: 'noir' });
   expect(readChamberSetting<string>('theme')).toBe('noir');
-  expect(readChamberSetting<string>('streamTransport')).toBe('websocket');
+  expect(readChamberSetting<string>('editorFont')).toBe('Menlo');
   expect(readChamberSetting('omp_chamber_settings')).toBeUndefined();
 });
 

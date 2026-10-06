@@ -9,7 +9,8 @@ import { useScrollbarFade, scrollbarFadeClass } from '@/client/hooks/ui/scrollba
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
 import { useRepoList, useRepoScope } from '@/client/hooks/workspace/repo-scope';
-import { usePanelRefresh, useFileMutationRefresh } from '@/client/hooks/workspace/panel-refresh';
+import { useRealtimeTopic } from '@/client/hooks/ui/realtime';
+import { fsTopic } from '@/shared/lib/realtime/protocol';
 
 /**
  * The listing on screen, tagged with the `root\0repo` scope it was read for.
@@ -49,7 +50,7 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
   const { activeRepo, setActiveRepo } = useRepoScope(rootPath);
   const { repos, scanning: reposScanning, rescan: rescanRepos } = useRepoList(rootPath, enabled);
   const { isScrolling, handleScroll } = useScrollbarFade();
-  const { fileMap: gitFileMap, folderMap: gitFolderMap, refreshGitStatus } = useGitStatus(rootPath, activeRepo, refreshKey, enabled);
+  const { fileMap: gitFileMap, folderMap: gitFolderMap, refreshGitStatus } = useGitStatus(rootPath, activeRepo, enabled);
 
   // The scope every request and every cached child path below belongs to. A
   // change to it means the previous workspace's or repo's entries are not this
@@ -115,22 +116,23 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
     loadFiles();
   }, [refreshKey, rootPath, enabled, activeRepo, expandedPathsReady]);
 
-  // The listing and its git decorations describe the same working tree, so one
-  // refresh drives both. Re-reading only the tree left every folder dot stale:
-  // `useGitStatus` has no poll of its own in this panel, so a new/changed file
-  // appeared under a folder that still claimed a clean status until the user
-  // hit refresh or refocused the window.
-  const refreshListing = () => {
-    loadFiles({ silent: true });
-    refreshGitStatus();
-  };
-  // Auto refresh: re-read on a cadence so external changes (terminal output,
-  // agent edits) surface without a manual refresh. Silent — the loading
-  // spinner stays reserved for the user's own refresh button.
-  usePanelRefresh(refreshListing, enabled && expandedPathsReady);
-  // AI edits land between poll ticks: re-read right after a file-mutating tool
-  // (edit / write / ast_edit / bash) finishes, not up to 2s later.
-  useFileMutationRefresh(refreshListing, enabled && expandedPathsReady);
+  // The ROOT listing rides the `fs:<root>\0<repo>` topic: the server pushes a
+  // fresh read when a run's work may have touched the tree, so neither the poll
+  // nor the event-driven re-read is needed. Expanded CHILDREN stay on their own
+  // request — a topic snapshot is one directory, and the panel's expanded set
+  // is per user.
+  const fsTopicName = enabled && expandedPathsReady ? fsTopic(`${rootPath ?? ''}\u0000${activeRepo}`) : null;
+  const rootListing = useRealtimeTopic<{ files: FsNode[]; root: string }>(fsTopicName);
+  useEffect(() => {
+    if (!rootListing.data) return;
+    const requested = scopeRef.current;
+    if (listedScopeRef.current !== requested) childrenCacheRef.current = {};
+    commitListing({
+      scope: requested,
+      files: rehydrateTree(rootListing.data.files ?? [], childrenCacheRef.current),
+      root: rootListing.data.root ?? '',
+    });
+  }, [rootListing.data]);
 
   const loadChildren = (path: string) => {
     // Expanding IS a directory load: fetch the children AND re-read git status,

@@ -5,7 +5,6 @@ import { useGitStatus } from '@/client/hooks/workspace/git-status';
 import { useResolvedRepo } from '@/client/hooks/workspace/repo-scope';
 import { usePanelCatalog, type ResolvedPanel } from '@/client/components/workspace/plugin-panel/resolve';
 import { usePanelPluginActions, usePanelRegistry } from '@/client/hooks/workspace/panel-registry';
-import { GIT_STATUS_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
 import { pluginPanelKey } from '@/shared/lib/workspace/panel-ids';
 import { BUILTIN_PANELS } from '@/client/components/workspace/panels/builtin';
 import { PluginMark } from '@/client/components/settings/categories/panel-plugins/PluginMark';
@@ -18,7 +17,6 @@ interface RightActivityBarProps {
   isPanelOpen: boolean;
   hasActiveContext: boolean;
   activeProjectPath?: string | null;
-  refreshKey: number;
 }
 
 /**
@@ -41,13 +39,13 @@ interface RightActivityBarProps {
  * A plugin contributes AT MOST ONE right panel, so one plugin can never produce
  * two buttons here.
  */
-export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen, hasActiveContext, activeProjectPath, refreshKey }: RightActivityBarProps) {
+export function RightActivityBar({ activePanel, onChangePanel, isPanelOpen, hasActiveContext, activeProjectPath }: RightActivityBarProps) {
   // The dot is the Source Control view's, so it follows the repo that view is
   // on. Reading it through the shared pick (not through a private copy) is what
   // makes this update the moment the panel's picker moves; polling the workspace
   // root instead showed the wrong repository's changes.
   const activeRepo = useResolvedRepo(activeProjectPath ?? undefined, hasActiveContext);
-  const { changes } = useGitStatus(activeProjectPath ?? undefined, activeRepo, refreshKey, hasActiveContext, GIT_STATUS_POLL_MS);
+  const { changes } = useGitStatus(activeProjectPath ?? undefined, activeRepo, hasActiveContext);
   const hasGitChanges = changes.length > 0;
 
   const catalog = usePanelCatalog();

@@ -15,6 +15,7 @@ import { RpcProcess } from '@/server/lib/omp/rpc/process';
 import { buildSessionSpawnArgs } from '@/server/lib/omp/rpc/constants';
 import { AgentSessionWrapper } from '@/server/lib/omp/rpc/manager';
 import { syncDiscoveryRootsWatch } from '@/server/lib/omp/config/roots-watch.server';
+import { emitRealtimeSignal } from '@/server/lib/realtime/signals.server';
 import { recordSpawnProvenance } from '@/server/lib/omp/rpc/spawn-provenance';
 import { resolveSessionOwnership, SessionOwnedElsewhereError } from '@/server/lib/omp/session/ownership.server';
 import { DEFAULT_APPROVAL_MODE, type ApprovalMode } from '@/shared/lib/omp/config/access-mode';
@@ -165,6 +166,11 @@ export async function startRpcSession(
     // watch existed (measured: the write was missed on a fast follow-up and
     // picked up once the attach had settled).
     await syncDiscoveryRootsWatch();
+    // A `session:<id>` topic subscribed before this spawn had no child to bind
+    // to, so it published nothing and its subscribers hold a `running:false`
+    // snapshot. The child exists now: tell the realtime layer to re-snapshot
+    // that topic for whoever is watching.
+    emitRealtimeSignal('session-attached', realSessionId);
     return { session: created, realSessionId };
   })().finally(() => locks.delete(sessionId));
 
@@ -329,5 +335,8 @@ export async function startNewRpcSession(
   // for the same reason as in `startRpcSession`: the attach is asynchronous,
   // and the caller's first write must not land before the watch exists.
   await syncDiscoveryRootsWatch();
+  // Same as `startRpcSession`: a topic subscribed against the pre-spawn id (or
+  // a placeholder) needs a fresh snapshot now that a child is reachable.
+  emitRealtimeSignal('session-attached', realSessionId);
   return { session: wrapper, realSessionId };
 }

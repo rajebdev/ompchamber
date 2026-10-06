@@ -20,53 +20,23 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   BROWSER_POLL_MS,
-  FILE_MUTATION_THROTTLE_MS,
-  GIT_STATUS_EVENT_THROTTLE_MS,
-  GIT_STATUS_POLL_MS,
-  PANEL_REFRESH_MS,
-  PLAN_REFRESH_EVENT_THROTTLE_MS,
-  REPO_DISCOVERY_POLL_MS,
-  SCHEDULE_BADGE_POLL_MS,
-  SCHEDULE_POLL_MS,
-  SCHEDULE_UPDATED_EVENT,
   SESSION_META_RETRY_SCHEDULE_MS,
   SIDEBAR_DATA_TTL_MS,
-  SIDEBAR_IDLE_REFRESH_MS,
-  SIDEBAR_REVALIDATE_THROTTLE_MS,
-  SIDEBAR_STREAM_POLL_MS,
   STREAM_HEARTBEAT_MS,
-  TODO_REFRESH_EVENT_THROTTLE_MS,
 } from '@/shared/lib/workspace/refresh-cadence';
 import { relativeTimeAgo } from '@/shared/lib/workspace/relative-time';
 
 describe('refresh cadences', () => {
   test('the documented millisecond values', () => {
-    expect(SIDEBAR_IDLE_REFRESH_MS).toBe(30_000);
-    expect(SIDEBAR_STREAM_POLL_MS).toBe(8_000);
-    expect(SIDEBAR_REVALIDATE_THROTTLE_MS).toBe(1_000);
-    expect(PANEL_REFRESH_MS).toBe(5_000);
-    expect(FILE_MUTATION_THROTTLE_MS).toBe(500);
-    expect(GIT_STATUS_POLL_MS).toBe(15_000);
-    expect(GIT_STATUS_EVENT_THROTTLE_MS).toBe(1_000);
-    expect(REPO_DISCOVERY_POLL_MS).toBe(1_500);
-    expect(TODO_REFRESH_EVENT_THROTTLE_MS).toBe(400);
-    expect(PLAN_REFRESH_EVENT_THROTTLE_MS).toBe(400);
-    expect(SCHEDULE_POLL_MS).toBe(10_000);
-    expect(SCHEDULE_BADGE_POLL_MS).toBe(30_000);
     expect(BROWSER_POLL_MS).toBe(1_000);
     expect(STREAM_HEARTBEAT_MS).toBe(30_000);
   });
 
-  test('the sidebar dataset TTL stays under the fastest sidebar poll', () => {
-    // Documented invariant: a poll must deterministically miss the cache and
-    // trigger exactly one scan, never race the boundary.
+  test('the sidebar dataset TTL stays short', () => {
+    // The sidebar rides the realtime socket, so nothing polls this cache; the
+    // TTL only dedupes concurrent resolves of one publish burst, and a
+    // structure publish invalidates it outright.
     expect(SIDEBAR_DATA_TTL_MS).toBe(4_000);
-    expect(SIDEBAR_DATA_TTL_MS).toBeLessThan(SIDEBAR_STREAM_POLL_MS);
-    expect(SIDEBAR_STREAM_POLL_MS).toBeLessThan(SIDEBAR_IDLE_REFRESH_MS);
-  });
-
-  test('the schedule-updated event name is the one listeners register', () => {
-    expect(SCHEDULE_UPDATED_EVENT).toBe('omp:schedule-updated');
   });
 
   test('the spawn retry schedule is front-loaded, non-decreasing and finite', () => {

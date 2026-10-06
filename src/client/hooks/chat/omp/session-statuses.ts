@@ -6,10 +6,8 @@
 /**
  * Sidebar session stream status — server-authoritative via SQLite.
  *
- * The status rides the loader's session items (`streamStatus` field); the
- * sidebar already revalidates on stream events (`omp:session-updated`
- * dispatch → revalidator), so spinner and check update with the list they
- * belong to. Opening a session acknowledges the one-shot terminal badge
+ * The status rides the realtime `sidebar:status` topic, so the spinner and
+ * check update with the list they belong to. Opening a session acknowledges the one-shot terminal badge
  * (`finish` / `abort` / `error`) via POST /api/sessions/:id/stream-seen so
  * the check shows exactly once, then disappears from the rendered list.
  */

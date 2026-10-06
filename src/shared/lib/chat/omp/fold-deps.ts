@@ -40,8 +40,6 @@ export interface OmpAgentFoldDeps extends ToolResultHost {
    *  appeared. Measured on a real quota wall: both samples of a live saga read
    *  "Thinking…", which is exactly the uninformative spinner this replaced. */
   providerRetryVerbRef: RefObject<string | null>;
-  /** toolCallIds of in-flight file-mutating calls, cleared on `agent_start`. */
-  fileMutatingCallsRef: RefObject<Set<string>>;
 }
 
 /** Publish a new indicator phrase, skipping repeats (thinking/text deltas

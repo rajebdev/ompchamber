@@ -13,24 +13,38 @@
  * refusal.
  */
 
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
 
 import { redirectToOwningInstance } from '@/client/hooks/chat/omp/owner-redirect';
+import { installDomGlobals, restoreDomGlobals } from '@/test-support/pristine-globals';
 
 let assigned: string[];
 
+/**
+ * The runner's own `window` descriptor, restored in `afterAll`.
+ *
+ * `defineProperty` defaults `writable: false`, so a stub left in place makes
+ * every LATER file's `globalThis.window = win.window` throw "Attempted to
+ * assign to readonly property" — the whole directory's DOM suites then fail
+ * with an error that names none of them. The descriptor is captured and put
+ * back rather than replaced by a plain assignment, because the original may
+ * itself be an accessor.
+ */
 beforeEach(() => {
   assigned = [];
   // happy-dom's location.assign is not writable; stand in a stub for the test.
-  Object.defineProperty(globalThis, 'window', {
-    configurable: true,
-    value: {
-      location: {
-        href: 'http://127.0.0.1:3001/?folderId=2',
-        assign: (url: string) => assigned.push(url),
-      },
+  // Installed through the shared helper so the runner's own globals are
+  // restored afterwards rather than left replaced for every later suite.
+  installDomGlobals({
+    location: {
+      href: 'http://127.0.0.1:3001/?folderId=2',
+      assign: (url: string) => assigned.push(url),
     },
   });
+});
+
+afterAll(() => {
+  restoreDomGlobals();
 });
 
 describe('redirectToOwningInstance', () => {

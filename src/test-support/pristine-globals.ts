@@ -18,3 +18,73 @@
  * `WebSocket` has no such handle.
  */
 export const pristineWebSocket = globalThis.WebSocket;
+
+/**
+ * The globals a hook test replaces, in one place.
+ *
+ * `WebSocket` and `EventSource` belong here even though a happy-dom window
+ * provides them: a suite that installs a socket STUB must have it restored, or
+ * the stub leaks into every later file and a suite that needs the real socket
+ * dials nothing — with a failure that names none of the files responsible.
+ */
+export const DOM_TEST_GLOBALS = [
+  'window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement',
+  'Event', 'CustomEvent', 'WebSocket', 'EventSource',
+] as const;
+
+/**
+ * The runner's own DOM globals, captured when this module is FIRST imported —
+ * before any suite has replaced them.
+ *
+ * A file's own `const native = globalThis.window` is only as good as WHEN that
+ * file was imported: in a directory run Bun imports every file before any test
+ * runs, so a file imported after another suite installed (or DELETED) a global
+ * captures the replacement. Restoring that captured value then leaves the
+ * runner's real global missing for every later file, which surfaces as
+ * "Attempted to assign to readonly property" or a socket dialing nowhere — in a
+ * suite that names none of the files responsible.
+ *
+ * Captured here, at module load of a support file that no suite replaces, so it
+ * is always the runner's own.
+ */
+export const pristineDomGlobals: Partial<Record<(typeof DOM_TEST_GLOBALS)[number], unknown>> = {};
+let captured = false;
+
+/**
+ * Replace the DOM globals with a happy-dom window's, for a suite that renders
+ * components. Pairs with `restoreDomGlobals`.
+ *
+ * The runner's own values are captured HERE, on the first install, rather than
+ * at module load. Bun runs a directory's files one at a time (load, run, next),
+ * so a module-load capture is only as good as which file happened to import
+ * this module first — a suite that installed a stub and ran earlier would have
+ * its stub captured as "pristine" and restored for everyone after.
+ */
+export function installDomGlobals(win: unknown): void {
+  const target = globalThis as unknown as Record<string, unknown>;
+  if (!captured) {
+    captured = true;
+    for (const key of DOM_TEST_GLOBALS) pristineDomGlobals[key] = target[key];
+  }
+  // `window` is always the given object — a caller may hand a bare stub with
+  // only the members its code reads, and requiring a full happy-dom window
+  // would force every such test to build one.
+  target.window = win;
+  const source = win as Record<string, unknown>;
+  for (const key of DOM_TEST_GLOBALS) {
+    if (key === 'window') continue;
+    const value = source[key];
+    if (value !== undefined) target[key] = value;
+  }
+}
+
+/** Put the runner's own DOM globals back. Never deletes: a deleted global is
+ *  what breaks the next suite, and an absent one is restored as absent. */
+export function restoreDomGlobals(): void {
+  const target = globalThis as unknown as Record<string, unknown>;
+  for (const key of DOM_TEST_GLOBALS) {
+    const value = pristineDomGlobals[key];
+    if (value === undefined) delete target[key];
+    else target[key] = value;
+  }
+}

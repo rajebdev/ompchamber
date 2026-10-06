@@ -5,8 +5,12 @@
 
 /**
  * The run-boundary half of the chat's omp callbacks: the three points at which
- * a run opens or is reattached, and the sidebar must be told so it re-reads the
- * session list (and, for a fresh spawn, paints its own spinner).
+ * a run opens or is reattached.
+ *
+ * The sidebar is no longer signalled from here — it reads the realtime
+ * `sidebar`/`sidebar:status` topics, and the optimistic mark rides the
+ * `stream-pending` client signal. What remains is the timeline's own state
+ * (the generating UI and the meta refresh).
  *
  * Split from `omp-callbacks.ts` to keep that file under the repo's per-file
  * size ceiling; the closures take the caller's deps record, so the captured
@@ -17,40 +21,25 @@ import type { OmpAgentCallbacksDeps } from '@/shared/lib/chat/timeline/omp-callb
 import { PHASE_VERBS } from '@/shared/lib/chat/timeline/tool-phrases';
 import { setStreamPending } from '@/client/hooks/chat/omp/stream-overlay';
 
-/** Ask the sidebars to re-read the session list. Leading-edge throttled
- *  upstream, so a per-turn call is cheap. */
-function signalSessionUpdated(sid: string): void {
-  if (typeof window === 'undefined') return;
-  window.dispatchEvent(new CustomEvent('omp:session-updated', { detail: { sessionId: sid } }));
-}
-
-/** A run STARTED: resume the generating UI, re-arm the once-per-run assistant
- *  signal, and tell the sidebar (which picks up the server's `stream` row). */
+/** A run STARTED: resume the generating UI and refresh the session metadata. */
 export function handleAgentStart(deps: OmpAgentCallbacksDeps): void {
-  const { setGenerating, setGeneratingVerb, scrollToBottom, firstAssistantRef, adoptedSessionIdRef, sessionIdRef, metaRefreshedRef, refreshSessionMeta } = deps;
+  const { setGenerating, setGeneratingVerb, scrollToBottom, adoptedSessionIdRef, sessionIdRef, metaRefreshedRef, refreshSessionMeta } = deps;
   setGenerating(true);
   setGeneratingVerb(PHASE_VERBS.thinking);
   setTimeout(() => scrollToBottom('smooth'), 50);
-  // A fresh run re-arms the first-assistant signal.
-  firstAssistantRef.current = false;
   const sid = adoptedSessionIdRef.current ?? sessionIdRef.current;
   if (!sid) return;
-  // Signalled on EVERY run start: the metaRefreshedRef guard below is
-  // once-per-session (title refresh), but the sidebar must revalidate each time
-  // to pick up the server's `stream` status row.
-  signalSessionUpdated(sid);
   if (metaRefreshedRef.current !== sid) {
     metaRefreshedRef.current = sid;
     setTimeout(() => refreshSessionMeta(sid), 100);
   }
 }
 
-/** Every turn inside the run re-signals the sidebar: it recovers the `stream`
- *  row if a previous dispatch raced with the status write, or the row was
- *  healed away. */
-export function handleTurnStart(deps: OmpAgentCallbacksDeps): void {
-  const sid = deps.adoptedSessionIdRef.current ?? deps.sessionIdRef.current;
-  if (sid) signalSessionUpdated(sid);
+/** Every turn inside the run. The sidebar is not signalled: it follows the
+ *  `sidebar:status` topic, which the server publishes on the same status write
+ *  this used to recover by re-reading. */
+export function handleTurnStart(_deps: OmpAgentCallbacksDeps): void {
+  // Nothing to do — kept as the callbacks' named boundary.
 }
 
 /**
@@ -59,13 +48,10 @@ export function handleTurnStart(deps: OmpAgentCallbacksDeps): void {
  * already loaded the committed messages; live updates continue).
  */
 export function handleResumeStream(deps: OmpAgentCallbacksDeps): void {
-  const { setGenerating, setGeneratingVerb, scrollToBottom, firstAssistantRef, adoptedSessionIdRef, sessionIdRef } = deps;
+  const { setGenerating, setGeneratingVerb, scrollToBottom, adoptedSessionIdRef, sessionIdRef } = deps;
   setGenerating(true);
   setGeneratingVerb(PHASE_VERBS.thinking);
   setTimeout(() => scrollToBottom('smooth'), 50);
-  // Reattach re-arms the signal too: the reattached run's first assistant turn
-  // has not been signalled by THIS mount.
-  firstAssistantRef.current = false;
   const sid = adoptedSessionIdRef.current ?? sessionIdRef.current;
   if (!sid) return;
   // Re-arm the optimistic mark as well, because for a fresh spawn the server's
@@ -76,5 +62,4 @@ export function handleResumeStream(deps: OmpAgentCallbacksDeps): void {
   // generating indicator resumed (this frame) while the sidebar spinner stayed
   // dark until the file appeared at ~18s. `onAgentEnd` releases the mark.
   setStreamPending(sid, true);
-  signalSessionUpdated(sid);
 }

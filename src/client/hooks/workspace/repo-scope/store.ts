@@ -17,12 +17,14 @@
  * question about the same root, and independent copies meant one request per
  * panel per poll interval plus lists that could disagree.
  *
- * Both platform dependencies are injected — `fetch` and the retry scheduler —
- * so the invalidation rules are testable without a DOM and without wall-clock
- * timers.
+ * The read rides the `repos:<root>` realtime topic. Discovery runs in the
+ * background server-side, so the topic answers `reposPending: true` first and
+ * the server re-publishes it the moment the walk finishes — which is what the
+ * retry timer this replaced was guessing at.
  */
 
-import { REPO_DISCOVERY_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
+import { realtimeClient } from '@/shared/lib/realtime/client';
+import { reposTopic } from '@/shared/lib/realtime/protocol';
 import { isRecord } from '@/shared/lib/util/guards';
 
 export interface RepoListSnapshot {
@@ -34,25 +36,21 @@ export interface RepoListSnapshot {
 /** The list before discovery has answered: the workspace root alone. */
 export const UNKNOWN_LIST: RepoListSnapshot = { repos: ['.'], scanning: false };
 
-/** `fetch` seam: resolves the parsed `?reposOnly=1` payload, rejects on error. */
-export type RepoFetch = (url: string) => Promise<unknown>;
-
-/**
- * Retry seam. Runs `run` once after `delayMs` and returns a cancel; the default
- * is a one-shot timer, and the caller re-arms it per attempt.
- */
-export type RepoScheduler = (run: () => void, delayMs: number) => () => void;
+/** A `?reposOnly=1` payload, validated field by field. */
+function readRepoPayload(data: unknown): { repos: string[]; scanning: boolean } | null {
+  if (!isRecord(data) || !Array.isArray(data.repos)) return null;
+  return {
+    repos: data.repos.filter((r): r is string => typeof r === 'string'),
+    scanning: data.reposPending === true,
+  };
+}
 
 interface RootEntry {
   snapshot: RepoListSnapshot;
-  /** True once a discovery response was accepted for this root. Drives the
-   *  "start discovery on first subscriber" decision — object identity of
-   *  `snapshot` cannot, because clearing the spinner mints a new one. */
-  loaded: boolean;
   listeners: Set<() => void>;
-  controller: AbortController | null;
-  cancelRetry: (() => void) | null;
-  /** The discovery currently in flight, so a caller can await its settlement. */
+  /** The topic's own unsubscribe, held while the root has listeners. */
+  detach: (() => void) | null;
+  /** The rescan request in flight, so a caller can await its settlement. */
   pending: Promise<void> | null;
 }
 
@@ -68,16 +66,11 @@ export interface RepoStore {
 }
 
 export interface RepoStoreOptions {
-  fetch: RepoFetch;
-  scheduler?: RepoScheduler;
+  /** `fetch` seam for the forced rescan, which the topic does not express. */
+  fetch: (url: string) => Promise<unknown>;
 }
 
-const defaultScheduler: RepoScheduler = (run, delayMs) => {
-  const id = setTimeout(run, delayMs);
-  return () => clearTimeout(id);
-};
-
-export function createRepoStore({ fetch: fetchImpl, scheduler = defaultScheduler }: RepoStoreOptions): RepoStore {
+export function createRepoStore({ fetch: fetchImpl }: RepoStoreOptions): RepoStore {
   // Per-store, not module-level: two stores must not share state, and a test
   // store must not see the app store's roots.
   const entries = new Map<string, RootEntry>();
@@ -85,14 +78,7 @@ export function createRepoStore({ fetch: fetchImpl, scheduler = defaultScheduler
   function entryFor(root: string): RootEntry {
     let entry = entries.get(root);
     if (!entry) {
-      entry = {
-        snapshot: UNKNOWN_LIST,
-        loaded: false,
-        listeners: new Set(),
-        controller: null,
-        cancelRetry: null,
-        pending: null,
-      };
+      entry = { snapshot: UNKNOWN_LIST, listeners: new Set(), detach: null, pending: null };
       entries.set(root, entry);
     }
     return entry;
@@ -107,56 +93,33 @@ export function createRepoStore({ fetch: fetchImpl, scheduler = defaultScheduler
     for (const listener of entry.listeners) listener();
   }
 
-  function cancelRetry(entry: RootEntry): void {
-    entry.cancelRetry?.();
-    entry.cancelRetry = null;
+  /** Adopt a topic payload — the read path, snapshot or delta. */
+  function adopt(root: string, data: unknown): void {
+    const entry = entries.get(root);
+    if (!entry) return;
+    const parsed = readRepoPayload(data);
+    if (!parsed) {
+      // A null payload is a root that cannot be read; leave the snapshot as it
+      // was so the next subscriber retries instead of sitting on an empty list.
+      publish(root, { scanning: false });
+      return;
+    }
+    publish(root, parsed);
   }
 
   function load(root: string, rescan: boolean): Promise<void> {
     const entry = entryFor(root);
-    // A newer load supersedes this one: its response must not overwrite what
-    // the newer request is already about to replace.
-    entry.controller?.abort();
-    const controller = new AbortController();
-    entry.controller = controller;
-    publish(root, { scanning: true });
-
-    const params = new URLSearchParams({ reposOnly: '1' });
+    // A rescan forces the server's walk to restart; the topic then reports the
+    // new list. The plain read is the topic's own snapshot, so only the rescan
+    // is an explicit request here.
+    if (!rescan) return entry.pending ?? Promise.resolve();
+    const params = new URLSearchParams({ reposOnly: '1', rescan: '1' });
     if (root) params.set('root', root);
-    if (rescan) params.set('rescan', '1');
-    params.set('t', String(Date.now()));
-
-    const pending = (async () => {
-      const data = await fetchImpl(`/api/fs/git?${params.toString()}`).catch(() => null);
-      if (entry.controller !== controller) return;
-      entry.controller = null;
-
-      const repos = isRecord(data) && Array.isArray(data.repos) ? data.repos : null;
-      if (!repos) {
-        // A failed read leaves the snapshot as it was — for a root nobody has
-        // successfully listed yet that is still `UNKNOWN_LIST`, so the next
-        // subscriber retries instead of sitting on an empty list.
+    const pending = fetchImpl(`/api/fs/git?${params.toString()}`)
+      .then((data) => adopt(root, data))
+      .catch(() => {
         publish(root, { scanning: false });
-        return;
-      }
-      const scanning = isRecord(data) && data.reposPending === true;
-      entry.loaded = true;
-      publish(root, { repos: repos.filter((r): r is string => typeof r === 'string'), scanning });
-
-      // Discovery runs in the background server-side — the loader returns at
-      // once with `reposPending` — so retry until it settles.
-      if (scanning) {
-        cancelRetry(entry);
-        entry.cancelRetry = scheduler(() => {
-          entry.cancelRetry = null;
-          if (entry.listeners.size === 0) return;
-          void load(root, false);
-        }, REPO_DISCOVERY_POLL_MS);
-      } else {
-        cancelRetry(entry);
-      }
-    })();
-
+      });
     entry.pending = pending;
     return pending;
   }
@@ -164,23 +127,23 @@ export function createRepoStore({ fetch: fetchImpl, scheduler = defaultScheduler
   function subscribe(root: string, listener: () => void): () => void {
     const entry = entryFor(root);
     entry.listeners.add(listener);
-    // First subscriber for this root — or the first since everyone left —
-    // starts (or resumes) discovery, unless a settled list is already known for
-    // this same root: a right-panel view switch must not re-run the server's
-    // `find`.
-    if (entry.controller === null && entry.cancelRetry === null && (!entry.loaded || entry.snapshot.scanning)) {
-      void load(root, false);
+    // One subscription per root, shared by every view: the topic delivers one
+    // snapshot per root regardless of how many panels asked.
+    if (entry.detach === null) {
+      publish(root, { scanning: true });
+      entry.detach = realtimeClient.subscribe(reposTopic(root), () => {
+        adopt(root, realtimeClient.read(reposTopic(root)));
+      });
+      adopt(root, realtimeClient.read(reposTopic(root)));
     }
     return () => {
       entry.listeners.delete(listener);
       if (entry.listeners.size > 0) return;
-      // Nobody is showing this root's list any more: abandon the read in flight
-      // and drop the retry. The snapshot keeps its `scanning` flag, so the next
-      // subscriber resumes discovery rather than inheriting a spinner that
-      // nothing is driving.
-      entry.controller?.abort();
-      entry.controller = null;
-      cancelRetry(entry);
+      // Nobody is showing this root's list any more: release the topic. The
+      // snapshot keeps its `scanning` flag, so the next subscriber resumes.
+      entry.detach?.();
+      entry.detach = null;
+      entry.pending = null;
     };
   }
 
@@ -192,7 +155,7 @@ export function createRepoStore({ fetch: fetchImpl, scheduler = defaultScheduler
   };
 }
 
-/** The app's single store, over the browser's `fetch` and real timers. */
+/** The app's single store, over the browser's `fetch`. */
 export const repoStore = createRepoStore({
   fetch: async (url) => {
     const response = await fetch(url);

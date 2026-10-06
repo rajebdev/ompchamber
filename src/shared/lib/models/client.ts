@@ -10,6 +10,8 @@
  */
 
 import type { AIModelOption, ModelsData } from '@/shared/types';
+import { realtimeClient } from '@/shared/lib/realtime/client';
+import { TOPIC_MODELS } from '@/shared/lib/realtime/protocol';
 
 const CACHE_TTL_MS = 60_000;
 
@@ -40,12 +42,21 @@ export function invalidateModelsCache(): void {
   cached = null;
 }
 
+/**
+ * Drop the local cache so the next read goes to the server.
+ *
+ * The server republishes the `models` topic on the same write (see
+ * `invalidateModelsCaches`), so every consumer — this tab and every other —
+ * re-reads from one signal rather than from a local event.
+ */
 export function notifyModelsUpdated(): void {
   cached = null;
-  window.dispatchEvent(new CustomEvent('omp:models-updated'));
 }
 
+/**
+ * Observe the `models` topic. The callback fires when the catalog changed, so
+ * the caller can re-project its own view from `fetchModelsData`.
+ */
 export function subscribeModelsUpdated(handler: () => void): () => void {
-  window.addEventListener('omp:models-updated', handler);
-  return () => window.removeEventListener('omp:models-updated', handler);
+  return realtimeClient.subscribe(TOPIC_MODELS, handler);
 }

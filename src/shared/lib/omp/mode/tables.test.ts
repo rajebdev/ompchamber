@@ -13,11 +13,11 @@
  * encoding the mode hook subscribes to.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { Window } from 'happy-dom';
+import { describe, expect, test } from 'bun:test';
 
 import { normalizeGoalBudget } from '@/shared/lib/omp/mode/budget';
-import { emitChamberModeSignal } from '@/shared/lib/omp/mode/client-signal';
+import { CHAMBER_MODE_SIGNAL, emitChamberModeSignal } from '@/shared/lib/omp/mode/client-signal';
+import { subscribeClientSignal } from '@/client/lib/signals';
 import { formatGoalDuration, formatGoalTokens } from '@/shared/lib/omp/mode/format';
 import { isGoalOpen } from '@/shared/lib/omp/mode/status';
 import {
@@ -25,7 +25,6 @@ import {
   CHAMBER_GOAL_STATE_MARKER,
   CHAMBER_MODE_COMMAND,
   CHAMBER_MODE_ERROR_MARKER,
-  CHAMBER_MODE_EVENT,
   CHAMBER_MODE_STATE_MARKER,
   CHAMBER_MODES_ENV,
   CHAMBER_PLAN_PROPOSAL_MARKER,
@@ -145,7 +144,6 @@ describe('mode constants', () => {
   test('wire identifiers match the extension contract', () => {
     expect(CHAMBER_MODES_ENV).toBe('CHAMBER_MODES');
     expect(CHAMBER_MODE_COMMAND).toBe('chamber-mode');
-    expect(CHAMBER_MODE_EVENT).toBe('omp:chamber-mode');
     expect(CHAMBER_GOAL_STATE_ENTRY).toBe('chamber-goal-state');
     expect(CHAMBER_PLAN_STATE_ENTRY).toBe('chamber-plan-state');
   });
@@ -160,61 +158,29 @@ describe('mode constants', () => {
 });
 
 describe('emitChamberModeSignal', () => {
-  let win: Window;
-  const GLOBALS = ['window', 'CustomEvent'] as const;
-  /** The runner's own globals, put back on teardown — `CustomEvent` is native. */
-  const native: Partial<Record<(typeof GLOBALS)[number], unknown>> = {};
-
-  beforeAll(() => {
-    win = new Window({ url: 'http://localhost' });
-    const target = globalThis as unknown as Record<string, unknown>;
-    for (const key of GLOBALS) {
-      if (!(key in native)) native[key] = target[key];
-      target[key] = (win as unknown as Record<string, unknown>)[key];
-    }
-  });
-
-  afterAll(() => {
-    const target = globalThis as unknown as Record<string, unknown>;
-    for (const key of GLOBALS) {
-      if (native[key] === undefined) delete target[key];
-      else target[key] = native[key];
-    }
-  });
-
-  test('re-dispatches the signal scoped by session id', () => {
+  test('publishes the signal scoped by session id', () => {
     const seen: unknown[] = [];
-    const listener = ((event: Event): void => {
-      seen.push((event as CustomEvent).detail);
-    }) as unknown as Parameters<typeof win.addEventListener>[1];
-    win.addEventListener(CHAMBER_MODE_EVENT, listener);
+    const unsubscribe = subscribeClientSignal(CHAMBER_MODE_SIGNAL, (payload) => { seen.push(payload); });
     emitChamberModeSignal('session-1', { marker: 'CHAMBER_MODE_STATE:', payload: { enabled: true } });
-    win.removeEventListener(CHAMBER_MODE_EVENT, listener);
+    unsubscribe();
     expect(seen).toEqual([{ sessionId: 'session-1', marker: { marker: 'CHAMBER_MODE_STATE:', payload: { enabled: true } } }]);
   });
 
-  test('an undefined session id is preserved on the event', () => {
+  test('an undefined session id is preserved', () => {
     const seen: unknown[] = [];
-    const listener = ((event: Event): void => {
-      seen.push((event as CustomEvent).detail);
-    }) as unknown as Parameters<typeof win.addEventListener>[1];
-    win.addEventListener(CHAMBER_MODE_EVENT, listener);
+    const unsubscribe = subscribeClientSignal(CHAMBER_MODE_SIGNAL, (payload) => { seen.push(payload); });
     emitChamberModeSignal(undefined, { marker: 'CHAMBER_MODE_STATE:', payload: {} });
-    win.removeEventListener(CHAMBER_MODE_EVENT, listener);
+    unsubscribe();
     expect(seen).toEqual([{ sessionId: undefined, marker: { marker: 'CHAMBER_MODE_STATE:', payload: {} } }]);
   });
 
-  test('with no window the call is a no-op', () => {
-    // Server-side import safety: the module is imported by code that runs
-    // without a DOM, and must not throw or dispatch there.
-    const saved = (globalThis as unknown as Record<string, unknown>).window;
-    (globalThis as unknown as Record<string, unknown>).window = undefined;
-    let called = false;
-    const listener = () => { called = true; };
-    win.addEventListener(CHAMBER_MODE_EVENT, listener);
+  test('a listener that throws does not stop the others', () => {
+    const seen: unknown[] = [];
+    const unsubscribeBad = subscribeClientSignal(CHAMBER_MODE_SIGNAL, () => { throw new Error('boom'); });
+    const unsubscribeGood = subscribeClientSignal(CHAMBER_MODE_SIGNAL, (payload) => { seen.push(payload); });
     emitChamberModeSignal('session-1', { marker: 'CHAMBER_MODE_STATE:', payload: {} });
-    win.removeEventListener(CHAMBER_MODE_EVENT, listener);
-    (globalThis as unknown as Record<string, unknown>).window = saved;
-    expect(called).toBe(false);
+    unsubscribeBad();
+    unsubscribeGood();
+    expect(seen).toHaveLength(1);
   });
 });

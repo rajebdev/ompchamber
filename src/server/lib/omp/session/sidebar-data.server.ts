@@ -19,9 +19,11 @@
 import { getDb } from '@/server/db.server';
 import { isMockMode } from '@/server/mock.server';
 import { DEFAULT_SESSION_SORT_OPTION, isValidSessionSortOption, sortFolders } from '@/shared/lib/workspace/sidebar-sort';
+import { groupSessionsByRoot, sessionTitleFor } from '@/shared/lib/omp/session/sidebar';
 import { loadOmpSidebarData } from '@/server/lib/omp/session/reader';
 import { sessionHasSubagents } from '@/server/lib/omp/session/subagent-presence';
-import { healStaleStreamStatuses, loadStreamStates, type SessionRunModel } from '@/shared/lib/omp/session/stream-state.server';
+import { loadStreamStates, type SessionRunModel } from '@/shared/lib/omp/session/stream-state.server';
+import { healStaleStreamStatuses } from '@/shared/lib/omp/session/stream-heal.server';
 import { getAwaitingInputSessionIds, getLiveRunSessionIds, listRpcSessions } from '@/server/lib/omp/rpc/session-registry';
 import type { SessionItemData, SessionSortOption, WorkspaceFolderData } from '@/shared/types';
 import type { OmpSession } from '@/shared/types/omp/session';
@@ -56,7 +58,16 @@ interface MockSessionRow extends SessionItemData {
   folder_id: number;
 }
 
-export async function loadSidebarData(): Promise<SessionListPayload> {
+/**
+ * The sidebar's STRUCTURE: folders, their sessions, and the sort order.
+ *
+ * Split from the volatile fields (see `loadSidebarStatus`) because the two have
+ * wildly different costs and cadences: this runs a full omp JSONL discovery
+ * scan, while the status is a single SQLite read plus the live process
+ * registry. The realtime transport publishes them as separate topics so a
+ * stream-status flip does not re-scan every session file.
+ */
+export async function loadSidebarStructure(): Promise<SessionListPayload> {
   const mock = isMockMode();
   const db = await getDb();
   const folderRows = (await db.all('SELECT * FROM workspace_folders ORDER BY id ASC')) as FolderRow[];
@@ -67,7 +78,9 @@ export async function loadSidebarData(): Promise<SessionListPayload> {
   const archivedRows = (await db.all('SELECT session_id FROM archived_sessions')) as ArchivedRow[];
   const archivedIds = new Set(archivedRows.map((r) => String(r.session_id)));
   if (mock) {
-    // Demo mode: sessions come from the SQLite `sessions` table.
+    // Dynamic on purpose: this is demo data that lives under `client/`, and a
+    // static import would pull it into the server graph (and every real-mode
+    // boot) for a branch only MOCK mode takes.
     const { hasMockSubagents, getMockSubagents } = await import('@/client/data/mock/subagents');
     const sessions = (await db.all('SELECT * FROM sessions ORDER BY id ASC')) as MockSessionRow[];
     for (const folder of folderRows) {
@@ -109,26 +122,40 @@ export async function loadSidebarData(): Promise<SessionListPayload> {
   // one order and re-sorting in the browser is what read as a flicker on load.
   const sidebarSort = await serverSidebarSort();
 
-  // Live stream status per session (spinner / one-shot done badge), written by
-  // the RPC manager on agent_start/agent_end and by the abort command. The heal
-  // pass runs first and has two halves, both ending at `finish`:
-  //
-  //   - a `stream` row whose owning chamber process is gone (it exited
-  //     mid-run) — judged from the row alone, so every instance agrees;
-  //   - a `stream` row THIS process owns with no live run behind it — an
-  //     orphan, which only this process can see (see `healStaleStreamStatuses`).
-  //
-  // The authoritative status then travels with the same fetch that refreshes
-  // the sidebar list.
-  const streamStatuses: Record<string, 'stream' | 'finish' | 'abort'> = {};
-  // The model each run is served by, read from the same rows as the status so
-  // the generating indicator needs no per-session JSONL read.
-  const runModels: Record<string, SessionRunModel> = {};
-  // Sessions blocked on a dialog nobody has answered yet. Read live from the
-  // process registry (never persisted): the child that owns the question is the
-  // same thing that owns the flag, so a restart cannot leave a stale badge.
-  const awaitingInput = new Set<string>();
-  if (!mock) {
+  return {
+    folders: sortFolders(groupedFolders, sidebarSort),
+    isMock: mock,
+  };
+}
+
+/**
+ * The sidebar's VOLATILE fields, keyed by session id: live stream status, the
+ * model serving the run, and whether the session is blocked on a dialog.
+ *
+ * `repair` runs the two self-heal halves, because this is where a stale spinner
+ * is actually looked at:
+ *
+ *   - a `stream` row whose owning chamber process is gone (judged from the row
+ *     alone, so every instance agrees);
+ *   - a `stream` row THIS process owns with no live run behind it — an orphan,
+ *     which only this process can see (see `healStaleStreamStatuses`), plus a
+ *     `get_state` reconcile for the rows this process owns.
+ *
+ * The realtime publisher passes `repair: false`: it runs on every stream-status
+ * WRITE, and a write is already the truth for the run it describes. The repair
+ * belongs to the subscribe-time snapshot, which is the moment the old sidebar
+ * poll used to provide it.
+ */
+export async function loadSidebarStatus(
+  options: { repair?: boolean } = {},
+): Promise<Record<string, {
+  streamStatus?: 'stream' | 'finish' | 'abort';
+  awaitingInput?: boolean;
+  runModel?: SessionRunModel;
+}>> {
+  if (isMockMode()) return {};
+
+  if (options.repair !== false) {
     // The database is shared by every chamber instance on the machine, so a
     // `stream` row may belong to a process this one cannot see. Ownership is
     // read from the row itself (its `owner_pid`) against OS liveness — never
@@ -141,29 +168,43 @@ export async function loadSidebarData(): Promise<SessionListPayload> {
     await healStaleStreamStatuses(getLiveRunSessionIds());
     // The heal judges a row from its owner pid alone; a row this process owns
     // while no run is behind it needs the OWNER's view of the child, which only
-    // a `get_state` can give (see `run-settle.server.ts`) — and the sidebar is
-    // where a stale spinner is actually looked at. Fire-and-forget: the list
-    // never waits on a probe, and the next load carries the settled status.
+    // a `get_state` can give (see `run-settle.server.ts`). Fire-and-forget: the
+    // list never waits on a probe, and the next read carries the settled status.
     for (const session of listRpcSessions()) void session.runSettle.reconcile('request');
-    for (const [id, state] of Object.entries(await loadStreamStates())) {
-      streamStatuses[id] = state.status;
-      if (state.model) runModels[id] = state.model;
-    }
-    for (const id of getAwaitingInputSessionIds()) awaitingInput.add(id);
   }
-  const foldersWithStatus = groupedFolders.map((folder) => ({
-    ...folder,
-    sessions: (folder.sessions ?? []).map((s) => ({
-      ...s,
-      streamStatus: streamStatuses[String(s.id)],
-      ...(runModels[String(s.id)] ? { runModel: runModels[String(s.id)] } : {}),
-      ...(awaitingInput.has(String(s.id)) ? { awaitingInput: true } : {}),
-    })),
-  }));
 
+  const status: Record<string, {
+    streamStatus?: 'stream' | 'finish' | 'abort';
+    awaitingInput?: boolean;
+    runModel?: SessionRunModel;
+  }> = {};
+  for (const [id, state] of Object.entries(await loadStreamStates())) {
+    status[id] = { streamStatus: state.status, ...(state.model ? { runModel: state.model } : {}) };
+  }
+  // Sessions blocked on a dialog nobody has answered yet. Read live from the
+  // process registry (never persisted): the child that owns the question is the
+  // same thing that owns the flag, so a restart cannot leave a stale badge.
+  for (const id of getAwaitingInputSessionIds()) {
+    status[id] = { ...(status[id] ?? {}), awaitingInput: true };
+  }
+  return status;
+}
+
+/**
+ * The two halves merged into one payload — what `GET /api/sessions/list`
+ * answers and what the sidebar rendered before the realtime transport existed.
+ */
+export async function loadSidebarData(): Promise<SessionListPayload> {
+  const [structure, status] = await Promise.all([loadSidebarStructure(), loadSidebarStatus()]);
   return {
-    folders: sortFolders(foldersWithStatus, sidebarSort),
-    isMock: mock,
+    ...structure,
+    folders: structure.folders.map((folder) => ({
+      ...folder,
+      sessions: (folder.sessions ?? []).map((session) => {
+        const volatile = status[String(session.id)];
+        return volatile ? { ...session, ...volatile } : session;
+      }),
+    })),
   };
 }
 
@@ -188,8 +229,6 @@ async function serverSidebarSort(): Promise<SessionSortOption> {
  * no omp sessions (a local/empty workspace).
  */
 async function buildRealFolders(folderRows: FolderRow[], archivedIds: Set<string>): Promise<WorkspaceFolderData[]> {
-  const { sessionTitleFor, groupSessionsByRoot } = await import('@/shared/lib/omp/session/sidebar');
-
   const data = await loadOmpSidebarData();
   const sessionsByRoot = groupSessionsByRoot(data.sessions);
 

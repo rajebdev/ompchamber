@@ -3,7 +3,6 @@ import { ChatFollowUpSection } from '@/client/components/settings/categories/cha
 import { ChatGoalSection } from '@/client/components/settings/categories/chat-settings/GoalSection';
 import { ChatKeybindingsSection } from '@/client/components/settings/categories/chat-settings/KeybindingsSection';
 import { ChatTitleSection } from '@/client/components/settings/categories/chat-settings/TitleSection';
-import { ChatTransportSection } from '@/client/components/settings/categories/chat-settings/TransportSection';
 
 interface ChatSettingsProps {
   settings: SettingsState;
@@ -14,7 +13,6 @@ export function ChatSettings({ settings, onUpdate }: ChatSettingsProps) {
   return (
     <div className="w-full space-y-7 text-xs text-ink pb-3">
       {/* 1. Streaming Transport (WebSocket vs SSE) */}
-      <ChatTransportSection settings={settings} onUpdate={onUpdate} />
 
       {/* 2. Session Titles (automatic generation) */}
       <ChatTitleSection settings={settings} onUpdate={onUpdate} />

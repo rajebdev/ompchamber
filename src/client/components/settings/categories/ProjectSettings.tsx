@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { AccentColorOption, ProjectConfigItem } from '@/shared/types';
 import { ProjectSidebarList } from '@/client/components/settings/categories/project-settings/SidebarList';
 import { ProjectDetailsForm } from '@/client/components/settings/categories/project-settings/DetailsForm';
 import { LoadingState } from '@/client/components/settings/LoadingState';
-import { useChamberEvent } from '@/client/hooks/ui/window-event';
 import { useSettingsMasterDetail } from '@/client/hooks/settings/master-detail';
+import { useSidebarData } from '@/client/hooks/chat/omp/session-list';
 import { SettingsMasterDetail } from '@/client/components/settings/master-detail';
 
 export function ProjectSettings() {
@@ -61,9 +61,6 @@ export function ProjectSettings() {
         }),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      window.dispatchEvent(new CustomEvent('omp:workspace-updated', {
-        detail: { folderId: project.folderId },
-      }));
     } catch (error) {
       console.error('Failed to save project settings:', error);
     }
@@ -100,7 +97,6 @@ export function ProjectSettings() {
       // On a phone the new project's details are the point of adding it; the
       // list pane would hide the row that was just created.
       masterDetail.openDetail();
-      window.dispatchEvent(new CustomEvent('omp:workspace-updated', { detail: { folderId } }));
     } catch (error) {
       console.error('Failed to add project:', error);
     }
@@ -117,7 +113,6 @@ export function ProjectSettings() {
       const updated = projects.filter((project) => project.id !== targetId);
       setProjects(updated);
       setSelectedProjectId(updated[0]?.id || '');
-      window.dispatchEvent(new CustomEvent('omp:workspace-updated'));
     } catch (error) {
       console.error('Failed to delete project:', error);
     }
@@ -134,7 +129,16 @@ export function ProjectSettings() {
     void persistProjectField(selectedProject, field, value);
   };
 
-  useChamberEvent('omp:workspace-updated', () => {
+  // Folder rows ride the `sidebar` topic, so every writer (this pane, the
+  // sidebar menu, another tab) reaches this list through one signal rather than
+  // through a window event each caller had to remember to dispatch.
+  const sidebarFolders = useSidebarData().folders;
+  const refreshKey = useMemo(
+    () => sidebarFolders.map((folder) => `${folder.id}:${folder.name}:${folder.model ?? ''}:${folder.icon ?? ''}:${folder.accentColor ?? ''}:${folder.isPinned ? 1 : 0}`).join('|'),
+    [sidebarFolders],
+  );
+  useEffect(() => {
+    if (!refreshKey) return;
     void fetch('/api/settings/projects')
       .then((response) => response.json())
       .then((data) => {
@@ -150,7 +154,7 @@ export function ProjectSettings() {
       .catch((error: unknown) => {
         console.error('Failed to refresh projects:', error);
       });
-  });
+  }, [refreshKey]);
 
   if (isLoading) {
     return <LoadingState>Loading projects from database...</LoadingState>;

@@ -40,7 +40,6 @@ export interface SettingsModalProps {
 const DEFAULT_SETTINGS: SettingsState = {
   theme: DEFAULT_THEME_ID,
   editorFont: EDITOR_DEFAULT_FONT_FAMILY,
-  streamTransport: 'websocket',
   autoSessionTitle: true,
   soundAlerts: true,
   chatCompletionSound: true,

@@ -8,8 +8,8 @@
  *
  * Owns the pieces both sidebars used to clone: the sort preference (seeded
  * from the server, debounced persistence), search state, the filtered/sorted
- * folder list, the `omp:workspace-updated` listener, the live session-status
- * wiring (ack + stream poll + throttled revalidation), and session selection.
+ * folder list, the live session-status wiring (ack + realtime topics), and
+ * session selection.
  *
  * The two sidebars differ in two places, both parameterised here rather than
  * forked: the desktop injects a pending-session placeholder and force-expands
@@ -22,10 +22,7 @@ import { useSearchParams } from '@/client/lib/router/search-params';
 import { DEFAULT_SESSION_SORT_OPTION, isValidSessionSortOption, sortFolders } from '@/shared/lib/workspace/sidebar-sort';
 import { pendingSessionCreatedAt, pendingSessionTitle, sessionIdEpochMs } from '@/shared/lib/omp/session/default-title';
 import { buildSidebarSessionStatus, useSessionStatusAck } from '@/client/hooks/chat/omp/session-statuses';
-import { useStreamPoll } from '@/client/hooks/chat/omp/stream-poll';
-import { useSidebarRevalidation } from '@/client/hooks/chat/omp/revalidation-throttle';
 import { useSidebarData } from '@/client/hooks/chat/omp/session-list';
-import { useChamberEvent } from '@/client/hooks/ui/window-event';
 import { writeSetting } from '@/shared/lib/settings/client';
 import type { SessionItemData, SessionSortOption, WorkspaceFolderData } from '@/shared/types';
 
@@ -82,19 +79,14 @@ export function useSessionSidebarController(
     ? (Number.isNaN(Number(sessionParam)) ? sessionParam : Number(sessionParam))
     : null;
 
-  // A stable refresh reference keeps the revalidation/ack/poll hooks subscribed
-  // once while always calling the latest refresh.
+  // A stable refresh reference keeps the ack hook subscribed once while always
+  // calling the latest refresh.
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
+  // Folder structure rides the realtime `sidebar` topic, whose server-side
+  // writers (create/delete/pin/toggle/settings) publish on their own writes —
+  // so there is no window event to listen for any more.
   const revalidate = useCallback(() => refreshRef.current(), []);
-
-  // Refresh the session list when a new omp session is spawned or its title
-  // changes. No SSE — a plain event + throttled refetch keeps it cheap, and the
-  // trailing throttle coalesces per-frame dispatches during a run into one list
-  // fetch per second.
-  useSidebarRevalidation(revalidate);
-
-  useChamberEvent('omp:workspace-updated', () => refreshRef.current());
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
@@ -124,9 +116,9 @@ export function useSessionSidebarController(
     persistSort(opt);
   };
 
-  // Live session status — server-tracked via SQLite, riding the same loader
-  // data as the session list. Spinner while `stream`; a one-shot terminal
-  // badge (acknowledged server-side on open, dropped by the next revalidate).
+  // Live session status — server-tracked via SQLite and pushed over the
+  // realtime socket. Spinner while `stream`; a one-shot terminal badge
+  // (acknowledged server-side on open, dropped by the next snapshot).
   //
   // The rows render from THIS map, not from an item's own `streamStatus`, and
   // the pending placeholder is built in `processedFolders` — outside `folders` —
@@ -141,9 +133,6 @@ export function useSessionSidebarController(
   // hasSeen: clicks already acked + optimistically stripped these badges, so
   // the effect must not re-POST while the authoritative list is still stale.
   useSessionStatusAck(sessionStatus, activeSessionId, revalidate, hasSeen);
-  // Background sessions finishing while the user sits elsewhere: refetch on a
-  // cadence — but only while something is actually streaming.
-  useStreamPoll(sessionStatus, revalidate);
 
   const handleSelectSession = (id: number | string) => {
     // One-shot terminal badge (check) clears on open: optimistic strip + server
@@ -169,7 +158,7 @@ export function useSessionSidebarController(
     if (includePendingSessions) {
       // The active session may not be in the sidebar list yet: a pending
       // "new-…" session, or a freshly spawned omp session whose JSONL has not
-      // been scanned (the chat timeline signals omp:session-updated once it is).
+      // been scanned (the realtime sidebar topic surfaces it once it is).
       // Render it with the timestamped default title so there is never a gap
       // between sending a chat and the session appearing with its real title.
       const sessionExists = result.some(f => f.sessions?.some((s) => String(s.id) === String(sessionParam)));

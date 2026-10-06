@@ -153,6 +153,73 @@ function busySessionPayload(session: AgentSessionWrapper) {
   };
 }
 
+/** What a client needs to reattach: running flags, live state, blocked dialogs,
+ *  and the child's own goal mirror. Shared by the HTTP probe and the realtime
+ *  `session:<id>` snapshot so a reattaching tab gets one answer either way. */
+export interface AgentSnapshot {
+  running: boolean;
+  busy?: boolean;
+  state?: unknown;
+  pendingUiRequests?: unknown[];
+  goal?: { enabled: boolean; status?: string };
+}
+
+/**
+ * The state a client needs to reattach to `sessionId`, WITHOUT spawning it.
+ *
+ * This is `getAgentState`'s body, lifted so the realtime topic's snapshot
+ * resolver and the HTTP route cannot drift: both must answer "is it running,
+ * what is it doing, is anything blocking it" identically, and the busy-session
+ * shortcut (local flags, never a `get_state` that would queue behind the turn)
+ * is exactly the kind of rule that silently diverges when duplicated.
+ *
+ * A session this process does not manage answers `running: false` — the caller
+ * decides whether another instance owns it.
+ */
+export async function buildAgentSnapshot(sessionId: string): Promise<AgentSnapshot> {
+  const session = getRpcSession(sessionId);
+  if (!session || !session.isAlive()) return { running: false };
+
+  // A busy session answers from local flags: its `get_state` would queue behind
+  // the running turn (omp runs RPC handlers one at a time), and a timeout there
+  // is no reason to reset a session that is demonstrably working — subagents
+  // included. These flags are all the client needs to reattach its stream.
+  //
+  // The flags are also the ONLY evidence a stranded run ever leaves behind (a
+  // non-terminal `agent_end` whose continuation never came), so they are given a
+  // chance to settle before they are trusted. A live run pays nothing —
+  // `RunSettle` probes only after 30s of quiet and settles only on omp's own
+  // `isSettled`.
+  if (session.isBusy()) {
+    await session.runSettle.reconcile('request');
+    if (session.isBusy()) return busySessionPayload(session) as AgentSnapshot;
+  }
+
+  try {
+    const state = await session.send({ type: 'get_state' });
+    // Dialogs omp is still blocked on: a client that reloaded mid-ask has no
+    // other way to learn the request id it must answer, and omp never re-emits
+    // the frame.
+    return {
+      running: true,
+      state,
+      pendingUiRequests: session.getPendingUiDialogs(),
+      // The child's own goal state, read from the mirror so the composer's Goal
+      // toggle reflects the CHILD rather than the client's last request.
+      goal: { enabled: session.modeMirror.goalEnabled, status: session.modeMirror.goalStatus },
+    };
+  } catch (error) {
+    if (error instanceof WebRpcError && error.code === 'session_unresponsive') {
+      return { running: false };
+    }
+    // A turn started between the check above and the RPC: report busy, not dead.
+    if (error instanceof WebRpcError && error.code === 'session_busy') {
+      return busySessionPayload(session) as AgentSnapshot;
+    }
+    throw error;
+  }
+}
+
 // GET /api/agent/:sessionId — current agent state (running set + live state).
 export async function getAgentState({ params, request }: LoaderFunctionArgs) {
   const { sessionId } = params;
@@ -171,45 +238,9 @@ export async function getAgentState({ params, request }: LoaderFunctionArgs) {
     return json({ running: false });
   }
 
-  // A busy session answers from local flags: its `get_state` would queue behind
-  // the running turn (omp runs RPC handlers one at a time), and a timeout there
-  // is no reason to reset a session that is demonstrably working — subagents
-  // included. These flags are all the client needs to reattach its stream.
-  //
-  // The flags are also the ONLY evidence a stranded run ever leaves behind (a
-  // non-terminal `agent_end` whose continuation never came), so they are given a
-  // chance to settle before they are trusted: this probe is exactly where the
-  // user's own click lands. A live run pays nothing — `RunSettle` probes only
-  // after 30s of quiet and settles only on omp's own `isSettled`.
-  if (session.isBusy()) {
-    await session.runSettle.reconcile('request');
-    if (session.isBusy()) return json(busySessionPayload(session));
-  }
-
   try {
-    const state = await session.send({ type: 'get_state' });
-    // Dialogs omp is still blocked on: a client that reloaded mid-ask has no
-    // other way to learn the request id it must answer, and omp never
-    // re-emits the frame.
-    return json({
-      running: true,
-      state,
-      pendingUiRequests: session.getPendingUiDialogs(),
-      // The child's own goal state. The composer's Goal toggle reads this on
-      // reattach so a run driven from another tab (or the CLI) does not leave
-      // the toggle showing the client's stale last request.
-      // Read from the mirror, so the composer's Goal toggle reflects the CHILD
-      // rather than the client's last request.
-      goal: { enabled: session.modeMirror.goalEnabled, status: session.modeMirror.goalStatus },
-    });
+    return json(await buildAgentSnapshot(sessionId));
   } catch (error) {
-    if (error instanceof WebRpcError && error.code === 'session_unresponsive') {
-      return json({ running: false, recovered: true });
-    }
-    // A turn started between the check above and the RPC: report busy, not dead.
-    if (error instanceof WebRpcError && error.code === 'session_busy') {
-      return json(busySessionPayload(session));
-    }
     return rpcErrorResponse(error);
   }
 }

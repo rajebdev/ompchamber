@@ -5,7 +5,6 @@ import { usePanelCatalog, type PanelBodyProps } from '@/client/components/worksp
 import { PanelHostProvider } from '@ompchamber/ui';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
 import { useResolvedRepo } from '@/client/hooks/workspace/repo-scope';
-import { GIT_STATUS_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
 import { PluginMark } from '@/client/components/settings/categories/panel-plugins/PluginMark';
 
 interface MobileRightSidebarProps {
@@ -47,7 +46,7 @@ export function MobileRightSidebar({
   // repo pick, read shared so switching repos moves this dot too. Polls only
   // while this drawer is the mounted screen (the poll is visibility-gated).
   const activeRepo = useResolvedRepo(rootPath, enabled);
-  const { changes } = useGitStatus(rootPath, activeRepo, refreshKey, enabled, GIT_STATUS_POLL_MS);
+  const { changes } = useGitStatus(rootPath, activeRepo, enabled);
   const hasGitChanges = changes.length > 0;
 
   // ONE props object per render, handed to the view AND published on the host

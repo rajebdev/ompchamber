@@ -4,66 +4,73 @@
  */
 
 /**
- * Client-side session-list fetcher. Owns the single `useFetcher` against
- * `GET /api/sessions/list` and exposes it through a React context so every
- * consumer (desktop sidebar, mobile sidebar, chat timeline, layout headers)
- * shares one in-flight request and one `folders` snapshot.
+ * Client-side session-list provider. Reads the sidebar from the unified
+ * realtime socket and exposes it through a context so every consumer (desktop
+ * sidebar, mobile sidebar, chat timeline, layout headers) shares one value.
  *
- * Refresh contract: the leading+trailing throttled stream-event hook, the
- * stream poll, the status-ack hook, and per-item mutations all call
- * `refresh()` — a plain `fetcher.load` that no longer revalidates the whole
- * document route.
+ * Two topics, because the two halves change at completely different rates:
  *
- * Two optimistic overlays ride this snapshot: the seen-strip (a terminal badge
- * this mount already acked) and the pending `stream` force (a send whose
+ *   - `sidebar` carries the STRUCTURE (folders, their sessions, the sort
+ *     order). Producing it runs a full omp JSONL discovery scan, so the server
+ *     publishes it only when a session or folder is added or removed.
+ *   - `sidebar:status` carries the VOLATILE fields (`streamStatus`,
+ *     `awaitingInput`, `runModel`). One SQLite read, published on every
+ *     stream-status write — which is what used to be the 8s stream poll and the
+ *     30s idle poll.
+ *
+ * The two optimistic overlays still ride on top: the seen-strip (a terminal
+ * badge this mount already acked) and the pending `stream` force (a send whose
  * dispatch round trip is still in flight), both from `stream-overlay.ts`.
  */
 
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { createContext } from 'preact/compat';
 import type { ReactNode } from 'preact/compat';
-import { useFetcher } from '@/client/lib/router/fetcher';
-import { usePanelRefresh } from '@/client/hooks/workspace/panel-refresh';
-import { SIDEBAR_IDLE_REFRESH_MS } from '@/shared/lib/workspace/refresh-cadence';
+import { useRealtimeTopic } from '@/client/hooks/ui/realtime';
 import { useInputRequiredAlert } from '@/client/hooks/ui/input-required-alert';
-import { useChamberEvent } from '@/client/hooks/ui/window-event';
+
+import { realtimeClient } from '@/shared/lib/realtime/client';
+import { TOPIC_SIDEBAR, TOPIC_SIDEBAR_STATUS } from '@/shared/lib/realtime/protocol';
 import {
   applyStreamOverlay,
   releaseObservedPending,
-  SESSION_TITLE_HINT_EVENT,
-  STREAM_PENDING_EVENT,
-  type SessionTitleHintDetail,
-  type StreamPendingDetail,
+  SESSION_TITLE_HINT_SIGNAL,
+  STREAM_PENDING_SIGNAL,
 } from '@/client/hooks/chat/omp/stream-overlay';
+import { subscribeClientSignal } from '@/client/lib/signals';
 import type { WorkspaceFolderData } from '@/shared/types';
-import type { SessionListPayload } from '@/server/lib/omp/session/sidebar-data.server';
+import type { SidebarPayload, SidebarStatusPayload } from '@/shared/types/realtime';
+
+/** Re-exported so a consumer (and a test) names the shape without reaching
+ *  into a server module for it. */
+export type { SidebarPayload, SidebarStatusPayload };
 
 export interface SidebarDataHandle {
   folders: WorkspaceFolderData[];
   isMock: boolean;
-  /** True only before the FIRST successful load — drives the skeleton. */
+  /** True only before the first snapshot lands — drives the skeleton. */
   initializing: boolean;
+  /** True when the socket is down or a sequence gap was seen. */
+  stale: boolean;
   /**
-   * Fire a refresh. A call arriving while a load is in flight is coalesced
-   * into one trailing load rather than dropped: the events that fire this are
-   * throttled upstream (1s trailing), and the dropped call is usually the one
-   * carrying a send's live `stream` row.
+   * Ask the server for fresh snapshots of both topics. A call arriving while a
+   * snapshot is in flight is coalesced by the transport, so this is safe to
+   * call from a click and from an effect alike.
    */
   refresh: () => void;
   /**
-   * User-initiated refresh: the same load as `refresh`, but it also raises
-   * `refreshing` until THAT load settles, so a toolbar button can spin while
-   * it runs. The background paths (idle poll, stream events, status ack) go
-   * through `refresh` and deliberately never raise the flag — a spinner that
-   * turns on by itself every 30s reads as a broken list.
+   * User-initiated refresh: the same request as `refresh`, but it raises
+   * `refreshing` until the next snapshot lands, so a toolbar button can spin
+   * while it runs. The background paths deliberately never raise the flag — a
+   * spinner that turns on by itself reads as a broken list.
    */
   refreshNow: () => void;
-  /** True while a `refreshNow` load is in flight. */
+  /** True while a `refreshNow` is waiting on its snapshot. */
   refreshing: boolean;
   /**
    * Mark a session's one-shot terminal badge as seen NOW: strips the check
    * optimistically for this mount and POSTs the server ack. No-op unless the
-   * session currently carries a terminal (`finish`/`abort`/`error`) status.
+   * session currently carries a terminal (`finish`/`abort`) status.
    */
   markSeen: (sessionId: number | string) => void;
   /** True when markSeen already ran for this session on this mount. */
@@ -87,10 +94,25 @@ export interface SidebarDataHandle {
 
 const SidebarDataContext = createContext<SidebarDataHandle | null>(null);
 
+/** Merge a structure payload with the volatile map, by session id. */
+function mergeStatus(
+  folders: WorkspaceFolderData[],
+  status: SidebarStatusPayload | null,
+): WorkspaceFolderData[] {
+  if (!status) return folders;
+  return folders.map((folder) => ({
+    ...folder,
+    sessions: (folder.sessions ?? []).map((session) => {
+      const volatile = status[String(session.id)];
+      return volatile ? { ...session, ...volatile } : session;
+    }),
+  }));
+}
+
 export function SidebarDataProvider({ children, initialFolders = [] }: { children: ReactNode; initialFolders?: WorkspaceFolderData[] }) {
-  const fetcher = useFetcher<SessionListPayload>();
-  const [hasLoaded, setHasLoaded] = useState(false);
-  const firstLoadRef = useRef(false);
+  const structure = useRealtimeTopic<SidebarPayload>(TOPIC_SIDEBAR);
+  const status = useRealtimeTopic<SidebarStatusPayload>(TOPIC_SIDEBAR_STATUS);
+
   // Session ids whose badge the user has already dismissed on this mount.
   // Optimistic strip: keeps the click→disappearance instant and stops the
   // pending ack effect in useSessionStatusAck from double-POSTing.
@@ -108,46 +130,18 @@ export function SidebarDataProvider({ children, initialFolders = [] }: { childre
   // of them changes so the overlays below re-apply. Read only as a dependency.
   const [overlayVersion, setOverlayVersion] = useState(0);
 
-  // Kick the first fetch on mount; the SSR document no longer carries folders.
-  useEffect(() => {
-    if (firstLoadRef.current) return;
-    firstLoadRef.current = true;
-    void fetcher.load('/api/sessions/list');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (fetcher.data) setHasLoaded(true);
-  }, [fetcher.data]);
-
-  // A coalesced refresh is retried once the in-flight load settles. Its caller
-  // is usually the leading edge of `omp:session-updated` right after a send —
-  // i.e. the very read that carries this session's live `stream` row — and
-  // dropping it left the sidebar spinner dark until the 30s idle poll.
-  const retryRefreshRef = useRef(false);
-  const refresh = useMemo(() => {
-    return () => {
-      if (fetcher.state !== 'idle') {
-        retryRefreshRef.current = true;
-        return;
-      }
-      retryRefreshRef.current = false;
-      void fetcher.load('/api/sessions/list');
-    };
-  }, [fetcher]);
-
-  useEffect(() => {
-    if (fetcher.state !== 'idle' || !retryRefreshRef.current) return;
-    retryRefreshRef.current = false;
-    void fetcher.load('/api/sessions/list');
-  }, [fetcher.state, fetcher]);
+  const folders = useMemo(
+    () => mergeStatus(structure.data?.folders ?? initialFolders, status.data),
+    [structure.data, status.data, initialFolders],
+  );
+  const isMock = structure.data?.isMock ?? false;
+  const initializing = structure.data === null;
 
   // The send path arms/disarms the optimistic `stream` mark; the sidebar only
   // listens. A message rather than a prop because the send lives in the chat
   // timeline while the mark must outlive any single timeline — a session switch
   // is exactly when the local `isGenerating` is gone.
-  useChamberEvent(STREAM_PENDING_EVENT, (event) => {
-    const detail = (event as CustomEvent<StreamPendingDetail>).detail;
+  useEffect(() => subscribeClientSignal(STREAM_PENDING_SIGNAL, (detail) => {
     if (!detail?.sessionId) return;
     const key = String(detail.sessionId);
     if (detail.pending) {
@@ -157,108 +151,92 @@ export function SidebarDataProvider({ children, initialFolders = [] }: { childre
       return;
     }
     setOverlayVersion((v) => v + 1);
-  });
+  }), []);
 
   // The text the user just sent, for the placeholder row that stands in until
   // omp's transcript scan can name the session.
-  useChamberEvent(SESSION_TITLE_HINT_EVENT, (event) => {
-    const detail = (event as CustomEvent<SessionTitleHintDetail>).detail;
-    if (!detail?.sessionId || !detail.title) return;
+  useEffect(() => subscribeClientSignal(SESSION_TITLE_HINT_SIGNAL, (detail) => {
+    // Trimmed here as well as at the dispatcher: a whitespace-only title would
+    // render as a blank placeholder row, which is worse than showing the
+    // timestamped default it stands in for.
+    const title = detail?.title?.trim();
+    if (!detail?.sessionId || !title) return;
     const key = String(detail.sessionId);
-    if (titleHintRef.current.get(key) === detail.title) return;
-    titleHintRef.current.set(key, detail.title);
+    if (titleHintRef.current.get(key) === title) return;
+    titleHintRef.current.set(key, title);
     setOverlayVersion((v) => v + 1);
-  });
+  }), []);
 
   // Hand a session back to the authoritative status the moment a snapshot that
   // landed after the arm carries one: the server wrote `stream` before
   // answering the send, so such a read cannot be the run's absence.
   useEffect(() => {
-    if (!fetcher.data?.folders) return;
+    if (!status.data) return;
     // A hint lives only until omp's transcript scan surfaces the session; the
     // real row carries the real title, and the placeholder is not drawn.
     if (titleHintRef.current.size) {
       const listed = new Set<string>();
-      for (const folder of fetcher.data.folders) {
+      for (const folder of folders) {
         for (const session of folder.sessions ?? []) listed.add(String(session.id));
       }
       for (const key of titleHintRef.current.keys()) {
         if (listed.has(key)) titleHintRef.current.delete(key);
       }
     }
-    if (releaseObservedPending(pendingRef.current, fetcher.data.folders)) {
+    if (releaseObservedPending(pendingRef.current, folders)) {
       setOverlayVersion((v) => v + 1);
     }
-  }, [fetcher.data]);
+  }, [status.data, folders]);
 
-  // User-initiated refresh. Unlike `refresh` it does NOT skip an in-flight
-  // load — a click is an explicit "read it again now", and the fetcher aborts
-  // the superseded request rather than letting two answer. The spinner follows
-  // THIS load only: a token marks the newest click, so a background poll
-  // settling in between cannot stop a spin that is still running, and a
-  // superseded click cannot stop the newer one's.
+  const refresh = useCallback(() => {
+    realtimeClient.refresh(TOPIC_SIDEBAR);
+    realtimeClient.refresh(TOPIC_SIDEBAR_STATUS);
+  }, []);
+
+  // The spinner follows a user's click only: it is raised here and lowered when
+  // the next structure snapshot arrives (the status snapshot may land first, and
+  // the list is what the user is looking at).
   const [refreshing, setRefreshing] = useState(false);
-  const refreshTokenRef = useRef(0);
   const refreshNow = useCallback(() => {
-    const token = ++refreshTokenRef.current;
     setRefreshing(true);
-    void fetcher.load('/api/sessions/list').finally(() => {
-      if (refreshTokenRef.current === token) setRefreshing(false);
-    });
-  }, [fetcher]);
+    refresh();
+  }, [refresh]);
+  useEffect(() => {
+    if (refreshing) setRefreshing(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [structure.data]);
 
-  // Idle keep-alive: the throttled stream-event hook and useStreamPoll only
-  // fire while THIS client streams, so changes made elsewhere (another tab,
-  // a background omp process finishing, an archive from a second browser)
-  // never surfaced until the user interacted. A slow poll closes that gap;
-  // the idle-check above keeps it from piling onto a load the event path
-  // just started.
-  //
-  // Gated off while anything streams: `useStreamPoll` already covers that
-  // state on a tighter cadence, so the idle tick would be pure overlap.
-  const hasStreaming = Boolean(
-    fetcher.data?.folders?.some((folder) =>
-      folder.sessions?.some((session) => session.streamStatus === 'stream'),
-    ),
-  );
   // Fires for ANY session, including one this tab never opened — the cue that an
   // agent is blocked on an answer must not depend on the open timeline.
-  useInputRequiredAlert(fetcher.data?.folders ?? []);
-  usePanelRefresh(refresh, !hasStreaming, SIDEBAR_IDLE_REFRESH_MS);
+  useInputRequiredAlert(folders);
 
   const markSeen = useCallback((sessionId: number | string) => {
     const key = String(sessionId);
-    const status = fetcher.data?.folders
-      ?.flatMap((f) => f.sessions ?? [])
+    const current = folders
+      .flatMap((f) => f.sessions ?? [])
       .find((s) => String(s.id) === key)?.streamStatus;
     // Only terminal badges ack; `stream` rows must survive until agent_end.
-    if (!status || status === 'stream' || seenRef.current.has(key)) return;
+    if (!current || current === 'stream' || seenRef.current.has(key)) return;
     seenRef.current.add(key);
     setOverlayVersion((v) => v + 1);
     fetch(`/api/sessions/${encodeURIComponent(key)}/stream-seen`, { method: 'POST' })
-      .then(() => {
-        // Pull the authoritative list (row deleted server-side) and let the
-        // pending-session ack effect observe an already-stripped status.
-        if (fetcher.state === 'idle') void fetcher.load('/api/sessions/list');
-      })
       .catch(() => {
         // Server still owns the badge; the next open re-acks.
         seenRef.current.delete(key);
         setOverlayVersion((v) => v + 1);
       });
-  }, [fetcher]);
+  }, [folders]);
 
   const value = useMemo<SidebarDataHandle>(() => {
-    const data = fetcher.data;
     const seen = seenRef.current;
     const pending = pendingRef.current;
     // A session that streams again earns a fresh badge lifecycle: forget the
     // ack from an earlier run. Without this, a session opened with a terminal
     // badge stays stripped for the whole mount — its spinner never renders no
-    // matter how many times the list refetches, and only a page reload (fresh
-    // mount) brings it back.
-    if (seen.size && data?.folders) {
-      for (const folder of data.folders) {
+    // matter how many snapshots arrive, and only a page reload (fresh mount)
+    // brings it back.
+    if (seen.size) {
+      for (const folder of folders) {
         for (const session of folder.sessions ?? []) {
           if (session.streamStatus === 'stream') seen.delete(String(session.id));
         }
@@ -268,13 +246,10 @@ export function SidebarDataProvider({ children, initialFolders = [] }: { childre
       // The seen-strip (a one-shot terminal badge this mount acked) then the
       // optimistic `stream` force (a send whose dispatch round trip is still
       // in flight), applied in that order. NEVER strip a live `stream` row.
-      folders: applyStreamOverlay(
-        (data?.folders ?? initialFolders) as WorkspaceFolderData[],
-        seen,
-        pending,
-      ),
-      isMock: data?.isMock ?? false,
-      initializing: !hasLoaded,
+      folders: applyStreamOverlay(folders, seen, pending),
+      isMock,
+      initializing,
+      stale: structure.stale || status.stale,
       refresh,
       refreshNow,
       refreshing,
@@ -284,7 +259,7 @@ export function SidebarDataProvider({ children, initialFolders = [] }: { childre
       titleHint: (id) => (id === null || id === undefined ? undefined : titleHintRef.current.get(String(id))),
     };
     // `overlayVersion` is the re-render trigger for the two refs above.
-  }, [fetcher.data, initialFolders, hasLoaded, refresh, refreshNow, refreshing, markSeen, overlayVersion]);
+  }, [folders, isMock, initializing, structure.stale, status.stale, refresh, refreshNow, refreshing, markSeen, overlayVersion]);
 
   return <SidebarDataContext.Provider value={value}>{children}</SidebarDataContext.Provider>;
 }
@@ -294,13 +269,13 @@ export function SidebarDataProvider({ children, initialFolders = [] }: { childre
  * provider (keeps legacy prop-driven trees working during the transition).
  */
 export function useSidebarData(): SidebarDataHandle {
-  const ctx = useContext(SidebarDataContext);
-  if (ctx) return ctx;
-  // eslint-disable-next-line react-hooks/rules-of-hooks -- single hook call site
+  const value = useContext(SidebarDataContext);
+  if (value) return value;
   return {
     folders: [],
     isMock: false,
     initializing: true,
+    stale: false,
     refresh: () => {},
     refreshNow: () => {},
     refreshing: false,

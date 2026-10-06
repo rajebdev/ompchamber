@@ -3,159 +3,156 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { describe, expect, test } from 'bun:test';
+/**
+ * Repo discovery now rides the `repos:<root>` realtime topic, so what this file
+ * pins is the store's own rules against a REAL socket: a new root never reports
+ * the previous root's list, one subscription per root is shared, a snapshot is
+ * adopted, a server republish (the background walk finishing) reaches the
+ * listener, and a rescan goes out over HTTP.
+ *
+ * Driven through a real server and socket rather than a stubbed fetch: the
+ * whole point of the change is that the walk's completion arrives as a frame,
+ * and a fake would only prove the fake's timing.
+ */
 
-import { createRepoStore, type RepoFetch, type RepoScheduler } from '@/client/hooks/workspace/repo-scope/store';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
+import { Window } from 'happy-dom';
 
-/** Resolves each request from a per-root table, recording the roots asked for. */
-function fakeFetch(byRoot: Record<string, { repos: string[]; reposPending?: boolean }>) {
-  const requested: string[] = [];
-  const fetchImpl: RepoFetch = async (url) => {
-    const root = new URL(url, 'http://localhost').searchParams.get('root') ?? '';
-    requested.push(root);
-    return byRoot[root] ?? { repos: ['.'] };
-  };
-  return { fetchImpl, requested };
+import { createRepoStore, UNKNOWN_LIST } from '@/client/hooks/workspace/repo-scope/store';
+import { resetRealtimeClient } from '@/shared/lib/realtime/client';
+import { reposTopic } from '@/shared/lib/realtime/protocol';
+import { startRealtimeTestServer, type RealtimeTestServer } from '@/test-support/realtime-server';
+import { installDomGlobals, restoreDomGlobals } from '@/test-support/pristine-globals';
+import type { TopicResolver } from '@/server/lib/realtime/hub.server';
+
+let server: RealtimeTestServer | undefined;
+
+beforeAll(() => {
+  installDomGlobals(new Window({ url: 'http://localhost' }));
+});
+
+afterAll(() => {
+  restoreDomGlobals();
+});
+
+afterEach(() => {
+  server?.stop();
+  server = undefined;
+  resetRealtimeClient();
+});
+
+/** A resolver table keyed by root, so each root answers its own list. */
+function resolversFor(byRoot: Map<string, { repos: string[]; reposPending?: boolean }>): Map<string, TopicResolver> {
+  const map = new Map<string, TopicResolver>();
+  for (const [root, payload] of byRoot) {
+    map.set(reposTopic(root), async () => payload);
+  }
+  return map;
 }
 
-/** Retries the caller arms, so a test can fire them instead of waiting them out. */
-function fakeScheduler() {
-  const armed: (() => void)[] = [];
-  const scheduler: RepoScheduler = (run) => {
-    armed.push(run);
-    return () => {
-      const index = armed.indexOf(run);
-      if (index >= 0) armed.splice(index, 1);
-    };
-  };
-  return { scheduler, armed };
+/** A store whose rescan requests are recorded instead of sent. */
+function makeStore() {
+  const requests: string[] = [];
+  const store = createRepoStore({
+    fetch: async (url) => {
+      requests.push(url);
+      return { repos: ['.', 'projects/rescanned'], reposPending: false };
+    },
+  });
+  return { store, requests };
 }
 
-describe('repo list invalidation on workspace switch', () => {
-  test('a new root never reports the previous root\'s repos', async () => {
-    const { fetchImpl } = fakeFetch({
-      '/ws/a': { repos: ['.', 'projects/a'] },
-      '/ws/b': { repos: ['.', 'projects/b'] },
-    });
-    const store = createRepoStore({ fetch: fetchImpl });
+/** Let the socket's frames settle into the store. */
+async function drain(): Promise<void> {
+  for (let i = 0; i < 16; i += 1) await Promise.resolve();
+}
 
-    const seenA: string[][] = [];
-    const unsubscribeA = store.subscribe('/ws/a', () => seenA.push(store.snapshot('/ws/a').repos));
-    await store.settled('/ws/a');
+describe('repo store over the repos topic', () => {
+  test('a snapshot is adopted, and a republish reaches the listener', async () => {
+    server = await startRealtimeTestServer(resolversFor(new Map([['/ws/a', { repos: ['.', 'projects/a'] }]])));
+    installDomGlobals(new Window({ url: `http://127.0.0.1:${server.port}` }));
+    const { store } = makeStore();
+
+    const seen: string[][] = [];
+    const unsubscribe = store.subscribe('/ws/a', () => seen.push(store.snapshot('/ws/a').repos));
+    await server.waitForTopic(reposTopic('/ws/a'), (value) => value !== null);
+    await drain();
+
     expect(store.snapshot('/ws/a').repos).toEqual(['.', 'projects/a']);
 
-    // Switching workspaces: root B has no entry, so it starts from the root
-    // alone — not from A's list.
-    expect(store.snapshot('/ws/b').repos).toEqual(['.']);
+    // The background walk finished: the server republishes the root's topic.
+    server.publish(reposTopic('/ws/a'), { repos: ['.', 'projects/a', 'projects/late'], reposPending: false });
+    await server.waitForTopic(reposTopic('/ws/a'), (value) => (value as { repos?: unknown[] })?.repos?.length === 3);
+    await drain();
+
+    expect(store.snapshot('/ws/a').repos).toEqual(['.', 'projects/a', 'projects/late']);
+    expect(seen).toContainEqual(['.', 'projects/a', 'projects/late']);
+    unsubscribe();
+  });
+
+  test('a new root never reports the previous root\'s repos', async () => {
+    server = await startRealtimeTestServer(resolversFor(new Map([
+      ['/ws/a', { repos: ['.', 'projects/a'] }],
+      ['/ws/b', { repos: ['.', 'projects/b'] }],
+    ])));
+    installDomGlobals(new Window({ url: `http://127.0.0.1:${server.port}` }));
+    const { store } = makeStore();
+
+    const unsubscribeA = store.subscribe('/ws/a', () => {});
+    await server.waitForTopic(reposTopic('/ws/a'), (value) => value !== null);
+    await drain();
+    expect(store.snapshot('/ws/a').repos).toEqual(['.', 'projects/a']);
+
+    // Root B has no entry, so it starts from the root alone — not from A's list.
+    expect(store.snapshot('/ws/b')).toEqual(UNKNOWN_LIST);
     unsubscribeA();
 
-    const seenB: string[][] = [];
-    const unsubscribeB = store.subscribe('/ws/b', () => seenB.push(store.snapshot('/ws/b').repos));
-    await store.settled('/ws/b');
+    const unsubscribeB = store.subscribe('/ws/b', () => {});
+    await server.waitForTopic(reposTopic('/ws/b'), (value) => value !== null);
+    await drain();
     expect(store.snapshot('/ws/b').repos).toEqual(['.', 'projects/b']);
-    // Every notification for B reported B's list — A's list was never published
-    // under B, not even for the render before the read landed.
-    expect(seenB).toEqual([['.'], ['.', 'projects/b']]);
-    expect(seenA).toEqual([['.'], ['.', 'projects/a']]);
+    // A's list was never published under B.
+    expect(store.snapshot('/ws/a').repos).toEqual(['.', 'projects/a']);
     unsubscribeB();
   });
 
-  test('a list already discovered for a root is reused without re-asking', async () => {
-    const { fetchImpl, requested } = fakeFetch({ '/ws/a': { repos: ['.', 'projects/a'] } });
-    const store = createRepoStore({ fetch: fetchImpl });
-
-    const unsubscribeFirst = store.subscribe('/ws/a', () => {});
-    await store.settled('/ws/a');
-    unsubscribeFirst();
-    expect(requested).toEqual(['/ws/a']);
-
-    // A right-panel view switch re-subscribes to the same root.
-    const unsubscribeSecond = store.subscribe('/ws/a', () => {});
-    await store.settled('/ws/a');
-    expect(requested).toEqual(['/ws/a']);
-    expect(store.snapshot('/ws/a').repos).toEqual(['.', 'projects/a']);
-    unsubscribeSecond();
-  });
-
-  test('an unsettled discovery is resumed, not abandoned, when a subscriber returns', async () => {
-    const { fetchImpl, requested } = fakeFetch({ '/ws/a': { repos: ['.'], reposPending: true } });
-    const { scheduler, armed } = fakeScheduler();
-    const store = createRepoStore({ fetch: fetchImpl, scheduler });
+  test('a rescan asks the server over HTTP', async () => {
+    server = await startRealtimeTestServer(resolversFor(new Map([['/ws/a', { repos: ['.'] }]])));
+    installDomGlobals(new Window({ url: `http://127.0.0.1:${server.port}` }));
+    const { store, requests } = makeStore();
 
     const unsubscribe = store.subscribe('/ws/a', () => {});
-    await store.settled('/ws/a');
-    expect(store.snapshot('/ws/a').scanning).toBe(true);
-    expect(armed).toHaveLength(1);
-    unsubscribe();
-    // The retry is dropped with the last subscriber rather than left armed.
-    expect(armed).toHaveLength(0);
+    await server.waitForTopic(reposTopic('/ws/a'), (value) => value !== null);
+    await drain();
 
-    // Re-subscribing resumes the scan instead of inheriting a spinner that
-    // nothing drives.
-    const unsubscribeAgain = store.subscribe('/ws/a', () => {});
-    await store.settled('/ws/a');
-    expect(requested).toEqual(['/ws/a', '/ws/a']);
-    expect(armed).toHaveLength(1);
-    unsubscribeAgain();
-  });
-
-  test('a failed discovery leaves the root unlisted so the next subscriber retries', async () => {
-    let calls = 0;
-    const store = createRepoStore({
-      fetch: async () => {
-        calls += 1;
-        if (calls === 1) throw new Error('offline');
-        return { repos: ['.', 'projects/a'] };
-      },
-    });
-
-    const unsubscribe = store.subscribe('/ws/a', () => {});
-    await store.settled('/ws/a');
-    expect(store.snapshot('/ws/a').repos).toEqual(['.']);
-    unsubscribe();
-
-    const unsubscribeAgain = store.subscribe('/ws/a', () => {});
-    await store.settled('/ws/a');
-    expect(calls).toBe(2);
-    expect(store.snapshot('/ws/a').repos).toEqual(['.', 'projects/a']);
-    unsubscribeAgain();
-  });
-
-  test('a response that lands after its root lost every subscriber is dropped', async () => {
-    const gate = Promise.withResolvers<unknown>();
-    const store = createRepoStore({ fetch: () => gate.promise });
-
-    const unsubscribe = store.subscribe('/ws/a', () => {});
-    unsubscribe();
-    gate.resolve({ repos: ['.', 'projects/a'] });
-    await store.settled('/ws/a');
-
-    // The read was abandoned with the subscription: nothing is reported for a
-    // root nobody is showing.
-    expect(store.snapshot('/ws/a').repos).toEqual(['.']);
-  });
-
-  test('a rescan reports the fresh list and clears the pending flag', async () => {
-    let repos = ['.'];
-    const requested: string[] = [];
-    const store = createRepoStore({
-      fetch: async (url) => {
-        requested.push(new URL(url, 'http://localhost').searchParams.get('rescan') ?? '');
-        return { repos };
-      },
-    });
-
-    const unsubscribe = store.subscribe('/ws/a', () => {});
-    await store.settled('/ws/a');
-    expect(store.snapshot('/ws/a')).toEqual({ repos: ['.'], scanning: false });
-
-    // A nested repo that appeared after the first discovery.
-    repos = ['.', 'projects/late'];
     store.rescan('/ws/a');
     await store.settled('/ws/a');
 
-    expect(requested).toEqual(['', '1']);
-    expect(store.snapshot('/ws/a')).toEqual({ repos: ['.', 'projects/late'], scanning: false });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toContain('reposOnly=1');
+    expect(requests[0]).toContain('rescan=1');
+    expect(store.snapshot('/ws/a').repos).toEqual(['.', 'projects/rescanned']);
     unsubscribe();
+  });
+
+  test('one topic subscription serves every listener of the same root', async () => {
+    let resolves = 0;
+    const resolvers = new Map<string, TopicResolver>([
+      [reposTopic('/ws/a'), async () => { resolves += 1; return { repos: ['.', 'projects/a'] }; }],
+    ]);
+    server = await startRealtimeTestServer(resolvers);
+    installDomGlobals(new Window({ url: `http://127.0.0.1:${server.port}` }));
+    const { store } = makeStore();
+
+    const first = store.subscribe('/ws/a', () => {});
+    const second = store.subscribe('/ws/a', () => {});
+    await server.waitForTopic(reposTopic('/ws/a'), (value) => value !== null);
+    await drain();
+
+    // The topic resolved ONCE for two listeners: the store shares one
+    // subscription per root rather than one per panel.
+    expect(resolves).toBe(1);
+    first();
+    second();
   });
 });
