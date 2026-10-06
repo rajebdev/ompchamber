@@ -18,6 +18,11 @@ import { useChamberEvent, useWindowEvent } from '@/client/hooks/ui/window-event'
 import { PluginBootstrap } from '@/client/lib/plugins/bootstrap';
 import { WORKSPACE_KEY_BINDINGS } from '@/shared/lib/workspace/keymap';
 import { resolveBinding } from '@/shared/lib/ui/key-binding';
+import { useToasts } from '@/client/hooks/ui/toasts';
+import { ToastStack } from '@/client/components/common/ToastStack';
+import { SessionDeleteModal } from '@/client/components/common/session-delete-modal';
+import { useSessionActions } from '@/client/hooks/workspace/session-actions';
+import { useSessionDelete } from '@/client/hooks/workspace/session-delete';
 
 interface DesktopLayoutProps {
   sessionId: string | null;
@@ -85,6 +90,36 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
   const handleRefreshWorkspace = () => setRefreshKey(k => k + 1);
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
   const streamStatus = useAgentStreamStatus();
+
+  // The navbar's title menu acts on the session on screen. Its row may live in
+  // a folder that is not expanded in the sidebar, so the session is found by id
+  // across every folder rather than by walking the visible list. No row means
+  // nothing to act on — a session the sidebar does not know (a chat running
+  // outside every registered workspace) gets no menu rather than dead items.
+  const activeSession = useMemo(() => {
+    if (!sessionId) return null;
+    for (const folder of folders) {
+      const found = (folder.sessions || []).find((s) => String(s.id) === String(sessionId));
+      if (found) return found;
+    }
+    return null;
+  }, [folders, sessionId]);
+  const sidebar = useSidebarData();
+  const { toasts, pushToast, dismissToast } = useToasts();
+  const { handleArchive, handleRename, handleRenameWithAi } = useSessionActions(sidebar.refresh, pushToast);
+  const sessionDelete = useSessionDelete();
+  // A pending `new-…` chat has no transcript anywhere yet, so rename and delete
+  // are refused by the server; the menu hides them the way the sidebar does.
+  const isPendingSession = Boolean(sessionId && sessionId.startsWith('new-'));
+  const sessionActions = activeSession
+    ? {
+        isArchived: activeSession.is_archived === 1,
+        onRename: isPendingSession ? undefined : (name: string) => void handleRename(activeSession, name),
+        onRenameWithAi: isPendingSession ? undefined : () => void handleRenameWithAi(activeSession),
+        onArchive: () => handleArchive(activeSession),
+        onDelete: isPendingSession ? undefined : () => sessionDelete.requestDelete(activeSession),
+      }
+    : undefined;
 
   /**
    * The workspace's own shortcuts, resolved from the shared keymap so the
@@ -201,6 +236,7 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
                 onToggleRightPanel={handleToggleRightPanel}
                 onToggleLeftPanel={() => handleToggleLeftPanel(!showLeftPanel)}
                 onOpenPluginPanel={handleOpenPluginPanel}
+                sessionActions={sessionActions}
               />
 
               <WorkspacePanels
@@ -243,6 +279,18 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
         autoOpenAddProvider={autoOpenAddProvider}
         appSettings={appSettings} 
       />
+
+      {/* The navbar title menu's delete path and the rename-with-AI refusal
+          surface here: this layout owns no sidebar, so it must render its own
+          confirmation and toast stack. */}
+      <SessionDeleteModal
+        session={sessionDelete.pending}
+        isDeleting={sessionDelete.isDeleting}
+        error={sessionDelete.error}
+        onClose={sessionDelete.cancelDelete}
+        onConfirm={() => void sessionDelete.confirmDelete()}
+      />
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }

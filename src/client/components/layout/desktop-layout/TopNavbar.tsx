@@ -3,6 +3,8 @@ import { PWAInstallButton } from '@/client/components/common/PWAInstallButton';
 import { PanelLauncher } from '@/client/components/layout/desktop-layout/PanelLauncher';
 import { HeaderPanelButtons } from '@/client/components/layout/desktop-layout/HeaderPanelButtons';
 import { StreamStatusDot } from '@/client/components/common/StreamStatusDot';
+import { SessionActionsMenu, useRowMenu } from '@/client/components/common/session-actions-menu';
+import { useInlineRename } from '@/client/hooks/ui/inline-rename';
 import type { AgentStreamStatus } from '@/shared/lib/chat/omp/status';
 import { WORKSPACE_KEY_BINDINGS, type WorkspaceCommand } from '@/shared/lib/workspace/keymap';
 import { describeBinding } from '@/shared/lib/ui/key-binding';
@@ -31,6 +33,16 @@ interface TopNavbarProps {
   onToggleLeftPanel: () => void;
   /** Open a plugin's view in the editor column. */
   onOpenPluginPanel: (panelKey: string) => void;
+  /** Session-level actions for the title's overflow menu, when a session is on screen. */
+  sessionActions?: {
+    isArchived?: boolean;
+    /** Omitted for a session that cannot be renamed yet (a pending `new-…` chat). */
+    onRename?: (name: string) => void;
+    /** Ask omp to name the session from its transcript. */
+    onRenameWithAi?: () => void;
+    onArchive?: () => void;
+    onDelete?: () => void;
+  };
 }
 
 export function TopNavbar({
@@ -44,7 +56,15 @@ export function TopNavbar({
   onToggleRightPanel,
   onToggleLeftPanel,
   onOpenPluginPanel,
+  sessionActions,
 }: TopNavbarProps) {
+  // The title is renamed in place here, the way a sidebar row is: the overflow
+  // menu offers Rename and the header swaps its label for the field.
+  const rename = useInlineRename(sessionTitle ?? '', sessionActions?.onRename);
+  const menu = useRowMenu();
+  const hasSessionActions = Boolean(
+    sessionActions && (sessionActions.onRename || sessionActions.onRenameWithAi || sessionActions.onArchive || sessionActions.onDelete)
+  );
   return (
     <header 
       className="h-10 flex-shrink-0 border-b border-ink/10 bg-paper flex items-center justify-between pr-4 z-20 titlebar-drag-region select-none"
@@ -82,12 +102,38 @@ export function TopNavbar({
         )}
         {sessionTitle && (
           <div className="flex items-center space-x-2 titlebar-no-drag">
-            <span className="font-bold text-sm tracking-tight hidden sm:flex items-center">
-              <span className="font-semibold text-xs text-ink truncate">
-                {sessionTitle.charAt(0).toUpperCase() + sessionTitle.slice(1)}
+            {rename.isEditing ? (
+              <input
+                ref={rename.inputRef}
+                autoFocus
+                value={rename.draft}
+                onInput={(e) => rename.setDraft(e.currentTarget.value)}
+                onKeyDown={rename.handleKeyDown}
+                onBlur={rename.handleBlur}
+                className="w-48 min-w-0 bg-paper border border-ink/25 rounded px-1.5 py-0.5 text-xs text-ink font-semibold outline-none focus:border-ink/50"
+                title="Session title"
+                aria-label="Session title"
+              />
+            ) : (
+              <span className="font-bold text-sm tracking-tight hidden sm:flex items-center">
+                <span className="font-semibold text-xs text-ink truncate">
+                  {sessionTitle.charAt(0).toUpperCase() + sessionTitle.slice(1)}
+                </span>
               </span>
-            </span>
-            <MoreHorizontal size={14} className="text-ink/40 hover:text-ink cursor-pointer flex-shrink-0" />
+            )}
+            {hasSessionActions && !rename.isEditing && (
+              <button
+                type="button"
+                onClick={menu.openBelow}
+                title="Session actions"
+                aria-label="Session actions"
+                aria-haspopup="menu"
+                aria-expanded={menu.anchor !== null}
+                className="p-1 rounded text-ink/40 hover:text-ink hover:bg-ink/10 cursor-pointer flex-shrink-0"
+              >
+                <MoreHorizontal size={14} />
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -129,6 +175,18 @@ export function TopNavbar({
           </button>
         </div>
       </div>
+
+      {menu.anchor && sessionActions && (
+        <SessionActionsMenu
+          anchor={menu.anchor}
+          isArchived={sessionActions.isArchived}
+          onRename={sessionActions.onRename ? rename.startRename : undefined}
+          onRenameWithAi={sessionActions.onRenameWithAi}
+          onArchive={sessionActions.onArchive}
+          onDelete={sessionActions.onDelete}
+          onClose={menu.close}
+        />
+      )}
     </header>
   );
 }
