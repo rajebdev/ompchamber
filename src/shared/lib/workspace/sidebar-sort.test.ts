@@ -5,7 +5,12 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { compareFolders, isValidSessionSortOption, sortFolders } from '@/shared/lib/workspace/sidebar-sort';
+import {
+  compareFolders,
+  DEFAULT_SESSION_SORT_OPTION,
+  isValidSessionSortOption,
+  sortFolders,
+} from '@/shared/lib/workspace/sidebar-sort';
 import type { SessionItemData, SessionSortOption, WorkspaceFolderData } from '@/shared/types';
 
 /** Minimal session factory — only the fields the comparator reads. */
@@ -163,6 +168,11 @@ describe('sidebar-sort', () => {
 });
 
 describe('isValidSessionSortOption', () => {
+  test('the default option is a valid, menu-listed value', () => {
+    expect(DEFAULT_SESSION_SORT_OPTION).toBe('LATEST_SESSION');
+    expect(ALL_OPTIONS).toContain(DEFAULT_SESSION_SORT_OPTION);
+  });
+
   test('returns true for all four supported options', () => {
     for (const option of ALL_OPTIONS) {
       expect(isValidSessionSortOption(option)).toBe(true);

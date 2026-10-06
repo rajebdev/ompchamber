@@ -121,6 +121,15 @@ export function sortFolders(
 const SESSION_SORT_OPTIONS: readonly SessionSortOption[] = ['A-Z', 'Z-A', 'LATEST_SESSION', 'LATEST_ADDED'];
 
 /**
+ * Sort applied when no preference is stored: newest session activity first.
+ * The server (`serverSidebarSort`) and the client controller must both fall
+ * back to this same value, or the seeded SSR payload would arrive in one order
+ * and be re-sorted in the browser to another (the load flicker `sidebarSort`
+ * exists to prevent).
+ */
+export const DEFAULT_SESSION_SORT_OPTION: SessionSortOption = 'LATEST_SESSION';
+
+/**
  * Narrow an untrusted value (a DB-stored preference, a URL param) to a sort
  * option. The loader and both sidebars must agree on what counts as a valid
  * preference, so the guard lives next to the comparator instead of being

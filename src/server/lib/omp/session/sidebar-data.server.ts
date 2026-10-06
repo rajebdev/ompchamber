@@ -18,7 +18,7 @@
 
 import { getDb } from '@/server/db.server';
 import { isMockMode } from '@/server/mock.server';
-import { isValidSessionSortOption, sortFolders } from '@/shared/lib/workspace/sidebar-sort';
+import { DEFAULT_SESSION_SORT_OPTION, isValidSessionSortOption, sortFolders } from '@/shared/lib/workspace/sidebar-sort';
 import { loadOmpSidebarData } from '@/server/lib/omp/session/reader';
 import { sessionHasSubagents } from '@/server/lib/omp/session/subagent-presence';
 import { healStaleStreamStatuses, loadStreamStates, type SessionRunModel } from '@/shared/lib/omp/session/stream-state.server';
@@ -161,7 +161,7 @@ export async function loadSidebarData(): Promise<SessionListPayload> {
   };
 }
 
-/** Persisted sidebar sort preference (SQLite app_settings), defaulting to A-Z. */
+/** Persisted sidebar sort preference (SQLite app_settings), defaulting to newest session activity. */
 async function serverSidebarSort(): Promise<SessionSortOption> {
   try {
     const db = await getDb();
@@ -172,7 +172,7 @@ async function serverSidebarSort(): Promise<SessionSortOption> {
   } catch {
     // Table may not exist yet right after creation.
   }
-  return 'A-Z';
+  return DEFAULT_SESSION_SORT_OPTION;
 }
 
 /**

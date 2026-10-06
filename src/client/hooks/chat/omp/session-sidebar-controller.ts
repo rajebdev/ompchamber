@@ -19,7 +19,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useSearchParams } from '@/client/lib/router/search-params';
-import { isValidSessionSortOption, sortFolders } from '@/shared/lib/workspace/sidebar-sort';
+import { DEFAULT_SESSION_SORT_OPTION, isValidSessionSortOption, sortFolders } from '@/shared/lib/workspace/sidebar-sort';
 import { pendingSessionCreatedAt, pendingSessionTitle, sessionIdEpochMs } from '@/shared/lib/omp/session/default-title';
 import { buildSidebarSessionStatus, useSessionStatusAck } from '@/client/hooks/chat/omp/session-statuses';
 import { useStreamPoll } from '@/client/hooks/chat/omp/stream-poll';
@@ -100,9 +100,10 @@ export function useSessionSidebarController(
   const [showArchived, setShowArchived] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   // Seeded from the server (app_settings.omp_sidebar_sort) so the SSR HTML and
-  // the first client render agree.
+  // the first client render agree. With no stored preference the sidebar opens
+  // on the newest session activity (see DEFAULT_SESSION_SORT_OPTION).
   const [sortOption, setSortOption] = useState<SessionSortOption>(() =>
-    isValidSessionSortOption(appSettings.omp_sidebar_sort) ? appSettings.omp_sidebar_sort : 'A-Z',
+    isValidSessionSortOption(appSettings.omp_sidebar_sort) ? appSettings.omp_sidebar_sort : DEFAULT_SESSION_SORT_OPTION,
   );
 
   const sortPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
