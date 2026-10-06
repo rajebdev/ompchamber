@@ -5,6 +5,12 @@ All notable changes to this package are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0](https://github.com/rajebdev/ompchamber/compare/ui/v2.0.1...ui/v2.1.0) — 2026-10-06
+
+### Added
+
+* **ui:** give panels a fetch reader, a host scope and a markdown passthrough ([6e59def](https://github.com/rajebdev/ompchamber/commit/6e59defa3f6d976d86849e810243cecdfa27adc8))
+
 ## [2.0.1](https://github.com/rajebdev/ompchamber/compare/ui/v2.0.0...ui/v2.0.1) — 2026-10-05
 
 ### Fixed
