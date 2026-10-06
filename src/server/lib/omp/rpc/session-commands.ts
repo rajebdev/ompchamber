@@ -123,7 +123,18 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
       // "nothing happened" in the sidebar after the user hit send. Skipped
       // while a turn already streams — that row belongs to the running turn,
       // and this dispatch's failure must never roll it back.
-      const ownsStreamRow = !streamingBehavior && !host.streaming && Boolean(host.sessionId);
+      //
+      // `isRunning()`, NOT `streaming`: `streaming` only flips at `agent_start`,
+      // so a dispatch that arrives DURING the ack round trip of an earlier one
+      // saw `streaming === false` and claimed the turn slot for itself. The
+      // chamber's own `/chamber-mode` commands are dispatched on that path (the
+      // plan-review `republish`, a mode toggle) and answer `agentInvoked:false`,
+      // so the claim made them release the RUNNING turn's `stream` row and emit
+      // a `prompt_result` — which the client folds as "the run settled",
+      // blanking the generating indicator mid-answer. `isRunning()` is true for
+      // the whole dispatch (promptRunning is set before the ack), so a secondary
+      // command now owns nothing and settles nothing.
+      const ownsStreamRow = !streamingBehavior && !host.isRunning() && Boolean(host.sessionId);
       // A prompt that never started a turn leaves no run behind, so the row we
       // wrote must go — unless a turn began meanwhile, which owns it now.
       const releaseStreamRow = (): void => {
@@ -149,15 +160,24 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
           ...(streamingBehavior ? { streamingBehavior } : {}),
         }, PROMPT_ACK_TIMEOUT_MS);
         if (ack?.agentInvoked === false && !streamingBehavior) {
-          host.promptRunning = false;
-          host.awaitingAgentStart = false;
-          host.awaitingAgentStartDeadline = 0;
-          releaseStreamRow();
-          host.emit({ type: 'prompt_result', agentInvoked: false });
-          // Nothing ran (agent was idle and declined) — the queue may hold the
-          // next item; give it the same delivery window a run end would.
-          scheduleQueueDelivery(host);
-        } else if (!streamingBehavior && ack?.agentInvoked !== false) {
+          // Only a dispatch that CLAIMED the turn slot may settle it. A command
+          // dispatched while a run is in flight — a mode toggle, the plan-review
+          // `republish` — also answers `agentInvoked:false`, and settling on it
+          // cleared the RUNNING turn's flags and emitted a `prompt_result` the
+          // client folds as "the run ended", blanking the generating indicator
+          // mid-answer (measured). The non-owning dispatch leaves everything
+          // alone; the run it arrived under is still in flight.
+          if (ownsStreamRow) {
+            host.promptRunning = false;
+            host.awaitingAgentStart = false;
+            host.awaitingAgentStartDeadline = 0;
+            releaseStreamRow();
+            host.emit({ type: 'prompt_result', agentInvoked: false });
+            // Nothing ran (agent was idle and declined) — the queue may hold the
+            // next item; give it the same delivery window a run end would.
+            scheduleQueueDelivery(host);
+          }
+        } else if (!streamingBehavior && ack?.agentInvoked !== false && ownsStreamRow) {
           host.awaitingAgentStart = true;
           host.awaitingAgentStartDeadline = Date.now() + AWAITING_AGENT_START_TIMEOUT_MS;
           // Nothing else watches this deadline. Without the watchdog a dispatch

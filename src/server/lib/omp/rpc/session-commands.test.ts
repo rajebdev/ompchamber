@@ -19,60 +19,11 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { dispatchSessionCommand, type SessionCommandHost } from '@/server/lib/omp/rpc/session-commands';
-import { RpcCommandError, RpcCommandTimeoutError, type RpcProcess } from '@/server/lib/omp/rpc/process';
-import { AGENT_BUSY_MESSAGE, AWAITING_AGENT_START_TIMEOUT_MS, RESTARTING_MESSAGE, SESSION_BUSY_MESSAGE, WebRpcError, type AgentEvent } from '@/server/lib/omp/rpc/constants';
+import { dispatchSessionCommand } from '@/server/lib/omp/rpc/session-commands';
+import { RpcCommandError, RpcCommandTimeoutError } from '@/server/lib/omp/rpc/process';
+import { AGENT_BUSY_MESSAGE, AWAITING_AGENT_START_TIMEOUT_MS, RESTARTING_MESSAGE, SESSION_BUSY_MESSAGE, WebRpcError } from '@/server/lib/omp/rpc/constants';
 import { cancelQueuedDelivery } from '@/server/lib/queue/delivery.server';
-
-function makeHarness(overrides: Record<string, unknown> = {}) {
-  const calls: Record<string, unknown>[] = [];
-  const frames: Record<string, unknown>[] = [];
-  const events: AgentEvent[] = [];
-  const counters = { idleResets: 0, watchdogs: 0, destroys: 0, resolvedDialogs: [] as string[] };
-  let handler: (command: Record<string, unknown>) => unknown = () => undefined;
-  const proc = {
-    sendCommand(command: Record<string, unknown>) {
-      calls.push(command);
-      return Promise.resolve().then(() => handler(command));
-    },
-    sendFrame(frame: Record<string, unknown>) {
-      frames.push(frame);
-    },
-  } as unknown as RpcProcess;
-  const host = {
-    streaming: false,
-    compacting: false,
-    promptRunning: false,
-    promptDispatchPendingCount: 0,
-    awaitingAgentStart: false,
-    awaitingAgentStartDeadline: 0,
-    continuationGraceUntil: 0,
-    bashRunning: false,
-    fastModeEnabled: false,
-    restarting: false,
-    sessionId: 'sess-1',
-    proc,
-    isAlive: () => true,
-    isRunning: () => false,
-    isBusy: () => false,
-    emit: (event: AgentEvent) => events.push(event),
-    send: async () => undefined,
-    idle: { reset: () => { counters.idleResets += 1; } },
-    resolvePendingUiDialog: (id: string) => { counters.resolvedDialogs.push(id); },
-    armAgentStartWatchdog: () => { counters.watchdogs += 1; },
-    destroyAndWait: async () => { counters.destroys += 1; },
-    adoptSessionIdentity: () => {},
-    ...overrides,
-  } as unknown as SessionCommandHost;
-  return {
-    host,
-    calls,
-    frames,
-    events,
-    respond: (next: (command: Record<string, unknown>) => unknown) => { handler = next; },
-    counters,
-  };
-}
+import { makeHarness, rejectionOf } from '@/server/lib/omp/rpc/session-commands-harness';
 
 let root: string;
 let savedDbPath: string | undefined;
@@ -93,10 +44,6 @@ afterEach(() => {
   else Bun.env.OMPCHAMBER_DB_PATH = savedDbPath;
   rmSync(root, { recursive: true, force: true });
 });
-
-async function rejectionOf(operation: Promise<unknown>): Promise<unknown> {
-  return operation.then(() => null, (error: unknown) => error);
-}
 
 describe('guards before dispatch', () => {
   test('a restarting session refuses every command without touching the child', async () => {
@@ -219,6 +166,20 @@ describe('prompt', () => {
     h.respond(() => { throw new RpcCommandError('prompt', 'Agent is already processing.'); });
     const busy = await rejectionOf(dispatchSessionCommand(h.host, { type: 'prompt', message: 'hi' })) as WebRpcError;
     expect([busy.code, busy.message]).toEqual(['agent_busy', AGENT_BUSY_MESSAGE]);
+  });
+
+  test('a command dispatched during a run\'s ack window does not settle the run', async () => {
+    // The chamber's own `/chamber-mode` commands (the plan-review `republish`, a
+    // mode toggle) are prompts too, and answer `agentInvoked:false`. Dispatched
+    // while an earlier prompt is still in its ack round trip, they used to read
+    // `streaming === false`, claim the turn slot, and release the RUNNING turn's
+    // `stream` row + emit `prompt_result` — which the client folds as "the run
+    // ended", blanking the generating indicator mid-answer.
+    const h = makeHarness({ promptRunning: true, isRunning: () => true });
+    h.respond(() => ({ agentInvoked: false }));
+    expect(await dispatchSessionCommand(h.host, { type: 'prompt', message: '/chamber-mode plan republish' })).toBeNull();
+    expect(h.host.promptRunning).toBe(true);
+    expect(h.events).toEqual([]);
   });
 
   test('a timeout against an idle session resets the child', async () => {
