@@ -9,10 +9,13 @@
  * The app has 128 `fetch` call sites across 65 files and no shared HTTP client,
  * so a gate that each caller had to honour would be a gate most callers forget.
  * Instead `installAuthFetchBridge` wraps `window.fetch` once at boot and watches
- * the responses that already flow through it: a 401 from this origin's `/api/`
- * means the session is gone, and the store flips to `required`. Every surface
- * then disappears behind the login screen without any of them knowing auth
- * exists.
+ * the responses that already flow through it: a 401 from this origin's `/api/`,
+ * other than the auth family itself, means the session is gone and the store
+ * flips to `required`. Every surface then disappears behind the login screen
+ * without any of them knowing auth exists. The `/api/auth/` exclusion is not an
+ * optimisation — those endpoints answer 401 about the credential the caller
+ * just supplied, and reading that as a lost session is what put a signed-in
+ * user behind the login screen over a mistyped password.
  *
  * The bootstrap decides the initial state. The server only injects
  * `appSettings` for an authenticated request, so it already knows the answer —
@@ -27,10 +30,8 @@ import { useCallback, useSyncExternalStore } from 'preact/compat';
 
 export type AuthState = 'authenticated' | 'required';
 
-/** Paths where a 401 is the answer to a question, not a lost session. */
-const AUTH_ENDPOINTS = ['/api/auth/login', '/api/auth/state'];
-
 let state: AuthState = 'authenticated';
+
 const listeners = new Set<() => void>();
 
 function emit(): void {
@@ -78,11 +79,24 @@ export function useAuthState(): AuthState {
 }
 
 /**
+ * The auth endpoints answer 401 about the credential the caller just supplied —
+ * a wrong password on the login form, a wrong current password on the change
+ * form — and that is a state the surface that asked already renders. Reading it
+ * as a lost session was user-visible: `POST /api/auth/password` answers 401 for
+ * a mistyped CURRENT password, so an ordinary typo threw the whole workspace
+ * behind the login screen while the session was still perfectly valid.
+ *
+ * A gate rejection of the same path is indistinguishable from that, and costs
+ * nothing: every other gated request flips the store on its own. The prefix is
+ * the whole family, so a route added under it cannot reintroduce the bug.
+ */
+const AUTH_PREFIX = '/api/auth/';
+
+/**
  * Whether this URL is one whose 401 means "the session ended".
  *
  * Only same-origin `/api/` requests qualify. A cross-origin 401 belongs to
- * whoever answered it, and the auth endpoints answer 401 to a wrong password,
- * which is a state the login screen already renders.
+ * whoever answered it.
  */
 function isSessionBearingUrl(input: RequestInfo | URL): boolean {
   let raw: string;
@@ -99,7 +113,7 @@ function isSessionBearingUrl(input: RequestInfo | URL): boolean {
     return false;
   }
   if (!path.startsWith('/api/')) return false;
-  return !AUTH_ENDPOINTS.some((endpoint) => path === endpoint);
+  return !path.startsWith(AUTH_PREFIX);
 }
 
 let bridgeInstalled = false;
@@ -183,22 +197,39 @@ export async function logout(): Promise<void> {
 }
 
 /**
- * Re-check the session against the server.
+ * Whether the server says this browser still has a session.
  *
- * Used when the page was served by a build that does not inject the auth state,
- * and by the login screen's retry after a transport failure.
+ * The authoritative question, asked WITHOUT touching the store. The login screen
+ * needs a truthful answer, and moving the store there would mount the workspace
+ * with the settings an unauthenticated shell never injected — the same reason
+ * `login` reloads instead of flipping a flag.
+ *
+ * `null` means the server could not be asked, which is deliberately not the
+ * same answer as "no session": a caller that guessed would either sign a user
+ * out over a dropped request or send one to a page it cannot vouch for.
  */
-export async function checkAuthState(): Promise<AuthState> {
+export async function probeSession(): Promise<boolean | null> {
   try {
     const response = await fetch('/api/auth/state', { headers: { accept: 'application/json' } });
-    if (!response.ok) return state;
+    if (!response.ok) return null;
     const body = (await response.json()) as { authenticated?: boolean };
-    const next = body.authenticated === false ? 'required' : 'authenticated';
-    setState(next);
-    return next;
+    return body.authenticated !== false;
   } catch {
-    return state;
+    return null;
   }
+}
+
+/**
+ * Re-check the session against the server and adopt its answer.
+ *
+ * Used when the page was served by a build that does not inject the auth state,
+ * and by the login screen's retry after a transport failure. An inconclusive
+ * answer leaves the store alone — a dropped request is not a lost session.
+ */
+export async function checkAuthState(): Promise<AuthState> {
+  const authenticated = await probeSession();
+  if (authenticated !== null) setState(authenticated ? 'authenticated' : 'required');
+  return state;
 }
 
 /** Convenience hook for the login form. */

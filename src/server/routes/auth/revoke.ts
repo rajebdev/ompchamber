@@ -39,7 +39,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const token = issueSessionToken({
     sessionSecret: updated.sessionSecret,
-    passwordHash: updated.passwordHash,
+    credentialKey: updated.credentialKey,
     ttlMs: SESSION_TTL_MS,
   });
 

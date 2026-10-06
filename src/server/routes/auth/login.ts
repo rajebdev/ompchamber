@@ -76,7 +76,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const ttlMs = trustDevice ? TRUSTED_DEVICE_TTL_MS : SESSION_TTL_MS;
   const token = issueSessionToken({
     sessionSecret: config.sessionSecret,
-    passwordHash: config.passwordHash,
+    credentialKey: config.credentialKey,
     ttlMs,
   });
 

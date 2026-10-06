@@ -26,13 +26,13 @@ import {
 } from '@/server/lib/auth/token';
 
 const SECRET = 'test-secret-value';
-const HASH = '$argon2id$v=19$m=65536,t=2,p=1$fakehash';
+const KEY = '$argon2id$v=19$m=65536,t=2,p=1$fakehash';
 const NOW = 1_700_000_000_000;
 
 function issue(overrides: Partial<Parameters<typeof issueSessionToken>[0]> = {}): string {
   return issueSessionToken({
     sessionSecret: SECRET,
-    passwordHash: HASH,
+    credentialKey: KEY,
     now: NOW,
     ...overrides,
   });
@@ -41,43 +41,43 @@ function issue(overrides: Partial<Parameters<typeof issueSessionToken>[0]> = {})
 describe('session tokens', () => {
   test('a freshly issued token verifies', () => {
     const token = issue();
-    expect(verifySessionToken(token, { sessionSecret: SECRET, passwordHash: HASH, now: NOW })).toBe(true);
+    expect(verifySessionToken(token, { sessionSecret: SECRET, credentialKey: KEY, now: NOW })).toBe(true);
   });
 
   test('a token expires at its own deadline, not later', () => {
     const token = issue({ ttlMs: 1000 });
-    expect(verifySessionToken(token, { sessionSecret: SECRET, passwordHash: HASH, now: NOW + 999 })).toBe(true);
-    expect(verifySessionToken(token, { sessionSecret: SECRET, passwordHash: HASH, now: NOW + 1000 })).toBe(false);
-    expect(verifySessionToken(token, { sessionSecret: SECRET, passwordHash: HASH, now: NOW + 1001 })).toBe(false);
+    expect(verifySessionToken(token, { sessionSecret: SECRET, credentialKey: KEY, now: NOW + 999 })).toBe(true);
+    expect(verifySessionToken(token, { sessionSecret: SECRET, credentialKey: KEY, now: NOW + 1000 })).toBe(false);
+    expect(verifySessionToken(token, { sessionSecret: SECRET, credentialKey: KEY, now: NOW + 1001 })).toBe(false);
   });
 
   test('a changed password revokes every token, because the fingerprint is signed', () => {
     const token = issue();
-    const otherHash = '$argon2id$v=19$m=65536,t=2,p=1$differenthash';
-    expect(verifySessionToken(token, { sessionSecret: SECRET, passwordHash: otherHash, now: NOW })).toBe(false);
+    const otherKey = '$argon2id$v=19$m=65536,t=2,p=1$differenthash';
+    expect(verifySessionToken(token, { sessionSecret: SECRET, credentialKey: otherKey, now: NOW })).toBe(false);
   });
 
   test('a rotated secret revokes every token', () => {
     const token = issue();
-    expect(verifySessionToken(token, { sessionSecret: 'rotated', passwordHash: HASH, now: NOW })).toBe(false);
+    expect(verifySessionToken(token, { sessionSecret: 'rotated', credentialKey: KEY, now: NOW })).toBe(false);
   });
 
   test('the payload cannot be edited, because the signature covers all of it', () => {
     const token = issue({ ttlMs: 1000 });
     const [version, expiresAt, fingerprint, mac] = token.split('.');
     const extended = [version, String(Number(expiresAt) + 86_400_000), fingerprint, mac].join('.');
-    expect(verifySessionToken(extended, { sessionSecret: SECRET, passwordHash: HASH, now: NOW })).toBe(false);
+    expect(verifySessionToken(extended, { sessionSecret: SECRET, credentialKey: KEY, now: NOW })).toBe(false);
   });
 
   test('malformed input is false, never a throw', () => {
     for (const bad of ['', 'v1', 'v1.a.b', 'v1.a.b.c.d', 'v2.1.2.3', null, undefined]) {
-      expect(verifySessionToken(bad as string, { sessionSecret: SECRET, passwordHash: HASH, now: NOW })).toBe(false);
+      expect(verifySessionToken(bad as string, { sessionSecret: SECRET, credentialKey: KEY, now: NOW })).toBe(false);
     }
   });
 
   test('the fingerprint differs per password and per secret', () => {
-    expect(credentialFingerprint(SECRET, HASH)).not.toBe(credentialFingerprint(SECRET, 'other'));
-    expect(credentialFingerprint(SECRET, HASH)).not.toBe(credentialFingerprint('other', HASH));
+    expect(credentialFingerprint(SECRET, KEY)).not.toBe(credentialFingerprint(SECRET, 'other'));
+    expect(credentialFingerprint(SECRET, KEY)).not.toBe(credentialFingerprint('other', KEY));
   });
 
   test('default TTL is the documented 12 hours', () => {

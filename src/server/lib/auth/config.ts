@@ -21,6 +21,7 @@
  */
 
 import fs from 'fs';
+import { scryptSync } from 'node:crypto';
 
 import { getAuthPath, getDataDir } from '@/server/lib/lifecycle/paths';
 
@@ -36,6 +37,12 @@ export interface AuthSecretFile {
 export interface ActiveAuthConfig {
   /** argon2id hash of the password supplied for this run. */
   passwordHash: string;
+  /**
+   * Deterministic scrypt-derived key for THIS password and THIS secret. It is
+   * what a session's fingerprint binds to; unlike {@link passwordHash} it is
+   * stable across restarts, which is what keeps a session alive through one.
+   */
+  credentialKey: string;
   /** Signs session cookies; survives restarts so sessions do too. */
   sessionSecret: string;
 }
@@ -99,4 +106,28 @@ export function hashPassword(password: string): Promise<string> {
  */
 export function verifyPassword(candidate: string, passwordHash: string): Promise<boolean> {
   return Bun.password.verify(candidate, passwordHash);
+}
+
+/**
+ * The value a session's fingerprint binds to, for a password and a secret.
+ *
+ * DETERMINISTIC on purpose: the same password with the same session secret must
+ * produce the same key on every boot, because the fingerprint is what makes a
+ * token fail after a password change and the token must otherwise survive a
+ * restart. `passwordHash` cannot serve as that value — its argon2 salt is
+ * random per boot, so a restart with the SAME password minted a new hash and
+ * invalidated every session (measured: a token valid before a second `initAuth`
+ * call was rejected after it, with the persisted secret correctly reused). The
+ * stated point of persisting the secret — "a restart keeps its sessions" — was
+ * therefore not delivered at all.
+ *
+ * argon2's own `salt` option is not an alternative (verified on Bun 1.4.2: two
+ * hashes with the same salt still differ), so the derivation is scrypt, salted
+ * with the SECRET and memory-hard for the same reason the verifier is. Nothing
+ * is persisted: the secret comes from `auth.json` and the password from the
+ * command line, so a leaked cookie plus that file is what an attacker would
+ * need to brute-force against, exactly as before.
+ */
+export function deriveCredentialKey(password: string, sessionSecret: string): string {
+  return scryptSync(password, sessionSecret, 32, { N: 1 << 14, r: 8, p: 1 }).toString('base64url');
 }

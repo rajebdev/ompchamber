@@ -18,6 +18,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { authGate, initAuth, isAuthEnabled, isPublicPath, loadAuthConfig, revokeAllSessions } from '@/server/lib/auth/guard';
+import type { ActiveAuthConfig } from '@/server/lib/auth/config';
 import { issueSessionToken, SESSION_TTL_MS } from '@/server/lib/auth/token';
 
 describe('public paths', () => {
@@ -83,29 +84,43 @@ describe('public paths', () => {
   });
 });
 
+/**
+ * Shared by every describe that arms a password: a throwaway data directory,
+ * and a reset that puts the process-wide module slot back to off.
+ */
+let tempDir: string | null = null;
+
+afterEach(async () => {
+  // `initAuth(null)` is the reset: the module slot is process-wide, so a test
+  // that armed a password would otherwise leak it into the next one.
+  await initAuth(null);
+  if (tempDir) {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    tempDir = null;
+  }
+  delete Bun.env.OMPCHAMBER_DATA_DIR;
+});
+
+function useTempDataDir(): string {
+  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ompchamber-guard-test-'));
+  Bun.env.OMPCHAMBER_DATA_DIR = tempDir;
+  return tempDir;
+}
+
+/** A session token for `config`, built the way every issuing route builds one. */
+function sessionTokenFor(config: ActiveAuthConfig): string {
+  return issueSessionToken({
+    sessionSecret: config.sessionSecret,
+    credentialKey: config.credentialKey,
+    ttlMs: SESSION_TTL_MS,
+  });
+}
+
 describe('authentication is per run, never inherited from disk', () => {
   // The behaviour these tests exist for: a file on disk must not be able to make
   // a server demand a password its operator never supplied. So each test writes a
   // REAL file into a throwaway data directory and asserts that the gate ignores
   // it — a stubbed file reader would prove nothing about that.
-  let tempDir: string | null = null;
-
-  afterEach(async () => {
-    // `initAuth(null)` is the reset: the module slot is process-wide, so a test
-    // that armed a password would otherwise leak it into the next one.
-    await initAuth(null);
-    if (tempDir) {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-      tempDir = null;
-    }
-    delete Bun.env.OMPCHAMBER_DATA_DIR;
-  });
-
-  function useTempDataDir(): string {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ompchamber-guard-test-'));
-    Bun.env.OMPCHAMBER_DATA_DIR = tempDir;
-    return tempDir;
-  }
 
   test('no password means the gate lets everything through', () => {
     expect(isAuthEnabled()).toBe(false);
@@ -173,7 +188,7 @@ describe('authentication is per run, never inherited from disk', () => {
     const before = loadAuthConfig()!;
     const token = issueSessionToken({
       sessionSecret: before.sessionSecret,
-      passwordHash: before.passwordHash,
+      credentialKey: before.credentialKey,
       ttlMs: SESSION_TTL_MS,
     });
     const withCookie = () => new Request('http://localhost/api/settings', {
@@ -206,7 +221,7 @@ describe('authentication is per run, never inherited from disk', () => {
     const after = loadAuthConfig()!;
     const fresh = issueSessionToken({
       sessionSecret: after.sessionSecret,
-      passwordHash: after.passwordHash,
+      credentialKey: after.credentialKey,
       ttlMs: SESSION_TTL_MS,
     });
     const request = new Request('http://localhost/api/settings', {
@@ -214,5 +229,77 @@ describe('authentication is per run, never inherited from disk', () => {
     });
     // Revoking everywhere must not lock out the browser that asked for it.
     expect(authGate(request)).toBeUndefined();
+  });
+});
+
+describe('a session outlives the process that minted it', () => {
+  test('a restart with the same password keeps its sessions', async () => {
+    useTempDataDir();
+    await initAuth('correct-horse');
+    const first = loadAuthConfig()!;
+    const token = sessionTokenFor(first);
+    const request = new Request('http://localhost/api/settings', { headers: { cookie: `omp_session=${token}` } });
+    expect(authGate(request)).toBeUndefined();
+
+    // The second boot, in the same process: exactly what `bun --hot` does on
+    // every save, and what restarting a daemon does. The secret is read back
+    // from disk and the operator supplies the same password again.
+    await initAuth('correct-horse');
+    const second = loadAuthConfig()!;
+
+    expect(second.sessionSecret).toBe(first.sessionSecret);
+    // The bug this pins: the credential key used to be derived from the argon2
+    // hash, whose salt is random per boot, so every restart silently killed
+    // every session — the persisted secret never delivered its documented "a
+    // restart keeps its sessions".
+    expect(second.credentialKey).toBe(first.credentialKey);
+    expect(authGate(request)).toBeUndefined();
+  });
+
+  test('a restart with a DIFFERENT password revokes them', async () => {
+    useTempDataDir();
+    await initAuth('correct-horse');
+    const token = sessionTokenFor(loadAuthConfig()!);
+
+    await initAuth('another-horse');
+    // Stable for an unchanged password, still bound to it: replacing the
+    // password is exactly what a session's death must follow.
+    const request = new Request('http://localhost/api/settings', { headers: { cookie: `omp_session=${token}` } });
+    expect(authGate(request)?.status).toBe(401);
+  });
+});
+
+describe('the login screen is only for a visitor without a session', () => {
+  test('a signed-in visitor asking for /login is sent to the app', async () => {
+    useTempDataDir();
+    await initAuth('correct-horse');
+    const token = sessionTokenFor(loadAuthConfig()!);
+
+    const response = authGate(new Request('http://localhost/login', {
+      headers: { cookie: `omp_session=${token}`, accept: 'text/html' },
+    }));
+
+    // 302, not a rendered screen: the browser is sent somewhere its session is
+    // worth something, and `/login` is not that place.
+    expect(response?.status).toBe(302);
+    expect(response?.headers.get('location')).toBe('/');
+  });
+
+  test('a visitor with no session still gets the screen', async () => {
+    useTempDataDir();
+    await initAuth('correct-horse');
+
+    // `/login` stays public — it IS the way in — so the gate must let it
+    // through to the shell that renders the form.
+    expect(authGate(new Request('http://localhost/login', { headers: { accept: 'text/html' } }))).toBeUndefined();
+  });
+
+  test('with authentication off there is nothing to log into', () => {
+    useTempDataDir();
+    // No password armed: every request counts as authenticated, which makes
+    // `/login` a URL with no meaning rather than a screen.
+    const response = authGate(new Request('http://localhost/login', { headers: { accept: 'text/html' } }));
+    expect(response?.status).toBe(302);
+    expect(response?.headers.get('location')).toBe('/');
   });
 });

@@ -27,7 +27,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const authenticated = verifySessionToken(readSessionCookie(request), {
     sessionSecret: config.sessionSecret,
-    passwordHash: config.passwordHash,
+    credentialKey: config.credentialKey,
   });
 
   return json({ required: true, authenticated }, { headers: NO_STORE_HEADERS });

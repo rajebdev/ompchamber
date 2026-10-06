@@ -18,16 +18,41 @@
  * session entitles it to.
  */
 
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import type { FunctionComponent } from 'preact/compat';
 import { KeyRound, Loader2 } from 'lucide-preact';
-import { login } from '@/client/hooks/ui/auth';
+import { login, probeSession } from '@/client/hooks/ui/auth';
 
 export const LoginScreen: FunctionComponent = () => {
   const [password, setPassword] = useState('');
   const [trustDevice, setTrustDevice] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // This screen is only correct while the browser has no session, and it is not
+  // the only thing that can create one: a sign-in in another tab, or this
+  // document restored from the back/forward cache with the state it was served
+  // before. The server answers that question authoritatively, so it is asked —
+  // and an answer of "signed in" leaves for the app instead of asking for a
+  // password the browser already holds.
+  //
+  // Re-checked when the tab becomes visible rather than on a timer: the case
+  // that matters is the user coming back to a tab that was left open, and a poll
+  // would keep asking on behalf of a screen nobody is looking at. A `false` and
+  // an unanswerable check both leave the form alone.
+  useEffect(() => {
+    const leaveIfSignedIn = () => {
+      void probeSession().then((signedIn) => {
+        if (signedIn) window.location.replace('/');
+      });
+    };
+    leaveIfSignedIn();
+    const handleVisibility = () => {
+      if (!document.hidden) leaveIfSignedIn();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
 
   const submit = async (event: Event) => {
     event.preventDefault();

@@ -159,13 +159,13 @@ describe('GET /api/auth/state', () => {
 
   test('a token minted for the active password is authenticated', async () => {
     const config = loadAuthConfig()!;
-    const token = issueSessionToken({ sessionSecret: config.sessionSecret, passwordHash: config.passwordHash });
+    const token = issueSessionToken({ sessionSecret: config.sessionSecret, credentialKey: config.credentialKey });
     expect(await stateWith(token)).toEqual({ required: true, authenticated: true });
   });
 
   test('a token signed with the pre-revocation secret is not authenticated', async () => {
     const config = loadAuthConfig()!;
-    const token = issueSessionToken({ sessionSecret: config.sessionSecret, passwordHash: config.passwordHash });
+    const token = issueSessionToken({ sessionSecret: config.sessionSecret, credentialKey: config.credentialKey });
     await revokeAllSessions();
     expect(await stateWith(token)).toEqual({ required: true, authenticated: false });
   });
@@ -214,7 +214,7 @@ describe('POST /api/auth/password', () => {
 
   test('changes the password and invalidates tokens minted for the old one', async () => {
     const before = loadAuthConfig()!;
-    const oldToken = issueSessionToken({ sessionSecret: before.sessionSecret, passwordHash: before.passwordHash });
+    const oldToken = issueSessionToken({ sessionSecret: before.sessionSecret, credentialKey: before.credentialKey });
 
     const res = (await changePassword({
       request: post(url, { currentPassword: PASSWORD, newPassword: 'brand-new-pass' }),
@@ -225,9 +225,10 @@ describe('POST /api/auth/password', () => {
     const after = loadAuthConfig()!;
     expect(await verifyPassword('brand-new-pass', after.passwordHash)).toBe(true);
     expect(await verifyPassword(PASSWORD, after.passwordHash)).toBe(false);
-    // The old cookie carries a fingerprint of the old hash, so it dies here.
+    // The old cookie carries a fingerprint of the old credential key, so it
+    // dies here.
     expect(await stateWith(oldToken)).toEqual({ required: true, authenticated: false });
-    // This browser got a replacement cookie for the new hash.
+    // This browser got a replacement cookie for the new key.
     expect(await stateWith(tokenFrom(res))).toEqual({ required: true, authenticated: true });
   });
 
@@ -244,7 +245,7 @@ describe('POST /api/auth/revoke', () => {
 
   test('rotates the secret, killing old tokens and re-issuing this browser', async () => {
     const before = loadAuthConfig()!;
-    const oldToken = issueSessionToken({ sessionSecret: before.sessionSecret, passwordHash: before.passwordHash });
+    const oldToken = issueSessionToken({ sessionSecret: before.sessionSecret, credentialKey: before.credentialKey });
 
     const res = (await revoke({ request: post(url, {}) } as never)) as Response;
     expect(res.status).toBe(200);

@@ -26,9 +26,16 @@
  * effect on the next request without a restart.
  */
 
-import { hashPassword, readSessionSecret, writeSessionSecret, type ActiveAuthConfig } from '@/server/lib/auth/config';
+import { hashPassword, deriveCredentialKey, readSessionSecret, writeSessionSecret, type ActiveAuthConfig } from '@/server/lib/auth/config';
 import { readSessionCookie, verifySessionToken } from '@/server/lib/auth/token';
 import { rememberClientAddress } from '@/server/lib/auth/client-address';
+
+/**
+ * The login screen's path. One constant because three places depend on the same
+ * string agreeing: it is public (the way in), it is where an unauthenticated
+ * document request is sent, and it is where a signed-in visitor must NOT stay.
+ */
+const LOGIN_PATH = '/login';
 
 /** Paths that never require a session, because they ARE the way in. */
 const PUBLIC_EXACT = new Set([
@@ -36,7 +43,7 @@ const PUBLIC_EXACT = new Set([
   '/api/auth/state',
   '/api/auth/login',
   '/api/auth/logout',
-  '/login',
+  LOGIN_PATH,
   '/robots.txt',
   '/sw.js',
   '/manifest.webmanifest',
@@ -106,7 +113,13 @@ export async function initAuth(password: string | null | undefined): Promise<str
   // Written only when it is new, so a normal restart does not touch the file.
   if (!existingSecret) await writeSessionSecret(sessionSecret);
 
-  active = { passwordHash: await hashPassword(candidate), sessionSecret };
+  active = {
+    passwordHash: await hashPassword(candidate),
+    // Derived, not hashed: this is the half that has to come out the SAME on
+    // the next boot, which is what makes a restart keep its sessions.
+    credentialKey: deriveCredentialKey(candidate, sessionSecret),
+    sessionSecret,
+  };
   return existingSecret
     ? 'enabled (password from this run)'
     : 'enabled (password from this run; new session secret generated)';
@@ -117,12 +130,16 @@ export async function initAuth(password: string | null | undefined): Promise<str
  *
  * The session secret is deliberately REUSED, so a password change does not sign
  * the user out of this browser. It does revoke every OTHER session, because a
- * token carries a fingerprint of the password hash and that hash just changed.
+ * token carries a fingerprint of the credential key and that just changed.
  */
 export async function replaceActivePassword(password: string): Promise<void> {
   const sessionSecret = active?.sessionSecret ?? (await readSessionSecret()) ?? crypto.randomUUID();
   if (!active) await writeSessionSecret(sessionSecret);
-  active = { passwordHash: await hashPassword(password), sessionSecret };
+  active = {
+    passwordHash: await hashPassword(password),
+    credentialKey: deriveCredentialKey(password, sessionSecret),
+    sessionSecret,
+  };
 }
 
 /**
@@ -176,7 +193,7 @@ export function isAuthenticatedRequest(request: Request): boolean {
   if (!active) return true;
   return verifySessionToken(readSessionCookie(request), {
     sessionSecret: active.sessionSecret,
-    passwordHash: active.passwordHash,
+    credentialKey: active.credentialKey,
   });
 }
 
@@ -185,7 +202,7 @@ function rejectionResponse(pathname: string, wantsHtml: boolean): Response {
   if (wantsHtml || !pathname.startsWith('/api/')) {
     // The login screen is the shell itself, so a document request is sent there
     // rather than answered with a body it could not render.
-    return new Response(null, { status: 302, headers: { location: '/login', 'cache-control': 'no-store' } });
+    return new Response(null, { status: 302, headers: { location: LOGIN_PATH, 'cache-control': 'no-store' } });
   }
   return new Response(JSON.stringify({ error: 'UI authentication required', locked: true }), {
     status: 401,
@@ -210,12 +227,26 @@ export function authGate(request: Request, clientAddress?: string): Response | u
   rememberClientAddress(request, clientAddress);
 
   const pathname = new URL(request.url).pathname;
+
+  // The login screen is for someone who has no session. A visitor who already
+  // has one — a bookmarked `/login`, a stale tab, a hand-typed address, or the
+  // back button after signing in — is sent to the app instead of being shown a
+  // form that would only re-authenticate what it already is.
+  //
+  // Checked BEFORE the public-path shortcut, because that shortcut is what used
+  // to let `/login` render the workspace at a URL that says otherwise. It also
+  // covers the case where authentication is off entirely, where there is
+  // nothing to log into at all.
+  if (pathname === LOGIN_PATH && isAuthenticatedRequest(request)) {
+    return new Response(null, { status: 302, headers: { location: '/', 'cache-control': 'no-store' } });
+  }
+
   if (isPublicPath(pathname)) return undefined;
 
   if (!active) return undefined;
 
   const token = readSessionCookie(request);
-  if (verifySessionToken(token, { sessionSecret: active.sessionSecret, passwordHash: active.passwordHash })) {
+  if (verifySessionToken(token, { sessionSecret: active.sessionSecret, credentialKey: active.credentialKey })) {
     return undefined;
   }
 

@@ -82,9 +82,15 @@ export function readSessionCookie(request: Request): string | null {
   return null;
 }
 
-/** `HMAC(secret, passwordHash)` — the value that binds a session to a password. */
-export function credentialFingerprint(sessionSecret: string, passwordHash: string): string {
-  return createHmac('sha256', sessionSecret).update(passwordHash).digest('base64url');
+/**
+ * `HMAC(secret, credentialKey)` — the value that binds a session to one password.
+ *
+ * The key is what `deriveCredentialKey` produces, NOT the argon2 hash: it has to
+ * be reproducible from the secret and the password alone, or a session would die
+ * with the process that minted it.
+ */
+export function credentialFingerprint(sessionSecret: string, credentialKey: string): string {
+  return createHmac('sha256', sessionSecret).update(credentialKey).digest('base64url');
 }
 
 function sign(sessionSecret: string, payload: string): string {
@@ -101,7 +107,8 @@ function safeEqual(left: string, right: string): boolean {
 
 export interface SessionIssueOptions {
   sessionSecret: string;
-  passwordHash: string;
+  /** A `deriveCredentialKey` result — never the argon2 hash (see the field). */
+  credentialKey: string;
   ttlMs?: number;
   /** Injected for tests; defaults to now. */
   now?: number;
@@ -110,7 +117,7 @@ export interface SessionIssueOptions {
 /** Mint a session token valid for `ttlMs`. */
 export function issueSessionToken({
   sessionSecret,
-  passwordHash,
+  credentialKey,
   ttlMs = SESSION_TTL_MS,
   now = Date.now(),
 }: SessionIssueOptions): string {
@@ -118,7 +125,7 @@ export function issueSessionToken({
   const payload = [
     TOKEN_VERSION,
     String(expiresAt),
-    credentialFingerprint(sessionSecret, passwordHash),
+    credentialFingerprint(sessionSecret, credentialKey),
   ].join('.');
   return `${payload}.${sign(sessionSecret, payload)}`;
 }
@@ -130,7 +137,7 @@ export function issueSessionToken({
  */
 export function verifySessionToken(
   token: string | null | undefined,
-  { sessionSecret, passwordHash, now = Date.now() }: Omit<SessionIssueOptions, 'ttlMs'>,
+  { sessionSecret, credentialKey, now = Date.now() }: Omit<SessionIssueOptions, 'ttlMs'>,
 ): boolean {
   if (!token) return false;
   const parts = token.split('.');
@@ -138,7 +145,7 @@ export function verifySessionToken(
   const [version, expiresAt, fingerprint, mac] = parts;
   if (version !== TOKEN_VERSION) return false;
   if (!safeEqual(mac, sign(sessionSecret, `${version}.${expiresAt}.${fingerprint}`))) return false;
-  if (!safeEqual(fingerprint, credentialFingerprint(sessionSecret, passwordHash))) return false;
+  if (!safeEqual(fingerprint, credentialFingerprint(sessionSecret, credentialKey))) return false;
   const expiry = Number(expiresAt);
   return Number.isFinite(expiry) && expiry > now;
 }
