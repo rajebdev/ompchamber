@@ -26,6 +26,7 @@ import { configureUiKit } from '@ompchamber/ui';
 import { getSessionValue, setSessionKey } from '@/shared/lib/workspace/session-state/store';
 import { subscribeSessionKey } from '@/shared/lib/workspace/session-state/listeners';
 import { pluginContext, subscribePluginContext } from '@/client/lib/plugins/context';
+import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 
 /**
  * Read a text file inside the active workspace, through the chamber's own fs
@@ -63,5 +64,13 @@ export function installUiKit(): void {
     subscribeSessionValue: (sessionId, key, listener) =>
       subscribeSessionKey(sessionId, `plugin.${key}`, listener),
     readWorkspaceFile,
+    // The same store, untyped by the kit and narrowed by the caller — so a view
+    // that keeps a collapsed-phase map is not JSON-encoding it into a string.
+    getSessionJson: <T,>(sessionId: string | null, key: string) => getSessionValue<T>(sessionId, key),
+    setSessionJson: (sessionId, key, value) => setSessionKey(sessionId, key, value),
+    subscribeSessionJson: (sessionId, key, listener) => subscribeSessionKey(sessionId, key, listener),
+    // The chamber's markdown renderer, so a plugin does not bundle a second
+    // copy of the marked / KaTeX / mermaid / Shiki pipeline.
+    markdown: () => MarkdownRenderer,
   });
 }

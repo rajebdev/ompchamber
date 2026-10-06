@@ -1,7 +1,8 @@
 import { useState } from 'preact/hooks';
 import { Suspense } from 'preact/compat';
 import { X } from 'lucide-preact';
-import { usePanelCatalog } from '@/client/components/workspace/plugin-panel/resolve';
+import { usePanelCatalog, type PanelBodyProps } from '@/client/components/workspace/plugin-panel/resolve';
+import { PanelHostProvider } from '@ompchamber/ui';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
 import { useResolvedRepo } from '@/client/hooks/workspace/repo-scope';
 import { GIT_STATUS_POLL_MS } from '@/shared/lib/workspace/refresh-cadence';
@@ -48,6 +49,22 @@ export function MobileRightSidebar({
   const activeRepo = useResolvedRepo(rootPath, enabled);
   const { changes } = useGitStatus(rootPath, activeRepo, refreshKey, enabled, GIT_STATUS_POLL_MS);
   const hasGitChanges = changes.length > 0;
+
+  // ONE props object per render, handed to the view AND published on the host
+  // context, so a component nested inside the view reads exactly what its
+  // top-level one was given.
+  const mobileBody: PanelBodyProps = {
+    className: 'h-full w-full',
+    enabled: enabled || !activePanel?.requiresWorkspace,
+    active: true,
+    refreshKey,
+    ...(rootPath ? { rootPath } : {}),
+    onRefresh,
+    onOpenFile,
+    onClose,
+    // The drawer draws its own tab bar, so a view's own header would be a second one.
+    showHeader: false,
+  };
 
   return (
     <div className="flex flex-col h-full w-full bg-paper text-ink relative select-none">
@@ -117,19 +134,7 @@ export function MobileRightSidebar({
           // the host published and draws what it can. Gating it here would hide
           // a panel that works.
           <Suspense fallback={<div className="h-full flex items-center justify-center text-ink/40"><span className="text-xs font-mono">Loading…</span></div>}>
-            {activePanel.render({
-              className: 'h-full w-full',
-              enabled: enabled || !activePanel.requiresWorkspace,
-              active: true,
-              refreshKey,
-              ...(rootPath ? { rootPath } : {}),
-              onRefresh,
-              onOpenFile,
-              onClose,
-              // The drawer draws its own tab bar, so a view's own header would be
-              // a second one.
-              showHeader: false,
-            })}
+            <PanelHostProvider value={mobileBody}>{activePanel.render(mobileBody)}</PanelHostProvider>
           </Suspense>
         ) : (
           <div className="h-full flex items-center justify-center text-ink/40">

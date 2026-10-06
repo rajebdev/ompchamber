@@ -23,10 +23,11 @@
 import { useMemo } from 'preact/hooks';
 import { AlertCircle, ListTodo, RefreshCw } from 'lucide-preact';
 import { useSearchParams } from '@/client/lib/router/search-params';
-import { useSessionState } from '@/client/hooks/workspace/session-state';
-import { useSessionTodos } from '@/client/hooks/workspace/session-todos';
+import { useChamberFetch, useSessionState } from '@ompchamber/ui';
 import { TodoPhaseGroup } from '@/client/components/workspace/todo-panel/PhaseGroup';
 import { currentTaskLocation, todoProgressLabel, todoProgressPercent } from '@/shared/lib/chat/todo/progress';
+import { TODO_REFRESH_EVENT_THROTTLE_MS } from '@/shared/lib/workspace/refresh-cadence';
+import type { SessionTodosPayload } from '@/shared/types/todo';
 
 interface TodoPanelProps {
   className?: string;
@@ -51,7 +52,12 @@ export function TodoPanel({ className = '', active = true }: TodoPanelProps) {
     'todo.collapsedPhases',
     {},
   );
-  const { data, isLoading, error, reload } = useSessionTodos(sessionId, active);
+  // The kit's generic reader: the poll, the visibility pause and the
+  // `omp:session-updated` re-read are exactly what this panel hand-rolled.
+  const { data, isLoading, error, reload } = useChamberFetch<SessionTodosPayload>(
+    sessionId ? `/api/omp/session-todos?sessionId=${encodeURIComponent(sessionId)}` : null,
+    { enabled: active, events: ['omp:session-updated'], eventThrottleMs: TODO_REFRESH_EVENT_THROTTLE_MS },
+  );
 
   const snapshot = data?.snapshot ?? null;
   const progress = data?.progress ?? null;

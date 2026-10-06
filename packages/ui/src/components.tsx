@@ -22,6 +22,7 @@
  */
 
 import type { ComponentChildren } from 'preact';
+import { uiKitServices } from './services';
 
 interface PanelProps {
   title: string;
@@ -136,3 +137,27 @@ export function Note({ children, tone = 'default' }: { children: ComponentChildr
   const colour = tone === 'error' ? 'text-error' : 'text-ink/60';
   return <p class={`text-[11px] ${colour}`}>{children}</p>;
 }
+
+interface MarkdownProps {
+  content: string;
+  className?: string;
+}
+
+/**
+ * Render markdown through the CHAMBER's own pipeline.
+ *
+ * The pipeline itself is not in this package: it is the chamber's marked /
+ * KaTeX / mermaid / Shiki chain plus its file-opening and clipboard hooks, and
+ * bundling it here would make every plugin carry a second copy of a large tree.
+ * The host injects the component (`UiKitServices.markdown`), so a wiki page or
+ * a plan reads exactly like the chat timeline without the kit owning any of it.
+ *
+ * A host that injects nothing renders the source as plain text rather than
+ * failing: a panel showing raw markdown is degraded, not broken.
+ */
+export function Markdown({ content, className }: MarkdownProps) {
+  const Renderer = uiKitServices()?.markdown?.() ?? null;
+  if (!Renderer) return <pre class={`text-xs font-mono whitespace-pre-wrap ${className ?? ''}`}>{content}</pre>;
+  return <Renderer content={content} className={className} />;
+}
+

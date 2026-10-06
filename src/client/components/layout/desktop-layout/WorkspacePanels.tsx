@@ -4,6 +4,7 @@ import type { ReactNode, RefObject } from 'preact/compat';
 import { Group, Panel, type PanelImperativeHandle } from '@/client/components/layout/desktop-layout/resizer';
 import { ChatTimeline } from '@/client/components/workspace/chat-timeline/index';
 import { usePanelCatalog, PluginPanelBody, type PanelBodyProps } from '@/client/components/workspace/plugin-panel/resolve';
+import { PanelHostProvider } from '@ompchamber/ui';
 import { RightActivityBar } from '@/client/components/layout/RightActivityBar';
 import { ResizeHandle } from '@/client/components/layout/desktop-layout/ResizeHandle';
 import { useAvailableWidth } from '@/client/hooks/workspace/available-width';
@@ -228,7 +229,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
               };
               return (
                 <div key={panel.id} className={isActiveView ? 'w-full h-full' : 'hidden'}>
-                  {panel.render(body)}
+                  <PanelHostProvider value={body}>{panel.render(body)}</PanelHostProvider>
                 </div>
               );
             })}

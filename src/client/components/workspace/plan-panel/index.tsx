@@ -27,10 +27,11 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { AlertCircle, FileText, Loader2, RefreshCw } from 'lucide-preact';
 import { useSearchParams } from '@/client/lib/router/search-params';
-import { useSessionState } from '@/client/hooks/workspace/session-state';
-import { useSessionPlan } from '@/client/hooks/workspace/session-plan';
+import { useChamberFetch, useSessionState } from '@ompchamber/ui';
 import { PlanNav } from '@/client/components/workspace/plan-panel/Nav';
 import { PlanPageView } from '@/client/components/workspace/plan-panel/PageView';
+import { PLAN_REFRESH_EVENT_THROTTLE_MS } from '@/shared/lib/workspace/refresh-cadence';
+import type { SessionPlanPayload } from '@/shared/types/plan';
 
 interface PlanPanelProps {
   className?: string;
@@ -58,7 +59,20 @@ export function PlanPanel({ className = '', active = true }: PlanPanelProps) {
   const [narrowShowingPage, setNarrowShowingPage] = useState(false);
 
   const storedPath = pick && pick.sessionId === sessionId ? pick.path : null;
-  const plan = useSessionPlan(sessionId, active, storedPath);
+  // A plan switch changes the QUERY, which the kit's reader treats as a new
+  // question — it drops the previous plan and re-reads at once, so the poll
+  // cannot leave the old one on screen.
+  const planUrl = useMemo(() => {
+    if (!sessionId) return null;
+    const query = new URLSearchParams({ sessionId });
+    if (storedPath) query.set('path', storedPath);
+    return `/api/omp/session-plan?${query.toString()}`;
+  }, [sessionId, storedPath]);
+  const plan = useChamberFetch<SessionPlanPayload>(planUrl, {
+    enabled: active,
+    events: ['omp:session-updated'],
+    eventThrottleMs: PLAN_REFRESH_EVENT_THROTTLE_MS,
+  });
 
   const files = plan.data?.files ?? [];
   const current = plan.data?.current ?? null;
