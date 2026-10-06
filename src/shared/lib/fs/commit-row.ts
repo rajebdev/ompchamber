@@ -53,6 +53,7 @@ export function normalizeCommits(raw: unknown): GitCommit[] {
       author: typeof c.author === 'string' ? c.author : 'Unknown',
       date: typeof c.date === 'string' ? c.date : typeof c.time === 'string' ? c.time : '',
       message: typeof c.message === 'string' ? c.message : '',
+      body: typeof c.body === 'string' ? c.body : undefined,
       parents: Array.isArray(c.parents) ? c.parents.filter((p): p is string => typeof p === 'string') : [],
       refs: Array.isArray(c.refs) ? c.refs.filter((r): r is string => typeof r === 'string') : [],
       files: normalizeCommitFiles(c.files),

@@ -5,17 +5,43 @@ import { SAMPLE_GIT_COMMITS } from '@/client/data/mock/git-commits';
 import { isMockMode } from '@/server/mock.server';
 import { runShell, shellOk } from '@/server/lib/fs/shell';
 
+/**
+ * Header/body and record separators in the `git log` format below.
+ *
+ * The body is multi-line and a body line may itself contain a TAB (indented
+ * lists, aligned blocks), which the numstat branch below would otherwise read
+ * as a changed-file row. So the body is fenced instead of guessed: `\x1f`
+ * opens it after the header's last field and `\x1e` closes it — both
+ * non-printable, so neither can appear in a commit message.
+ */
+const HEADER_BODY_SEP = '\x1f';
+const COMMIT_RECORD_SEP = '\x1e';
+
 export function parseGitLogOutput(stdout: string): GitCommit[] {
   const commits: GitCommit[] = [];
   const lines = stdout.split('\n');
   let currentCommit: GitCommit | null = null;
+  let bodyLines: string[] = [];
+  let inBody = false;
+
+  const flush = () => {
+    if (!currentCommit) return;
+    // `%b` ends with the newline that separates it from the next field, so the
+    // trailing blank lines are the format's, not the author's. A one-line
+    // commit keeps no `body` at all rather than an empty string, which is what
+    // the row's expand affordance keys off.
+    const body = bodyLines.join('\n').trimEnd();
+    if (body) currentCommit.body = body;
+    commits.push(currentCommit);
+  };
 
   for (const line of lines) {
     if (line.startsWith('COMMIT_SPLIT|~|')) {
-      if (currentCommit) {
-        commits.push(currentCommit);
-      }
-      const parts = line.split('|~|');
+      flush();
+      const sepIdx = line.indexOf(HEADER_BODY_SEP);
+      const header = sepIdx >= 0 ? line.slice(0, sepIdx) : line;
+      const rest = sepIdx >= 0 ? line.slice(sepIdx + 1) : '';
+      const parts = header.split('|~|');
       const hash = parts[1] || '';
       const shortHash = parts[2] || hash.slice(0, 8);
       const author = parts[3] || 'Unknown';
@@ -47,6 +73,27 @@ export function parseGitLogOutput(stdout: string): GitCommit[] {
         parents,
         files: [],
       };
+      // The header's last field is followed by the separator, so the body
+      // begins on this same line (`%b`'s first line) and continues on the next
+      // ones. A commit with no body still emits the record separator here, so
+      // the terminator is looked for on this line too — otherwise the first
+      // numstat row would be read as body text.
+      const bodyEnd = rest.indexOf(COMMIT_RECORD_SEP);
+      if (bodyEnd >= 0) {
+        bodyLines = rest.slice(0, bodyEnd) ? [rest.slice(0, bodyEnd)] : [];
+        inBody = false;
+      } else {
+        bodyLines = rest ? [rest] : [];
+        inBody = sepIdx >= 0;
+      }
+    } else if (inBody) {
+      const end = line.indexOf(COMMIT_RECORD_SEP);
+      if (end >= 0) {
+        bodyLines.push(line.slice(0, end));
+        inBody = false;
+      } else {
+        bodyLines.push(line);
+      }
     } else if (currentCommit && line.trim()) {
       const parts = line.split('\t');
       if (parts.length >= 3) {
@@ -74,9 +121,7 @@ export function parseGitLogOutput(stdout: string): GitCommit[] {
     }
   }
 
-  if (currentCommit) {
-    commits.push(currentCommit);
-  }
+  flush();
 
   // An empty stdout is a real answer — `--skip` past the end of history, or a
   // branch with no commits — so it parses to no rows. This used to return
@@ -106,7 +151,7 @@ export async function fetchGitCommits(
     }
 
     const result = await runShell(
-      `git log -n ${limit} --skip=${skip} --numstat --date-order --pretty=format:"COMMIT_SPLIT|~|%H|~|%h|~|%an|~|%ad|~|%s|~|%D|~|%p" --date=format:"%b %d, %Y, %I:%M %p"`,
+      `git log -n ${limit} --skip=${skip} --numstat --date-order --pretty=format:"COMMIT_SPLIT|~|%H|~|%h|~|%an|~|%ad|~|%s|~|%D|~|%p%x1f%b%x1e" --date=format:"%b %d, %Y, %I:%M %p"`,
       { cwd: targetDir, timeout: 15000 }
     );
 

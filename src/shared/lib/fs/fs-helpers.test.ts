@@ -231,10 +231,16 @@ describe('normalizeCommits', () => {
   test('message and refs default to empty values', () => {
     const [commit] = normalizeCommits([{ hash: 'h' }]);
     expect(commit.message).toBe('');
+    expect(commit.body).toBeUndefined();
     expect(commit.parents).toEqual([]);
     expect(commit.refs).toEqual([]);
     expect(commit.files).toEqual([]);
     expect(commit.lane).toBeUndefined();
+  });
+
+  test('a body is carried through and a non-string one is dropped', () => {
+    expect(normalizeCommits([{ hash: 'h', body: 'why\nmore' }])[0].body).toBe('why\nmore');
+    expect(normalizeCommits([{ hash: 'h', body: 7 }])[0].body).toBeUndefined();
   });
 
   test('non-string parents and refs are filtered out', () => {

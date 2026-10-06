@@ -7,6 +7,11 @@ export const SAMPLE_GIT_COMMITS: GitCommit[] = [
     author: 'Wijarnako Putra Rajeb',
     date: 'Sep 10, 2026, 12:40 PM',
     message: 'feat(chat): persist composer draft and attachments per session',
+    body: `inputValue and inputAttachments are now session-scoped so each session keeps its own pending draft; send-success clearing and steer-failure restore flow through the persisted setter unchanged.
+
+Ultraworked with [Sisyphus](https://github.com/code-yeongyu/oh-my-openagent)
+
+Co-authored-by: Sisyphus <clio-agent@sisyphuslabs.ai>`,
     parents: ['6d3bac50'],
     refs: ['HEAD -> main', 'origin/main'],
     lane: 0,

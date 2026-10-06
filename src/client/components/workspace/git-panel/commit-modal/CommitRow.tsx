@@ -31,6 +31,12 @@ export function CommitRow({
   headerRef,
 }: CommitRowProps) {
   const [copied, setCopied] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  // A one-line commit has no body, so there is nothing to expand — and no
+  // affordance is drawn, because a chevron that opens an empty block reads as
+  // a broken row.
+  const body = commit.body?.trim() ?? '';
+  const hasBody = body.length > 0;
 
   const handleCopyHash = (e: globalThis.MouseEvent) => {
     e.stopPropagation();
@@ -44,9 +50,21 @@ export function CommitRow({
     onToggleFile(commit.hash, file);
   };
 
+  // Clicking the row still selects it for the action strip, and additionally
+  // opens the full message — the body is what the subject alone never shows.
+  // A click that ends a text selection must not count: copying the message out
+  // of an open body would otherwise collapse the very block being read.
+  const handleRowClick = () => {
+    onSelect(commit);
+    if (!hasBody) return;
+    const selection = globalThis.getSelection?.();
+    if (selection && !selection.isCollapsed) return;
+    setIsExpanded((prev) => !prev);
+  };
+
   return (
     <div
-      onClick={() => onSelect(commit)}
+      onClick={handleRowClick}
       className={`border-b border-ink/5 transition-colors cursor-pointer ${
         isSelected ? 'bg-ink/[0.03]' : 'hover:bg-ink/[0.015]'
       }`}
@@ -81,10 +99,27 @@ export function CommitRow({
           {/* Subject message (Node dot anchor) */}
           <div
             ref={headerRef}
-            className="text-[13px] font-semibold text-ink leading-snug break-words"
+            className="flex items-start gap-1.5"
           >
-            {commit.message}
+            <span className="text-[13px] font-semibold text-ink leading-snug break-words flex-1 min-w-0">
+              {commit.message}
+            </span>
+            {hasBody && (
+              <span
+                className="text-ink/40 flex-shrink-0 mt-0.5"
+                aria-hidden="true"
+              >
+                {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+              </span>
+            )}
           </div>
+
+          {/* Full commit message body — the subject alone hides it */}
+          {hasBody && isExpanded && (
+            <div className="text-[12px] text-ink/70 leading-relaxed whitespace-pre-wrap break-words border-l-2 border-ink/15 pl-2.5 py-0.5 font-mono">
+              {body}
+            </div>
+          )}
 
           {/* Metadata line: Author • Date • Hash with copy button */}
           <div className="flex items-center gap-2 text-[11px] text-ink/50 font-mono flex-wrap">

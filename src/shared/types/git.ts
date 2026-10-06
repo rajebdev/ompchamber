@@ -19,7 +19,14 @@ export interface GitCommit {
   shortHash: string;
   author: string;
   date: string;
+  /** The subject line only (`%s`). */
   message: string;
+  /**
+   * Everything after the subject (`%b`), without the trailing newline. Empty
+   * for a one-line commit, which is the common case — the row only offers an
+   * expand affordance when this is non-empty.
+   */
+  body?: string;
   parents: string[];
   refs?: string[];
   files?: GitCommitFile[];

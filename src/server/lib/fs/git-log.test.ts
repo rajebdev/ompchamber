@@ -4,23 +4,23 @@
  */
 
 /**
- * Commit-history parsing and paging.
+ * Commit-history paging against a real repository.
  *
- * The history parser reads `git log --numstat` by hand, and two failures have
- * already shipped from this file: an empty stdout was replaced with 20 rows
- * from a different repository (so every real history ended with foreign
- * commits), and a branch with no commits was read as a git failure rather than
- * an empty history. These tests run a REAL repository in a temp dir and pin
- * the page/next-cursor contract (`limit`/`skip`/`hasMore`/`total`), the
- * merge/rename/delete rows, the empty and single-commit repositories, and the
- * MOCK-only sample fallback.
+ * Two failures have already shipped from this file: an empty stdout was
+ * replaced with 20 rows from a different repository (so every real history
+ * ended with foreign commits), and a branch with no commits was read as a git
+ * failure rather than an empty history. These tests run a REAL repository in a
+ * temp dir and pin the page/next-cursor contract (`limit`/`skip`/`hasMore`/
+ * `total`), the merge/rename/delete rows, the empty and single-commit
+ * repositories, and the MOCK-only sample fallback. The parser's own shapes —
+ * the empty input, the body fence — live in `git-log-parse.test.ts`.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fetchFileDiff, fetchGitCommits, parseGitLogOutput } from '@/server/lib/fs/git-log';
+import { fetchFileDiff, fetchGitCommits } from '@/server/lib/fs/git-log';
 import { SAMPLE_GIT_COMMITS } from '@/client/data/mock/git-commits';
 
 const tempDirs: string[] = [];
@@ -72,68 +72,6 @@ function commitAll(dir: string, message: string): void {
 
 afterAll(() => {
   for (const dir of tempDirs) fs.rmSync(dir, { recursive: true, force: true });
-});
-
-describe('parseGitLogOutput', () => {
-  test('empty stdout is an empty history, never a mock page', () => {
-    expect(parseGitLogOutput('')).toEqual([]);
-    expect(parseGitLogOutput('\n')).toEqual([]);
-  });
-
-  test('parses the header fields, refs and parents', () => {
-    const stdout =
-      'COMMIT_SPLIT|~|abc1234567890|~|abc1234|~|Ada|~|Jan 01, 2024, 10:00 AM|~|subject line|~|HEAD -> main, origin/main|~|p1 p2\n';
-    expect(parseGitLogOutput(stdout)).toEqual([
-      {
-        hash: 'abc1234567890',
-        shortHash: 'abc1234',
-        author: 'Ada',
-        date: 'Jan 01, 2024, 10:00 AM',
-        message: 'subject line',
-        refs: ['HEAD -> main', 'origin/main'],
-        parents: ['p1', 'p2'],
-        files: [],
-      },
-    ]);
-  });
-
-  test('maps numstat rows to statuses, including binary and quoted paths', () => {
-    const stdout = [
-      'COMMIT_SPLIT|~|h1|~|s1|~|Ada|~|date|~|msg|~||~|',
-      '1\t0\tadded.txt',
-      '0\t3\tgone.txt',
-      '0\t0\told.txt => new.txt',
-      '2\t1\tboth.txt',
-      '-\t-\tlogo.png',
-      '1\t0\t"tab\\there.txt"',
-      '',
-    ].join('\n');
-    const [commit] = parseGitLogOutput(stdout);
-    expect(commit.files).toEqual([
-      { file: 'added.txt', status: 'A', additions: 1, deletions: 0 },
-      { file: 'gone.txt', status: 'D', additions: 0, deletions: 3 },
-      { file: 'old.txt => new.txt', status: 'R', additions: 0, deletions: 0 },
-      { file: 'both.txt', status: 'M', additions: 2, deletions: 1 },
-      { file: 'logo.png', status: 'M', additions: 0, deletions: 0 },
-      { file: 'tab\there.txt', status: 'A', additions: 1, deletions: 0 },
-    ]);
-  });
-
-  test('ignores file rows before the first header and short rows', () => {
-    const stdout = '1\t0\tstray.txt\nCOMMIT_SPLIT|~|h1|~|s1|~|Ada|~|date|~|msg|~||~|\ngarbage\n1\t0\tok.txt\n';
-    const commits = parseGitLogOutput(stdout);
-    expect(commits).toHaveLength(1);
-    expect(commits[0].files).toEqual([{ file: 'ok.txt', status: 'A', additions: 1, deletions: 0 }]);
-  });
-
-  test('falls back to a short hash and an unknown author when fields are blank', () => {
-    const stdout = 'COMMIT_SPLIT|~|0123456789abcdef|~||~||~||~|msg|~||~|\n';
-    const [commit] = parseGitLogOutput(stdout);
-    expect(commit.shortHash).toBe('01234567');
-    expect(commit.author).toBe('Unknown');
-    expect(commit.refs).toEqual([]);
-    expect(commit.parents).toEqual([]);
-  });
 });
 
 describe('fetchGitCommits against a real repository', () => {
@@ -244,6 +182,31 @@ describe('empty and single-commit repositories', () => {
     expect(page.commits[0].message).toBe('only');
     expect(page.hasMore).toBe(false);
     expect(page.total).toBe(1);
+  });
+});
+
+describe('a commit body travels with the page', () => {
+  const repo = tempDir();
+
+  beforeAll(() => {
+    initRepo(repo);
+    write(repo, 'a.txt', 'a\n');
+    git(repo, 'add', '-A');
+    git(repo, 'commit', '-q', '-m', 'subject line', '-m', 'body para one\n\nbody para two with a tab:\n\tindented');
+    write(repo, 'b.txt', 'b\n');
+    commitAll(repo, 'one line only');
+  });
+
+  test('the multi-line body is parsed out of the log format', async () => {
+    const { commits } = await fetchGitCommits(repo, 10, 0);
+    const withBody = commits.find((c) => c.message === 'subject line');
+    expect(withBody?.body).toBe('body para one\n\nbody para two with a tab:\n\tindented');
+  });
+
+  test('a one-line commit carries no body', async () => {
+    const { commits } = await fetchGitCommits(repo, 10, 0);
+    const single = commits.find((c) => c.message === 'one line only');
+    expect(single?.body).toBeUndefined();
   });
 });
 
