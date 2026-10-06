@@ -7,7 +7,7 @@ export function SessionSidebarHeader({ onNewSession, streamStatus }: { onNewSess
     <>
       {/* App Title */}
       <div 
-        className="h-9 flex-shrink-0 flex items-center px-4 border-b border-ink/10 titlebar-drag-region select-none"
+        className="h-10 flex-shrink-0 flex items-center px-4 border-b border-ink/10 titlebar-drag-region select-none"
         style={{ paddingLeft: 'max(1rem, env(titlebar-area-x, 0px))' }}
       >
         {/* The stream indicator badges the wordmark's top-right corner, the

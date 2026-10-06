@@ -9,7 +9,7 @@ interface SessionSidebarFooterProps {
 
 export function SessionSidebarFooter({ onSettings, onInfo, updateAvailable, onUpdateClick }: SessionSidebarFooterProps) {
   return (
-    <div className="p-3 border-t border-ink/10 flex items-center justify-between text-ink/60 shrink-0">
+    <div className="h-10 px-3 border-t border-ink/10 flex items-center justify-between text-ink/60 shrink-0">
       <div className="flex space-x-3">
         <Settings size={16} className="hover:text-ink cursor-pointer" onClick={onSettings} />
         <Info size={16} className="hover:text-ink cursor-pointer" onClick={onInfo} />
