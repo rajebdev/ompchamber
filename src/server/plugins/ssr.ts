@@ -12,6 +12,7 @@ import {
 import { listenerFetchOptions, listenerUrl } from '@/server/lib/lifecycle/listener';
 import { FONT_STYLESHEET_ROUTE } from '@/server/lib/assets/font-css.server';
 import { resolveTheme } from '@/shared/lib/theme/catalog';
+import { windowChromeColor } from '@/shared/lib/theme/chrome';
 import { THEME_STYLE_ELEMENT_ID, themeStyleSheet } from '@/shared/lib/theme/css';
 
 /** HTML-escape a string for interpolation into the failure page's `<pre>`. */
@@ -159,6 +160,10 @@ export const ssrRoutes = new Elysia({ name: 'ssr' }).get('*', async ({ request }
   // a second tag: with both present Chrome reads the first one, so an appended
   // tag would leave a dark theme painting light browser chrome.
   const themeStyle = `<style id="${THEME_STYLE_ELEMENT_ID}">${themeStyleSheet()}</style>`;
+  // The chrome color has to match the surface at the TOP of the window, which
+  // is per-layout (`shared/lib/theme/chrome.ts`); this request already knows the
+  // two facts behind it. The login screen is the shell too, and paints canvas.
+  const chrome = windowChromeColor(theme, { isMobile: initialIsMobile, authRequired: !authenticated });
   // The font faces are a stylesheet the bundler cannot carry: Bun resolves every
   // local `url()` in CSS, so a bundled face is either base64 or an absolute
   // filesystem path. `lib/bundler/css.ts` strips the blocks out of the bundle
@@ -176,7 +181,7 @@ export const ssrRoutes = new Elysia({ name: 'ssr' }).get('*', async ({ request }
     shellHtml
       .replace('data-theme="paper"', `data-theme="${theme.id}"`)
       .replace('data-theme-variant="light"', `data-theme-variant="${theme.variant}"`)
-      .replace('<meta name="theme-color" content="#faf8f3" />', `<meta name="theme-color" content="${theme.canvas}" />`)
+      .replace('<meta name="theme-color" content="#faf8f3" />', `<meta name="theme-color" content="${chrome}" />`)
       .replace('<!--app-head-->', themeStyle + fontLink)
       .replace(SHELL_MARKER, `<script>window.__OMP_BOOTSTRAP__=${bootstrap}</script>`),
     { headers: HTML_HEADERS },

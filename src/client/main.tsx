@@ -3,6 +3,7 @@ import { App } from '@/client/App';
 import { bootSyntax } from '@/shared/lib/code/highlighter';
 import { primeChamberSettings } from '@/shared/lib/settings/client';
 import { initDocumentTheme } from '@/client/hooks/ui/theme';
+import { primeWindowChrome } from '@/client/hooks/ui/window-chrome';
 import { installAuthFetchBridge, primeAuthState } from '@/client/hooks/ui/auth';
 import { installPluginRuntime } from '@/client/lib/plugins/runtime';
 import { installUiKit } from '@/client/lib/plugins/kit';
@@ -22,6 +23,15 @@ primeAuthState(bootstrap?.authenticated);
 installAuthFetchBridge();
 
 primeChamberSettings(bootstrap?.appSettings);
+
+// BEFORE the theme init, which writes the chrome meta: a phone that repainted
+// it from the module default would flash the desktop's color for a frame. The
+// server's two facts (user agent, authentication) are baked into the document,
+// so they are seeded rather than re-derived here.
+primeWindowChrome({
+  isMobile: bootstrap?.initialIsMobile ?? false,
+  authRequired: bootstrap?.authenticated === false,
+});
 
 // The catalog stylesheet and both theme attributes, before the first render:
 // the server writes them into the shell, so this only repairs a document served

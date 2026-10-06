@@ -19,6 +19,7 @@
 
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import { useChamberSettingsWriter } from '@/client/hooks/settings/use-chamber-setting';
+import { applyWindowChrome } from '@/client/hooks/ui/window-chrome';
 import { DEFAULT_THEME_ID, resolveTheme } from '@/shared/lib/theme/catalog';
 import { THEME_STYLE_ELEMENT_ID, themeStyleSheet } from '@/shared/lib/theme/css';
 
@@ -69,7 +70,10 @@ export function applyDocumentTheme(theme: string): void {
   const root = document.documentElement;
   root.dataset.theme = palette.id;
   root.dataset.themeVariant = palette.variant;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', palette.canvas);
+  // The chrome color is not simply the palette's canvas: it has to match the
+  // surface at the TOP of the window, which differs per layout. See
+  // `shared/lib/theme/chrome.ts` for the rule.
+  applyWindowChrome(palette.id);
   window.dispatchEvent(new CustomEvent(THEME_CHANGED_EVENT, { detail: palette.id }));
 }
 

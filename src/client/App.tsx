@@ -10,6 +10,7 @@ import { DesktopLayout } from '@/client/components/layout/desktop-layout/index';
 import { SessionStateProvider } from '@/client/components/common/session-state-provider';
 import { LoginScreen } from '@/client/components/auth/login-screen';
 import { useAuthState } from '@/client/hooks/ui/auth';
+import { setWindowChromeAuthRequired, setWindowChromeLayout } from '@/client/hooks/ui/window-chrome';
 import { SidebarDataProvider } from '@/client/hooks/chat/omp/session-list';
 
 /**
@@ -75,6 +76,12 @@ export function App({ initialIsMobile = false, appSettings = {} }: AppProps) {
       window.removeEventListener('orientationchange', handleResize);
     };
   }, []);
+
+  // The PWA window chrome has to match the surface at the TOP of the window,
+  // and that surface changes with the layout (`shared/lib/theme/chrome.ts`).
+  // Both writes are no-ops when the fact did not move.
+  useEffect(() => setWindowChromeLayout(isMobileMode), [isMobileMode]);
+  useEffect(() => setWindowChromeAuthRequired(authState === 'required'), [authState]);
 
   const handleSwitchToDesktop = () => {
     manualOverrideRef.current = true;
