@@ -5,6 +5,12 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.4.1](https://github.com/rajebdev/ompchamber/compare/v4.4.0...v4.4.1) — 2026-10-07
+
+### Fixed
+
+* **usage:** align the usage topic with the report both surfaces render ([1f91cf8](https://github.com/rajebdev/ompchamber/commit/1f91cf8781f242844772688369b0089ce911efcb))
+
 ## [4.4.0](https://github.com/rajebdev/ompchamber/compare/v4.3.2...v4.4.0) — 2026-10-07
 
 ### Added
