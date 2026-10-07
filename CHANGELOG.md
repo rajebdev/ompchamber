@@ -5,6 +5,29 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.4.0](https://github.com/rajebdev/ompchamber/compare/v4.3.2...v4.4.0) — 2026-10-07
+
+### Added
+
+* **nav:** make the navbar session menu act on the session ([24abc07](https://github.com/rajebdev/ompchamber/commit/24abc07b3fb56a035ee2def1a96b0b2c63b2f700))
+* **realtime:** route every server-originated event through one hub ([2761390](https://github.com/rajebdev/ompchamber/commit/276139087d21b567d4920e3020a70a484c554e8b))
+
+### Changed
+
+* correct the polling claims the realtime cutover left behind ([ac5afa0](https://github.com/rajebdev/ompchamber/commit/ac5afa0d9fd93e608ba0c24783e1dbd2c3a8e7bb))
+* **omp:** drop the /api/omp routes the realtime cutover left without callers ([4ffe959](https://github.com/rajebdev/ompchamber/commit/4ffe9599a012f0ea8817e57e74f2d4e7bfe66229))
+* **realtime:** record the four phases and their decisions ([d8c289b](https://github.com/rajebdev/ompchamber/commit/d8c289b585ff0520753b28ae106dcdd2fb8248e8))
+
+### Fixed
+
+* **chat:** never resume the generating UI from a `busy` probe ([bed107f](https://github.com/rajebdev/ompchamber/commit/bed107fcc7e07b5629561ae5288b995163130710))
+* **chat:** stop a chamber-mode dispatch from settling a running turn ([39767a4](https://github.com/rajebdev/ompchamber/commit/39767a416c78ffeee2c53fa2e24a6b4c60571651))
+* **editor:** render markdown source when the preview toggle is off ([b599f4f](https://github.com/rajebdev/ompchamber/commit/b599f4fd2754c607d1c33c9d5c4dc0522ae5a004))
+* **realtime:** publish the session data topics and drop the dead ones ([180446d](https://github.com/rajebdev/ompchamber/commit/180446d656a4e51ce346a131cbe7ac574a48f80f))
+* **realtime:** relay a peer-owned session over the unified socket ([f18bfe2](https://github.com/rajebdev/ompchamber/commit/f18bfe2f7e938c6da5f228dded987001d5f55cba))
+* **realtime:** serve the MOCK todo/plan demo from the topic resolvers ([bfabf44](https://github.com/rajebdev/ompchamber/commit/bfabf444e9d96526675e5fbb44b6390f6c692c1a))
+* **ui:** stop inline rename from committing twice on Enter ([b8ff23a](https://github.com/rajebdev/ompchamber/commit/b8ff23a0e4784c51db18fea8972c4b904d4fb7c0))
+
 ## [4.3.2](https://github.com/rajebdev/ompchamber/compare/v4.3.1...v4.3.2) — 2026-10-06
 
 ### Fixed
