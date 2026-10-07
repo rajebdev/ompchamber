@@ -24,6 +24,17 @@ const COOL_VERBS = [
   'Compiling edge routes'
 ];
 
+/** The trailing ellipsis every state shares. */
+function Dots() {
+  return (
+    <span className="inline-flex tracking-wider text-ink/80 ml-0.5">
+      <span className="dot-anim-1 inline-block">.</span>
+      <span className="dot-anim-2 inline-block">.</span>
+      <span className="dot-anim-3 inline-block">.</span>
+    </span>
+  );
+}
+
 export function GeneratingIndicator({ modelName, generatingVerb, provider, providerNames, id = 'generating-docked-indicator' }: GeneratingIndicatorProps) {
   const [activeVerbIndex, setActiveVerbIndex] = useState(0);
 
@@ -41,6 +52,15 @@ export function GeneratingIndicator({ modelName, generatingVerb, provider, provi
     : COOL_VERBS[activeVerbIndex];
 
   const providerText = provider ? providerLabel(provider, providerNames) : '';
+  // The identity half is genuinely unknown for the first seconds of a fresh
+  // spawn: a pending `new-…` session has no sidebar row yet, and the resolved
+  // model only arrives with the spawn response (`seedSession`). An empty slot
+  // rendered as `• Thinking…` — a bullet with nothing in front of it. Name the
+  // wait instead of painting a blank identity.
+  const modelText = modelName?.trim() ?? '';
+  // One half is enough to name the run — a provider-only identity still says
+  // which account is answering. Only "neither" is the unknown state.
+  const identityKnown = Boolean(providerText || modelText);
 
   return (
     <div 
@@ -76,23 +96,34 @@ export function GeneratingIndicator({ modelName, generatingVerb, provider, provi
           </div>
         </div>
 
-        {/* Provider & model name with dynamic verb + dots */}
+        {/* Provider & model name with dynamic verb + dots. When neither half is
+            known yet (a spawn still in flight) the slot names the WAIT rather
+            than drawing a bullet with an empty identity in front of it. */}
         <div className="flex items-center space-x-1.5 min-w-0 truncate">
-          {providerText && (
-            <span className="text-ink/55 truncate shrink">{providerText}</span>
-          )}
-          <span className="font-semibold text-ink truncate">
-            {modelName}
-          </span>
-          <span className="text-ink/40 shrink-0">•</span>
-          <span className="text-ink/75 flex items-center space-x-1 shrink-0 font-medium">
-            <span className="transition-all duration-300">{displayVerb}</span>
-            <span className="inline-flex tracking-wider text-ink/80 ml-0.5">
-              <span className="dot-anim-1 inline-block">.</span>
-              <span className="dot-anim-2 inline-block">.</span>
-              <span className="dot-anim-3 inline-block">.</span>
+          {identityKnown ? (
+            <>
+              {providerText && (
+                <span className="text-ink/55 truncate shrink">{providerText}</span>
+              )}
+              {modelText && (
+                <span className="font-semibold text-ink truncate">
+                  {modelText}
+                </span>
+              )}
+              {/* The separator belongs to the PAIR: a provider-only identity has
+                  nothing for it to separate. */}
+              {providerText && modelText && <span className="text-ink/40 shrink-0">•</span>}
+              <span className="text-ink/75 flex items-center space-x-1 shrink-0 font-medium">
+                <span className="transition-all duration-300">{displayVerb}</span>
+                <Dots />
+              </span>
+            </>
+          ) : (
+            <span className="text-ink/55 flex items-center space-x-1 shrink-0">
+              <span>Loading</span>
+              <Dots />
             </span>
-          </span>
+          )}
         </div>
       </div>
     </div>
