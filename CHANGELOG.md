@@ -5,6 +5,19 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.6.0](https://github.com/rajebdev/ompchamber/compare/v4.5.0...v4.6.0) — 2026-10-07
+
+### Added
+
+* refresh session-data panels on every tool call ([0c49b17](https://github.com/rajebdev/ompchamber/commit/0c49b17f0b383096ab347d54d6314be83c72a0dd))
+
+### Fixed
+
+* **chat-timeline:** name the wait while the generating indicator has no identity ([a15e40e](https://github.com/rajebdev/ompchamber/commit/a15e40e2d2b2d7ebd776c8a30c45f9e8209a3b67))
+* **chat:** load history when opening a session that is already streaming ([57d4680](https://github.com/rajebdev/ompchamber/commit/57d46804bbb42fbe821871e2b2858ce0dc3545e9))
+* **files:** re-read open folders on refresh and stop re-fetching empty ones ([f88aeca](https://github.com/rajebdev/ompchamber/commit/f88aeca2e3986a2f6292c0858b8a90f4628affb4))
+* **workspace:** refresh panel data and indicators on realtime pushes ([1081071](https://github.com/rajebdev/ompchamber/commit/10810715b9c5e5249fc33a4c69ddc034933872b7))
+
 ## [4.5.0](https://github.com/rajebdev/ompchamber/compare/v4.4.1...v4.5.0) — 2026-10-07
 
 ### Added
