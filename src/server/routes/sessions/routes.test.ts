@@ -24,9 +24,11 @@ import fs from 'fs';
 import path from 'path';
 import { getDb } from '@/server/db.server';
 import type { DbClient } from '@/server/lib/db/client';
-import type { ActionFunctionArgs } from '@/server/lib/remix-compat';
+import type { ActionFunctionArgs, LoaderFunctionArgs } from '@/server/lib/remix-compat';
 import { clearSessionFileCaches } from '@/server/lib/omp/session/files';
 import { invalidateOmpSidebarData } from '@/server/lib/omp/session/reader';
+import { ModeMirror } from '@/server/lib/omp/rpc/mode-mirror';
+import { recordSpawnProvenance } from '@/server/lib/omp/rpc/spawn-provenance';
 import {
   archiveSession,
   getSessionModes,
@@ -40,12 +42,16 @@ const ROOT = `/tmp/omc-sessions-routes-${process.pid}`;
 const AGENT = path.join(ROOT, 'agent');
 const SESSION_ID = '11111111-2222-3333-4444-555555555555';
 const UNKNOWN = '00000000-0000-0000-0000-000000000000';
+/** A live session whose JSONL does not exist yet — the window omp creates on
+ *  every new chat, before its first assistant message. */
+const NO_FILE_LIVE = '99999999-8888-7777-6666-555555555555';
 
 let db: DbClient;
 let priorDbPath: string | undefined;
 let priorMock: string | undefined;
 let priorAgentDir: string | undefined;
 let priorSlot: typeof globalThis.__ompChamberDb;
+let priorSessions: typeof globalThis.__ompSessions;
 
 beforeAll(async () => {
   fs.rmSync(ROOT, { recursive: true, force: true });
@@ -70,6 +76,7 @@ beforeAll(async () => {
   priorDbPath = Bun.env.OMPCHAMBER_DB_PATH;
   priorMock = Bun.env.MOCK;
   priorSlot = globalThis.__ompChamberDb;
+  priorSessions = globalThis.__ompSessions;
 
   Bun.env.PI_CODING_AGENT_DIR = AGENT;
   Bun.env.OMPCHAMBER_DB_PATH = path.join(ROOT, 'db.sqlite');
@@ -86,6 +93,9 @@ beforeAll(async () => {
 afterAll(() => {
   clearSessionFileCaches();
   invalidateOmpSidebarData();
+  // The live-child cases register a fake wrapper in the process-wide registry;
+  // a sibling suite must not inherit it as a real session.
+  delete globalThis.__ompSessions;
   if (priorAgentDir === undefined) delete Bun.env.PI_CODING_AGENT_DIR;
   else Bun.env.PI_CODING_AGENT_DIR = priorAgentDir;
   if (priorDbPath === undefined) delete Bun.env.OMPCHAMBER_DB_PATH;
@@ -93,6 +103,8 @@ afterAll(() => {
   if (priorMock === undefined) delete Bun.env.MOCK;
   else Bun.env.MOCK = priorMock;
   globalThis.__ompChamberDb = priorSlot;
+  if (priorSessions === undefined) delete globalThis.__ompSessions;
+  else globalThis.__ompSessions = priorSessions;
   fs.rmSync(ROOT, { recursive: true, force: true });
 });
 
@@ -109,27 +121,81 @@ function jsonRequest(method: string, body: unknown, url = 'http://localhost/api/
   });
 }
 
+/** The loader args a route needs: `params` plus the request every session
+ *  route reads (the peer-relay guard inspects its headers). */
+function loaderArgs(sessionId: string): LoaderFunctionArgs {
+  return {
+    params: { sessionId },
+    request: new Request(`http://localhost/api/sessions/${encodeURIComponent(sessionId)}/modes`),
+  } as unknown as LoaderFunctionArgs;
+}
+
 describe('getSessionModes', () => {
   test('a missing id is a 400', async () => {
-    const res = (await getSessionModes({ params: {} } as unknown as ActionFunctionArgs) as unknown as Response);
+    const res = (await getSessionModes({ params: {}, request: new Request('http://localhost/api/x') } as unknown as LoaderFunctionArgs) as unknown as Response);
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ error: 'Missing session id' });
   });
 
   test('a value that is not one path segment is a 404 before any lookup', async () => {
     for (const id of ['.', '..', 'a/b', 'a\\b']) {
-      const res = (await getSessionModes({ params: { sessionId: id } } as unknown as ActionFunctionArgs) as unknown as Response);
+      const res = (await getSessionModes(loaderArgs(id)) as unknown as Response);
       expect(res.status).toBe(404);
       expect(await res.json()).toMatchObject({ error: 'Session not found' });
     }
   });
 
   test('an unknown but well-formed id is a 404', async () => {
-    expect((await getSessionModes({ params: { sessionId: UNKNOWN } } as unknown as ActionFunctionArgs)).status).toBe(404);
+    expect((await getSessionModes(loaderArgs(UNKNOWN))).status).toBe(404);
+  });
+
+  // The window omp creates on every new chat: the child is live and already in
+  // the mode the user picked, and the JSONL does not exist yet (omp writes it at
+  // the first assistant message). Answering 404 there told the composer "no
+  // session" for a running chat, and reset the toggles the user had just
+  // pressed, so the live child answers instead.
+  test('a live session with no file yet answers its own modes, not a 404', async () => {
+    const wrapper = { modeMirror: new ModeMirror(), isAlive: () => true };
+    globalThis.__ompSessions ??= new Map();
+    globalThis.__ompSessions.set(NO_FILE_LIVE, wrapper as never);
+    recordSpawnProvenance(wrapper as never, 'yolo', { CHAMBER_MODES: 'plan' });
+    try {
+      const res = (await getSessionModes(loaderArgs(NO_FILE_LIVE)) as unknown as Response);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ sessionId: NO_FILE_LIVE, modes: { plan: true, goal: false } });
+    } finally {
+      globalThis.__ompSessions.delete(NO_FILE_LIVE);
+    }
+  });
+
+  // A toggle moves the child, and the entry recording it lands a moment later —
+  // so the file can still describe the state the user just left.
+  test('a child that has reported a mode outranks the file', async () => {
+    const wrapper = { modeMirror: new ModeMirror(), isAlive: () => true };
+    wrapper.modeMirror.observeMarker({ marker: 'CHAMBER_PLAN_STATE:' as never, payload: { enabled: false } });
+    globalThis.__ompSessions ??= new Map();
+    globalThis.__ompSessions.set(SESSION_ID, wrapper as never);
+    try {
+      const res = (await getSessionModes(loaderArgs(SESSION_ID)) as unknown as Response);
+      // The file on disk says plan: true.
+      expect(await res.json()).toMatchObject({ modes: { plan: false } });
+    } finally {
+      globalThis.__ompSessions.delete(SESSION_ID);
+    }
+  });
+
+  test('a dead session with no file is still a 404', async () => {
+    globalThis.__ompSessions ??= new Map();
+    globalThis.__ompSessions.set(NO_FILE_LIVE, { modeMirror: new ModeMirror(), isAlive: () => false } as never);
+    try {
+      expect((await getSessionModes(loaderArgs(NO_FILE_LIVE))).status).toBe(404);
+    } finally {
+      globalThis.__ompSessions.delete(NO_FILE_LIVE);
+    }
   });
 
   test('a real session file answers its persisted selection', async () => {
-    const res = (await getSessionModes({ params: { sessionId: SESSION_ID } } as unknown as ActionFunctionArgs) as unknown as Response);
+    const res = (await getSessionModes(loaderArgs(SESSION_ID)) as unknown as Response);
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ sessionId: SESSION_ID, modes: { plan: true, goal: false } });
   });

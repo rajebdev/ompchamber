@@ -67,3 +67,12 @@ export function parseModeSelection(body: Record<string, unknown>): ChamberModeSe
 export function modeEnvValue(selection: ChamberModeSelection): string {
   return [selection.plan ? 'plan' : '', selection.goal ? 'goal' : ''].filter(Boolean).join(',');
 }
+
+/** The selection a `CHAMBER_MODES` value describes — the inverse of
+ *  `modeEnvValue`, kept beside it so the two spellings of the format cannot
+ *  drift. An absent or empty value is the empty selection, which is what a
+ *  prewarmed child carries. */
+export function selectionFromModeEnvValue(value: string | undefined): ChamberModeSelection {
+  const parts = (value ?? '').split(',');
+  return { plan: parts.includes('plan'), goal: parts.includes('goal') };
+}

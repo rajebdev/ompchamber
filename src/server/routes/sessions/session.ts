@@ -11,31 +11,56 @@ import { setSessionTitle } from '@/server/lib/omp/session/title-slot';
 import { renameSessionWithAi } from '@/server/lib/omp/session/rename-with-ai.server';
 import { isSinglePathSegment } from '@/server/lib/fs/path-segment';
 import { loadPersistedModes } from '@/server/lib/omp/session/modes';
+import { liveModeSelection } from '@/server/lib/omp/mode/live-selection';
 import { emitRealtimeSignal } from '@/server/lib/realtime/signals.server';
 
 /**
- * GET /api/sessions/:sessionId/modes — the plan/goal mode selection persisted
- * in the session's own transcript.
+ * GET /api/sessions/:sessionId/modes — the plan/goal mode selection.
  *
- * Read from the JSONL rather than from `session_ui_state`, because the modes
- * are not a layout preference: they are state the AGENT ran under, and the
- * records are written by the child process as it transitions. That makes this
- * the one source a second tab, a restarted chamber and a CLI-driven session all
- * agree on.
+ * Read from the session's own transcript, because the modes are not a layout
+ * preference: they are state the AGENT ran under, and the records are written
+ * by the child process as it transitions. That makes this the one source a
+ * second tab, a restarted chamber and a CLI-driven session all agree on.
  *
- * A session with no file (a `new-…` chat that has never run) answers the empty
- * selection; a session id the chamber cannot resolve answers 404 like every
- * other session route.
+ * The transcript is not always there to read. omp writes the JSONL at the first
+ * ASSISTANT message, so a new chat is live — and in whatever mode the user just
+ * picked — with no file for the first seconds-to-minutes. A live child is
+ * therefore asked FIRST: the wrapper mirrors the extension's own mode markers,
+ * and its spawn environment carries the selection the child was started with.
+ * Answering 404 there told the composer "no session" for a session that is
+ * demonstrably running, and reset the toggles the user had just pressed
+ * (measured: the file appeared 40 s after the id was adopted).
+ *
+ * Once the child has SPOKEN the answer comes from it even when a transcript
+ * exists: a toggle moves the child and the entry recording it lands a moment
+ * later, so the file can still describe the previous state. A child that has
+ * reported nothing is described better by the file than by the environment it
+ * happened to be spawned with. A session with no live child and no file is a
+ * genuine 404, like every other session route.
+ *
+ * Deliberately NOT relayed to a peer instance when this one holds no child:
+ * omp creates the ownership lease together with the session file (measured —
+ * both absent after a spawn and both present after the first prompt), so in the
+ * window this route exists for there is no lease to resolve an owner from and
+ * the relay could never fire.
  */
 export async function getSessionModes({ params }: LoaderFunctionArgs) {
   const sessionId = params.sessionId;
   if (!sessionId) return json({ error: 'Missing session id' }, { status: 400 });
   if (!isSinglePathSegment(sessionId)) return json({ error: 'Session not found' }, { status: 404 });
 
+  const live = liveModeSelection(sessionId);
+  if (live?.spoken) return json({ sessionId, modes: live.modes });
+
   const resolved = await resolveSessionFileOr404(sessionId);
-  if ('response' in resolved) return resolved.response;
-  const modes = await loadPersistedModes(resolved.filePath);
-  return json({ sessionId, modes });
+  if ('response' in resolved) {
+    // A live child with no transcript yet: it is the only thing that can
+    // describe this session, and "not found" would be a lie about a process
+    // that is running.
+    if (live) return json({ sessionId, modes: live.modes });
+    return resolved.response;
+  }
+  return json({ sessionId, modes: live?.modes ?? (await loadPersistedModes(resolved.filePath)) });
 }
 
 /**

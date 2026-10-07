@@ -31,6 +31,7 @@ import { releasesStreamRowOnPromptResult } from '@/shared/lib/omp/session/stream
 import { driveGoalAfterTurn } from '@/server/lib/omp/session/goal-driver.server';
 import { emitRealtimeSignal } from '@/server/lib/realtime/signals.server';
 import { NON_TERMINAL_CONTINUATION_GRACE_MS, type AgentEvent } from '@/server/lib/omp/rpc/constants';
+import { parseChamberMarker } from '@/shared/lib/omp/mode/markers';
 import type { ModeMirror } from '@/server/lib/omp/rpc/mode-mirror';
 
 /**
@@ -284,9 +285,22 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
     case 'goal_updated':
       host.modeMirror.observe(event);
       break;
-    case 'extension_ui_request':
+    case 'extension_ui_request': {
+      // The chamber's mode extension reports every plan/goal transition through
+      // `ctx.ui.notify`, which omp frames as an `extension_ui_request` with
+      // `method: "notify"`. The client parses those into composer state; the
+      // wrapper mirrors them for the same reason it mirrors `goal_updated` —
+      // this is the only live word on PLAN mode (omp emits no plan event), and
+      // the only place a goal RECORD is carried, so it is what a `GET /modes`
+      // can answer from while the transcript does not exist yet.
+      const data = event as { method?: unknown; message?: unknown };
+      if (data.method === 'notify') {
+        const marker = parseChamberMarker(typeof data.message === 'string' ? data.message : '');
+        if (marker) host.modeMirror.observeMarker(marker);
+      }
       host.trackUiDialog(event);
       break;
+    }
     // Subagent frames carry no turn state, but they are the only proof that
     // work is still running once the parent turn has ended.
     case 'subagent_lifecycle':

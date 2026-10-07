@@ -19,6 +19,7 @@
  */
 
 import { parseJsonlLenient } from '@/shared/lib/omp/session/jsonl';
+import { isGoalOpen } from '@/shared/lib/omp/mode/status';
 import {
   CHAMBER_GOAL_STATE_ENTRY,
   CHAMBER_PLAN_STATE_ENTRY,
@@ -92,10 +93,11 @@ function goalContinuationOf(value: unknown): GoalContinuation | null {
 /** A goal counts as "on" only while it is still being pursued. A completed or
  *  dropped goal keeps its record in the transcript but must not make the
  *  composer's toggle read as active — and `budget-limited` stays on, because
- *  that state is explicitly resumable. */
-function goalIsLive(status: string | undefined): boolean {
-  return status === 'active' || status === 'paused' || status === 'budget-limited';
-}
+ *  that state is explicitly resumable.
+ *
+ *  The rule itself is `isGoalOpen` (shared with the composer, which gates the
+ *  goal strip on the same question): two spellings of "is this goal still the
+ *  chat's business" is exactly how the server and the UI come to disagree. */
 
 /**
  * Extract the persisted mode selection from a session file's contents.
@@ -124,7 +126,7 @@ export function readPersistedModes(body: string): PersistedModes {
       const candidate = payload.goal;
       goalRecord = isGoalRecord(candidate) ? candidate : null;
       goalLive = payload.enabled === true && goalRecord?.status === 'active';
-      goal = payload.enabled === true && goalIsLive(goalRecord?.status);
+      goal = payload.enabled === true && goalRecord !== null && isGoalOpen(goalRecord.status);
       // Only an entry that CARRIES the key speaks about the loop: most of them
       // are goal transitions (`goal_updated`) with no verdict to report, and
       // treating their absence as "no verdict" would erase the last one on
