@@ -5,6 +5,16 @@ All notable changes to this package are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1](https://github.com/rajebdev/ompchamber/compare/ui/v2.1.0...ui/v2.1.1) — 2026-10-07
+
+### Changed
+
+* correct the polling claims the realtime cutover left behind ([ac5afa0](https://github.com/rajebdev/ompchamber/commit/ac5afa0d9fd93e608ba0c24783e1dbd2c3a8e7bb))
+
+### Fixed
+
+* **search:** virtualize results, cap the run, and stop scroll from re-rendering ([e63f130](https://github.com/rajebdev/ompchamber/commit/e63f130a782a051b6b6524cf669fae35f28efafa))
+
 ## [2.1.0](https://github.com/rajebdev/ompchamber/compare/ui/v2.0.1...ui/v2.1.0) — 2026-10-06
 
 ### Added
