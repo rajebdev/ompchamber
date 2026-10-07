@@ -18,9 +18,9 @@
  * rendering it under the new repo's header would attribute one project's
  * documentation to another.
  *
- * The poll is cheap because the server caches its mirror for a minute: a 5s tick
- * re-lists a local repository rather than re-fetching the remote, and only the
- * user's own Refresh forces a fetch.
+ * The tree read is cheap because the server caches its mirror for a minute: the
+ * `wiki:<scope>` topic re-lists a local repository rather than re-fetching the
+ * remote, and only the user's own Refresh forces a fetch.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
@@ -46,7 +46,7 @@ export interface WikiScopeArgs {
   repo: string;
   /** False when the view cannot read at all (no active workspace). */
   enabled: boolean;
-  /** False while the view is hidden; pauses the poll. */
+  /** False while the view is hidden: releases the wiki topic. */
   active: boolean;
 }
 

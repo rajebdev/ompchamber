@@ -4,11 +4,13 @@
  */
 
 /**
- * `useChamberFetch` — the reader every data-backed panel shares.
+ * `useChamberFetch` — the kit's own reader for a plugin panel that reaches the
+ * chamber's HTTP API.
  *
  * It replaced two hand-rolled copies (`useSessionTodos`, `useSessionPlan`) that
  * had the same three behaviours and the same three bugs waiting to happen, so
- * this file pins the behaviours rather than the call sites:
+ * this file pins the behaviours rather than the call sites (the chamber's own
+ * views have since moved to the realtime socket):
  *
  * - **A late answer never overwrites a newer one.** Switching sessions fires a
  *   second request while the first is in flight; without the sequence guard the

@@ -13,7 +13,7 @@ import type { UsageReport } from '@/shared/types';
 interface UsagePanelProps {
   className?: string;
   /** False while the panel is hidden (desktop right panel / mobile tab):
-   *  pauses the auto-refresh poll. */
+   *  releases the usage topic. */
   active?: boolean;
 }
 

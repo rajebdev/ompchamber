@@ -18,10 +18,10 @@
  *     may sit megabytes from EOF — a `todo` call near the start of a long
  *     session stays the live list for the rest of it, so a bounded tail window
  *     would report "no todos" for exactly the sessions that have the most. omp
- *     flushes each entry as it appends, so a poll sees a new list within the
+ *     flushes each entry as it appends, so the topic sees a new list within the
  *     second it was written.
  *   - **It never creates an omp process.** The session is read-only here; a
- *     panel that spawned a child per poll would fight the chat's own session
+ *     panel that spawned a child per read would fight the chat's own session
  *     wrapper for the same session file.
  */
 
@@ -44,7 +44,7 @@ interface TodoCacheEntry {
  * Cache keyed by session id. Hangs off `globalThis` for the same reason the
  * session-file caches do: a `bun --hot` reload re-evaluates modules but keeps
  * `globalThis`, and a cache that vanished on every edit would re-parse a
- * multi-megabyte file per poll during development.
+ * multi-megabyte file per read during development.
  */
 interface TodoCacheHost {
   entries: Map<string, TodoCacheEntry>;

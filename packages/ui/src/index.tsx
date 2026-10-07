@@ -28,7 +28,7 @@
  * |---|---|
  * | `./services` | The injected services and the two prop contracts |
  * | `./panels` | `usePanelInfo`, `usePanelHost`, `useSessionValue`, `useWorkspaceFile`, the scrollbar fade |
- * | `./fetch` | `useChamberFetch` — the chamber's HTTP API with poll + events |
+ * | `./fetch` | `useChamberFetch` — a plugin's own read of the chamber's HTTP API (poll + events) |
  * | `./components` | The presentation kit (`Panel`, `Field`, `Button`, …) |
  */
 

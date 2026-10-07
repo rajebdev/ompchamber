@@ -11,9 +11,9 @@
  * shapes cannot drift. The client half lives in `client.ts`, the server half in
  * `@/server/lib/realtime/hub.server.ts`.
  *
- * A topic names a RESOURCE that is polled today, not a window event. The
- * protocol is snapshot-then-delta: `subscribe` answers with a full `snapshot`,
- * and later changes arrive as `delta` frames carrying the topic's new value.
+ * A topic names a RESOURCE a client reads, not a window event. The protocol is
+ * snapshot-then-delta: `subscribe` answers with a full `snapshot`, and later
+ * changes arrive as `delta` frames carrying the topic's new value.
  * `snapshot` resets the client's sequence baseline, which is what makes a
  * resubscribe (after a reconnect) a complete repair rather than a guess.
  *

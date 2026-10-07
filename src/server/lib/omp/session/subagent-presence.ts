@@ -9,7 +9,7 @@
  * The sidebar loader asks this for EVERY session on EVERY fetch. The honest
  * answer needs the session file's `task` toolCalls, which is the authoritative
  * roster — but reading them means parsing a file that can reach hundreds of
- * megabytes, and doing that per session per poll dominated the endpoint's cost
+ * megabytes, and doing that per session per fetch dominated the endpoint's cost
  * (the dataset scan itself is cached; this probe was not).
  *
  * The roster can only change when the session file gains entries or its
@@ -45,7 +45,7 @@ const cache = new Map<string, PresenceEntry>();
  * this module is re-evaluated by `bun run --hot` — the dev server, and any
  * `ompchamber serve` whose NODE_ENV is unset. The result was a full ENOENT
  * report with a `Bun v1.4.2` footer printed over a healthy server's own sidebar
- * polls. Measured on Bun 1.4.2 against this exact function — 40 concurrent
+ * reads. Measured on Bun 1.4.2 against this exact function — 40 concurrent
  * probes per request, 40 module rewrites, 6 runs: `try { await fs.stat(dir) }
  * catch {}` reported ENOENT 8-12 times, `.catch()` 4-8 times, while both
  * `throwIfNoEntry: false` and `statSync` reported zero, all yielding the same
@@ -54,7 +54,7 @@ const cache = new Map<string, PresenceEntry>();
  * throw is caught on the spot and never reaches the tracker.
  *
  * Cost is not a concern: 343 sessions (this machine's sidebar) cost 0.37 ms per
- * poll versus 0.32 ms for the async form — 0.055 ms, on a poll that runs at
+ * read versus 0.32 ms for the async form — 0.055 ms, on a read that runs at
  * most every few seconds.
  */
 function siblingDirVersion(dir: string): number {

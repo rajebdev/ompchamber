@@ -6,16 +6,15 @@
 /**
  * Subscribe a component to one realtime topic.
  *
- * The reader every data-backed panel shares, replacing `usePanelRefresh` and
- * `useChamberFetch`'s poll: the server pushes when a topic changes, so a panel
- * renders what it is handed instead of asking on a timer.
+ * The reader every data-backed panel shares: the server pushes when a topic
+ * changes, so a panel renders what it is handed instead of asking on a timer.
  *
- * Two rules carried over from the polling hooks, because they were right:
+ * Two rules carried over from the polling hooks it replaced, because they were
+ * right:
  *
  *   - **`enabled: false` subscribes to nothing.** A hidden panel — or one whose
  *     session is not selected — must not keep a subscription alive, or the
- *     server would produce snapshots nobody renders (the same reason
- *     `useVisibilityRefresh` paused while hidden).
+ *     server would produce snapshots nobody renders.
  *   - **A topic switch drops the old value first.** The panel's topic encodes
  *     the session it describes, so rendering the previous session's data under
  *     the new title is the failure this prevents.

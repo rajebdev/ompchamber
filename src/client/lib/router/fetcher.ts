@@ -9,11 +9,11 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
  * request writes its parsed JSON into `data`. `submit` accepts the same plain
  * object and `FormData` bodies Remix accepted.
  *
- * Every new request aborts the previous one. Panels poll on a 2s cadence
- * (`usePanelRefresh`) and the search box re-submits as you type, so without
- * this each superseded request kept its socket open until the browser's
- * per-host connection limit (6 in Chrome) was exhausted — after that every
- * request, including unrelated ones, stalled forever.
+ * Every new request aborts the previous one. The search box re-submits as you
+ * type and a panel re-reads whenever its scope moves, so without this each
+ * superseded request kept its socket open until the browser's per-host
+ * connection limit (6 in Chrome) was exhausted — after that every request,
+ * including unrelated ones, stalled forever.
  */
 
 export type FetcherState = 'idle' | 'loading' | 'submitting';

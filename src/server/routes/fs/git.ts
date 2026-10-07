@@ -81,7 +81,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 
   // Ahead/behind are only requested by the git panel (`?sync=1`); the
-  // status-only polls (activity bar, file explorer) must not trigger a network
+  // status-only reads (activity bar, file explorer) must not trigger a network
   // fetch, and must not pay for a count they never read.
   //
   // The read itself lives in `lib/fs/git-status-read.ts`, so the realtime `git:`
@@ -208,7 +208,7 @@ export async function action({ request }: ActionFunctionArgs) {
     } else if (actionType === 'sync') {
       await expectOk('git pull --ff-only', targetDir, 120000);
       await expectOk('git push', targetDir, 120000);
-      // Both commands already moved the tracking ref; the next poll must not
+      // Both commands already moved the tracking ref; the next read must not
       // fetch again to see a state it just produced.
       markRemoteRefsFresh(targetDir);
     }

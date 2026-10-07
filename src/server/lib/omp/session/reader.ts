@@ -41,8 +41,7 @@ declare global {
  * Per-process TTL cache for the sidebar dataset. The loader revalidates on
  * every stream event; deduplicating concurrent requests and re-serving a
  * snapshot for a few seconds turns a burst of revalidations into one disk scan
- * (4 KiB prefix per session file) instead of one scan each. The TTL sits just
- * under the fastest sidebar poll so a poll misses deterministically.
+ * (4 KiB prefix per session file) instead of one scan each.
  */
 export async function loadOmpSidebarData(): Promise<OmpSidebarData> {
   let slot = globalThis.__ompChamberSidebarDataCache;

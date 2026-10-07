@@ -14,8 +14,7 @@ export interface UsageReportState {
  * own copy of the last successful report until reload completes.
  *
  * `force` asks the server to re-probe the providers instead of answering from
- * its one-minute quota cache — used by the user's own Refresh button, never by
- * the background poll.
+ * its one-minute quota cache — used by the user's own Refresh button.
  */
 export function useUsageReport(): UsageReportState {
   const [report, setReport] = useState<UsageReport | null>(null);

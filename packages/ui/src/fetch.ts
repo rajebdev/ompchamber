@@ -4,7 +4,7 @@
  */
 
 /**
- * Fetching the chamber's own HTTP API from a plugin panel.
+ * Fetching the chamber's HTTP API from a plugin panel.
  *
  * A plugin cannot import the chamber's hooks, so this is the one place it
  * reaches the server: `GET /api/...` with the session's cookie, plus the three
@@ -18,10 +18,12 @@
  *   request whenever a new one starts, so an unguarded tick would cancel every
  *   slow read before it could finish and the panel would sit on "loading"
  *   forever.
- * - **Event-driven re-reads.** `omp:session-updated` fires at every turn
- *   boundary and `omp:files-mutated` when a file-mutating tool completes, so a
- *   panel follows a running agent without waiting out the poll. The burst a
- *   single run emits is coalesced by a throttle.
+ * - **Event-driven re-reads.** Name the window events your panel should follow
+ *   and the hook re-reads on each, coalescing a burst through a throttle.
+ *
+ * The chamber's own views do NOT use this — they read the unified realtime
+ * socket (`useRealtimeTopic`), which is not part of the kit's surface. This
+ * stays for a plugin that reaches an HTTP endpoint directly.
  *
  * A response for a request the user has already moved past is DROPPED: the
  * hook keeps a sequence number, and a late answer never overwrites a newer one.
@@ -57,10 +59,10 @@ export interface ChamberFetchState<T> {
 /**
  * Read a chamber API path, re-reading on a poll and on the given events.
  *
- * `url` is a FULL path (`/api/omp/session-todos?sessionId=…`) rather than a
- * builder, because a caller that changes the query — a session switch, a picked
- * plan — must also change the request, and rebuilding the URL is how the hook
- * knows to drop the old answer and read again.
+ * `url` is a FULL path rather than a builder, because a caller that changes the
+ * query — a session switch, a picked plan — must also change the request, and
+ * rebuilding the URL is how the hook knows to drop the old answer and read
+ * again.
  */
 export function useChamberFetch<T>(url: string | null, options: ChamberFetchOptions = {}): ChamberFetchState<T> {
   const { enabled = true, pollMs = DEFAULT_POLL_MS, events, eventThrottleMs = 400, skip = false } = options;

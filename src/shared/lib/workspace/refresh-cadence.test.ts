@@ -9,8 +9,7 @@
  * `refresh-cadence.ts` is the single table every poll/throttle reads, so a
  * value drifting (or two related values crossing) changes how often the app
  * touches disk and network. The retry schedule's length, monotonicity and sum
- * are what the spawn-wait budget is documented as, and the sidebar TTL must
- * stay under the stream poll or a poll lands on the cache boundary.
+ * are what the spawn-wait budget is documented as.
  *
  * `relativeTimeAgo` is the only place a sidebar row's age is rendered, so each
  * bucket boundary and the year cutoff are pinned rather than the implementation.

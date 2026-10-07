@@ -35,7 +35,7 @@ export interface GitSyncCount {
 interface RemoteState {
   /** When the last attempt settled; `0` means never attempted. */
   at: number;
-  /** The running attempt, so concurrent polls share one fetch. */
+  /** The running attempt, so concurrent reads share one fetch. */
   inFlight: Promise<void> | null;
 }
 
@@ -99,7 +99,7 @@ async function runFetch(cwd: string, remote: string): Promise<boolean> {
 /**
  * The branch's upstream remote, or null when it has none. Cheap and local, so
  * the no-upstream case is never cached: configuring an upstream in the terminal
- * shows up on the next poll instead of up to a TTL later.
+ * shows up on the next read instead of up to a TTL later.
  */
 async function readUpstreamRemote(cwd: string): Promise<string | null> {
   try {
@@ -145,7 +145,7 @@ export async function refreshRemoteRefs(cwd: string): Promise<void> {
   })();
 
   // Bounded wait. `AbortSignal.timeout` rather than `Bun.sleep`: it is unref'd,
-  // so an abandoned wait cannot hold a live timer open on every poll that
+  // so an abandoned wait cannot hold a live timer open on every read that
   // refreshes.
   const deadline = new Promise<void>((resolve) => {
     AbortSignal.timeout(FETCH_WAIT_MS).addEventListener('abort', () => resolve(), { once: true });

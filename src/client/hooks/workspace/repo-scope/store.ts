@@ -14,8 +14,8 @@
  * the previous list.
  *
  * A store rather than a fetch per hook: the right-panel views ask the same
- * question about the same root, and independent copies meant one request per
- * panel per poll interval plus lists that could disagree.
+ * question about the same root, and independent copies meant one subscription
+ * per panel plus lists that could disagree.
  *
  * The read rides the `repos:<root>` realtime topic. Discovery runs in the
  * background server-side, so the topic answers `reposPending: true` first and

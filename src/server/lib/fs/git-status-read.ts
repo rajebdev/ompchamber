@@ -70,7 +70,7 @@ export async function readGitStatus(targetDir: string, options: GitStatusOptions
       // spawns asked separately (`rev-parse --abbrev-ref HEAD`, `branch`,
       // `branch -r`): `%(HEAD)` marks the checked-out branch with `*`, and the
       // two refspecs cover local and remote in one listing. Measured 8.15 ms
-      // against 19.63 ms for the three-call form, on a 5s poll.
+      // against 19.63 ms for the three-call form.
       //
       // Classification reads the FULL refname: `%(refname:short)` maps
       // `refs/remotes/origin/HEAD` to the bare `origin`, which has no slash and

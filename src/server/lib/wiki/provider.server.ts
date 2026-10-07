@@ -28,7 +28,7 @@ interface HostVerdict {
   at: number;
 }
 
-/** One day: a host does not change product between two panel polls. */
+/** One day: a host does not change product between two panel reads. */
 const VERDICT_TTL_MS = 24 * 60 * 60 * 1000;
 
 interface ProviderCacheHost {

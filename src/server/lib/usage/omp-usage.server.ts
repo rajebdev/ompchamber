@@ -16,7 +16,7 @@
  * `omp usage` exits 0 even when nothing is reported (empty `reports`), so the
  * parse path — not the exit code — decides whether the snapshot is usable.
  * Cached briefly: the command walks every stored credential and calls each
- * provider's endpoint, so it is far too expensive to run per panel poll.
+ * provider's endpoint, so it is far too expensive to run per panel read.
  */
 
 import { resolveOmpBin } from '@/server/lib/omp/core/cli';
@@ -163,8 +163,8 @@ export function invalidateUsageCache(): void {
  * snapshot degrades to an empty one so the panel still shows local burn.
  *
  * `force` bypasses the TTL: the command calls every provider's endpoint, so a
- * poll must be cheap, but the user's own Refresh button is entitled to fresh
- * numbers rather than a minute-old snapshot.
+ * cached read must be cheap, but the user's own Refresh button is entitled to
+ * fresh numbers rather than a minute-old snapshot.
  */
 export async function fetchOmpUsageSnapshot(options: { force?: boolean } = {}): Promise<OmpUsageSnapshot> {
   if (!options.force && cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.data;

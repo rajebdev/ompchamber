@@ -18,7 +18,7 @@
  * invisible to the chamber while omp ran it happily).
  *
  * `omp skill list` is cheap (measured 0.38-0.42s, no session, no model) and is
- * cached per directory for a few seconds so a panel poll or a settings reload
+ * cached per directory for a few seconds so a panel read or a settings reload
  * does not spawn a process per request.
  *
  * Writing is deliberately narrow: only the two roots the chamber owns as
@@ -37,7 +37,7 @@ import { parseFrontmatter } from '@/server/lib/omp/config/yaml';
 
 const MAX_SKILL_MD_BYTES = 512 * 1024;
 const SKILL_LIST_TIMEOUT_MS = 30_000;
-/** Discovery spawns a process, so a short cache absorbs the panel poll and the
+/** Discovery spawns a process, so a short cache absorbs the panel read and the
  *  composer's own fetch without ever serving a stale list for long. */
 const CACHE_TTL_MS = 5_000;
 

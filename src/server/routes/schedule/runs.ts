@@ -6,8 +6,8 @@
 /**
  * `/api/schedule/:taskId/runs` — a task's run history, newest first.
  *
- * Read-only, and answered with no-store: the panel polls it while the modal is
- * open, and a cached body would show the run that just finished as still
+ * Read-only, and answered with no-store: the panel reads it when a task row is
+ * expanded, and a cached body would show the run that just finished as still
  * running.
  */
 

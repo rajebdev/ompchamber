@@ -33,8 +33,8 @@ import type { SessionTodosPayload } from '@/shared/types/todo';
 interface TodoPanelProps {
   className?: string;
   /**
-   * False while the view is not the one on screen: pauses the poll and the
-   * event-driven re-read.
+   * False while the view is not the one on screen: releases the session's todos
+   * topic.
    *
    * Deliberately NOT the `enabled` gate the workspace-scoped panels take. That
    * flag means "the active session's cwd resolves to a registered workspace

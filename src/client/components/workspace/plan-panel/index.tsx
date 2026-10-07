@@ -37,9 +37,9 @@ import type { SessionPlanPayload } from '@/shared/types/plan';
 interface PlanPanelProps {
   className?: string;
   /**
-   * False while the view is not the one on screen: pauses the poll. The panel
-   * stays MOUNTED (the desktop stack hides it with CSS), so its state survives
-   * a switch without a re-read.
+   * False while the view is not the one on screen: releases the session's plan
+   * topic. The panel stays MOUNTED (the desktop stack hides it with CSS), so its
+   * state survives a switch without a re-read.
    */
   active?: boolean;
 }

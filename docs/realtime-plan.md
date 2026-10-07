@@ -15,9 +15,10 @@ one socket", not "the browser opens one socket" — the latter needs a
 `SharedWorker`, which iOS Safari does not implement, so it would force a second
 code path rather than remove one.
 
-**Topics are the resources that are polled today**, not the `omp:*` window event
-names. What makes polling necessary is data that changes on the server; the
-remaining window events are pure DOM navigation that never crosses the network.
+**Topics are the resources the server owns and pushes**, not the `omp:*` window
+event names. What made polling necessary was data that changes on the server;
+the remaining window events are pure DOM navigation that never crosses the
+network.
 
 **Snapshot on subscribe, delta on change.** A topic's `subscribe` answers with a
 full snapshot and then pushes increments. This removes polling without inventing
@@ -103,9 +104,9 @@ read off the socket object.
 5. **Refcount per topic.** No subscribers means no work — `usage` shells out to
    `omp usage` and `sidebar` scans the JSONL, so neither may run for a tab that
    did not ask.
-6. **Hidden tab unsubscribes.** The same behaviour `useVisibilityRefresh` has
-   today, except `useStreamPoll` currently does *not* pause while hidden, so this
-   is strictly less work.
+6. **Hidden tab unsubscribes.** A hidden panel releases its topics, so the
+   server stops producing snapshots nobody renders — the behaviour the removed
+   `useVisibilityRefresh` aimed for, now enforced by the subscription refcount.
 7. **Per-topic fan-out.** A frame goes to the subscribers of its topic only.
    Broadcasting to every connection leaks one session's stream into a tab that is
    not rendering it.

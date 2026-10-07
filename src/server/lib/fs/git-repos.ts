@@ -9,8 +9,9 @@
  * A workspace is often a folder OF repositories (`projects/<name>/<sub>/.git`),
  * so the picker lists every repo under the scoped root. The walk is expensive
  * on a deep tree, so it runs in the BACKGROUND after the loader has already
- * answered with the root's own status; the client polls until `pending` clears.
- * Results are cached per scoped root for the life of the process.
+ * answered with the root's own status; the client never polls for it — the walk
+ * emits `repos-scanned`, which republishes the `repos:<root>` topic the client
+ * subscribes to. Results are cached per scoped root for the life of the process.
  *
  * The walk prunes `node_modules` (the one directory guaranteed to hold
  * unrelated `.git` directories, and the one that makes the walk unbounded) and

@@ -6,10 +6,10 @@
 /**
  * Single source of truth for the timings the chamber still reasons about.
  *
- * Most of what used to live here is gone: the panel, sidebar, git and schedule
- * polls were replaced by the realtime socket's topics, so only the CDP
- * screencast poll, the repo-discovery retry, the transports' keepalive, the
- * server-side dataset TTL and the spawn retry backoff remain.
+ * Most of what used to live here is gone: the panel, sidebar, git, schedule and
+ * repo-discovery polls were replaced by the realtime socket's topics, so only
+ * the CDP screencast poll, the transports' keepalive, the server-side dataset
+ * TTL and the spawn retry backoff remain.
  *
  * Keep them here so a cost/freshness trade-off can be reasoned about in one
  * place. Imported by client hooks, shared browser modules, and server routes
@@ -17,12 +17,10 @@
  */
 
 /**
- * Nested-repo discovery rides the `repos:<root>` realtime topic, so there is no
- * poll cadence for it here: the server republishes the topic the moment its
- * background walk finishes.
+ * Nested-repo discovery and the sidebar's schedule badge both ride realtime
+ * topics (`repos:<root>`, the schedule topic), so neither has a poll cadence
+ * here: the server republishes the moment the underlying state changes.
  */
-
-export const SCHEDULE_BADGE_POLL_MS = 30_000;
 
 /**
  * CDP state/screencast poll. Latency-sensitive — the browser panel streams a
@@ -38,9 +36,10 @@ export const BROWSER_POLL_MS = 1_000;
 export const STREAM_HEARTBEAT_MS = 30_000;
 
 /**
- * TTL for the server-side sidebar dataset scan (`loadOmpSidebarData`). Kept
- * just UNDER the fastest sidebar poll (8s) so a poll deterministically misses
- * and triggers exactly one scan instead of racing the boundary.
+ * TTL for the server-side sidebar dataset scan (`loadOmpSidebarData`). Nothing
+ * polls this cache — the sidebar rides the realtime socket — so the TTL only
+ * dedupes concurrent resolves of one publish burst; a structure publish
+ * invalidates it outright.
  */
 export const SIDEBAR_DATA_TTL_MS = 4_000;
 

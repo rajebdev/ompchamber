@@ -461,7 +461,7 @@ phone's drawer already carries every view.
 | `useSessionValue(key, delayMs?)` | `{ value, status, error, update }` — per-session state, debounced. |
 | `useSessionState(key, fallback)` | `[value, setValue, ready]` — per-session state of ANY JSON shape (a collapsed-phase map, a picked file). |
 | `useWorkspaceFile(relPath)` | `{ content, loading, error }` — a text file inside the active workspace. |
-| `useChamberFetch(url, opts?)` | `{ data, isLoading, error, reload }` — the chamber's HTTP API with a poll that pauses while hidden and re-reads on the window events you name. |
+| `useChamberFetch(url, opts?)` | `{ data, isLoading, error, reload }` — a direct read of the chamber's HTTP API: a poll that pauses while hidden, plus re-reads on the window events you name. |
 | `useScrollbarFade(delayMs?)` | `{ isScrolling, handleScroll }` — the overlay-scrollbar fade; pair it with `scrollbarFadeClass(isScrolling)`. |
 
 `usePanelHost` is a Preact context, not a global: the desktop stack keeps every
@@ -470,16 +470,19 @@ process-wide value. Render a panel inside `PanelHostProvider` (the chamber's own
 layouts do) and any component nested in it reads the same props its top-level one
 was handed.
 
-`useChamberFetch` is the reader behind the chamber's own data-backed views, and
-the replacement for hand-rolling one: a late answer for a request you have moved
-past is dropped, a new URL clears the previous payload before reading, and a
-hidden or disabled view makes no request at all.
+`useChamberFetch` is for a plugin that reaches an HTTP endpoint directly, and it
+replaces hand-rolling one: a late answer for a request you have moved past is
+dropped, a new URL clears the previous payload before reading, and a hidden or
+disabled view makes no request at all. The chamber's own views do not use it —
+they read the unified realtime socket, which is not part of the kit's surface.
 
 ```tsx
-const url = sessionId ? `/api/omp/session-todos?sessionId=${encodeURIComponent(sessionId)}` : null;
+// Any chamber endpoint that answers JSON, with the session's cookie.
+const url = sessionId ? `/api/telemetry/context?sessionId=${encodeURIComponent(sessionId)}` : null;
 const { data, isLoading, error, reload } = useChamberFetch<Payload>(url, {
   enabled: active,
-  events: ['omp:session-updated'],
+  // Window events your panel should re-read on (a burst is throttled).
+  events: ['omp:view-subagent'],
 });
 ```
 

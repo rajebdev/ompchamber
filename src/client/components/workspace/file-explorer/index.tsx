@@ -137,7 +137,7 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
   const loadChildren = (path: string) => {
     // Expanding IS a directory load: fetch the children AND re-read git status,
     // so a freshly listed row never renders bare next to a status map that
-    // still predates its change (the panel poll alone can lag a fresh edit).
+    // still predates its change (the topic snapshot alone can lag a fresh edit).
     refreshGitStatus();
     const requested = scopeRef.current;
     return fetch(listUrl(path))
