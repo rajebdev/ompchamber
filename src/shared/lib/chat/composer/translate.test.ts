@@ -152,20 +152,26 @@ describe('translateAgentMentions', () => {
     expect(translateAgentMentions('  @sonic  ', AGENTS)).toEqual({ text: '  @sonic  ', agents: ['sonic'] });
   });
 
-  test('the body is whitespace-normalised around the removed mentions', () => {
+  test('the gap a removed mention leaves is closed, without reflowing the body', () => {
     expect(translateAgentMentions('@sonic    do   it', AGENTS)).toEqual({
-      text: `${header('sonic', '`sonic`')}do it`,
+      // The mention's OWN separator and its gap are collapsed…
+      text: `${header('sonic', '`sonic`')}do   it`,
       agents: ['sonic'],
     });
-    expect(translateAgentMentions('@sonic\n\nline', AGENTS)).toEqual({
-      text: `${header('sonic', '`sonic`')}line`,
+    // …while the body's OWN spacing between other words is left alone. The old
+    // rule reflowed the whole body here (`do   it` → `do it`) and, on the same
+    // pass, dropped every blank line — `@architect\n\nx\n\n---\n\ny` came back
+    // with the divider directly under `x`, a setext H2 underline rather than a
+    // thematic break.
+    expect(translateAgentMentions('@sonic\n\nline\n\n---\n\ntail', AGENTS)).toEqual({
+      text: `${header('sonic', '`sonic`')}line\n\n---\n\ntail`,
       agents: ['sonic'],
     });
   });
 
   test('trailing punctuation stays in the body', () => {
     expect(translateAgentMentions('@architect, please plan', AGENTS)).toEqual({
-      text: `${header('architect', '`architect`')}, please plan`,
+      text: `${header('architect', '`architect`')}please plan`,
       agents: ['architect'],
     });
   });

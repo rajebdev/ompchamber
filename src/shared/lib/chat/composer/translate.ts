@@ -65,6 +65,57 @@ export function extractAgentMentions(text: string, agentNames: readonly string[]
 }
 
 /**
+ * Close the gaps left by removed mentions without touching the body's own
+ * whitespace.
+ *
+ * The rule this replaced ran `[ \t]+ → ' '` and `\n{2,} → '\n'` over the WHOLE
+ * body, which is a markdown reflow: for `@architect\n\nDescribe it\n\n---\n\nDo
+ * X` the blank line before `---` disappeared, so the divider landed under the
+ * paragraph as a setext H2 underline instead of a thematic break, and the
+ * user's own paragraphs merged into one.
+ *
+ * A removal gap is the token, plus the run of spaces or tabs that followed it
+ * (the span already excludes the separator before it). Only the mention's OWN
+ * line is at stake: a mention that occupied its line takes that line's newline
+ * with it, while the whitespace the USER wrote between the body's own words is
+ * never touched — the old rule reflowed all of it, and dropped every blank line
+ * on the way.
+ */
+function collapseRemovedMentions(text: string, matches: readonly AgentMentionMatch[]): string {
+  let body = text;
+  let offset = 0;
+  for (const match of matches) {
+    const at = match.start - offset;
+    let end = at + 1;
+    while (end < body.length && !/\s/.test(body[end]!)) end += 1;
+
+    let lineStart = at;
+    while (lineStart > 0 && body[lineStart - 1] !== '\n') lineStart -= 1;
+    const onlyMentionOnLine =
+      body[lineStart] === '@'
+      && (end >= body.length || body[end] === '\n');
+
+    if (onlyMentionOnLine) {
+      // `^…@mention\n` — drop the line and the newline that terminated it.
+      const cutEnd = end < body.length ? end + 1 : end;
+      offset += cutEnd - lineStart;
+      body = body.slice(0, lineStart) + body.slice(cutEnd);
+      continue;
+    }
+
+    // Inline (or a mention followed by the user's own text on its line): the gap
+    // is the token plus the run of spaces after it. Collapsing exactly that much
+    // keeps `@a then @b go` from leaving a double space while stopping well
+    // short of the old whole-body reflow (the body's own `do   it` stays).
+    let gapEnd = end;
+    while (gapEnd < body.length && (body[gapEnd] === ' ' || body[gapEnd] === '\t')) gapEnd += 1;
+    offset += gapEnd - at;
+    body = body.slice(0, at) + body.slice(gapEnd);
+  }
+  return body.trim();
+}
+
+/**
  * Rewrite `@agent` mentions into an explicit delegation directive the omp
  * model acts on (oh-my-pi has no native `@agent` syntax). Pure and
  * deterministic: no mentions leave the text untouched.
@@ -85,12 +136,7 @@ export function translateAgentMentions(
     names.push(match.name);
   }
 
-  let body = text;
-  for (let i = matches.length - 1; i >= 0; i--) {
-    const match = matches[i];
-    body = body.slice(0, match.start) + body.slice(match.end);
-  }
-  body = body.replace(/[ \t]+/g, ' ').replace(/\n{2,}/g, '\n').trim();
+  const body = collapseRemovedMentions(text, matches);
 
   if (body === '') return { text, agents: names };
 
