@@ -1,71 +1,24 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { RefreshCw, Search } from 'lucide-preact';
 import type { FsNode } from '@/shared/types';
-import { rehydrateTree, setChildrenAt } from '@/shared/lib/fs/file-tree';
-import { isRecord } from '@/shared/lib/util/guards';
 import { GitRepoDropdown } from '@/client/components/workspace/file-explorer/GitRepoDropdown';
 import { FileTreeItem } from '@/client/components/workspace/file-explorer/TreeItem';
 import { useScrollbarFade, scrollbarFadeClass } from '@/client/hooks/ui/scrollbar-fade';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
+import { useFileListing } from '@/client/hooks/workspace/file-listing';
 import { useRepoList, useRepoScope } from '@/client/hooks/workspace/repo-scope';
 import { useRealtimeTopic } from '@/client/hooks/ui/realtime';
 import { fsTopic } from '@/shared/lib/realtime/protocol';
 
-/**
- * The listing on screen, tagged with the `root\0repo` scope it was read for.
- *
- * Tagging it is what makes a workspace switch instant and complete: the panel
- * renders an empty tree until the new root's listing lands, instead of showing
- * the previous workspace's files under the new workspace's header. It also
- * covers what a plain "reset on switch" effect cannot — the children loaded on
- * demand and the expansion set are keyed by paths RELATIVE to the listed root,
- * so `src/` in one workspace would rehydrate into `src/` in the next.
- */
-interface Listing {
-  scope: string;
-  files: FsNode[];
-  /** Absolute base dir reported by `/api/fs/dir`; Copy Path anchors on it. */
-  root: string;
-}
-
-const EMPTY_LISTING: Listing = { scope: '', files: [], root: '' };
-
-/** Directory listing payload from `/api/fs/dir`, validated field by field. */
-function readDirPayload(data: unknown): { files: FsNode[]; root: string } {
-  if (!isRecord(data)) return { files: [], root: '' };
-  return {
-    files: Array.isArray(data.files) ? data.files.filter((f): f is FsNode => isRecord(f)) : [],
-    root: typeof data.root === 'string' ? data.root : '',
-  };
-}
-
 export function FileExplorer({ className = '', enabled = true, rootPath, onOpenFile, refreshKey = 0, onRefresh }: { className?: string, enabled?: boolean, rootPath?: string, onOpenFile?: (file: any) => void, refreshKey?: number, onRefresh?: () => void }) {
-  const [listing, setListing] = useState<Listing>(EMPTY_LISTING);
   const [searchQuery, setSearchQuery] = useSessionState<string>('files.searchQuery', '');
-  const [isLoading, setIsLoading] = useState(false);
   const [storedExpandedPaths, setStoredExpandedPaths, expandedPathsReady] = useSessionState<string[]>('files.expandedPaths', []);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set(storedExpandedPaths));
-  const childrenCacheRef = useRef<Record<string, FsNode[]>>({});
   const { activeRepo, setActiveRepo } = useRepoScope(rootPath);
   const { repos, scanning: reposScanning, rescan: rescanRepos } = useRepoList(rootPath, enabled);
   const { isScrolling, handleScroll } = useScrollbarFade();
   const { fileMap: gitFileMap, folderMap: gitFolderMap, refreshGitStatus } = useGitStatus(rootPath, activeRepo, enabled);
-
-  // The scope every request and every cached child path below belongs to. A
-  // change to it means the previous workspace's or repo's entries are not this
-  // one's, so nothing read under the old value may be rendered.
-  const scope = `${rootPath ?? ''}\u0000${activeRepo}`;
-  const scopeRef = useRef(scope);
-  scopeRef.current = scope;
-  // The scope of the listing on screen, read outside the render closure so the
-  // async loaders can tell a superseded tree from the current one.
-  const listedScopeRef = useRef(EMPTY_LISTING.scope);
-
-  const commitListing = (next: Listing) => {
-    listedScopeRef.current = next.scope;
-    setListing(next);
-  };
 
   useEffect(() => {
     if (!expandedPathsReady) return;
@@ -76,62 +29,37 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
     });
   }, [expandedPathsReady, storedExpandedPaths]);
 
-  const listUrl = (path?: string) => {
-    const params = new URLSearchParams();
-    if (rootPath) params.set('root', rootPath);
-    if (activeRepo && activeRepo !== '.') params.set('repo', activeRepo);
-    if (path) params.set('path', path);
-    params.set('t', String(Date.now()));
-    return `/api/fs/dir?${params.toString()}`;
-  };
-
-  const loadFiles = (opts?: { silent?: boolean }) => {
-    if (!enabled) return;
-    const requested = scopeRef.current;
-    if (!opts?.silent) setIsLoading(true);
-    fetch(listUrl())
-      .then(r => r.json())
-      .then(data => {
-        // A read that was superseded by a workspace switch describes a tree
-        // this panel is no longer showing.
-        if (scopeRef.current !== requested) return;
-        // Children cached under the previous tree are keyed by paths relative
-        // to a root that is not this one: drop them before rehydrating.
-        if (listedScopeRef.current !== requested) childrenCacheRef.current = {};
-        const payload = readDirPayload(data);
-        commitListing({
-          scope: requested,
-          files: rehydrateTree(payload.files, childrenCacheRef.current),
-          root: payload.root,
-        });
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!opts?.silent) setIsLoading(false);
-      });
-  };
+  // The tree lives in the hook so a refresh can re-read the open folders too,
+  // and so a folder that no longer exists leaves the expansion set instead of
+  // being asked about on every pass.
+  const listing = useFileListing({
+    enabled,
+    rootPath,
+    activeRepo,
+    expandedPaths,
+    onExpansionPruned: (remaining) => {
+      setExpandedPaths(remaining);
+      setStoredExpandedPaths(Array.from(remaining));
+    },
+  });
 
   useEffect(() => {
     if (!expandedPathsReady) return;
-    loadFiles();
+    void listing.reload();
+    // `listing.reload` reads the current scope and expansion set off refs, so
+    // the effect is keyed on what should trigger a read, not on the callback.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey, rootPath, enabled, activeRepo, expandedPathsReady]);
 
   // The ROOT listing rides the `fs:<root>\0<repo>` topic: the server pushes a
-  // fresh read when a run's work may have touched the tree, so neither the poll
-  // nor the event-driven re-read is needed. Expanded CHILDREN stay on their own
-  // request — a topic snapshot is one directory, and the panel's expanded set
-  // is per user.
-  const fsTopicName = enabled && expandedPathsReady ? fsTopic(`${rootPath ?? ''}\u0000${activeRepo}`) : null;
+  // fresh read when a run's work may have touched the tree. Expanded CHILDREN
+  // stay on their own request — a topic snapshot is one directory, and the
+  // panel's expanded set is per user.
+  const fsTopicName = enabled && expandedPathsReady ? fsTopic(listing.scope) : null;
   const rootListing = useRealtimeTopic<{ files: FsNode[]; root: string }>(fsTopicName);
   useEffect(() => {
-    if (!rootListing.data) return;
-    const requested = scopeRef.current;
-    if (listedScopeRef.current !== requested) childrenCacheRef.current = {};
-    commitListing({
-      scope: requested,
-      files: rehydrateTree(rootListing.data.files ?? [], childrenCacheRef.current),
-      root: rootListing.data.root ?? '',
-    });
+    if (rootListing.data) listing.adoptRoot(rootListing.data);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rootListing.data]);
 
   const loadChildren = (path: string) => {
@@ -139,19 +67,7 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
     // so a freshly listed row never renders bare next to a status map that
     // still predates its change (the topic snapshot alone can lag a fresh edit).
     refreshGitStatus();
-    const requested = scopeRef.current;
-    return fetch(listUrl(path))
-      .then(r => r.json())
-      .then(data => {
-        if (scopeRef.current !== requested) return;
-        const payload = readDirPayload(data);
-        if (payload.files.length === 0 && payload.root === '') return;
-        childrenCacheRef.current[path] = payload.files;
-        setListing(prev => prev.scope === requested
-          ? { ...prev, files: setChildrenAt(prev.files, path, payload.files) }
-          : prev);
-      })
-      .catch(() => {});
+    return listing.loadChildren(path);
   };
 
   const handleToggleFolder = (path: string, open: boolean) => {
@@ -168,7 +84,7 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
     // repo switch starts from a collapsed tree. (A workspace switch needs no
     // equivalent: the listing is re-read under the new root, and the session's
     // own expansion set is restored with the session.)
-    childrenCacheRef.current = {};
+    listing.reset();
     setExpandedPaths(new Set());
     setStoredExpandedPaths([]);
     setActiveRepo(repo);
@@ -182,8 +98,7 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
     );
   }
 
-  const tree = listing.scope === scope ? listing.files : [];
-  const listingRoot = listing.scope === scope ? listing.root : '';
+  const tree = listing.files;
 
   const getFilteredFiles = () => {
     if (!searchQuery.trim()) return tree;
@@ -216,12 +131,12 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
   const refresh = () => {
     refreshGitStatus();
     if (onRefresh) onRefresh();
-    else loadFiles();
+    else void listing.reload();
   };
   // The button spins for this panel's own read OR a topic push: the server
   // republishes `fs:` on every tool call, so the tree moved with nothing on
   // screen saying so otherwise.
-  const isRefreshing = isLoading || rootListing.refreshing;
+  const isRefreshing = listing.isLoading || rootListing.refreshing;
 
   return (
     <div className={`flex flex-col h-full bg-paper ${className}`}>
@@ -256,7 +171,7 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
       </div>
 
       <div className={`flex-1 scrollbar-overlay-container p-2 font-mono text-[11px] text-ink/80 ${scrollbarFadeClass(isScrolling)}`} onContextMenu={(e) => e.preventDefault()} onScroll={handleScroll}>
-        {isLoading && files.length === 0 ? (
+        {listing.isLoading && files.length === 0 ? (
           <div className="p-4 text-center text-ink/40">
             Loading files...
           </div>
@@ -270,7 +185,7 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
               key={file.id}
               file={file}
               rootPath={rootPath}
-              basePath={listingRoot}
+              basePath={listing.root}
               repo={activeRepo}
               onLoadChildren={loadChildren}
               onOpenFile={onOpenFile}

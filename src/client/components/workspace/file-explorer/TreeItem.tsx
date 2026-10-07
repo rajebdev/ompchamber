@@ -22,6 +22,28 @@ interface FileTreeItemProps {
   gitFolderMap?: Map<string, FolderGitStatusInfo>;
 }
 
+/**
+ * Whether a folder's children still need reading.
+ *
+ * `children: null` is the server's "not loaded yet" (see `listing.ts`), and an
+ * EMPTY ARRAY is a folder that was read and has nothing in it. Treating the two
+ * alike is a loop: the panel patches an empty listing in as `[]`, the row reads
+ * that as "not loaded", asks again, and the answer is a fresh array each time —
+ * so every render of an open empty folder fired another request, and the row
+ * flickered between "Loading…" and nothing (measured: expanding an empty folder
+ * re-fetched it on every render, indefinitely).
+ *
+ * `attempted` closes the other loop: a read that FAILED leaves `children` null,
+ * and without the latch the effect would re-ask on every render for a folder
+ * that cannot be read. Collapsing the row clears the latch, so expanding it
+ * again is a deliberate retry, and the panel's own Refresh re-reads every open
+ * folder regardless (see `useFileListing`).
+ */
+function needsChildrenLoad(file: { children?: unknown }, isLoading: boolean, attempted: boolean): boolean {
+  if (isLoading || attempted) return false;
+  return !Array.isArray(file.children);
+}
+
 export function FileTreeItem({
   file,
   rootPath,
@@ -38,6 +60,8 @@ export function FileTreeItem({
   const isFolder = file.type === 'folder';
   const [isOpen, setIsOpen] = useState(false);
   const [isLoadingChildren, setIsLoadingChildren] = useState(false);
+  /** A read has been issued for this row; collapsing clears it. */
+  const [attempted, setAttempted] = useState(false);
   /** Portals need a real document; the first client render is the gate. */
   const [mounted, setMounted] = useState(false);
   const children = Array.isArray(file.children) ? file.children : [];
@@ -63,11 +87,12 @@ export function FileTreeItem({
   }, [expandedPaths, file.path, isFolder]);
 
   useEffect(() => {
-    if (isFolder && actualIsOpen && (!file.children || file.children.length === 0) && onLoadChildren && !isLoadingChildren) {
+    if (isFolder && actualIsOpen && needsChildrenLoad(file, isLoadingChildren, attempted) && onLoadChildren) {
+      setAttempted(true);
       setIsLoadingChildren(true);
       Promise.resolve(onLoadChildren(file.path)).finally(() => setIsLoadingChildren(false));
     }
-  }, [isFolder, actualIsOpen, file.children, file.path, onLoadChildren]);
+  }, [isFolder, actualIsOpen, file.children, file.path, onLoadChildren, isLoadingChildren, attempted]);
 
   const actions = useFileActions({
     file: { path: file.path, name: file.name, basePath, rootPath, repo },
@@ -86,10 +111,16 @@ export function FileTreeItem({
         file.forceExpanded = undefined;
       }
       onToggleFolder?.(file.path, next);
-      if (next && onLoadChildren && (!file.children || file.children.length === 0)) {
-        setIsLoadingChildren(true);
-        Promise.resolve(onLoadChildren(file.path)).finally(() => setIsLoadingChildren(false));
-      }
+      // Collapsing forgets the attempt, so expanding again retries a folder
+      // whose read failed — the only way back for a folder that was unreadable
+      // when it was first opened.
+      if (!next) setAttempted(false);
+      // The read itself belongs to the effect above, which owns the
+      // `isLoadingChildren` latch: issuing one here too read the folder TWICE
+      // for one click (the handler's read and the effect's, both seeing
+      // `children: null`). An empty folder is a LOADED folder — `children: []`
+      // is the server's answer, not a missing one — so re-expanding it does not
+      // fetch again, and the row does not flicker between "Loading…" and empty.
     } else {
       if (onOpenFile) {
         onOpenFile({
