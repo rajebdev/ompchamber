@@ -5,6 +5,23 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.0](https://github.com/rajebdev/ompchamber/compare/v4.6.0...v4.7.0) — 2026-10-07
+
+### Added
+
+* **chat:** state a tool result's outcome while its card is collapsed ([5fd47bc](https://github.com/rajebdev/ompchamber/commit/5fd47bc99ced47dd094f7935baf0680ef5d315a5))
+* **search:** jump to a hit in the editor with in-file highlighting and a replace preview ([d8a804a](https://github.com/rajebdev/ompchamber/commit/d8a804a00ab2ecc6b35b06da01877fd4b3039033))
+
+### Changed
+
+* **omp:** split the terminal run settle out of the frame fold ([060220a](https://github.com/rajebdev/ompchamber/commit/060220a4428686f5e2d717ec7bccde3938a09688))
+
+### Fixed
+
+* **chat:** keep a retried ask dialog answerable ([c5e80f6](https://github.com/rajebdev/ompchamber/commit/c5e80f686b1533fd7ca742015a29dfe844d95c1f))
+* **chat:** stop the mention rewrite from reflowing the whole body ([333c88d](https://github.com/rajebdev/ompchamber/commit/333c88d1d01fd06891522a702f4f4492a6ec6f6a))
+* **search:** virtualize results, cap the run, and stop scroll from re-rendering ([e63f130](https://github.com/rajebdev/ompchamber/commit/e63f130a782a051b6b6524cf669fae35f28efafa))
+
 ## [4.6.0](https://github.com/rajebdev/ompchamber/compare/v4.5.0...v4.6.0) — 2026-10-07
 
 ### Added
