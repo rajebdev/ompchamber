@@ -56,6 +56,7 @@ interface ProbeApi {
   messages: ChatMessageData[];
   setMessages: (next: ChatMessageData[]) => void;
   isGeneratingRef: { current: boolean };
+  ownRunRef: { current: boolean };
   aiPlaceholderIdRef: { current: string | null };
   optimisticUserIdRef: { current: string | null };
   generatingCalls: boolean[];
@@ -66,6 +67,7 @@ function makeApi(): ProbeApi {
     messages: [],
     setMessages: () => {},
     isGeneratingRef: { current: false },
+    ownRunRef: { current: false },
     aiPlaceholderIdRef: { current: null },
     optimisticUserIdRef: { current: null },
     generatingCalls: [],
@@ -75,6 +77,7 @@ function makeApi(): ProbeApi {
 function Probe({ sessionId, api }: { sessionId: string | null; api: ProbeApi }) {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const isGeneratingRef = useRef(false);
+  const ownRunRef = useRef(false);
   const aiPlaceholderIdRef = useRef<string | null>(null);
   const optimisticUserIdRef = useRef<string | null>(null);
   const metaRefreshedRef = useRef<string | null>(null);
@@ -91,6 +94,7 @@ function Probe({ sessionId, api }: { sessionId: string | null; api: ProbeApi }) 
   api.messages = messages;
   api.setMessages = setMessages;
   api.isGeneratingRef = isGeneratingRef;
+  api.ownRunRef = ownRunRef;
   api.aiPlaceholderIdRef = aiPlaceholderIdRef;
   api.optimisticUserIdRef = optimisticUserIdRef;
 
@@ -99,6 +103,7 @@ function Probe({ sessionId, api }: { sessionId: string | null; api: ProbeApi }) 
     setLocalMessages: setMessages,
     setGenerating,
     isGeneratingRef,
+    ownRunRef,
     aiPlaceholderIdRef,
     optimisticUserIdRef,
     cancelStreamingCoalescer: () => {},
@@ -161,6 +166,7 @@ async function resolveLoad(messages: unknown[]): Promise<void> {
 async function startLiveRun(api: ProbeApi): Promise<void> {
   await act(async () => {
     api.isGeneratingRef.current = true;
+    api.ownRunRef.current = true;
     api.optimisticUserIdRef.current = OPTIMISTIC_USER.id;
     api.setMessages([OPTIMISTIC_USER, AI_PLACEHOLDER]);
   });
@@ -220,6 +226,22 @@ describe('a committed fetch with no local run', () => {
     stubChatFetch();
     const api = makeApi();
     await mount('sess-1', api);
+
+    await resolveLoad([ECHOED_TURN]);
+
+    expect(ids(api)).toEqual([ECHOED_TURN.id]);
+  });
+
+  test('lands the transcript when the mount probe adopted a live run', async () => {
+    // Opening (or reloading) a session ANOTHER writer is streaming: the probe
+    // resumes the generating UI, so `isGeneratingRef` is true while this page
+    // owns nothing. The transcript must still load — measured on a real
+    // 333-message run, discarding it left 0 rows and only a "Load earlier
+    // messages" button, whose click paged a window into an empty head.
+    stubChatFetch();
+    const api = makeApi();
+    await mount('sess-1', api);
+    await act(async () => { api.isGeneratingRef.current = true; });
 
     await resolveLoad([ECHOED_TURN]);
 

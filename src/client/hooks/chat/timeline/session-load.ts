@@ -14,7 +14,7 @@
  * bubble yet (fresh mount, refs are null), so the committed JSONL history —
  * including the already-finalized turns of the in-flight run — must load
  * normally; the stream resume continues from there. Clobbering is only possible
- * while an optimistic AI placeholder actually owns the tail of the timeline.
+ * while a run THIS PAGE dispatched owns the timeline (`ownRunRef`).
  */
 
 import type { Dispatch, RefObject, SetStateAction } from 'preact/compat';
@@ -43,8 +43,15 @@ export interface UseSessionLoadDeps {
   setLocalMessages: Dispatch<SetStateAction<ChatMessageData[]>>;
   setGenerating: (v: boolean) => void;
   /** Live generating flag written by the caller's `setGenerating` throat. Gates
-   *  the committed-fetch clobber guard and the seeded-model fallback. */
+   *  the seeded-model fallback and the session-switch reset. */
   isGeneratingRef: { current: boolean };
+  /** Whether the run in flight is one THIS PAGE dispatched. Only then does the
+   *  live stream own the row list and a committed fetch get skipped; a run
+   *  adopted from a live session (a reload mid-run, a second tab, a scheduled
+   *  task) must still load its history — the probe that resumes the generating
+   *  UI sets `isGeneratingRef` too, and treating that as ownership discarded
+   *  the whole transcript, leaving an empty timeline over a running session. */
+  ownRunRef: { current: boolean };
   /** Live AI placeholder ref: the row the streaming answer is filling. Read on
    *  a session switch (cleared with the optimistic user id) and by the stream
    *  callbacks; it is NOT the timeline-ownership signal — the placeholder is
@@ -66,7 +73,7 @@ export interface UseSessionLoadDeps {
 }
 
 export function useSessionLoad(deps: UseSessionLoadDeps) {
-  const { sessionId, setLocalMessages, setGenerating, isGeneratingRef, aiPlaceholderIdRef, optimisticUserIdRef, cancelStreamingCoalescer, metaRefreshedRef, scrollRef, jumpActiveRef, jumpCountRef } = deps;
+  const { sessionId, setLocalMessages, setGenerating, isGeneratingRef, ownRunRef, aiPlaceholderIdRef, optimisticUserIdRef, cancelStreamingCoalescer, metaRefreshedRef, scrollRef, jumpActiveRef, jumpCountRef } = deps;
 
   const [sessionData, setSessionData] = useState<SessionDataShape | null>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
@@ -149,8 +156,9 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
     }));
   }, []);
 
-  /** Whether the LIVE timeline owns the row list: a run THIS page started is in
-   *  flight, so the rows on screen are the stream's, not a committed snapshot's.
+  /** Whether the LIVE timeline owns the row list: a run THIS PAGE dispatched is
+   *  in flight, so the rows on screen are the stream's, not a committed
+   *  snapshot's.
    *
    *  A committed fetch is a LAGGING snapshot while a run is live. For a fresh
    *  spawn there may be no transcript on disk at all (omp buffers its writes
@@ -161,12 +169,17 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
    *  copy of that turn was merged UNDER the live rows, whose ids differ
    *  (`msg-…-user` vs the echoed id), so the turn rendered twice.
    *
-   *  Keyed on the RUN, never on the AI placeholder: the placeholder is released
-   *  at the first assistant `message_end` while the run continues, so keying on
-   *  it re-opened this window mid-run — the hole that let both shapes through. A
-   *  bare mount (a reload mid-run) has no local run, so committed history still
-   *  loads. */
-  const timelineOwnedByLiveRun = useCallback(() => isGeneratingRef.current, [isGeneratingRef]);
+   *  Keyed on the RUN THIS PAGE STARTED, never on `isGeneratingRef` alone: the
+   *  mount probe that resumes a live run's generating UI sets that flag too, so
+   *  keying on it made OPENING a streaming session discard its entire committed
+   *  transcript — measured on a real 333-message run: the timeline held 0 rows
+   *  with only a "Load earlier messages" button, and the button paged a window
+   *  into a list whose head was empty. A run adopted that way must still load
+   *  its history; the stream resume continues from there. */
+  const timelineOwnedByLiveRun = useCallback(
+    () => ownRunRef.current && isGeneratingRef.current,
+    [isGeneratingRef, ownRunRef],
+  );
 
   /** Session metadata for a run whose transcript is not readable yet: the
    *  spawn's own seed. `/api/chat/:id` answers with no `model` for a freshly
@@ -209,9 +222,11 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
         // The placeholder/optimistic ids belong to the PREVIOUS session's
         // in-flight send; message_end never arrives after a switch away (the
         // stream is disconnected), so they must be dropped here. A stale
-        // placeholder made the ownership guard report a live timeline on
-        // return, which silently DISCARDED the committed history fetch of the
-        // mid-run session — only newly streamed frames ever appeared.
+        // placeholder would let the next session's stream reconcile into a row
+        // that is no longer on screen. (`setGenerating(false)` above releases
+        // the run ownership this page held — the guard reads `ownRunRef`, so a
+        // stale value there is what used to discard a mid-run session's
+        // committed history on return.)
         aiPlaceholderIdRef.current = null;
         optimisticUserIdRef.current = null;
         // Drop coalesced message_update frames queued by the previous

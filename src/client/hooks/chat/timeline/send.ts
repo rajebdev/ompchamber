@@ -40,7 +40,7 @@ export interface ChatTimelineSendDeps {
   ompAgent: OmpAgentHandle;
   setLocalMessages: Dispatch<SetStateAction<ChatMessageData[]>>;
   persistMessages: (messages: any[]) => void;
-  setGenerating: (v: boolean) => void;
+  setGenerating: (v: boolean, owned?: boolean) => void;
   setGeneratingVerb: (v: string) => void;
   /** Follow-gated scroll for stream chunks. */
   scrollToBottom: (behavior?: ScrollBehavior) => void;
@@ -207,7 +207,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
       return next;
     });
 
-    setGenerating(true);
+    setGenerating(true, true);
     setGeneratingVerb(PHASE_VERBS.thinking);
     // An explicit send is user intent to watch the answer: re-engage follow
     // mode even if the user had scrolled away, then scroll to the tail.

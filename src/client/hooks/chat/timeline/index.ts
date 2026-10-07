@@ -72,6 +72,10 @@ export function useChatTimeline({
 
   const [isGenerating, setIsGenerating] = useState(false);
   const isGeneratingRef = useRef(false);
+  // True only for a run THIS PAGE dispatched: the mount probe that resumes a
+  // live run's generating UI sets `isGenerating` too, so reading that as
+  // ownership discarded the transcript of every session opened mid-stream.
+  const ownRunRef = useRef(false);
   // One "a run is in flight" state for the whole chat: this client's own run OR
   // the server-tracked `stream` status the sidebar spinner draws from. Every
   // consumer that describes the RUN (the docked indicator, the withheld footer,
@@ -85,16 +89,20 @@ export function useChatTimeline({
   const abortControllerRef = useRef<AbortController | null>(null);
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
-  // Single throat through which every generation state transition flows
-  // (send, queue, steer, retry, undo, agent start/end, stream done/error).
-  // Sidebar subscribes here to paint spinner/check on the session item.
-  //
   // Stable identity is load-bearing: this is a dependency of the session-load
   // effect, which re-fetches history and replaces the timeline. A fresh
   // function per render made that effect re-run every render, and its
   // setLocalMessages(fetched) then re-rendered again — an unbounded fetch loop.
-  const setGenerating = useCallback((v: boolean) => {
+  //
+  // `owned` marks a run THIS PAGE dispatched, which is what lets a committed
+  // history fetch stand down while it streams. Only the SEND path passes it:
+  // every other `setGenerating(true)` (the mount probe resuming a live run, an
+  // `agent_start` on an adopted stream) must leave ownership alone, or a
+  // session opened mid-run loses its whole transcript. Settling releases it.
+  const setGenerating = useCallback((v: boolean, owned = false) => {
     isGeneratingRef.current = v;
+    if (!v) ownRunRef.current = false;
+    else if (owned) ownRunRef.current = true;
     setIsGenerating(v);
   }, []);
   // Set when the user presses Stop; the queue auto-process effect holds off
@@ -128,6 +136,7 @@ export function useChatTimeline({
     setLocalMessages,
     setGenerating,
     isGeneratingRef,
+    ownRunRef,
     aiPlaceholderIdRef,
     optimisticUserIdRef,
     cancelStreamingCoalescer,
