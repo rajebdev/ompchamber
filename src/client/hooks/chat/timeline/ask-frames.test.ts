@@ -84,4 +84,68 @@ describe('splitAskFrames', () => {
     expect(split.framesByTool.get('call_ask')?.[0]?.map((held) => held.id)).toEqual(['f1']);
     expect(split.modalRequest).toBe(gate);
   });
+
+  test('a dead ask cannot claim the dialog of the retry that reused its question', () => {
+    // The reported shape: omp rejects the first `ask` (a missing question id),
+    // the model re-asks the SAME question, and the live dialog used to be
+    // claimed by the dead call — whose card renders no control because it is
+    // settled. The retry then read "Waiting for the previous answer…" over a
+    // frame nothing could answer, and the agent stayed blocked.
+    const [dead] = askHistory(['Which language?']);
+    dead.toolCalls![0].id = 'call_dead';
+    dead.toolCalls![0].status = 'error';
+    dead.toolCalls![0].output = 'Validation failed for tool "ask": questions/0/id must be a string';
+    const [live] = askHistory(['Which language?']);
+    live.toolCalls![0].id = 'call_live';
+
+    const frame = selectFrame('f1', 'Which language?');
+    const split = splitAskFrames([dead, live], [frame], true);
+
+    expect(split.framesByTool.get('call_dead')).toBeUndefined();
+    expect(split.framesByTool.get('call_live')?.[0]?.map((held) => held.id)).toEqual(['f1']);
+    expect(split.modalRequest).toBeNull();
+  });
+
+  test('a still-blocking call read back from the JSONL keeps its dialog', () => {
+    // A reloaded session reports the parked call as `success` (omp writes no
+    // result until the question is answered), so it must stay a candidate.
+    const [reloaded] = askHistory(['Which language?']);
+    reloaded.toolCalls![0].status = 'success';
+
+    const frame = selectFrame('f1', 'Which language?');
+    const split = splitAskFrames([reloaded], [frame], true);
+
+    expect(split.framesByTool.get('call_ask')?.[0]?.map((held) => held.id)).toEqual(['f1']);
+  });
+
+  test('an already answered ask cannot claim a later dialog', () => {
+    const [answered] = askHistory(['Which language?']);
+    answered.toolCalls![0].details = { selectedOptions: ['Python'] };
+
+    const frame = selectFrame('f1', 'Which language?');
+    const split = splitAskFrames([answered], [frame], true);
+
+    expect(split.framesByTool.get('call_ask')).toBeUndefined();
+    expect(split.modalRequest).toBe(frame);
+  });
+
+  test('a retry whose questions never parsed falls back to the modal', () => {
+    // The safety net the module note describes: no card can claim the frame,
+    // so it stays answerable instead of vanishing.
+    const [dead] = askHistory(['Which language?']);
+    dead.toolCalls![0].id = 'call_dead';
+    dead.toolCalls![0].status = 'error';
+    const truncated: ChatMessageData = {
+      id: 'msg-trunc',
+      role: 'ai',
+      content: '',
+      toolCalls: [{ id: 'call_trunc', type: 'ask', name: 'ask', title: 'ask', status: 'running', input: { questions: 'truncated' } }],
+    };
+
+    const frame = selectFrame('f1', 'Which language?');
+    const split = splitAskFrames([dead, truncated], [frame], true);
+
+    expect(split.framesByTool.size).toBe(0);
+    expect(split.modalRequest).toBe(frame);
+  });
 });

@@ -92,6 +92,20 @@ export function isAskToolCall(tool: ToolCallData): boolean {
 }
 
 /**
+ * True for an ask omp has given up on — its dialog was withdrawn (a validation
+ * failure, an abort), so no live frame can belong to it and its card renders no
+ * control. Deliberately NOT `success`: a session reloaded mid-ask reads its
+ * still-blocking call back from the JSONL as `success`, since omp writes no
+ * result until the question is answered, and that card must stay answerable.
+ *
+ * Two modules must agree on this (the frame-ownership split and the card
+ * itself), which is why it is not an inline comparison at either.
+ */
+export function isAskSettled(tool: ToolCallData): boolean {
+  return tool.status === 'error' || tool.status === 'aborted' || tool.status === 'skipped';
+}
+
+/**
  * The `questions` array from an `ask` tool call's arguments. Empty when the tool
  * is not an ask call or its arguments were truncated — callers fall back to the
  * raw arguments/output rendering in that case.
@@ -217,7 +231,7 @@ export function parseAskResult(tool: ToolCallData, questions: AskQuestion[]): (A
 
   // A failed/cancelled ask answers nothing; its text is the reason, which would
   // otherwise read as an answer for whichever id its first sentence names.
-  if (tool.status === 'error' || tool.status === 'aborted' || tool.isError) return answers;
+  if (isAskSettled(tool) || tool.isError) return answers;
 
   return parseAskOutputAnswers(typeof tool.output === 'string' ? tool.output : '', questions);
 }

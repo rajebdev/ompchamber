@@ -16,7 +16,7 @@
 import { HelpCircle, XCircle } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
 import type { ExtensionUiDialogRequest } from '@/shared/types/omp/agent';
-import { parseAskQuestions, parseAskResult } from '@/shared/lib/chat/ask-questions';
+import { isAskSettled, parseAskQuestions, parseAskResult } from '@/shared/lib/chat/ask-questions';
 import { useAskFrames } from '@/client/hooks/chat/timeline/ask-frames';
 import { liveFrame, useAskDrafts } from '@/client/components/workspace/chat-timeline/tool-renderers/ask-panel/drafts';
 import { QuestionBlock } from '@/client/components/workspace/chat-timeline/tool-renderers/ask-panel/QuestionBlock';
@@ -55,8 +55,7 @@ export function AskPanel({ tool }: { tool: ToolCallData }) {
   // mid-ask reads its still-blocking tool call back from the JSONL as
   // `success` (omp writes no result until the question is answered), and that
   // question must stay answerable.
-  const settled =
-    tool.status === 'error' || tool.status === 'aborted' || tool.status === 'skipped';
+  const settled = isAskSettled(tool);
   const waiting = !settled && groups.some((frames, index) => frames.length > 0 && !recorded[index]);
   // omp asks in order and blocks on each, so the earliest question holding a
   // dialog is the only open one: everything before it is answered, whether or

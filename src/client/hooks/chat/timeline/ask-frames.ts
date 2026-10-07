@@ -34,7 +34,7 @@
 import { createContext, useContext } from 'preact/compat';
 import type { ChatMessageData } from '@/shared/types';
 import type { ExtensionUiDialogRequest } from '@/shared/types/omp/agent';
-import { groupAskFrames, isAskToolCall, normalizeAskText, parseAskQuestions, type AskQuestion } from '@/shared/lib/chat/ask-questions';
+import { groupAskFrames, isAskSettled, isAskToolCall, normalizeAskText, parseAskQuestions, parseAskResult, type AskQuestion } from '@/shared/lib/chat/ask-questions';
 import type { ExtensionDialogResponse } from '@/client/components/workspace/chat-timeline/tool-renderers/extension-dialog/Lazy';
 
 export interface AskFramesSplit {
@@ -69,17 +69,27 @@ export function splitAskFrames(
   const framesByTool = new Map<string, ExtensionUiDialogRequest[][]>();
   if (pending.length === 0) return { framesByTool, modalRequest: null };
 
-  // Match against EVERY ask the timeline knows, not just the running ones: a
-  // reloaded session reads its tool calls back from the JSONL, where a call
-  // still parked on a question has no result yet and so cannot be told from a
-  // finished one. The pending queue is the part that is authoritative — it only
-  // ever holds frames omp is still blocked on — so a title match is enough.
-  const openAsks = new Map<string, AskQuestion[]>();
+  // Match against the asks that can still own a dialog: a reloaded session
+  // reads its tool calls back from the JSONL, where a call still parked on a
+  // question has no result yet and so cannot be told from a finished one — the
+  // pending queue is the authoritative half. What the queue CANNOT do is say
+  // which ask raised a frame, and omp asks a retried question with the SAME
+  // title: a validation failure leaves a dead call (`status: 'error'`) whose
+  // card renders no control, so letting it claim the retry's dialog left the
+  // live card on "Waiting for the previous answer…" and the frame unanswerable
+  // anywhere — the agent blocked with nothing on screen to answer it. A settled
+  // ask, and one whose every question already carries a recorded answer, is
+  // therefore not a candidate at all. A parked call read back from the JSONL is
+  // neither: omp writes no result until the question is answered.
+  const openAsks: { toolId: string; questions: AskQuestion[] }[] = [];
   for (const message of messages) {
     for (const tool of message.toolCalls ?? []) {
       if (!isAskToolCall(tool)) continue;
+      if (isAskSettled(tool)) continue;
       const questions = parseAskQuestions(tool);
-      if (questions.length > 0) openAsks.set(tool.id, questions);
+      if (questions.length === 0) continue;
+      if (parseAskResult(tool, questions).every((answer) => answer !== null)) continue;
+      openAsks.push({ toolId: tool.id, questions });
     }
   }
 
@@ -91,9 +101,13 @@ export function splitAskFrames(
     const title = typeof request.title === 'string' ? normalizeAskText(request.title) : '';
     let owner: string | null = null;
     if (title) {
-      for (const [toolId, questions] of openAsks) {
-        if (questions.some((question) => normalizeAskText(question.question) === title)) {
-          owner = toolId;
+      // Newest first: omp asks one question at a time and blocks on it, so when
+      // two live calls name the same question the later one is the one in
+      // flight.
+      for (let index = openAsks.length - 1; index >= 0; index -= 1) {
+        const candidate = openAsks[index];
+        if (candidate.questions.some((question) => normalizeAskText(question.question) === title)) {
+          owner = candidate.toolId;
           break;
         }
       }
@@ -109,7 +123,8 @@ export function splitAskFrames(
   }
 
   for (const [toolId, frames] of owned) {
-    framesByTool.set(toolId, groupAskFrames(openAsks.get(toolId) ?? [], frames));
+    const questions = openAsks.find((candidate) => candidate.toolId === toolId)?.questions ?? [];
+    framesByTool.set(toolId, groupAskFrames(questions, frames));
   }
 
   // The frame stays queued either way — only the modal waits for the history,
