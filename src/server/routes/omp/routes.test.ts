@@ -9,11 +9,8 @@
  * Every handler here talks to a live omp child on its success path, which these
  * tests never spawn. What they pin instead is everything that decides BEFORE
  * the child is reached: the mock-mode short-circuits (the demo must not shell
- * out), the validation envelopes (a missing `providerId`, an unknown plugin
- * action, a missing plugin source, a malformed extension toggle), the 405s, and
- * the payload shapes that are served from disk alone — extension discovery
- * under a throwaway agent dir, per-session stats parsed from a JSONL fixture,
- * and the pricing loader's never-500 error envelope.
+ * out), the validation envelopes (a missing `providerId`, a malformed
+ * extension toggle) and the 405s.
  *
  * `PI_CODING_AGENT_DIR` and `MOCK` are process-wide, so both are snapshotted and
  * restored; sibling suites share the `bun test` process.
@@ -26,7 +23,6 @@ import path from 'node:path';
 
 import { action as login } from '@/server/routes/omp/login';
 import { invalidateOmpCliCache } from '@/server/lib/omp/core/cli';
-import { loader as pluginsLoader } from '@/server/routes/omp/plugins';
 
 const AGENT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'omc-omp-routes-'));
 const ORIGINAL_ENV = {
@@ -133,14 +129,5 @@ describe('POST /api/omp/login', () => {
     } as never)) as Response;
     expect(res.status).toBe(400);
     expect((await payload(res)).error).toBe('providerId is required');
-  });
-});
-
-describe('GET /api/omp/plugins', () => {
-  test('MOCK mode answers an empty list without shelling out', async () => {
-    Bun.env.MOCK = 'true';
-    const res = (await pluginsLoader({ request: new Request('http://localhost/api/omp/plugins') } as never)) as Response;
-    expect(res.status).toBe(200);
-    expect(await payload(res)).toEqual({ plugins: [], raw: '', isMock: true });
   });
 });

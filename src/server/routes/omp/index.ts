@@ -1,26 +1,24 @@
 import { bindingsFor, type HandlerBinding } from '@/server/lib/route-adapter';
 import * as ompState from '@/server/routes/omp/state';
-import * as ompSidebar from '@/server/routes/omp/sidebar';
-import * as ompSessionStats from '@/server/routes/omp/session-stats';
-import * as ompSessionTodos from '@/server/routes/omp/session-todos';
-import * as ompSessionPlan from '@/server/routes/omp/session-plan';
 import * as ompExtensions from '@/server/routes/omp/extensions';
 import * as ompLogin from '@/server/routes/omp/login';
-import * as ompPlugins from '@/server/routes/omp/plugins';
-import * as ompPricing from '@/server/routes/omp/pricing';
 import * as ompReloadEngine from '@/server/routes/omp/reload-engine';
 import * as ompBlob from '@/server/routes/omp/blob';
 
+/**
+ * The `/api/omp/*` bindings that remain.
+ *
+ * The sidebar, session-todos, session-plan, session-stats, pricing and plugins
+ * routes were removed with the realtime cutover: the panels read the `sidebar`,
+ * `todos`, `plan` and `usage` topics, and the plugin pane goes through
+ * `/api/settings/plugins`, so none of them had a caller left. What stays is
+ * request/response by nature — a login SSE stream, an extension toggle, a
+ * reload POST, an image blob read, and the shared utility snapshot.
+ */
 export const ompBindings: HandlerBinding[] = [
   ...bindingsFor(ompState, '/api/omp/state'),
-  ...bindingsFor(ompSidebar, '/api/omp/sidebar'),
-  ...bindingsFor(ompSessionStats, '/api/omp/session-stats'),
-  ...bindingsFor(ompSessionTodos, '/api/omp/session-todos'),
-  ...bindingsFor(ompSessionPlan, '/api/omp/session-plan'),
   ...bindingsFor(ompExtensions, '/api/omp/extensions'),
   ...bindingsFor(ompLogin, '/api/omp/login'),
-  ...bindingsFor(ompPlugins, '/api/omp/plugins'),
-  ...bindingsFor(ompPricing, '/api/omp/pricing'),
   ...bindingsFor(ompReloadEngine, '/api/omp/reload-engine'),
   ...bindingsFor(ompBlob, '/api/omp/blob'),
 ];

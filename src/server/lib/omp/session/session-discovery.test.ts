@@ -16,8 +16,6 @@
  *  - `scanSessionInfo` turns bytes into the row: a title slot must beat the
  *    header title, a header-less file must yield undefined rather than throw,
  *    and `firstMessage` must fall back to a marker rather than empty.
- *  - `readSessionStats` must sum usage per message and take first/last entry
- *    timestamps, not the file mtime.
  *  - `sessionHasSubagents` is version-keyed on (last-entry timestamp, sibling
  *    dir mtime) so a removed sibling directory must invalidate a cached `true`.
  */
@@ -28,7 +26,6 @@ import { dirname, join } from 'path';
 
 import { findSessionFileById, resolveSessionFileOr404, resolveSessionPathOr404, sessionNotFoundResponse } from '@/server/lib/omp/session/locator';
 import { scanSessionInfo } from '@/server/lib/omp/session/scan';
-import { readSessionStats } from '@/server/lib/omp/session/stats';
 import { sessionHasSubagents } from '@/server/lib/omp/session/subagent-presence';
 import { clearSessionFileCaches } from '@/server/lib/omp/session/files';
 
@@ -199,68 +196,6 @@ describe('scanSessionInfo', () => {
   test('a file with no session header yields undefined', async () => {
     const file = writeSessionFile(join(tempDir('scan'), 'proj', 's.jsonl'), [userMessage('hi', '2026-09-01T00:00:10.000Z')]);
     expect(await scanSessionInfo(file)).toBeUndefined();
-  });
-});
-
-describe('readSessionStats', () => {
-  test('rolls up models, thinking levels, compactions and per-message usage', async () => {
-    const file = writeSessionFile(join(tempDir('stats'), 'session.jsonl'), [
-      header('stats-id'),
-      { type: 'model_change', timestamp: '2026-09-01T00:01:00.000Z', model: 'anthropic/claude' },
-      { type: 'thinking_level_change', timestamp: '2026-09-01T00:02:00.000Z', thinkingLevel: 'high' },
-      { type: 'compaction', timestamp: '2026-09-01T00:03:00.000Z' },
-      {
-        type: 'message',
-        timestamp: '2026-09-01T00:04:00.000Z',
-        message: {
-          role: 'assistant',
-          usage: { input: 10, output: 20, cacheRead: 3, cacheWrite: 4, reasoningTokens: 5, cost: { total: 0.25 } },
-        },
-      },
-      {
-        type: 'message',
-        timestamp: '2026-09-01T00:05:00.000Z',
-        message: { role: 'user', usage: { input: 1, cost: { total: 0.05 } } },
-      },
-    ]);
-    const stats = await readSessionStats(file);
-    expect(stats?.models).toEqual([{ model: 'anthropic/claude', at: '2026-09-01T00:01:00.000Z' }]);
-    expect(stats?.thinkingLevels).toEqual([{ level: 'high', at: '2026-09-01T00:02:00.000Z' }]);
-    expect(stats?.compactions).toBe(1);
-    expect(stats?.messageCount).toBe(2);
-    expect(stats?.assistantMessageCount).toBe(1);
-    expect(stats?.tokens).toEqual({ input: 11, output: 20, cacheRead: 3, cacheWrite: 4, reasoning: 5 });
-    expect(stats?.cost.total).toBeCloseTo(0.3, 10);
-    // The header entry itself carries the session's first timestamp.
-    expect(stats?.startedAt).toBe('2026-09-01T00:00:00.000Z');
-    expect(stats?.lastActivityAt).toBe('2026-09-01T00:05:00.000Z');
-  });
-
-  test('a message without usage contributes only to the counts', async () => {
-    const file = writeSessionFile(join(tempDir('stats'), 'session.jsonl'), [
-      header('stats-id'),
-      { type: 'message', timestamp: '2026-09-01T00:00:10.000Z', message: { role: 'assistant' } },
-    ]);
-    const stats = await readSessionStats(file);
-    expect(stats?.messageCount).toBe(1);
-    expect(stats?.assistantMessageCount).toBe(1);
-    expect(stats?.tokens).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 });
-    expect(stats?.cost.total).toBe(0);
-  });
-
-  test('an entry with no timestamp does not set the activity window', async () => {
-    const file = writeSessionFile(join(tempDir('stats'), 'session.jsonl'), [
-      { type: 'session', version: 3, id: 'stats-id' },
-      { type: 'model_change', model: 'orphan/model' },
-    ]);
-    const stats = await readSessionStats(file);
-    expect(stats?.models).toEqual([]);
-    expect(stats?.startedAt).toBeUndefined();
-    expect(stats?.lastActivityAt).toBeUndefined();
-  });
-
-  test('a missing file yields undefined', async () => {
-    expect(await readSessionStats(join(tempDir('stats'), 'gone.jsonl'))).toBeUndefined();
   });
 });
 

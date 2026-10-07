@@ -64,7 +64,7 @@ describe('public paths', () => {
       '/api/terminal/sessions',
       '/api/telemetry/tokens',
       '/api/updates/apply',
-      '/api/omp/sidebar',
+      '/api/omp/state',
       '/api/auth/password',
     ]) {
       expect(isPublicPath(path)).toBe(false);
