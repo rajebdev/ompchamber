@@ -21,19 +21,48 @@ import {
 import { type TopicDescriptor } from '@/server/lib/realtime/hub.server';
 import { readSessionTodos } from '@/server/lib/omp/session/todos';
 import { readSessionPlans } from '@/server/lib/omp/session/plans';
+import { mockSessionTodos, mockSessionPlans } from '@/server/lib/omp/session/data-mock';
 import { listQueue } from '@/server/lib/queue/store.server';
 import { loadSessionSource } from '@/server/lib/chat/session-store.server';
 import { computeRealSessionTelemetry } from '@/server/lib/omp/session/telemetry';
 import { isMockMode } from '@/server/mock.server';
+import type { SessionTodosPayload } from '@/shared/types/todo';
+import type { SessionPlanPayload } from '@/shared/types/plan';
 
-/** One session's todo snapshot, as the panel renders it. */
+/**
+ * One session's todo snapshot, as the panel renders it.
+ *
+ * The payload carries `sessionId` / `generatedAt` / `isMock` as well as the
+ * state, because the panel reads the Mock badge off it — a resolver that
+ * answered the bare state would leave the badge permanently absent.
+ */
 function todosDescriptor(sessionId: string): TopicDescriptor {
-  return { resolve: () => readSessionTodos(sessionId) };
+  return {
+    resolve: async (): Promise<SessionTodosPayload> => {
+      const isMock = isMockMode();
+      return {
+        sessionId,
+        ...(isMock ? mockSessionTodos() : await readSessionTodos(sessionId)),
+        generatedAt: new Date().toISOString(),
+        isMock,
+      };
+    },
+  };
 }
 
 /** One session's plan artifacts, plus the chosen plan's body. */
 function planDescriptor(sessionId: string): TopicDescriptor {
-  return { resolve: () => readSessionPlans(sessionId) };
+  return {
+    resolve: async (): Promise<SessionPlanPayload> => {
+      const isMock = isMockMode();
+      return {
+        sessionId,
+        ...(isMock ? mockSessionPlans() : await readSessionPlans(sessionId)),
+        generatedAt: new Date().toISOString(),
+        isMock,
+      };
+    },
+  };
 }
 
 /** One session's follow-up queue, in delivery order. */

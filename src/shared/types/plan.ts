@@ -34,6 +34,7 @@ export interface SessionPlanState {
   truncated: boolean;
 }
 
+/** Wire payload of the session's `plan` realtime topic. */
 export interface SessionPlanPayload extends SessionPlanState {
   sessionId: string;
   generatedAt: string;

@@ -97,10 +97,10 @@ export interface SessionTodoState {
   progress: TodoProgress;
 }
 
-/** Wire payload of `GET /api/omp/session-todos`. */
+/** Wire payload of the session's `todos` realtime topic. */
 export interface SessionTodosPayload extends SessionTodoState {
   sessionId: string;
-  /** ISO timestamp of the read. */
+  /** ISO timestamp of the resolve. */
   generatedAt: string;
   isMock: boolean;
   /** Set when the session has no readable transcript (never written, or gone). */
