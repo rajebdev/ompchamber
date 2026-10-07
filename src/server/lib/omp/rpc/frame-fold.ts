@@ -168,6 +168,18 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
       if (message?.role === 'user') void triggerAutoSessionTitle(host, 'opening');
       break;
     }
+    case 'tool_execution_end': {
+      // A completed tool call may have touched the working tree, and a long run
+      // can go many minutes between turn boundaries — the git/files panels were
+      // blind until `agent_end`. Emit here and let the publish pipeline's own
+      // coalescing (120ms per topic, identical-payload dedupe) collapse a burst
+      // of tool calls into one re-read; only SUBSCRIBED topics are resolved, so
+      // a tab with no git/files panel pays nothing. The session's data topics
+      // (todos, telemetry, queue) stay turn-boundary-only on purpose: their
+      // resolvers are the expensive ones (whole-transcript parses/scans).
+      emitRealtimeSignal('workspace-dirty');
+      break;
+    }
     // `turn_end` is deliberately NOT handled here: a multi-turn run emits it for
     // EVERY turn (verified against omp 18.2.8: agent_start → turn_start →
     // turn_end('toolUse') → turn_start → turn_end('stop') → agent_end) and the
