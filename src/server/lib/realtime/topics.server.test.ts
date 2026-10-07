@@ -20,8 +20,9 @@
 import { afterEach, describe, expect, test, vi } from 'bun:test';
 
 import { getRealtimeHub, registerTopics, resetRealtimeHub, type RealtimeConnection } from '@/server/lib/realtime/hub.server';
-import { publishTopic, republishSessionDataTopics } from '@/server/lib/realtime/topics.server';
-import { gitTopic, sessionQueueTopic, sessionTodosTopic, type RealtimeServerFrame } from '@/shared/lib/realtime/protocol';
+import { initRealtimeTopics, publishTopic, republishSessionDataTopics } from '@/server/lib/realtime/topics.server';
+import { emitRealtimeSignal, clearRealtimeSignalListeners } from '@/server/lib/realtime/signals.server';
+import { TOPIC_MODELS, TOPIC_USAGE, gitTopic, sessionQueueTopic, sessionTodosTopic, type RealtimeServerFrame } from '@/shared/lib/realtime/protocol';
 
 interface FakeConnection extends RealtimeConnection {
   frames: RealtimeServerFrame[];
@@ -52,6 +53,10 @@ async function flushPublish(): Promise<void> {
 afterEach(() => {
   vi.useRealTimers();
   resetRealtimeHub();
+  // The wiring test installs the real listener; leaving it in place would let a
+  // later suite's signal reach this hub.
+  clearRealtimeSignalListeners();
+  globalThis.__ompChamberRealtimeTopicsReady = undefined;
   // The dedupe/coalesce state is process state too; a payload identical to the
   // previous test's would otherwise be skipped as a no-op publish.
   globalThis.__ompChamberRealtimePublish = undefined;
@@ -99,6 +104,48 @@ describe('publishTopic', () => {
 
     expect(calls).toBe(2);
     expect(connection.frames[0]).toMatchObject({ t: 'delta', payload: { marker: 'registered' } });
+  });
+});
+
+describe('initRealtimeTopics signal wiring', () => {
+  /**
+   * `models-changed` fires on every provider write — connect/disconnect, a new
+   * models.yml entry, a key edit — and the Usage surfaces list exactly the
+   * credentialed providers. The `usage` topic had NO producer at all: it
+   * answered its snapshot on subscribe and then never moved, so a key added in
+   * another tab (or by a settings write here) never reached an open panel.
+   *
+   * Both topics are watched here because the signal must republish both: the
+   * model catalog and the credential list move together.
+   */
+  test('a models-changed signal republishes both models and usage', async () => {
+    vi.useFakeTimers();
+    // The real registration first (that is what installs the signal listener),
+    // then the stubs override its descriptors — the hub reads whatever map was
+    // registered last.
+    globalThis.__ompChamberRealtimeTopicsReady = undefined;
+    initRealtimeTopics();
+    let modelsCalls = 0;
+    let usageCalls = 0;
+    registerTopics(new Map([
+      [TOPIC_MODELS, { resolve: async () => ({ models: ++modelsCalls }) }],
+      [TOPIC_USAGE, { resolve: async () => ({ providers: ++usageCalls }) }],
+    ]));
+
+    const hub = getRealtimeHub();
+    const connection = connect();
+    hub.subscribe(connection, TOPIC_MODELS);
+    hub.subscribe(connection, TOPIC_USAGE);
+    for (let tick = 0; tick < 32; tick += 1) await Promise.resolve();
+    connection.frames.length = 0;
+
+    emitRealtimeSignal('models-changed');
+    await flushPublish();
+
+    expect(connection.frames).toEqual([
+      { t: 'delta', topic: TOPIC_MODELS, seq: 1, payload: { models: 2 } },
+      { t: 'delta', topic: TOPIC_USAGE, seq: 1, payload: { providers: 2 } },
+    ]);
   });
 });
 

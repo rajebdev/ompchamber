@@ -4,6 +4,7 @@ import { ProviderDetail } from '@/client/components/settings/categories/usage-se
 import { buildProviders, type UsageProviderId } from '@/client/components/settings/categories/usage-settings/providers';
 import { formatDateTime } from '@/client/components/settings/categories/usage-settings/format';
 import { ProviderSelect } from '@/client/components/workspace/usage-panel/ProviderSelect';
+import { newestUsageReport } from '@/client/components/workspace/usage-panel/report';
 import { useUsageReport } from '@/client/hooks/settings/useUsageReport';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { useRealtimeTopic } from '@/client/hooks/ui/realtime';
@@ -25,11 +26,13 @@ export function UsagePanel({ className = '', active = true }: UsagePanelProps) {
     '',
   );
 
-  // The server pushes a fresh report when a provider or key changes, so the
-  // panel needs no poll. The HTTP read stays as the fallback for the first paint
-  // (and for MOCK mode, where the topic has no resolver).
+  // The topic is the read path: it re-resolves on subscribe, so switching to
+  // this panel reads fresh state, and no poll is needed while it is open. The
+  // HTTP read is the first paint and the user's own Refresh — which must force
+  // past the server's one-minute quota cache, something a topic refresh cannot
+  // express, so its answer is the fresher of the two (see `newestUsageReport`).
   const usage = useRealtimeTopic<UsageReport>(TOPIC_USAGE, { enabled: active });
-  const report = usage.data ?? fetched;
+  const report = newestUsageReport(usage.data, fetched);
 
   // Derived before every early return: a hook must not sit behind a conditional
   // return, or the hook count changes between the loading and loaded renders.

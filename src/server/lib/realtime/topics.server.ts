@@ -167,7 +167,16 @@ export function initRealtimeTopics(): void {
     else if (signal === 'session-attached' && sessionId) publishSessionState(sessionId);
     else if (signal === 'schedule-changed') publishTopic(TOPIC_SCHEDULE);
     else if (signal === 'panels-changed') publishTopic(TOPIC_PANELS);
-    else if (signal === 'models-changed') publishTopic(TOPIC_MODELS);
+    else if (signal === 'models-changed') {
+      publishTopic(TOPIC_MODELS);
+      // A provider write is also a CREDENTIAL write (connect/disconnect, a new
+      // models.yml entry, a key edit), and the Usage surfaces list exactly the
+      // credentialed providers. Without this the `usage` topic had no producer
+      // at all, so a key added in another tab never reached an open panel. The
+      // probe it re-runs is cached for a minute, so a burst of writes costs one
+      // resolve.
+      publishTopic(TOPIC_USAGE);
+    }
     else if (signal === 'workspace-dirty') republishWatchedWorkspaceTopics();
     else if (signal === 'session-data-dirty' && sessionId) republishSessionDataTopics(sessionId);
     else if (signal === 'repos-scanned' && root) publishTopic(reposTopic(root));
