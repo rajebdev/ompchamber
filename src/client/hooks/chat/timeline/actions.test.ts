@@ -74,7 +74,9 @@ afterEach(() => {
 });
 
 interface Recorded {
-  sends: Array<{ text: string; attachments: Attachment[] }>;
+  /** Each send with the SCOPE (`sessionId`) the deps record carried when the
+   *  callback was built. */
+  sends: Array<{ text: string; attachments: Attachment[]; scope: string | null }>;
   queued: Array<{ text: string; attachments: Attachment[]; model: unknown }>;
   drafts: string[];
   notices: string[];
@@ -90,6 +92,7 @@ function makeRecorded(overrides: Partial<ChatTimelineActionsDeps> = {}): Recorde
   const notices: string[] = [];
   const btw: Recorded['btw'] = [];
   const messages: ChatMessageData[] = [];
+  const scope: string | null = overrides.sessionId ?? 'sess-1';
   const deps: ChatTimelineActionsDeps = {
     inputValue: 'hello world',
     setInputValue: (v) => {
@@ -100,6 +103,8 @@ function makeRecorded(overrides: Partial<ChatTimelineActionsDeps> = {}): Recorde
     chatRunning: false,
     isOmpSession: true,
     sessionId: 'sess-1',
+    folders: [],
+    selectedFolderId: null,
     appSettings: {},
     messageQueue: [],
     enqueueMessage: (item) => {
@@ -107,7 +112,7 @@ function makeRecorded(overrides: Partial<ChatTimelineActionsDeps> = {}): Recorde
     },
     removeMessage: () => {},
     executeSend: async (text, attachments) => {
-      sends.push({ text, attachments });
+      sends.push({ text, attachments, scope });
       return { ok: true, busy: false };
     },
     steerOmpAgent: async () => ({ ok: true, busy: false }),
@@ -184,7 +189,7 @@ describe('handleSend', () => {
   test('an ordinary prompt passes through to executeSend and clears the draft', async () => {
     const rec = makeRecorded({ inputValue: '  do the thing  ' });
     await (await mount(rec.deps)).clickSend();
-    expect(rec.sends).toEqual([{ text: 'do the thing', attachments: [] }]);
+    expect(rec.sends).toEqual([{ text: 'do the thing', attachments: [], scope: 'sess-1' }]);
     expect(rec.btw).toEqual([]);
     expect(rec.drafts).toEqual(['']);
   });

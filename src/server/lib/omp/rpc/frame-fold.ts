@@ -30,6 +30,7 @@ import { clearStreamStatus, loadStreamStatuses, markStreamStatus } from '@/share
 import { releasesStreamRowOnPromptResult } from '@/shared/lib/omp/session/stream-heal.server';
 import { driveGoalAfterTurn } from '@/server/lib/omp/session/goal-driver.server';
 import { emitRealtimeSignal } from '@/server/lib/realtime/signals.server';
+import { publishSidebarStructure } from '@/server/lib/realtime/topics.server';
 import { NON_TERMINAL_CONTINUATION_GRACE_MS, type AgentEvent } from '@/server/lib/omp/rpc/constants';
 import { parseChamberMarker } from '@/shared/lib/omp/mode/markers';
 import type { ModeMirror } from '@/server/lib/omp/rpc/mode-mirror';
@@ -95,18 +96,6 @@ async function markEndStatus(sessionId: string, messages: unknown): Promise<void
   const current = await loadStreamStatuses();
   if (current[sessionId] !== 'stream') return;
   await markStreamStatus(sessionId, endedAborted(messages) ? 'abort' : 'finish');
-}
-
-/**
- * True while the chamber's own background `/rename` may still be emitting
- * frames that belong to it.
- *
- * The same window `consumeAutoTitleOutput` claims for the rename's output tail,
- * read here WITHOUT consuming it — that tail still needs the window when it
- * arrives.
- */
-function titleClaimArmed(host: AutoTitleHost): boolean {
-  return host.autoTitleWindowUntil > Date.now();
 }
 
 /** Apply one frame to the wrapper's runtime state. */
@@ -178,6 +167,11 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
       // (todos, telemetry, queue) stay turn-boundary-only on purpose: their
       // resolvers are the expensive ones (whole-transcript parses/scans).
       emitRealtimeSignal('workspace-dirty');
+      // The transcript appended too — the sidebar's `updated_at` (its ordering
+      // and time-ago labels) is read off a scan that only re-runs on this
+      // signal, and the sessions watcher deliberately ignores transcript
+      // appends. The coalesce + dedupe above bound the cost the same way.
+      publishSidebarStructure();
       break;
     }
     // `turn_end` is deliberately NOT handled here: a multi-turn run emits it for
@@ -224,26 +218,38 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
         // same reason the workspace topics are: one run emits many, and only
         // the watched topics are re-read.
         if (host.sessionId) emitRealtimeSignal('session-data-dirty', host.sessionId);
+        // The final answer appended after the last tool call; the sidebar's
+        // ordering and time-ago labels catch up on it the same way.
+        publishSidebarStructure();
       } else {
         host.continuationGraceUntil = Date.now() + NON_TERMINAL_CONTINUATION_GRACE_MS;
       }
       break;
     case 'prompt_result':
-      // The chamber's own background `/rename` answers on THIS frame with
-      // `agentInvoked:false`: auto-title fires it right after the first settled
-      // user message, and `rename-with-ai` sends the same command. Forwarding it
-      // would tell the client its prompt opened no turn — the client's fold
-      // settles the optimistic turn and blanks the docked generating indicator.
-      // Measured on a fresh session: the first message lost the indicator ~450ms
-      // in, while the answer was still streaming, and it only reappeared when a
-      // later transcript fetch pulled the finished turn in.
+      // omp answers EVERY prompt that opened no turn on this frame, and most of
+      // them are the chamber's own background work: the auto-title `/rename`
+      // (fired right after the first settled user message), a Plan/Goal mode
+      // toggle, `/reload-plugins`, `rename-with-ai`, a peer instance's command.
+      // Forwarding one tells the CLIENT that its prompt opened no turn; its fold
+      // then settles the optimistic turn — blanking the docked generating
+      // indicator, releasing the `stream` mark the sidebar's spinner hangs on
+      // and dropping the optimistic user mark, so the turn's own echo is
+      // appended beside the bubble it stood for. Measured on a fresh session
+      // (omp 18.7.0): the indicator died ~450 ms into a 20 s run, and the first
+      // prompt was stored twice in the chamber's copy of the conversation.
       //
-      // The request is the chamber's, not the operator's, so it must neither
-      // reach the client nor clear the LIVE run's flags. Attribution is the same
-      // window the rename's output tail claims (`consumeAutoTitleOutput`, read
-      // here without spending it), and `streaming` keeps the operator's OWN
-      // builtin — the case this frame exists for — passing through untouched.
-      if (event.agentInvoked === false && host.streaming && titleClaimArmed(host)) {
+      // The RUN is the attribution, and it covers every sender: while the
+      // operator's turn is streaming, a prompt that opened no turn cannot be the
+      // settle of the turn they are watching. The auto-title request window is
+      // not sufficient on its own — it is armed around the `/rename`, and omp
+      // answers it in the same tick (~3 ms), so a frame that won that race
+      // reached the client regardless (the leak this replaces). Its flags are
+      // left alone too, exactly as the dispatcher leaves a non-owning command's
+      // (see `session-commands.ts`): the live run owns them.
+      //
+      // A builtin the operator typed while the agent is IDLE still passes
+      // through untouched — the case this frame exists for.
+      if (event.agentInvoked === false && host.streaming) {
         result.suppressForward = true;
         break;
       }

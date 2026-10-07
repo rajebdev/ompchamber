@@ -134,14 +134,15 @@ describe('auto-title trigger wiring', () => {
  * message, and `rename-with-ai` sends the same command.
  *
  * The shipped defect: forwarding that frame tells the CLIENT its prompt opened
- * no turn, and the client's fold settles the optimistic turn and blanks the
- * docked generating indicator. Measured on a fresh session before the fix — the
- * first message lost the indicator ~450 ms in while the answer was still
- * streaming, and it only reappeared when a later transcript fetch pulled the
- * finished turn in. Attribution is the window the rename's output tail claims,
- * read without spending it.
+ * no turn, and the client's fold settles the optimistic turn — blanking the
+ * docked generating indicator, releasing the `stream` mark the sidebar spinner
+ * hangs on and dropping the optimistic user mark, so the turn's echo was
+ * appended beside the bubble it stood for. Measured on a fresh session before
+ * the fix: the indicator died ~450 ms into a 20 s run and the first prompt was
+ * stored twice. The run is the attribution: nothing that opened no turn while
+ * the operator's own turn STREAMS can be that turn's settle.
  */
-describe('the chamber’s own rename result never reaches the client', () => {
+describe('a non-invoking prompt_result never reaches the client mid-run', () => {
   /** A host mid-run with the rename window armed, exactly as auto-title leaves it. */
   function midRunHost(): SessionFrameHost {
     return makeHost({
@@ -162,6 +163,29 @@ describe('the chamber’s own rename result never reaches the client', () => {
     expect(host.awaitingAgentStart).toBe(false);
   });
 
+  test('suppresses it even when the rename window was NOT armed in time', () => {
+    // The leak this rule exists for. The window is armed around the `/rename`,
+    // and omp answers the command within ~3 ms, so the ack can win that race
+    // (measured) — and the client then folded it as "the run settled" while the
+    // answer kept streaming. Request-window attribution cannot cover a sender
+    // that raced its own arm; the live run can.
+    const host = midRunHost();
+    host.autoTitleWindowUntil = 0;
+
+    const result = foldSessionFrame(host, { type: 'prompt_result', agentInvoked: false });
+
+    expect(result.suppressForward).toBe(true);
+    expect(host.promptRunning).toBe(true);
+  });
+
+  test('suppresses an auxiliary result that never claimed a window at all', () => {
+    // A mode toggle, `/reload-plugins`, a peer instance's command: none of them
+    // arms the auto-title window, and all of them answer on this frame.
+    const host = makeHost({ sessionId: 's1', streaming: true, promptRunning: true });
+
+    expect(foldSessionFrame(host, { type: 'prompt_result', agentInvoked: false }).suppressForward).toBe(true);
+  });
+
   test('still forwards the operator’s own builtin result when no turn runs', () => {
     // The case the frame exists for: a `/usage` the operator typed must settle
     // the optimistic turn, even inside a rename window.
@@ -170,12 +194,6 @@ describe('the chamber’s own rename result never reaches the client', () => {
 
     expect(result.suppressForward).toBe(false);
     expect(host.promptRunning).toBe(false);
-  });
-
-  test('forwards a rename ack that arrives outside the window', () => {
-    const host = midRunHost();
-    host.autoTitleWindowUntil = 0;
-    expect(foldSessionFrame(host, { type: 'prompt_result', agentInvoked: false }).suppressForward).toBe(false);
   });
 
   test('a real run’s own prompt_result still settles normally', () => {

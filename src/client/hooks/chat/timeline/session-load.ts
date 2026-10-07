@@ -45,12 +45,11 @@ export interface UseSessionLoadDeps {
   /** Live generating flag written by the caller's `setGenerating` throat. Gates
    *  the committed-fetch clobber guard and the seeded-model fallback. */
   isGeneratingRef: { current: boolean };
-  /** Live AI placeholder ref: when non-null it owns the timeline tail and the
-   *  committed fetch must not replace it mid-stream. */
+  /** Live AI placeholder ref: the row the streaming answer is filling. Read on
+   *  a session switch (cleared with the optimistic user id) and by the stream
+   *  callbacks; it is NOT the timeline-ownership signal — the placeholder is
+   *  released at the first assistant `message_end` while the run continues. */
   aiPlaceholderIdRef: { current: string | null };
-  /** Caller-owned timeline state mirror: lets the committed fetch merge the
-   *  live stream tail (rows the JSONL does not carry yet) into history. */
-  localMessagesRef: { current: ChatMessageData[] };
   /** Live optimistic user bubble ref: cleared together with the placeholder on
    *  a session switch so stale ids cannot survive into the next session. */
   optimisticUserIdRef: { current: string | null };
@@ -67,7 +66,7 @@ export interface UseSessionLoadDeps {
 }
 
 export function useSessionLoad(deps: UseSessionLoadDeps) {
-  const { sessionId, setLocalMessages, setGenerating, isGeneratingRef, aiPlaceholderIdRef, localMessagesRef, optimisticUserIdRef, cancelStreamingCoalescer, metaRefreshedRef, scrollRef, jumpActiveRef, jumpCountRef } = deps;
+  const { sessionId, setLocalMessages, setGenerating, isGeneratingRef, aiPlaceholderIdRef, optimisticUserIdRef, cancelStreamingCoalescer, metaRefreshedRef, scrollRef, jumpActiveRef, jumpCountRef } = deps;
 
   const [sessionData, setSessionData] = useState<SessionDataShape | null>(null);
   const [sessionLoading, setSessionLoading] = useState(false);
@@ -150,14 +149,24 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
     }));
   }, []);
 
-  /** Whether the optimistic bubble set currently owns the timeline tail (a
-   *  local send is in flight). Only then must a committed fetch be skipped —
-   *  a bare mount (reload mid-run) has isGenerating false AND no placeholder,
-   *  so committed history still loads. */
-  const timelineOwnedByOptimistic = useCallback(
-    () => isGeneratingRef.current && Boolean(aiPlaceholderIdRef.current),
-    [aiPlaceholderIdRef],
-  );
+  /** Whether the LIVE timeline owns the row list: a run THIS page started is in
+   *  flight, so the rows on screen are the stream's, not a committed snapshot's.
+   *
+   *  A committed fetch is a LAGGING snapshot while a run is live. For a fresh
+   *  spawn there may be no transcript on disk at all (omp buffers its writes
+   *  until the first assistant message settles), and it never carries a segment
+   *  still streaming. Applying one mid-run costs the operator their own turn in
+   *  either direction — measured on real sessions: an empty payload emptied the
+   *  list (the just-sent turn vanished), and a payload carrying the file's own
+   *  copy of that turn was merged UNDER the live rows, whose ids differ
+   *  (`msg-…-user` vs the echoed id), so the turn rendered twice.
+   *
+   *  Keyed on the RUN, never on the AI placeholder: the placeholder is released
+   *  at the first assistant `message_end` while the run continues, so keying on
+   *  it re-opened this window mid-run — the hole that let both shapes through. A
+   *  bare mount (a reload mid-run) has no local run, so committed history still
+   *  loads. */
+  const timelineOwnedByLiveRun = useCallback(() => isGeneratingRef.current, [isGeneratingRef]);
 
   /** Session metadata for a run whose transcript is not readable yet: the
    *  spawn's own seed. `/api/chat/:id` answers with no `model` for a freshly
@@ -200,8 +209,8 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
         // The placeholder/optimistic ids belong to the PREVIOUS session's
         // in-flight send; message_end never arrives after a switch away (the
         // stream is disconnected), so they must be dropped here. A stale
-        // placeholder made timelineOwnedByOptimistic() report true on return,
-        // which silently DISCARDED the committed history fetch of the
+        // placeholder made the ownership guard report a live timeline on
+        // return, which silently DISCARDED the committed history fetch of the
         // mid-run session — only newly streamed frames ever appeared.
         aiPlaceholderIdRef.current = null;
         optimisticUserIdRef.current = null;
@@ -230,36 +239,26 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
           setSessionLoading(false);
           if (data?.session) {
             applySessionData(data.session);
-            // Only replace the timeline when the fetch actually has messages.
-            // A pending "new-…" session or a just-spawned omp session whose
-            // JSONL is not written yet must not wipe the optimistic bubbles.
             const fetched = data.session.messages || [];
-            const optimisticOwnsTail = timelineOwnedByOptimistic();
-            if (fetched.length > 0 && !optimisticOwnsTail) {
-              // Reattach race: a resumed stream may have appended the
-              // in-flight segment before this committed fetch resolved (the
-              // JSONL does not carry it yet). Keep those live rows instead of
-              // dropping them until the next message_update re-renders them.
-              if (isGeneratingRef.current) {
-                const fetchedIds = fetched.map((m: ChatMessageData) => m.id);
-                const liveTail = localMessagesRef.current.filter(m => !fetchedIds.includes(m.id));
-                setLocalMessages([...fetched, ...liveTail]);
-              } else {
-                setLocalMessages(fetched);
-              }
-            } else if (!sessionId.startsWith('new-') && !optimisticOwnsTail) {
-              setLocalMessages([]);
+            // Never replace, never merge, never empty while the stream owns the
+            // rows: a committed fetch is a lagging snapshot and applying one
+            // mid-run either empties the list or renders a second copy of the
+            // operator's turn (see `timelineOwnedByLiveRun`).
+            if (!timelineOwnedByLiveRun()) {
+              if (fetched.length > 0) setLocalMessages(fetched);
+              // A pending "new-…" session has nothing committed by definition.
+              else if (!sessionId.startsWith('new-')) setLocalMessages([]);
             }
             applyWindow(data.hasMore, data.oldestIndex);
           } else {
             setSessionData(seededSessionData());
-            if (!timelineOwnedByOptimistic()) setLocalMessages([]);
+            if (!timelineOwnedByLiveRun()) setLocalMessages([]);
           }
         })
         .catch(err => {
           console.error('Error loading session from API:', err);
           if (active) setSessionLoading(false);
-          if (active && !timelineOwnedByOptimistic()) {
+          if (active && !timelineOwnedByLiveRun()) {
             setSessionData(seededSessionData());
             setLocalMessages([]);
           }
@@ -274,7 +273,7 @@ export function useSessionLoad(deps: UseSessionLoadDeps) {
     // sessionModel identity flows through applySessionData; the effect only
     // re-runs on session switches by design.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, applySessionData, timelineOwnedByOptimistic, seededSessionData, setLocalMessages, setGenerating]);
+  }, [sessionId, applySessionData, timelineOwnedByLiveRun, seededSessionData, setLocalMessages, setGenerating]);
 
   return {
     sessionData,

@@ -63,6 +63,8 @@ async function mountActions(isGenerating: boolean, stashed: ComposerModelPick | 
       chatRunning: isGenerating,
       isOmpSession: true,
       sessionId: '01a0ca36-f3be-7252-a95c-3d45d180c539',
+      folders: [],
+      selectedFolderId: null,
       appSettings: {},
       messageQueue: [],
       enqueueMessage: () => {},

@@ -18,6 +18,10 @@ type SetParamsInit = URLSearchParams | Record<string, string> | string;
 type SetParamsFn = (prev: URLSearchParams) => URLSearchParams;
 type SetParams = (next: SetParamsInit | SetParamsFn, options?: { replace?: boolean }) => void;
 
+/** The functional setter `useSearchParams` returns, under a name a caller can
+ *  declare a prop with instead of re-stating the signature. */
+export type SetSearchParams = SetParams;
+
 const listeners = new Set<() => void>();
 let currentSearch = typeof window === 'undefined' ? '' : window.location.search;
 

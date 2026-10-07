@@ -13,10 +13,12 @@
 
 import { useCallback, useMemo } from 'preact/hooks';
 import type { Dispatch, SetStateAction } from 'preact/compat';
-import type { Attachment, ChatMessageData, OmpAgentHandle, PromptDispatchResult, QueuedMessageModel } from '@/shared/types';
+import type { Attachment, ChatMessageData, OmpAgentHandle, PromptDispatchResult, QueuedMessageModel, WorkspaceFolderData } from '@/shared/types';
 import type { QueuedMessage } from '@/client/components/workspace/chat-timeline/QueueList';
 import type { ApprovalMode } from '@/shared/lib/omp/config/access-mode';
+import type { SetSearchParams } from '@/client/lib/router/search-params';
 import { applyComposerPick, consumeComposerPick, stashComposerPick, type DeferredModelStore } from '@/client/hooks/chat/timeline/deferred-model';
+import { useNewChatSubmit } from '@/client/hooks/chat/timeline/new-chat';
 import { dispatchBtwCommand } from '@/client/hooks/chat/btw/intercept';
 import { blockTuiOnlySend } from '@/client/hooks/chat/timeline/tui-only-guard';
 import { createQueueActions } from '@/client/hooks/chat/timeline/queue-actions';
@@ -39,6 +41,12 @@ export interface ChatTimelineActionsDeps {
   /** Active session id (null on pending "new-…"); the omp undo path posts the
    *  rewind against it. */
   sessionId: string | null;
+  /** Workspace folders, for the New Chat send's spawn context: the pending
+   *  session it opens carries the folder the chat was started from. */
+  folders: WorkspaceFolderData[];
+  /** Composer's explicitly picked folder, the fallback when the current session
+   *  is not listed under any folder yet. */
+  selectedFolderId: number | null;
   appSettings: Record<string, any>;
   messageQueue: QueuedMessage[];
   /** Server-backed per-item queue ops (append/remove/reorder). */
@@ -70,7 +78,7 @@ export interface ChatTimelineActionsDeps {
   deferredComposerPickRef: DeferredModelStore;
   /** Global access-control mode, snapshotted onto queued items. */
   accessModeRef: { current: ApprovalMode };
-  setSearchParams: (fn: (prev: URLSearchParams) => URLSearchParams, opts?: { replace?: boolean }) => void;
+  setSearchParams: SetSearchParams;
   /**
    * Surface a footer action that failed (rewind refused, send rejected). Undo
    * and Retry change the agent's context, so a silent no-op leaves the user
@@ -100,6 +108,8 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     chatRunning,
     isOmpSession,
     sessionId,
+    folders,
+    selectedFolderId,
     appSettings,
     messageQueue,
     enqueueMessage,
@@ -238,21 +248,14 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
     [isGenerating, isOmpSession, sessionId, ompAgent, abortControllerRef, setGenerating, setInputValue, setLocalMessages, localMessagesRef, persistMessages, executeSend, reportActionError],
   );
 
-  const submitNewChat = useCallback((text: string, attachments: Attachment[]) => {
-    // Client-side pending session id: the sidebar/navbar show a default title
-    // immediately; the real omp session id replaces it on first send.
-    const pendingId = `new-${Date.now()}`;
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.set('sessionId', pendingId);
-      return next;
-    }, { replace: true });
-
-    setLocalMessages([]);
-    setTimeout(() => {
-      executeSend(text, attachments);
-    }, 0);
-  }, [setSearchParams, executeSend, setLocalMessages]);
+  const submitNewChat = useNewChatSubmit({
+    sessionId,
+    folders,
+    selectedFolderId,
+    setSearchParams,
+    setLocalMessages,
+    executeSend,
+  });
 
   /** Stop the active run. Returns how many queue items were held back so the
    *  caller can surface a "still queued" toast. Stop-all semantics: the queue
