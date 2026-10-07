@@ -68,8 +68,17 @@ export function ContextPanel({
     sessionId ? sessionTelemetryTopic(sessionId) : null,
     { enabled },
   );
+  // A new telemetry snapshot means the transcript grew past the last read —
+  // the server republishes the topic when a tool result lands (and at the run
+  // boundary) — so the paged raw-messages view below re-reads its page too.
+  // The HTTP fallback path above still owns the summary state; this effect
+  // only drives the raw list's refresh key.
+  const [rawRefreshKey, setRawRefreshKey] = useState(0);
   useEffect(() => {
-    if (topicTelemetry.data) setTelemetry(topicTelemetry.data);
+    if (topicTelemetry.data) {
+      setTelemetry(topicTelemetry.data);
+      setRawRefreshKey((k) => k + 1);
+    }
   }, [topicTelemetry.data]);
 
   if (!enabled) {
@@ -140,7 +149,7 @@ export function ContextPanel({
         />
 
         {/* 5. Raw Messages List (server-side paged) */}
-        <RawMessagesList sessionId={sessionId} refreshKey={refreshKey} />
+        <RawMessagesList sessionId={sessionId} refreshKey={refreshKey + rawRefreshKey} />
       </div>
     </div>
   );

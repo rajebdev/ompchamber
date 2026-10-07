@@ -172,6 +172,12 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
       // signal, and the sessions watcher deliberately ignores transcript
       // appends. The coalesce + dedupe above bound the cost the same way.
       publishSidebarStructure();
+      // The session's DATA moved as well: a tool result is a transcript entry,
+      // so the raw-messages paged view and the session-data topics re-read.
+      // Their resolvers are the expensive ones (whole-transcript parses), but
+      // the coalesce + dedupe bound them the same way, and a payload that did
+      // not change publishes nothing.
+      if (host.sessionId) emitRealtimeSignal('session-data-dirty', host.sessionId);
       break;
     }
     // `turn_end` is deliberately NOT handled here: a multi-turn run emits it for
