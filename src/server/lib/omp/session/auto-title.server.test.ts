@@ -36,7 +36,20 @@ function makeHost(options: {
   pending?: boolean;
   requested?: boolean;
   windowUntil?: number;
+  /** Called with the host the moment a `/rename` prompt reaches the wire, so a
+   *  test can observe the window state the frame handler would see. */
+  onPrompt?: (host: AutoTitleHost) => void;
+  /** Make the `/rename` send reject, for the rollback path. */
+  failPrompt?: boolean;
 }): { host: AutoTitleHost; proc: FakeProc } {
+  const host: AutoTitleHost = {
+    sessionId: 'sess-1',
+    autoTitleInFlight: options.inFlight ?? false,
+    autoTitleWindowUntil: options.windowUntil ?? 0,
+    autoTitlePending: options.pending ?? true,
+    autoTitleRequested: options.requested ?? false,
+    proc: undefined as unknown as AutoTitleHost['proc'],
+  };
   const proc: FakeProc = {
     commands: [],
     async sendCommand<T>(command: { type: string; [key: string]: unknown }): Promise<T> {
@@ -47,20 +60,13 @@ function makeHost(options: {
           sessionName: options.sessionName,
         } as T;
       }
+      options.onPrompt?.(host);
+      if (options.failPrompt) throw new Error('send failed');
       return undefined as T;
     },
   };
-  return {
-    host: {
-      sessionId: 'sess-1',
-      autoTitleInFlight: options.inFlight ?? false,
-      autoTitleWindowUntil: options.windowUntil ?? 0,
-      autoTitlePending: options.pending ?? true,
-      autoTitleRequested: options.requested ?? false,
-      proc: proc as unknown as AutoTitleHost['proc'],
-    },
-    proc,
-  };
+  host.proc = proc as unknown as AutoTitleHost['proc'];
+  return { host, proc };
 }
 
 /** Commands other than the `get_state` probe the guard always performs. */
@@ -76,9 +82,38 @@ describe('triggerAutoSessionTitle', () => {
     const renames = sentRenames(proc);
     expect(renames).toHaveLength(1);
     expect(renames[0].message).toBe('/rename');
-    // The request window opens only after the command is accepted, so the
-    // diagnostics omp is about to emit can be attributed to us.
+    // The request window opens BEFORE the command is sent, so the
+    // `prompt_result {agentInvoked:false}` omp answers within the same tick is
+    // already attributable to us when it arrives.
     expect(host.autoTitleWindowUntil).toBeGreaterThan(Date.now());
+  });
+
+  test('the request window is armed BEFORE the /rename is sent', async () => {
+    // The regression: omp answers the `/rename` prompt with
+    // `prompt_result {agentInvoked:false}` in the same tick (measured 3 ms),
+    // while the operator's turn is still streaming. The frame fold suppresses
+    // that frame only while the window is armed — arming it after the ack left
+    // the frame to reach the client, which settled the optimistic turn, blanked
+    // the generating indicator and cleared the sidebar's live `stream` row
+    // while the answer kept arriving (measured: indicator on for ~1.2 s of a
+    // 20 s run).
+    let windowAtSend = -1;
+    const { host, proc } = makeHost({ onPrompt: (h) => { windowAtSend = h.autoTitleWindowUntil; } });
+    await triggerAutoSessionTitle(host, 'opening');
+
+    expect(sentRenames(proc)).toHaveLength(1);
+    expect(windowAtSend).toBeGreaterThan(Date.now());
+  });
+
+  test('rolls the window back when the /rename never reached omp', async () => {
+    // An armed window with no request behind it would swallow the next
+    // operator frame inside its 60 s span — and block the settle-stage
+    // fallback, which stands down while a generation is "in flight".
+    const { host, proc } = makeHost({ failPrompt: true });
+    await triggerAutoSessionTitle(host, 'opening');
+
+    expect(sentRenames(proc)).toHaveLength(1);
+    expect(host.autoTitleWindowUntil).toBe(0);
   });
 
   test('never overwrites a name the operator set', async () => {

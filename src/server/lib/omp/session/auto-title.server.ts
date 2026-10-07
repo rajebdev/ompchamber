@@ -116,7 +116,21 @@ export interface AutoTitleHost {
 
 /**
  * Claim the frames our own `/rename` is about to emit, so the wrapper can keep
- * its diagnostics out of the timeline. Called once the request is accepted.
+ * its diagnostics out of the timeline — and, more importantly, so the
+ * `prompt_result {agentInvoked:false}` this background command answers with is
+ * not read as "the operator's prompt opened no turn".
+ *
+ * Called BEFORE the request is sent, never after its ack. omp answers the ack
+ * and emits the `prompt_result` in the same tick (measured: 3 ms apart on
+ * 18.7.0), while the operator's turn is still streaming — so a window opened
+ * after the await is already too late. The `prompt_result` then reached the
+ * client, which folds it as "the run settled": the generating indicator blanked
+ * and the sidebar's live `stream` row was cleared while the answer kept
+ * arriving. `frame-fold` only suppresses the frame when the window is armed, so
+ * arming late is exactly the hole this ordering closes.
+ *
+ * On a send that never reached omp the claim is dropped (see the caller), so a
+ * window can never belong to nothing and block the settle-stage fallback.
  */
 export function markTitleRequestSent(host: AutoTitleHost): void {
   host.autoTitleWindowUntil = Date.now() + AUTO_TITLE_OUTPUT_WINDOW_MS;
@@ -213,10 +227,19 @@ export async function triggerAutoSessionTitle(host: AutoTitleHost, stage: AutoTi
     // background work, so it must not mark the session streaming or claim the
     // sidebar's run row. omp's ack is immediate (`agentInvoked:false`); the
     // generation itself streams back later as ordinary frames.
-    await host.proc.sendCommand({ type: 'prompt', message: GENERATE_TITLE_COMMAND }, PROMPT_ACK_TIMEOUT_MS);
-    // Accepted — the diagnostics omp is about to emit belong to this request,
-    // not to anything the operator typed.
+    //
+    // The claim is armed BEFORE the send, not after its ack: omp emits the
+    // `prompt_result {agentInvoked:false}` that answers this command within
+    // milliseconds, and the fold can only suppress it while the window is open
+    // (see `markTitleRequestSent`). An armed window is rolled back if the send
+    // never reached omp, so it cannot outlive a request that did not happen.
     markTitleRequestSent(host);
+    try {
+      await host.proc.sendCommand({ type: 'prompt', message: GENERATE_TITLE_COMMAND }, PROMPT_ACK_TIMEOUT_MS);
+    } catch (error) {
+      host.autoTitleWindowUntil = 0;
+      throw error;
+    }
   } catch {
     // Provider error, timeout, or a child that went away — leave the session
     // unnamed; the settle attempt (or the next run, for an aborted turn) tries
