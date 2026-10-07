@@ -5,6 +5,24 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.5.0](https://github.com/rajebdev/ompchamber/compare/v4.4.1...v4.5.0) — 2026-10-07
+
+### Added
+
+* republish watched git/fs topics on tool_execution_end ([025293e](https://github.com/rajebdev/ompchamber/commit/025293e437b30ae14461c38264f5616db513bc24))
+
+### Changed
+
+* **chat:** remove the dead steering queue and follow-up RPC ([abce54c](https://github.com/rajebdev/ompchamber/commit/abce54ceb40b4867a49cb53a6b8f3117ba17e7ba))
+* document the per-tool-call panel refresh in AGENTS.md ([b0ac947](https://github.com/rajebdev/ompchamber/commit/b0ac9479c1c68f4e0849cc96a317ccb9c5fa6cc6))
+
+### Fixed
+
+* **chat:** arm the auto-title window before /rename, not after its ack ([3280ea4](https://github.com/rajebdev/ompchamber/commit/3280ea44bfeb325f75a683a130c459f71c4b098e))
+* **chat:** attach a new session's first prompt to its own run and timeline ([ff1c0e9](https://github.com/rajebdev/ompchamber/commit/ff1c0e951d57a723a0997a0ce588d6e999c4b232))
+* **chat:** stop a steer from hanging on a pending approval dialog ([93b40c4](https://github.com/rajebdev/ompchamber/commit/93b40c4ecfc640a115bd3ac99126547654f30fd7))
+* **sessions:** answer /modes from the live child before its transcript exists ([ac05255](https://github.com/rajebdev/ompchamber/commit/ac052554350e19eb6c93ca7235033df877d7660e))
+
 ## [4.4.1](https://github.com/rajebdev/ompchamber/compare/v4.4.0...v4.4.1) — 2026-10-07
 
 ### Fixed
