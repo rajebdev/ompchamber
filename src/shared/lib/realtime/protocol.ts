@@ -160,11 +160,16 @@ export interface RealtimePongFrame {
   id: number;
 }
 
-export type RealtimeErrorCode =
-  | 'unknown_topic'
-  | 'snapshot_failed'
-  | 'bad_frame'
-  | 'too_many_topics';
+/**
+ * The error codes the server actually sends.
+ *
+ * Deliberately only these two: a malformed client frame is IGNORED rather than
+ * answered (see `decodeClientFrame`), so one bad frame cannot cost a tab its
+ * whole realtime channel, and there is no producer for a `bad_frame` or
+ * `too_many_topics` reply. A code with no producer is a promise the protocol
+ * does not keep.
+ */
+export type RealtimeErrorCode = 'unknown_topic' | 'snapshot_failed';
 
 export interface RealtimeErrorFrame {
   t: 'error';

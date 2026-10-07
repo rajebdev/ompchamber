@@ -112,10 +112,39 @@ export function isPeerRelayed(request: Request): boolean {
 }
 
 /**
- * WebSocket URL on the owning instance for a session's agent stream, or null
- * when there is nothing to relay to.
+ * The owning instance's unified realtime socket — where a session's frames are
+ * relayed from.
+ *
+ * There is deliberately no per-session socket any more: the per-session agent
+ * WS/SSE routes were deleted with the realtime migration, and a relay pointed
+ * at `/api/agent/<id>/ws` dials a path no route answers, so it fails with no
+ * frame ever arriving. A session's frames now live on the `session:<id>` TOPIC
+ * of the owner's one socket, so the relay subscribes that topic there.
  */
-export function peerSocketUrl(sessionId: string, origin: string): string {
-  const base = origin.replace(/^http/, 'ws');
-  return `${base}/api/agent/${encodeURIComponent(sessionId)}/ws`;
+export function peerRealtimeSocketUrl(origin: string): string {
+  return `${origin.replace(/^http/, 'ws')}/api/realtime/ws`;
+}
+
+/**
+ * The owner's own view of a session, for an instance that does not hold the
+ * child — the same payload `GET /api/agent/:id` answers with there.
+ *
+ * `null` when the owner cannot be reached or answers a non-JSON body: the caller
+ * keeps its local answer rather than blanking a subscriber's panel over a
+ * transient peer failure. The payload is otherwise UNVALIDATED — the caller
+ * narrows it, because this module must not depend on the route module that
+ * owns the shape.
+ */
+export async function fetchPeerSessionSnapshot(sessionId: string, origin: string): Promise<unknown> {
+  try {
+    const response = await fetch(new URL(`/api/agent/${encodeURIComponent(sessionId)}`, origin), {
+      headers: { [PEER_HOP_HEADER]: '1' },
+      signal: AbortSignal.timeout(PEER_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+    return (await response.json()) as unknown;
+  } catch {
+    // Unreachable, timed out, or a body that is not JSON: a soft miss.
+    return null;
+  }
 }

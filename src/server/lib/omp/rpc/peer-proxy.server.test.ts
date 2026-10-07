@@ -19,7 +19,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { forwardToPeer, isPeerRelayed, PEER_HOP_HEADER, peerSocketUrl } from '@/server/lib/omp/rpc/peer-proxy.server';
+import { forwardToPeer, isPeerRelayed, PEER_HOP_HEADER, peerRealtimeSocketUrl } from '@/server/lib/omp/rpc/peer-proxy.server';
 
 let originalFetch: typeof globalThis.fetch;
 let captured: { url: string; init: RequestInit } | null;
@@ -93,12 +93,15 @@ describe('forwardToPeer', () => {
   });
 });
 
-describe('peerSocketUrl', () => {
-  test('rewrites http to ws and keeps the session id encoded', () => {
-    expect(peerSocketUrl('a/b', 'http://127.0.0.1:3195')).toBe('ws://127.0.0.1:3195/api/agent/a%2Fb/ws');
+describe('peerRealtimeSocketUrl', () => {
+  test('points at the owner unified socket, and carries no session id', () => {
+    // The relay subscribes the session topic ON that socket. The per-session
+    // `/api/agent/<id>/ws` path it used to build was deleted with the realtime
+    // migration, so this pins the path a route actually answers.
+    expect(peerRealtimeSocketUrl('http://127.0.0.1:3195')).toBe('ws://127.0.0.1:3195/api/realtime/ws');
   });
 
   test('rewrites https to wss', () => {
-    expect(peerSocketUrl('s1', 'https://127.0.0.1:3195')).toBe('wss://127.0.0.1:3195/api/agent/s1/ws');
+    expect(peerRealtimeSocketUrl('https://127.0.0.1:3195')).toBe('wss://127.0.0.1:3195/api/realtime/ws');
   });
 });
