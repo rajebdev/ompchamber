@@ -4,6 +4,7 @@ import * as ompExtensions from '@/server/routes/omp/extensions';
 import * as ompLogin from '@/server/routes/omp/login';
 import * as ompReloadEngine from '@/server/routes/omp/reload-engine';
 import * as ompBlob from '@/server/routes/omp/blob';
+import * as ompArtifact from '@/server/routes/omp/artifact';
 
 /**
  * The `/api/omp/*` bindings that remain.
@@ -13,7 +14,8 @@ import * as ompBlob from '@/server/routes/omp/blob';
  * `todos`, `plan` and `usage` topics, and the plugin pane goes through
  * `/api/settings/plugins`, so none of them had a caller left. What stays is
  * request/response by nature — a login SSE stream, an extension toggle, a
- * reload POST, an image blob read, and the shared utility snapshot.
+ * reload POST, an image blob read, a spilled-output read, and the shared
+ * utility snapshot.
  */
 export const ompBindings: HandlerBinding[] = [
   ...bindingsFor(ompState, '/api/omp/state'),
@@ -21,4 +23,5 @@ export const ompBindings: HandlerBinding[] = [
   ...bindingsFor(ompLogin, '/api/omp/login'),
   ...bindingsFor(ompReloadEngine, '/api/omp/reload-engine'),
   ...bindingsFor(ompBlob, '/api/omp/blob'),
+  ...bindingsFor(ompArtifact, '/api/omp/artifact'),
 ];

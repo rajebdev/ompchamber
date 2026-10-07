@@ -1,3 +1,18 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * The panel registry: a component per `ToolPanelKind`, and the two helpers the
+ * card needs from it.
+ *
+ * `toolPanelKind` decides the key (pure, in `registry.ts`); this file is the
+ * map from that key to the component. Keeping them apart is what lets the
+ * classification be unit-tested without mounting a single panel — the old
+ * `hasToolDetailsPanel` answered the same question by rendering and discarding.
+ */
+
 import type { ReactNode } from 'preact/compat';
 import type { ToolCallData } from '@/shared/types';
 import { TaskResult } from '@/client/components/workspace/chat-timeline/tool-renderers/panels/TaskResult';
@@ -26,6 +41,40 @@ import { Edit } from '@/client/components/workspace/chat-timeline/tool-renderers
 import { Mcp } from '@/client/components/workspace/chat-timeline/tool-renderers/panels/Mcp';
 import { hashlineTargetPath } from '@/shared/lib/omp/session/hashline-patch';
 import { getToolInputPath } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/tool-input';
+import { toolPanelKind, type ToolPanelKind } from '@/client/components/workspace/chat-timeline/tool-renderers/registry';
+
+/** One panel component per kind. A kind with no entry falls back to generic
+ *  Input/Output rendering; the record is total so a missing one is a type error. */
+const PANELS: Record<ToolPanelKind, (props: { tool: ToolCallData }) => ReactNode> = {
+  read: ({ tool }) => (
+    <Read tool={tool} targetFilePath={resolveTargetFile(tool)} output={tool.output || ''} />
+  ),
+  edit: Edit,
+  write: Edit,
+  bash: Bash,
+  eval: Eval,
+  grep: SearchTool,
+  search_fs: SearchFs,
+  todo: Todo,
+  task: TaskResult,
+  web_search: WebSearch,
+  lsp: Lsp,
+  ast_edit: AstEdit,
+  resolve: Resolve,
+  reject: Resolve,
+  hub: Hub,
+  github: Github,
+  checkpoint: Checkpoint,
+  security_scan: SecurityScan,
+  debug: Debug,
+  manage_skill: ManageSkill,
+  context_notes: ContextNotes,
+  memory_edit: Memory,
+  goal: Goal,
+  ask: AskPanel,
+  think: Think,
+  mcp: Mcp,
+};
 
 /** File a tool call targets: explicit `target`, result details, its arguments
  *  (plain path keys or an omp hashline patch header), then the raw input. */
@@ -55,106 +104,58 @@ export function resolveTargetFile(tool: ToolCallData): string | undefined {
   return undefined;
 }
 
+/**
+ * The canonical key for a tool call — omp's own name with the chamber's legacy
+ * aliases folded. Used for icon selection and the header's title fallback.
+ */
 export function resolveToolKey(tool: ToolCallData): string {
-  // 1. Detect oh-my-pi virtual device calls (e.g. xd://lsp, xd://ast_edit, xd://resolve)
-  const details = tool.details as Record<string, any> | undefined;
-  if (details?.xdev?.tool && typeof details.xdev.tool === 'string') {
-    return details.xdev.tool.toLowerCase();
+  const details = tool.details as Record<string, unknown> | undefined;
+  const xdev = details?.xdev;
+  if (xdev && typeof xdev === 'object') {
+    const name = (xdev as Record<string, unknown>).tool;
+    if (typeof name === 'string' && name) return name.toLowerCase();
   }
 
   const rawTarget = (tool.target || '').toLowerCase();
   const inputPath = getToolInputPath(tool.input)?.toLowerCase() ?? '';
-
-  const xdTarget = rawTarget.startsWith('xd://') ? rawTarget.slice(5) : inputPath.startsWith('xd://') ? inputPath.slice(5) : '';
+  const xdTarget = rawTarget.startsWith('xd://')
+    ? rawTarget.slice(5)
+    : inputPath.startsWith('xd://')
+      ? inputPath.slice(5)
+      : '';
   if (xdTarget) {
-    const dev = xdTarget.split(/[/?#]/)[0].trim();
-    if (dev) return dev;
+    const device = xdTarget.split(/[/?#]/)[0].trim();
+    if (device) return device;
   }
 
   const rawName = (tool.name || '').toLowerCase();
-  const rawType = (tool.type || '').toLowerCase();
-  const rawTitle = (tool.title || '').toLowerCase();
+  if (rawName && rawName !== 'tool' && rawName !== 'custom') return rawName;
 
-  // If specific tool name is given (e.g. 'todo', 'eval', 'hub', 'grep', 'glob', 'read', 'write', 'edit')
-  if (rawName && rawName !== 'tool' && rawName !== 'custom') {
-    return rawName;
-  }
+  const titlePrefix = (tool.title || '').toLowerCase().split(/[\s—\-:]+/)[0]?.trim();
+  if (titlePrefix && TOOL_KEY_TITLES.has(titlePrefix)) return titlePrefix;
 
-  // Check title prefix if e.g. "grep — .", "read — app/...", "write — app/..."
-  const titlePrefix = rawTitle.split(/[\s—\-:]+/)[0]?.trim();
-  if (['grep', 'glob', 'read', 'write', 'edit', 'bash', 'terminal', 'run_command', 'todo', 'eval', 'hub', 'lsp', 'github', 'task', 'resolve', 'reject'].includes(titlePrefix)) {
-    return titlePrefix;
-  }
-
-  return rawType;
+  return (tool.type || '').toLowerCase();
 }
 
-/** Panel khusus per tool family — dirender di dalam body ToolCallCard. */
+/** Title prefixes that name a tool when no `name` was sent (MOCK path). */
+const TOOL_KEY_TITLES: ReadonlySet<string> = new Set([
+  'grep', 'glob', 'read', 'write', 'edit', 'bash', 'terminal', 'run_command',
+  'todo', 'eval', 'hub', 'lsp', 'github', 'task', 'resolve', 'reject',
+]);
+
+/**
+ * Panel khusus per tool family — dirender di dalam body ToolCallCard.
+ * Classification is pure (`toolPanelKind`); this only maps the key to a
+ * component, so asking "does this tool have a panel?" no longer builds one.
+ */
 export function ToolDetailsPanel({ tool }: { tool: ToolCallData }): ReactNode {
-  const key = resolveToolKey(tool);
-
-  // File Read Family
-  if (key === 'read' || key === 'read_file' || key === 'view_file' || key === 'read_file_content') {
-    const targetFile = resolveTargetFile(tool);
-    return <Read tool={tool} targetFilePath={targetFile} output={tool.output || ''} />;
-  }
-
-  // File Edit / Write Family
-  if (
-    key === 'edit' ||
-    key === 'write' ||
-    key === 'edit_file' ||
-    key === 'create_file' ||
-    key === 'write_to_file' ||
-    key === 'replace_file_content' ||
-    key === 'multi_edit_file'
-  ) {
-    return <Edit tool={tool} />;
-  }
-
-  // Task & Todo
-  if (key === 'task') return <TaskResult tool={tool} />;
-  if (key === 'todo') return <Todo tool={tool} />;
-
-  // Search & Navigation
-  if (key === 'grep' || key === 'glob' || key === 'ast_grep') return <SearchTool tool={tool} />;
-  if (key === 'search_fs') return <SearchFs tool={tool} />;
-  if (key === 'web_search') return <WebSearch tool={tool} />;
-
-  // Code & Terminal Execution
-  if (key === 'bash' || key === 'terminal' || key === 'run_command') return <Bash tool={tool} />;
-  if (key === 'eval') return <Eval tool={tool} />;
-  if (key === 'lsp') return <Lsp tool={tool} />;
-  if (key === 'ast_edit') return <AstEdit tool={tool} />;
-  if (key === 'resolve' || key === 'reject') return <Resolve tool={tool} />;
-
-  // System, Process & Management
-  if (key === 'hub') return <Hub tool={tool} />;
-  if (key === 'github') return <Github tool={tool} />;
-  if (key === 'checkpoint' || key === 'rewind') return <Checkpoint tool={tool} />;
-  if (key === 'security_scan') return <SecurityScan tool={tool} />;
-  if (key === 'debug') return <Debug tool={tool} />;
-  if (key === 'manage_skill') return <ManageSkill tool={tool} />;
-
-  // Agent State & Interaction
-  if (key === 'context_notes' || key === 'new_context') return <ContextNotes tool={tool} />;
-  if (key === 'memory_edit' || key === 'retain' || key === 'recall' || key === 'reflect' || key === 'learn') {
-    return <Memory tool={tool} />;
-  }
-  if (key === 'goal' || key === 'yield') return <Goal tool={tool} />;
-  if (key === 'ask') return <AskPanel tool={tool} />;
-  if (key === 'think') return <Think tool={tool} />;
-
-  // Dynamic MCP / custom tools — `mcp__<tool>` names and xd:// device writes
-  if (key.startsWith('mcp__') || (typeof tool.name === 'string' && tool.name.startsWith('mcp__'))) {
-    return <Mcp tool={tool} />;
-  }
-
-  return null;
+  const kind = toolPanelKind(tool);
+  if (!kind) return null;
+  return PANELS[kind]({ tool });
 }
 
 /** True kalau tool punya panel khusus yang sudah merender input/output sendiri —
  *  ToolCallCard tidak boleh render Input/Output generik lagi (anti dobel). */
 export function hasToolDetailsPanel(tool: ToolCallData): boolean {
-  return ToolDetailsPanel({ tool }) !== null;
+  return toolPanelKind(tool) !== null;
 }

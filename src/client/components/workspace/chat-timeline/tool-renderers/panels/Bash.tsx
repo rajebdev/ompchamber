@@ -1,12 +1,13 @@
 import { useMemo } from 'preact/hooks';
-import { Check, Clock } from 'lucide-preact';
+import { Check, Clock, Terminal } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
 import { CopyButton } from '@/client/components/common/CopyButton';
 import { stripAnsiCodes } from '@/shared/lib/code/ansi';
 import { isCodeLike } from '@/shared/lib/code/language';
-import { highlightCode, tryParseJson } from '@/shared/lib/code/syntax-highlight';
+import { highlightCode, highlightLines, tryParseJson } from '@/shared/lib/code/syntax-highlight';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 import { JsonCodeBlock } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/JsonCodeBlock';
+import { OutputWindow } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/OutputWindow';
 import { MAX_OUTPUT_LINES, truncateTailLines } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/truncate';
 
 interface BashMeta {
@@ -75,10 +76,6 @@ export function Bash({ tool }: { tool: ToolCallData }) {
   );
   const syntaxReady = useSyntaxReady();
   const highlightedCommand = useMemo(() => (command ? highlightCode(command, 'bash') : ''), [command, syntaxReady]);
-  const highlightedOutput = useMemo(
-    () => (outputIsCode ? highlightCode(truncatedOutput.text, outputLang) : ''),
-    [outputIsCode, truncatedOutput, outputLang, syntaxReady]
-  );
 
   return (
     <div className="space-y-2">
@@ -86,12 +83,8 @@ export function Bash({ tool }: { tool: ToolCallData }) {
       {command && (
         <div className="overflow-hidden rounded-lg border border-ink/10 bg-paper">
           <div className="flex items-center justify-between border-b border-ink/6 bg-canvas/60 px-3 py-1.5">
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-ink/20" />
-                <span className="h-2 w-2 rounded-full bg-ink/20" />
-                <span className="h-2 w-2 rounded-full bg-ink/20" />
-              </div>
+            <div className="flex min-w-0 items-center gap-2">
+              <Terminal size={11} className="shrink-0 text-ink/45" />
               <span className="font-mono text-[10px] font-semibold text-ink/50">bash</span>
               {cwd && (
                 <span className="truncate font-mono text-[9.5px] text-ink/40" title={cwd}>
@@ -181,42 +174,44 @@ export function Bash({ tool }: { tool: ToolCallData }) {
               label="Copy"
             />
           </div>
-          {truncatedOutput.skipped > 0 && (
-            <div className="border-b border-ink/6 bg-canvas/40 px-3 py-1 font-mono text-[9.5px] text-ink/45">
-              … {truncatedOutput.skipped} earlier lines hidden
-            </div>
-          )}
-          <div className="max-h-72 overflow-y-auto overscroll-contain p-3 font-mono text-[11px] leading-relaxed select-text">
-            {outputIsCode ? (
-              <pre
-                className="overflow-x-auto whitespace-pre text-ink/85 leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: highlightedOutput }}
-              />
-            ) : (
-              truncatedOutput.text.split('\n').map((line, idx) => {
-                const isSuccessLine = line.includes('✓') || line.includes('built in') || line.includes('ready: 0 errors');
-                const isErrorLine = line.includes('Error:') || line.includes('error:') || line.includes('FAILED');
-                const isWarningLine = line.includes('warning:') || line.includes('warn:');
+          {/* Only the tail is mounted: a 1000-line log inside a 288px box drew
+              ~15 visible rows and 985 nobody can see. `OutputWindow` reveals the
+              rest in steps, and the highlight runs on the slice on screen. */}
+          <OutputWindow
+            lines={truncatedOutput.text.split('\n')}
+            className="max-h-72 overflow-y-auto overscroll-contain p-3 font-mono text-[11px] leading-relaxed select-text"
+            render={(visible) =>
+              outputIsCode ? (
+                <pre
+                  className="overflow-x-auto whitespace-pre text-ink/85 leading-relaxed"
+                  dangerouslySetInnerHTML={{ __html: highlightLines(visible.join('\n'), outputLang).join('\n') }}
+                />
+              ) : (
+                visible.map((line, idx) => {
+                  const isSuccessLine = line.includes('✓') || line.includes('built in') || line.includes('ready: 0 errors');
+                  const isErrorLine = line.includes('Error:') || line.includes('error:') || line.includes('FAILED');
+                  const isWarningLine = line.includes('warning:') || line.includes('warn:');
 
-                return (
-                  <div
-                    key={idx}
-                    className={`whitespace-pre-wrap break-words ${
-                      isSuccessLine
-                        ? 'text-success font-medium'
-                        : isErrorLine
-                          ? 'text-error font-medium'
-                          : isWarningLine
-                            ? 'text-warning font-medium'
-                            : 'text-ink/80'
-                    }`}
-                  >
-                    {line || '\u00a0'}
-                  </div>
-                );
-              })
-            )}
-          </div>
+                  return (
+                    <div
+                      key={idx}
+                      className={`whitespace-pre-wrap break-words ${
+                        isSuccessLine
+                          ? 'text-success font-medium'
+                          : isErrorLine
+                            ? 'text-error font-medium'
+                            : isWarningLine
+                              ? 'text-warning font-medium'
+                              : 'text-ink/80'
+                      }`}
+                    >
+                      {line || '\u00a0'}
+                    </div>
+                  );
+                })
+              )
+            }
+          />
         </div>
       )}
     </div>

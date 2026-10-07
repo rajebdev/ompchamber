@@ -1,12 +1,12 @@
 import { useMemo } from 'preact/hooks';
 import { ArrowRight, FileCode, FileEdit, FilePlus } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
-import { CopyButton } from '@/client/components/common/CopyButton';
 import { DiffView } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/DiffView';
 import { HashlinePatch } from '@/client/components/workspace/chat-timeline/tool-renderers/hashline-patch';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 import { EnvelopeHeader } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/EnvelopeHeader';
 import { ExcerptCode } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/ExcerptCode';
+import { ToolPanelHeader } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/ToolPanelHeader';
 import { parseEditOutput } from '@/shared/lib/chat/excerpt';
 import { getLanguageFromPath } from '@/shared/lib/code/language';
 import { highlightCode } from '@/shared/lib/code/syntax-highlight';
@@ -172,34 +172,19 @@ export function Edit({ tool }: { tool: ToolCallData }) {
   return (
     <div className="space-y-2.5">
       {/* Target Path Bar */}
-      <div className="flex items-center justify-between rounded-lg border border-ink/8 bg-paper px-3 py-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-ink/5 text-ink/70">
-            {isWrite ? <FilePlus size={12} /> : <FileEdit size={12} />}
-          </span>
-          <span className="truncate font-mono text-[11px] font-medium text-ink">
-            {targetPath || 'File modification'}
-          </span>
-          <span className="rounded bg-ink/5 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-ink/50">
-            {isWrite ? 'Write' : 'Edit'}
-          </span>
-        </div>
-
-        {(newContent || newString || hashline) && (
-          <CopyButton
-            text={hashline?.text || newContent || newString || output}
-            className="flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] text-ink/50 transition-colors hover:bg-ink/5 hover:text-ink"
-            iconSize={11}
-            label="Copy"
-          />
-        )}
-      </div>
+      <ToolPanelHeader
+        icon={isWrite ? <FilePlus size={12} /> : <FileEdit size={12} />}
+        label={targetPath || 'File modification'}
+        badge={isWrite ? 'Write' : 'Edit'}
+        copyText={newContent || newString || hashline?.text || output || undefined}
+        copyLabel="Copy change"
+      />
 
       {/* Unified Diff if available */}
       {diffText && (
         <div className="space-y-1">
           <div className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-ink/40">Diff Changes</div>
-          <DiffView text={diffText} />
+          <DiffView text={diffText} path={targetPath} />
         </div>
       )}
 

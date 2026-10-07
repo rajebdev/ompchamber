@@ -28,14 +28,12 @@
 import type { ToolCallData } from '@/shared/types';
 import type { TodoItem, TodoPhase, TodoProgress, TodoStatus } from '@/shared/types/todo';
 import { todoProgress } from '@/shared/lib/chat/todo/snapshot';
-import { todoProgressLabel } from '@/shared/lib/chat/todo/progress';
 import { parseNestedPhaseEntry, stripTrailingStatusNote } from '@/shared/lib/chat/todo/nested-phase';
 
 export interface TodoDataSummary {
   groups: TodoPhase[];
   progress: TodoProgress;
   opBadge?: string;
-  summaryText: string;
 }
 
 /** Status ranking for the dedup pass — a task seen in two groups keeps the most advanced. */
@@ -260,15 +258,5 @@ export function parseTodoData(tool: ToolCallData): TodoDataSummary {
 
   const progress = todoProgress(groups);
 
-  return {
-    groups,
-    progress,
-    opBadge,
-    summaryText: progress.total > 0 ? todoProgressLabel(progress) : '',
-  };
-}
-
-export function getTodoSummary(tool: ToolCallData): string | undefined {
-  const summary = parseTodoData(tool);
-  return summary.groups.length > 0 ? summary.summaryText : undefined;
+  return { groups, progress, opBadge };
 }

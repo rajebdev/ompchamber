@@ -1,20 +1,44 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * One tool call in the timeline: the header shell plus, when expanded, either
+ * the family's own panel or the generic Input / Diff / Output body.
+ *
+ * Everything that decides what the card SAYS lives outside this file and is
+ * pure — `toolCardHeader`/`toolCardSubtitle` (naming), `toolSummary` (the
+ * outcome chips), `toolPanelKind` (which panel), `card-helpers` (glyphs). This
+ * file is the wiring, which is what keeps it inside the repo's size ceiling.
+ */
+
 import { useCallback, useMemo } from 'preact/hooks';
-import { memo, type ReactNode } from 'preact/compat';
-import { Bell, Boxes, Brain, BrainCircuit, Camera, Check, Code2, Cpu, FileCode, FileText, GitPullRequest, Globe, HelpCircle, ListTodo, Search, Server, Shield, Terminal, Wrench } from 'lucide-preact';
+import { memo } from 'preact/compat';
+import { Bell } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
 import { stripAnsiCodes } from '@/shared/lib/code/ansi';
 import { isReminderTag, unwrapXmlEnvelopes } from '@/shared/lib/chat/xml-envelope';
 import { CopyButton } from '@/client/components/common/CopyButton';
-import { languageBrandIcon } from '@/client/components/common/file-icon';
 import { ToolCardShell } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/ToolCardShell';
+import { ArtifactChip } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/ArtifactChip';
 import { DiffView } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/DiffView';
-import { ToolDetailsPanel, hasToolDetailsPanel, resolveTargetFile, resolveToolKey } from '@/client/components/workspace/chat-timeline/tool-renderers';
-import { toTitleCase } from '@/shared/lib/chat/title-case';
 import { FallbackOutput } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/FallbackOutput';
-import { tryParseJson } from '@/shared/lib/code/syntax-highlight';
 import { JsonCodeBlock } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/JsonCodeBlock';
-import { getTodoSummary } from '@/shared/lib/chat/todo/parser';
-import { parseAskQuestions } from '@/shared/lib/chat/ask-questions';
+import { ToolDetailsPanel, resolveToolKey } from '@/client/components/workspace/chat-timeline/tool-renderers';
+import { toolPanelKind } from '@/client/components/workspace/chat-timeline/tool-renderers/registry';
+import { toolSummary, type ToolFact } from '@/shared/lib/chat/tool/summary';
+import { tryParseJson } from '@/shared/lib/code/syntax-highlight';
+import {
+  commandOrInputOf,
+  diffTextOf,
+  evalLanguageIcon,
+  toolIcon,
+} from '@/client/components/workspace/chat-timeline/tool-renderers/shared/card-helpers';
+import {
+  toolCardHeader,
+  toolCardSubtitle,
+} from '@/client/components/workspace/chat-timeline/tool-renderers/shared/card-header';
 
 interface ToolCallCardProps {
   tool: ToolCallData;
@@ -23,130 +47,8 @@ interface ToolCallCardProps {
   defaultExpanded?: boolean;
 }
 
-function getToolIcon(key: string) {
-  switch (key) {
-    case 'bash':
-    case 'terminal':
-      return <Terminal size={14} />;
-    case 'edit':
-    case 'write':
-    case 'edit_file':
-    case 'create_file':
-    case 'ast_edit':
-      return <FileCode size={14} />;
-    case 'read':
-    case 'read_file':
-    case 'view_file':
-      return <FileText size={14} />;
-    case 'glob':
-    case 'grep':
-    case 'search_fs':
-    case 'ast_grep':
-      return <Search size={14} />;
-    case 'web_search':
-      return <Globe size={14} />;
-    case 'todo':
-    case 'task':
-      return <ListTodo size={14} />;
-    case 'eval':
-      return <Code2 size={14} />;
-    case 'lsp':
-      return <Cpu size={14} />;
-    case 'resolve':
-    case 'reject':
-      return <Check size={14} />;
-    case 'hub':
-      return <Server size={14} />;
-    case 'ask':
-      return <HelpCircle size={14} />;
-    case 'think':
-      return <BrainCircuit size={14} />;
-    case 'security_scan':
-      return <Shield size={14} />;
-    case 'checkpoint':
-    case 'rewind':
-      return <Camera size={14} />;
-    case 'github':
-      return <GitPullRequest size={14} />;
-    case 'memory_edit':
-    case 'retain':
-    case 'recall':
-    case 'reflect':
-    case 'learn':
-      return <Brain size={14} />;
-    default:
-      if (key.startsWith('mcp__')) return <Boxes size={14} />;
-      return <Wrench size={14} />;
-  }
-}
-
-/** `input.title` of an `eval` call — omp's own label for the cell. The card
- *  header names the eval with it rather than the generic tool name. */
-function evalInputTitle(tool: ToolCallData): string | undefined {
-  const inputObj = typeof tool.input === 'object' && tool.input !== null ? (tool.input as Record<string, any>) : undefined;
-  const title = typeof inputObj?.title === 'string' ? inputObj.title.trim() : '';
-  return title || undefined;
-}
-
-/** Brand mark for an `eval` call's `language` (`js`, `py`, …); null when the
- *  language is unknown or absent, so the generic code glyph stands in. */
-function evalLanguageIcon(tool: ToolCallData): ReactNode {
-  const inputObj = typeof tool.input === 'object' && tool.input !== null ? (tool.input as Record<string, any>) : undefined;
-  const language = typeof inputObj?.language === 'string' ? inputObj.language : '';
-  return language ? languageBrandIcon(language, 14) : null;
-}
-
-function commandOrInputOf(tool: ToolCallData): string {
-  if (tool.command) return tool.command;
-  if (typeof tool.input === 'string') return tool.input;
-  if (tool.input && typeof tool.input === 'object') return JSON.stringify(tool.input, null, 2);
-  if (tool.target || tool.detail) return tool.target || tool.detail || '';
-  return '';
-}
-
-/** Inner `xd://mcp__<tool>` (or `mcp__<tool>` name) carried by an MCP call.
- *  Returns the bare MCP tool name, e.g. `codegraph_explore`. */
-function mcpToolNameOf(tool: ToolCallData): string | undefined {
-  const inputObj = typeof tool.input === 'object' && tool.input !== null ? (tool.input as Record<string, any>) : undefined;
-  const path = typeof inputObj?.path === 'string' ? inputObj.path : tool.target || '';
-  const raw = path.startsWith('xd://') ? path.slice(5) : typeof tool.name === 'string' && tool.name.startsWith('mcp__') ? tool.name : '';
-  const name = raw.split(/[/?#]/)[0].trim();
-  return name.startsWith('mcp__') ? name.slice(5) : undefined;
-}
-
-/** Human subject for an MCP call: the intent line wins, else first meaningful
- *  argument (query/pattern/path/…), else nothing. */
-function mcpSubjectOf(tool: ToolCallData, inputObj: Record<string, any> | undefined): string | undefined {
-  if (tool.intent) return tool.intent;
-  const content = typeof inputObj?.content === 'string' ? inputObj.content : '';
-  const parsed = content ? tryParseJson(content) : { isValid: false, data: undefined };
-  const data = parsed.isValid ? (parsed.data as Record<string, any>) : inputObj;
-  if (data && typeof data === 'object') {
-    const first = ['query', 'q', 'pattern', 'pat', 'name', 'sql', 'path', 'symbol', 'url', 'command'].find((k) => typeof data[k] === 'string' && data[k]);
-    if (first) return data[first];
-  }
-  return undefined;
-}
-
-function diffTextOf(tool: ToolCallData): string | undefined {
-  if (tool.diff?.diffText) return tool.diff.diffText;
-  const details = tool.details;
-  if (details && typeof details === 'object') {
-    if (typeof details.patch === 'string') return details.patch;
-    if (typeof details.diff === 'string') return details.diff;
-  }
-  return undefined;
-}
-
-interface XdevDetails {
-  args?: { action?: string; file?: string; paths?: string[] };
-}
-
-/** `details.xdev` of an oh-my-pi virtual device call, if present. */
-function xdevOf(tool: ToolCallData): XdevDetails | undefined {
-  const xdev = tool.details?.xdev;
-  return xdev && typeof xdev === 'object' ? (xdev as XdevDetails) : undefined;
-}
+/** Intent is capped for the chip row; a longer line lives in its tooltip. */
+const INTENT_CHIP_MAX = 60;
 
 function SectionLabel({ children }: { children: string }) {
   return (
@@ -158,9 +60,14 @@ function SectionLabel({ children }: { children: string }) {
 
 export const ToolCallCard = memo(function ToolCallCard({ tool, isOpen, onToggle, defaultExpanded = false }: ToolCallCardProps) {
   const toolKey = resolveToolKey(tool);
-  // hasToolDetailsPanel invokes the renderer once as a plain probe — cache it per tool identity
-  // so the probe does not re-run on every timeline re-render.
-  const hasPanel = useMemo(() => hasToolDetailsPanel(tool), [tool]);
+  // A pure classification, not a probe render: the old `hasToolDetailsPanel`
+  // built the panel's VNode and threw it away, once per card per streaming
+  // frame. `toolPanelKind` is a lookup, so this is free.
+  const hasPanel = useMemo(() => toolPanelKind(tool) !== null, [tool]);
+  const summary = useMemo(() => toolSummary(tool), [tool]);
+  const header = useMemo(() => toolCardHeader(tool, toolKey), [tool, toolKey]);
+  const subtitle = toolCardSubtitle(tool, header);
+
   const commandOrInput = commandOrInputOf(tool);
   const outputText = tool.output || (tool.error ? `Error: ${tool.error}` : '');
   const diffText = diffTextOf(tool);
@@ -175,123 +82,55 @@ export const ToolCallCard = memo(function ToolCallCard({ tool, isOpen, onToggle,
   );
 
   // A reminder envelope in the result is the runtime interrupting the call, not
-  // its outcome — the header flags it next to the status badge.
+  // its outcome — the header flags it beside the status badge.
   const isReminder = useMemo(
     () => unwrapXmlEnvelopes(stripAnsiCodes(outputText)).some((envelope) => isReminderTag(envelope.tag)),
     [outputText],
   );
 
-  // Clean title & subtitle extraction
-  let displayTitle = '';
-  let displaySubtitle: string | undefined;
+  // The model's own one-liner (omp's `i` field, present on 82% of calls) is the
+  // most readable thing a collapsed card can say, and it used to be shown for
+  // MCP calls only. It becomes the first chip rather than the subtitle, so the
+  // precise path the subtitle carries is not traded away for it.
+  const headerSummary = useMemo(() => {
+    const intent = tool.intent?.trim();
+    if (!intent) return summary;
+    const fact: ToolFact = {
+      kind: 'subject',
+      label: intent.length > INTENT_CHIP_MAX ? `${intent.slice(0, INTENT_CHIP_MAX - 1)}…` : intent,
+      title: intent,
+    };
+    return summary
+      ? { facts: [fact, ...summary.facts], line: `${fact.label} · ${summary.line}` }
+      : { facts: [fact], line: fact.label };
+  }, [tool.intent, summary]);
 
-  // `eval` names itself: `input.title` is the label omp put on the cell, and it
-  // beats the generic "Eval" the fallback chain would render.
-  const evalTitle = toolKey === 'eval' ? evalInputTitle(tool) : undefined;
-
-  if (toolKey === 'lsp') {
-    displayTitle = 'LSP';
-    const xdev = xdevOf(tool);
-    if (xdev?.args?.action) {
-      displaySubtitle = `${xdev.args.action}${xdev.args.file ? ` · ${xdev.args.file}` : ''}`;
-    }
-  } else if (toolKey === 'ast_edit') {
-    displayTitle = 'AST Edit';
-    const xdev = xdevOf(tool);
-    if (xdev?.args?.paths?.[0]) {
-      displaySubtitle = xdev.args.paths[0];
-    }
-  } else if (toolKey === 'resolve') {
-    displayTitle = 'Resolve Proposal';
-  } else if (toolKey === 'reject') {
-    displayTitle = 'Reject Proposal';
-  } else if (toolKey === 'yield') {
-    displayTitle = tool.status === 'error' ? 'Yield' : outputText ? `Yield - ${outputText}` : 'Yield';
-  } else if (toolKey === 'todo' || tool.name === 'todo' || tool.type === 'todo' || (tool.title && tool.title.toLowerCase().startsWith('todo'))) {
-    displayTitle = 'Todo';
-    const todoSummary = getTodoSummary(tool);
-    if (todoSummary) {
-      displaySubtitle = todoSummary;
-    } else if (tool.title && (tool.title.includes('—') || tool.title.includes(' - ') || tool.title.includes(': '))) {
-      const parts = tool.title.split(/\s+[—\-:]\s+/);
-      const sub = parts.slice(1).join(' — ').trim();
-      const cleaned = sub
-        .split(/\s*·\s*/)
-        .filter((p) => !/^0\s+(complete|in progress|pending)/i.test(p))
-        .join(' · ');
-      displaySubtitle = cleaned || sub;
-    }
-  } else if (toolKey === 'ask') {
-    // The question itself is the card's body; the header says how many were
-    // asked, matching the summary the same card shows once they are answered.
-    displayTitle = 'Question';
-    const asked = parseAskQuestions(tool).length;
-    if (asked > 0) displaySubtitle = `Asked ${asked} question${asked === 1 ? '' : 's'}`;
-  } else if (evalTitle) {
-    displayTitle = evalTitle;
-  } else if (mcpToolNameOf(tool)) {
-    // MCP call: `write xd://mcp__<tool>` (or a direct `mcp__<tool>` name) —
-    // the MCP tool names the action, never the transport `write`.
-    const inputObj = typeof tool.input === 'object' && tool.input !== null ? (tool.input as Record<string, any>) : undefined;
-    displayTitle = toTitleCase(mcpToolNameOf(tool)!);
-    const subject = mcpSubjectOf(tool, inputObj);
-    if (subject) {
-      displaySubtitle = subject.length > 80 ? `${subject.slice(0, 79)}…` : subject;
-    }
-  } else if (tool.title && (tool.title.includes('—') || tool.title.includes(' - ') || tool.title.includes(': '))) {
-    const parts = tool.title.split(/\s+[—\-:]\s+/);
-    displayTitle = toTitleCase(parts[0].trim());
-    displaySubtitle = parts.slice(1).join(' — ').trim();
-  } else if (tool.title) {
-    displayTitle = toTitleCase(tool.title);
-  } else {
-    displayTitle = toTitleCase(toolKey || tool.name || 'Tool Call');
-  }
-
-  // Resolve task tool subagent name/target
-  if ((toolKey === 'task' || tool.name === 'task') && !displaySubtitle) {
-    const inputObj = typeof tool.input === 'object' && tool.input !== null ? (tool.input as Record<string, any>) : undefined;
-    const firstTask = Array.isArray(inputObj?.tasks) ? inputObj.tasks[0] : undefined;
-    if (firstTask?.name) {
-      displaySubtitle = `${firstTask.name}${firstTask.agent ? ` · ${firstTask.agent}` : ''}`;
-    }
-  }
-
-  const targetFilePath = resolveTargetFile(tool);
-  const subtitle =
-    displaySubtitle && !displaySubtitle.startsWith('xd://')
-      ? displaySubtitle
-      : targetFilePath && !targetFilePath.startsWith('xd://')
-        ? targetFilePath
-        : displaySubtitle || (tool.detail && !targetFilePath ? tool.detail : undefined);
-
-  const duration = tool.duration || tool.time;
-  const meta =
-    duration || isReminder ? (
-      <span className="flex items-center gap-2">
-        {duration ? <span className="font-mono text-[10px] text-ink/40">{duration}</span> : null}
-        {isReminder && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-error/10 px-2 py-0.5 text-[10px] font-semibold text-error">
-            <Bell size={10} /> Reminder
-          </span>
-        )}
-      </span>
-    ) : null;
+  const actions = (
+    <>
+      <ArtifactChip tool={tool} />
+      {isReminder && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-error/10 px-2 py-0.5 text-[10px] font-semibold text-error">
+          <Bell size={10} /> Reminder
+        </span>
+      )}
+    </>
+  );
 
   // The eval card is marked by the language it runs, not a generic code glyph.
-  const icon = tool.icon || (toolKey === 'eval' ? evalLanguageIcon(tool) : null) || getToolIcon(toolKey);
+  const icon = tool.icon || (toolKey === 'eval' ? evalLanguageIcon(tool) : null) || toolIcon(toolKey);
 
   return (
     <ToolCardShell
       tool={tool}
       icon={icon}
-      title={displayTitle}
+      title={header.title}
       subtitle={subtitle}
-      meta={meta}
+      summary={headerSummary}
+      actions={actions}
       isOpen={isOpen}
       onToggle={onToggle ? handleToggle : undefined}
       defaultExpanded={defaultExpanded}
-      alwaysExpanded={hasPanel && (toolKey === 'yield' || toolKey === 'ask')}
+      alwaysExpanded={hasPanel && (toolKey === 'yield' || toolKey === 'goal' || toolKey === 'ask')}
     >
       <ToolDetailsPanel tool={tool} />
 
@@ -330,7 +169,7 @@ export const ToolCallCard = memo(function ToolCallCard({ tool, isOpen, onToggle,
       {!hasPanel && diffText && (
         <div className="space-y-1.5">
           <SectionLabel>Diff</SectionLabel>
-          <DiffView text={diffText} />
+          <DiffView text={diffText} path={subtitle} />
         </div>
       )}
 

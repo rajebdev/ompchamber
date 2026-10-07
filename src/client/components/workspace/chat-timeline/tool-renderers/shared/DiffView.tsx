@@ -1,150 +1,146 @@
-import { useMemo } from 'preact/hooks';
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * The diff of an `edit`/`write` tool call, in the chat timeline.
+ *
+ * Two dialects arrive here and only one of them was handled. git's own unified
+ * diff has `@@`/`---`/`+++` headers; **omp's excerpt diff does not** — every row
+ * carries the file's line number as a gutter (`-43|  return new Promise(…)`).
+ * The previous parser read a leading `-`/`+` and kept the rest, so the gutter
+ * was painted as code: measured in the browser, the row rendered
+ * `43|  return new Promise(…)` and the header named a file called `diff`.
+ *
+ * `excerptDiffToUnified` (`shared/lib/fs/excerpt-diff.ts`) converts that shape
+ * first, so ONE parser serves both — and because the conversion recovers the
+ * gutter numbers, the rows get real line numbers instead of `...`.
+ *
+ * The rendering itself is the diff panel's own `UnifiedView`/`SplitView`, so a
+ * diff in the chat and a diff of the working tree are the same surface rather
+ * than two implementations that drift.
+ */
+
+import { useMemo, useState } from 'preact/hooks';
+import type { ReactNode } from 'preact/compat';
+import { Columns2, Rows3, WrapText } from 'lucide-preact';
+import { parseUnifiedDiff } from '@/shared/lib/fs/diff-parser';
+import { excerptDiffToUnified, isExcerptDiff } from '@/shared/lib/fs/excerpt-diff';
 import { getLanguageFromPath } from '@/shared/lib/code/language';
-import { highlightLines } from '@/shared/lib/code/syntax-highlight';
-import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
+import { CopyButton } from '@/client/components/common/CopyButton';
+import { UnifiedView } from '@/client/components/workspace/diff-panel/UnifiedView';
+import { SplitView } from '@/client/components/workspace/diff-panel/SplitView';
 
-interface DiffLine {
-  kind: 'add' | 'del' | 'meta' | 'context';
+/** A small icon-only toolbar button, `aria-pressed` for its own state. */
+function ToggleButton({
+  pressed,
+  onClick,
+  label,
+  children,
+}: {
+  pressed: boolean;
+  onClick: () => void;
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={pressed}
+      aria-label={label}
+      title={label}
+      className={`flex cursor-pointer items-center rounded px-1.5 py-0.5 transition-colors ${
+        pressed ? 'bg-ink/10 text-ink' : 'text-ink/45 hover:bg-ink/5 hover:text-ink'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+interface DiffViewProps {
   text: string;
+  /** File the diff belongs to — selects the grammar. */
+  path?: string;
 }
 
-interface DiffFile {
-  oldPath: string;
-  newPath: string;
-  lines: DiffLine[];
-}
+/** Diff untuk details.patch / details.diff dari toolResult. */
+export function DiffView({ text, path = '' }: DiffViewProps) {
+  const [split, setSplit] = useState(false);
+  const [wordWrap, setWordWrap] = useState(true);
 
-function parseUnifiedDiff(text: string): DiffFile[] {
-  const files: DiffFile[] = [];
-  let current: DiffFile | null = null;
-  const lines = text.split(/\r?\n/);
+  // omp's excerpt is converted first; a git unified diff passes through.
+  const unified = useMemo(() => (isExcerptDiff(text) ? excerptDiffToUnified(text) : text), [text]);
 
-  for (const line of lines) {
-    if (line.startsWith('diff --git ')) {
-      if (current) files.push(current);
-      current = null;
-      continue;
-    }
-    if (line.startsWith('--- ')) {
-      if (!current) current = { oldPath: line.slice(4).replace(/^[ab]\//, ''), newPath: '', lines: [] };
-      else current.oldPath = line.slice(4).replace(/^[ab]\//, '');
-      continue;
-    }
-    if (line.startsWith('+++ ')) {
-      if (!current) current = { oldPath: '', newPath: '', lines: [] };
-      current.newPath = line.slice(4).replace(/^[ab]\//, '');
-      continue;
-    }
-    if (!current) {
-      if (line.startsWith('@@') || line.startsWith('+') || line.startsWith('-')) {
-        current = { oldPath: '', newPath: '', lines: [] };
-      } else {
-        continue;
-      }
-    }
-    if (line.startsWith('@@')) {
-      current.lines.push({ kind: 'meta', text: line });
-    } else if (line.startsWith('+') && !line.startsWith('+++')) {
-      current.lines.push({ kind: 'add', text: line.slice(1) });
-    } else if (line.startsWith('-') && !line.startsWith('---')) {
-      current.lines.push({ kind: 'del', text: line.slice(1) });
-    } else {
-      current.lines.push({ kind: 'context', text: line.startsWith(' ') ? line.slice(1) : line });
-    }
-  }
-  if (current) files.push(current);
-  return files;
-}
+  // Only the view on screen is built: a full-context diff would otherwise
+  // allocate both the flat line list and the paired split rows to draw one.
+  const parsed = useMemo(
+    () => parseUnifiedDiff(unified, { views: split ? 'split' : 'unified' }),
+    [unified, split],
+  );
 
-/** Split diff view untuk details.patch / details.diff dari toolResult. */
-export function DiffView({ text }: { text: string }) {
-  const files = useMemo(() => parseUnifiedDiff(text), [text]);
-  const syntaxReady = useSyntaxReady();
+  // The excerpt's header carries no filename, so the caller's path is the only
+  // name the block can show; the unified header is preferred when it exists.
+  const fileLabel = parsed.lines.find((line) => line.type === 'meta')?.text
+    ? ''
+    : path.split('/').pop() ?? '';
+  const language = getLanguageFromPath(path || parsed.splitRows[0]?.right?.text || '');
 
-  const htmlByFile = useMemo(() => {
-    return files.map((file) => {
-      const lang = getLanguageFromPath(file.newPath || file.oldPath);
-      return highlightLines(
-        file.lines.map((line) => (line.kind === 'meta' ? '' : line.text)).join('\n'),
-        lang
-      );
-    });
-  }, [files, syntaxReady]);
-  if (files.length === 0) {
+  if (parsed.lines.length === 0 && parsed.splitRows.length === 0) {
     return (
-      <pre className="max-h-48 overflow-auto whitespace-pre overflow-x-auto rounded-lg border border-ink/8 bg-paper p-3 font-mono text-[11px] leading-relaxed text-ink/80 select-text">
+      <pre className="max-h-48 overflow-auto rounded-lg border border-ink/8 bg-paper p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-all text-ink/80 select-text">
         {text}
       </pre>
     );
   }
 
-  const stats = files.reduce(
-    (acc, file) => {
-      for (const line of file.lines) {
-        if (line.kind === 'add') acc.added++;
-        else if (line.kind === 'del') acc.removed++;
-      }
-      return acc;
-    },
-    { added: 0, removed: 0 },
-  );
-
   return (
     <div className="overflow-hidden rounded-lg border border-ink/8">
       <div className="flex items-center gap-2 border-b border-ink/8 bg-paper px-2.5 py-1.5">
-        <span className="truncate font-mono text-[10.5px] text-ink/60">
-          {files[0]?.newPath || files[0]?.oldPath || 'diff'}
-        </span>
-        {files.length > 1 && (
-          <span className="rounded-full bg-ink/5 px-1.5 py-px font-mono text-[9.5px] text-ink/45">
-            {files.length} files
-          </span>
+        {fileLabel && (
+          <span className="truncate font-mono text-[10.5px] text-ink/60">{fileLabel}</span>
         )}
-        <span className="ml-auto flex items-center gap-1.5 font-mono text-[10px]">
-          <span className="text-success">+{stats.added}</span>
-          <span className="text-error">-{stats.removed}</span>
+        <span className="flex items-center gap-1.5 font-mono text-[10px]">
+          <span className="text-success">+{parsed.additions}</span>
+          <span className="text-error">{'\u2212'}{parsed.deletions}</span>
+        </span>
+        <span className="ml-auto flex items-center gap-1">
+          <ToggleButton
+            pressed={!split}
+            onClick={() => setSplit(false)}
+            label="Unified view"
+          >
+            <Rows3 size={12} />
+          </ToggleButton>
+          <ToggleButton pressed={split} onClick={() => setSplit(true)} label="Split view">
+            <Columns2 size={12} />
+          </ToggleButton>
+          <ToggleButton
+            pressed={wordWrap}
+            onClick={() => setWordWrap((current) => !current)}
+            label="Toggle word wrap"
+          >
+            <WrapText size={12} />
+          </ToggleButton>
+          <CopyButton
+            text={text}
+            className="flex cursor-pointer items-center rounded px-1.5 py-0.5 text-ink/45 transition-colors hover:bg-ink/5 hover:text-ink"
+            iconSize={11}
+            ariaLabel="Copy diff"
+            title="Copy diff"
+          />
         </span>
       </div>
-      <div className="max-h-56 overflow-auto bg-paper font-mono text-[11px] leading-relaxed select-text">
-        {files.map((file, fileIndex) => (
-          <div key={fileIndex} className={fileIndex > 0 ? 'border-t border-ink/6' : ''}>
-            {file.lines.map((line, i) => {
-              const bg =
-                line.kind === 'add'
-                  ? 'bg-success/[0.07]'
-                  : line.kind === 'del'
-                    ? 'bg-error/[0.07]'
-                    : line.kind === 'meta'
-                      ? 'bg-ink/[0.04]'
-                      : '';
-              const color =
-                line.kind === 'add'
-                  ? 'text-success'
-                  : line.kind === 'del'
-                    ? 'text-error'
-                    : line.kind === 'meta'
-                      ? 'text-ink/45'
-                      : 'text-ink/70';
-              const marker = line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : line.kind === 'meta' ? '@' : ' ';
-              const html = htmlByFile[fileIndex]?.[i] || '';
-              return (
-                <div key={i} className={`flex px-2.5 ${bg}`}>
-                  <span className={`w-4 shrink-0 select-none font-bold ${color}`}>{marker}</span>
-                  {line.kind === 'meta' || !html ? (
-                    <span className={`min-w-0 flex-1 whitespace-pre-wrap break-all ${color}`}>
-                      {line.text || '\u00a0'}
-                    </span>
-                  ) : (
-                    <span
-                      className="shiki min-w-0 flex-1 whitespace-pre-wrap break-all"
-                      dangerouslySetInnerHTML={{ __html: html }}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ))}
+      {/* The panel views fill their parent (`h-full`), so the height ceiling
+          lives here: content-sized up to 288px, then it scrolls. */}
+      <div className="max-h-72 overflow-hidden">
+        {split ? (
+          <SplitView rows={parsed.splitRows} language={language} wordWrap={wordWrap} />
+        ) : (
+          <UnifiedView lines={parsed.lines} language={language} wordWrap={wordWrap} />
+        )}
       </div>
     </div>
   );

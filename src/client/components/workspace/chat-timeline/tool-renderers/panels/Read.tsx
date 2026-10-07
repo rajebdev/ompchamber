@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { FileCode, FileImage, FileText, Folder, FolderOpen, Info, Loader2 } from 'lucide-preact';
-import { CopyButton } from '@/client/components/common/CopyButton';
 import { getLanguageFromPath } from '@/shared/lib/code/language';
 import { highlightCode } from '@/shared/lib/code/syntax-highlight';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
@@ -11,6 +10,7 @@ import { toolImageSrc } from '@/shared/lib/omp/session/tool-images';
 import type { ToolCallData } from '@/shared/types/chat';
 import { MAX_OUTPUT_LINES, truncateTailLines } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/truncate';
 import { extractLineMeta } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/read-line-meta';
+import { ToolPanelHeader } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/ToolPanelHeader';
 import { getToolInputPath } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/tool-input';
 
 interface ReadPanelProps {
@@ -153,28 +153,13 @@ export function Read({ tool, targetFilePath, output }: ReadPanelProps) {
   return (
     <div className="space-y-2">
       {/* Header Info */}
-      <div className="flex items-center justify-between rounded-lg border border-ink/8 bg-paper px-3 py-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-ink/5 text-ink/70">
-            {isDir ? <FolderOpen size={12} /> : isImage ? <FileImage size={12} /> : <FileCode size={12} />}
-          </span>
-          <span className="truncate font-mono text-[11px] font-medium text-ink">
-            {filePath || resultImage?.name || (isDir ? 'Directory Listing' : 'File Content')}
-          </span>
-          <span className="rounded bg-ink/5 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-ink/50">
-            {kindLabel}
-          </span>
-        </div>
-
-        {rawContent && !isImage && (
-          <CopyButton
-            text={parsedCode.hasLineNumbers ? parsedCode.cleanCode : (rawContent || '')}
-            className="flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] text-ink/50 transition-colors hover:bg-ink/5 hover:text-ink"
-            iconSize={11}
-            label="Copy"
-          />
-        )}
-      </div>
+      <ToolPanelHeader
+        icon={isDir ? <FolderOpen size={12} /> : isImage ? <FileImage size={12} /> : <FileCode size={12} />}
+        label={filePath || resultImage?.name || (isDir ? 'Directory Listing' : 'File Content')}
+        badge={kindLabel}
+        copyText={rawContent && !isImage ? (parsedCode.hasLineNumbers ? parsedCode.cleanCode : rawContent) : undefined}
+        copyLabel="Copy file content"
+      />
 
       {isImage && imageUrl ? (
         /* An image read has no code to show: paint the bytes. */

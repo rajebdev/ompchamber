@@ -1,15 +1,42 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * The shell every tool call renders in — header, status, facts, body.
+ *
+ * Two rules shape it:
+ *
+ * 1. **The collapsed header states the outcome.** A closed card used to carry
+ *    only a title and a "Done" badge, so a `bash` that exited 0 and one that
+ *    failed were the same card, and a `grep` never named its pattern. The facts
+ *    come from `toolSummary` (`shared/lib/chat/tool/summary.ts`), which reads
+ *    the `details` omp already sends — measured present on 95–100% of results.
+ *
+ * 2. **The toggle is a real control.** It carries an `aria-label` naming the
+ *    tool and its subject, because an icon-only chevron with a truncated title
+ *    is unreachable by screen reader, and `aria-expanded` alone does not say
+ *    what is being expanded.
+ */
+
 import { useState } from 'preact/hooks';
 import type { ReactNode } from 'preact/compat';
-import { AlertCircle, Check, ChevronDown, CircleSlash, Loader2 } from 'lucide-preact';
+import { AlertCircle, Check, ChevronDown, CircleSlash, Loader2, OctagonX } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
 import { isSkippedTool } from '@/shared/lib/chat/tool-status';
+import type { ToolSummary } from '@/shared/lib/chat/tool/summary';
+import { ToolFactChips } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/ToolFactChips';
 
 interface ToolCardShellProps {
   tool: ToolCallData;
   icon: ReactNode;
   title: string;
   subtitle?: string;
-  meta?: ReactNode;
+  /** Facts derived from the result — rendered as chips in the header. */
+  summary?: ToolSummary | null;
+  /** Extra trailing controls (a diff toggle, a copy button). */
+  actions?: ReactNode;
   isOpen?: boolean;
   onToggle?: () => void;
   defaultExpanded?: boolean;
@@ -26,11 +53,22 @@ function statusDot(status: ToolCallData['status'], isSkipped: boolean) {
   return <span className={`${base} bg-success`} />;
 }
 
+const BADGE_BASE = 'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold';
+
+/** The outcome word for a card. `aborted` and a synthetic call are distinct
+ *  outcomes from `skipped`, and omp records both — collapsing them into
+ *  "Skipped" told the reader the model declined when the user had interrupted. */
 function statusBadge(tool: ToolCallData) {
-  const isSkipped = isSkippedTool(tool);
-  if (isSkipped) {
+  if (tool.status === 'aborted') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-ink/8 px-2 py-0.5 text-[10px] font-semibold text-ink/50">
+      <span className={`${BADGE_BASE} bg-warning/10 text-warning`}>
+        <OctagonX size={10} /> Aborted
+      </span>
+    );
+  }
+  if (isSkippedTool(tool)) {
+    return (
+      <span className={`${BADGE_BASE} bg-ink/8 text-ink/50`}>
         <CircleSlash size={10} /> Skipped
       </span>
     );
@@ -39,20 +77,20 @@ function statusBadge(tool: ToolCallData) {
   const status = tool.status || (tool.error ? 'error' : 'success');
   if (status === 'error') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-error/10 px-2 py-0.5 text-[10px] font-semibold text-error">
+      <span className={`${BADGE_BASE} bg-error/10 text-error`}>
         <AlertCircle size={10} /> Failed
       </span>
     );
   }
   if (status === 'running') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-ink/8 px-2 py-0.5 text-[10px] font-semibold text-ink/60">
+      <span className={`${BADGE_BASE} bg-ink/8 text-ink/60`}>
         <Loader2 size={10} className="animate-spin" /> Running
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">
+    <span className={`${BADGE_BASE} bg-success/10 text-success`}>
       <Check size={10} /> Done
     </span>
   );
@@ -64,7 +102,8 @@ export function ToolCardShell({
   icon,
   title,
   subtitle,
-  meta,
+  summary,
+  actions,
   isOpen: controlledIsOpen,
   onToggle,
   defaultExpanded = false,
@@ -85,6 +124,7 @@ export function ToolCardShell({
   };
 
   const isSkipped = isSkippedTool(tool);
+  const toggleLabel = `${isExpanded ? 'Collapse' : 'Expand'} ${title}${subtitle ? ` — ${subtitle}` : ''}`;
 
   return (
     <div
@@ -103,6 +143,7 @@ export function ToolCardShell({
         onClick={handleToggle}
         disabled={!hasBody || !collapsible}
         aria-expanded={isExpanded}
+        aria-label={hasBody && collapsible ? toggleLabel : undefined}
         className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors ${
           hasBody && collapsible ? 'cursor-pointer hover:bg-ink/[0.03]' : 'cursor-default'
         } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/20`}
@@ -127,10 +168,15 @@ export function ToolCardShell({
           {subtitle && (
             <span className="truncate font-mono text-[10.5px] text-ink/45">{subtitle}</span>
           )}
+          {summary && summary.facts.length > 0 && (
+            <span className="mt-1 flex min-w-0">
+              <ToolFactChips facts={summary.facts} />
+            </span>
+          )}
         </span>
 
         <span className="flex shrink-0 items-center gap-2">
-          {meta}
+          {actions}
           {statusBadge(tool)}
           {hasBody && collapsible && (
             <ChevronDown

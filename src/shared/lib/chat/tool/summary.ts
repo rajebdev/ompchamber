@@ -1,0 +1,348 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * The one line a collapsed tool card says about what the call DID.
+ *
+ * A closed card used to carry only its title and a status badge, so a `bash`
+ * that finished in 28ms with exit 0 read exactly like one that failed, and a
+ * `grep` never named the pattern it searched for. The data was always there —
+ * omp puts it in `toolResult.details`, which every panel already reads — but
+ * nothing read it until the card was opened.
+ *
+ * This module is pure and DOM-free so both halves of the card can use it: the
+ * header renders `facts` as chips while collapsed, and a panel may render the
+ * same facts above its body. One derivation, so the two can never disagree.
+ *
+ * Coverage measured over 5,441 real tool results (6 largest sessions):
+ *   bash  wallTimeMs 97% · edit diff+firstChangedLine 99% · grep matchCount 100%
+ *   read  fileSize 95%, totalLines 76% · eval cells 100% · glob fileCount 100%
+ *   write resolvedPath 94% · todo phases 100%
+ * `exitCode` is present on only 2% of bash results (omp reports wall time, not
+ * the code), so a missing code degrades to no chip rather than a fabricated 0.
+ */
+
+import type { ToolCallData } from '@/shared/types/chat';
+
+/** One fact rendered as a chip. `kind` lets a caller pick an icon or reorder. */
+export interface ToolFact {
+  kind: 'exit' | 'time' | 'size' | 'range' | 'count' | 'diff' | 'progress' | 'subject' | 'warn' | 'note';
+  label: string;
+  /** Chip tone; `muted` is the default for informational facts. */
+  tone?: 'ok' | 'warn' | 'error' | 'muted';
+  /** Full text for the chip's tooltip when `label` is elided. */
+  title?: string;
+}
+
+export interface ToolSummary {
+  /** Facts in render order. */
+  facts: ToolFact[];
+  /** The facts joined into one line — for a `title` attribute or a plain row. */
+  line: string;
+}
+
+/** A tool result's `details` bag, narrowed to what a reader may index into. */
+type Details = Record<string, unknown>;
+
+function asRecord(value: unknown): Details | undefined {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Details) : undefined;
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function asNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    const found = asString(value);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/** `28ms` / `1.2s` / `2m 3s` — the scale a tool call actually lives on. */
+export function formatToolMs(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '';
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`;
+  const totalSeconds = Math.floor(ms / 1000);
+  return `${Math.floor(totalSeconds / 60)}m ${totalSeconds % 60}s`;
+}
+
+/** `4.6 KB` / `2.0 MB` — byte sizes are shortened, never raw counts. */
+export function formatToolBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Count the `+`/`-` rows of an omp excerpt diff (`-43|` / `+43|`). */
+function excerptDiffCounts(diff: string): { added: number; removed: number } | null {
+  let added = 0;
+  let removed = 0;
+  for (const line of diff.split(/\r?\n/)) {
+    if (line.startsWith('+')) added++;
+    else if (line.startsWith('-')) removed++;
+  }
+  return added + removed > 0 ? { added, removed } : null;
+}
+
+/** `+4 −1` with a real minus sign, so it cannot be read as a hyphen. */
+function diffLabel(added: number, removed: number): string {
+  const parts: string[] = [];
+  if (added > 0) parts.push(`+${added}`);
+  if (removed > 0) parts.push(`\u2212${removed}`);
+  return parts.join(' ');
+}
+
+/** `12 matches in 3 files` / `3 files` — one count phrase for both shapes.
+ *  The plural is explicit: an `s` suffix would render `2 matchs`. */
+function countPhrase(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+/** Elide a subject to a chip's width, keeping the full text for its tooltip. */
+function subjectFact(label: string): ToolFact {
+  return label.length > 60
+    ? { kind: 'subject', label: `${label.slice(0, 59)}…`, title: label }
+    : { kind: 'subject', label, title: label };
+}
+
+/** Search subject for `grep`/`glob`: the pattern the user can actually read. */
+function searchSubject(tool: ToolCallData, input: Details | undefined): string | undefined {
+  return firstString(
+    input?.pattern,
+    input?.query,
+    input?.glob,
+    input?.regex,
+    input?.search,
+    input?.text,
+    input?.path,
+    tool.target !== '.' ? tool.target : undefined,
+  );
+}
+
+/** The scope a search ran over, shortened from the right (the leaf is the name). */
+function searchScope(details: Details): string | undefined {
+  const scope = firstString(details.scopePath, details.searchPath);
+  if (!scope) return undefined;
+  return scope.length > 48 ? `…${scope.slice(-47)}` : scope;
+}
+
+/**
+ * Facts for one tool call, in the order a reader wants them: outcome first,
+ * then cost, then subject.
+ */
+export function toolSummary(tool: ToolCallData): ToolSummary | null {
+  const details = asRecord(tool.details) ?? {};
+  const input = asRecord(tool.input);
+  const facts: ToolFact[] = [];
+  const key = (tool.name || tool.type || '').toLowerCase();
+  const isError = tool.status === 'error' || tool.isError === true;
+
+  // ── bash / terminal ───────────────────────────────────────────────────────
+  if (key === 'bash' || key === 'terminal' || key === 'run_command') {
+    const exitCode = asNumber(details.exitCode);
+    if (exitCode !== undefined) {
+      facts.push({ kind: 'exit', label: `exit ${exitCode}`, tone: exitCode === 0 ? 'ok' : 'error' });
+    } else if (isError) {
+      facts.push({ kind: 'exit', label: 'failed', tone: 'error' });
+    }
+    const wallMs = asNumber(details.wallTimeMs);
+    if (wallMs !== undefined) {
+      facts.push({ kind: 'time', label: formatToolMs(wallMs) });
+    } else if (tool.duration || tool.time) {
+      // The MOCK/legacy path carries a preformatted duration instead of
+      // `wallTimeMs`; it is the same fact in the same slot.
+      facts.push({ kind: 'time', label: tool.duration || tool.time || '' });
+    }
+    const output = (tool.output ?? '').trimEnd();
+    if (output) {
+      const lines = output.split(/\r?\n/).length;
+      if (lines > 1) facts.push({ kind: 'count', label: `${lines} lines` });
+    }
+    const async = asRecord(details.async);
+    if (async?.state === 'running') {
+      facts.push({ kind: 'warn', label: `background ${asString(async.jobId) ?? ''}`.trim(), tone: 'warn' });
+    }
+    const timeoutSeconds = asNumber(details.timeoutSeconds);
+    if (exitCode === undefined && isError && timeoutSeconds !== undefined) {
+      facts.push({ kind: 'note', label: `timeout ${timeoutSeconds}s`, tone: 'warn' });
+    }
+  }
+
+  // ── edit / write ──────────────────────────────────────────────────────────
+  if (key === 'edit' || key === 'write' || key === 'edit_file' || key === 'create_file') {
+    const diff = firstString(details.diff, details.patch);
+    if (diff) {
+      const counts = excerptDiffCounts(diff);
+      if (counts) {
+        facts.push({
+          kind: 'diff',
+          label: diffLabel(counts.added, counts.removed),
+          tone: counts.removed > counts.added ? 'warn' : 'ok',
+        });
+      }
+    } else if (key === 'write') {
+      // A write carries the whole file as its input, so its size IS the change.
+      const content = firstString(input?.content);
+      if (content) facts.push({ kind: 'size', label: `${content.split('\n').length} lines` });
+    }
+    const firstChanged = asNumber(details.firstChangedLine);
+    if (firstChanged !== undefined && firstChanged > 0) {
+      facts.push({ kind: 'range', label: `line ${firstChanged}` });
+    }
+    const diagnostics = asRecord(details.diagnostics);
+    const diagnosticSummary = diagnostics ? asString(diagnostics.summary) : undefined;
+    if (diagnosticSummary) {
+      facts.push({
+        kind: 'note',
+        label: diagnosticSummary,
+        tone: diagnostics?.errored === true ? 'error' : diagnosticSummary === 'no issues' ? 'ok' : 'warn',
+      });
+    }
+    if (details.madeExecutable === true) facts.push({ kind: 'note', label: '+x', tone: 'ok' });
+  }
+
+  // ── read ──────────────────────────────────────────────────────────────────
+  if (key === 'read' || key === 'read_file' || key === 'view_file' || key === 'read_file_content') {
+    if (details.isDirectory === true) {
+      const entryCount = asNumber(details.fileCount);
+      facts.push({
+        kind: 'count',
+        label: entryCount !== undefined ? `${entryCount} ${entryCount === 1 ? 'entry' : 'entries'}` : 'directory',
+      });
+    } else {
+      const fileSize = asNumber(details.fileSize);
+      if (fileSize !== undefined) facts.push({ kind: 'size', label: formatToolBytes(fileSize) });
+      const totalLines = asNumber(details.totalLines);
+      if (totalLines !== undefined) facts.push({ kind: 'count', label: `${totalLines} lines` });
+      const truncation = asRecord(details.truncation);
+      const shown = asRecord(truncation?.shownRange);
+      const shownStart = asNumber(shown?.start);
+      const shownEnd = asNumber(shown?.end);
+      if (shownStart !== undefined && shownEnd !== undefined) {
+        facts.push({ kind: 'range', label: `shown ${shownStart}\u2013${shownEnd}`, tone: 'warn' });
+      } else if (truncation?.truncated === true) {
+        facts.push({ kind: 'warn', label: 'truncated', tone: 'warn' });
+      }
+    }
+  }
+
+  // ── grep / glob / ast_grep ────────────────────────────────────────────────
+  if (key === 'grep' || key === 'glob' || key === 'ast_grep' || key === 'search_fs') {
+    const subject = searchSubject(tool, input);
+    if (subject) facts.push(subjectFact(subject));
+    const matchCount = asNumber(details.matchCount);
+    const fileCount = asNumber(details.fileCount);
+    if (matchCount !== undefined) {
+      const files = fileCount !== undefined ? ` in ${countPhrase(fileCount, 'file')}` : '';
+      facts.push({ kind: 'count', label: `${countPhrase(matchCount, 'match', 'matches')}${files}` });
+    } else if (fileCount !== undefined) {
+      facts.push({ kind: 'count', label: countPhrase(fileCount, 'file') });
+    }
+    if (details.truncated === true || details.resultLimitReached !== undefined) {
+      facts.push({ kind: 'warn', label: 'truncated', tone: 'warn' });
+    }
+    const scope = searchScope(details);
+    if (scope && scope !== subject) facts.push({ kind: 'note', label: scope });
+  }
+
+  // ── eval ──────────────────────────────────────────────────────────────────
+  if (key === 'eval') {
+    const language = firstString(details.language, input?.language);
+    if (language) facts.push({ kind: 'note', label: language.toLowerCase() });
+    const cells = asArray(details.cells);
+    if (cells.length > 0) facts.push({ kind: 'count', label: countPhrase(cells.length, 'cell') });
+    const ops = Array.from(
+      new Set(
+        asArray(details.statusEvents)
+          .map((event) => firstString(asRecord(event)?.detail, asRecord(event)?.op))
+          .filter((op): op is string => op !== undefined),
+      ),
+    ).slice(0, 3);
+    if (ops.length > 0) facts.push(subjectFact(ops.join(' · ')));
+  }
+
+  // ── todo ──────────────────────────────────────────────────────────────────
+  if (key === 'todo') {
+    const tasks = asArray(details.phases).flatMap((phase) => asArray(asRecord(phase)?.tasks));
+    if (tasks.length > 0) {
+      const closed = tasks.filter((task) => {
+        const status = asString(asRecord(task)?.status);
+        return status === 'completed' || status === 'abandoned';
+      }).length;
+      facts.push({ kind: 'progress', label: `${closed}/${tasks.length} done` });
+      const blocked = tasks.filter((task) => asString(asRecord(task)?.status) === 'blocked').length;
+      if (blocked > 0) facts.push({ kind: 'warn', label: `${blocked} blocked`, tone: 'warn' });
+    }
+    const op = firstString(details.op);
+    if (op) facts.push({ kind: 'note', label: op });
+  }
+
+  // ── hub ───────────────────────────────────────────────────────────────────
+  if (key === 'hub') {
+    const items = [details.items, details.daemons, details.jobs]
+      .map(asArray)
+      .find((list) => list.length > 0) ?? [];
+    if (items.length > 0) {
+      facts.push({ kind: 'count', label: countPhrase(items.length, 'job') });
+      const running = items.filter((item) => asString(asRecord(item)?.status) === 'running').length;
+      if (running > 0) facts.push({ kind: 'note', label: `${running} running` });
+    }
+  }
+
+  // ── web_search ────────────────────────────────────────────────────────────
+  if (key === 'web_search') {
+    const results = asArray(asRecord(details.response)?.results);
+    if (results.length > 0) {
+      facts.push({ kind: 'count', label: countPhrase(results.length, 'result') });
+      const url = firstString(asRecord(results[0])?.url);
+      if (url) {
+        try {
+          facts.push({ kind: 'note', label: new URL(url).hostname });
+        } catch {
+          // A malformed url is not worth a chip.
+        }
+      }
+    }
+    const query = firstString(input?.query);
+    if (query) facts.push(subjectFact(query));
+  }
+
+  // ── task (subagents) ──────────────────────────────────────────────────────
+  if (key === 'task') {
+    const results = asArray(details.results);
+    if (results.length > 0) {
+      facts.push({ kind: 'count', label: countPhrase(results.length, 'subagent') });
+      const running = results.filter((row) => asString(asRecord(row)?.status) === 'running').length;
+      if (running > 0) facts.push({ kind: 'note', label: `${running} running` });
+      const failed = results.filter((row) => {
+        const status = asString(asRecord(row)?.status);
+        return status === 'failed' || status === 'aborted';
+      }).length;
+      if (failed > 0) facts.push({ kind: 'warn', label: `${failed} failed`, tone: 'error' });
+    }
+  }
+
+  // ── fallback: any tool whose output is the only thing worth naming ────────
+  if (facts.length === 0) {
+    const lines = (tool.output ?? '').split(/\r?\n/);
+    const first = lines.find((line) => line.trim());
+    if (first) facts.push(subjectFact(first.trim()));
+    if (lines.length > 1) facts.push({ kind: 'count', label: `${lines.length} lines` });
+  }
+
+  if (facts.length === 0) return null;
+  return { facts, line: facts.map((fact) => fact.label).join(' · ') };
+}

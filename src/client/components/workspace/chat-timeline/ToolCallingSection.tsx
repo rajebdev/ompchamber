@@ -1,7 +1,13 @@
-import { useCallback, useMemo, useState } from 'preact/hooks';
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import { useCallback, useMemo } from 'preact/hooks';
 import type { AgentActionData, ToolCallData, ToolType } from '@/shared/types';
-import { isSkippedTool } from '@/shared/lib/chat/tool-status';
 import { ToolCallCard } from '@/client/components/workspace/chat-timeline/ToolCallCard';
+import { useToolOpenState } from '@/client/hooks/chat/timeline/tool-open';
+import { ChevronsDownUp, ChevronsUpDown } from 'lucide-preact';
 
 interface ToolCallingSectionProps {
   tools: (ToolCallData | AgentActionData)[];
@@ -53,25 +59,16 @@ export function ToolCallingSection({ tools, title, defaultExpanded = false }: To
     return (tools || []).map((t, i) => normalizeToolData(t, i));
   }, [tools]);
 
-  const [openMap, setOpenMap] = useState<Record<string, boolean>>(() => {
-    const initial: Record<string, boolean> = {};
-    normalizedTools.forEach((tool, idx) => {
-      const isSkipped = isSkippedTool(tool);
-      const isAutoOpen = !isSkipped && (tool.status === 'error' || (defaultExpanded && idx === 0));
-      initial[tool.id] = isAutoOpen;
-    });
-    return initial;
-  });
+  // Openness is remembered per session, so a reload or a history page-in does
+  // not close the call the reader had opened.
+  const { openMap, toggle, setAll, anyOpen } = useToolOpenState(normalizedTools, defaultExpanded);
 
-  // Stable identity so memoized ToolCallCard rows skip re-rendering while streaming.
-  const toggleTool = useCallback((toolId: string) => {
-    setOpenMap(prev => ({
-      ...prev,
-      [toolId]: !prev[toolId]
-    }));
-  }, []);
+  const expandAll = useCallback(() => setAll(true), [setAll]);
+  const collapseAll = useCallback(() => setAll(false), [setAll]);
 
   if (!normalizedTools || normalizedTools.length === 0) return null;
+
+  const showBulk = normalizedTools.length > 1;
 
   return (
     <div className="mx-3 space-y-1.5">
@@ -81,6 +78,18 @@ export function ToolCallingSection({ tools, title, defaultExpanded = false }: To
             {title}
           </span>
           <span className="h-px flex-1 bg-ink/8" />
+          {showBulk && (
+            <button
+              type="button"
+              onClick={anyOpen ? collapseAll : expandAll}
+              aria-label={anyOpen ? 'Collapse all tool calls' : 'Expand all tool calls'}
+              title={anyOpen ? 'Collapse all' : 'Expand all'}
+              className="flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider text-ink/40 transition-colors hover:bg-ink/5 hover:text-ink"
+            >
+              {anyOpen ? <ChevronsDownUp size={11} /> : <ChevronsUpDown size={11} />}
+              <span>{anyOpen ? 'Collapse all' : 'Expand all'}</span>
+            </button>
+          )}
         </div>
       )}
       {normalizedTools.map((tool) => (
@@ -88,7 +97,7 @@ export function ToolCallingSection({ tools, title, defaultExpanded = false }: To
           key={tool.id}
           tool={tool}
           isOpen={Boolean(openMap[tool.id])}
-          onToggle={toggleTool}
+          onToggle={toggle}
         />
       ))}
     </div>
