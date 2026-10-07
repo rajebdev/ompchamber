@@ -183,8 +183,6 @@ export function useChatTimeline({
     enqueueMessage,
     removeMessage,
     reorderMessages,
-    steeringQueue,
-    setSteeringQueue,
   } = useChatTimelineQueue(sessionId);
   const {
     pending: extensionDialogs,
@@ -307,8 +305,6 @@ export function useChatTimeline({
     messageQueue,
     removeMessage,
     reorderMessages,
-    steeringQueue,
-    setSteeringQueue,
     inputValue,
     setInputValue,
     inputAttachments,

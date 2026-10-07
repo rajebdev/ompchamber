@@ -32,8 +32,6 @@ interface ComposerDockProps {
   onReorderQueue: (orderedIds: string[]) => void;
   onEditQueueItem: (item: QueuedMessage) => void;
   onSendNowQueueItem: (item: QueuedMessage) => void;
-  steeringQueue: QueuedMessage[];
-  setSteeringQueue: Dispatch<SetStateAction<QueuedMessage[]>>;
   inputValue: string;
   setInputValue: Dispatch<SetStateAction<string>>;
   rootPath: string | null;
@@ -74,8 +72,6 @@ export function ComposerDock({
   onReorderQueue,
   onEditQueueItem,
   onSendNowQueueItem,
-  steeringQueue,
-  setSteeringQueue,
   inputValue,
   setInputValue,
   rootPath,
@@ -122,15 +118,6 @@ export function ComposerDock({
           onReorder={onReorderQueue}
           onEdit={onEditQueueItem}
           onSendNow={onSendNowQueueItem}
-        />
-        <QueueList
-          queue={steeringQueue}
-          onRemove={(id) => setSteeringQueue((q) => q.filter((i) => i.id !== id))}
-          onReorder={(orderedIds) => setSteeringQueue((prev) => {
-            const byId = new Map(prev.map((i) => [i.id, i]));
-            return orderedIds.map((id) => byId.get(id)).filter((i): i is QueuedMessage => Boolean(i));
-          })}
-          isSteering
         />
         {btw.open ? (
           <BtwForm

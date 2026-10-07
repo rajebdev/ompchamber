@@ -75,11 +75,8 @@ describe('QueueList touch reachability', () => {
     expect(el.querySelectorAll('button[title]').length).toBe(1);
   });
 
-  test('Send Now is offered for a follow-up, not for a steering delivery', async () => {
-    const followUp = await mount({ onSendNow: () => {}, isSteering: false });
-    expect(followUp.querySelector('[title="Send Now (Steering)"]')).not.toBeNull();
-
-    const steering = await mount({ onSendNow: () => {}, isSteering: true });
-    expect(steering.querySelector('[title="Send Now (Steering)"]')).toBeNull();
+  test('Send Now is offered whenever the caller supplies it', async () => {
+    const el = await mount({ onSendNow: () => {} });
+    expect(el.querySelector('[title="Send Now (Steering)"]')).not.toBeNull();
   });
 });

@@ -57,8 +57,6 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
     messageQueue,
     removeMessage,
     reorderMessages,
-    steeringQueue,
-    setSteeringQueue,
     inputValue,
     setInputValue,
     inputAttachments,
@@ -286,8 +284,6 @@ export function ChatTimeline({ className = '', appSettings = {}, onSessionTitle,
                 onReorderQueue={reorderMessages}
                 onEditQueueItem={handleEditQueueItem}
                 onSendNowQueueItem={handleSendNowQueueItem}
-                steeringQueue={steeringQueue}
-                setSteeringQueue={setSteeringQueue}
                 inputValue={inputValue}
                 setInputValue={setInputValue}
                 rootPath={composerRoot}

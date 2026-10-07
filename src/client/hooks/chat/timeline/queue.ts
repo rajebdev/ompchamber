@@ -12,18 +12,25 @@
  * hydrating over an empty state wipe the table, and a session switch PUT one
  * session's list into another's rows.
  *
- * Steering still mirrors into the per-session session-state blob (client-only
- * by design: an interrupt-and-reply is only meaningful while a client watches
- * the run).
+ * There is no steering queue here. There used to be a client-only mirror
+ * (`chat.steeringQueue`) with no writer at all: nothing ever appended to it,
+ * because a steer is fire-and-forget (`abort_and_prompt`) and produces no
+ * pending row to display. It is removed rather than left as a dead panel.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { QueuedMessage } from '@/shared/types';
-import { useSessionState } from '@/client/hooks/workspace/session-state';
+import { clearSessionKey } from '@/shared/lib/workspace/session-state/store';
 import { useRealtimeTopic } from '@/client/hooks/ui/realtime';
 import { sessionQueueTopic } from '@/shared/lib/realtime/protocol';
 
-const STEERING_STATE_KEY = 'chat.steeringQueue';
+/**
+ * The retired client-only steering mirror. Nothing ever appended to it, so it
+ * only ever held `[]` — but the whole per-session state blob is POSTed on every
+ * write, so the key rode along in 108 stored sessions. Dropped once per mount;
+ * `clearSessionKey` is a no-op when the key is already gone.
+ */
+const LEGACY_STEERING_STATE_KEY = 'chat.steeringQueue';
 
 /**
  * How often a mounted session with a non-empty queue re-offers a delivery slot.
@@ -66,14 +73,10 @@ export interface ChatTimelineQueueResult {
   reorderMessages: (orderedIds: string[]) => void;
   /** Replace the local list from a fetch (mount hydration, manual refresh). */
   refresh: () => void;
-  /** Client-only steering mirror (session-state blob). */
-  steeringQueue: QueuedMessage[];
-  setSteeringQueue: (value: QueuedMessage[] | ((prev: QueuedMessage[]) => QueuedMessage[])) => void;
 }
 
 export function useChatTimelineQueue(sessionId: string | null): ChatTimelineQueueResult {
   const [messageQueue, setMessageQueueState] = useState<QueuedMessage[]>([]);
-  const [steeringQueue, setSteeringQueue] = useSessionState<QueuedMessage[]>(STEERING_STATE_KEY, []);
 
   /**
    * The queue rides `session:<id>:queue`: every write (this tab's, a second
@@ -136,6 +139,9 @@ export function useChatTimelineQueue(sessionId: string | null): ChatTimelineQueu
 
   useEffect(() => {
     cancelledRef.current = false;
+    // One-time: drop the retired steering mirror so the stored blob stops
+    // carrying it. Idempotent — `clearSessionKey` returns when the key is gone.
+    clearSessionKey(sessionId, LEGACY_STEERING_STATE_KEY);
     refresh();
     // Mount and every focus regain offer a delivery slot. Focus is the trigger
     // the recovery path depends on, so it must re-nudge even when the queue
@@ -225,5 +231,5 @@ export function useChatTimelineQueue(sessionId: string | null): ChatTimelineQueu
       .catch(() => {});
   }, [sessionId]);
 
-  return { messageQueue, enqueueMessage, editMessageText, removeMessage, reorderMessages, refresh, steeringQueue, setSteeringQueue };
+  return { messageQueue, enqueueMessage, editMessageText, removeMessage, reorderMessages, refresh };
 }
