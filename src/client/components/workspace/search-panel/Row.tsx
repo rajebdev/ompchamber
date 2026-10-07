@@ -11,33 +11,39 @@
  * - **The matched text is highlighted**, using the character ranges the server
  *   derived from ripgrep's own submatches. Those ranges ride the same
  *   `find-match` markup the editor's find bar paints, so a hit looks the same
- *   wherever it is read and the highlight cannot drift from the text it belongs
- *   to. When the server sent no ranges (an older response), they are recomputed
- *   with the editor's own matcher rather than leaving the row unmarked.
+ *   wherever it is read, and the highlight cannot drift from the text it
+ *   belongs to.
  * - **With a replacement typed, the row previews the line**, the old text struck
  *   through and the new text beside it, the way VS Code's search view does. The
  *   split is `replacePreviewSegments`' job; this file only paints it.
+ *
+ * The component is memoized, and the highlight goes through
+ * `highlightSearchLine`'s bounded cache, because the list can hold tens of
+ * thousands of rows: without either, one scroll re-tokenized every mounted line
+ * through Shiki (measured: 34 s of blocked main thread for a five-step scroll
+ * over 19,376 rows). `onOpen` is therefore expected to be a stable callback —
+ * `SearchPanel` hands it a `useCallback` for exactly that reason.
  */
 
-import { highlightCode } from '@/shared/lib/code/syntax-highlight';
+import { memo } from 'preact/compat';
+
+import { highlightSearchLine } from '@/shared/lib/code/highlight-cache';
 import { getLanguageFromPath } from '@/shared/lib/code/language';
-import { findMatches, type FindOptions } from '@/shared/lib/code/editor/find';
 import { replacePreviewSegments } from '@/shared/lib/fs/search-row';
 import type { SearchResultItem } from '@/shared/types/fs';
 
 interface SearchRowProps {
   file: string;
   result: SearchResultItem;
-  /** The query the row was found by, used when the response carried no ranges. */
-  query: string;
-  options: FindOptions;
   replacement: string;
+  /** The replace field holds text, so the row previews the rewritten line. */
+  showReplacePreview: boolean;
   onOpen: (result: SearchResultItem) => void;
 }
 
-export function SearchRow({ file, result, query, options, replacement, onOpen }: SearchRowProps) {
-  const ranges = result.ranges?.length ? result.ranges : findMatches(result.content, query, options).matches;
-  const preview = replacement.length > 0;
+function SearchRowView({ file, result, replacement, showReplacePreview, onOpen }: SearchRowProps) {
+  const ranges = result.ranges ?? [];
+  const preview = showReplacePreview && replacement.length > 0;
 
   return (
     <button
@@ -69,10 +75,12 @@ export function SearchRow({ file, result, query, options, replacement, onOpen }:
           // The markup comes from Shiki and the mark splicer, which escape
           // every character of the file's own text on the way in.
           dangerouslySetInnerHTML={{
-            __html: highlightCode(result.content, getLanguageFromPath(file), { marks: ranges }),
+            __html: highlightSearchLine(result.content, getLanguageFromPath(file), ranges),
           }}
         />
       )}
     </button>
   );
 }
+
+export const SearchRow = memo(SearchRowView);

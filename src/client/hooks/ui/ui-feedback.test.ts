@@ -4,18 +4,18 @@
  */
 
 /**
- * The short-lived feedback flags: the copy confirmation, the overlay-scrollbar
- * fade, the "show more" page size, and the toast queue.
+ * The short-lived feedback flags: the copy confirmation, the "show more" page
+ * size, and the toast queue.
  *
- * Each case pins a stale flag. The copy confirmation and the scroll fade both
- * restart a timer on a repeat trigger — without the clearTimeout the first
- * timer still fires and the check mark disappears while the user is copying the
- * next item. "Show more" must keep counting past the list length (the hook has
- * no total to clamp against; callers slice), and a dismissed toast's id must
- * never be handed out again or the renderer reuses the key of the row it just
- * removed.
+ * Each case pins a stale flag. The copy confirmation restarts a timer on a
+ * repeat trigger — without the clearTimeout the first timer still fires and the
+ * check mark disappears while the user is copying the next item. "Show more"
+ * must keep counting past the list length (the hook has no total to clamp
+ * against; callers slice), and a dismissed toast's id must never be handed out
+ * again or the renderer reuses the key of the row it just removed.
  *
  * Mounted with `h()` against happy-dom, the same way the other hook tests do.
+ * The overlay-scrollbar fade lives in `scrollbar-fade.test.ts`.
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, jest, test } from 'bun:test';
@@ -25,7 +25,6 @@ import { act } from 'preact/test-utils';
 
 import type { ToastData } from '@/client/components/common/Toast';
 import { useCopyFlag } from '@/client/hooks/ui/copy-flag';
-import { scrollbarFadeClass, useScrollbarFade } from '@/client/hooks/ui/scrollbar-fade';
 import { useShowMore } from '@/client/hooks/ui/show-more';
 import type { ShowMore } from '@/client/hooks/ui/show-more';
 import { useToasts } from '@/client/hooks/ui/toasts';
@@ -58,15 +57,10 @@ function mount(vnode: Parameters<typeof render>[0]) {
   });
 }
 
-/** The return contracts of the three hooks here that export no named type. */
+/** The return contracts of the two hooks here that export no named type. */
 interface CopyFlagApi {
   copied: boolean;
   flagCopied: () => void;
-}
-
-interface ScrollbarFadeApi {
-  isScrolling: boolean;
-  handleScroll: () => void;
 }
 
 interface ToastsApi {
@@ -151,52 +145,6 @@ describe('useCopyFlag', () => {
     render(null, container as HTMLElement);
     // The timer was cleared, so nothing is left queued to fire.
     expect(jest.getTimerCount()).toBe(0);
-  });
-});
-
-function FadeProbe({ delayMs, seen }: { delayMs: number; seen: { current: ScrollbarFadeApi | null } }) {
-  seen.current = useScrollbarFade(delayMs);
-  return h('span', null, seen.current.isScrolling ? 'scrolling' : 'idle');
-}
-
-describe('useScrollbarFade', () => {
-  test('lights on scroll and clears after the delay', () => {
-    jest.useFakeTimers();
-    const seen: { current: ScrollbarFadeApi | null } = { current: null };
-    mount(h(FadeProbe, { delayMs: 100, seen }));
-
-    expect(seen.current!.isScrolling).toBe(false);
-    act(() => seen.current!.handleScroll());
-    expect(seen.current!.isScrolling).toBe(true);
-    act(() => {
-      jest.advanceTimersByTime(100);
-    });
-    expect(seen.current!.isScrolling).toBe(false);
-  });
-
-  test('a scroll during the cool-down extends the fade', () => {
-    jest.useFakeTimers();
-    const seen: { current: ScrollbarFadeApi | null } = { current: null };
-    mount(h(FadeProbe, { delayMs: 100, seen }));
-
-    act(() => seen.current!.handleScroll());
-    act(() => {
-      jest.advanceTimersByTime(70);
-    });
-    act(() => seen.current!.handleScroll());
-    act(() => {
-      jest.advanceTimersByTime(70);
-    });
-    expect(seen.current!.isScrolling).toBe(true);
-    act(() => {
-      jest.advanceTimersByTime(30);
-    });
-    expect(seen.current!.isScrolling).toBe(false);
-  });
-
-  test('maps the flag to exactly two overlay class names', () => {
-    expect(scrollbarFadeClass(true)).toBe('scrollbar-overlay-scrolling');
-    expect(scrollbarFadeClass(false)).toBe('scrollbar-overlay');
   });
 });
 

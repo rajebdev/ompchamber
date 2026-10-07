@@ -46,8 +46,8 @@ export {
   useSessionValue,
   useSessionState,
   useWorkspaceFile,
-  useScrollbarFade,
-  scrollbarFadeClass,
+  useScrollbarFadeRef,
+  type ScrollbarFadeProps,
   type SessionValue,
   type WorkspaceFile,
 } from './panels';

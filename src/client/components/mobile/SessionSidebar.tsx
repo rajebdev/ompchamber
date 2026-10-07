@@ -8,7 +8,6 @@ import { AboutModal, NewWorkspaceModal } from '@/client/components/layout/sessio
 import { SchedulerModal } from '@/client/components/layout/session-sidebar/scheduler-modal';
 import { UpdatePopup } from '@/client/components/layout/update-popup';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
-import { useScrollbarFade } from '@/client/hooks/ui/scrollbar-fade';
 import { useChamberEvent } from '@/client/hooks/ui/window-event';
 import { useToasts } from '@/client/hooks/ui/toasts';
 import { useUpdates } from '@/client/hooks/ui/updates';
@@ -86,8 +85,6 @@ export function MobileSessionSidebar({
   const optionsRef = useRef<HTMLDivElement>(null);
   useOnClickOutside(optionsRef, () => setOptionsOpen(false));
 
-  const { isScrolling, handleScroll } = useScrollbarFade();
-
   const toggleFolder = (folderId: number) => {
     setExpandedFolders(prev => ({
       ...prev,
@@ -163,8 +160,6 @@ export function MobileSessionSidebar({
           expandedFolders={expandedFolders}
           showArchived={showArchived}
           sessionStatus={sessionStatus}
-          isScrolling={isScrolling}
-          onScroll={handleScroll}
           onSelectSession={handleSelectSession}
           onNewSessionForFolder={handleNewSessionForFolderAndClose}
           onToggleFolder={toggleFolder}

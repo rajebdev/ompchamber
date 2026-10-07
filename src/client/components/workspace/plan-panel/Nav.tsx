@@ -16,7 +16,7 @@
 
 import { useMemo, useState } from 'preact/hooks';
 import { FileText, Search } from 'lucide-preact';
-import { useScrollbarFade, scrollbarFadeClass } from '@/client/hooks/ui/scrollbar-fade';
+import { useScrollbarFadeRef } from '@/client/hooks/ui/scrollbar-fade';
 import type { SessionPlanFile } from '@/shared/types/plan';
 
 interface PlanNavProps {
@@ -33,7 +33,7 @@ function formatStamp(epochMs: number): string {
 
 export function PlanNav({ files, selected, onSelect }: PlanNavProps) {
   const [query, setQuery] = useState('');
-  const { isScrolling, handleScroll } = useScrollbarFade();
+  const fade = useScrollbarFadeRef();
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -56,8 +56,9 @@ export function PlanNav({ files, selected, onSelect }: PlanNavProps) {
       </div>
 
       <div
-        onScroll={handleScroll}
-        className={`flex-1 min-h-0 overflow-y-auto scrollbar-overlay-container ${scrollbarFadeClass(isScrolling)}`}
+        ref={fade.ref}
+        onScroll={fade.onScroll}
+        className="flex-1 min-h-0 overflow-y-auto scrollbar-overlay-container"
       >
         {filtered.length === 0 ? (
           <p className="px-3 py-2 text-[11px] text-ink/40 italic">

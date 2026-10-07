@@ -25,7 +25,7 @@
 
 import { AlertCircle, ArrowLeft, Loader2 } from 'lucide-preact';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
-import { useScrollbarFade, scrollbarFadeClass } from '@/client/hooks/ui/scrollbar-fade';
+import { useScrollbarFadeRef } from '@/client/hooks/ui/scrollbar-fade';
 import type { SessionPlanFile } from '@/shared/types/plan';
 
 interface PlanPageViewProps {
@@ -45,7 +45,7 @@ export function PlanPageView({
   truncated,
   onBack,
 }: PlanPageViewProps) {
-  const { isScrolling, handleScroll } = useScrollbarFade();
+  const fade = useScrollbarFadeRef();
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-paper">
@@ -66,8 +66,9 @@ export function PlanPageView({
       </div>
 
       <div
-        onScroll={handleScroll}
-        className={`flex-1 min-h-0 overflow-y-auto scrollbar-overlay-container ${scrollbarFadeClass(isScrolling)}`}
+        ref={fade.ref}
+        onScroll={fade.onScroll}
+        className="flex-1 min-h-0 overflow-y-auto scrollbar-overlay-container"
       >
         {error ? (
           <div className="flex flex-col items-center gap-2 px-6 py-8 text-center">

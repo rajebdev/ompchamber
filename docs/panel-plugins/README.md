@@ -17,7 +17,7 @@ Two packages are provided by the chamber itself:
 |---|---|
 | `@ompchamber/plugin-sdk` | The contract: `definePluginApp`, the slot and props types. |
 | `@ompchamber/plugin-sdk/app` | The same contract, as the runtime slot the build shims to. |
-| `@ompchamber/ui` | The hooks: `usePanelInfo`, `usePanelHost`, `useTheme`, `useSessionValue`, `useSessionState`, `useWorkspaceFile`, `useChamberFetch`, `useScrollbarFade` / `scrollbarFadeClass`, and the `PanelHostProvider` that scopes `usePanelHost`. |
+| `@ompchamber/ui` | The hooks: `usePanelInfo`, `usePanelHost`, `useTheme`, `useSessionValue`, `useSessionState`, `useWorkspaceFile`, `useChamberFetch`, `useScrollbarFadeRef`, and the `PanelHostProvider` that scopes `usePanelHost`. |
 | `@ompchamber/ui/components` | `Panel`, `Field`, `FieldList`, `TextAreaField`, `Button`, `Empty`, `Note`, and `Markdown` (rendered through the chamber's own pipeline). |
 
 They are published on npm (`@ompchamber/plugin-sdk`, `@ompchamber/ui`), and the
@@ -462,7 +462,7 @@ phone's drawer already carries every view.
 | `useSessionState(key, fallback)` | `[value, setValue, ready]` — per-session state of ANY JSON shape (a collapsed-phase map, a picked file). |
 | `useWorkspaceFile(relPath)` | `{ content, loading, error }` — a text file inside the active workspace. |
 | `useChamberFetch(url, opts?)` | `{ data, isLoading, error, reload }` — a direct read of the chamber's HTTP API: a poll that pauses while hidden, plus re-reads on the window events you name. |
-| `useScrollbarFade(delayMs?)` | `{ isScrolling, handleScroll }` — the overlay-scrollbar fade; pair it with `scrollbarFadeClass(isScrolling)`. |
+| `useScrollbarFadeRef(delayMs?)` | `{ ref, onScroll }` — attach to a `.scrollbar-overlay-container`; the fade class is toggled on the element, so a scroll does not re-render the rows it holds. |
 
 `usePanelHost` is a Preact context, not a global: the desktop stack keeps every
 built-in view mounted at once, so "the current panel's props" is not one

@@ -3,7 +3,7 @@ import { RefreshCw, Search } from 'lucide-preact';
 import type { FsNode } from '@/shared/types';
 import { GitRepoDropdown } from '@/client/components/workspace/file-explorer/GitRepoDropdown';
 import { FileTreeItem } from '@/client/components/workspace/file-explorer/TreeItem';
-import { useScrollbarFade, scrollbarFadeClass } from '@/client/hooks/ui/scrollbar-fade';
+import { useScrollbarFadeRef } from '@/client/hooks/ui/scrollbar-fade';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
 import { useFileListing } from '@/client/hooks/workspace/file-listing';
@@ -17,7 +17,7 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set(storedExpandedPaths));
   const { activeRepo, setActiveRepo } = useRepoScope(rootPath);
   const { repos, scanning: reposScanning, rescan: rescanRepos } = useRepoList(rootPath, enabled);
-  const { isScrolling, handleScroll } = useScrollbarFade();
+  const fade = useScrollbarFadeRef();
   const { fileMap: gitFileMap, folderMap: gitFolderMap, refreshGitStatus } = useGitStatus(rootPath, activeRepo, enabled);
 
   useEffect(() => {
@@ -170,7 +170,7 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
         </div>
       </div>
 
-      <div className={`flex-1 scrollbar-overlay-container p-2 font-mono text-[11px] text-ink/80 ${scrollbarFadeClass(isScrolling)}`} onContextMenu={(e) => e.preventDefault()} onScroll={handleScroll}>
+      <div ref={fade.ref} className="flex-1 scrollbar-overlay-container p-2 font-mono text-[11px] text-ink/80" onContextMenu={(e) => e.preventDefault()} onScroll={fade.onScroll}>
         {listing.isLoading && files.length === 0 ? (
           <div className="p-4 text-center text-ink/40">
             Loading files...

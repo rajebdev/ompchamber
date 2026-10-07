@@ -4,6 +4,7 @@ import { getDefaultFsRoot, resolveRoot } from '@/server/lib/fs/root';
 import { scopeToRepo } from '@/server/lib/fs/repo-scope';
 import { runRipgrep } from '@/server/lib/fs/ripgrep';
 import { createSseStream } from '@/server/lib/sse';
+import { MAX_SEARCH_RESULTS } from '@/shared/lib/fs/search-list';
 
 export interface SearchMatch {
   file: string;
@@ -142,10 +143,17 @@ export async function action({ request }: ActionFunctionArgs) {
       let pending = '';
       let count = 0;
       let stderrText = '';
+      // The cap is the route's, so the panel and the server describe the same
+      // limit; `truncated` is reported on `done` rather than as its own frame,
+      // since it is a property of the run as a whole.
+      let truncated = false;
+      const cap = new AbortController();
 
       try {
         const code = await runRipgrep(buildArgs(q, matchCase, wholeWord, useRegex, includeFiles), targetDir, {
+          signal: cap.signal,
           onStdout(chunk) {
+            if (truncated) return;
             pending += decoder.decode(chunk, { stream: true });
             const lines = pending.split('\n');
             pending = lines.pop() ?? '';
@@ -154,9 +162,17 @@ export async function action({ request }: ActionFunctionArgs) {
               const match = parseRgLine(line);
               if (match) batch.push(match);
             }
-            if (batch.length) {
-              count += batch.length;
-              send('matches', batch);
+            if (!batch.length) return;
+            // One batch may cross the cap; the overflow is dropped rather than
+            // overshooting it, so the number the notice prints is the number of
+            // hits the panel holds.
+            const room = MAX_SEARCH_RESULTS - count;
+            const accepted = batch.length > room ? batch.slice(0, room) : batch;
+            count += accepted.length;
+            if (accepted.length) send('matches', accepted);
+            if (accepted.length < batch.length) {
+              truncated = true;
+              cap.abort();
             }
           },
           onStderr(chunk) {
@@ -164,12 +180,13 @@ export async function action({ request }: ActionFunctionArgs) {
           },
         });
         // rg exit codes: 0 = matches, 1 = no matches, 2 = error (bad regex, IO failure).
-        if (code === 2) send('error', { error: stderrText.trim() || 'ripgrep failed' });
+        // A capped run was killed, so its signal code is not a failure.
+        if (code === 2 && !truncated) send('error', { error: stderrText.trim() || 'ripgrep failed' });
       } catch (error: unknown) {
         send('error', { error: String(error) });
       }
 
-      send('done', { count });
+      send('done', { count, truncated, limit: MAX_SEARCH_RESULTS });
       handlers.close();
     },
   });

@@ -1,24 +1,12 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
-import { CaseSensitive, Check, MoreHorizontal, Regex, Replace, ReplaceAll, Search, WholeWord } from 'lucide-preact';
-import { FileIcon } from '@/client/components/common/file-icon';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { useFetcher } from '@/client/lib/router/fetcher';
-import { GitRepoDropdown } from '@/client/components/workspace/file-explorer/GitRepoDropdown';
-import { SearchRow } from '@/client/components/workspace/search-panel/Row';
-import { useScrollbarFade, scrollbarFadeClass } from '@/client/hooks/ui/scrollbar-fade';
+import { SearchPanelBody } from '@/client/components/workspace/search-panel/Body';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { useRepoList, useRepoScope } from '@/client/hooks/workspace/repo-scope';
 import { useSearchStream } from '@/client/hooks/workspace/search-stream';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
-import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
-import { setSearchReveal } from '@/client/lib/search-reveal';
-import type { SearchResultItem } from '@/shared/types/fs';
-import type { FindOptions } from '@/shared/lib/code/editor/find';
 
 export function SearchPanel({ className = '', enabled = true, rootPath, onOpenFile }: { className?: string, enabled?: boolean, rootPath?: string, onOpenFile?: (file: unknown) => void }) {
-  // The rows highlight their line through Shiki; this is the subscription that
-  // re-renders them once the highlighter boots and when a grammar lands, or the
-  // fallback (plain escaped text) would stay on screen for the session.
-  useSyntaxReady();
   const [query, setQuery] = useSessionState<string>('search.query', '');
   const [replaceQuery, setReplaceQuery] = useSessionState<string>('search.replaceQuery', '');
 
@@ -33,18 +21,17 @@ export function SearchPanel({ className = '', enabled = true, rootPath, onOpenFi
   const { repos, scanning: reposScanning, rescan: rescanRepos } = useRepoList(rootPath, enabled);
 
   const menuRef = useRef<HTMLDivElement>(null);
-  const { isScrolling, handleScroll } = useScrollbarFade();
 
   const replaceFetcher = useFetcher<{ success: boolean, results: { file: string; status: string }[] }>();
 
   // The tree being searched: the workspace root plus the selected repo. Every
   // result is relative to it, so a switch must not keep the previous tree's
   // hits on screen — `useSearchStream` tags them with this scope.
-  const { results, isSearching, start: startSearch } = useSearchStream(`${rootPath ?? ''}\u0000${activeRepo}`);
+  const { results, isSearching, truncated, start: startSearch } = useSearchStream(`${rootPath ?? ''}\u0000${activeRepo}`);
 
   useOnClickOutside(menuRef, () => setShowMenu(false));
 
-  const triggerSearch = () => {
+  const triggerSearch = useCallback(() => {
     if (!enabled) return;
     if (query.trim().length > 2) {
       return startSearch({
@@ -57,20 +44,20 @@ export function SearchPanel({ className = '', enabled = true, rootPath, onOpenFi
         ...(activeRepo !== '.' ? { repo: activeRepo } : {})
       });
     }
-  };
+  }, [enabled, query, matchCase, wholeWord, useRegex, showIncludeField, includeFiles, rootPath, activeRepo, startSearch]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       triggerSearch();
     }, 300);
     return () => clearTimeout(timeoutId);
-  }, [query, matchCase, wholeWord, useRegex, includeFiles, showIncludeField, rootPath, enabled, activeRepo]);
+  }, [triggerSearch]);
 
-  const handleReplace = (file?: string) => {
+  const handleReplace = useCallback((file?: string) => {
     if (!query) return;
 
     // If no file specified, replace all currently found files
-    const targetFiles = file ? [file] : Object.keys(groupedResults);
+    const targetFiles = file ? [file] : Array.from(new Set(results.map((result) => result.file)));
 
     if (targetFiles.length === 0) return;
 
@@ -87,14 +74,14 @@ export function SearchPanel({ className = '', enabled = true, rootPath, onOpenFi
       },
       { method: 'POST', action: '/api/fs/replace' }
     );
-  };
+  }, [query, replaceQuery, matchCase, wholeWord, useRegex, results, rootPath, activeRepo, replaceFetcher]);
 
   // Trigger search again after replace completes
   useEffect(() => {
     if (replaceFetcher.state === 'idle' && replaceFetcher.data?.success) {
       triggerSearch();
     }
-  }, [replaceFetcher.state, replaceFetcher.data]);
+  }, [replaceFetcher.state, replaceFetcher.data, triggerSearch]);
 
   // NOTE: keep this early return below every hook — the desktop layout keeps
   // the panel mounted (hidden) while another view is active, and a hook count
@@ -107,192 +94,38 @@ export function SearchPanel({ className = '', enabled = true, rootPath, onOpenFi
     );
   }
 
-  const isLoading = isSearching;
-
-  const groupedResults = results.reduce((acc, curr) => {
-    if (!acc[curr.file]) acc[curr.file] = [];
-    acc[curr.file].push(curr);
-    return acc;
-  }, {} as Record<string, SearchResultItem[]>);
-
-  // The same flags the search ran with, so the editor's own matcher paints the
-  // identical set of occurrences once the file opens.
-  const options: FindOptions = { matchCase, wholeWord, isRegex: useRegex };
-
-  /**
-   * A row click opens the file AND points the editor at the hit.
-   *
-   * The reveal request is published before the open, so the editor that finds
-   * the file on screen already has it in hand — the tab entry cannot carry it,
-   * because that entry is persisted and a reload would re-fire a served jump.
-   */
-  const openResult = (result: SearchResultItem) => {
-    setSearchReveal({ path: result.file, line: Number(result.line), query, options });
-    onOpenFile?.({
-      path: result.file,
-      name: result.file.split('/').pop() || result.file,
-      root: rootPath,
-      repo: activeRepo,
-    });
-  };
-
   return (
-    <div className={`flex flex-col h-full bg-paper ${className}`}>
-      <div className="p-3 border-b border-ink/10 flex items-center justify-between">
-        <div className="flex items-center space-x-2 min-w-0">
-          <h2 className="text-xs font-semibold text-ink uppercase tracking-wider">Search</h2>
-          <GitRepoDropdown
-            rootPath={rootPath}
-            activeRepo={activeRepo}
-            onSelectRepo={setActiveRepo}
-            repos={repos}
-            scanning={reposScanning}
-            onRefreshRepos={rescanRepos}
-          />
-        </div>
-        <div className="relative" ref={menuRef}>
-          <button 
-            onClick={() => setShowMenu(!showMenu)}
-            className={`p-1 rounded hover:bg-ink/5 transition-colors ${showMenu || showIncludeField ? 'text-ink' : 'text-ink/40'}`}
-            title="Search Options"
-          >
-            <MoreHorizontal size={14} />
-          </button>
-          
-          {showMenu && (
-            <div className="absolute right-0 top-full mt-1 w-48 bg-paper border border-ink/10 rounded shadow-lg z-10 py-1">
-              <button 
-                onClick={() => {
-                  setShowIncludeField(!showIncludeField);
-                  if (showIncludeField) setIncludeFiles('');
-                  setShowMenu(false);
-                }}
-                className="w-full px-3 py-1.5 text-left text-xs text-ink hover:bg-ink/5 flex items-center justify-between"
-              >
-                <span>Files to include</span>
-                {showIncludeField && <Check size={12} className="text-ink/60" />}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-      
-      <div className="p-3 flex flex-col gap-2.5 border-b border-ink/10">
-        <div className="relative">
-          <div className="flex items-center border border-ink/20 rounded bg-paper focus-within:border-ink/40 focus-within:ring-1 focus-within:ring-ink/10 transition-all">
-            <Search size={14} className="ml-2 text-ink/40 flex-shrink-0" />
-            <input 
-              type="text" 
-              placeholder="Search" 
-              value={query}
-              onChange={(e) => setQuery(e.currentTarget.value)}
-              className="w-full bg-transparent border-none text-xs px-2 py-1.5 focus:outline-none text-ink placeholder-ink/30 min-w-0"
-            />
-            <div className="flex items-center space-x-0.5 pr-1 text-ink/40 flex-shrink-0">
-              <button 
-                onClick={() => setMatchCase(!matchCase)}
-                className={`p-1 rounded hover:text-ink ${matchCase ? 'bg-ink/10 text-ink' : 'hover:bg-ink/5'}`} 
-                title="Match Case"
-              >
-                <CaseSensitive size={14} />
-              </button>
-              <button 
-                onClick={() => setWholeWord(!wholeWord)}
-                className={`p-1 rounded hover:text-ink ${wholeWord ? 'bg-ink/10 text-ink' : 'hover:bg-ink/5'}`} 
-                title="Match Whole Word"
-              >
-                <WholeWord size={14} />
-              </button>
-              <button 
-                onClick={() => setUseRegex(!useRegex)}
-                className={`p-1 rounded hover:text-ink ${useRegex ? 'bg-ink/10 text-ink' : 'hover:bg-ink/5'}`} 
-                title="Use Regular Expression"
-              >
-                <Regex size={14} />
-              </button>
-            </div>
-          </div>
-        </div>
-        
-        <div className="relative flex items-center space-x-1">
-          <input 
-            type="text" 
-            placeholder="Replace"
-            value={replaceQuery}
-            onChange={(e) => setReplaceQuery(e.currentTarget.value)}
-            className="flex-1 min-w-0 bg-paper border border-ink/20 rounded text-xs px-2 py-1.5 focus:outline-none focus:border-ink/40 focus:ring-1 focus:ring-ink/10 transition-all text-ink placeholder-ink/30"
-          />
-          <button 
-            onClick={() => handleReplace()}
-            disabled={results.length === 0 || replaceFetcher.state !== 'idle'}
-            className="p-1.5 rounded border border-ink/20 text-ink/60 hover:text-ink hover:bg-ink/5 disabled:opacity-50 disabled:cursor-not-allowed bg-paper"
-            title="Replace All"
-          >
-            <ReplaceAll size={14} />
-          </button>
-        </div>
-
-        {showIncludeField && (
-          <div className="relative">
-            <input 
-              type="text" 
-              value={includeFiles}
-              onChange={(e) => setIncludeFiles(e.currentTarget.value)}
-              placeholder="Files to include (e.g. *.js, src/*)"
-              className="w-full bg-paper border border-ink/20 rounded text-xs px-2 py-1.5 focus:outline-none focus:border-ink/40 focus:ring-1 focus:ring-ink/10 transition-all text-ink placeholder-ink/40"
-            />
-          </div>
-        )}
-      </div>
-      
-      <div onScroll={handleScroll} className={`flex-1 scrollbar-overlay-container px-3 py-2 text-xs ${scrollbarFadeClass(isScrolling)}`}>
-
-        {isLoading && results.length === 0 ? (
-          <div className="text-ink/40 italic text-center py-4">Searching...</div>
-        ) : query.trim().length <= 2 ? (
-          <div className="text-ink/40 italic text-center py-4">Type at least 3 characters to search.</div>
-        ) : results.length === 0 ? (
-          <div className="text-ink/40 italic text-center py-4">No results found.</div>
-        ) : (
-          <div className="space-y-4">
-            {isLoading && (
-              <div className="text-ink/40 italic">Searching…</div>
-            )}
-            {Object.entries(groupedResults).map(([file, fileResults]) => (
-              <div key={file}>
-                <div className="font-semibold text-ink/80 flex items-center justify-between mb-1 group">
-                  <div className="flex items-center min-w-0">
-                    <FileIcon name={file} size={12} className="mr-1.5 flex-shrink-0" />
-                    <span className="truncate">{file}</span>
-                    <span className="ml-2 bg-ink/10 text-[9px] px-1.5 py-0.5 rounded-full flex-shrink-0">{fileResults.length}</span>
-                  </div>
-                  <button
-                    onClick={() => handleReplace(file)}
-                    disabled={replaceFetcher.state !== 'idle'}
-                    className="touch-visible opacity-0 group-hover:opacity-100 p-1 text-ink/40 hover:text-ink rounded hover:bg-ink/5 disabled:opacity-50 flex-shrink-0"
-                    title="Replace in this file"
-                  >
-                    <Replace size={12} />
-                  </button>
-                </div>
-                <div className="space-y-1">
-                  {fileResults.map((result, i) => (
-                    <SearchRow
-                      key={i}
-                      file={file}
-                      result={result}
-                      query={query}
-                      options={options}
-                      replacement={replaceQuery}
-                      onOpen={openResult}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+    <SearchPanelBody
+      className={className}
+      query={query}
+      setQuery={setQuery}
+      replaceQuery={replaceQuery}
+      setReplaceQuery={setReplaceQuery}
+      matchCase={matchCase}
+      setMatchCase={setMatchCase}
+      wholeWord={wholeWord}
+      setWholeWord={setWholeWord}
+      useRegex={useRegex}
+      setUseRegex={setUseRegex}
+      includeFiles={includeFiles}
+      setIncludeFiles={setIncludeFiles}
+      showIncludeField={showIncludeField}
+      setShowIncludeField={setShowIncludeField}
+      showMenu={showMenu}
+      setShowMenu={setShowMenu}
+      menuRef={menuRef}
+      rootPath={rootPath}
+      activeRepo={activeRepo}
+      setActiveRepo={setActiveRepo}
+      repos={repos}
+      reposScanning={reposScanning}
+      rescanRepos={rescanRepos}
+      results={results}
+      isSearching={isSearching}
+      truncated={truncated}
+      onOpenFile={onOpenFile}
+      handleReplace={handleReplace}
+      replaceBusy={replaceFetcher.state !== 'idle'}
+    />
   );
 }

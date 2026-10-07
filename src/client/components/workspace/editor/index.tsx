@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { TargetedKeyboardEvent } from 'preact';
 import { AlertTriangle, Loader2 } from 'lucide-preact';
 import { FileIcon } from '@/client/components/common/file-icon';
-import { useScrollbarFade } from '@/client/hooks/ui/scrollbar-fade';
 import { EditorTabs } from '@/client/components/workspace/editor/Tabs';
 import { EditorToolbar } from '@/client/components/workspace/editor/Toolbar';
 import { EDITOR_KEY_BINDINGS, isFindBarCommand, type EditorCommand } from '@/shared/lib/code/editor/keymap';
@@ -68,7 +67,6 @@ export function Editor({
   const [occurrences, setOccurrences] = useState<readonly TextRange[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { sessionId } = useSessionStateContext();
-  const { isScrolling, handleScroll } = useScrollbarFade();
   const surfaceRef = useRef<CodeSurfaceHandle | null>(null);
   const editorFontFamily = useEditorFontStack();
 
@@ -322,8 +320,6 @@ export function Editor({
                 paletteOpen={paletteOpen}
                 onClosePalette={() => setPaletteOpen(false)}
                 onRunCommand={runCommand}
-                onScroll={handleScroll}
-                isScrolling={isScrolling}
                 wordWrap={wordWrap}
                 zoomLevel={zoomLevel}
                 editorFontFamily={editorFontFamily}

@@ -30,8 +30,14 @@ const SHEBANG_MAGIC = [0x23, 0x21] as const;
 export interface RipgrepSink {
   /** Raw stdout, chunk by chunk, as rg flushes it. */
   onStdout: (chunk: Uint8Array) => void;
-  /** Raw stderr, chunk by chunk. */
+  /** Raw stderr, chunk by chunk, as rg flushes it. */
   onStderr: (chunk: Uint8Array) => void;
+  /**
+   * Fires once the walk must stop — the search route's result cap. The child is
+   * killed, because leaving it walking a tree nobody is reading would keep the
+   * whole scan's cost while discarding its output.
+   */
+  signal?: AbortSignal;
 }
 
 let resolvedBinary: string | null | undefined;
@@ -83,6 +89,11 @@ export async function runRipgrep(args: string[], cwd: string, sink: RipgrepSink)
         stdout: 'pipe',
         stderr: 'pipe',
       });
+      // A run that has hit the route's cap is killed rather than drained: its
+      // remaining output is discarded, so leaving it walking the tree would
+      // spend the whole scan's cost for nothing.
+      const onAbort = () => proc.kill();
+      sink.signal?.addEventListener('abort', onAbort, { once: true });
       // `pipeTo`, not `for await`: the repo's lib set has no
       // `ReadableStream[Symbol.asyncIterator]`, and this is the same shape
       // `lib/omp/rpc/lines.ts` uses to drain a Bun child.
@@ -99,14 +110,21 @@ export async function runRipgrep(args: string[], cwd: string, sink: RipgrepSink)
         );
       // Drained together: rg filling one pipe while the other is unread would
       // otherwise block it against a full buffer.
-      await Promise.all([pump(proc.stdout, sink.onStdout), pump(proc.stderr, sink.onStderr)]);
-      return await proc.exited;
+      try {
+        await Promise.all([pump(proc.stdout, sink.onStdout), pump(proc.stderr, sink.onStderr)]);
+        return await proc.exited;
+      } finally {
+        sink.signal?.removeEventListener('abort', onAbort);
+      }
     } catch {
       // Spawn refused (deleted, not executable) — the WASI build still answers.
     }
   }
 
-  // WASI preopens map the guest "." onto the real target directory.
+  // WASI preopens map the guest "." onto the real target directory. The WASI
+  // build runs the whole walk inside this process and exposes no way to cancel
+  // it, so an abort here only stops the CALLER from using the output — the
+  // sink's own cap check is what keeps the frames bounded.
   const preopens = { '.': cwd };
   const { code } = await ripgrep(args, {
     preopens,

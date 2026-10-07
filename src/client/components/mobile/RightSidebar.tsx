@@ -1,10 +1,10 @@
-import { useState } from 'preact/hooks';
 import { Suspense } from 'preact/compat';
 import { X } from 'lucide-preact';
 import { usePanelCatalog, type PanelBodyProps } from '@/client/components/workspace/plugin-panel/resolve';
 import { PanelHostProvider } from '@ompchamber/ui';
 import { useGitStatus } from '@/client/hooks/workspace/git-status';
 import { useResolvedRepo } from '@/client/hooks/workspace/repo-scope';
+import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { PluginMark } from '@/client/components/settings/categories/panel-plugins/PluginMark';
 
 interface MobileRightSidebarProps {
@@ -35,7 +35,13 @@ export function MobileRightSidebar({
   onOpenFile,
   onClose
 }: MobileRightSidebarProps) {
-  const [activeTab, setActiveTab] = useState<string>('files');
+  // The tab is persisted, and that is a performance decision as much as a
+  // convenience one: the drawer UNMOUNTS when it closes, so whichever view is
+  // selected is the one that mounts and runs its own fetch next time. Coming
+  // back on the Search view re-ran a query that can hold thousands of hits, and
+  // the user never asked for a search. Restoring the tab they left also keeps
+  // the phone and the desktop on the same view.
+  const [activeTab, setActiveTab] = useSessionState<string>('layout.mobileRightPanel', 'files');
   // ONE catalog, the same one the desktop bar reads: the built-in views and the
   // installed plugins are one list, in one order, so the phone cannot become a
   // second list that drifts from the desktop's. A view switched off is absent

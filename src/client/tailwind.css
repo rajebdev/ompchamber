@@ -96,8 +96,8 @@
 
 /* Generic overlay scrollbar for any scrollable panel: the thumb fades out
  * when scrolled to rest and reappears while scrolling (same behavior as the
- * chat timeline). Pair with overflow-y-[overlay] and the useScrollbarFade
- * hook or an onScroll-driven isScrolling flag. */
+ * chat timeline). Pair with overflow-y-[overlay] and the useScrollbarFadeRef
+ * hook, which toggles the class pair on the element itself. */
 .scrollbar-overlay-container {
   overflow-y: overlay;
 }

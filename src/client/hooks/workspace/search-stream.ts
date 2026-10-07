@@ -5,6 +5,8 @@ import { readSseStream } from '@/shared/lib/chat/read-sse';
 interface SearchStreamState {
   results: SearchResultItem[];
   isSearching: boolean;
+  /** The run stopped at the server's cap; `results` is not the whole answer. */
+  truncated: boolean;
 }
 
 /**
@@ -25,7 +27,7 @@ interface SearchStreamState {
 export function useSearchStream(scope: string): SearchStreamState & {
   start: (body: Record<string, string>) => Promise<void>;
 } {
-  const [state, setState] = useState<{ scope: string; results: SearchResultItem[] }>({ scope, results: [] });
+  const [state, setState] = useState<{ scope: string; results: SearchResultItem[]; truncated: boolean }>({ scope, results: [], truncated: false });
   const [isSearching, setIsSearching] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const aliveRef = useRef(true);
@@ -47,7 +49,7 @@ export function useSearchStream(scope: string): SearchStreamState & {
     abortRef.current = controller;
     const requested = scopeRef.current;
 
-    setState({ scope: requested, results: [] });
+    setState({ scope: requested, results: [], truncated: false });
     setIsSearching(true);
     try {
       const response = await fetch('/api/fs/search', {
@@ -60,14 +62,27 @@ export function useSearchStream(scope: string): SearchStreamState & {
       await readSseStream(
         response,
         (event, data) => {
-          if (event !== 'matches') return;
           // A run superseded by a workspace switch is no longer this panel's.
           if (scopeRef.current !== requested) return;
+          if (event === 'done') {
+            // The server reports whether it stopped at its cap. It travels on
+            // `done` rather than as a separate frame so a client that missed it
+            // cannot leave the notice up from a previous run.
+            let truncated = false;
+            try {
+              truncated = JSON.parse(data)?.truncated === true;
+            } catch {
+              // A malformed summary leaves the flag off; the results are still shown.
+            }
+            setState(prev => (prev.scope === requested ? { ...prev, truncated } : prev));
+            return;
+          }
+          if (event !== 'matches') return;
           try {
             const parsed = JSON.parse(data);
             if (Array.isArray(parsed)) {
               setState(prev => prev.scope === requested
-                ? { scope: requested, results: [...prev.results, ...parsed] }
+                ? { ...prev, results: [...prev.results, ...parsed] }
                 : prev);
             }
           } catch {
@@ -90,6 +105,7 @@ export function useSearchStream(scope: string): SearchStreamState & {
     results: state.scope === scope ? state.results : [],
     // A run in flight for another scope is not searching THIS one.
     isSearching: isSearching && state.scope === scope,
+    truncated: state.scope === scope && state.truncated,
     start,
   };
 }

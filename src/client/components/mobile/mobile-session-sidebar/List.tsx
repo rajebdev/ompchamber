@@ -1,5 +1,5 @@
 import { MobileSessionCategory } from '@/client/components/mobile/mobile-session-sidebar/Item';
-import { scrollbarFadeClass } from '@/client/hooks/ui/scrollbar-fade';
+import { useScrollbarFadeRef } from '@/client/hooks/ui/scrollbar-fade';
 import type { WorkspaceFolderData } from '@/shared/types';
 
 interface MobileSessionListProps {
@@ -8,8 +8,6 @@ interface MobileSessionListProps {
   expandedFolders: Record<number, boolean>;
   showArchived: boolean;
   sessionStatus: Record<string, 'stream' | 'finish' | 'abort'>;
-  isScrolling: boolean;
-  onScroll: () => void;
   onSelectSession: (id: number | string) => void;
   onNewSessionForFolder: (folderId: number) => void;
   onToggleFolder: (folderId: number) => void;
@@ -23,17 +21,19 @@ export function MobileSessionList({
   expandedFolders,
   showArchived,
   sessionStatus,
-  isScrolling,
-  onScroll,
   onSelectSession,
   onNewSessionForFolder,
   onToggleFolder,
   onToast,
 }: MobileSessionListProps) {
+  // The list owns the scroller, so it owns the fade class — driving it from the
+  // parent re-rendered every session row on every scroll event.
+  const fade = useScrollbarFadeRef();
   return (
     <div 
-      onScroll={onScroll}
-      className={`flex-1 scrollbar-overlay-container p-3 ${scrollbarFadeClass(isScrolling)}`}
+      ref={fade.ref}
+      onScroll={fade.onScroll}
+      className="flex-1 scrollbar-overlay-container p-3"
     >
       {folders.length === 0 ? (
         <div className="text-center py-12 text-xs text-ink/50 italic">

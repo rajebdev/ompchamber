@@ -4,7 +4,7 @@ import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 import { CodeSurface, type CodeSurfaceHandle } from '@/client/components/common/code-surface';
 import { ImageViewer } from '@/client/components/common/image-viewer';
 import { EditorHeader } from '@/client/components/mobile/mobile-right-sidebar/Header';
-import { useScrollbarFade, scrollbarFadeClass } from '@/client/hooks/ui/scrollbar-fade';
+import { useScrollbarFadeRef } from '@/client/hooks/ui/scrollbar-fade';
 import { useFileEditor } from '@/client/hooks/editor/use-file-editor';
 import { useSearchRevealTarget } from '@/client/hooks/editor/use-search-reveal';
 import {
@@ -32,7 +32,7 @@ export function MobileFullEditor({ file, onClose, onFileSaved }: MobileFullEdito
   const [isPreview, setIsPreview] = useState(file.name.endsWith('.md'));
   const [fontSize, setFontSize] = useState(EDITOR_DEFAULT_FONT_SIZE);
   const [wordWrap, setWordWrap] = useState(true);
-  const { isScrolling, handleScroll } = useScrollbarFade();
+  const fade = useScrollbarFadeRef();
   const editorFontFamily = useEditorFontStack();
 
   const isMd = file.name.endsWith('.md');
@@ -94,7 +94,7 @@ export function MobileFullEditor({ file, onClose, onFileSaved }: MobileFullEdito
       {editor.isImage && editor.imageUrl ? (
         <ImageViewer src={editor.imageUrl} name={file.name} className="flex-1 min-h-0" />
       ) : (
-        <div onScroll={handleScroll} className={`flex-1 min-h-0 overflow-auto relative bg-paper text-ink select-text ${scrollbarFadeClass(isScrolling)}`}>
+        <div ref={fade.ref} onScroll={fade.onScroll} className="flex-1 min-h-0 overflow-auto relative bg-paper text-ink select-text">
           {editor.isLoading ? (
             <div className="flex items-center justify-center h-full text-ink/40 text-xs gap-2">
               <Loader2 size={14} className="animate-spin" />

@@ -3,7 +3,7 @@ import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 import { CodeSurface, type CodeSurfaceHandle } from '@/client/components/common/code-surface';
 import { FindWidget } from '@/client/components/workspace/editor/FindWidget';
 import { CommandPalette } from '@/client/components/workspace/editor/CommandPalette';
-import { scrollbarFadeClass } from '@/client/hooks/ui/scrollbar-fade';
+import { useScrollbarFadeRef } from '@/client/hooks/ui/scrollbar-fade';
 import type { UseFileEditorResult } from '@/client/hooks/editor/use-file-editor';
 import type { EditorFindState } from '@/client/hooks/editor/use-editor-find';
 import { EDITOR_LINE_HEIGHT } from '@/shared/lib/code/editor/typography';
@@ -18,8 +18,6 @@ interface FileDocumentProps {
   paletteOpen: boolean;
   onClosePalette: () => void;
   onRunCommand: (command: EditorCommand) => void;
-  onScroll: () => void;
-  isScrolling: boolean;
   wordWrap: boolean;
   zoomLevel: number;
   editorFontFamily: string;
@@ -53,8 +51,6 @@ export function FileDocument({
   paletteOpen,
   onClosePalette,
   onRunCommand,
-  onScroll,
-  isScrolling,
   wordWrap,
   zoomLevel,
   editorFontFamily,
@@ -64,12 +60,14 @@ export function FileDocument({
   revealActive,
 }: FileDocumentProps) {
   const isMd = activeFile.name.endsWith('.md');
+  // The document owns its scroller, so it owns the fade class.
+  const fade = useScrollbarFadeRef();
 
   return (
     <div className="relative flex-1 min-h-0 flex flex-col">
       {find.open ? <FindWidget find={find} /> : null}
       {paletteOpen ? <CommandPalette onRun={onRunCommand} onClose={onClosePalette} /> : null}
-      <div onScroll={onScroll} className={`flex-1 overflow-auto bg-paper flex ${scrollbarFadeClass(isScrolling)}`}>
+      <div ref={fade.ref} onScroll={fade.onScroll} className="flex-1 overflow-auto bg-paper flex">
         {isMd && isPreview ? (
           // No `prose` wrapper: markdown is styled by `.prose-content` alone
           // (the same system the chat timeline uses). The typography plugin

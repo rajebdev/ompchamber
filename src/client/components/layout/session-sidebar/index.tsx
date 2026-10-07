@@ -10,7 +10,6 @@ import { SessionSidebarSessionList } from '@/client/components/layout/session-si
 import { SessionListSkeleton } from '@/client/components/layout/session-sidebar/Skeleton';
 import { ToastStack } from '@/client/components/common/ToastStack';
 import { spawnCwdForNewSession, triggerSessionPrewarm } from '@/shared/lib/omp/session/prewarm';
-import { useScrollbarFade } from '@/client/hooks/ui/scrollbar-fade';
 import { useChamberEvent } from '@/client/hooks/ui/window-event';
 import { useToasts } from '@/client/hooks/ui/toasts';
 import { useUpdates } from '@/client/hooks/ui/updates';
@@ -53,8 +52,6 @@ export function SessionSidebar({ className = '', onClose, appSettings = {}, stre
 
   // Sidebar inline states
   const [isSearchVisible, setIsSearchVisible] = useState(false);
-
-  const { isScrolling, handleScroll } = useScrollbarFade();
 
   // The popup's "Update now" hands the run over instead of starting its own: the
   // About modal is where an update has always been driven from and it owns the
@@ -142,8 +139,6 @@ export function SessionSidebar({ className = '', onClose, appSettings = {}, stre
             searchQuery={searchQuery}
             showArchived={showArchived}
             sessionStatus={sessionStatus}
-            isScrolling={isScrolling}
-            onScroll={handleScroll}
             onSelectSession={handleSelectSession}
             onNewSessionForFolder={handleNewSessionForFolder}
             onToast={pushToast}

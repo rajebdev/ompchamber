@@ -206,30 +206,60 @@ export function useWorkspaceFile(relativePath: string): WorkspaceFile {
 }
 
 /**
- * Fade-in/out state for an overlay scrollbar.
+ * Fade-in/out for an overlay scrollbar, without a re-render.
  *
  * The thumb is visible while the user scrolls and fades shortly after they
- * stop. `scrollbarFadeClass` is the matching class pair, exported beside this so
- * every fading container in the app applies the same two names.
+ * stop. The flag is a CSS class, so it is toggled on the element through a ref
+ * rather than held in state: a scroll event on a long list would otherwise
+ * re-render every row it contains.
  */
-export function useScrollbarFade(delayMs = 600): { isScrolling: boolean; handleScroll: () => void } {
-  const [isScrolling, setIsScrolling] = useState(false);
-  const timerRef = useRef<number | undefined>(undefined);
+export interface ScrollbarFadeProps {
+  /** Attach to the `.scrollbar-overlay-container` element. */
+  ref: (element: HTMLElement | null) => void;
+  onScroll: () => void;
+}
 
-  const handleScroll = useCallback(() => {
-    setIsScrolling(true);
+export function useScrollbarFadeRef(delayMs = 600): ScrollbarFadeProps {
+  const elementRef = useRef<HTMLElement | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const ref = useCallback((element: HTMLElement | null) => {
+    const previous = elementRef.current;
+    if (previous && previous !== element) {
+      previous.classList.remove('scrollbar-overlay-scrolling');
+      previous.classList.add('scrollbar-overlay');
+    }
+    elementRef.current = element;
+    if (element) {
+      element.classList.add('scrollbar-overlay');
+      element.classList.remove('scrollbar-overlay-scrolling');
+    }
+  }, []);
+
+  const onScroll = useCallback(() => {
+    const element = elementRef.current;
+    if (!element) return;
+    element.classList.add('scrollbar-overlay-scrolling');
+    element.classList.remove('scrollbar-overlay');
     clearTimeout(timerRef.current);
-    timerRef.current = window.setTimeout(() => setIsScrolling(false), delayMs);
+    timerRef.current = setTimeout(() => {
+      timerRef.current = undefined;
+      const current = elementRef.current;
+      if (!current) return;
+      current.classList.remove('scrollbar-overlay-scrolling');
+      current.classList.add('scrollbar-overlay');
+    }, delayMs);
   }, [delayMs]);
 
   // The fade timer outlives a scroll still cooling down at unmount: clear it so
-  // it cannot call setIsScrolling on a dead component.
-  useEffect(() => () => clearTimeout(timerRef.current), []);
+  // it cannot touch a detached element.
+  useEffect(
+    () => () => {
+      clearTimeout(timerRef.current);
+      timerRef.current = undefined;
+    },
+    [],
+  );
 
-  return { isScrolling, handleScroll };
-}
-
-/** The overlay-scrollbar class pair driven by `isScrolling`. */
-export function scrollbarFadeClass(isScrolling: boolean): string {
-  return isScrolling ? 'scrollbar-overlay-scrolling' : 'scrollbar-overlay';
+  return { ref, onScroll };
 }
