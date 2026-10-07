@@ -9,92 +9,20 @@
  * The host object exposes the wrapper's runtime state; behavior is unchanged.
  */
 
-import { RpcCommandError, RpcCommandTimeoutError, type RpcProcess } from '@/server/lib/omp/rpc/process';
-import { AGENT_BUSY_MESSAGE, AGENT_BUSY_REFUSAL_RE, AWAITING_AGENT_START_TIMEOUT_MS, GET_STATE_TIMEOUT_MS, IMAGE_BEARING_COMMANDS, PASSTHROUGH_COMMANDS, PROMPT_ACK_TIMEOUT_MS, RESTARTING_MESSAGE, SESSION_BUSY_MESSAGE, WebRpcError, toImageContents, type AgentEvent, type RpcSessionState, validateAgentImages } from '@/server/lib/omp/rpc/constants';
+import { RpcCommandError, RpcCommandTimeoutError } from '@/server/lib/omp/rpc/process';
+import { AGENT_BUSY_MESSAGE, AGENT_BUSY_REFUSAL_RE, AWAITING_AGENT_START_TIMEOUT_MS, GET_STATE_TIMEOUT_MS, IMAGE_BEARING_COMMANDS, PASSTHROUGH_COMMANDS, PROMPT_ACK_TIMEOUT_MS, RESTARTING_MESSAGE, STEER_ACK_TIMEOUT_MS, WebRpcError, toImageContents, type RpcSessionState, validateAgentImages } from '@/server/lib/omp/rpc/constants';
 import { clearSessionFileCaches } from '@/server/lib/omp/session/files';
 import { scheduleQueueDelivery } from '@/server/lib/queue/delivery.server';
-import { clearStreamStatus, markStreamStatus, type SessionRunModel } from '@/shared/lib/omp/session/stream-state.server';
-import { buildWebState, type WebStateHost } from '@/server/lib/omp/rpc/web-state';
-import { isTuiOnlySlashCommand, tuiOnlyCommandNotice } from '@/shared/lib/chat/composer/tui-only';
+import { clearStreamStatus, markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
+import { buildWebState } from '@/server/lib/omp/rpc/web-state';
+import {
+  refuseTuiOnlyPrompt,
+  refuseWhenBlockedOnDialog,
+  settleCommandTimeout,
+  type SessionCommandHost,
+} from '@/server/lib/omp/rpc/session-command-guards';
 
-/** Runtime surface AgentSessionWrapper exposes to the command dispatcher. */
-export interface SessionCommandHost extends WebStateHost {
-  restarting: boolean;
-  /** Model serving this session's latest run, persisted on the stream row when a
-   *  prompt is dispatched so the generating indicator can name it. */
-  runModel: SessionRunModel | null;
-  proc: RpcProcess;
-  isAlive(): boolean;
-  /** Anything a reset would destroy: the running turn, a compaction, a shell
-   *  command, or live subagents. A timed-out command against a busy session is
-   *  queued behind that work, not evidence the child is wedged. */
-  isBusy(): boolean;
-  /** Real omp session id (empty before the first get_state). */
-  sessionId: string;
-  emit(event: AgentEvent): void;
-  /** One dispatch throat (same surface the wrapper's own send uses). */
-  send(command: Record<string, unknown>): Promise<unknown>;
-  /** Idle clock for this child (see `idle-reaper.ts`). */
-  idle: { reset(force?: boolean): void };
-  /** Forget a pending ask/approval dialog once its response is sent. */
-  resolvePendingUiDialog(id: string): void;
-  /** Arm the deadline watchdog for a dispatch whose turn never opened. Optional
-   *  so a test host can omit it; the real wrapper always implements it. */
-  armAgentStartWatchdog?(): void;
-  destroyAndWait(): Promise<void>;
-}
-
-/** Decide a command timeout's consequence. omp runs RPC handlers one at a
- *  time, so a late `get_state`/`prompt` ack is usually queued behind the
- *  running turn (or behind a subagent's spawn): resetting that child would
- *  throw away a live turn and every subagent it owns. Only a session that is
- *  demonstrably idle AND unresponsive is reclaimed.
- *
- *  Never throws `session_unresponsive` for a busy session, and never suggests a
- *  retry of a command whose acceptance is unknown. */
-async function settleCommandTimeout(host: SessionCommandHost): Promise<never> {
-  if (host.isBusy()) throw new WebRpcError(SESSION_BUSY_MESSAGE, 'session_busy');
-  await host.destroyAndWait();
-  throw new WebRpcError('The OMP session stopped responding and was reset.', 'session_unresponsive');
-}
-
-/**
- * Refuse a prompt that invokes a command omp implements only in its TUI, and
- * report it the way omp reports a real command result.
- *
- * This is the SERVER half of the guard in
- * `client/hooks/chat/timeline/tui-only-guard.ts`. It exists because one prompt
- * path never passes through the composer: the follow-up queue's auto-delivery
- * calls `session.send({ type: 'prompt' })` directly from
- * `lib/queue/delivery.server.ts`. A `/plan` queued before a run would otherwise
- * be delivered to the model as literal text once the run ends.
- *
- * The refusal is framed as a real command result — a `command_output` notice
- * plus, for a non-streaming prompt, the `agentInvoked:false` ack — so the
- * client's existing fold renders the notice and settles the optimistic spinner
- * with no new protocol.
- *
- * `streaming` is the caller's own knowledge of whether a turn is running: a
- * steer of a refused command must not clear the flags of the turn it was aimed
- * at (omp runs `session.steer()` with no slash handling at all, so a steer of
- * `/plan` is exactly as meaningless as a fresh one).
- *
- * Returns true when the prompt was refused (the caller must not dispatch).
- */
-function refuseTuiOnlyPrompt(host: SessionCommandHost, message: unknown, streaming: boolean): boolean {
-  if (typeof message !== 'string' || !isTuiOnlySlashCommand(message)) return false;
-  host.emit({ type: 'command_output', text: tuiOnlyCommandNotice(message) });
-  if (!streaming) {
-    host.promptRunning = false;
-    host.awaitingAgentStart = false;
-    host.awaitingAgentStartDeadline = 0;
-    host.emit({ type: 'prompt_result', agentInvoked: false });
-    // Nothing ran, so the queue may hold the next item — give it the same
-    // delivery window a real consumed builtin or a run end would.
-    scheduleQueueDelivery(host);
-  }
-  return true;
-}
+export type { SessionCommandHost } from '@/server/lib/omp/rpc/session-command-guards';
 
 export async function dispatchSessionCommand(host: SessionCommandHost, command: Record<string, unknown>): Promise<unknown> {
   if (host.restarting) throw new WebRpcError(RESTARTING_MESSAGE, 'session_restarting');
@@ -216,6 +144,11 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
     }
 
     case 'abort':
+      // Refused rather than waited on: a pending dialog parks omp's command
+      // loop, so this ack would never arrive (see the guard). Stop's own
+      // escalation (`force_reset`) is the escape hatch and is NOT guarded —
+      // destroying the child must stay reachable from a blocked session.
+      refuseWhenBlockedOnDialog(host);
       await host.proc.sendCommand({ type: 'abort' });
       host.promptRunning = false;
       host.awaitingAgentStart = false;
@@ -324,16 +257,32 @@ export async function dispatchSessionCommand(host: SessionCommandHost, command: 
         throw new WebRpcError('The session is idle — start a prompt first.', 'session_idle');
       }
       if (refuseTuiOnlyPrompt(host, command.message, true)) return null;
+      // Bounded, but never reset: omp queues the message before it parks on a
+      // pending dialog, so a late ack means "delivered, ack held" — destroying
+      // the child would discard the very steer the user is waiting on. The
+      // caller gets `rpc_command_timeout` and the message still runs.
       await host.proc.sendCommand({
         type,
         message: command.message as string,
         ...(toImageContents(command.images) ? { images: toImageContents(command.images) } : {}),
-      });
+      }, STEER_ACK_TIMEOUT_MS);
       return null;
     }
 
     default: {
       if (PASSTHROUGH_COMMANDS.has(type)) {
+        // `abort_and_prompt` is the client's steer (Ctrl+Enter / Send Now) and
+        // waits on an ack like `abort` does, so it takes the same two rules: a
+        // pending dialog refuses it up front, and a late ack times out instead
+        // of hanging the request. `abort_and_prompt` is deliberately NOT reset
+        // on timeout — omp aborts the old turn and queues the new prompt before
+        // it acks, so the work is already done and destroying the child would
+        // only throw it away.
+        if (type === 'abort_and_prompt') {
+          refuseWhenBlockedOnDialog(host);
+          const result = await host.proc.sendCommand(command as { type: string }, STEER_ACK_TIMEOUT_MS);
+          return result ?? null;
+        }
         const result: unknown = await host.proc.sendCommand(command as { type: string });
         if (type === 'set_thinking_level') clearSessionFileCaches();
         return result ?? null;

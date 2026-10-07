@@ -68,7 +68,7 @@ async function mountActions(isGenerating: boolean, stashed: ComposerModelPick | 
       enqueueMessage: () => {},
       removeMessage: () => {},
       executeSend: async () => ({ ok: true, busy: false }),
-      steerOmpAgent: async () => {},
+      steerOmpAgent: async () => ({ ok: true, busy: false }),
       ompAgent: agent,
       abortControllerRef: { current: null },
       setGenerating: () => {},

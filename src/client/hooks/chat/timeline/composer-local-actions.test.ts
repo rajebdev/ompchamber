@@ -255,9 +255,10 @@ describe('createQueueActions', () => {
       stopHoldRef: { current: true },
       isGenerating: false,
       isOmpSession: true,
-      steerOmpAgent: async () => { log.push('steer'); },
+      steerOmpAgent: async () => { log.push('steer'); return { ok: true, busy: false }; },
       abortControllerRef: { current: null },
       setGenerating: (v) => { log.push(`generating:${v}`); },
+      reportActionError: (message) => { log.push(`error:${message}`); },
       executeSend: async (text, _attachments, options) => {
         log.push(`send:${text}:${options?.model?.modelId ?? 'none'}`);
         return { ok: true, busy: false };
@@ -299,6 +300,38 @@ describe('createQueueActions', () => {
     await actions.handleSendNowQueueItem(queuedRow('q1', 'steer me'));
     expect(log).toEqual(['remove:q1', 'steer']);
     expect(abortControllerRef.current).toBeNull();
+  });
+
+  test('a refused steer is reported — the row is already gone', async () => {
+    // The row is removed before the steer goes out (the user asked it to leave
+    // the queue), so a refusal with no report would leave the item gone and
+    // nothing running, with nothing on screen to say why.
+    const { actions, log } = harness({
+      isGenerating: true,
+      isOmpSession: true,
+      steerOmpAgent: async () => ({ ok: false, busy: false, error: 'waiting on an approval dialog' }),
+    });
+    await actions.handleSendNowQueueItem(queuedRow('q1', 'steer me'));
+    expect(log).toEqual(['remove:q1', 'error:Steer failed: waiting on an approval dialog']);
+  });
+
+  test('a successful steer reports nothing', async () => {
+    const { actions, log } = harness({ isGenerating: true, isOmpSession: true });
+    await actions.handleSendNowQueueItem(queuedRow('q1', 'steer me'));
+    expect(log).toEqual(['remove:q1', 'steer']);
+  });
+
+  test('an UNACKNOWLEDGED steer is a warning, not a failure', async () => {
+    // omp queues a steer before it parks on a blocking dialog, so a late ack
+    // means the message is running — reporting it as "failed" would push the
+    // user to resend something already in flight.
+    const { actions, log } = harness({
+      isGenerating: true,
+      isOmpSession: true,
+      steerOmpAgent: async () => ({ ok: false, busy: false, uncertain: true, error: 'not acknowledged in time — it may still be running' }),
+    });
+    await actions.handleSendNowQueueItem(queuedRow('q1', 'steer me'));
+    expect(log).toEqual(['remove:q1', 'error:Steer not acknowledged in time — it may still be running']);
   });
 
   test('send-now during a run on a legacy session aborts, stops the run, then sends', async () => {

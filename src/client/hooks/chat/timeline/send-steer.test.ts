@@ -103,7 +103,7 @@ function makeAgent(overrides: Partial<AgentCalls> = {}): AgentRecorder {
     },
     sendInterruptAndReply: async (text: string, images: unknown) => {
       calls.interrupts.push({ text, images });
-      return calls.sendPromptOk;
+      return { ok: calls.sendPromptOk, busy: false };
     },
     setModel: async (provider: string, modelId: string) => {
       calls.models.push([provider, modelId]);

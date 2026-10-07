@@ -92,7 +92,21 @@ export const PROMPT_ACK_TIMEOUT_MS = 30_000;
 export const RELOAD_PLUGINS_TIMEOUT_MS = 10_000;
 export const NON_TERMINAL_CONTINUATION_GRACE_MS = 2_000;
 export const AWAITING_AGENT_START_TIMEOUT_MS = 10_000;
+// A `steer`/`follow_up`/`abort_and_prompt` ack. omp answers one in ~2 ms while
+// the turn streams, so this only bounds a child that stopped answering. It is
+// deliberately NOT routed through `settleCommandTimeout`: omp QUEUES the steer
+// before it acks (measured — a blocked child answered 3 ms after its dialog was
+// dismissed and then ran the steer), so a late ack is not proof the message was
+// lost, and destroying the child would discard it.
+export const STEER_ACK_TIMEOUT_MS = 15_000;
 export const RESTARTING_MESSAGE = 'This session is restarting — retry in a moment.';
+// A pending ask/approval dialog blocks omp's whole command loop: `abort` and
+// `abort_and_prompt` never ack while one is up (measured against omp 18.7.0 —
+// both timed out at 15-20 s with a `select` dialog pending, and the steer ran
+// the moment the dialog was answered). Refusing up front turns a hang into an
+// instruction the user can act on.
+export const SESSION_BLOCKED_ON_DIALOG_MESSAGE =
+  'This session is waiting on an approval dialog — answer or dismiss it first.';
 // A command timeout is not proof an omp child is wedged: omp runs RPC handlers
 // one at a time, so a slow `get_state`/`prompt` ack can simply be queued behind
 // the running turn. That session keeps its process — only a session that is

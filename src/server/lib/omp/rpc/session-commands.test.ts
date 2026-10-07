@@ -193,23 +193,6 @@ describe('prompt', () => {
   });
 });
 
-describe('steer and follow_up', () => {
-  test('an idle session refuses both', async () => {
-    const h = makeHarness();
-    for (const type of ['steer', 'follow_up']) {
-      const error = await rejectionOf(dispatchSessionCommand(h.host, { type, message: 'hi' }));
-      expect((error as WebRpcError).code).toBe('session_idle');
-    }
-    expect(h.calls).toEqual([]);
-  });
-
-  test('a running session forwards the message', async () => {
-    const h = makeHarness({ isRunning: () => true });
-    await dispatchSessionCommand(h.host, { type: 'steer', message: 'stop that' });
-    expect(h.calls).toEqual([{ type: 'steer', message: 'stop that' }]);
-  });
-});
-
 describe('argument mapping', () => {
   test('set_session_name trims and refuses a blank name', async () => {
     const h = makeHarness();

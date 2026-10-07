@@ -74,13 +74,12 @@ export interface ChatTimelineSendDeps {
 }
 
 export interface ChatTimelineSendResult {
-  steerOmpAgent: (text: string, attachments: Attachment[]) => Promise<void>;
+  /** Steer the running turn; resolves with the outcome so a refusal can be
+   *  reported (the composer is cleared before the request goes out). */
+  steerOmpAgent: (text: string, attachments: Attachment[]) => Promise<PromptDispatchResult>;
   /** `model` re-applies a queued item's snapshot before the prompt runs
-   *  (set_model / set_thinking_level RPC + prompt access mode).
-   *
-   *  Resolves with the dispatch outcome. `busy: true` means omp REFUSED the
-   *  prompt mid-turn and nothing was delivered — the caller queues the message
-   *  rather than losing it. `ok: true` means the turn is running. */
+   *  (set_model / set_thinking_level RPC + prompt access mode). `busy: true`
+   *  means omp REFUSED the prompt mid-turn — the caller queues it instead. */
   executeSend: (
     text: string,
     attachments: Attachment[],
@@ -132,14 +131,16 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
     return { promptText, images: images.length ? images : undefined };
   }, []);
 
-  // Steer the running omp agent with a fresh prompt (interrupt-and-reply).
-  const steerOmpAgent = useCallback(async (text: string, attachments: Attachment[]) => {
+  // Steer the running omp agent (interrupt-and-reply). Returns the outcome so
+  // the caller can report a refusal: the composer is cleared before this runs.
+  const steerOmpAgent = useCallback(async (text: string, attachments: Attachment[]): Promise<PromptDispatchResult> => {
     // A steer IS a new prompt: a pick made during the interrupted turn belongs
     // to it, so it is pushed before the interrupt-and-reply starts the turn.
     await flushDeferredPick(ompAgent, deferredComposerPickRef);
     const { promptText, images } = await prepareDeliverable(text, attachments);
-    const ok = await ompAgent.sendInterruptAndReply(promptText, images);
-    if (!ok) setInputValue(text);
+    const result = await ompAgent.sendInterruptAndReply(promptText, images);
+    if (!result.ok) setInputValue(text);
+    return result;
   }, [ompAgent, prepareDeliverable, setInputValue, deferredComposerPickRef]);
 
   const executeSend = useCallback(async (

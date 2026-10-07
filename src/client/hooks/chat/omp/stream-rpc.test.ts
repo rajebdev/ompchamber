@@ -131,35 +131,23 @@ describe('useOmpAgent RPC commands', () => {
   const SID = 'sess/1';
   const ROUTE = `/api/agent/${encodeURIComponent(SID)}`;
 
-  test('follow-up posts its body and reports refusal', async () => {
+  test('interrupt-and-reply posts abort_and_prompt and reports the refusal', async () => {
     const calls = stubFetch({ [ROUTE]: { success: true } });
     const probe = mountAgent(SID);
     await probe.mount();
     await settle();
 
-    expect(await probe.handle().sendFollowUp('next', [{ type: 'image', data: 'A', mimeType: 'image/png' }])).toBe(true);
-    expect(calls.at(-1)).toEqual({
-      url: ROUTE, method: 'POST',
-      body: { type: 'follow_up', message: 'next', images: [{ type: 'image', data: 'A', mimeType: 'image/png' }] },
-    });
-
-    stubFetch({ [ROUTE]: { error: 'nope' } });
-    expect(await probe.handle().sendFollowUp('again')).toBe(false);
-  });
-
-  test('interrupt-and-reply posts abort_and_prompt and releases the guard on failure', async () => {
-    const calls = stubFetch({ [ROUTE]: { success: true } });
-    const probe = mountAgent(SID);
-    await probe.mount();
-    await settle();
-
-    expect(await probe.handle().sendInterruptAndReply('pivot')).toBe(true);
+    expect(await probe.handle().sendInterruptAndReply('pivot')).toEqual({ ok: true, busy: false });
     expect(calls.at(-1)?.body).toEqual({ type: 'abort_and_prompt', message: 'pivot' });
 
-    stubFetch({ [ROUTE]: { error: 'busy' } });
-    expect(await probe.handle().sendInterruptAndReply('pivot')).toBe(false);
+    // A refusal resolves with the server's own reason instead of a bare false:
+    // the composer is already cleared, so the caller has to be able to say why.
+    stubFetch({ [ROUTE]: { error: 'The session is waiting on an approval dialog — answer or dismiss it first.' } });
+    const refused = await probe.handle().sendInterruptAndReply('pivot');
+    expect(refused.ok).toBe(false);
+    expect(refused.error).toContain('approval dialog');
+    // The interrupt guard must be released, or every later agent_end is swallowed.
     expect(probe.handle().isGenerating).toBe(false);
-    expect(probe.handle().error).toBe('busy');
   });
 
   test('model, thinking level and dialog answers post their RPC bodies', async () => {

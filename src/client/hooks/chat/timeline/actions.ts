@@ -20,6 +20,7 @@ import { applyComposerPick, consumeComposerPick, stashComposerPick, type Deferre
 import { dispatchBtwCommand } from '@/client/hooks/chat/btw/intercept';
 import { blockTuiOnlySend } from '@/client/hooks/chat/timeline/tui-only-guard';
 import { createQueueActions } from '@/client/hooks/chat/timeline/queue-actions';
+import { reportSteerOutcome } from '@/shared/lib/chat/timeline/steer-report';
 import { createRewindActions } from '@/client/hooks/chat/timeline/rewind-actions';
 import { prepareQueuedAttachments } from '@/shared/lib/chat/attachments';
 
@@ -44,7 +45,7 @@ export interface ChatTimelineActionsDeps {
   enqueueMessage: (item: Omit<QueuedMessage, 'id'>) => void;
   removeMessage: (id: string) => void;
   executeSend: (text: string, attachments: Attachment[], options?: { model?: QueuedMessageModel | null }) => Promise<PromptDispatchResult>;
-  steerOmpAgent: (text: string, attachments: Attachment[]) => Promise<void>;
+  steerOmpAgent: (text: string, attachments: Attachment[]) => Promise<PromptDispatchResult>;
   ompAgent: OmpAgentHandle;
   abortControllerRef: { current: AbortController | null };
   setGenerating: (v: boolean) => void;
@@ -173,7 +174,7 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
         // Explicit steering while a run is active.
         setInputValue('');
         if (isOmpSession) {
-          await steerOmpAgent(textToSend, attachments);
+          reportSteerOutcome(await steerOmpAgent(textToSend, attachments), reportActionError);
         } else {
           if (abortControllerRef.current) {
             abortControllerRef.current.abort();
@@ -189,7 +190,7 @@ export function useChatTimelineActions(deps: ChatTimelineActionsDeps): ChatTimel
       const behavior = appSettings.omp_chamber_settings?.followUpBehavior ?? appSettings.followUpBehavior ?? 'queue';
       if (behavior === 'steering' && isOmpSession) {
         setInputValue('');
-        await steerOmpAgent(textToSend, attachments);
+        reportSteerOutcome(await steerOmpAgent(textToSend, attachments), reportActionError);
         return;
       }
       // Both modes: the item is stored server-side (`queued_messages`) and the

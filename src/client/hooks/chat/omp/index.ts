@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import type { AgentImage, ChatMessageData, OmpAgentCallbacks, OmpAgentHandle, OmpAgentState } from '@/shared/types';
+import type { AgentImage, ChatMessageData, OmpAgentCallbacks, OmpAgentHandle, OmpAgentState, PromptDispatchResult } from '@/shared/types';
 import type { ExtensionUiDialogRequest } from '@/shared/types/omp/agent';
 import { type ToolResultRecord, useOmpAgentStream } from '@/client/hooks/chat/omp/stream';
 import { useOmpPromptSender } from '@/client/hooks/chat/omp/prompt-send';
 import { stopAgentSession } from '@/shared/lib/chat/omp/abort';
+
+/**
+ * Client-side cap on a steer request, above the server's own `STEER_ACK_TIMEOUT_MS`
+ * (15 s) so the server's own answer — a refusal naming a pending dialog, or
+ * omp's bounded ack — normally wins the race and the timeout here only catches
+ * a request the server never answered at all (a dropped connection, a wedged
+ * listener). Kept above the server's cap deliberately: this is the last resort,
+ * not the mechanism.
+ */
+const STEER_REQUEST_TIMEOUT_MS = 25_000;
 
 /**
  * Live omp agent bridge for the chamber chat (real mode, MOCK=false). Mirrors
@@ -125,15 +135,26 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
 
   /** Interrupt the running agent and immediately start the message as a fresh
    *  prompt (abort_and_prompt). Keeps the run alive until the new agent_start
-   *  arrives via the interruptPending guard. */
+   *  arrives via the interruptPending guard.
+   *
+   *  A pending ask/approval dialog is refused by the SERVER
+   *  (`session_blocked_on_dialog`): omp parks its whole command loop on one, so
+   *  this request would otherwise hang until the user answered the dialog. The
+   *  fetch carries its own abort signal for the same reason — a server that
+   *  cannot answer must not leave the caller waiting forever. */
   const sendInterruptAndReply = useCallback(async (
     message: string,
     images?: AgentImage[],
-  ): Promise<boolean> => {
+  ): Promise<PromptDispatchResult> => {
     const sid = sessionIdRef.current;
-    if (!sid) return false;
+    if (!sid) return { ok: false, busy: false, error: 'No live session' };
     interruptPendingRef.current = true;
     setState((prev) => ({ ...prev, isGenerating: true, error: null }));
+    const fail = (error: string): PromptDispatchResult => {
+      interruptPendingRef.current = false;
+      setState((prev) => ({ ...prev, isGenerating: false, error }));
+      return { ok: false, busy: false, error };
+    };
     try {
       const res = await fetch(`/api/agent/${encodeURIComponent(sid)}`, {
         method: 'POST',
@@ -143,47 +164,21 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
           message,
           ...(images?.length ? { images } : {}),
         }),
+        signal: AbortSignal.timeout(STEER_REQUEST_TIMEOUT_MS),
       });
-      const body = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
-      if (!res.ok || body.error) {
-        interruptPendingRef.current = false;
-        setState((prev) => ({ ...prev, isGenerating: false, error: body.error ?? `HTTP ${res.status}` }));
-        return false;
-      }
-      return true;
+      const body = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string; code?: string };
+      if (!res.ok || body.error) return fail(body.error ?? `HTTP ${res.status}`);
+      return { ok: true, busy: false };
     } catch (e) {
-      interruptPendingRef.current = false;
-      setState((prev) => ({ ...prev, isGenerating: false, error: e instanceof Error ? e.message : String(e) }));
-      return false;
-    }
-  }, []);
-
-  /** Enqueue a follow-up message the agent processes after the current turn. */
-  const sendFollowUp = useCallback(async (
-    message: string,
-    images?: AgentImage[],
-  ): Promise<boolean> => {
-    const sid = sessionIdRef.current;
-    if (!sid) return false;
-    try {
-      const res = await fetch(`/api/agent/${encodeURIComponent(sid)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'follow_up',
-          message,
-          ...(images?.length ? { images } : {}),
-        }),
-      });
-      const body = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
-      if (!res.ok || body.error) {
-        setState((prev) => ({ ...prev, error: body.error ?? `HTTP ${res.status}` }));
-        return false;
-      }
-      return true;
-    } catch (e) {
-      setState((prev) => ({ ...prev, error: e instanceof Error ? e.message : String(e) }));
-      return false;
+      // A timeout is the one outcome that is NOT proof of loss: the server
+      // bounded omp's ack, and omp queues the steer before it parks, so the
+      // message may well be running. Flagged rather than called a failure.
+      const timedOut = e instanceof DOMException && e.name === 'TimeoutError';
+      const error = timedOut
+        ? 'not acknowledged in time — it may still be running'
+        : e instanceof Error ? e.message : String(e);
+      const result = fail(error);
+      return timedOut ? { ...result, uncertain: true } : result;
     }
   }, []);
 
@@ -240,7 +235,6 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     sendPrompt,
     sendNewPrompt,
     sendInterruptAndReply,
-    sendFollowUp,
     abort,
     setModel,
     setThinkingLevel,

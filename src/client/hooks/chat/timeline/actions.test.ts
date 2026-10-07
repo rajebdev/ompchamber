@@ -110,7 +110,7 @@ function makeRecorded(overrides: Partial<ChatTimelineActionsDeps> = {}): Recorde
       sends.push({ text, attachments });
       return { ok: true, busy: false };
     },
-    steerOmpAgent: async () => {},
+    steerOmpAgent: async () => ({ ok: true, busy: false }),
     ompAgent: {} as ChatTimelineActionsDeps['ompAgent'],
     abortControllerRef: { current: null },
     setGenerating: () => {},

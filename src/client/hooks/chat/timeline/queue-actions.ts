@@ -16,6 +16,7 @@
 import type { Dispatch, SetStateAction } from 'preact/compat';
 import type { Attachment, PromptDispatchResult, QueuedMessageModel } from '@/shared/types';
 import type { QueuedMessage } from '@/client/components/workspace/chat-timeline/QueueList';
+import { reportSteerOutcome } from '@/shared/lib/chat/timeline/steer-report';
 
 export interface QueueActionsDeps {
   setInputValue: (v: string) => void;
@@ -25,9 +26,11 @@ export interface QueueActionsDeps {
   stopHoldRef: { current: boolean };
   isGenerating: boolean;
   isOmpSession: boolean;
-  steerOmpAgent: (text: string, attachments: Attachment[]) => Promise<void>;
+  steerOmpAgent: (text: string, attachments: Attachment[]) => Promise<PromptDispatchResult>;
   abortControllerRef: { current: AbortController | null };
   setGenerating: (v: boolean) => void;
+  /** Surface a delivery that failed (a refused steer removes the row first). */
+  reportActionError: (message: string) => void;
   executeSend: (
     text: string,
     attachments: Attachment[],
@@ -51,6 +54,7 @@ export function createQueueActions(deps: QueueActionsDeps): QueueActions {
     steerOmpAgent,
     abortControllerRef,
     setGenerating,
+    reportActionError,
     executeSend,
   } = deps;
   return {
@@ -64,14 +68,18 @@ export function createQueueActions(deps: QueueActionsDeps): QueueActions {
     },
 
     /** Deliver one row now, ahead of the queue. Explicit delivery also lifts
-     *  the Stop hold, so the auto-process may resume after this run ends. */
+     *  the Stop hold, so the auto-process may resume after this run ends.
+     *
+     *  The row is removed BEFORE the steer goes out (the user asked for it to
+     *  leave the queue), so a refusal has to be reported — otherwise the item
+     *  is gone and nothing ran. */
     handleSendNowQueueItem: async (item) => {
       stopHoldRef.current = false;
       removeMessage(item.id);
 
       if (isGenerating) {
         if (isOmpSession) {
-          void steerOmpAgent(item.text, item.attachments);
+          reportSteerOutcome(await steerOmpAgent(item.text, item.attachments), reportActionError);
         } else {
           if (abortControllerRef.current) {
             abortControllerRef.current.abort();

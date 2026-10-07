@@ -115,6 +115,11 @@ export interface PromptDispatchResult {
   busy: boolean;
   /** Server-supplied reason, when one was returned. */
   error?: string;
+  /** The command was SENT but its outcome is unknown — omp queues a steer
+   *  before it parks on a blocking dialog, so an unacknowledged steer may well
+   *  be running. Reported as a warning, never as a failure: calling it one
+   *  would tell the user their message was lost when it was not. */
+  uncertain?: boolean;
 }
 
 /** Command surface returned by useOmpAgent — the live omp session handle the
@@ -140,10 +145,21 @@ export interface OmpAgentHandle extends OmpAgentState {
       modes?: { plan: boolean; goal: boolean } | null;
     },
   ) => Promise<{ sessionId: string; model: { provider: string; modelId: string } | null } | null>;
-  /** Abort the running turn and immediately send `message` as a fresh prompt. */
-  sendInterruptAndReply: (message: string, images?: AgentImage[]) => Promise<boolean>;
-  /** Enqueue `message` for the agent to process after the current turn. */
-  sendFollowUp: (message: string, images?: AgentImage[]) => Promise<boolean>;
+  /** Interrupt the running agent and immediately start the message as a fresh
+   *  prompt (abort_and_prompt). Keeps the run alive until the new agent_start
+   *  arrives via the interruptPending guard.
+   *
+   *  Resolves with a reason instead of a bare boolean: a steer that did not go
+   *  out has to SAY so. `sendInterruptAndReply` clears the composer before it
+   *  awaits (the draft is restored on failure), so a silent failure looked like
+   *  a delivered message.
+   *
+   *  Two of omp's answers are not failures of the child. A pending ask/approval
+   *  dialog parks omp's command loop, so the server refuses up front
+   *  (`session_blocked_on_dialog`) rather than hanging the request; a bounded
+   *  ack (`rpc_command_timeout`) means the message was QUEUED but the ack was
+   *  held — it still runs, so the caller must not treat it as lost. */
+  sendInterruptAndReply: (message: string, images?: AgentImage[]) => Promise<PromptDispatchResult>;
   abort: () => Promise<void>;
   setModel: (provider: string, modelId: string) => Promise<void>;
   setThinkingLevel: (level: string) => Promise<void>;

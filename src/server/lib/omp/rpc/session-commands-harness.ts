@@ -20,6 +20,8 @@ export interface CommandHarness {
   events: AgentEvent[];
   respond: (next: (command: Record<string, unknown>) => unknown) => void;
   counters: { idleResets: number; watchdogs: number; destroys: number; resolvedDialogs: string[] };
+  /** Blocking dialogs the host reports. Push one to simulate a parked child. */
+  pendingDialogs: unknown[];
 }
 
 export function makeHarness(overrides: Record<string, unknown> = {}): CommandHarness {
@@ -27,6 +29,7 @@ export function makeHarness(overrides: Record<string, unknown> = {}): CommandHar
   const frames: Record<string, unknown>[] = [];
   const events: AgentEvent[] = [];
   const counters = { idleResets: 0, watchdogs: 0, destroys: 0, resolvedDialogs: [] as string[] };
+  const pendingDialogs: unknown[] = [];
   let handler: (command: Record<string, unknown>) => unknown = () => undefined;
   const proc = {
     // Deferred by a microtask so a handler that THROWS rejects the returned
@@ -60,6 +63,7 @@ export function makeHarness(overrides: Record<string, unknown> = {}): CommandHar
     send: async () => undefined,
     idle: { reset: () => { counters.idleResets += 1; } },
     resolvePendingUiDialog: (id: string) => { counters.resolvedDialogs.push(id); },
+    getPendingUiDialogs: () => pendingDialogs,
     armAgentStartWatchdog: () => { counters.watchdogs += 1; },
     destroyAndWait: async () => { counters.destroys += 1; },
     adoptSessionIdentity: () => {},
@@ -72,6 +76,7 @@ export function makeHarness(overrides: Record<string, unknown> = {}): CommandHar
     events,
     respond: (next: (command: Record<string, unknown>) => unknown) => { handler = next; },
     counters,
+    pendingDialogs,
   };
 }
 
