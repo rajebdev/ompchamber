@@ -4,8 +4,7 @@
  */
 
 /**
- * Folds one omp RPC frame into the session wrapper's runtime state, and runs
- * the settle-time side effects a terminal run triggers.
+ * Folds one omp RPC frame into the session wrapper's runtime state.
  *
  * Mirrors the client's `foldAgentEvent` (shared/lib/chat/omp/agent-events.ts):
  * the same shape of problem — one frame, many state flags — solved the same way
@@ -16,7 +15,8 @@
  * in a multi-turn run, `agent_end` is the only frame that knows whether the run
  * is terminal, and a `prompt` response that failed must clear the same flags a
  * successful settle does — a missed clear strands the session as "running" and
- * the idle reclaim can never take it back.
+ * the idle reclaim can never take it back. What a terminal `agent_end` TRIGGERS
+ * lives in `terminal-settle.ts`.
  */
 
 import { clearSessionFileCaches } from '@/server/lib/omp/session/files';
@@ -25,13 +25,13 @@ import {
   triggerAutoSessionTitle,
   type AutoTitleHost,
 } from '@/server/lib/omp/session/auto-title.server';
-import { scheduleQueueDelivery, type QueueDeliveryHost } from '@/server/lib/queue/delivery.server';
-import { clearStreamStatus, loadStreamStatuses, markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
+import { type QueueDeliveryHost } from '@/server/lib/queue/delivery.server';
+import { clearStreamStatus, markStreamStatus } from '@/shared/lib/omp/session/stream-state.server';
 import { releasesStreamRowOnPromptResult } from '@/shared/lib/omp/session/stream-heal.server';
-import { driveGoalAfterTurn } from '@/server/lib/omp/session/goal-driver.server';
 import { emitRealtimeSignal } from '@/server/lib/realtime/signals.server';
 import { publishSidebarStructure } from '@/server/lib/realtime/topics.server';
 import { NON_TERMINAL_CONTINUATION_GRACE_MS, type AgentEvent } from '@/server/lib/omp/rpc/constants';
+import { settleTerminalRun } from '@/server/lib/omp/rpc/terminal-settle';
 import { parseChamberMarker } from '@/shared/lib/omp/mode/markers';
 import type { ModeMirror } from '@/server/lib/omp/rpc/mode-mirror';
 
@@ -72,30 +72,96 @@ export interface FrameFoldResult {
   suppressForward: boolean;
 }
 
-/** True when the ending turn was a user abort rather than a natural stop. */
-function endedAborted(messages: unknown): boolean {
-  return (
-    Array.isArray(messages) &&
-    messages.some((entry) => {
-      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
-      return (entry as Record<string, unknown>).stopReason === 'aborted';
-    })
-  );
+/**
+ * The `message_end` branch: the one place a title can be derived from the
+ * conversation's OPENING turn.
+ *
+ * `agent_start` is too early, and that is not an implementation detail but a
+ * property of omp's event order: the agent loop pushes `agent_start` BEFORE the
+ * turn opens, and the user's message rides `emitInputMessages` inside that turn.
+ * Measured on omp 18.3.0: the user message lands ~120ms after `agent_start`, so
+ * a `/rename` fired there reads `messageCount: 0`, builds an empty title
+ * context, and omp answers "Could not generate a session title".
+ * `message_start` is equally too early — the message is appended to the agent's
+ * state on `message_end`, so only here does `get_state` report it.
+ *
+ * The latch makes a later user message (a queued steer) a no-op, and a session
+ * that resumed an existing conversation is ineligible from the start. The
+ * terminal `agent_end` retries if this attempt produced nothing.
+ */
+function handleMessageEnd(host: SessionFrameHost, event: AgentEvent): void {
+  const message = event.message as Record<string, unknown> | undefined;
+  if (message?.role === 'user') void triggerAutoSessionTitle(host, 'opening');
 }
 
 /**
- * Write the terminal stream badge from the ending turn's own stopReason.
+ * The `tool_execution_end` branch: the panels catch up per tool call, not only
+ * at the turn boundary.
  *
- * The `abort` command already wrote `abort` at dispatch time, but the
- * `agent_end` frame arrives later and previously flattened it to `finish`.
- * Re-check the current row and only upgrade `stream` rows, so a `finish`
- * written here can never clobber a newer run's live `stream`/`abort`.
+ * A completed tool call may have touched the working tree, and a long run can go
+ * many minutes between turn boundaries — the git/files panels were blind until
+ * `agent_end`. Emitting here lets the publish pipeline's own coalescing (120ms
+ * per topic, identical-payload dedupe) collapse a burst of tool calls into one
+ * re-read; only SUBSCRIBED topics are resolved, so a tab with no git/files panel
+ * pays nothing. The session's data topics (todos, telemetry, queue) stay
+ * turn-boundary-only on purpose: their resolvers are the expensive ones
+ * (whole-transcript parses/scans).
  */
-async function markEndStatus(sessionId: string, messages: unknown): Promise<void> {
-  if (!sessionId) return;
-  const current = await loadStreamStatuses();
-  if (current[sessionId] !== 'stream') return;
-  await markStreamStatus(sessionId, endedAborted(messages) ? 'abort' : 'finish');
+function handleToolExecutionEnd(host: SessionFrameHost): void {
+  emitRealtimeSignal('workspace-dirty');
+  // The transcript appended too — the sidebar's `updated_at` (its ordering and
+  // time-ago labels) is read off a scan that only re-runs on this signal, and
+  // the sessions watcher deliberately ignores transcript appends. The coalesce +
+  // dedupe above bound the cost the same way.
+  publishSidebarStructure();
+  // The session's DATA moved as well: a tool result is a transcript entry, so
+  // the raw-messages paged view and the session-data topics re-read. Their
+  // resolvers are the expensive ones (whole-transcript parses), but the
+  // coalesce + dedupe bound them the same way, and a payload that did not change
+  // publishes nothing.
+  if (host.sessionId) emitRealtimeSignal('session-data-dirty', host.sessionId);
+}
+
+/**
+ * The `prompt_result` branch: whether this frame may reach the client.
+ *
+ * omp answers EVERY prompt that opened no turn on this frame, and most of them
+ * are the chamber's own background work: the auto-title `/rename` (fired right
+ * after the first settled user message), a Plan/Goal mode toggle,
+ * `/reload-plugins`, `rename-with-ai`, a peer instance's command. Forwarding one
+ * tells the CLIENT that its prompt opened no turn; its fold then settles the
+ * optimistic turn — blanking the docked generating indicator, releasing the
+ * `stream` mark the sidebar's spinner hangs on and dropping the optimistic user
+ * mark, so the turn's own echo is appended beside the bubble it stood for.
+ * Measured on a fresh session (omp 18.7.0): the indicator died ~450 ms into a
+ * 20 s run, and the first prompt was stored twice in the chamber's copy of the
+ * conversation.
+ *
+ * The RUN is the attribution, and it covers every sender: while the operator's
+ * turn is streaming, a prompt that opened no turn cannot be the settle of the
+ * turn they are watching. The auto-title request window is not sufficient on its
+ * own — it is armed around the `/rename`, and omp answers it in the same tick
+ * (~3 ms), so a frame that won that race reached the client regardless (the leak
+ * this replaces). Its flags are left alone too, exactly as the dispatcher leaves
+ * a non-owning command's (see `session-commands.ts`): the live run owns them.
+ *
+ * A builtin the operator typed while the agent is IDLE still passes through
+ * untouched — the case this frame exists for.
+ */
+function handlePromptResult(host: SessionFrameHost, event: AgentEvent): boolean {
+  if (event.agentInvoked === false && host.streaming) return true;
+  host.promptRunning = false;
+  host.awaitingAgentStart = false;
+  host.awaitingAgentStartDeadline = 0;
+  // The PROMPT ACK never says `agentInvoked`; this frame is what does, and it
+  // arrives after it. A `false` here is omp's own word that the prompt opened no
+  // turn — so the `stream` row the dispatch wrote must go. That row's owner is
+  // ALIVE, so `healStaleStreamStatuses` can never reach it and this frame is the
+  // only thing that can: without it the spinner turns forever. See
+  // `releasesStreamRowOnPromptResult` for the two senders and the `!streaming`
+  // guard.
+  if (releasesStreamRowOnPromptResult(event, host)) void clearStreamStatus(host.sessionId);
+  return false;
 }
 
 /** Apply one frame to the wrapper's runtime state. */
@@ -118,9 +184,9 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
       if (host.sessionId) void markStreamStatus(host.sessionId, 'stream');
       // Belt for a switch omp did not announce: a fallback that landed between
       // runs leaves `runModel` (and the row the indicator names the run by) on
-      // the pre-fallback model. `model_changed` covers the switches omp
-      // reports; this makes the run's own opening frame re-read the truth
-      // before the first token, so the indicator cannot inherit a stale pair.
+      // the pre-fallback model. `model_changed` covers the switches omp reports;
+      // this makes the run's own opening frame re-read the truth before the
+      // first token, so the indicator cannot inherit a stale pair.
       host.syncRunModel();
       break;
     case 'turn_start':
@@ -135,57 +201,19 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
       // status sits there (upsert overwrites any terminal badge).
       if (host.sessionId) void markStreamStatus(host.sessionId, 'stream');
       break;
-    case 'message_end': {
-      // A settled USER message is the earliest point at which the transcript
-      // carries the conversation's opening intent, so it is the earliest a
-      // title can be derived from it.
-      //
-      // `agent_start` is too early, and that is not an implementation detail
-      // but a property of omp's event order: the agent loop pushes
-      // `agent_start` BEFORE the turn opens, and the user's message rides
-      // `emitInputMessages` inside that turn. Measured on omp 18.3.0: the
-      // user message lands ~120ms after `agent_start`, so a `/rename` fired
-      // there reads `messageCount: 0`, builds an empty title context, and omp
-      // answers "Could not generate a session title". `message_start` is
-      // equally too early — the message is appended to the agent's state on
-      // `message_end`, so only here does `get_state` report it.
-      //
-      // The latch makes a later user message (a queued steer) a no-op, and a
-      // session that resumed an existing conversation is ineligible from the
-      // start. `agent_end` below retries if this attempt produced nothing.
-      const message = event.message as Record<string, unknown> | undefined;
-      if (message?.role === 'user') void triggerAutoSessionTitle(host, 'opening');
+    case 'message_end':
+      handleMessageEnd(host, event);
       break;
-    }
-    case 'tool_execution_end': {
-      // A completed tool call may have touched the working tree, and a long run
-      // can go many minutes between turn boundaries — the git/files panels were
-      // blind until `agent_end`. Emit here and let the publish pipeline's own
-      // coalescing (120ms per topic, identical-payload dedupe) collapse a burst
-      // of tool calls into one re-read; only SUBSCRIBED topics are resolved, so
-      // a tab with no git/files panel pays nothing. The session's data topics
-      // (todos, telemetry, queue) stay turn-boundary-only on purpose: their
-      // resolvers are the expensive ones (whole-transcript parses/scans).
-      emitRealtimeSignal('workspace-dirty');
-      // The transcript appended too — the sidebar's `updated_at` (its ordering
-      // and time-ago labels) is read off a scan that only re-runs on this
-      // signal, and the sessions watcher deliberately ignores transcript
-      // appends. The coalesce + dedupe above bound the cost the same way.
-      publishSidebarStructure();
-      // The session's DATA moved as well: a tool result is a transcript entry,
-      // so the raw-messages paged view and the session-data topics re-read.
-      // Their resolvers are the expensive ones (whole-transcript parses), but
-      // the coalesce + dedupe bound them the same way, and a payload that did
-      // not change publishes nothing.
-      if (host.sessionId) emitRealtimeSignal('session-data-dirty', host.sessionId);
+    case 'tool_execution_end':
+      handleToolExecutionEnd(host);
       break;
-    }
     // `turn_end` is deliberately NOT handled here: a multi-turn run emits it for
     // EVERY turn (verified against omp 18.2.8: agent_start → turn_start →
     // turn_end('toolUse') → turn_start → turn_end('stop') → agent_end) and the
     // frame carries no isTerminal field, so no turn-level stopReason can be read
     // as "the run is over". The terminal badge is written from `agent_end`
-    // alone (markEndStatus), which is the only frame that knows.
+    // alone (`markEndStatus` in terminal-settle.ts), which is the only frame that
+    // knows.
     case 'agent_end':
       if (event.isTerminal !== false) {
         host.streaming = false;
@@ -194,82 +222,13 @@ export function foldSessionFrame(host: SessionFrameHost, event: AgentEvent): Fra
         host.awaitingAgentStartDeadline = 0;
         host.continuationGraceUntil = 0;
         clearSessionFileCaches();
-        const aborted = endedAborted(event.messages);
-        if (host.sessionId) void markEndStatus(host.sessionId, event.messages);
-        // Fallback for the early attempt: the first user message fires `/rename`
-        // before the turn runs, and that attempt can come back empty (a provider
-        // error, a timeout, a child that went away, or the tiny model
-        // declining). The run end is the last moment a title can still be
-        // derived from this conversation's OPENING turn, so retry here.
-        //
-        // An aborted run still skips: the operator stopped the turn, and the
-        // next completed run is a better moment than a half-run transcript.
-        if (!aborted) void triggerAutoSessionTitle(host, 'settle');
-        // The goal loop's decision point: an independent auditor is asked about
-        // this turn, and the chamber then either opens the next one (through the
-        // child's own hidden-message path) or records why it stopped. Only a
-        // settled, non-aborted run is auditable — an aborted one has no report.
-        if (!aborted) void driveGoalAfterTurn({ host, messages: event.messages });
-        // The run truly ended — the server, not the browser, decides whether a
-        // queued follow-up goes out next. A user-aborted run holds the queue
-        // (stop-all semantics): the next run end or an explicit send picks it up.
-        if (!aborted) scheduleQueueDelivery(host);
-        // A run's work may have touched files and certainly advanced usage;
-        // the realtime layer republishes whichever workspace topics are
-        // actually watched (see `republishWatchedWorkspaceTopics`).
-        emitRealtimeSignal('workspace-dirty');
-        // The run's DATA moved too: a `todo` call commits its snapshot to the
-        // transcript, and the plan/telemetry/queue topics are read off the same
-        // session. Published at the turn boundary rather than per tool for the
-        // same reason the workspace topics are: one run emits many, and only
-        // the watched topics are re-read.
-        if (host.sessionId) emitRealtimeSignal('session-data-dirty', host.sessionId);
-        // The final answer appended after the last tool call; the sidebar's
-        // ordering and time-ago labels catch up on it the same way.
-        publishSidebarStructure();
+        settleTerminalRun(host, event.messages);
       } else {
         host.continuationGraceUntil = Date.now() + NON_TERMINAL_CONTINUATION_GRACE_MS;
       }
       break;
     case 'prompt_result':
-      // omp answers EVERY prompt that opened no turn on this frame, and most of
-      // them are the chamber's own background work: the auto-title `/rename`
-      // (fired right after the first settled user message), a Plan/Goal mode
-      // toggle, `/reload-plugins`, `rename-with-ai`, a peer instance's command.
-      // Forwarding one tells the CLIENT that its prompt opened no turn; its fold
-      // then settles the optimistic turn — blanking the docked generating
-      // indicator, releasing the `stream` mark the sidebar's spinner hangs on
-      // and dropping the optimistic user mark, so the turn's own echo is
-      // appended beside the bubble it stood for. Measured on a fresh session
-      // (omp 18.7.0): the indicator died ~450 ms into a 20 s run, and the first
-      // prompt was stored twice in the chamber's copy of the conversation.
-      //
-      // The RUN is the attribution, and it covers every sender: while the
-      // operator's turn is streaming, a prompt that opened no turn cannot be the
-      // settle of the turn they are watching. The auto-title request window is
-      // not sufficient on its own — it is armed around the `/rename`, and omp
-      // answers it in the same tick (~3 ms), so a frame that won that race
-      // reached the client regardless (the leak this replaces). Its flags are
-      // left alone too, exactly as the dispatcher leaves a non-owning command's
-      // (see `session-commands.ts`): the live run owns them.
-      //
-      // A builtin the operator typed while the agent is IDLE still passes
-      // through untouched — the case this frame exists for.
-      if (event.agentInvoked === false && host.streaming) {
-        result.suppressForward = true;
-        break;
-      }
-      host.promptRunning = false;
-      host.awaitingAgentStart = false;
-      host.awaitingAgentStartDeadline = 0;
-      // The PROMPT ACK never says `agentInvoked`; this frame is what does, and
-      // it arrives after it. A `false` here is omp's own word that the prompt
-      // opened no turn — so the `stream` row the dispatch wrote must go. That
-      // row's owner is ALIVE, so `healStaleStreamStatuses` can never reach it
-      // and this frame is the only thing that can: without it the spinner turns
-      // forever. See `releasesStreamRowOnPromptResult` for the two senders and
-      // the `!streaming` guard.
-      if (releasesStreamRowOnPromptResult(event, host)) void clearStreamStatus(host.sessionId);
+      result.suppressForward = handlePromptResult(host, event);
       break;
     case 'auto_compaction_start':
       host.compacting = true;
