@@ -74,10 +74,18 @@ export function ToolCallingSection({ tools, title, defaultExpanded = false }: To
     <div className="mx-3 space-y-1.5">
       {title && (
         <div className="flex items-center gap-2 px-1 pt-0.5">
-          <span className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-ink/35">
+          {/* The title is the turn's intent, which can be a whole sentence: it
+              is clamped to ONE line with an ellipsis rather than wrapping, so a
+              long intent never grows the header. `flex-1 min-w-0` is what gives
+              `truncate` a definite width to ellipsize against, and `title`
+              keeps the full text reachable. */}
+          <span
+            className="min-w-0 flex-1 truncate text-[9.5px] font-semibold uppercase tracking-[0.14em] text-ink/35"
+            title={title}
+          >
             {title}
           </span>
-          <span className="h-px flex-1 bg-ink/8" />
+          <span className="h-px w-6 shrink-0 bg-ink/8" />
           {showBulk && (
             <button
               type="button"
