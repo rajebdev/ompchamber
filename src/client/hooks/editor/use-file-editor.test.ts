@@ -173,6 +173,36 @@ describe('useFileEditor revalidation', () => {
     expect(mounted?.content).toBe('edited by hand');
   });
 
+  // A consumer that must act only on real bytes (the search-reveal hand-off)
+  // cannot use `isLoading` as its gate: it starts `false` on the first render,
+  // so a request served then would match against an EMPTY buffer. `loaded` is
+  // the honest signal, and these two assertions pin both ends of it.
+  test('loaded is false until the bytes arrive, then true', async () => {
+    const state: FsState = { reads: 0, writes: 0, sentEol: null, body: DISK };
+    stubFetch(state);
+    // A read that resolves only when the test lets it, so the pre-arrival
+    // render is observable.
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      await gate;
+      return realFetch(input, init);
+    }) as typeof fetch;
+
+    await mountEditor();
+    expect(mounted?.isLoading).toBe(true);
+    expect(mounted?.loaded).toBe(false);
+
+    await act(async () => {
+      release();
+    });
+    await settleEditor();
+
+    expect(mounted?.loaded).toBe(true);
+    expect(mounted?.content).toBe(DISK);
+  });
+
   // A textarea's API value drops every CR, so a CRLF file reaches the buffer as
   // LF — and multipart/form-data turns a bare LF back into CRLF, so the payload
   // cannot carry the ending. The file's own ending therefore travels as its own

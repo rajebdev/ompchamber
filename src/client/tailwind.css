@@ -317,6 +317,24 @@ html[data-theme-variant="dark"] .shiki span { color: var(--shiki-dark); }
   border-top: 1px solid color-mix(in srgb, var(--theme-warning) 75%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--theme-warning) 75%, transparent);
 }
+
+/* Search panel: a row's replace preview. The old text is struck through and the
+ * new text beside it, the way VS Code's search view shows a pending rewrite.
+ * Deliberately NOT the `.find-match` highlight: that one marks where a query
+ * matched, this one marks what the file would become — the two can appear in
+ * the same row and must not read alike. The removed run keeps its ink so the
+ * line stays legible; the inserted run takes the success colour, which is the
+ * only chroma the palette allows outside an error. */
+.search-replace-old {
+  text-decoration: line-through;
+  color: color-mix(in srgb, var(--theme-error) 85%, var(--theme-ink));
+  background: color-mix(in srgb, var(--theme-error) 14%, transparent);
+}
+.search-replace-new {
+  text-decoration: none;
+  color: color-mix(in srgb, var(--theme-success) 85%, var(--theme-ink));
+  background: color-mix(in srgb, var(--theme-success) 16%, transparent);
+}
 .prose-content .katex-display { overflow-x: auto; overflow-y: hidden; }
 
 /* Math placeholder: `marked.ts` emits a `.math-pending` span and KaTeX is

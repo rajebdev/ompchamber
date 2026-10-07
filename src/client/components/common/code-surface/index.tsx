@@ -239,8 +239,18 @@ export const CodeSurface = forwardRef<CodeSurfaceHandle, CodeSurfaceProps>(funct
    * from the same geometry the window is resolved against, so the two agree by
    * construction, and the scroll is a plain assignment on the container the
    * window reads.
+   *
+   * A reveal is REPLAYED while the geometry is still moving, and that is
+   * load-bearing rather than defensive. Opening the editor panel animates its
+   * width, so the document is measured once at each intermediate width: a
+   * reveal that scrolled with the first (narrow) measurement put line 800 of a
+   * 900-line file near the bottom, and the settled, wider measurement then left
+   * the scroller clamped there — showing the file's tail with the hit's own
+   * highlight unpainted.
    */
-  const revealOffset = useCallback(
+  const pendingRevealRef = useRef<{ offset: number; until: number } | null>(null);
+
+  const applyReveal = useCallback(
     (offset: number) => {
       const root = rootRef.current;
       if (!root || !geometry) return;
@@ -258,6 +268,28 @@ export const CodeSurface = forwardRef<CodeSurfaceHandle, CodeSurfaceProps>(funct
     },
     [geometry, value],
   );
+
+  const revealOffset = useCallback(
+    (offset: number) => {
+      // The window covers the panel's 200ms width transition plus a margin; a
+      // user scrolling within it is not a case this feature has to serve.
+      pendingRevealRef.current = { offset, until: performance.now() + 600 };
+      applyReveal(offset);
+    },
+    [applyReveal],
+  );
+
+  // Re-apply the pending reveal as the geometry moves, and drop it once the
+  // document has settled (or the window closed).
+  useLayoutEffect(() => {
+    const pending = pendingRevealRef.current;
+    if (!pending) return;
+    if (performance.now() > pending.until) {
+      pendingRevealRef.current = null;
+      return;
+    }
+    applyReveal(pending.offset);
+  }, [applyReveal]);
 
   useImperativeHandle(
     ref,

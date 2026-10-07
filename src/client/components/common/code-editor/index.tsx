@@ -149,7 +149,14 @@ export function CodeEditor({
     }
     input.selectionStart = start;
     input.selectionEnd = end;
-    if (focus) input.focus();
+    // `preventScroll` is load-bearing: the editor's `<textarea>` spans the whole
+    // document (only the highlighted layer is windowed), so a plain `focus()`
+    // makes the browser scroll the container to the caret's position at the END
+    // of the buffer region it can see — which clamped the scroller to its
+    // maximum and left a search jump showing the file's tail (measured: a hit on
+    // line 800 of 900 landed at the bottom with its own highlight unpainted).
+    // The surface's own `revealOffset` is the only thing that scrolls.
+    if (focus) input.focus({ preventScroll: true });
   };
 
   useImperativeHandle(

@@ -9,6 +9,13 @@ export interface SearchMatch {
   file: string;
   line: string;
   content: string;
+  /** Character ranges within `content` the query matched, in document order. */
+  ranges: { start: number; end: number }[];
+}
+
+interface RgSubmatch {
+  start?: number;
+  end?: number;
 }
 
 interface RgMatchFrame {
@@ -17,7 +24,44 @@ interface RgMatchFrame {
     path?: { text?: string };
     line_number?: number;
     lines?: { text?: string };
+    /** Byte offsets within `lines.text`, one entry per occurrence on the line. */
+    submatches?: RgSubmatch[];
   };
+}
+
+const UTF8_ENCODER = new TextEncoder();
+const UTF8_DECODER = new TextDecoder();
+
+/**
+ * The line as every consumer displays it, with the match ranges shifted onto
+ * it — `content` has its surrounding whitespace and line terminator dropped, so
+ * `ranges` are character offsets into exactly the string that travels beside
+ * them. Trimming on the CLIENT instead would misplace every highlight by the
+ * width of the indentation, since the ranges would still be offsets into the
+ * untrimmed line.
+ *
+ * Ripgrep's own offsets are BYTES in the raw line, and bytes are only
+ * characters when it is pure ASCII: decoding the prefix is what keeps a line
+ * with one accented character from shifting every range after it by one. A
+ * range that no longer fits the trimmed text (a whitespace-only match) is
+ * dropped — there is nothing left on screen to paint.
+ */
+function trimWithRanges(raw: string, submatches: RgSubmatch[] | undefined): { content: string; ranges: { start: number; end: number }[] } {
+  const content = raw.trim();
+  const lead = raw.length - raw.trimStart().length;
+  if (!submatches || submatches.length === 0) return { content, ranges: [] };
+  const bytes = UTF8_ENCODER.encode(raw);
+  const ranges: { start: number; end: number }[] = [];
+  for (const submatch of submatches) {
+    const start = submatch.start;
+    const end = submatch.end;
+    if (typeof start !== 'number' || typeof end !== 'number' || end <= start) continue;
+    const from = UTF8_DECODER.decode(bytes.slice(0, start)).length - lead;
+    const to = from + UTF8_DECODER.decode(bytes.slice(start, end)).length;
+    if (from < 0 || to > content.length || to <= from) continue;
+    ranges.push({ start: from, end: to });
+  }
+  return { content, ranges };
 }
 
 /**
@@ -37,8 +81,14 @@ function buildArgs(q: string, matchCase: boolean, wholeWord: boolean, useRegex: 
   return args;
 }
 
-/** Parses one rg `--json` line into a match; null for begin/end/summary frames. */
-function parseRgLine(line: string): SearchMatch | null {
+/**
+ * Parses one rg `--json` line into a match; null for begin/end/summary frames.
+ *
+ * Exported because the byte→character range conversion is the part of this
+ * route a client depends on for its highlights, and it is not observable
+ * through a live ripgrep run without a fixture directory per encoding case.
+ */
+export function parseRgLine(line: string): SearchMatch | null {
   if (!line.startsWith('{')) return null;
   try {
     const frame = JSON.parse(line) as RgMatchFrame;
@@ -47,10 +97,12 @@ function parseRgLine(line: string): SearchMatch | null {
     const file = data?.path?.text;
     const text = data?.lines?.text;
     if (!file || text === undefined || data?.line_number === undefined) return null;
+    const { content, ranges } = trimWithRanges(text, data.submatches);
     return {
       file: file.replace(/^\.\//, ''),
       line: String(data.line_number),
-      content: text,
+      content,
+      ranges,
     };
   } catch {
     return null;

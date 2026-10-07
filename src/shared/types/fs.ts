@@ -29,6 +29,13 @@ export interface SearchResultItem {
   line: number;
   content: string;
   preview?: string;
+  /**
+   * Character ranges within `content` that the query matched — one per
+   * occurrence on the line, in document order. Ripgrep reports them in BYTES
+   * and the route converts them, so the row can highlight the matched text and
+   * the editor can be pointed at the first one.
+   */
+  ranges?: { start: number; end: number }[];
 }
 
 /** A flat file entry from the recursive file-listing endpoint (composer `@` mentions). */

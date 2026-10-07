@@ -27,6 +27,13 @@ interface FileDocumentProps {
   onOccurrencesChange: (next: readonly TextRange[]) => void;
   /** Markdown preview is on for the active file — render it, not the source. */
   isPreview: boolean;
+  /**
+   * A search hit was jumped to in this file. The find bar is closed (a search
+   * jump must not cover the lines it is showing), but its matches still have to
+   * be painted — that is the "highlight the results in the opened file" half of
+   * the feature.
+   */
+  revealActive: boolean;
 }
 
 /**
@@ -54,6 +61,7 @@ export function FileDocument({
   occurrences,
   onOccurrencesChange,
   isPreview,
+  revealActive,
 }: FileDocumentProps) {
   const isMd = activeFile.name.endsWith('.md');
 
@@ -82,7 +90,7 @@ export function FileDocument({
             onValueChange={editor.onChange}
             language={editor.language}
             wordWrap={wordWrap}
-            marks={find.open ? find.matches : undefined}
+            marks={find.open || revealActive ? find.matches : undefined}
             currentMark={find.currentIndex}
             occurrences={occurrences}
             onOccurrencesChange={onOccurrencesChange}

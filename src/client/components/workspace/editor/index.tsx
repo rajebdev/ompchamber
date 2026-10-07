@@ -24,6 +24,7 @@ import { useSessionStateContext } from '@/client/hooks/workspace/session-state/c
 import { getSessionValue } from '@/shared/lib/workspace/session-state/store';
 import { useFileEditor } from '@/client/hooks/editor/use-file-editor';
 import { useEditorFind } from '@/client/hooks/editor/use-editor-find';
+import { useSearchRevealTarget } from '@/client/hooks/editor/use-search-reveal';
 
 interface EditorProps {
   className?: string;
@@ -88,6 +89,31 @@ export function Editor({
     applyDocument: (value, caretStart, caretEnd) => surfaceRef.current?.applyDocument(value, caretStart, caretEnd),
     toggleWordWrap: () => setWordWrap((previous) => !previous),
   });
+
+  // A search row's hand-off: the request names a line in THIS file, and the
+  // find bar is opened on the same query so every occurrence is highlighted and
+  // the caret lands on the hit. Served once the buffer is trustworthy — a file
+  // still loading, or one whose read failed, has no text to match against.
+  const searchReveal = useSearchRevealTarget(
+    activeFile?.path ?? null,
+    editor.content,
+    editor.loaded && !editor.loadError,
+  );
+  // The resolved target is recomputed on every edit (the marks track the live
+  // buffer), but the JUMP must fire once per request: keying the effect on the
+  // target would drag the view back to the match after every keystroke.
+  const firedRequestRef = useRef<unknown>(null);
+  const revealMatchRef = useRef(find.revealMatch);
+  revealMatchRef.current = find.revealMatch;
+  useEffect(() => {
+    if (!searchReveal || firedRequestRef.current === searchReveal.request) return;
+    firedRequestRef.current = searchReveal.request;
+    revealMatchRef.current({
+      query: searchReveal.request.query,
+      options: searchReveal.request.options,
+      line: searchReveal.request.line,
+    });
+  }, [searchReveal]);
   // The capture handler below is rebuilt on every render anyway (it reads the
   // find state), so it is kept in a ref and the listener attached once.
   const findRef = useRef(find);
@@ -304,6 +330,7 @@ export function Editor({
                 occurrences={occurrences}
                 onOccurrencesChange={setOccurrences}
                 isPreview={Boolean(isPreview)}
+                revealActive={Boolean(searchReveal)}
               />
             )}
           </>

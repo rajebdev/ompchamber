@@ -24,6 +24,7 @@ import { useSessionState } from '@/client/hooks/workspace/session-state';
 import {
   DEFAULT_FIND_OPTIONS,
   findMatches,
+  lineStartOffset,
   matchIndexAtOrAfter,
   replaceAllMatches,
   replaceMatch,
@@ -31,50 +32,9 @@ import {
   type FindOptions,
 } from '@/shared/lib/code/editor/find';
 import type { EditorCommand } from '@/shared/lib/code/editor/keymap';
+import type { EditorFindState, UseEditorFindOptions } from '@/client/hooks/editor/find-state';
 
-export interface UseEditorFindOptions {
-  /** The buffer on screen. */
-  text: string;
-  /** Identity of the open document — a switch re-seeds the current match. */
-  documentKey: string;
-  /** Current selection, used to seed the query the way VS Code does. */
-  readSelection: () => { start: number; end: number } | null;
-  select: (start: number, end: number, focus?: boolean) => void;
-  reveal: (offset: number) => void;
-  /** Replace the buffer as ONE undoable edit; focus stays where the caller wants it. */
-  applyDocument: (value: string, caretStart: number, caretEnd: number) => void;
-  /** ⌥Z / Alt+Z — word wrap belongs to the editor panel, not to this hook. */
-  toggleWordWrap?: () => void;
-}
-
-export interface EditorFindState {
-  open: boolean;
-  replaceOpen: boolean;
-  query: string;
-  replacement: string;
-  options: FindOptions;
-  matches: readonly { start: number; end: number }[];
-  /** The document holds more matches than the cap. */
-  truncated: boolean;
-  /** The query does not compile as a regex — a different answer from "no matches". */
-  invalid: boolean;
-  currentIndex: number;
-  setQuery: (value: string) => void;
-  setReplacement: (value: string) => void;
-  openFind: () => void;
-  openReplace: () => void;
-  /** Expand/collapse the replace row without changing which match is current. */
-  toggleReplace: () => void;
-  /** Bumped on every "open find" so the widget can refocus its field. */
-  focusRequest: number;
-  close: () => void;
-  /** Dispatch a keymap command (⌘F, F3, ⌥⌘C, …). */
-  runCommand: (command: EditorCommand) => void;
-  toggleOption: (key: keyof FindOptions) => void;
-  step: (direction: 1 | -1) => void;
-  replaceCurrent: () => void;
-  replaceAll: () => void;
-}
+export type { EditorFindState, UseEditorFindOptions } from '@/client/hooks/editor/find-state';
 
 /** A seeded query must be one line of real text, like VS Code's. */
 function seedQuery(text: string, selection: { start: number; end: number } | null): string | null {
@@ -236,6 +196,31 @@ export function useEditorFind({
     [options, setOptions, reseed],
   );
 
+  /**
+   * Point the editor at a search hit — the search panel's entry point.
+   *
+   * The caret is placed here rather than left to the resolve effect, which
+   * selects WITHOUT focus (it must not steal focus from the find field during
+   * normal use). The marks come from `find.matches`, so the surface paints every
+   * occurrence in the file.
+   */
+  const revealMatch = useCallback(
+    (request: { query: string; options: FindOptions; line: number }) => {
+      const lineStart = lineStartOffset(text, Math.max(0, request.line - 1));
+      const { matches } = findMatches(text, request.query, request.options);
+      const index = matchIndexAtOrAfter(matches, lineStart);
+      setQueryState(request.query);
+      setOptions(request.options);
+      reseed(index >= 0 ? matches[index].start : lineStart);
+      setResolveRequest((previous) => previous + 1);
+      if (index >= 0) {
+        selectRef.current(matches[index].start, matches[index].end, true);
+        revealRef.current(matches[index].start);
+      }
+    },
+    [text, setQueryState, setOptions, reseed],
+  );
+
   const replaceCurrent = useCallback(() => {
     const match = result.matches[currentIndex];
     if (!match) return;
@@ -313,6 +298,7 @@ export function useEditorFind({
     focusRequest,
     close,
     runCommand,
+    revealMatch,
     toggleOption,
     step,
     replaceCurrent,

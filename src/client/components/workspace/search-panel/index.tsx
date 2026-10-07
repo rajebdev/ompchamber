@@ -1,19 +1,23 @@
-
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { CaseSensitive, Check, MoreHorizontal, Regex, Replace, ReplaceAll, Search, WholeWord } from 'lucide-preact';
 import { FileIcon } from '@/client/components/common/file-icon';
 import { useFetcher } from '@/client/lib/router/fetcher';
 import { GitRepoDropdown } from '@/client/components/workspace/file-explorer/GitRepoDropdown';
+import { SearchRow } from '@/client/components/workspace/search-panel/Row';
 import { useScrollbarFade, scrollbarFadeClass } from '@/client/hooks/ui/scrollbar-fade';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 import { useRepoList, useRepoScope } from '@/client/hooks/workspace/repo-scope';
 import { useSearchStream } from '@/client/hooks/workspace/search-stream';
 import { useOnClickOutside } from '@/client/hooks/ui/on-click-outside';
-import { getLanguageFromPath } from '@/shared/lib/code/language';
-import { highlightCode } from '@/shared/lib/code/syntax-highlight';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
+import { setSearchReveal } from '@/client/lib/search-reveal';
+import type { SearchResultItem } from '@/shared/types/fs';
+import type { FindOptions } from '@/shared/lib/code/editor/find';
 
-export function SearchPanel({ className = '', enabled = true, rootPath }: { className?: string, enabled?: boolean, rootPath?: string }) {
+export function SearchPanel({ className = '', enabled = true, rootPath, onOpenFile }: { className?: string, enabled?: boolean, rootPath?: string, onOpenFile?: (file: unknown) => void }) {
+  // The rows highlight their line through Shiki; this is the subscription that
+  // re-renders them once the highlighter boots and when a grammar lands, or the
+  // fallback (plain escaped text) would stay on screen for the session.
   useSyntaxReady();
   const [query, setQuery] = useSessionState<string>('search.query', '');
   const [replaceQuery, setReplaceQuery] = useSessionState<string>('search.replaceQuery', '');
@@ -27,11 +31,11 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
   const [showIncludeField, setShowIncludeField] = useSessionState<boolean>('search.showIncludeField', false);
   const { activeRepo, setActiveRepo } = useRepoScope(rootPath);
   const { repos, scanning: reposScanning, rescan: rescanRepos } = useRepoList(rootPath, enabled);
-  
+
   const menuRef = useRef<HTMLDivElement>(null);
   const { isScrolling, handleScroll } = useScrollbarFade();
 
-  const replaceFetcher = useFetcher<{ success: boolean, results: any[] }>();
+  const replaceFetcher = useFetcher<{ success: boolean, results: { file: string; status: string }[] }>();
 
   // The tree being searched: the workspace root plus the selected repo. Every
   // result is relative to it, so a switch must not keep the previous tree's
@@ -64,10 +68,10 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
 
   const handleReplace = (file?: string) => {
     if (!query) return;
-    
+
     // If no file specified, replace all currently found files
     const targetFiles = file ? [file] : Object.keys(groupedResults);
-    
+
     if (targetFiles.length === 0) return;
 
     replaceFetcher.submit(
@@ -109,7 +113,28 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
     if (!acc[curr.file]) acc[curr.file] = [];
     acc[curr.file].push(curr);
     return acc;
-  }, {} as Record<string, any[]>);
+  }, {} as Record<string, SearchResultItem[]>);
+
+  // The same flags the search ran with, so the editor's own matcher paints the
+  // identical set of occurrences once the file opens.
+  const options: FindOptions = { matchCase, wholeWord, isRegex: useRegex };
+
+  /**
+   * A row click opens the file AND points the editor at the hit.
+   *
+   * The reveal request is published before the open, so the editor that finds
+   * the file on screen already has it in hand — the tab entry cannot carry it,
+   * because that entry is persisted and a reload would re-fire a served jump.
+   */
+  const openResult = (result: SearchResultItem) => {
+    setSearchReveal({ path: result.file, line: Number(result.line), query, options });
+    onOpenFile?.({
+      path: result.file,
+      name: result.file.split('/').pop() || result.file,
+      root: rootPath,
+      repo: activeRepo,
+    });
+  };
 
   return (
     <div className={`flex flex-col h-full bg-paper ${className}`}>
@@ -233,7 +258,7 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
             {isLoading && (
               <div className="text-ink/40 italic">Searching…</div>
             )}
-            {Object.entries(groupedResults).map(([file, fileResults]: [string, any]) => (
+            {Object.entries(groupedResults).map(([file, fileResults]) => (
               <div key={file}>
                 <div className="font-semibold text-ink/80 flex items-center justify-between mb-1 group">
                   <div className="flex items-center min-w-0">
@@ -251,16 +276,16 @@ export function SearchPanel({ className = '', enabled = true, rootPath }: { clas
                   </button>
                 </div>
                 <div className="space-y-1">
-                  {fileResults.map((result: any, i: number) => (
-                    <div key={i} className="flex hover:bg-ink/5 cursor-pointer rounded px-1 py-0.5">
-                      <span className="text-ink/40 w-6 flex-shrink-0 text-right mr-2">{result.line}</span>
-                      <span
-                        className="truncate text-ink"
-                        dangerouslySetInnerHTML={{
-                          __html: highlightCode(result.content.trim(), getLanguageFromPath(file)),
-                        }}
-                      />
-                    </div>
+                  {fileResults.map((result, i) => (
+                    <SearchRow
+                      key={i}
+                      file={file}
+                      result={result}
+                      query={query}
+                      options={options}
+                      replacement={replaceQuery}
+                      onOpen={openResult}
+                    />
                   ))}
                 </div>
               </div>

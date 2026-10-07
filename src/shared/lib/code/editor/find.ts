@@ -163,10 +163,37 @@ export function expandReplacement(template: string, groups: MatchGroups): string
 }
 
 /**
+ * The text one match is replaced by, expanded exactly as the write path
+ * expands it. Null when the match no longer resolves in `text` — the pattern is
+ * re-run at the match's own offset rather than trusting the offsets handed in,
+ * so a stale list cannot splice the wrong range.
+ *
+ * Extracted so the search panel's replace PREVIEW and the replacement that
+ * actually lands read one expansion rule: a row that painted `$1` literally
+ * over a file that would receive the captured group is the drift this prevents.
+ */
+export function replacementForMatch(
+  text: string,
+  match: FindMatch,
+  query: string,
+  replacement: string,
+  options: FindOptions,
+): { found: string; inserted: string; start: number; end: number } | null {
+  const regex = buildFindRegex(query, options);
+  if (!regex) return null;
+  regex.lastIndex = match.start;
+  const found = regex.exec(text);
+  if (!found || found.index !== match.start) return null;
+  // Literal mode inserts the field verbatim: `$&` in the replace box is the
+  // two characters the user typed, not the match. Regex mode expands the
+  // template against the match's own groups.
+  const inserted = options.isRegex ? expandReplacement(replacement, groupsOf(found)) : replacement;
+  return { found: found[0], inserted, start: found.index, end: found.index + found[0].length };
+}
+
+/**
  * Replace one match. Returns the new buffer and where the caret should land
- * (just after the inserted text), or null when the match is no longer there —
- * the regex is re-run at the match's own offset rather than trusting the
- * offsets handed in, so a stale list cannot splice the wrong range.
+ * (just after the inserted text), or null when the match is no longer there.
  */
 export function replaceMatch(
   text: string,
@@ -175,26 +202,11 @@ export function replaceMatch(
   replacement: string,
   options: FindOptions,
 ): { text: string; caret: number } | null {
-  const regex = buildFindRegex(query, options);
-  if (!regex) return null;
-  // The pattern is re-run at the match's own offset rather than trusting the
-  // offsets handed in: a list computed against an older buffer cannot splice
-  // the wrong range out of the current one.
-  regex.lastIndex = match.start;
-  const found = regex.exec(text);
-  if (!found || found.index !== match.start) return null;
-  if (!options.isRegex) {
-    // Literal mode inserts the field verbatim: `$&` in the replace box is the
-    // two characters the user typed, not the match.
-    return {
-      text: text.slice(0, match.start) + replacement + text.slice(match.end),
-      caret: match.start + replacement.length,
-    };
-  }
-  const inserted = expandReplacement(replacement, groupsOf(found));
+  const resolved = replacementForMatch(text, match, query, replacement, options);
+  if (!resolved) return null;
   return {
-    text: text.slice(0, found.index) + inserted + text.slice(found.index + found[0].length),
-    caret: found.index + inserted.length,
+    text: text.slice(0, resolved.start) + resolved.inserted + text.slice(resolved.end),
+    caret: resolved.start + resolved.inserted.length,
   };
 }
 

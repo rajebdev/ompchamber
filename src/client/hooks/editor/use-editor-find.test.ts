@@ -116,3 +116,29 @@ describe('useEditorFind stepping', () => {
     expect(harness.find?.matches.length).toBe(0);
   });
 });
+
+describe('useEditorFind revealMatch', () => {
+  test('aims the caret at the first match on the given line and focuses it', async () => {
+    // `alpha beta alpha` — line 1 holds the first match; the request names it.
+    await harness.act(async () => {
+      harness.find?.revealMatch({ query: 'beta', options: { matchCase: false, wholeWord: false, isRegex: false }, line: 1 });
+    });
+
+    expect(harness.find?.query).toBe('beta');
+    expect(harness.find?.matches).toEqual([{ start: 6, end: 10 }]);
+    expect(harness.find?.currentIndex).toBe(0);
+    // The jump focuses the document, so the caret is visible where it landed.
+    expect(harness.selections).toContainEqual([6, 10, true]);
+    expect(harness.reveals).toContain(6);
+  });
+
+  test('does not open the bar — the jump must not cover the line it shows', async () => {
+    await harness.act(async () => {
+      harness.find?.revealMatch({ query: 'alpha', options: { matchCase: false, wholeWord: false, isRegex: false }, line: 1 });
+    });
+
+    expect(harness.find?.open).toBe(false);
+    // Every occurrence is still matched, so the surface can paint them all.
+    expect(harness.find?.matches.length).toBe(2);
+  });
+});

@@ -1,11 +1,12 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { AlertTriangle, Loader2 } from 'lucide-preact';
 import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
-import { CodeSurface } from '@/client/components/common/code-surface';
+import { CodeSurface, type CodeSurfaceHandle } from '@/client/components/common/code-surface';
 import { ImageViewer } from '@/client/components/common/image-viewer';
 import { EditorHeader } from '@/client/components/mobile/mobile-right-sidebar/Header';
 import { useScrollbarFade, scrollbarFadeClass } from '@/client/hooks/ui/scrollbar-fade';
 import { useFileEditor } from '@/client/hooks/editor/use-file-editor';
+import { useSearchRevealTarget } from '@/client/hooks/editor/use-search-reveal';
 import {
   EDITOR_DEFAULT_FONT_SIZE,
   EDITOR_LINE_HEIGHT,
@@ -42,6 +43,27 @@ export function MobileFullEditor({ file, onClose, onFileSaved }: MobileFullEdito
     downloadMimeType: 'text/plain;charset=utf-8',
     onFileSaved,
   });
+
+  // A search row on the phone opens this full-screen editor, so the hand-off
+  // has to be served here too: the matched ranges are painted, and the caret is
+  // placed on the hit once the buffer is on screen.
+  const reveal = useSearchRevealTarget(
+    file.path ?? null,
+    editor.content,
+    editor.loaded && !editor.loadError,
+  );
+  const surfaceRef = useRef<CodeSurfaceHandle | null>(null);
+  const revealMarks = reveal && reveal.matches.length > 0 ? reveal.matches : undefined;
+  const currentMark = reveal?.currentIndex ?? -1;
+  const firedRef = useRef<unknown>(null);
+  useEffect(() => {
+    if (!reveal || firedRef.current === reveal.request) return;
+    firedRef.current = reveal.request;
+    const match = reveal.matches[reveal.currentIndex];
+    if (!match) return;
+    surfaceRef.current?.select(match.start, match.end, false);
+    surfaceRef.current?.revealOffset(match.start);
+  }, [reveal]);
 
   const content = editor.content;
   const lang = editor.language;
@@ -98,10 +120,13 @@ export function MobileFullEditor({ file, onClose, onFileSaved }: MobileFullEdito
           ) : (
             /* Code Editor with Line Numbers - Desktop styled: gutter bg-canvas border-r border-ink/10 */
             <CodeSurface
+              ref={surfaceRef}
               value={content}
               onValueChange={editor.onChange}
               language={lang}
               wordWrap={wordWrap}
+              marks={revealMarks}
+              currentMark={currentMark}
               rootClassName="flex min-h-full bg-paper"
               // The gutter auto-sizes to its widest number rather than taking a
               // fixed width: the numbers scale with the zoom control, and a

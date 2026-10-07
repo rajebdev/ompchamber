@@ -51,6 +51,7 @@ function findState(overrides: Partial<EditorFindState> = {}): EditorFindState {
     focusRequest: 0,
     close: () => calls.push('close'),
     runCommand: (command) => calls.push(`runCommand:${command}`),
+    revealMatch: (request) => calls.push(`revealMatch:${request.line}`),
     toggleOption: (key) => calls.push(`toggleOption:${key}`),
     step: (direction) => calls.push(`step:${direction}`),
     replaceCurrent: () => calls.push('replaceCurrent'),

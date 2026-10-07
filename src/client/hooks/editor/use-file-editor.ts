@@ -33,6 +33,13 @@ export interface UseFileEditorResult {
   content: string;
   onChange: (next: string) => void;
   isLoading: boolean;
+  /**
+   * The current file's bytes have arrived (or it is an image / carries inline
+   * content). Distinguishes "the buffer is empty" from "the buffer is not read
+   * yet" — `isLoading` cannot, because it starts `false` on the first render and
+   * a consumer that trusted it would act on an empty buffer.
+   */
+  loaded: boolean;
   loadError: string | null;
   saveStatus: FileEditorSaveStatus;
   copied: boolean;
@@ -319,6 +326,9 @@ export function useFileEditor(
     content,
     onChange,
     isLoading,
+    // An image has no buffer to wait for, and inline content is already in
+    // hand; otherwise the key's entry exists only once the read resolved.
+    loaded: target ? isImage || target.content !== undefined || contents[key] !== undefined : false,
     loadError,
     saveStatus,
     copied,

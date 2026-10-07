@@ -137,7 +137,7 @@ const LAZY_VIEWS: Record<RightPanelType, ComponentType<PanelBodyProps>> = {
     import('@/client/components/workspace/file-explorer/index').then((m) => ({ default: m.FileExplorer })),
   ),
   search: lazy(() =>
-    import('@/client/components/workspace/SearchPanel').then((m) => ({ default: m.SearchPanel })),
+    import('@/client/components/workspace/search-panel/index').then((m) => ({ default: m.SearchPanel })),
   ),
   git: lazy(() => import('@/client/components/workspace/git-panel/index').then((m) => ({ default: m.GitPanel }))),
   wiki: lazy(() => import('@/client/components/workspace/wiki-panel/index').then((m) => ({ default: m.WikiPanel }))),
