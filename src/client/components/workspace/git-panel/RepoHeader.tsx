@@ -8,7 +8,8 @@ interface GitRepoHeaderProps {
   setShowRepoMenu: (show: boolean) => void;
   activeRepo: string;
   repos: string[];
-  isLoading: boolean;
+  /** Spins the refresh icon: an in-flight HTTP read OR a topic push. */
+  isRefreshing: boolean;
   rootPath?: string;
   reposScanning: boolean;
   onSelectRepo: (repo: string) => void;
@@ -28,7 +29,7 @@ export function GitRepoHeader({
   setShowRepoMenu,
   activeRepo,
   repos,
-  isLoading,
+  isRefreshing,
   rootPath,
   reposScanning,
   onSelectRepo,
@@ -128,7 +129,7 @@ export function GitRepoHeader({
         >
           <RotateCcw 
             size={14} 
-            className={isLoading ? 'animate-spin' : ''} 
+            className={isRefreshing ? 'animate-spin' : ''} 
           />
         </button>
       </div>

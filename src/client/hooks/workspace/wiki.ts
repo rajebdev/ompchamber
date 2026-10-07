@@ -53,6 +53,8 @@ export interface WikiScopeArgs {
 export interface WikiTreeState {
   data: WikiRepoPayload | null;
   isLoading: boolean;
+  /** A beat after a topic push landed (a tool call re-lists the wiki too). */
+  refreshing: boolean;
   /** Set when the last read failed; the previous payload is kept meanwhile. */
   error: string | null;
   /** `force` bypasses the server's mirror cache — the panel's own Refresh. */
@@ -128,6 +130,7 @@ export function useWikiTree(
   return {
     data: topic.data,
     isLoading: topic.isLoading,
+    refreshing: topic.refreshing,
     error,
     reload,
   };

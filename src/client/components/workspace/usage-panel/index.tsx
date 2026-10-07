@@ -90,7 +90,7 @@ export function UsagePanel({ className = '', active = true }: UsagePanelProps) {
           className="p-1.5 bg-paper border border-ink/15 rounded-md hover:bg-ink/5 text-ink/80 transition-colors disabled:opacity-50 flex-shrink-0"
           title="Refresh usage"
         >
-          <RefreshCw size={12} className={isLoading ? 'animate-spin text-ink' : ''} />
+          <RefreshCw size={12} className={isLoading || usage.refreshing ? 'animate-spin text-ink' : ''} />
         </button>
       </div>
 

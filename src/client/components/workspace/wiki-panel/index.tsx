@@ -174,7 +174,7 @@ export function WikiPanel({ className = '', enabled = true, active = true, rootP
             aria-label="Re-fetch the wiki"
             className="rounded p-1 text-ink/60 transition-colors hover:bg-ink/5 hover:text-ink disabled:opacity-50"
           >
-            <RefreshCw size={13} className={tree.isLoading ? 'animate-spin' : ''} />
+            <RefreshCw size={13} className={tree.isLoading || tree.refreshing ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>

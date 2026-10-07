@@ -218,6 +218,10 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
     if (onRefresh) onRefresh();
     else loadFiles();
   };
+  // The button spins for this panel's own read OR a topic push: the server
+  // republishes `fs:` on every tool call, so the tree moved with nothing on
+  // screen saying so otherwise.
+  const isRefreshing = isLoading || rootListing.refreshing;
 
   return (
     <div className={`flex flex-col h-full bg-paper ${className}`}>
@@ -236,7 +240,7 @@ export function FileExplorer({ className = '', enabled = true, rootPath, onOpenF
             className="p-1.5 text-ink/40 hover:text-ink hover:bg-ink/5 rounded transition-colors"
             title="Refresh"
           >
-            <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
+            <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
           </button>
         </div>
         <div className="relative">

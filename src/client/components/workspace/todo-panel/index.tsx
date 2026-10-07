@@ -56,7 +56,7 @@ export function TodoPanel({ className = '', active = true }: TodoPanelProps) {
   // The session's own topic, pushed by the server on every turn boundary —
   // the poll and the event-driven re-read this panel used to hand-roll are
   // both gone.
-  const { data, isLoading, stale, refresh } = useRealtimeTopic<SessionTodosPayload>(
+  const { data, isLoading, refreshing, stale, refresh } = useRealtimeTopic<SessionTodosPayload>(
     sessionId ? sessionTodosTopic(sessionId) : null,
     { enabled: active },
   );
@@ -103,7 +103,7 @@ export function TodoPanel({ className = '', active = true }: TodoPanelProps) {
           aria-label="Refresh todos"
           className="flex-shrink-0 rounded-md border border-ink/15 bg-paper p-1.5 text-ink/80 transition-colors hover:bg-ink/5 disabled:opacity-50"
         >
-          <RefreshCw size={12} className={isLoading ? 'animate-spin text-ink' : ''} />
+          <RefreshCw size={12} className={isLoading || refreshing ? 'animate-spin text-ink' : ''} />
         </button>
       </div>
 

@@ -42,7 +42,7 @@ export function MobileSessionSidebar({
     folders,
     initializing,
     refreshNow,
-    refreshing,
+    isRefreshing,
     searchQuery,
     setSearchQuery,
     showArchived,
@@ -144,7 +144,7 @@ export function MobileSessionSidebar({
         onScheduler={() => setSchedulerOpen(true)}
         scheduledCount={scheduledCount}
         onRefresh={refreshNow}
-        refreshing={refreshing}
+        refreshing={isRefreshing}
         onToggleOptions={() => setOptionsOpen(!optionsOpen)}
         onSortChange={handleSortChange}
         onResetSort={() => handleSortChange('A-Z')}

@@ -24,7 +24,7 @@ export function SessionSidebar({ className = '', onClose, appSettings = {}, stre
     folders,
     initializing,
     refreshNow,
-    refreshing,
+    isRefreshing,
     activeSessionId,
     sessionParam,
     searchQuery,
@@ -129,7 +129,7 @@ export function SessionSidebar({ className = '', onClose, appSettings = {}, stre
           onScheduler={() => setSchedulerOpen(true)}
           scheduledCount={scheduledCount}
           onRefresh={refreshNow}
-          refreshing={refreshing}
+          refreshing={isRefreshing}
           onClose={onClose}
         />
 

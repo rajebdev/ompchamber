@@ -69,10 +69,17 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
   // the old changes, so the payload is used only while it describes the scope
   // on screen.
   const fetched = payloadScopeRef.current === scopeRef.current ? fetcher.data : undefined;
-  // The topic's snapshot is the same payload shape, so a panel renders the same
-  // list whichever path delivered it; the fetcher wins when it has a fresher
-  // answer (a user Refresh that also asked for the ahead/behind count).
-  const data = fetched ?? git.data;
+  // The change list rides the REALTIME topic: the server pushes a fresh read on
+  // every tool call, so the topic is the source of the list. The HTTP read is
+  // needed only for the ahead/behind count, which the topic's resolver
+  // deliberately does not fetch (`sync: false`), so it SUPPLEMENTS the payload
+  // rather than overriding it. The previous `fetched ?? git.data` did the
+  // opposite — the HTTP copy won unconditionally, pinning the list to whatever
+  // the mount or the last Refresh read saw and hiding every change a tool call
+  // made (measured: the panel said "No changes found." while `git status`
+  // reported the file a tool call had just created).
+  const data = git.data ?? fetched;
+  const syncCount = fetched?.syncCount ?? data?.syncCount;
 
   const loadRepo = (repo?: string) => {
     if (!enabled) return;
@@ -198,7 +205,13 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
   const branches = data?.branches || ['main'];
   const remoteBranches = data?.remoteBranches || [];
   const changes = data?.changes || [];
-  const isLoading = fetcher.state === 'loading' || actionFetcher.state !== 'idle';
+  // A mutation the user started (a fetch, a commit/stage action) disables the
+  // controls; a topic PUSH must not, or a background tool call would lock the
+  // commit box for a beat.
+  const isBusy = fetcher.state === 'loading' || actionFetcher.state !== 'idle';
+  // The refresh button and the change list also light for a topic push: a tool
+  // call republishes `git:` and the panel should show that it moved on its own.
+  const isRefreshing = isBusy || git.refreshing;
 
   const stagedChanges = changes.filter(c => {
     const status = c.status;
@@ -268,7 +281,7 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
         setShowRepoMenu={setShowRepoMenu}
         activeRepo={activeRepo}
         repos={repos}
-        isLoading={isLoading}
+        isRefreshing={isRefreshing}
         rootPath={rootPath}
         reposScanning={reposScanning}
         onSelectRepo={(r) => {
@@ -298,8 +311,8 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
         onGraph={() => executeAction('graph')}
         viewMode={viewMode}
         setViewMode={setViewMode}
-        isBusy={isLoading}
-        syncCount={data?.syncCount}
+        isBusy={isBusy}
+        syncCount={syncCount}
         onSync={() => executeAction('sync')}
       />
 
@@ -307,7 +320,7 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
       <GitCommitBox 
         message={message}
         hasStagedChanges={stagedChanges.length > 0}
-        isBusy={isLoading}
+        isBusy={isBusy}
         onChangeMessage={setMessage}
         onCommit={() => executeAction('commit', undefined, { message })}
       />
@@ -315,7 +328,7 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
       {/* Changes List / Tree */}
       <GitChangesList
         changes={changes}
-        isLoading={isLoading}
+        isLoading={isBusy}
         viewMode={viewMode}
         repo={activeRepo}
         rootPath={rootPath}

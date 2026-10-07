@@ -129,7 +129,7 @@ export function PlanPanel({ className = '', active = true }: PlanPanelProps) {
           aria-label="Re-read the plan"
           className="flex-shrink-0 rounded p-1 text-ink/60 transition-colors hover:bg-ink/5 hover:text-ink disabled:opacity-50"
         >
-          <RefreshCw size={13} className={plan.isLoading ? 'animate-spin' : ''} />
+          <RefreshCw size={13} className={plan.isLoading || plan.refreshing ? 'animate-spin' : ''} />
         </button>
       </div>
 

@@ -27,10 +27,26 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { realtimeClient, type RealtimeStatus } from '@/shared/lib/realtime/client';
 
+/**
+ * How long a topic's refresh indicator stays lit after a frame lands.
+ *
+ * Long enough for the eye to catch a push it did not ask for, short enough that
+ * a burst of frames does not leave the button spinning after the data settled.
+ */
+const REFRESH_PULSE_MS = 700;
+
 export interface RealtimeTopicState<T> {
   data: T | null;
   /** No value has arrived yet for this topic. */
   isLoading: boolean;
+  /**
+   * A refresh is in flight, or one just landed: lit for a beat after EVERY
+   * frame — a server push (a tool call advanced the topic) and the panel's own
+   * `refresh` alike — so a toolbar button can spin and the user notices the
+   * data moved. Distinct from `isLoading`, which is true only before the FIRST
+   * value arrives.
+   */
+  refreshing: boolean;
   /** The value on hand is not known to be current. */
   stale: boolean;
   status: RealtimeStatus;
@@ -48,10 +64,30 @@ export function useRealtimeTopic<T>(
   const [data, setData] = useState<T | null>(() => (topic ? realtimeClient.read<T>(topic) : null));
   const [stale, setStale] = useState(false);
   const [status, setStatus] = useState<RealtimeStatus>(realtimeClient.status);
+  // Lit while a refresh is in flight and for a beat after a frame lands, so a
+  // toolbar button can spin for a push the user did not ask for.
+  const [refreshing, setRefreshing] = useState(false);
+  // `window.setTimeout` returns a number under the DOM lib, so the handle is a
+  // plain number and the clear below needs no guard.
+  const pulseTimer = useRef<number | undefined>(undefined);
   // The topic a render belongs to, so a late notification for the previous one
   // cannot repaint the panel that has moved on.
   const topicRef = useRef(topic);
   topicRef.current = topic;
+
+  /** Light the indicator and (re)arm its trailing-off timer. */
+  const pulse = useCallback(() => {
+    setRefreshing(true);
+    window.clearTimeout(pulseTimer.current);
+    pulseTimer.current = window.setTimeout(() => {
+      pulseTimer.current = undefined;
+      setRefreshing(false);
+    }, REFRESH_PULSE_MS);
+  }, []);
+
+  useEffect(() => () => {
+    window.clearTimeout(pulseTimer.current);
+  }, []);
 
   useEffect(() => {
     // A new topic is a new question: drop the previous answer before the
@@ -59,6 +95,7 @@ export function useRealtimeTopic<T>(
     if (!active || topic === null) {
       setData(null);
       setStale(false);
+      setRefreshing(false);
       return;
     }
     setData(realtimeClient.read<T>(topic));
@@ -69,18 +106,23 @@ export function useRealtimeTopic<T>(
       if (current === null) return;
       setData(realtimeClient.read<T>(current));
       setStale(realtimeClient.isStale(current));
+      // Every frame — a push from a tool call as much as this panel's own
+      // request — means the value just moved; say so on the indicator.
+      pulse();
     };
     const unsubscribe = realtimeClient.subscribe(topic, listener);
     return () => {
       unsubscribe();
     };
-  }, [topic, active]);
+  }, [topic, active, pulse]);
 
   useEffect(() => realtimeClient.onStatus(() => setStatus(realtimeClient.status())), []);
 
   const refresh = useCallback(() => {
-    if (topic !== null) realtimeClient.refresh(topic);
-  }, [topic]);
+    if (topic === null) return;
+    pulse();
+    realtimeClient.refresh(topic);
+  }, [topic, pulse]);
 
-  return { data, isLoading: data === null, stale, status, refresh };
+  return { data, isLoading: data === null, refreshing, stale, status, refresh };
 }

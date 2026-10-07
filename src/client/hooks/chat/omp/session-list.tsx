@@ -68,6 +68,12 @@ export interface SidebarDataHandle {
   /** True while a `refreshNow` is waiting on its snapshot. */
   refreshing: boolean;
   /**
+   * The indicator a toolbar button should render: a user's `refreshNow` in
+   * flight, OR a beat after any structure push landed — a tool call advances
+   * the list too, and the button must show it moved without the user asking.
+   */
+  isRefreshing: boolean;
+  /**
    * Mark a session's one-shot terminal badge as seen NOW: strips the check
    * optimistically for this mount and POSTs the server ack. No-op unless the
    * session currently carries a terminal (`finish`/`abort`) status.
@@ -206,6 +212,11 @@ export function SidebarDataProvider({ children, initialFolders = [] }: { childre
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [structure.data]);
 
+  // A background push — every tool call republishes the structure — pulses the
+  // topic's own indicator, so the toolbar button spins for it too. Without this
+  // the list moved with nothing on screen saying so.
+  const isRefreshing = refreshing || structure.refreshing;
+
   // Fires for ANY session, including one this tab never opened — the cue that an
   // agent is blocked on an answer must not depend on the open timeline.
   useInputRequiredAlert(folders);
@@ -253,13 +264,14 @@ export function SidebarDataProvider({ children, initialFolders = [] }: { childre
       refresh,
       refreshNow,
       refreshing,
+      isRefreshing,
       markSeen,
       hasSeen: (id) => seen.has(String(id)),
       isStreamPending: (id) => id !== null && id !== undefined && pending.has(String(id)),
       titleHint: (id) => (id === null || id === undefined ? undefined : titleHintRef.current.get(String(id))),
     };
     // `overlayVersion` is the re-render trigger for the two refs above.
-  }, [folders, isMock, initializing, structure.stale, status.stale, refresh, refreshNow, refreshing, markSeen, overlayVersion]);
+  }, [folders, isMock, initializing, structure.stale, status.stale, structure.refreshing, refresh, refreshNow, refreshing, isRefreshing, markSeen, overlayVersion]);
 
   return <SidebarDataContext.Provider value={value}>{children}</SidebarDataContext.Provider>;
 }
@@ -279,6 +291,7 @@ export function useSidebarData(): SidebarDataHandle {
     refresh: () => {},
     refreshNow: () => {},
     refreshing: false,
+    isRefreshing: false,
     markSeen: () => {},
     hasSeen: () => false,
     isStreamPending: () => false,
