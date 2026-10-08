@@ -177,6 +177,21 @@ describe('parseMessageBlocks', () => {
     expect(parsed.inlineOutputs.get('call-1')).toBe('');
   });
 
+  test('a streaming tool call keeps one fallback id until its real one arrives', () => {
+    // A live `toolcall_delta` block: the arguments are partial JSON, so there is
+    // no readable input and no id yet. The card is keyed by the block's
+    // position for the whole stream — a random fallback remounted it per chunk.
+    const partial = parseMessageBlocks([{ type: 'toolCall', partialArgs: '{"path":' }]).toolCalls[0];
+    const later = parseMessageBlocks([{ type: 'toolCall', partialArgs: '{"path":"a.ts"}' }]).toolCalls[0];
+    expect(partial.id).toBe('tool-0');
+    expect(later.id).toBe('tool-0');
+    // `toolcall_end` hands the finished block over, real id and all.
+    const done = parseMessageBlocks([
+      { type: 'toolCall', id: 'call-1', name: 'write', arguments: { path: 'a.ts' } },
+    ]).toolCalls[0];
+    expect(done.id).toBe('call-1');
+  });
+
   test('command extraction is first-string-wins across the documented keys', () => {
     const [call] = parseMessageBlocks([
       { type: 'toolCall', id: 'c', name: 'run', arguments: { command: 7, cmd: 'ls', CommandLine: 'echo' } },

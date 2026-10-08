@@ -130,7 +130,13 @@ export function useOmpAgentStream({
       if (raw.type === 'message_end' || raw.type === 'agent_end') {
         deltasRef.current.clear(typeof raw.messageId === 'string' ? raw.messageId : undefined);
       }
-      const payload = rebuilt ? { ...raw, message: rebuilt.message, assistantMessageEvent: rebuilt.event } : raw;
+      // `event` is absent when the accumulator rewrote only the terminal
+      // message: a `message_end` for a stream whose fragments were keyed by the
+      // wire message id (a client that attached mid-message), so the finished
+      // row is the one the fragments were drawn under.
+      const payload = rebuilt
+        ? { ...raw, message: rebuilt.message, ...(rebuilt.event ? { assistantMessageEvent: rebuilt.event } : {}) }
+        : raw;
 
       foldAgentEvent(payload as OmpAgentEvent, {
         sessionId: sid,

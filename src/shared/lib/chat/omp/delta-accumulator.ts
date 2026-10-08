@@ -32,6 +32,12 @@
  * A build that ignores `set_event_filter` sends the accumulated message on
  * every update; those frames carry content and pass through untouched, so the
  * accumulator is inert rather than wrong on such a child.
+ *
+ * The rebuild also owns the ROW IDENTITY. A seeded stream takes it from the
+ * seed's `timestamp`; a client that attached after `message_start` (a reload, a
+ * second tab, a session switched to while it streams) has no seed, and there
+ * the wire `messageId` — the one field every frame of the message carries — is
+ * what keeps the fragments on a single row. See `rowId`.
  */
 
 import { isRecord } from '@/shared/lib/util/guards';
@@ -46,14 +52,23 @@ interface Accumulated {
   meta: Record<string, unknown>;
   /** True once a fragment has been applied; a later full `message` then wins. */
   touched: boolean;
+  /** Row id adopted from the WIRE when this message carries no identity of its
+   *  own, because the client attached after `message_start` and never saw the
+   *  seed that supplies the timestamp a row id is derived from. Every frame of
+   *  one message shares its `messageId`, so that is the only id available this
+   *  early — without it each fragment minted `msg-<now>-ai` and appended its
+   *  own row. See `hasIdentity`. */
+  rowId?: string;
 }
 
 export interface DeltaAccumulator {
   /**
    * Fold one frame and return what the downstream reader should see, or
-   * `undefined` to pass the frame through untouched.
+   * `undefined` to pass the frame through untouched. `event` is absent when
+   * only the message was rewritten (the `message_end` of a stream whose
+   * fragments were keyed by the wire id).
    */
-  apply(frame: Record<string, unknown>): { event: Record<string, unknown>; message: Record<string, unknown> } | undefined;
+  apply(frame: Record<string, unknown>): { event?: Record<string, unknown>; message: Record<string, unknown> } | undefined;
   /** Forget one message (its terminal frame arrived, or a session switched). */
   clear(messageId: string | undefined): void;
   /** Forget everything (session switch, disconnect). */
@@ -93,11 +108,12 @@ export function createDeltaAccumulator(): DeltaAccumulator {
     entry.meta = meta;
   }
 
-  function apply(frame: Record<string, unknown>): { event: Record<string, unknown>; message: Record<string, unknown> } | undefined {
+  function apply(frame: Record<string, unknown>): { event?: Record<string, unknown>; message: Record<string, unknown> } | undefined {
     const message = isRecord(frame.message) ? frame.message : undefined;
-    const messageId = typeof frame.messageId === 'string'
+    const explicitId = typeof frame.messageId === 'string'
       ? frame.messageId
-      : (typeof message?.id === 'string' ? message.id : 'anonymous');
+      : (typeof message?.id === 'string' ? message.id : undefined);
+    const messageId = explicitId ?? 'anonymous';
     const rawEvent = frame.assistantMessageEvent;
 
     // `message_start`: the full message, and the seed every later fragment
@@ -107,6 +123,16 @@ export function createDeltaAccumulator(): DeltaAccumulator {
         const entry = bucket(messageId);
         entry.touched = false;
         seed(entry, message);
+      } else if (frame.type === 'message_end') {
+        // The finished message is the authority, but it carries its own
+        // timestamp while the fragments of a message the client attached
+        // mid-stream were keyed by the wire id. Handing the adopted id back
+        // keeps the terminal frame on the row the stream drew, instead of
+        // appending a second, complete row beside the partial one.
+        const adopted = byMessage.get(messageId)?.rowId;
+        if (adopted && message && message.id === undefined) {
+          return { message: { ...message, id: adopted } };
+        }
       }
       return undefined;
     }
@@ -121,6 +147,16 @@ export function createDeltaAccumulator(): DeltaAccumulator {
     if (Array.isArray(message?.content) && message.content.length > 0 && !entry.touched) {
       return undefined;
     }
+
+    // Adopt the WIRE id as the row id when nothing on this message can produce
+    // one: a client that attached after `message_start` has no seed, and a
+    // delta frame's message is `{role}` only, so without this every fragment
+    // minted `msg-<now>-ai` and appended its own row. Measured through the real
+    // transport: one 151-fragment run, attached 6.5 s in, rendered 151 cards.
+    const carriesIdentity = [entry.meta, message].some(
+      (candidate) => !!candidate && (typeof candidate.id === 'string' || candidate.timestamp !== undefined),
+    );
+    if (!entry.rowId && explicitId && !carriesIdentity) entry.rowId = explicitId;
 
     const index = typeof rawEvent.contentIndex === 'number' ? rawEvent.contentIndex : -1;
     if (index < 0) return undefined;
@@ -163,11 +199,14 @@ export function createDeltaAccumulator(): DeltaAccumulator {
     // message — `msg-<timestamp>-ai`. The delta frames carry only `{role}`, and
     // without the timestamp every token would mint `msg-<now>-ai` and append a
     // row; `message_end` carries the same timestamp, so the terminal frame
-    // updates the row the stream was drawing.
+    // updates the row the stream was drawing. When there is no seed to take a
+    // timestamp from, `entry.rowId` (the wire id) is what keeps the fragments
+    // on one row — and `message_end` is stamped with it too, above.
     const rebuilt: Record<string, unknown> = {
       ...(message ?? {}),
       ...entry.meta,
       content: entry.blocks,
+      ...(entry.rowId ? { id: entry.rowId } : {}),
     };
     return { event: { ...rawEvent, partial: rebuilt }, message: rebuilt };
   }

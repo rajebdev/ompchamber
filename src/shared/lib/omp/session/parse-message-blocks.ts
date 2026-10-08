@@ -101,7 +101,7 @@ export function parseMessageBlocks(content: unknown): ParsedMessageBlocks {
   }
   if (!Array.isArray(content)) return result;
 
-  for (const raw of content) {
+  for (const [blockIndex, raw] of content.entries()) {
     if (!isRecord(raw)) continue;
     const block = raw as {
       type?: unknown;
@@ -117,7 +117,12 @@ export function parseMessageBlocks(content: unknown): ParsedMessageBlocks {
       if (typeof block.thinking === 'string') result.thinking = block.thinking;
       else if (typeof block.text === 'string') result.thinking = block.text;
     } else if (block.type === 'toolCall') {
-      const id = typeof block.id === 'string' ? block.id : `tool-${Math.random().toString(36).slice(2, 10)}`;
+      // A streaming tool call has no `id` yet — its arguments are still
+      // arriving as partial JSON (see `delta-accumulator.ts`), so omp's id only
+      // appears at `toolcall_end`. A random fallback re-keyed the card on every
+      // frame and remounted it per chunk; the block's position is stable for
+      // the whole stream and the real id takes over the moment it arrives.
+      const id = typeof block.id === 'string' ? block.id : `tool-${blockIndex}`;
       const name = typeof block.name === 'string' ? block.name : 'tool';
       const rawInput = (block.arguments ?? block.input) as Record<string, unknown> | undefined;
       const args = isRecord(rawInput) ? rawInput : undefined;

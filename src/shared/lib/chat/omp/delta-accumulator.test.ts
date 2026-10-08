@@ -84,11 +84,59 @@ describe('createDeltaAccumulator', () => {
     });
     acc.apply(update({ type: 'toolcall_start', contentIndex: 0 }));
     const applied = acc.apply(update({ type: 'toolcall_delta', contentIndex: 0, delta: '{"path":' }));
-    const partial = applied?.event.partial as { content: Array<Record<string, unknown>> };
-    expect(partial.content[0]).toMatchObject({ type: 'toolCall', partialArgs: '{"path":' });
+    expect(applied?.message.content).toMatchObject([{ type: 'toolCall', partialArgs: '{"path":' }]);
     const end = acc.apply(update({ type: 'toolcall_end', contentIndex: 0, toolCall: { type: 'toolCall', id: 'c1', name: 'write', arguments: { path: 'x' } } }));
-    const blocks = (end?.event.partial as { content: Array<Record<string, unknown>> }).content;
-    expect(blocks[0]).toMatchObject({ name: 'write', arguments: { path: 'x' } });
+    expect(end?.message.content).toMatchObject([{ name: 'write', arguments: { path: 'x' } }]);
+  });
+
+  test('keys an unseeded stream to the wire id — one row, not one per fragment', () => {
+    // The shape a client that attached mid-message sees: `message_start` never
+    // arrived, so no frame carries the timestamp a row id is derived from. Every
+    // fragment shares the wire `messageId`, and that is what must key the row —
+    // measured through the real transport, a 151-fragment run attached 6.5 s in
+    // rendered 151 cards before this.
+    const acc = createDeltaAccumulator();
+    const ids = new Set<string>();
+    const contents: string[] = [];
+    for (const delta of ['rea', 'son', 'ing']) {
+      const rebuilt = acc.apply(update({ type: 'text_delta', contentIndex: 0, delta }));
+      const msg = rebuilt ? toChatMessage(rebuilt.message, true) : null;
+      if (msg) {
+        ids.add(msg.id);
+        contents.push(msg.content);
+      }
+    }
+    expect([...ids]).toEqual(['msg-2']);
+    expect(contents.at(-1)).toBe('reasoning');
+  });
+
+  test('stamps the adopted wire id onto the terminal message', () => {
+    const acc = createDeltaAccumulator();
+    acc.apply(update({ type: 'text_delta', contentIndex: 0, delta: 'abc' }));
+    const end = acc.apply({
+      type: 'message_end',
+      messageId: 'msg-2',
+      message: { role: 'assistant', content: [{ type: 'text', text: 'abcdef' }], timestamp: 1757943900000 },
+    });
+    // Without the stamp this finalizes into `msg-<timestamp>-ai` and the run
+    // ends with the partial card AND a complete one beside it.
+    const msg = end ? toChatMessage(end.message, false) : null;
+    expect(msg?.id).toBe('msg-2');
+  });
+
+  test('a seeded stream still keys rows by the seed timestamp', () => {
+    const acc = createDeltaAccumulator();
+    acc.apply(SEED);
+    const rebuilt = acc.apply(update({ type: 'text_delta', contentIndex: 0, delta: 'x' }));
+    const msg = rebuilt ? toChatMessage(rebuilt.message, true) : null;
+    expect(msg?.id).toBe('msg-1757943900000-ai');
+    // A seeded message needs no adoption, so its terminal frame is untouched.
+    const end = acc.apply({
+      type: 'message_end',
+      messageId: 'msg-2',
+      message: { role: 'assistant', content: [{ type: 'text', text: 'hello world' }], timestamp: 1757943900000 },
+    });
+    expect(end).toBeUndefined();
   });
 
   test('passes an accumulated frame through untouched', () => {
@@ -112,7 +160,6 @@ describe('createDeltaAccumulator', () => {
     acc.apply(update({ type: 'text_delta', contentIndex: 0, delta: 'abc' }));
     acc.clear('msg-2');
     const restarted = acc.apply(update({ type: 'text_delta', contentIndex: 0, delta: 'xyz' }));
-    const blocks = (restarted?.event.partial as { content: Array<Record<string, unknown>> }).content;
-    expect(blocks[0]).toMatchObject({ text: 'xyz' });
+    expect(restarted?.message.content).toMatchObject([{ text: 'xyz' }]);
   });
 });
