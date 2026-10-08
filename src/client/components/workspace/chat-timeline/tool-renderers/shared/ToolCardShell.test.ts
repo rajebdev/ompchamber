@@ -131,3 +131,18 @@ describe('ToolCardShell header rows', () => {
     expect((col.children[1] as HTMLElement).textContent).toContain('src/x.ts');
   });
 });
+
+describe('ToolCardShell header is exactly two rows at most', () => {
+  test('the column holds the title row plus one meta row, never three', async () => {
+    const el = await mount({ isOpen: false });
+    const col = column(el);
+    // title row + ONE meta row. A third row was the bug: the subtitle and the
+    // facts each had their own.
+    expect(col.children.length).toBe(2);
+  });
+
+  test('no meta row is rendered while expanded', async () => {
+    const el = await mount({ isOpen: true });
+    expect(column(el).children.length).toBe(1);
+  });
+});

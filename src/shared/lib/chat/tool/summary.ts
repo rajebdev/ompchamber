@@ -118,25 +118,13 @@ function subjectFact(label: string): ToolFact {
     : { kind: 'subject', label, title: label };
 }
 
-/** Search subject for `grep`/`glob`: the pattern the user can actually read. */
-function searchSubject(tool: ToolCallData, input: Details | undefined): string | undefined {
-  return firstString(
-    input?.pattern,
-    input?.query,
-    input?.glob,
-    input?.regex,
-    input?.search,
-    input?.text,
-    input?.path,
-    tool.target !== '.' ? tool.target : undefined,
-  );
-}
-
-/** The scope a search ran over, shortened from the right (the leaf is the name). */
-function searchScope(details: Details): string | undefined {
-  const scope = firstString(details.scopePath, details.searchPath);
-  if (!scope) return undefined;
-  return scope.length > 48 ? `…${scope.slice(-47)}` : scope;
+/** Search subject for `grep`/`glob`: the PATTERN the reader wants, never the
+ *  path. The path is the card's subtitle, so a subject that fell back to it
+ *  printed the same string twice on one row (`public/**; *.json` as both the
+ *  subtitle and the first chip). A glob with no pattern therefore has no
+ *  subject chip — its path IS the subject, and the subtitle shows it. */
+function searchSubject(input: Details | undefined): string | undefined {
+  return firstString(input?.pattern, input?.query, input?.regex, input?.search, input?.text);
 }
 
 /**
@@ -240,8 +228,11 @@ export function toolSummary(tool: ToolCallData): ToolSummary | null {
   }
 
   // ── grep / glob / ast_grep ────────────────────────────────────────────────
+  // The scope (`src`, `public/**`) is the card's SUBTITLE, so it is not
+  // repeated as a chip: `searchScope` used to add it here, which printed the
+  // same string on both halves of one row for a `glob`.
   if (key === 'grep' || key === 'glob' || key === 'ast_grep' || key === 'search_fs') {
-    const subject = searchSubject(tool, input);
+    const subject = searchSubject(input);
     if (subject) facts.push(subjectFact(subject));
     const matchCount = asNumber(details.matchCount);
     const fileCount = asNumber(details.fileCount);
@@ -254,8 +245,6 @@ export function toolSummary(tool: ToolCallData): ToolSummary | null {
     if (details.truncated === true || details.resultLimitReached !== undefined) {
       facts.push({ kind: 'warn', label: 'truncated', tone: 'warn' });
     }
-    const scope = searchScope(details);
-    if (scope && scope !== subject) facts.push({ kind: 'note', label: scope });
   }
 
   // ── eval ──────────────────────────────────────────────────────────────────

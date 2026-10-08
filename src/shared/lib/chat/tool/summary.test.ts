@@ -158,7 +158,26 @@ describe('toolSummary — search', () => {
     }));
     expect(summary?.line).toContain('DragEvent');
     expect(summary?.line).toContain('2 matches in 1 file');
-    expect(summary?.line).toContain('src');
+  });
+
+  test('does not repeat the scope, which the card shows as its subtitle', () => {
+    // `scopePath` is the subtitle (`src`), so a chip for it printed the same
+    // string on both halves of one row.
+    const summary = toolSummary(tool({
+      type: 'grep',
+      input: { pattern: 'DragEvent' },
+      details: { matchCount: 2, fileCount: 1, scopePath: 'src' },
+    }));
+    expect(summary?.facts.some((fact) => fact.label === 'src')).toBe(false);
+  });
+
+  test('a glob with no pattern has no subject chip, because its path is the subject', () => {
+    const summary = toolSummary(tool({
+      type: 'glob',
+      input: { path: 'public/**' },
+      details: { fileCount: 11 },
+    }));
+    expect(summary?.line).toBe('11 files');
   });
 
   test('flags a truncated search', () => {

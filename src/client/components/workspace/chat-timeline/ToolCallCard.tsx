@@ -27,7 +27,7 @@ import { FallbackOutput } from '@/client/components/workspace/chat-timeline/tool
 import { JsonCodeBlock } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/JsonCodeBlock';
 import { ToolDetailsPanel, resolveToolKey } from '@/client/components/workspace/chat-timeline/tool-renderers';
 import { toolPanelKind } from '@/client/components/workspace/chat-timeline/tool-renderers/registry';
-import { toolSummary, type ToolFact } from '@/shared/lib/chat/tool/summary';
+import { toolSummary } from '@/shared/lib/chat/tool/summary';
 import { tryParseJson } from '@/shared/lib/code/syntax-highlight';
 import {
   commandOrInputOf,
@@ -46,9 +46,6 @@ interface ToolCallCardProps {
   onToggle?: (toolId: string) => void;
   defaultExpanded?: boolean;
 }
-
-/** Intent is capped for the chip row; a longer line lives in its tooltip. */
-const INTENT_CHIP_MAX = 60;
 
 function SectionLabel({ children }: { children: string }) {
   return (
@@ -88,22 +85,18 @@ export const ToolCallCard = memo(function ToolCallCard({ tool, isOpen, onToggle,
     [outputText],
   );
 
-  // The model's own one-liner (omp's `i` field, present on 82% of calls) is the
-  // most readable thing a collapsed card can say, and it used to be shown for
-  // MCP calls only. It becomes the first chip rather than the subtitle, so the
-  // precise path the subtitle carries is not traded away for it.
-  const headerSummary = useMemo(() => {
-    const intent = tool.intent?.trim();
-    if (!intent) return summary;
-    const fact: ToolFact = {
-      kind: 'subject',
-      label: intent.length > INTENT_CHIP_MAX ? `${intent.slice(0, INTENT_CHIP_MAX - 1)}…` : intent,
-      title: intent,
-    };
-    return summary
-      ? { facts: [fact, ...summary.facts], line: `${fact.label} · ${summary.line}` }
-      : { facts: [fact], line: fact.label };
-  }, [tool.intent, summary]);
+  // The intent chip is deliberately NOT part of this row. It used to be the
+  // first chip, which pushed a real fact out: an `edit` showed
+  // `Preferring dt.files for real files · +43 −16 · +1`, so `line 25` — the
+  // thing the reader wants — sat behind the overflow counter. The row is
+  // `path + facts` now, and the intent stays where it always was for every tool
+  // except eval: nowhere, or inside the body's own panel.
+  //
+  // eval is the exception and shows its intent as the TITLE (`input.title` is
+  // omp's label for the cell), so it carries no facts row at all — a second
+  // line of `js · 1 cell · browser.open` under a title that already names the
+  // action is the duplication this removes.
+  const headerSummary = toolKey === 'eval' ? null : summary;
 
   const actions = (
     <>
