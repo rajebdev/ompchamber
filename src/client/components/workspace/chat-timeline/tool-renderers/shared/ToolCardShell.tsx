@@ -160,17 +160,30 @@ export function ToolCardShell({
           {icon}
         </span>
 
-        <span className="flex min-w-0 flex-1 flex-col">
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="flex items-center gap-1.5">
             <span className="truncate text-[12px] font-semibold tracking-tight text-ink">{title}</span>
             {statusDot(status, isSkipped)}
           </span>
-          {subtitle && (
-            <span className="truncate font-mono text-[10.5px] text-ink/45">{subtitle}</span>
-          )}
-          {summary && summary.facts.length > 0 && (
-            <span className="mt-1 flex min-w-0">
-              <ToolFactChips facts={summary.facts} />
+          {/* ONE meta line, and none at all once expanded.
+              The identity (subtitle) and the outcome (facts) used to be two
+              stacked rows, so a `bash` card drew `Bash` / `cd /Users/…` /
+              `599ms · 17 lines` — three lines for a collapsed card, and the
+              reader's "why does bash have two subtitle lines". They share one
+              row now: the subtitle truncates (it is the long half) and the
+              chips stay whole, because a half-ellipsized fact reads as a wrong
+              fact.
+              Hiding it on expand mirrors `ThinkingSection`: the body carries
+              the path, the command and the output, so repeating the summary
+              above it is noise. */}
+          {!isExpanded && (subtitle || (summary && summary.facts.length > 0)) && (
+            <span className="flex min-w-0 items-center gap-2 overflow-hidden">
+              {subtitle && (
+                <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-ink/45">{subtitle}</span>
+              )}
+              {summary && summary.facts.length > 0 && (
+                <ToolFactChips facts={summary.facts} max={subtitle ? 2 : 4} />
+              )}
             </span>
           )}
         </span>
