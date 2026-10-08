@@ -124,3 +124,38 @@ describe('ToolCallingSection per-card intent heading', () => {
     expect(heading.getAttribute('title')).toBe(long);
   });
 });
+
+describe('ToolCallingSection heading rule', () => {
+  test('the rule fills the row, the way the thinking heading draws it', async () => {
+    const el = await mount([tool('a', 'Finding PWA manifest')]);
+    const row = el.querySelector('div.mx-3 > div') as HTMLElement;
+    const [label, rule] = Array.from(row.children) as HTMLElement[];
+    // The label sizes to its text and the rule takes the remainder, so the line
+    // runs to the panel edge. Two `flex-1` items would split the row 50/50 and
+    // park a short heading's rule in the middle of it.
+    expect(label.className).toContain('truncate');
+    expect(label.className).not.toContain('flex-1');
+    expect(rule.className).toContain('flex-1');
+    expect(rule.className).toContain('h-px');
+    // The old fixed width is gone. Asserted as a WORD, because `min-w-6`
+    // contains `w-6` as a substring and a naive `toContain` would fail on the
+    // guard that keeps the rule from collapsing.
+    expect(rule.className.split(' ')).not.toContain('w-6');
+  });
+
+  test('the rule keeps a minimum width so a long intent cannot collapse it', async () => {
+    const el = await mount([tool('a', 'x'.repeat(400))]);
+    const row = el.querySelector('div.mx-3 > div') as HTMLElement;
+    const rule = row.children[1] as HTMLElement;
+    // A plain `flex-1` has a flex-basis of 0, so with nothing left over it would
+    // shrink to zero and the heading would lose its line entirely.
+    expect(rule.className).toContain('min-w-6');
+  });
+
+  test('the label still carries the full text for a truncated intent', async () => {
+    const long = 'y'.repeat(300);
+    const el = await mount([tool('a', long)]);
+    const label = el.querySelector('div.mx-3 > div > span') as HTMLElement;
+    expect(label.getAttribute('title')).toBe(long);
+  });
+});

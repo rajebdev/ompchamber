@@ -117,13 +117,20 @@ export function ToolCallingSection({ tools, title, defaultExpanded = false }: To
           <Fragment key={tool.id}>
             {intent && (
               <div className="flex items-center gap-2 px-1 pt-0.5">
+                {/* Label sizes to its text; the rule takes everything left over,
+                    so the line runs to the panel edge the way `ThinkingSection`
+                    draws it. The label is NOT `flex-1` — two `flex-1` items split
+                    the row 50/50 regardless of content, which parks a short
+                    heading's rule in the middle of the row. `min-w-6` on the rule
+                    keeps it visible when a sentence-length intent has to shrink
+                    (a plain `flex-1` basis of 0 would collapse it to nothing). */}
                 <span
-                  className="min-w-0 flex-1 truncate text-[9.5px] font-semibold uppercase tracking-[0.14em] text-ink/35"
+                  className="min-w-0 truncate text-[9.5px] font-semibold uppercase tracking-[0.14em] text-ink/35"
                   title={intent}
                 >
                   {intent}
                 </span>
-                <span className="h-px w-6 shrink-0 bg-ink/8" />
+                <span className="h-px min-w-6 flex-1 bg-ink/8" />
               </div>
             )}
             <ToolCallCard
