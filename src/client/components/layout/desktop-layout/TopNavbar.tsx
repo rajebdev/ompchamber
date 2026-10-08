@@ -1,4 +1,4 @@
-import { LayoutTemplate, MoreHorizontal, PanelLeft, PanelRight, PanelRightClose, Smartphone } from 'lucide-preact';
+import { LayoutTemplate, MoreHorizontal, PanelLeft, PanelRight, PanelRightClose, RefreshCw, Smartphone } from 'lucide-preact';
 import { PWAInstallButton } from '@/client/components/common/PWAInstallButton';
 import { PanelLauncher } from '@/client/components/layout/desktop-layout/PanelLauncher';
 import { HeaderPanelButtons } from '@/client/components/layout/desktop-layout/HeaderPanelButtons';
@@ -153,6 +153,15 @@ export function TopNavbar({
             </button>
           )}
           <PWAInstallButton />
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="p-1.5 rounded hover:bg-ink/10 transition-colors text-ink/60 hover:text-ink cursor-pointer"
+            title="Reload page"
+            aria-label="Reload page"
+          >
+            <RefreshCw size={16} />
+          </button>
           <button
             type="button"
             onClick={onToggleEditor}

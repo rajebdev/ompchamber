@@ -31,10 +31,17 @@ const MobileLayoutWrapper = lazy(() =>
 export interface AppProps {
   /** Server-detected mobile verdict, so the first paint needs no UA check. */
   initialIsMobile?: boolean;
+  /**
+   * True when the serving chamber is a production build. Gates DEVELOPMENT-ONLY
+   * chrome — the desktop ⇄ mobile layout switch — while leaving user-facing
+   * controls (the navbar's reload button) in place. Absent means development,
+   * so a shell served by an older build keeps the switch.
+   */
+  production?: boolean;
   appSettings?: Record<string, unknown>;
 }
 
-export function App({ initialIsMobile = false, appSettings = {} }: AppProps) {
+export function App({ initialIsMobile = false, production = false, appSettings = {} }: AppProps) {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('sessionId') || '1';
   const authState = useAuthState();
@@ -83,6 +90,11 @@ export function App({ initialIsMobile = false, appSettings = {} }: AppProps) {
   useEffect(() => setWindowChromeLayout(isMobileMode), [isMobileMode]);
   useEffect(() => setWindowChromeAuthRequired(authState === 'required'), [authState]);
 
+  // The two switch handlers are passed down only in development (the JSX below
+  // gates them on the bootstrap's `production` flag): the device decides the
+  // layout on every load, so on a production instance the buttons would only let
+  // a user fight the detector for one page session. They stay defined so the JSX
+  // reads the same in both modes.
   const handleSwitchToDesktop = () => {
     manualOverrideRef.current = true;
     setIsMobileMode(false);
@@ -105,7 +117,7 @@ export function App({ initialIsMobile = false, appSettings = {} }: AppProps) {
         <SidebarDataProvider>
           <Suspense fallback={null}>
             <MobileLayoutWrapper
-              onDesktopToggle={handleSwitchToDesktop}
+              onDesktopToggle={production ? undefined : handleSwitchToDesktop}
               appSettings={appSettings}
             />
           </Suspense>
@@ -119,7 +131,7 @@ export function App({ initialIsMobile = false, appSettings = {} }: AppProps) {
       <SidebarDataProvider>
         <DesktopLayout
           sessionId={sessionId}
-          onSwitchToMobile={handleSwitchToMobile}
+          onSwitchToMobile={production ? undefined : handleSwitchToMobile}
           appSettings={appSettings}
         />
       </SidebarDataProvider>

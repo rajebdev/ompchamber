@@ -49,5 +49,12 @@ installUiKit();
 bootSyntax();
 
 if (root) {
-  hydrate(<App initialIsMobile={bootstrap?.initialIsMobile} appSettings={bootstrap?.appSettings} />, root);
+  hydrate(
+    <App
+      initialIsMobile={bootstrap?.initialIsMobile}
+      production={bootstrap?.production}
+      appSettings={bootstrap?.appSettings}
+    />,
+    root,
+  );
 }

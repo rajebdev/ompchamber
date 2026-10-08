@@ -155,7 +155,10 @@ export const ssrRoutes = new Elysia({ name: 'ssr' }).get('*', async ({ request }
   const rendered = await renderShell();
   if (!rendered.ok) return shellUnavailableResponse(rendered.reason);
 
-  const bootstrap = JSON.stringify({ initialIsMobile, authenticated, appSettings: settings }).replace(/</g, '\\u003c');
+  // `production` is the same predicate the dev-asset proxy runs on
+  // (`NODE_ENV !== 'production'`), so the client's dev-only chrome and the
+  // server's dev-only asset route can never disagree about which build this is.
+  const bootstrap = JSON.stringify({ initialIsMobile, authenticated, production: !DEV_ASSETS_ENABLED, appSettings: settings }).replace(/</g, '\\u003c');
   // The template's own `<meta name="theme-color">` is REWRITTEN, not joined by
   // a second tag: with both present Chrome reads the first one, so an appended
   // tag would leave a dark theme painting light browser chrome.
