@@ -2,7 +2,7 @@ import type { TargetedMouseEvent } from 'preact';
 import { useMemo } from 'preact/hooks';
 import { memo } from 'preact/compat';
 import { AlertCircle, Bot, Info, MessageSquarePlus, Undo2, User } from 'lucide-preact';
-import type { Attachment, ChatMessageData, ToolCallData } from '@/shared/types';
+import type { Attachment, ChatMessageData } from '@/shared/types';
 import { toAttachmentList } from '@/shared/lib/chat/attachments';
 import { ThinkingSection } from '@/client/components/workspace/chat-timeline/ThinkingSection';
 import { ToolCallingSection } from '@/client/components/workspace/chat-timeline/ToolCallingSection';
@@ -169,11 +169,6 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   const secondaryToolCalls = msg.actions2;
   const cleanIntent = msg.intent ? capitalizeFirstLetter(msg.intent.replace(/^[.\s]+/, '')) : null;
   const hasToolCalls = Boolean(allToolCalls && allToolCalls.length > 0);
-  const yieldOutput = allToolCalls
-    ?.filter((t: ToolCallData) => t.name === 'yield' || t.type === 'yield')
-    .find((t: ToolCallData) => t.status !== 'error')?.output;
-  const toolTitle = cleanIntent
-    || (yieldOutput ?? (allToolCalls?.length === 1 ? 'Tool Execution (1 step)' : `Tool Executions (${allToolCalls?.length} steps)`));
 
   return (
     <div 
@@ -251,7 +246,6 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         {hasToolCalls && (
           <ToolCallingSection 
             tools={allToolCalls}
-            title={toolTitle}
             defaultExpanded={false}
           />
         )}
@@ -270,7 +264,6 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         {secondaryToolCalls && secondaryToolCalls.length > 0 && (
           <ToolCallingSection 
             tools={secondaryToolCalls}
-            title={`Follow-up Tools (${secondaryToolCalls.length})`}
             defaultExpanded={true}
           />
         )}

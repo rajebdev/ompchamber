@@ -12,7 +12,6 @@ import { ChevronsDownUp, ChevronsUpDown } from 'lucide-preact';
 
 interface ToolCallingSectionProps {
   tools: (ToolCallData | AgentActionData)[];
-  title?: string;
   defaultExpanded?: boolean;
 }
 
@@ -55,7 +54,7 @@ function normalizeToolData(action: ToolCallData | AgentActionData, index: number
   };
 }
 
-export function ToolCallingSection({ tools, title, defaultExpanded = false }: ToolCallingSectionProps) {
+export function ToolCallingSection({ tools, defaultExpanded = false }: ToolCallingSectionProps) {
   const normalizedTools = useMemo(() => {
     return (tools || []).map((t, i) => normalizeToolData(t, i));
   }, [tools]);
@@ -70,45 +69,22 @@ export function ToolCallingSection({ tools, title, defaultExpanded = false }: To
   if (!normalizedTools || normalizedTools.length === 0) return null;
 
   const showBulk = normalizedTools.length > 1;
-  // Each card is headed by its OWN intent, so the list reads
-  // `title1 → card1 → title2 → card2`. The section-level `title` is the intent
-  // of the FIRST call only, so keeping it would print that one intent twice —
-  // once for the section and again above its own card. It therefore survives
-  // only as the fallback for a turn where no card carries an intent (a
-  // tool-only turn, where omp sent no `i` field), because there it is the only
-  // label there is.
-  const anyCardIntent = normalizedTools.some((tool) => Boolean(tool.intent?.trim()));
-  const showSectionTitle = Boolean(title) && !anyCardIntent;
 
   return (
     <div className="mx-3 space-y-1.5">
-      {(showSectionTitle || showBulk) && (
+      {showBulk && (
         <div className="flex items-center gap-2 px-1 pt-0.5">
-          {/* The title is a whole sentence: it is clamped to ONE line with an
-              ellipsis rather than wrapping, so a long intent never grows the
-              header. `flex-1 min-w-0` is what gives `truncate` a definite width
-              to ellipsize against, and `title` keeps the full text reachable. */}
-          {showSectionTitle && (
-            <span
-              className="min-w-0 flex-1 truncate text-[9.5px] font-semibold uppercase tracking-[0.14em] text-ink/35"
-              title={title}
-            >
-              {title}
-            </span>
-          )}
-          <span className={`h-px shrink-0 bg-ink/8 ${showSectionTitle ? 'w-6' : 'flex-1'}`} />
-          {showBulk && (
-            <button
-              type="button"
-              onClick={anyOpen ? collapseAll : expandAll}
-              aria-label={anyOpen ? 'Collapse all tool calls' : 'Expand all tool calls'}
-              title={anyOpen ? 'Collapse all' : 'Expand all'}
-              className="flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider text-ink/40 transition-colors hover:bg-ink/5 hover:text-ink"
-            >
-              {anyOpen ? <ChevronsDownUp size={11} /> : <ChevronsUpDown size={11} />}
-              <span>{anyOpen ? 'Collapse all' : 'Expand all'}</span>
-            </button>
-          )}
+          <span className="h-px min-w-6 flex-1 bg-ink/8" />
+          <button
+            type="button"
+            onClick={anyOpen ? collapseAll : expandAll}
+            aria-label={anyOpen ? 'Collapse all tool calls' : 'Expand all tool calls'}
+            title={anyOpen ? 'Collapse all' : 'Expand all'}
+            className="flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider text-ink/40 transition-colors hover:bg-ink/5 hover:text-ink"
+          >
+            {anyOpen ? <ChevronsDownUp size={11} /> : <ChevronsUpDown size={11} />}
+            <span>{anyOpen ? 'Collapse all' : 'Expand all'}</span>
+          </button>
         </div>
       )}
       {normalizedTools.map((tool) => {
