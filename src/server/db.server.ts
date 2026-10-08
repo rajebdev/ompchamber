@@ -52,10 +52,13 @@ function slot(): DbSlot {
 }
 
 export async function getDatabasePath(): Promise<string> {
-  if (isMockMode()) {
-    return path.join(process.cwd(), 'workspace.db');
-  }
-
+  // An explicit override wins over BOTH defaults, mock included. It has to come
+  // first: the mock default is cwd-relative, so a `MOCK=true` server started
+  // from a checkout wrote the repository's own `workspace.db` no matter what
+  // the caller set — which is exactly what an isolated test or a second
+  // instance needs the variable for. Verified before the fix: a mock boot with
+  // `OMPCHAMBER_DB_PATH` set to a temp file still answered the repo path on
+  // this line.
   const customPath = Bun.env.OMPCHAMBER_DB_PATH || Bun.env.DB_PATH;
   if (customPath) {
     const resolvedPath = customPath.startsWith('~')
@@ -66,6 +69,10 @@ export async function getDatabasePath(): Promise<string> {
       await fs.promises.mkdir(dir, { recursive: true });
     }
     return resolvedPath;
+  }
+
+  if (isMockMode()) {
+    return path.join(process.cwd(), 'workspace.db');
   }
 
   const defaultDir = path.join(os.homedir(), '.ompchamber');
