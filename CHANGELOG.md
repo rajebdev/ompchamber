@@ -5,6 +5,22 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.9.0](https://github.com/rajebdev/ompchamber/compare/v4.8.0...v4.9.0) — 2026-10-08
+
+### Added
+
+* **chat:** remove the tool group title from the timeline ([9dc4825](https://github.com/rajebdev/ompchamber/commit/9dc4825a2de173b9123d10473192261108c5cfba))
+
+### Changed
+
+* **chat:** drop the tool section's group heading and bulk control ([c64aeca](https://github.com/rajebdev/ompchamber/commit/c64aeca95d2e301156c76d2ecf29f646c0e09323))
+
+### Fixed
+
+* **chat:** keep streamed fragments on one row without a message seed ([cf2d1f6](https://github.com/rajebdev/ompchamber/commit/cf2d1f6913b9c6551c57d73e0e4b369315773c89))
+* **chat:** stop a collapsed edit card quoting its own excerpt header ([32111a7](https://github.com/rajebdev/ompchamber/commit/32111a7e56c9653d325592fc31c3444ebf5a3c3a)), closes [path#TAG](https://github.com/rajebdev/path/issues/TAG)
+* **layout:** cap the editor and right panel as one coupled pair ([9d361a9](https://github.com/rajebdev/ompchamber/commit/9d361a9405fec2d7cf420052859445fa4d9f9265))
+
 ## [4.8.0](https://github.com/rajebdev/ompchamber/compare/v4.7.2...v4.8.0) — 2026-10-08
 
 ### Added
