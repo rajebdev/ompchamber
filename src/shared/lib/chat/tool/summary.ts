@@ -26,6 +26,7 @@
 
 import type { ToolCallData } from '@/shared/types/chat';
 import { procPathOf } from '@/shared/lib/omp/session/proc';
+import { isExcerptFurniture } from '@/shared/lib/chat/excerpt';
 import { bashServiceFacts, procFacts } from '@/shared/lib/chat/tool/proc-facts';
 import {
   countPhrase,
@@ -317,7 +318,11 @@ export function toolSummary(tool: ToolCallData): ToolSummary | null {
   // ── fallback: any tool whose output is the only thing worth naming ────────
   if (facts.length === 0) {
     const lines = (tool.output ?? '').split(/\r?\n/);
-    const first = lines.find((line) => line.trim());
+    // The subject is the first meaningful line that is not excerpt furniture —
+    // an `edit`/`write` result leads with the `[path]` header of the excerpt it
+    // touched, which is the card's own SUBTITLE, and naming it here printed the
+    // path twice on one row.
+    const first = lines.find((line) => line.trim() && !isExcerptFurniture(line));
     if (first) facts.push(subjectFact(first.trim()));
     if (lines.length > 1) facts.push({ kind: 'count', label: `${lines.length} lines` });
   }

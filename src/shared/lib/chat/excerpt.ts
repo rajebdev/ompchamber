@@ -47,6 +47,22 @@ function isElisionLine(line: string): boolean {
   return trimmed === '…' || trimmed === '...' || ELISION_RE.test(trimmed);
 }
 
+/**
+ * True when a line is excerpt FURNITURE rather than content: a `[path#TAG]`
+ * header, a numbered row, or a gap marker.
+ *
+ * A card's collapsed summary names its SUBJECT from the result's first
+ * meaningful line, and an `edit`/`write` result's first line is the header of
+ * the excerpt it touched — which is the card's own subtitle, so naming it again
+ * as the subject printed the same path twice on one row, behind a quote glyph
+ * that said "quoted text" about a file path. The rows and the markers are the
+ * body's, not a label either.
+ */
+export function isExcerptFurniture(line: string): boolean {
+  const trimmed = line.trim();
+  return HEADER_RE.test(trimmed) || ROW_RE.test(trimmed) || isElisionLine(line);
+}
+
 /** Every excerpt group the tool result carries, in order.
  *
  *  A `[path#TAG]` line opens a group only when numbered rows follow it — an

@@ -260,6 +260,31 @@ describe('toolSummary — fallback and empty', () => {
     expect(summary?.facts[0]).toMatchObject({ kind: 'subject', label: 'probe ready' });
   });
 
+  test('an edit result names no subject, because its first line is the excerpt header', () => {
+    // omp answers `edit` with the excerpt it touched, led by `[path]`. That path
+    // is the card's own SUBTITLE, so naming it again here printed the same
+    // string twice on one row — once as the subtitle and again behind a quote
+    // glyph that read as "quoted text" about a file path.
+    const summary = toolSummary(tool({
+      type: 'edit',
+      target: 'src/shared/lib/chat/excerpt.ts',
+      details: { diff: ' 6|/**\n-8| * `title1`\n+8| * `group`\n' },
+      output: '[src/shared/lib/chat/excerpt.ts]\n6:/**\n7: * A tool card\n',
+    }));
+    expect(summary?.line).toBe('+1 \u22121');
+    expect(summary?.facts.some((fact) => fact.kind === 'subject')).toBe(false);
+  });
+
+  test('an excerpt with no diff chip still drops its header and rows', () => {
+    // The rows and the header are the body's, not a label — so with nothing
+    // else to say the card carries no subject rather than quoting its own path.
+    const summary = toolSummary(tool({
+      type: 'write',
+      output: '[src/x.ts]\n1:first\n2:second\n',
+    }));
+    expect(summary?.facts.some((fact) => fact.kind === 'subject')).toBe(false);
+  });
+
   test('returns null when there is nothing to say', () => {
     expect(toolSummary(tool({ type: 'wait' }))).toBeNull();
   });
