@@ -5,6 +5,25 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.8.0](https://github.com/rajebdev/ompchamber/compare/v4.7.2...v4.8.0) — 2026-10-08
+
+### Added
+
+* **chat:** render the full-output reader by artifact type ([e99234f](https://github.com/rajebdev/ompchamber/commit/e99234f3b273cf5c57069b38e54a3d83d29118ce))
+* **layout:** add navbar reload button and gate the layout switch to dev ([757866f](https://github.com/rajebdev/ompchamber/commit/757866fe172a7d16fb7e3c761553a0280b4bf8b6))
+* **omp:** adopt 18.8.3 RPC surface and fix the drift it exposed ([9f8e2e3](https://github.com/rajebdev/ompchamber/commit/9f8e2e3dbf65494bd71fcadcf7d1e3101a50e26a))
+
+### Fixed
+
+* **chat:** dispatch an internal-URL tool call by its device ([edca9f9](https://github.com/rajebdev/ompchamber/commit/edca9f9dc329a794fb3ec101c51734bfb58434f6))
+* **chat:** head each tool card with its own intent ([c009cff](https://github.com/rajebdev/ompchamber/commit/c009cff94a2fe51bd114b647f3902c6d9e5b4946))
+* **chat:** let a long tool diff scroll inside its height ceiling ([23b372d](https://github.com/rajebdev/ompchamber/commit/23b372ddbbdd713273bf7a88f43816919c2b01d4))
+* **chat:** let a tool card's heading rule run to the panel edge ([6a05b3b](https://github.com/rajebdev/ompchamber/commit/6a05b3b789c09757811df45fb38883c00f8181fa))
+* **fs:** show the file diff for dot-paths and hostile filenames ([9c6cf38](https://github.com/rajebdev/ompchamber/commit/9c6cf3828b6ca57d75b39961c3293cb408cf16fd))
+* **git-panel:** make every Source Control action do what its button says ([e07edaf](https://github.com/rajebdev/ompchamber/commit/e07edaff15739d81c5ab4ae61c451a21d068f707))
+* **provider-icon:** paint provider marks in the surrounding ink ([e77863b](https://github.com/rajebdev/ompchamber/commit/e77863b5b91d1b9e8248217145f40cedefd4b70d)), closes [#141310](https://github.com/rajebdev/ompchamber/issues/141310)
+* **realtime:** rebind a session topic when its omp child is replaced ([965e2ac](https://github.com/rajebdev/ompchamber/commit/965e2acd14ce8d960d6028d8e0d2dd39fea6f0c9))
+
 ## [4.7.2](https://github.com/rajebdev/ompchamber/compare/v4.7.1...v4.7.2) — 2026-10-08
 
 ### Fixed
