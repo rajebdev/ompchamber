@@ -5,6 +5,14 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.2](https://github.com/rajebdev/ompchamber/compare/v4.7.1...v4.7.2) — 2026-10-08
+
+### Fixed
+
+* **chat:** colour an edit's +/− green and red, with no chip background ([c6fd543](https://github.com/rajebdev/ompchamber/commit/c6fd543a4b9b7b6131f3375f958dc9a01f4f9f92))
+* **chat:** give a tool card one meta line, and drop it on expand ([ca8e19c](https://github.com/rajebdev/ompchamber/commit/ca8e19c346e319bfb4122b46206efc84761d2e0b))
+* **chat:** keep a tool card's meta row to facts, and eval to its title ([b23a611](https://github.com/rajebdev/ompchamber/commit/b23a611fa4f29caad0f73281a15298a84fa569ad))
+
 ## [4.7.1](https://github.com/rajebdev/ompchamber/compare/v4.7.0...v4.7.1) — 2026-10-07
 
 ### Fixed
