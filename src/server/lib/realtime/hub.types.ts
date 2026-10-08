@@ -90,6 +90,17 @@ export interface RealtimeHub {
    */
   republishSnapshot: (topic: string) => void;
   /**
+   * Re-run a topic's `attach` under its live subscribers.
+   *
+   * `attach` binds a topic to its SOURCE once per subscription, so a source
+   * that is REPLACED while the subscription stands (a session's omp child
+   * respawned by the idle reaper, a mode reconcile or a crash) leaves the topic
+   * wired to the old one: the subscriber receives snapshots and then silence.
+   * Called wherever the source is known to have been replaced; a no-op with no
+   * subscribers, so a topic nobody watches never holds a source open.
+   */
+  rebind: (topic: string) => void;
+  /**
    * Send an EXTERNALLY produced snapshot to every subscriber of `topic`,
    * resetting their baselines.
    *

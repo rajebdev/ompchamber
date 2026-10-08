@@ -154,16 +154,33 @@ export function createHub(): RealtimeHub {
     connection.snapshotted.add(topic);
   };
 
-  /** Drop the descriptor's binding once nobody is watching. */
-  const detachIfIdle = (entry: TopicEntry): void => {
-    if (entry.subscribers.size > 0 || entry.detach === null) return;
+  /** Run the descriptor's `attach` for `topic` and store its cleanup. */
+  const bind = (topic: string, entry: TopicEntry): void => {
+    const attach = state().descriptors.get(topic)?.attach;
+    if (!attach) return;
+    try {
+      entry.detach = attach(topic) ?? null;
+    } catch {
+      entry.detach = null;
+    }
+  };
+
+  /** Release the descriptor's binding, if any. */
+  const dropBinding = (entry: TopicEntry): void => {
     const detach = entry.detach;
     entry.detach = null;
+    if (!detach) return;
     try {
       detach();
     } catch {
       // Unbinding is best-effort; a throwing cleanup must not break the caller.
     }
+  };
+
+  /** Drop the descriptor's binding once nobody is watching. */
+  const detachIfIdle = (entry: TopicEntry): void => {
+    if (entry.subscribers.size > 0 || entry.detach === null) return;
+    dropBinding(entry);
   };
 
   return {
@@ -184,16 +201,7 @@ export function createHub(): RealtimeHub {
       // Bind the source BEFORE the snapshot resolves: a delta published while
       // the snapshot is in flight must reach the buffer, and an unbound source
       // would simply never produce one.
-      if (first && entry.detach === null) {
-        const attach = state().descriptors.get(topic)?.attach;
-        if (attach) {
-          try {
-            entry.detach = attach(topic) ?? null;
-          } catch {
-            entry.detach = null;
-          }
-        }
-      }
+      if (first && entry.detach === null) bind(topic, entry);
       void deliverSnapshot(topic, connection);
     },
 
@@ -243,6 +251,21 @@ export function createHub(): RealtimeHub {
         connection.snapshotted.delete(topic);
         void deliverSnapshot(topic, connection);
       }
+    },
+
+    rebind(topic) {
+      const entry = state().topics.get(topic);
+      // Nobody is watching: there is no binding to repair, and a topic with no
+      // subscribers must not hold a source open (see `detachIfIdle`).
+      if (!entry || entry.subscribers.size === 0) return;
+      // Replace the source binding wholesale. `attach` is bound ONCE per
+      // subscription, so a source that is REPLACED under a live subscriber (a
+      // session's omp child respawned by the idle reaper, an approval-mode
+      // reconcile, a crash) leaves the topic wired to the dead one — the
+      // subscriber keeps its subscription and receives snapshots but no frames,
+      // which reads as "the answer never streamed until I reloaded".
+      dropBinding(entry);
+      bind(topic, entry);
     },
 
     publish(topic, payload) {

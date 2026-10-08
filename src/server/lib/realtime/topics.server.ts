@@ -242,13 +242,19 @@ export function republishSessionDataTopics(sessionId: string): void {
  * A session's live state changed outside its own frame stream — it was just
  * spawned, adopted, or its run settled.
  *
- * Sent as a fresh SNAPSHOT rather than a delta: the interesting transition is
- * "this topic had no source and now has one", which no delta can express (there
- * was nothing to publish from). Called from the spawn path, where the child
- * becomes reachable.
+ * REBINDS the topic as well as re-snapshotting it. `attach` binds a topic to
+ * its source once per subscription, and this is where that source is replaced:
+ * a subscriber watching when the child was idle-reaped, respawned for a mode
+ * change, or restarted after a crash still holds its subscription and would
+ * otherwise get snapshots and then silence — a live-looking run with no frames
+ * until the page reloads and re-subscribes. Also covers the reverse order: a
+ * topic subscribed before any child existed bound the peer-relay probe, which
+ * finds no owner for a session this process is about to own.
  */
 export function publishSessionState(sessionId: string): void {
-  getRealtimeHub().republishSnapshot(sessionTopic(sessionId));
+  const topic = sessionTopic(sessionId);
+  getRealtimeHub().rebind(topic);
+  getRealtimeHub().republishSnapshot(topic);
 }
 
 // ---------------------------------------------------------------------------

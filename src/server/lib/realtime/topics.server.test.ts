@@ -22,7 +22,7 @@ import { afterEach, describe, expect, test, vi } from 'bun:test';
 import { getRealtimeHub, registerTopics, resetRealtimeHub, type RealtimeConnection } from '@/server/lib/realtime/hub.server';
 import { initRealtimeTopics, publishTopic, republishSessionDataTopics } from '@/server/lib/realtime/topics.server';
 import { emitRealtimeSignal, clearRealtimeSignalListeners } from '@/server/lib/realtime/signals.server';
-import { TOPIC_MODELS, TOPIC_USAGE, gitTopic, sessionQueueTopic, sessionTodosTopic, type RealtimeServerFrame } from '@/shared/lib/realtime/protocol';
+import { TOPIC_MODELS, TOPIC_USAGE, gitTopic, sessionQueueTopic, sessionTodosTopic, sessionTopic, type RealtimeServerFrame } from '@/shared/lib/realtime/protocol';
 
 interface FakeConnection extends RealtimeConnection {
   frames: RealtimeServerFrame[];
@@ -146,6 +146,53 @@ describe('initRealtimeTopics signal wiring', () => {
       { t: 'delta', topic: TOPIC_MODELS, seq: 1, payload: { models: 2 } },
       { t: 'delta', topic: TOPIC_USAGE, seq: 1, payload: { providers: 2 } },
     ]);
+  });
+
+  /**
+   * The reported failure: "sometimes the second prompt's answer does not
+   * stream until I reload". A session's omp child is routinely REPLACED under a
+   * live subscriber — idle-reaped, respawned for an approval-mode change, or
+   * restarted after a crash — and `attach` binds a topic to its source once per
+   * subscription. Without a rebind the topic stays wired to the dead child, so
+   * the client keeps its subscription and gets a snapshot (`running:true`, the
+   * indicator resumes) and then NO frames, until a reload re-subscribes.
+   * `session-attached` is raised by the spawn path exactly when the new child
+   * is reachable, so it must both rebind and re-snapshot.
+   */
+  test('session-attached rebinds the topic and re-snapshots it', async () => {
+    vi.useFakeTimers();
+    globalThis.__ompChamberRealtimeTopicsReady = undefined;
+    initRealtimeTopics();
+    const topic = sessionTopic('sess-1');
+    let attaches = 0;
+    let detaches = 0;
+    let resolves = 0;
+    // A fresh descriptor stands in for the session topic: the point is the
+    // wiring, not the resolver's payload.
+    registerTopics(new Map([[topic, {
+      resolve: async () => ({ resolves: ++resolves }),
+      attach: () => {
+        attaches += 1;
+        return () => {
+          detaches += 1;
+        };
+      },
+    }]]));
+
+    const hub = getRealtimeHub();
+    const connection = connect();
+    hub.subscribe(connection, topic);
+    await flushPublish();
+    expect(attaches).toBe(1);
+
+    connection.frames.length = 0;
+    emitRealtimeSignal('session-attached', 'sess-1');
+    await flushPublish();
+
+    // Rebound to the replacement child AND re-snapshotted for the subscriber.
+    expect(detaches).toBe(1);
+    expect(attaches).toBe(2);
+    expect(connection.frames).toEqual([{ t: 'snapshot', topic, seq: 0, payload: { resolves: 2 } }]);
   });
 });
 

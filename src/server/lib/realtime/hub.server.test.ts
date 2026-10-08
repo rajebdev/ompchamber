@@ -224,4 +224,62 @@ describe('realtime hub', () => {
 
     expect(connection.frames[0]).toMatchObject({ t: 'snapshot' });
   });
+
+  /**
+   * The failure this pins is silent and total: `attach` runs ONCE per
+   * subscription, so a source replaced under a live subscriber (a session's omp
+   * child respawned by the idle reaper, a mode reconcile, a crash) leaves the
+   * topic wired to the dead one. The subscriber keeps receiving snapshots and
+   * then nothing — a run that looks live with no frames, until a reload
+   * re-subscribes. `rebind` is the repair the spawn path calls.
+   */
+  test('rebind re-runs attach, so frames follow the replaced source', async () => {
+    resetRealtimeHub();
+    const hub = createHub();
+    let live: 'A' | 'B' = 'A';
+    let attaches = 0;
+    let detaches = 0;
+    registerTopics(new Map<string, TopicDescriptor>([
+      ['t', {
+        resolve: async () => 'snap',
+        attach: () => {
+          attaches += 1;
+          return () => {
+            detaches += 1;
+          };
+        },
+      }],
+    ]));
+
+    const connection = connect();
+    hub.subscribe(connection, 't');
+    await settle();
+    expect(attaches).toBe(1);
+
+    // The source is replaced; the topic is still bound to the old one.
+    live = 'B';
+    hub.publish('t', `from-${live}`);
+
+    connection.frames.length = 0;
+    hub.rebind('t');
+    expect(detaches).toBe(1);
+    expect(attaches).toBe(2);
+    hub.publish('t', `from-${live}`);
+
+    // The subscriber is still subscribed, so the fresh binding is what makes
+    // the new source's frames arrive.
+    expect(framesFor(connection, 't').at(-1)).toMatchObject({ t: 'delta', payload: 'from-B' });
+  });
+
+  test('rebind with no subscribers is a no-op, so no source is held open', async () => {
+    resetRealtimeHub();
+    const hub = createHub();
+    let attaches = 0;
+    registerTopics(new Map<string, TopicDescriptor>([
+      ['t', { resolve: async () => 'snap', attach: () => { attaches += 1; } }],
+    ]));
+
+    hub.rebind('t');
+    expect(attaches).toBe(0);
+  });
 });
