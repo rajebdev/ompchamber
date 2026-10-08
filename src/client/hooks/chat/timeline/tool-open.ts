@@ -42,10 +42,6 @@ export interface ToolOpenState {
   openMap: Record<string, boolean>;
   /** Flip one call, persisting the reader's choice. */
   toggle: (toolId: string) => void;
-  /** Open or close every call in the list at once. */
-  setAll: (open: boolean) => void;
-  /** True while at least one call is expanded. */
-  anyOpen: boolean;
 }
 
 export function useToolOpenState(tools: ToolCallData[], autoOpenFirst: boolean): ToolOpenState {
@@ -74,18 +70,5 @@ export function useToolOpenState(tools: ToolCallData[], autoOpenFirst: boolean):
     [setStored, tools, autoOpenFirst],
   );
 
-  const setAll = useCallback(
-    (open: boolean) => {
-      setStored((prev) => {
-        const next = { ...prev };
-        for (const tool of tools) next[tool.id] = open;
-        return next;
-      });
-    },
-    [setStored, tools],
-  );
-
-  const anyOpen = useMemo(() => Object.values(openMap).some(Boolean), [openMap]);
-
-  return { openMap, toggle, setAll, anyOpen };
+  return { openMap, toggle };
 }

@@ -127,19 +127,6 @@ describe('useToolOpenState', () => {
     expect(api.current?.openMap.a).toBe(true);
   });
 
-  test('expand-all and collapse-all reach every call', async () => {
-    const api = await mountHook([tool('a'), tool('b'), tool('c')]);
-    await act(async () => {
-      api.current?.setAll(true);
-    });
-    expect(api.current?.openMap).toEqual({ a: true, b: true, c: true });
-    expect(api.current?.anyOpen).toBe(true);
-    await act(async () => {
-      api.current?.setAll(false);
-    });
-    expect(api.current?.anyOpen).toBe(false);
-  });
-
   test('a toggle is written back to the session slot', async () => {
     const api = await mountHook([tool('a')]);
     await act(async () => {

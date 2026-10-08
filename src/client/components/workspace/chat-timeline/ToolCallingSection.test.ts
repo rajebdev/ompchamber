@@ -13,14 +13,13 @@
  * header, a turn with two `bash` calls rendered one label above two identical
  * cards, and the second call's purpose was unreachable without opening it.
  *
- * There is deliberately NO group heading: it could only restate what the cards
- * already say (`Tool Executions (N steps)` counts what is visible, and the
- * first call's sentence belongs to its own card). The one row above the cards
- * is the bulk Expand/Collapse control, which exists only when there is more
- * than one card to act on.
+ * There is deliberately NO group heading and no bulk Expand/Collapse control:
+ * the heading could only restate what the cards already say (`Tool Executions
+ * (N steps)` counts what is visible, and the first call's sentence belongs to
+ * its own card), and the section renders exactly its cards, nothing above them.
  *
- * These pin the ORDER (heading immediately before its card) and that the bulk
- * control appears exactly when it has something to act on.
+ * These pin the ORDER (heading immediately before its card) and that the
+ * section's children are only headings and cards.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
@@ -72,10 +71,10 @@ async function mount(tools: ToolCallData[]) {
 }
 
 /**
- * The section's direct children in render order: intent headings, their cards,
- * and the bulk control row (the only row carrying a button).
+ * The section's direct children in render order: intent headings and their
+ * cards. A section renders nothing else.
  */
-function sequence(el: HTMLElement): Array<{ kind: 'bulk' | 'heading' | 'card'; text: string }> {
+function sequence(el: HTMLElement): Array<{ kind: 'heading' | 'card'; text: string }> {
   const section = el.querySelector('div.mx-3')!;
   const items = Array.from(section.children).map((child) => {
     const cls = (child.className || '').toString();
@@ -83,7 +82,6 @@ function sequence(el: HTMLElement): Array<{ kind: 'bulk' | 'heading' | 'card'; t
       const col = child.querySelector('button')!.children[1];
       return { kind: 'card' as const, text: (col.children[0]?.textContent || '').trim() };
     }
-    if (child.querySelector('button')) return { kind: 'bulk' as const, text: '' };
     const label = child.querySelector('span');
     return { kind: 'heading' as const, text: label ? (label.textContent || '').trim() : '' };
   });
@@ -97,7 +95,6 @@ describe('ToolCallingSection per-card intent heading', () => {
       tool('b', 'Searching standalone branches'),
     ]);
     expect(sequence(el)).toEqual([
-      { kind: 'bulk', text: '' },
       { kind: 'heading', text: 'Finding PWA manifest' },
       { kind: 'card', text: 'Bash' },
       { kind: 'heading', text: 'Searching standalone branches' },
@@ -105,10 +102,21 @@ describe('ToolCallingSection per-card intent heading', () => {
     ]);
   });
 
+  test('the section renders only headings and cards, nothing above them', async () => {
+    const el = await mount([tool('a', undefined), tool('b', undefined)]);
+    expect(sequence(el)).toEqual([
+      { kind: 'card', text: 'Bash' },
+      { kind: 'card', text: 'Bash' },
+    ]);
+    // No header row: every direct child is a card.
+    const children = Array.from(el.querySelector('div.mx-3')!.children) as HTMLElement[];
+    expect(children).toHaveLength(2);
+    expect(children.every((child) => child.className.includes('overflow-hidden rounded-xl'))).toBe(true);
+  });
+
   test('a card without an intent simply has no heading', async () => {
     const el = await mount([tool('a', 'Has intent'), tool('b', undefined)]);
     expect(sequence(el)).toEqual([
-      { kind: 'bulk', text: '' },
       { kind: 'heading', text: 'Has intent' },
       { kind: 'card', text: 'Bash' },
       { kind: 'card', text: 'Bash' },
@@ -123,27 +131,6 @@ describe('ToolCallingSection per-card intent heading', () => {
     expect(heading.className).toContain('truncate');
     expect(heading.className).toContain('min-w-0');
     expect(heading.getAttribute('title')).toBe(long);
-  });
-});
-
-describe('ToolCallingSection bulk control', () => {
-  test('the Expand all control appears only when there is more than one card', async () => {
-    const single = await mount([tool('a', 'Only one')]);
-    expect(sequence(single).some((item) => item.kind === 'bulk')).toBe(false);
-
-    const many = await mount([tool('a', undefined), tool('b', undefined)]);
-    expect(sequence(many)[0]).toEqual({ kind: 'bulk', text: '' });
-  });
-
-  test('the bulk control carries a rule that runs to the button', async () => {
-    const el = await mount([tool('a', undefined), tool('b', undefined)]);
-    const row = el.querySelector('div.mx-3 > div') as HTMLElement;
-    const rule = row.children[0] as HTMLElement;
-    // A plain `flex-1` has a flex-basis of 0, so `min-w-6` is what keeps the
-    // rule visible when the row is tight.
-    expect(rule.className).toContain('flex-1');
-    expect(rule.className).toContain('h-px');
-    expect(rule.className).toContain('min-w-6');
   });
 });
 

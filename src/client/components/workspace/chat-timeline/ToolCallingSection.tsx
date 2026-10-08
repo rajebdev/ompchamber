@@ -4,11 +4,10 @@
  */
 
 import { Fragment } from 'preact';
-import { useCallback, useMemo } from 'preact/hooks';
+import { useMemo } from 'preact/hooks';
 import type { AgentActionData, ToolCallData, ToolType } from '@/shared/types';
 import { ToolCallCard } from '@/client/components/workspace/chat-timeline/ToolCallCard';
 import { useToolOpenState } from '@/client/hooks/chat/timeline/tool-open';
-import { ChevronsDownUp, ChevronsUpDown } from 'lucide-preact';
 
 interface ToolCallingSectionProps {
   tools: (ToolCallData | AgentActionData)[];
@@ -61,32 +60,12 @@ export function ToolCallingSection({ tools, defaultExpanded = false }: ToolCalli
 
   // Openness is remembered per session, so a reload or a history page-in does
   // not close the call the reader had opened.
-  const { openMap, toggle, setAll, anyOpen } = useToolOpenState(normalizedTools, defaultExpanded);
-
-  const expandAll = useCallback(() => setAll(true), [setAll]);
-  const collapseAll = useCallback(() => setAll(false), [setAll]);
+  const { openMap, toggle } = useToolOpenState(normalizedTools, defaultExpanded);
 
   if (!normalizedTools || normalizedTools.length === 0) return null;
 
-  const showBulk = normalizedTools.length > 1;
-
   return (
     <div className="mx-3 space-y-1.5">
-      {showBulk && (
-        <div className="flex items-center gap-2 px-1 pt-0.5">
-          <span className="h-px min-w-6 flex-1 bg-ink/8" />
-          <button
-            type="button"
-            onClick={anyOpen ? collapseAll : expandAll}
-            aria-label={anyOpen ? 'Collapse all tool calls' : 'Expand all tool calls'}
-            title={anyOpen ? 'Collapse all' : 'Expand all'}
-            className="flex shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider text-ink/40 transition-colors hover:bg-ink/5 hover:text-ink"
-          >
-            {anyOpen ? <ChevronsDownUp size={11} /> : <ChevronsUpDown size={11} />}
-            <span>{anyOpen ? 'Collapse all' : 'Expand all'}</span>
-          </button>
-        </div>
-      )}
       {normalizedTools.map((tool) => {
         const intent = tool.intent?.trim();
         return (
