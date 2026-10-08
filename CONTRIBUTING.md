@@ -50,9 +50,12 @@ All four verification gates are mandatory for every change:
 `main`, so a red change is caught at the pull request rather than by the release job that would
 otherwise tag it.
 
-Never write a skip marker (`[skip ci]`, `[ci skip]`, `[no ci]`) into a commit message pushed to
-`main`: it silently skips the release run. `CHANGELOG.md` is written by the release pipeline only,
-never by hand.
+Never write a skip marker (`[skip ci]`, `[ci skip]`, `[no ci]`) anywhere in a commit message pushed to
+`main` — **including inside prose that merely mentions it**. GitHub matches the token in the whole
+message, so a sentence like "the release commits carry `[skip ci]`" skips CI *and* the release run for
+that push. Verified the hard way: a commit whose body explained the marker triggered no CI, no E2E and
+no Release, and the only way back is another push, because `main` is protected against force-push.
+`CHANGELOG.md` is written by the release pipeline only, never by hand.
 
 ## 2. Pull request expectations
 
