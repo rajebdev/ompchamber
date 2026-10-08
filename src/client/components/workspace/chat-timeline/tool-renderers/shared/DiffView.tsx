@@ -133,9 +133,16 @@ export function DiffView({ text, path = '' }: DiffViewProps) {
           />
         </span>
       </div>
-      {/* The panel views fill their parent (`h-full`), so the height ceiling
-          lives here: content-sized up to 288px, then it scrolls. */}
-      <div className="max-h-72 overflow-hidden">
+      {/* The panel views are `w-full h-full overflow-auto`, but their parent in
+          the diff panel has a DEFINITE height while this one only has a
+          `max-height` — and `height: 100%` against an auto-height box resolves
+          to `auto`, so the view grew to its content (measured 1521px inside a
+          288px parent) and `overflow-hidden` clipped it: `scrollHeight ===
+          clientHeight` and nothing could scroll.
+          A flex column with `min-h-0` gives the view the definite height it
+          needs to resolve `h-full` (measured 288px), so the view scrolls its
+          own content and this wrapper only bounds it. */}
+      <div className="flex max-h-72 min-h-0 flex-col overflow-hidden">
         {split ? (
           <SplitView rows={parsed.splitRows} language={language} wordWrap={wordWrap} />
         ) : (
