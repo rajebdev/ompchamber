@@ -30,6 +30,7 @@
 
 import path from 'path';
 import { isWithinRoot } from '@/server/lib/fs/root';
+import type { GitChange } from '@/shared/types';
 
 export interface GitRunResult {
   stdout: string;
@@ -138,4 +139,41 @@ export function resolveRepoPath(targetDir: string, rel: string): string | null {
 /** The repo-relative form git itself wants, from a path a client supplied. */
 export function repoRelative(rel: string): string {
   return (rel ?? '').trim().split('\\').join('/');
+}
+
+/**
+ * Parse `git status --porcelain=v1 -z` output into change rows.
+ *
+ * `-z` is the only LOSSLESS form, and both of the other form's losses bite the
+ * diff panel. A path holding a space or any non-ASCII byte comes back QUOTED
+ * with its non-ASCII bytes octal-escaped (`"\303\274n..."`), and no JSON decode
+ * reverses that — `JSON.parse` turns it into the literal text `\303\274`, a
+ * path that does not exist, so the diff for every accented filename read as
+ * "No differences found". `-z` never quotes and never escapes. It also replaces
+ * the `old -> new` spelling with a second NUL-terminated field, so a rename is
+ * unwrapped from its own record instead of by splitting on a separator that a
+ * filename is free to contain.
+ *
+ * A rename or copy spends TWO records — the new path, then the old one — and
+ * only the first is a path the working tree still has.
+ */
+export function parsePorcelainZ(out: string): GitChange[] {
+  const records = out.split('\0');
+  const changes: GitChange[] = [];
+  for (let i = 0; i < records.length; i++) {
+    const record = records[i];
+    // The trailing empty record, and anything shorter than `XY p`.
+    if (record.length < 4) continue;
+    const status = record.slice(0, 2);
+    const code = status[0] === 'R' || status[0] === 'C' ? status[0] : status[1];
+    if (code === 'R' || code === 'C') i += 1;
+    changes.push({
+      status,
+      file: record.slice(3),
+      staged: status[0] !== ' ' && status[0] !== '?',
+      additions: 1,
+      deletions: 0,
+    });
+  }
+  return changes;
 }

@@ -48,6 +48,18 @@ beforeAll(() => {
   write('clean.txt', 'c1\n');
   write('deleted.txt', 'd1\nd2\n');
   write('sub dir/f.txt', 'sub1\n');
+  // Dot-paths: the leading dot is part of the NAME, not a `./` prefix.
+  write('.github/ci.sh', 'echo a\n');
+  write('.idea/workspace.xml', '<a>1</a>\n');
+  write('.env', 'K=1\n');
+  // Names a shell string cannot carry: a substitution, a backtick and a
+  // double quote. Each used to be EXECUTED or to break the quoting outright.
+  write('sub$(touch PWNED_SUBST).sh', 'x\n');
+  write('tick`touch PWNED_TICK`.sh', 'x\n');
+  write('quote"; touch PWNED_QUOTE; echo ".sh', 'x\n');
+  // Non-ASCII, which porcelain escapes as octal in its non-`-z` form.
+  write('ünïcode.xml', '<a>1</a>\n');
+  write('a\\b.sh', 'x\n');
   git('add', '-A');
   git('commit', '-q', '-m', 'base');
 
@@ -57,6 +69,14 @@ beforeAll(() => {
   write('untracked.txt', 'u1\nu2\n');
   git('rm', '-q', 'deleted.txt');
   write('sub dir/f.txt', 'sub1\nsub2\n');
+  write('.github/ci.sh', 'echo a\necho b\n');
+  write('.idea/workspace.xml', '<a>2</a>\n');
+  write('.env', 'K=2\n');
+  write('sub$(touch PWNED_SUBST).sh', 'y\n');
+  write('tick`touch PWNED_TICK`.sh', 'y\n');
+  write('quote"; touch PWNED_QUOTE; echo ".sh', 'y\n');
+  write('ünïcode.xml', '<a>2</a>\n');
+  write('a\\b.sh', 'y\n');
 });
 
 afterAll(() => {
@@ -112,6 +132,91 @@ describe('tracked changes', () => {
     expect(result.status).toBe('M');
     expect(result.additions).toBe(1);
     expect(result.diff).toContain('@@ -1 +1,2 @@');
+  });
+
+  // A leading dot begins a real NAME in these paths; treating it as a `./`
+  // prefix stripped it and pointed every probe at a file that does not exist,
+  // so the panel answered "No differences found" for the dot-paths a user is
+  // most likely to open a diff for.
+  test('a dot-directory keeps its leading dot in the probe and the report', async () => {
+    const result = await fetchWorkingFileDiff(repo, '.github/ci.sh');
+    expect(result.file).toBe('.github/ci.sh');
+    expect(result.status).toBe('M');
+    expect(result.additions).toBe(1);
+    expect(result.diff).toContain('--- a/.github/ci.sh');
+    expect(result.diff).toContain('+++ b/.github/ci.sh');
+    expect(result.diff).toContain('+echo b');
+  });
+
+  test('a dot-file keeps its leading dot', async () => {
+    const result = await fetchWorkingFileDiff(repo, '.env');
+    expect(result.file).toBe('.env');
+    expect(result.status).toBe('M');
+    expect(result.additions).toBe(1);
+    expect(result.deletions).toBe(1);
+    expect(result.diff).toContain('--- a/.env');
+  });
+
+  test('an interior `..` still resolves against the working tree', async () => {
+    const result = await fetchWorkingFileDiff(repo, 'sub dir/../.idea/workspace.xml');
+    expect(result.status).toBe('M');
+    expect(result.additions).toBe(1);
+    expect(result.diff).toContain('--- a/.idea/workspace.xml');
+  });
+
+  // The probes used to be built as shell strings, so a repo-controlled
+  // filename was executed by `sh -c`. Verified before the fix: the marker files
+  // these names write appeared in the temp dir.
+  test('a filename holding a substitution is diffed, never executed', async () => {
+    const name = 'sub$(touch PWNED_SUBST).sh';
+    const result = await fetchWorkingFileDiff(repo, name);
+    expect(result.status).toBe('M');
+    expect(result.additions).toBe(1);
+    expect(result.diff).toContain(`+++ b/${name}`);
+    expect(fs.existsSync(path.join(process.cwd(), 'PWNED_SUBST'))).toBe(false);
+  });
+
+  test('a filename holding a backtick is diffed, never executed', async () => {
+    const name = 'tick`touch PWNED_TICK`.sh';
+    const result = await fetchWorkingFileDiff(repo, name);
+    expect(result.status).toBe('M');
+    expect(result.additions).toBe(1);
+    expect(result.diff).toContain(`+++ b/${name}`);
+    expect(fs.existsSync(path.join(process.cwd(), 'PWNED_TICK'))).toBe(false);
+  });
+
+  test('a filename holding a double quote keeps its quoting intact', async () => {
+    const name = 'quote"; touch PWNED_QUOTE; echo ".sh';
+    const result = await fetchWorkingFileDiff(repo, name);
+    expect(result.status).toBe('M');
+    expect(result.additions).toBe(1);
+    // Git quotes the header path itself when it holds a quote or a backslash;
+    // what matters is that the diff was produced at all and names the file.
+    expect(result.diff).toContain('PWNED_QUOTE');
+    expect(result.diff).toContain('@@ -1 +1 @@');
+    expect(fs.existsSync(path.join(process.cwd(), 'PWNED_QUOTE'))).toBe(false);
+  });
+
+  test('a non-ASCII filename diffs instead of reading as no change', async () => {
+    const result = await fetchWorkingFileDiff(repo, 'ünïcode.xml');
+    expect(result.file).toBe('ünïcode.xml');
+    expect(result.status).toBe('M');
+    expect(result.additions).toBe(1);
+    expect(result.deletions).toBe(1);
+    expect(result.diff).toContain('-<a>1</a>');
+    expect(result.diff).toContain('+<a>2</a>');
+  });
+
+  // A backslash is an ordinary filename character on POSIX, so it must survive
+  // the normalization; only Windows folds it into a separator.
+  test('a POSIX filename holding a backslash keeps it', async () => {
+    const result = await fetchWorkingFileDiff(repo, 'a\\b.sh');
+    expect(result.file).toBe('a\\b.sh');
+    expect(result.status).toBe('M');
+    expect(result.additions).toBe(1);
+    expect(result.diff).toContain('@@ -1 +1 @@');
+    expect(result.diff).toContain('-x');
+    expect(result.diff).toContain('+y');
   });
 });
 

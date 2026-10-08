@@ -1,6 +1,6 @@
 import path from 'path';
 import type { FileDiffData } from '@/shared/types/git';
-import { runShell, shellOk } from '@/server/lib/fs/shell';
+import { runGit } from '@/server/lib/fs/git-run';
 
 /**
  * Context lines requested when the reader wants the whole file rather than the
@@ -9,10 +9,19 @@ import { runShell, shellOk } from '@/server/lib/fs/shell';
  */
 const FULL_CONTEXT = 1000000;
 
-/** Runs one git diff probe and returns its stdout ('' on failure). */
-async function gitOut(command: string, cwd: string, timeout: number, maxBuffer: number = 1024 * 1024 * 2): Promise<string> {
-  const result = await runShell(command, { cwd, timeout, maxBuffer });
-  return shellOk(result) ? result.stdout : '';
+/**
+ * Run one git probe and return its stdout ('' on failure).
+ *
+ * Every operand is its own argv element, never interpolated into a shell
+ * string. A repo-relative path is repository-controlled data: a file named
+ * ``a$(touch /tmp/PWNED).sh`` used to have that substitution EXECUTED by the
+ * `sh -c` the previous form went through — verified, the file appeared — and a
+ * filename holding a double quote broke the quoting outright. The `:0:` and
+ * `HEAD:` spellings are a single argv element for the same reason.
+ */
+async function gitOut(args: string[], cwd: string, timeout: number, maxBuffer: number = 1024 * 1024 * 2): Promise<string> {
+  const result = await runGit(args, { cwd, timeout, maxBuffer });
+  return result.error === undefined && result.exitCode === 0 ? result.stdout : '';
 }
 
 /**
@@ -29,7 +38,20 @@ export async function fetchWorkingFileDiff(
   requestedStatus?: string,
   fullContext: boolean = false
 ): Promise<FileDiffData> {
-  const cleanFile = file.replace(/^[./\\]+/, '').replace(/\\/g, '/');
+  // Only a LEADING `./`, `../` or `/` is removed. The previous `[./\\]+` class
+  // also ate a leading dot that began a real name, so `.claude/tools/x.sh`
+  // became `claude/tools/x.sh` — a path that does not exist, which every probe
+  // below then answered "No differences found" for. Measured on the author's
+  // checkouts: 292 of 403 changed files, and they were exactly the dot-paths
+  // (`.github/`, `.idea/`, `.claude/`, `.history/`, `.env`, `.gitignore`,
+  // `.DS_Store`) — which is what "the diff does not show for some .sh/.xml" was.
+  //
+  // A backslash folds to a separator on WINDOWS ONLY. There it cannot be part
+  // of a name, and a client-supplied path may spell the separator either way;
+  // on POSIX it is an ordinary filename character (`a\b.sh` is a legal name),
+  // so folding it there pointed the probes at a file that does not exist.
+  const cleanFile = (process.platform === 'win32' ? file.replace(/\\/g, '/') : file)
+    .replace(/^(?:\.\.?\/|\/)+/, '');
   const fullPath = path.join(targetDir, cleanFile);
   let status = requestedStatus && requestedStatus.trim() ? requestedStatus.trim() : 'M';
   let diff = '';
@@ -40,7 +62,7 @@ export async function fetchWorkingFileDiff(
 
   try {
     // Check porcelain status of this file
-    const statusResult = await gitOut(`git status --porcelain=v1 -- "${cleanFile}"`, targetDir, 10000);
+    const statusResult = await gitOut(['status', '--porcelain=v1', '--', cleanFile], targetDir, 10000);
     const statusLine = statusResult.trim();
     if (statusLine) {
       status = statusLine.slice(0, 2).trim() || status;
@@ -54,12 +76,12 @@ export async function fetchWorkingFileDiff(
     }
 
     // Read old content from index or HEAD
-    oldContent = await gitOut(`git show HEAD:"${cleanFile}"`, targetDir, 5000)
-      || await gitOut(`git show :0:"${cleanFile}"`, targetDir, 5000);
+    oldContent = await gitOut(['show', `HEAD:${cleanFile}`], targetDir, 5000)
+      || await gitOut(['show', `:0:${cleanFile}`], targetDir, 5000);
 
     // `-U<n>` on every probe: the full-code mode asks for the whole file, and
     // the diff-only mode keeps git's own default by passing no flag at all.
-    const ctx = fullContext ? ` -U${FULL_CONTEXT}` : '';
+    const ctx = fullContext ? [`-U${FULL_CONTEXT}`] : [];
     // Full-context output is the file, not the change, so a fixed buffer would
     // truncate a large file's diff — and a killed process is not a success, so
     // `gitOut` reports it as no diff at all and the synthesized whole-file
@@ -71,19 +93,19 @@ export async function fetchWorkingFileDiff(
 
     if (staged) {
       // 1. Try staged diff (index vs HEAD), 2. HEAD diff, 3. unstaged diff
-      diff = await gitOut(`git diff${ctx} --cached -- "${cleanFile}"`, targetDir, 10000, buf)
-        || await gitOut(`git diff${ctx} HEAD -- "${cleanFile}"`, targetDir, 10000, buf)
-        || await gitOut(`git diff${ctx} -- "${cleanFile}"`, targetDir, 10000, buf);
+      diff = await gitOut(['diff', ...ctx, '--cached', '--', cleanFile], targetDir, 10000, buf)
+        || await gitOut(['diff', ...ctx, 'HEAD', '--', cleanFile], targetDir, 10000, buf)
+        || await gitOut(['diff', ...ctx, '--', cleanFile], targetDir, 10000, buf);
     } else if (status === '??' || status === 'U' || status === '?') {
-      // Untracked file: --no-index exits 1 when a diff exists, so read stdout
-      // directly instead of relying on the exit code.
-      const untracked = await runShell(`git diff${ctx} --no-index /dev/null "${cleanFile}"`, { cwd: targetDir, timeout: 10000, maxBuffer: buf });
+      // Untracked file: `--no-index` exits 1 when it produced a diff, so read
+      // stdout directly instead of relying on the exit code.
+      const untracked = await runGit(['diff', ...ctx, '--no-index', '/dev/null', cleanFile], { cwd: targetDir, timeout: 10000, maxBuffer: buf });
       diff = untracked.stdout.trim() ? untracked.stdout : '';
     } else {
       // 1. Working tree diff, 2. cached diff, 3. HEAD diff
-      diff = await gitOut(`git diff${ctx} -- "${cleanFile}"`, targetDir, 10000, buf)
-        || await gitOut(`git diff${ctx} --cached -- "${cleanFile}"`, targetDir, 10000, buf)
-        || await gitOut(`git diff${ctx} HEAD -- "${cleanFile}"`, targetDir, 10000, buf);
+      diff = await gitOut(['diff', ...ctx, '--', cleanFile], targetDir, 10000, buf)
+        || await gitOut(['diff', ...ctx, '--cached', '--', cleanFile], targetDir, 10000, buf)
+        || await gitOut(['diff', ...ctx, 'HEAD', '--', cleanFile], targetDir, 10000, buf);
     }
 
     // 4. If git diff is still empty but new content exists:

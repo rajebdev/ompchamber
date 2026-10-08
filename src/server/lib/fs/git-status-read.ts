@@ -18,6 +18,7 @@
  */
 
 import { runShell } from '@/server/lib/fs/shell';
+import { parsePorcelainZ } from '@/server/lib/fs/git-run';
 import { gitSyncCount, refreshRemoteRefs } from '@/server/lib/fs/git-sync';
 import type { GitChange } from '@/shared/types';
 
@@ -57,8 +58,11 @@ export async function readGitStatus(targetDir: string, options: GitStatusOptions
     // of adding up.
     const remoteRefresh = syncRequested ? refreshRemoteRefs(targetDir) : Promise.resolve();
 
-    // `--porcelain=v1 -uall` so all individual edited/untracked files are listed.
-    const statusOut = (await runShell('git status --porcelain=v1 -uall', { cwd: targetDir, maxBuffer: 1024 * 1024 })).stdout;
+    // `--porcelain=v1 -z -uall` so all individual edited/untracked files are
+    // listed, and so a path holding a space, a quote or a non-ASCII byte
+    // arrives VERBATIM. The non-`-z` form quotes those and octal-escapes the
+    // non-ASCII ones, which no decode reverses — see `parsePorcelainZ`.
+    const statusOut = (await runShell('git status --porcelain=v1 -z -uall', { cwd: targetDir, maxBuffer: 4 * 1024 * 1024 })).stdout;
 
     let branch = 'main';
     // Seeded empty, not `['main']`: the seed used to be pushed as a real local
@@ -110,26 +114,7 @@ export async function readGitStatus(targetDir: string, options: GitStatusOptions
     if (branches.length === 0) branches.push('main');
     else if (!branches.includes(branch)) branches.unshift(branch);
 
-    const changes: GitChange[] = statusOut
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => {
-        const status = line.slice(0, 2);
-        let file = line.slice(2).trim();
-
-        if (file.startsWith('"') && file.endsWith('"')) {
-          try {
-            file = JSON.parse(file);
-          } catch {}
-        }
-        if (file.includes(' -> ')) {
-          file = file.split(' -> ')[1].trim();
-        }
-
-        const isStaged = status[0] !== ' ' && status[0] !== '?';
-
-        return { status, file, staged: isStaged, additions: 1, deletions: 0 };
-      });
+    const changes: GitChange[] = parsePorcelainZ(statusOut);
 
     await remoteRefresh;
     const syncCount = syncRequested ? await gitSyncCount(targetDir) : undefined;
