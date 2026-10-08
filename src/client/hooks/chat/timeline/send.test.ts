@@ -102,7 +102,7 @@ function makeAgent(overrides: Partial<AgentCalls> = {}): AgentRecorder {
       calls.newPrompts.push({ text, cwd, options });
       return calls.spawnResult;
     },
-    sendInterruptAndReply: async (text: string, images: unknown) => {
+    steerOmpRun: async (text: string, images: unknown) => {
       calls.interrupts.push({ text, images });
       return { ok: calls.sendPromptOk, busy: false };
     },

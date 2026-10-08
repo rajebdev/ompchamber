@@ -145,34 +145,56 @@ export interface OmpAgentHandle extends OmpAgentState {
       modes?: { plan: boolean; goal: boolean } | null;
     },
   ) => Promise<{ sessionId: string; model: { provider: string; modelId: string } | null } | null>;
-  /** Interrupt the running agent and immediately start the message as a fresh
-   *  prompt (abort_and_prompt). Keeps the run alive until the new agent_start
-   *  arrives via the interruptPending guard.
+  /** Steer the running agent: deliver the message INTO the turn in flight
+   *  (omp's `steer` RPC). The run continues; the model sees the message inside
+   *  the same turn and answers it there.
+   *
+   *  This replaced `abort_and_prompt`, which CANCELS the turn and starts a new
+   *  one — "Send Now (Steering)" on a queued row threw away the answer the user
+   *  was watching. Measured on omp 18.8.3: `steer` produced one `agent_start`
+   *  and one `agent_end` with the steer answered in the same run, while
+   *  `abort_and_prompt` produced two of each.
    *
    *  Resolves with a reason instead of a bare boolean: a steer that did not go
-   *  out has to SAY so. `sendInterruptAndReply` clears the composer before it
-   *  awaits (the draft is restored on failure), so a silent failure looked like
-   *  a delivered message.
+   *  out has to SAY so. The composer is cleared before the await (the draft is
+   *  restored on failure), so a silent failure looked like a delivered message.
    *
    *  Two of omp's answers are not failures of the child. A pending ask/approval
    *  dialog parks omp's command loop, so the server refuses up front
    *  (`session_blocked_on_dialog`) rather than hanging the request; a bounded
    *  ack (`rpc_command_timeout`) means the message was QUEUED but the ack was
    *  held — it still runs, so the caller must not treat it as lost. */
-  sendInterruptAndReply: (message: string, images?: AgentImage[]) => Promise<PromptDispatchResult>;
+  steerOmpRun: (message: string, images?: AgentImage[]) => Promise<PromptDispatchResult>;
   abort: () => Promise<void>;
   setModel: (provider: string, modelId: string) => Promise<void>;
   setThinkingLevel: (level: string) => Promise<void>;
-  /** Answer an ask/approval dialog, releasing omp's blocking tool call. */
+  /** Answer an ask/approval dialog, releasing omp's blocking tool call.
+   *  `answers` is the grouped ask's reply: one entry per question, in order. */
   respondToExtensionUi: (
     request: ExtensionUiDialogRequest,
-    response: { value: string } | { confirmed: boolean } | { cancelled: true },
+    response:
+      | { value: string }
+      | { confirmed: boolean }
+      | { cancelled: true }
+      | { answers: { id: string; selectedOptions: string[]; customInput?: string }[] },
   ) => Promise<void>;
   disconnect: () => void;
 }
 
 /** Frame `extension_ui_request` dari omp (ask dialog, approval, OAuth). */
-export type ExtensionUiDialogMethod = 'select' | 'confirm' | 'input' | 'editor';
+export type ExtensionUiDialogMethod = 'select' | 'confirm' | 'input' | 'editor' | 'ask';
+
+/** One question inside a grouped `ask` request (omp's `AskQuestion`). */
+export interface ExtensionAskQuestion {
+  id: string;
+  question: string;
+  options: { label: string; description?: string }[];
+  header?: string;
+  /** Allow several options to be selected at once. */
+  multi?: boolean;
+  /** Index into `options` omp marks as the recommended choice. */
+  recommended?: number;
+}
 
 export interface ExtensionUiDialogRequest {
   type: 'extension_ui_request';
@@ -185,6 +207,13 @@ export interface ExtensionUiDialogRequest {
   placeholder?: string;
   prefill?: string;
   timeout?: number;
+  /**
+   * Present only on the GROUPED `ask` request, which omp sends after
+   * `set_ask_dialog {enabled:true}`: every question of one `ask` tool call in a
+   * single frame, answered by one `answers` response instead of one `select`
+   * per question. Absent on every other method.
+   */
+  questions?: ExtensionAskQuestion[];
 }
 
 export type IncomingExtensionUiRequest =

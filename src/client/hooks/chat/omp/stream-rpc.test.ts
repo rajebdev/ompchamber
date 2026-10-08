@@ -131,22 +131,26 @@ describe('useOmpAgent RPC commands', () => {
   const SID = 'sess/1';
   const ROUTE = `/api/agent/${encodeURIComponent(SID)}`;
 
-  test('interrupt-and-reply posts abort_and_prompt and reports the refusal', async () => {
+  test('steering posts `steer` (not abort_and_prompt) and reports the refusal', async () => {
     const calls = stubFetch({ [ROUTE]: { success: true } });
     const probe = mountAgent(SID);
     await probe.mount();
     await settle();
 
-    expect(await probe.handle().sendInterruptAndReply('pivot')).toEqual({ ok: true, busy: false });
-    expect(calls.at(-1)?.body).toEqual({ type: 'abort_and_prompt', message: 'pivot' });
+    expect(await probe.handle().steerOmpRun('pivot')).toEqual({ ok: true, busy: false });
+    // `steer` delivers INTO the running turn. `abort_and_prompt` would cancel
+    // it — measured on omp 18.8.3: steer keeps one agent_start/agent_end pair
+    // for the run, abort_and_prompt produces two.
+    expect(calls.at(-1)?.body).toEqual({ type: 'steer', message: 'pivot' });
 
     // A refusal resolves with the server's own reason instead of a bare false:
     // the composer is already cleared, so the caller has to be able to say why.
     stubFetch({ [ROUTE]: { error: 'The session is waiting on an approval dialog — answer or dismiss it first.' } });
-    const refused = await probe.handle().sendInterruptAndReply('pivot');
+    const refused = await probe.handle().steerOmpRun('pivot');
     expect(refused.ok).toBe(false);
     expect(refused.error).toContain('approval dialog');
-    // The interrupt guard must be released, or every later agent_end is swallowed.
+    // A steer does not create a run boundary, so no interrupt guard is armed
+    // and none can be left swallowing a later agent_end.
     expect(probe.handle().isGenerating).toBe(false);
   });
 

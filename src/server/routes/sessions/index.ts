@@ -12,6 +12,7 @@ import {
   renameWithAi,
 } from '@/server/routes/sessions/session';
 import { listSubagents, readSubagentTranscript } from '@/server/routes/sessions/subagents';
+import { cancelSubagent, steerSubagent } from '@/server/routes/sessions/subagent-control';
 import { deleteSession } from '@/server/routes/sessions/delete';
 
 export const sessionsBindings: HandlerBinding[] = [
@@ -39,4 +40,8 @@ export const sessionsBindings: HandlerBinding[] = [
   ...actionBindings(markSeen, '/api/sessions/:sessionId/stream-seen'),
   { method: 'GET', path: '/api/sessions/:sessionId/subagents', handler: listSubagents },
   { method: 'GET', path: '/api/sessions/:sessionId/subagents/:subagentId', handler: readSubagentTranscript },
+  // Per-subagent control. POST-only: they act on the session's live child, and
+  // a wrong verb must not fall through to the roster loader above.
+  { method: 'POST', path: '/api/sessions/:sessionId/subagents/:subagentId/cancel', handler: cancelSubagent },
+  { method: 'POST', path: '/api/sessions/:sessionId/subagents/:subagentId/steer', handler: steerSubagent },
 ];

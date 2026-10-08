@@ -42,6 +42,8 @@
     "dev": "bun run --hot src/server/index.ts --ompchamber-server",
     "dev:lan": "HOST=0.0.0.0 bun run --hot src/server/index.ts --ompchamber-server",
     "build": "bun run scripts/build-client.ts",
+    "omp:schema": "bun run scripts/omp-schema.mjs",
+    "omp:schema:check": "bun run scripts/omp-schema.mjs --check",
     "start": "NODE_ENV=production bun run src/server/index.ts --ompchamber-server",
     "typecheck": "tsc",
     "clean": "rm -rf dist",

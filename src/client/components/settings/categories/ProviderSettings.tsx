@@ -11,6 +11,7 @@ import { ModelConfigModal } from '@/client/components/settings/categories/provid
 import { ModelCapabilitiesModal } from '@/client/components/settings/categories/provider-settings/ModelCapabilitiesModal';
 import { AddModelModal } from '@/client/components/settings/categories/provider-settings/AddModelModal';
 import { DeleteProviderModal } from '@/client/components/settings/categories/provider-settings/DeleteProviderModal';
+import { LogoutProviderModal } from '@/client/components/settings/categories/provider-settings/LogoutProviderModal';
 import { providerEmptyReason, providerFetchBlockReason } from '@/shared/lib/models/provider/dialect';
 import { configuredProviderSlugs } from '@/shared/lib/models/provider/presets';
 import { useSettingsMasterDetail } from '@/client/hooks/settings/master-detail';
@@ -40,8 +41,11 @@ export function ProviderSettings({
     isAddModelModalOpen,
     setIsAddModelModalOpen,
     handleModelAdded,
+    handleSignedOut,
     isDeleteModalOpen,
     setIsDeleteModalOpen,
+    isLogoutModalOpen,
+    setIsLogoutModalOpen,
     isDeletingProvider,
     handleDeleteProvider,
     isAddModalOpen,
@@ -115,6 +119,7 @@ export function ProviderSettings({
                   onToggleDisconnect={handleToggleDisconnect}
                   onToggleDisabled={handleToggleProviderDisabled}
                   onDelete={() => setIsDeleteModalOpen(true)}
+                  onSignOut={() => setIsLogoutModalOpen(true)}
                 />
 
                 <ProviderModelsList
@@ -188,6 +193,13 @@ export function ProviderSettings({
           onError={(message) => pushToast(message, 'error')}
         />
       )}
+
+      <LogoutProviderModal
+        isOpen={isLogoutModalOpen}
+        provider={selectedProvider ?? null}
+        onClose={() => setIsLogoutModalOpen(false)}
+        onSignedOut={(message) => void handleSignedOut(message)}
+      />
 
       <DeleteProviderModal
         isOpen={isDeleteModalOpen}

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import { Square } from 'lucide-preact';
 import { useSearchParams } from '@/client/lib/router/search-params';
 import { SubagentStatusIcon } from '@/client/components/common/SubagentStatusIcon';
 import { isRecord } from '@/shared/lib/util/guards';
@@ -6,6 +7,7 @@ import { fetchSubagentHistory, historyEntryToSubagentInfo } from '@/shared/lib/o
 import { subagentRowLabel } from '@/shared/lib/omp/subagent/label';
 import { mergeSubagentRoster, parseSubagentLifecycle, parseSubagentRosterResponse, readSubagentProgressFrame } from '@/shared/lib/omp/subagent/parse';
 import { subscribeSubagentFrame, type SubagentFrame } from '@/shared/lib/chat/omp/subagent-frames';
+import { cancelSubagent } from '@/shared/lib/omp/subagent/control';
 import type { SubagentInfo, SubagentProgress } from '@/shared/types';
 
 type SubagentListProps = {
@@ -119,25 +121,42 @@ export function SubagentList({ sessionId, isActiveSession }: SubagentListProps) 
           const label = subagentRowLabel(subagent);
           const brief = subagent.task ?? subagent.assignment ?? subagent.description ?? label;
           const isViewed = subagent.id === viewedSubagentId;
+          // A running subagent can be stopped from the roster. The row itself is
+          // a button (it opens the transcript), so the control is a SIBLING —
+          // nesting one button in another is invalid and swallows the inner
+          // click.
+          const running = isActiveSession && subagent.status === 'started';
           return (
-            <button
-              key={subagent.id}
-              type="button"
-              title={brief}
-              onClick={() => window.dispatchEvent(new CustomEvent('omp:view-subagent', { detail: { sessionId: String(sessionId), subagent } }))}
-              className={`w-full flex items-center text-left text-xs rounded-md px-2 py-1 cursor-pointer transition-colors select-none group/subagent ${isViewed ? 'bg-ink/10 font-medium text-ink' : 'text-ink/70 hover:text-ink hover:bg-ink/5'}`}
-            >
-              {/* Subagent status icon slot - aligned straight with session item text */}
-              <span className="w-4 h-4 flex items-center justify-center shrink-0">
-                <SubagentStatusIcon status={subagent.status} live={isActiveSession && subagent.status === 'started'} size={11} />
-              </span>
+            <div key={subagent.id} className="flex items-center group/subagent-row">
+              <button
+                type="button"
+                title={brief}
+                onClick={() => window.dispatchEvent(new CustomEvent('omp:view-subagent', { detail: { sessionId: String(sessionId), subagent } }))}
+                className={`flex-1 min-w-0 flex items-center text-left text-xs rounded-md px-2 py-1 cursor-pointer transition-colors select-none group/subagent ${isViewed ? 'bg-ink/10 font-medium text-ink' : 'text-ink/70 hover:text-ink hover:bg-ink/5'}`}
+              >
+                {/* Subagent status icon slot - aligned straight with session item text */}
+                <span className="w-4 h-4 flex items-center justify-center shrink-0">
+                  <SubagentStatusIcon status={subagent.status} live={running} size={11} />
+                </span>
 
-              {/* Gap between subagent icon and task text */}
-              <span className="w-2 shrink-0" />
+                {/* Gap between subagent icon and task text */}
+                <span className="w-2 shrink-0" />
 
-              {/* Subagent label: `id (agent): target` */}
-              <span className="flex-1 min-w-0 truncate leading-snug">{label}</span>
-            </button>
+                {/* Subagent label: `id (agent): target` */}
+                <span className="flex-1 min-w-0 truncate leading-snug">{label}</span>
+              </button>
+              {running && (
+                <button
+                  type="button"
+                  title="Stop this subagent"
+                  aria-label="Stop this subagent"
+                  onClick={() => void cancelSubagent(String(sessionId), subagent.id)}
+                  className="touch-visible shrink-0 mr-1 w-5 h-5 flex items-center justify-center rounded text-ink/40 hover:text-error hover:bg-error/5 opacity-0 group-hover/subagent-row:opacity-100 transition-opacity cursor-pointer"
+                >
+                  <Square size={10} />
+                </button>
+              )}
+            </div>
           );
         })
       )}

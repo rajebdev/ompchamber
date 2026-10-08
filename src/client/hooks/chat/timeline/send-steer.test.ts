@@ -68,7 +68,8 @@ interface AgentCalls {
   newPrompts: Array<{ text: string; cwd: string; options: unknown }>;
   models: Array<[string, string]>;
   levels: string[];
-  interrupts: Array<{ text: string; images: unknown }>;
+  /** Messages handed to the running turn (omp `steer`). */
+  steers: Array<{ text: string; images: unknown }>;
   sendPromptOk: boolean;
   /** omp's typed mid-turn refusal (nothing delivered, safe to queue). */
   sendPromptBusy: boolean;
@@ -86,7 +87,7 @@ function makeAgent(overrides: Partial<AgentCalls> = {}): AgentRecorder {
     newPrompts: [],
     models: [],
     levels: [],
-    interrupts: [],
+    steers: [],
     sendPromptOk: true,
     sendPromptBusy: false,
     spawnResult: null,
@@ -101,8 +102,8 @@ function makeAgent(overrides: Partial<AgentCalls> = {}): AgentRecorder {
       calls.newPrompts.push({ text, cwd, options });
       return calls.spawnResult;
     },
-    sendInterruptAndReply: async (text: string, images: unknown) => {
-      calls.interrupts.push({ text, images });
+    steerOmpRun: async (text: string, images: unknown) => {
+      calls.steers.push({ text, images });
       return { ok: calls.sendPromptOk, busy: false };
     },
     setModel: async (provider: string, modelId: string) => {
@@ -211,12 +212,12 @@ function makeSendHarness(options: {
 }
 
 describe('steerOmpAgent', () => {
-  test('sends an interrupt-and-reply and keeps the draft on failure', async () => {
+  test('steers the running turn and keeps the draft on failure', async () => {
     const h1 = makeSendHarness({ agent: { sendPromptOk: false } });
     await act(async () => {
       await h1.sends.steerOmpAgent('steer me', []);
     });
-    expect(h1.agent.calls.interrupts).toEqual([{ text: 'steer me', images: undefined }]);
+    expect(h1.agent.calls.steers).toEqual([{ text: 'steer me', images: undefined }]);
     expect(h1.drafts).toEqual(['steer me']);
   });
 

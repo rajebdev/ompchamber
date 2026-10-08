@@ -10,6 +10,9 @@ interface ProviderAuthSectionProps {
   onToggleDisabled: () => void;
   /** Opens the delete confirmation for a provider registered in models.yml. */
   onDelete: () => void;
+  /** Opens the credential-removal confirmation. Distinct from `disable` and
+   *  `disconnect`, which only hide the provider and leave the secret stored. */
+  onSignOut: () => void;
 }
 
 export function ProviderAuthSection({
@@ -18,6 +21,7 @@ export function ProviderAuthSection({
   onToggleDisconnect,
   onToggleDisabled,
   onDelete,
+  onSignOut,
 }: ProviderAuthSectionProps) {
   const [showInfoTooltip, setShowInfoTooltip] = useState(false);
   const isConnected = provider.status === 'connected';
@@ -89,6 +93,20 @@ export function ProviderAuthSection({
               className="px-3 py-1.5 rounded-md bg-ink/5 hover:bg-ink/10 text-ink text-xs font-medium transition-colors cursor-pointer border border-ink/10"
             >
               {isConnected ? 'reconnect' : 'connect'}
+            </button>
+
+            {/* The credential operation. `disable`/`disconnect` write
+                `disabledProviders` and leave the token on disk; this is the only
+                control that removes it, so it is offered wherever a login
+                credential could exist — omp decides, and an empty account list
+                explains itself in the dialog. */}
+            <button
+              type="button"
+              onClick={onSignOut}
+              title="Remove the stored credential for this provider"
+              className="px-3 py-1.5 rounded-md bg-ink/5 hover:bg-ink/10 text-ink text-xs font-medium transition-colors cursor-pointer border border-ink/10"
+            >
+              sign out
             </button>
 
             {/* Delete only exists for a provider that HAS a models.yml entry:

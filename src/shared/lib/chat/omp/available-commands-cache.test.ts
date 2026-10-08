@@ -22,7 +22,6 @@ function foldDeps(): OmpAgentFoldDeps {
     callbacksRef: { current: {} },
     toolResultsRef: ref(new Map()),
     lastToolMessageRef: ref(null),
-    interruptPendingRef: ref(false),
     activityRef: ref(''),
     providerRetryVerbRef: ref(null),
     currentThinkingLevelRef: ref(undefined),

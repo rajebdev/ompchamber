@@ -23,6 +23,7 @@ import { invalidateComposerCache } from '@/shared/lib/chat/composer/client';
 import { setActivity, toolHost, type OmpAgentFoldDeps } from '@/shared/lib/chat/omp/fold-deps';
 import { normalizeThinkingLevel } from '@/shared/lib/models/thinking-levels';
 import { endRetrySaga, foldAutoRetry } from '@/shared/lib/chat/timeline/provider-retry';
+import { foldTransportFrame } from '@/shared/lib/chat/omp/transport-frames';
 import { PHASE_VERBS } from '@/shared/lib/chat/timeline/tool-phrases';
 import { describeAssistantPhase, describeToolActivity } from '@/shared/lib/chat/timeline/tool-verbs';
 import { extractToolImages } from '@/shared/lib/omp/session/tool-images';
@@ -47,7 +48,6 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       deps.setState((prev) => ({ ...prev, isGenerating: true, error: null }));
       deps.toolResultsRef.current?.clear();
       deps.lastToolMessageRef.current = null;
-      deps.interruptPendingRef.current = false;
       // A fresh run restarts level tracking; the first turn relies on the
       // session-level value until omp emits thinking_level_changed (or not).
       deps.currentThinkingLevelRef.current = undefined;
@@ -142,8 +142,14 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       const callId = typeof data.toolCallId === 'string' ? data.toolCallId : undefined;
       const partial = toolResultText(data.partialResult);
       if (!callId || !partial) break;
-      const prev = deps.toolResultsRef.current?.get(callId)?.output ?? '';
-      putToolResult(deps, callId, { output: prev + partial });
+      // `partialResult` is the tool's output SO FAR, not the fragment since the
+      // last update — omp hands over a full snapshot on every frame (measured
+      // on 18.3.0 and 18.8.3: a bash loop echoing one line a second reports
+      // "L1", then "L1\nL2", then "L1\nL2\nL3"). Appending the snapshot to what
+      // is already stored renders the running card as interleaved text
+      // ("L1\nL1\nL2\nL1\nL2\nL3"), which is what a long command looked like
+      // until its `tool_execution_end` overwrote the record.
+      putToolResult(deps, callId, { output: partial });
       refreshToolMessage(callId, toolHost(deps));
       break;
     }
@@ -180,10 +186,6 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       deps.setState((prev) => ({ ...prev, isGenerating: false }));
       deps.activityRef.current = '';
       const terminal = materializeTerminalMessages(data, deps, callbacks ?? undefined);
-      if (deps.interruptPendingRef.current) {
-        deps.interruptPendingRef.current = false;
-        break;
-      }
       callbacks?.onAgentEnd?.({
         errorMessage: terminal.errorMessage
           ?? (typeof data.errorMessage === 'string' ? data.errorMessage : undefined),
@@ -195,7 +197,6 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
     case 'prompt_error': {
       const errorMessage = typeof data.errorMessage === 'string' ? data.errorMessage : 'Prompt failed';
       deps.setState((prev) => ({ ...prev, isGenerating: false, error: errorMessage }));
-      deps.interruptPendingRef.current = false;
       deps.activityRef.current = '';
       callbacks?.onPromptError?.(errorMessage);
       break;
@@ -325,11 +326,11 @@ export function foldAgentEvent(data: OmpAgentEvent, deps: OmpAgentFoldDeps): voi
       invalidateComposerCache('command');
       break;
 
-    // No chamber-side effect: config frames and the transport's own `connected`
-    // greeting.
-    case 'config_update':
-    case 'connected':
+    // Transport/extension frames (a dropped frame, a failed extension, the
+    // session's own quiescence verdict) live in `transport-frames.ts`, which
+    // also names the frames it deliberately ignores.
     default:
+      foldTransportFrame(data, { foldDeps: deps });
       break;
   }
 }

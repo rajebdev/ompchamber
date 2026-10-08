@@ -16,6 +16,7 @@
  */
 
 import { RpcProcess, type RpcFrame } from '@/server/lib/omp/rpc/process';
+import { configureChild } from '@/server/lib/omp/rpc/child-config';
 import { PendingUiDialogs } from '@/server/lib/omp/rpc/pending-ui-dialogs';
 import { foldSessionFrame } from '@/server/lib/omp/rpc/frame-fold';
 import { dispatchSessionCommand } from '@/server/lib/omp/rpc/session-commands';
@@ -190,10 +191,7 @@ export class AgentSessionWrapper {
   private async initialize(): Promise<void> {
     const ready = await this.proc.waitReady(READY_TIMEOUT_MS);
     await this.proc.negotiateProtocol(ready);
-    // Subscribe to subagent lifecycle/progress/event frames so the UI can show
-    // a live subagent roster. Older omp builds may not know the command —
-    // degrade silently.
-    await this.proc.sendCommand({ type: 'set_subagent_subscription', level: 'events' }).catch(() => {});
+    await configureChild(this.proc);
     const state = await this.proc.sendCommand<RpcSessionState>({ type: 'get_state' }, GET_STATE_TIMEOUT_MS);
     this.applyIdentity(state);
     if (this.recordedCwd && this.recordedCwd !== this.cwd) {

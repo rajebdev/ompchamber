@@ -33,7 +33,6 @@ function foldDeps(): { deps: OmpAgentFoldDeps; outputs: string[] } {
     },
     toolResultsRef: ref(new Map()),
     lastToolMessageRef: ref(null),
-    interruptPendingRef: ref(false),
     activityRef: ref(''),
     providerRetryVerbRef: ref(null),
     currentThinkingLevelRef: ref(undefined),

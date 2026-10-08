@@ -46,7 +46,6 @@ function makeDeps() {
     callbacksRef: { current: callbacks },
     toolResultsRef: { current: new Map<string, { output: string }>() },
     lastToolMessageRef: { current: null },
-    interruptPendingRef: { current: false },
     activityRef: { current: '' },
     providerRetryVerbRef: { current: null },
     currentThinkingLevelRef: { current: undefined },
@@ -281,5 +280,28 @@ describe('foldAgentEvent agent_end', () => {
     foldAgentEvent({ type: 'agent_end', isTerminal: true, messages: [] }, deps);
     expect(deps.providerRetryVerbRef.current).toBeNull();
     expect(activity.at(-1)).toBe('Thinking');
+  });
+});
+
+describe('foldAgentEvent tool_execution_update (running tool output)', () => {
+  /** One snapshot frame, in the shape omp actually sends. */
+  const update = (text: string) => ({
+    type: 'tool_execution_update',
+    toolCallId: 'call-1',
+    toolName: 'bash',
+    partialResult: { content: [{ type: 'text', text }] },
+  });
+
+  test('a partial result REPLACES the stored output instead of appending', () => {
+    // omp's `partialResult` is the tool's output so far, not the fragment since
+    // the previous frame. Measured on 18.3.0 and 18.8.3: a bash loop echoing
+    // one line per second reports "L1", then "L1\nL2", then "L1\nL2\nL3".
+    // Appending those snapshots produced "L1\nL1\nL2\nL1\nL2\nL3" on a card
+    // that was still running.
+    const { deps } = makeDeps();
+    foldAgentEvent(update('L1\n') as never, deps);
+    foldAgentEvent(update('L1\nL2\n') as never, deps);
+    foldAgentEvent(update('L1\nL2\nL3\n') as never, deps);
+    expect(deps.toolResultsRef.current?.get('call-1')?.output).toBe('L1\nL2\nL3\n');
   });
 });

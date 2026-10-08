@@ -98,6 +98,24 @@ export function splitAskFrames(
   let lastOwner: string | null = null;
 
   for (const request of pending) {
+    // A GROUPED ask frame (`method:"ask"`, sent after `set_ask_dialog`) carries
+    // every question of one call and no `title` at all, so the title walk below
+    // can never place it. Its questions carry omp's own ids, which is the
+    // exact key the tool call's arguments use — match on those.
+    const grouped = Array.isArray(request.questions) && request.questions.length > 0 ? request.questions : null;
+    if (grouped) {
+      const ids = new Set(grouped.map((question) => question.id).filter(Boolean));
+      const owner = [...openAsks].reverse().find((candidate) =>
+        candidate.questions.some((question) => question.id && ids.has(question.id)),
+      );
+      if (owner) {
+        claimed.add(request);
+        lastOwner = owner.toolId;
+        owned.set(owner.toolId, [...(owned.get(owner.toolId) ?? []), request]);
+        continue;
+      }
+    }
+
     const title = typeof request.title === 'string' ? normalizeAskText(request.title) : '';
     let owner: string | null = null;
     if (title) {
@@ -124,7 +142,25 @@ export function splitAskFrames(
 
   for (const [toolId, frames] of owned) {
     const questions = openAsks.find((candidate) => candidate.toolId === toolId)?.questions ?? [];
-    framesByTool.set(toolId, groupAskFrames(questions, frames));
+    // A grouped frame is ONE dialog that covers every question, so it belongs
+    // on each question it names rather than in a single bucket.
+    const placed: ExtensionUiDialogRequest[][] = questions.map((): ExtensionUiDialogRequest[] => []);
+    const loose: ExtensionUiDialogRequest[] = [];
+    for (const frame of frames) {
+      if (Array.isArray(frame.questions) && frame.questions.length > 0) {
+        for (const grouped of frame.questions) {
+          const index = questions.findIndex((question) => question.id === grouped.id);
+          if (index >= 0) placed[index].push(frame);
+          else loose.push(frame);
+        }
+        continue;
+      }
+      loose.push(frame);
+    }
+    // Everything that was not part of a grouped frame keeps the per-question
+    // walk it has always used.
+    const walked = groupAskFrames(questions, loose);
+    framesByTool.set(toolId, questions.map((_, index) => [...placed[index], ...walked[index]]));
   }
 
   // The frame stays queued either way — only the modal waits for the history,

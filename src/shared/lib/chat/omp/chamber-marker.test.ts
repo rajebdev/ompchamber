@@ -33,7 +33,6 @@ function makeDeps(sessionId: string, events: unknown[]): OmpAgentFoldDeps {
     toolResultsRef: { current: new Map() },
     fileMutatingCallsRef: { current: new Set() },
     lastToolMessageRef: { current: null },
-    interruptPendingRef: { current: false },
     callbacksRef: {
       current: {
         onExtensionUiRequest: (request: unknown) => events.push({ kind: 'dialog', request }),

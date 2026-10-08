@@ -163,6 +163,8 @@ export const PASSTHROUGH_COMMANDS = new Set([
   'get_messages_page',
   'get_subagents',
   'get_subagent_messages',
+  'cancel_subagent',
+  'steer_subagent',
   'set_subagent_subscription',
   'get_login_providers',
   'login',

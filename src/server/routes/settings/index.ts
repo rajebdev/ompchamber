@@ -11,6 +11,7 @@ import * as settingsProjects from '@/server/routes/settings/projects';
 import * as settingsProviderModels from '@/server/routes/settings/provider-models';
 import * as settingsProviderModel from '@/server/routes/settings/provider-model';
 import * as settingsProviders from '@/server/routes/settings/providers';
+import { logoutAction } from '@/server/routes/settings/provider-logout';
 import * as settingsPlugins from '@/server/routes/settings/plugins';
 import * as settingsSkills from '@/server/routes/settings/skills';
 import * as settingsUsage from '@/server/routes/settings/usage';
@@ -28,6 +29,8 @@ export const settingsBindings: HandlerBinding[] = [
   ...bindingsFor(settingsProviderModels, '/api/settings/provider-models'),
   ...bindingsFor(settingsProviderModel, '/api/settings/provider-model'),
   ...bindingsFor(settingsProviders, '/api/settings/providers'),
+  // Credential removal, distinct from the `disabledProviders` toggle above.
+  { method: 'POST', path: '/api/settings/providers/logout', handler: logoutAction },
   ...bindingsFor(settingsPlugins, '/api/settings/plugins'),
   ...bindingsFor(settingsSkills, '/api/settings/skills'),
   ...bindingsFor(settingsUsage, '/api/settings/usage'),

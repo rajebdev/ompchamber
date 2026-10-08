@@ -23,7 +23,6 @@ export interface OmpAgentFoldDeps extends ToolResultHost {
   callbacksRef: RefObject<OmpAgentCallbacks>;
   toolResultsRef: RefObject<Map<string, ToolResultRecord>>;
   lastToolMessageRef: RefObject<ChatMessageData>;
-  interruptPendingRef: RefObject<boolean>;
   /** Last activity phrase published to the indicator; guards per-token frames
    *  from re-setting identical state. */
   activityRef: RefObject<string>;

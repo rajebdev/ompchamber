@@ -83,8 +83,8 @@ describe('timeout windows and messages', () => {
 
 describe('command classification sets', () => {
   test('passthrough commands are the exact verbatim-forward set', () => {
-    expect(PASSTHROUGH_COMMANDS.size).toBe(23);
-    for (const command of ['abort', 'steer', 'follow_up', 'set_thinking_level', 'set_todos', 'get_login_providers', 'login']) {
+    expect(PASSTHROUGH_COMMANDS.size).toBe(25);
+    for (const command of ['abort', 'steer', 'follow_up', 'set_thinking_level', 'set_todos', 'get_login_providers', 'login', 'cancel_subagent', 'steer_subagent']) {
       expect(PASSTHROUGH_COMMANDS.has(command)).toBe(true);
     }
     // Commands the dispatcher handles itself must NOT be passthrough, or their

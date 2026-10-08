@@ -20,6 +20,7 @@ import { isAskSettled, parseAskQuestions, parseAskResult } from '@/shared/lib/ch
 import { useAskFrames } from '@/client/hooks/chat/timeline/ask-frames';
 import { liveFrame, useAskDrafts } from '@/client/components/workspace/chat-timeline/tool-renderers/ask-panel/drafts';
 import { QuestionBlock } from '@/client/components/workspace/chat-timeline/tool-renderers/ask-panel/QuestionBlock';
+import { GroupedAsk } from '@/client/components/workspace/chat-timeline/tool-renderers/ask-panel/GroupedAsk';
 import { FallbackOutput } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/FallbackOutput';
 
 // Stable empties: fresh `[]` literals would defeat the question block's props.
@@ -61,6 +62,29 @@ export function AskPanel({ tool }: { tool: ToolCallData }) {
   // dialog is the only open one: everything before it is answered, whether or
   // not this client still has the text.
   const askingIndex = groups.findIndex((frames) => frames.length > 0);
+
+  // A GROUPED ask (`method:"ask"`) covers every question at once, so it renders
+  // its own card instead of one control per question. `splitAskFrames` places
+  // the same frame on each question it names, so the first bucket that holds it
+  // is where it renders — exactly once.
+  const groupedFrame = groups.flat().find((frame) => frame.method === 'ask' && (frame.questions?.length ?? 0) > 0);
+  if (groupedFrame && !settled) {
+    return (
+      <div className="space-y-2">
+        {waiting && (
+          <div className="flex items-center gap-1.5 text-[10.5px] text-ink/50">
+            <HelpCircle size={11} className="shrink-0" />
+            <span>Input needed — the agent is blocked until you answer.</span>
+          </div>
+        )}
+        <GroupedAsk
+          frame={groupedFrame}
+          recorded={questions.map((_, index) => recorded[index] !== null)}
+          onRespond={(response) => respond(groupedFrame, response)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2">

@@ -16,7 +16,11 @@ if ! command -v bun >/dev/null 2>&1; then
   exit 1
 fi
 
-OMP_VERSION="${OMP_VERSION:-18.3.0}"
+# Pinned to the version the chamber's RPC surface was measured against — the
+# audit in docs/omp-18.8-adoption-plan.md names which features each phase
+# depends on, and the RPC verbs they use (steer, set_event_filter, isSettled)
+# do not exist on the 18.3.0 this used to pin.
+OMP_VERSION="${OMP_VERSION:-18.8.3}"
 PACKAGE="@oh-my-pi/pi-coding-agent"
 WANTED="omp/${OMP_VERSION}"
 

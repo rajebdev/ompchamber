@@ -10,7 +10,9 @@ import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 export type ExtensionDialogResponse =
   | { value: string }
   | { confirmed: boolean }
-  | { cancelled: true };
+  | { cancelled: true }
+  /** One `ask` answer per question, in question order (grouped ask mode). */
+  | { answers: { id: string; selectedOptions: string[]; customInput?: string }[] };
 
 interface ExtensionDialogProps {
   request: ExtensionUiDialogRequest;

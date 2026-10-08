@@ -37,7 +37,6 @@ function makeDeps(): OmpAgentFoldDeps {
     callbacksRef: { current: {} },
     toolResultsRef: { current: new Map<string, ToolResultRecord>() },
     lastToolMessageRef: { current: { id: 'last', role: 'ai', content: '' } as ChatMessageData },
-    interruptPendingRef: { current: false },
     activityRef: { current: '' },
     providerRetryVerbRef: { current: null },
     currentThinkingLevelRef: { current: undefined },

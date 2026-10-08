@@ -88,7 +88,6 @@ describe('createOmpAgentCallbacks run boundaries', () => {
       callbacksRef: { current: callbacks },
       toolResultsRef: { current: new Map<string, { output: string }>() },
       lastToolMessageRef: { current: null },
-      interruptPendingRef: { current: false },
       activityRef: { current: '' },
       providerRetryVerbRef: { current: null },
       currentThinkingLevelRef: { current: undefined },

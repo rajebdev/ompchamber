@@ -39,7 +39,6 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
   // Last assistant message that carried tool calls, so tool_execution_end
   // events arriving after message_end can re-emit it with the result paired.
   const lastToolMessageRef = useRef<ChatMessageData | null>(null);
-  const interruptPendingRef = useRef(false);
   // Last phrase handed to the indicator; the fold compares against it so
   // per-token frames cannot spam state updates with the same string.
   const activityRef = useRef('');
@@ -52,7 +51,6 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     callbacksRef,
     toolResultsRef,
     lastToolMessageRef,
-    interruptPendingRef,
     activityRef,
     currentThinkingLevelRef,
     providerRetryVerbRef,
@@ -124,50 +122,51 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
   const abort = useCallback(async () => {
     const sid = sessionIdRef.current;
     if (!sid) return;
-    // A user stop supersedes an in-flight interrupt-and-reply: clearing the
-    // guard lets the aborted turn's agent_end reach onAgentEnd (no stuck spinner).
-    interruptPendingRef.current = false;
     // Self-escalating: a child that does not stop within the helper's grace
     // period is reset instead, so a wedged session cannot hang the button.
     await stopAgentSession(sid);
     setState((prev) => ({ ...prev, isGenerating: false }));
   }, []);
 
-  /** Interrupt the running agent and immediately start the message as a fresh
-   *  prompt (abort_and_prompt). Keeps the run alive until the new agent_start
-   *  arrives via the interruptPending guard.
+  /**
+   * Steer the running agent: deliver the message INTO the turn in flight.
    *
-   *  A pending ask/approval dialog is refused by the SERVER
-   *  (`session_blocked_on_dialog`): omp parks its whole command loop on one, so
-   *  this request would otherwise hang until the user answered the dialog. The
-   *  fetch carries its own abort signal for the same reason — a server that
-   *  cannot answer must not leave the caller waiting forever. */
-  const sendInterruptAndReply = useCallback(async (
+   * This is omp's own `steer` command, and it is a different operation from
+   * what this used to send. It posted `abort_and_prompt`, which CANCELS the
+   * turn and starts a new one — so "Send Now (Steering)" on a queued row threw
+   * away the answer the user was watching. Measured on omp 18.8.3 with a
+   * counting turn: `steer` produced one `agent_start` and one `agent_end` with
+   * the model answering the steer inside the same run, while `abort_and_prompt`
+   * produced two of each.
+   *
+   * `steer` also reaches the model without a synthetic user row of its own:
+   * omp queues it (`queue_update` reports it under `steering`, then clears when
+   * consumed) and surfaces it as a user turn of the run.
+   *
+   * A pending ask/approval dialog is refused by the SERVER
+   * (`session_blocked_on_dialog`): omp parks its whole command loop on one, so
+   * this request would otherwise hang until the user answered the dialog. The
+   * fetch carries its own abort signal for the same reason — a server that
+   * cannot answer must not leave the caller waiting forever. */
+  const steerOmpRun = useCallback(async (
     message: string,
     images?: AgentImage[],
   ): Promise<PromptDispatchResult> => {
     const sid = sessionIdRef.current;
     if (!sid) return { ok: false, busy: false, error: 'No live session' };
-    interruptPendingRef.current = true;
-    setState((prev) => ({ ...prev, isGenerating: true, error: null }));
-    const fail = (error: string): PromptDispatchResult => {
-      interruptPendingRef.current = false;
-      setState((prev) => ({ ...prev, isGenerating: false, error }));
-      return { ok: false, busy: false, error };
-    };
     try {
       const res = await fetch(`/api/agent/${encodeURIComponent(sid)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'abort_and_prompt',
+          type: 'steer',
           message,
           ...(images?.length ? { images } : {}),
         }),
         signal: AbortSignal.timeout(STEER_REQUEST_TIMEOUT_MS),
       });
       const body = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string; code?: string };
-      if (!res.ok || body.error) return fail(body.error ?? `HTTP ${res.status}`);
+      if (!res.ok || body.error) return { ok: false, busy: false, error: body.error ?? `HTTP ${res.status}` };
       return { ok: true, busy: false };
     } catch (e) {
       // A timeout is the one outcome that is NOT proof of loss: the server
@@ -177,8 +176,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
       const error = timedOut
         ? 'not acknowledged in time — it may still be running'
         : e instanceof Error ? e.message : String(e);
-      const result = fail(error);
-      return timedOut ? { ...result, uncertain: true } : result;
+      return timedOut ? { ok: false, busy: false, error, uncertain: true } : { ok: false, busy: false, error };
     }
   }, []);
 
@@ -215,7 +213,11 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
   /** Jawab dialog ask/approval (extension_ui_response) — melepas blocking tool call. */
   const respondToExtensionUi = useCallback(async (
     request: ExtensionUiDialogRequest,
-    response: { value: string } | { confirmed: boolean } | { cancelled: true },
+    response:
+      | { value: string }
+      | { confirmed: boolean }
+      | { cancelled: true }
+      | { answers: { id: string; selectedOptions: string[]; customInput?: string }[] },
   ): Promise<void> => {
     const sid = sessionIdRef.current;
     if (!sid) return;
@@ -234,7 +236,7 @@ export function useOmpAgent(sessionId: string | null, callbacks: OmpAgentCallbac
     ...state,
     sendPrompt,
     sendNewPrompt,
-    sendInterruptAndReply,
+    steerOmpRun,
     abort,
     setModel,
     setThinkingLevel,

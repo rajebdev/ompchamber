@@ -4,6 +4,7 @@ import { ArrowLeft, Bot, Loader2, Lock } from 'lucide-preact';
 import type { SubagentInfo } from '@/shared/types';
 import { SubagentStatusIcon } from '@/client/components/common/SubagentStatusIcon';
 import { ChatMessageItem } from '@/client/components/workspace/chat-timeline/MessageItem';
+import { SubagentControls } from '@/client/components/workspace/chat-timeline/SubagentControls';
 import { RunFooter } from '@/client/components/workspace/chat-timeline/RunFooter';
 import { useSubagentTranscript } from '@/client/hooks/chat/subagent';
 import { useModelNames } from '@/client/hooks/models/use-model-names';
@@ -159,13 +160,20 @@ export function SubagentView({ sessionId, subagent, onBack, provider, providerNa
         </div>
       </div>
 
-      {/* Read-only notice in place of the composer */}
+      {/* Controls in place of the composer. A running subagent can be steered
+          or stopped (omp `steer_subagent` / `cancel_subagent`); a finished one
+          has nothing left to control, so the strip renders only while running
+          and the notice stands in otherwise. */}
       <div className="flex-shrink-0 p-4 pt-1">
         <div className="mx-auto w-full max-w-[970px]">
-          <div className="flex items-center justify-center gap-2 rounded-lg border border-ink/15 bg-paper px-3 py-2 text-[11px] font-mono text-ink/50 select-none">
-            <Lock size={11} className="text-ink/45" />
-            <span>Read-only transcript — subagents cannot receive messages</span>
-          </div>
+          {isRunning ? (
+            <SubagentControls sessionId={String(sessionId ?? '')} subagentId={subagent.id} running />
+          ) : (
+            <div className="flex items-center justify-center gap-2 rounded-lg border border-ink/15 bg-paper px-3 py-2 text-[11px] font-mono text-ink/50 select-none">
+              <Lock size={11} className="text-ink/45" />
+              <span>This subagent has finished</span>
+            </div>
+          )}
         </div>
       </div>
     </div>

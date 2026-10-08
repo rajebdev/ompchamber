@@ -99,7 +99,6 @@ async function mountStream(snapshot: unknown): Promise<Harness> {
       callbacksRef,
       toolResultsRef: useRef(new Map()) as RefObject<Map<string, never>>,
       lastToolMessageRef: useRef<ChatMessageData | null>(null),
-      interruptPendingRef: useRef(false),
       activityRef: useRef(''),
       currentThinkingLevelRef: useRef<string | undefined>(undefined),
       providerRetryVerbRef: useRef<string | null>(null),

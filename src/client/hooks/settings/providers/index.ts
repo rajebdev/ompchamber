@@ -39,6 +39,7 @@ export function useProviderSettings({
   const [isAddModalOpen, setIsAddModalOpen] = useState(autoOpenAdd);
   const [isAddModelModalOpen, setIsAddModelModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [isDeletingProvider, setIsDeletingProvider] = useState(false);
   const [isReconnectModalOpen, setIsReconnectModalOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -99,6 +100,18 @@ export function useProviderSettings({
    * re-saving the overlay, whose response is the overlay alone) is what puts
    * the model in the sidebar count and the chat picker.
    */
+  /**
+   * After a stored credential is removed the merged registry has to be re-READ
+   * rather than patched: the provider may drop out of the list entirely, and a
+   * local edit would leave a row the next load deletes anyway.
+   */
+  const handleSignedOut = async (message: string) => {
+    setIsLogoutModalOpen(false);
+    pushToast(message, 'success');
+    const data = await loadProvidersFromApi();
+    if (data) setProviders(data.providers);
+  };
+
   const handleModelAdded = async (modelId: string) => {
     pushToast(`${modelId} registered in models.yml.`, 'success');
     const data = await loadProvidersFromApi();
@@ -119,8 +132,11 @@ export function useProviderSettings({
     isAddModelModalOpen,
     setIsAddModelModalOpen,
     handleModelAdded,
+    handleSignedOut,
     isDeleteModalOpen,
     setIsDeleteModalOpen,
+    isLogoutModalOpen,
+    setIsLogoutModalOpen,
     isDeletingProvider,
     isAddModalOpen,
     setIsAddModalOpen,

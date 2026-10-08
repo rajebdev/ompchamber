@@ -28,6 +28,7 @@ import type { Dispatch, RefObject, SetStateAction } from 'preact/compat';
 import type { ChatMessageData, OmpAgentCallbacks, OmpAgentEvent, OmpAgentState } from '@/shared/types';
 import type { ExtensionUiDialogRequest } from '@/shared/types/omp/agent';
 import { foldAgentEvent, type ToolResultRecord } from '@/shared/lib/chat/omp/agent-events';
+import { createDeltaAccumulator } from '@/shared/lib/chat/omp/delta-accumulator';
 import { realtimeClient, type RealtimeFrame } from '@/shared/lib/realtime/client';
 import { sessionTopic } from '@/shared/lib/realtime/protocol';
 
@@ -42,7 +43,6 @@ interface AgentTopicSnapshot {
 export interface OmpStreamRefs {
   toolResultsRef: RefObject<Map<string, ToolResultRecord>>;
   lastToolMessageRef: RefObject<ChatMessageData>;
-  interruptPendingRef: RefObject<boolean>;
   /** Last activity phrase published to the indicator (repeat suppression). */
   activityRef: RefObject<string>;
   /** Live thinking level (last `thinking_level_changed` frame). */
@@ -61,7 +61,6 @@ export function useOmpAgentStream({
   callbacksRef,
   toolResultsRef,
   lastToolMessageRef,
-  interruptPendingRef,
   activityRef,
   currentThinkingLevelRef,
   providerRetryVerbRef,
@@ -70,11 +69,21 @@ export function useOmpAgentStream({
   const attachedRef = useRef<string | null>(null);
   /** Cleanup of the live frame subscription. */
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  /**
+   * Rebuilds the accumulated assistant message when the child streams in
+   * DELTA mode (`set_event_filter`). Held across reconnects of the same
+   * session and dropped on a switch, because its state belongs to the run in
+   * flight. See `delta-accumulator.ts`.
+   */
+  const deltasRef = useRef(createDeltaAccumulator());
 
   const disconnect = useCallback(() => {
     const unsubscribe = unsubscribeRef.current;
     unsubscribeRef.current = null;
     attachedRef.current = null;
+    // The accumulator holds the run in flight, so it never outlives the
+    // subscription that fed it.
+    deltasRef.current.reset();
     unsubscribe?.();
     setState((prev) => ({ ...prev, connected: false }));
   }, [setState]);
@@ -114,21 +123,29 @@ export function useOmpAgentStream({
         return;
       }
 
-      foldAgentEvent(frame.payload as OmpAgentEvent, {
+      // Rebuild the accumulated message when the child streams in delta mode;
+      // a frame that already carries it passes through untouched.
+      const raw = frame.payload as Record<string, unknown>;
+      const rebuilt = deltasRef.current.apply(raw);
+      if (raw.type === 'message_end' || raw.type === 'agent_end') {
+        deltasRef.current.clear(typeof raw.messageId === 'string' ? raw.messageId : undefined);
+      }
+      const payload = rebuilt ? { ...raw, message: rebuilt.message, assistantMessageEvent: rebuilt.event } : raw;
+
+      foldAgentEvent(payload as OmpAgentEvent, {
         sessionId: sid,
         setState,
         callbacksRef,
         toolResultsRef,
         lastToolMessageRef,
-        interruptPendingRef,
-        activityRef,
+              activityRef,
         currentThinkingLevelRef,
         providerRetryVerbRef,
       });
     });
 
     setState((prev) => ({ ...prev, connected: true }));
-  }, [disconnect, setState, callbacksRef, toolResultsRef, lastToolMessageRef, interruptPendingRef, activityRef, currentThinkingLevelRef, providerRetryVerbRef]);
+  }, [disconnect, setState, callbacksRef, toolResultsRef, lastToolMessageRef, activityRef, currentThinkingLevelRef, providerRetryVerbRef]);
 
   // The subscription outlives a session switch only through `connect`'s own
   // disconnect, so an unmount has to release it explicitly.

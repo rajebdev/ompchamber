@@ -32,7 +32,9 @@ function snapshot(values: Record<string, unknown>): Record<string, ConfigEntry> 
 
 describe('OMP_SCHEMA', () => {
   test('carries the upstream source and all ten tabs in order', () => {
-    expect(OMP_SCHEMA.source).toBe('settings-schema.ts');
+    // `source` names the generator's input, so a regenerated file says which
+    // omp it came from; the tabs themselves are the pinned part.
+    expect(OMP_SCHEMA.source).toContain('@oh-my-pi/pi-coding-agent');
     expect(OMP_SCHEMA.tabs.map((tab) => tab.id)).toEqual([
       'appearance', 'model', 'interaction', 'context', 'memory', 'files', 'shell', 'tools', 'tasks', 'providers',
     ]);
@@ -41,6 +43,36 @@ describe('OMP_SCHEMA', () => {
   test('every entry declares a type and a ui block', () => {
     const malformed = Object.entries(OMP_SCHEMA.entries).filter(([, entry]) => !entry.type || !entry.ui?.tab);
     expect(malformed).toEqual([]);
+  });
+
+  test('every entry sits in a declared tab and group, and every tab has rows', () => {
+    // The panel renders rows by looking a tab up in `tabs` and a group up in
+    // that tab's `groups`; a key that names neither is a row no filter can
+    // reach. This is what a bad regeneration looks like, and it is checkable
+    // without an omp install — unlike the schema's freshness, which
+    // `bun run omp:schema:check` owns.
+    const tabIds = new Set(OMP_SCHEMA.tabs.map((tab) => tab.id));
+    const groupsByTab = new Map(OMP_SCHEMA.tabs.map((tab) => [tab.id, new Set(tab.groups)]));
+    const stray = Object.entries(OMP_SCHEMA.entries).filter(([, entry]) => {
+      const { tab, group } = entry.ui;
+      if (!tabIds.has(tab)) return true;
+      if (!group) return false;
+      return !groupsByTab.get(tab)?.has(group);
+    });
+    expect(stray).toEqual([]);
+    const empty = OMP_SCHEMA.tabs.filter((tab) => !entriesForTab(tab.id).length).map((tab) => tab.id);
+    expect(empty).toEqual([]);
+  });
+
+  test('the settings that upstream added after the panel was written are present', () => {
+    // Pins the reason the schema is generated at all: these were unreachable
+    // while the JSON sat frozen at the migration commit.
+    for (const key of ['title.icons', 'title.generator', 'tui.renderSvg', 'tui.autoGraph', 'task.completionProbe', 'providers.cacheWarming']) {
+      expect(OMP_SCHEMA.entries[key]).toBeDefined();
+    }
+    // Replaced by the on/off form in omp 18.5.0 — offering it writes a key the
+    // binary rejects.
+    expect(OMP_SCHEMA.entries['task.completionProbeMs']).toBeUndefined();
   });
 });
 

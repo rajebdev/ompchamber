@@ -138,7 +138,7 @@ export function useChatTimelineSend(deps: ChatTimelineSendDeps): ChatTimelineSen
     // to it, so it is pushed before the interrupt-and-reply starts the turn.
     await flushDeferredPick(ompAgent, deferredComposerPickRef);
     const { promptText, images } = await prepareDeliverable(text, attachments);
-    const result = await ompAgent.sendInterruptAndReply(promptText, images);
+    const result = await ompAgent.steerOmpRun(promptText, images);
     if (!result.ok) setInputValue(text);
     return result;
   }, [ompAgent, prepareDeliverable, setInputValue, deferredComposerPickRef]);
