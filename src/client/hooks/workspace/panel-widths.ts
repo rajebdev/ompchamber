@@ -1,10 +1,8 @@
-import { useCallback, useMemo } from 'preact/hooks';
+import { useCallback } from 'preact/hooks';
 import {
   mergePanelWidths,
-  normalizePanelWidths,
   type PanelWidths,
 } from '@/shared/lib/workspace/panel-widths';
-import { isRightPanelType } from '@/shared/lib/workspace/right-panels';
 import { useSessionState } from '@/client/hooks/workspace/session-state';
 
 /** Session-state key holding this session's own per-panel widths. */
@@ -24,27 +22,19 @@ interface PanelWidthsResult {
  * (`layout.activeRightPanel`, `layout.showRightPanel`, `layout.openedFiles`), so
  * switching sessions brings back the layout that session was left in.
  *
- * `app_settings.desktopLayoutSizes` is the **seed**: a session that has never
- * been resized reads it, which is what keeps an existing user's layout across
- * the upgrade instead of resetting everyone to the defaults. Once a panel is
- * dragged, the session stores its own map and the seed is no longer consulted
- * for that session.
- *
- * There is deliberately no px→fraction rewrite pass here. Converting a legacy
- * pixel value is done when a width is *read* (`resolvePanelWidth`), because a
- * write would have to run before this session's own blob has loaded and would
- * therefore overwrite it with the seed.
+ * A session that has never been resized starts EMPTY, so every panel opens at
+ * its own default (`DEFAULT_EDITOR_FRACTIONS`, `DEFAULT_RIGHT_PANEL_FRACTION`,
+ * `DEFAULT_LEFT_PANEL_WIDTH`). There is deliberately no global seed: a former
+ * `app_settings.desktopLayoutSizes` carried the last global drag forward into
+ * every new session, and since nothing has written it since the per-session
+ * migration it was frozen at a stale value — measured, it pinned a new
+ * session's editor to its 320px floor while the diff tab opened normally. The
+ * mechanism could not be repaired by writing to it either: a write would have
+ * to run before this session's own blob has loaded and would therefore clobber
+ * it with the global value.
  */
-export function usePanelWidths(
-  appSettings: Record<string, any>,
-  /** The view the layout is on now; seeds a legacy single-width blob. A plugin panel key is not a valid seed, so it falls back to `files`. */
-  legacyView: string,
-): PanelWidthsResult {
-  const seed = useMemo(
-    () => normalizePanelWidths(appSettings.desktopLayoutSizes, isRightPanelType(legacyView) ? legacyView : 'files'),
-    [appSettings.desktopLayoutSizes, legacyView],
-  );
-  const [widths, setWidths] = useSessionState<PanelWidths>(PANEL_WIDTHS_KEY, seed);
+export function usePanelWidths(): PanelWidthsResult {
+  const [widths, setWidths] = useSessionState<PanelWidths>(PANEL_WIDTHS_KEY, {});
 
   const commitWidths = useCallback(
     (patch: PanelWidths) => {

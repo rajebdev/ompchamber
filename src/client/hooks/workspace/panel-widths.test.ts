@@ -7,16 +7,18 @@
  * The desktop layout's width math, and the two hooks that feed it.
  *
  * `resolvePanelWidth` is the only place a remembered width becomes pixels, and
- * its ceiling is DYNAMIC — `available − chat floor − the other panels' floors −
- * handles` — because a fixed ceiling either wastes a large monitor or eats the
- * conversation on a small one. The cases below pin that cap on a narrow and a
- * wide group, the no-measurement fallback (px, never zero), and that a px-only
- * remembered width is honoured as written.
+ * its ceiling is DYNAMIC — `available − chat floor − the sibling's reserved
+ * width − handles` — because a fixed ceiling either wastes a large monitor or
+ * eats the conversation on a small one. The cases below pin that cap on a
+ * narrow and a wide group, the no-measurement fallback (px, never zero), and
+ * that a px-only remembered width is honoured as written.
  *
  * `usePanelWidths` owns one slot per panel, so a drag on the sidebar must not
  * reset the editor or the right panel, and a right-panel switch must keep every
- * other view's width. `useAvailableWidth` reports `null` until measured — a
- * zero here would collapse a panel on its first render.
+ * other view's width. A session that has never been resized starts EMPTY — no
+ * global seed — so every panel opens at its own default fraction.
+ * `useAvailableWidth` reports `null` until measured — a zero here would
+ * collapse a panel on its first render.
  *
  * Rendered with `h()` (no JSX) against happy-dom; the layout modules are
  * imported statically, as `git-status.test.ts` does.
@@ -72,10 +74,9 @@ function WidthProbe() {
 
 /** The live panel-widths handle, re-read after every render. */
 let panels: { widths: PanelWidths; commitWidths: (patch: PanelWidths) => void } | null = null;
-let seed: Record<string, unknown> = {};
 
 function PanelProbe() {
-  panels = usePanelWidths(seed, 'git');
+  panels = usePanelWidths();
   return null;
 }
 
@@ -109,7 +110,6 @@ afterEach(() => {
   FakeResizeObserver.instances.length = 0;
   measured = null;
   panels = null;
-  seed = {};
 });
 
 function mount(node: unknown) {
@@ -143,7 +143,7 @@ describe('resolvePanelWidth', () => {
       defaultPx: 600,
       available: 1000,
       min: MIN_EDITOR_PANEL_WIDTH,
-      siblingMin: 280,
+      siblingWidth: 280,
       handleCount: 1,
     });
     expect(width).toBe(320);
@@ -156,35 +156,36 @@ describe('resolvePanelWidth', () => {
       defaultPx: 600,
       available: 3000,
       min: MIN_EDITOR_PANEL_WIDTH,
-      siblingMin: 280,
+      siblingWidth: 280,
       handleCount: 1,
     });
     expect(width).toBe(1800);
   });
 
-  test('a remembered fraction is still clamped by the dynamic ceiling', () => {
+  test('a remembered fraction is still clamped by the panel ceiling', () => {
     const width = resolvePanelWidth({
       stored: { fraction: 0.9 },
       defaultFraction: 0.6,
       defaultPx: 600,
       available: 2000,
       min: MIN_EDITOR_PANEL_WIDTH,
-      siblingMin: 280,
+      siblingWidth: 280,
       handleCount: 1,
     });
-    // 2000 − 400 − 280 − 3 = 1317; 0.9 × 2000 = 1800 would eat the chat.
-    expect(width).toBe(1317);
+    // 0.9 × 2000 = 1800 would eat the chat; the panel's own cap (0.6 × 2000 =
+    // 1200) is tighter than the group budget (2000 − 400 − 280 − 3 = 1317).
+    expect(width).toBe(1200);
   });
 
   test('without a measurement the stored px is used, floored at min', () => {
     expect(
-      resolvePanelWidth({ stored: { px: 900 }, defaultFraction: 0.6, defaultPx: 600, available: null, min: 320, siblingMin: 280, handleCount: 1 }),
+      resolvePanelWidth({ stored: { px: 900 }, defaultFraction: 0.6, defaultPx: 600, available: null, min: 320, siblingWidth: 280, handleCount: 1 }),
     ).toBe(900);
     expect(
-      resolvePanelWidth({ stored: { px: 100 }, defaultFraction: 0.6, defaultPx: 600, available: 0, min: 320, siblingMin: 280, handleCount: 1 }),
+      resolvePanelWidth({ stored: { px: 100 }, defaultFraction: 0.6, defaultPx: 600, available: 0, min: 320, siblingWidth: 280, handleCount: 1 }),
     ).toBe(320);
     expect(
-      resolvePanelWidth({ defaultFraction: 0.6, defaultPx: DEFAULT_LEFT_PANEL_WIDTH, available: null, min: 264, siblingMin: 320, handleCount: 1 }),
+      resolvePanelWidth({ defaultFraction: 0.6, defaultPx: DEFAULT_LEFT_PANEL_WIDTH, available: null, min: 264, siblingWidth: 320, handleCount: 1 }),
     ).toBe(DEFAULT_LEFT_PANEL_WIDTH);
   });
 
@@ -195,7 +196,7 @@ describe('resolvePanelWidth', () => {
       defaultPx: 600,
       available: 2000,
       min: 320,
-      siblingMin: 280,
+      siblingWidth: 280,
       handleCount: 1,
     });
     expect(width).toBe(900);
@@ -223,19 +224,12 @@ describe('useAvailableWidth', () => {
 });
 
 describe('usePanelWidths', () => {
-  test('seeds from app settings when the session has never been resized', async () => {
-    seed = { desktopLayoutSizes: { left: 350, editor: 640, right: { git: 480 } } };
+  test('a session that has never been resized starts empty, so panels open at their defaults', async () => {
+    // The regression this pins: a former global seed carried a stale value into
+    // every new session and pinned its editor to the floor. A new session must
+    // resolve every panel from its own default fraction, not from a global map.
     await mountPanels();
-    expect(panels?.widths.left).toBe(350);
-    expect(panels?.widths.editor).toEqual({ px: 640 });
-    expect(panels?.widths.right?.git).toEqual({ px: 480 });
-  });
-
-  test('a legacy bare number under right seeds only the view it was written for', async () => {
-    seed = { desktopLayoutSizes: { right: 480 } };
-    await mountPanels();
-    expect(panels?.widths.right?.git).toEqual({ px: 480 });
-    expect(panels?.widths.right?.files).toBeUndefined();
+    expect(panels?.widths).toEqual({});
   });
 
   test('each panel owns its slot: a commit never resets another panel', async () => {
@@ -259,8 +253,8 @@ describe('usePanelWidths', () => {
   });
 
   test('a fraction patch keeps the px fallback it was derived from', async () => {
-    seed = { desktopLayoutSizes: { editor: 640 } };
     await mountPanels();
+    await act(async () => panels?.commitWidths({ editor: { px: 640 } }));
     await act(async () => panels?.commitWidths({ editor: { fraction: 0.7 } }));
     expect(panels?.widths.editor).toEqual({ px: 640, fraction: 0.7 });
   });

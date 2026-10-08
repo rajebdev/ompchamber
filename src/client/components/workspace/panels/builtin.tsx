@@ -15,7 +15,7 @@ import {
 } from 'lucide-preact';
 
 import {
-  DEFAULT_RIGHT_PANEL_FRACTIONS,
+  DEFAULT_RIGHT_PANEL_FRACTION,
   DEFAULT_RIGHT_PANEL_WIDTHS,
   MIN_RIGHT_PANEL_WIDTHS,
   RIGHT_PANEL_TYPES,
@@ -171,7 +171,7 @@ export const BUILTIN_PANELS: readonly BuiltinPanelView[] = RIGHT_PANEL_TYPES.map
   Component: LAZY_VIEWS[id],
   minWidth: MIN_RIGHT_PANEL_WIDTHS[id],
   defaultWidth: DEFAULT_RIGHT_PANEL_WIDTHS[id],
-  defaultFraction: DEFAULT_RIGHT_PANEL_FRACTIONS[id],
+  defaultFraction: DEFAULT_RIGHT_PANEL_FRACTION,
 }));
 
 /** Every built-in view id, for the guard and the id checks. */

@@ -35,7 +35,7 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
   const [showRightPanel, setShowRightPanel] = useSessionState<boolean>('layout.showRightPanel', appSettings.showRightPanel ?? true);
   const [activeRightPanel, setActiveRightPanel] = useSessionState<string>('layout.activeRightPanel', (appSettings.activeRightPanel as string) ?? 'files');
   const [showLeftPanel, setShowLeftPanel] = useSessionState<boolean>('layout.showLeftPanel', appSettings.showLeftPanel ?? true);
-  const { widths: panelWidths, commitWidths } = usePanelWidths(appSettings, activeRightPanel);
+  const { widths: panelWidths, commitWidths } = usePanelWidths();
 
   const editorPanelRef = useRef<PanelImperativeHandle | null>(null);
   const rightPanelRef = useRef<PanelImperativeHandle | null>(null);

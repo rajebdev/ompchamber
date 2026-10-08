@@ -23,7 +23,7 @@ import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { activeProjectForSession, composerRootFor } from '@/shared/lib/workspace/active-project';
 import { diffTabId, diffTabName, fileTabId } from '@/shared/lib/workspace/file-tab-id';
 import {
-  DEFAULT_RIGHT_PANEL_FRACTIONS,
+  DEFAULT_RIGHT_PANEL_FRACTION,
   DEFAULT_RIGHT_PANEL_WIDTHS,
   MIN_RIGHT_PANEL_WIDTHS,
   RIGHT_PANEL_TYPES,
@@ -68,23 +68,24 @@ describe('right-panels catalog', () => {
 
   test('every view has a number in all three geometry tables', () => {
     for (const type of RIGHT_PANEL_TYPES) {
-      expect(typeof DEFAULT_RIGHT_PANEL_FRACTIONS[type]).toBe('number');
       expect(typeof DEFAULT_RIGHT_PANEL_WIDTHS[type]).toBe('number');
       expect(typeof MIN_RIGHT_PANEL_WIDTHS[type]).toBe('number');
     }
+    // ONE fraction for every view: the right panel is half of a coupled pair
+    // with the editor, so a per-view share would break the pair's sum.
+    expect(typeof DEFAULT_RIGHT_PANEL_FRACTION).toBe('number');
   });
 
-  test('fractions stay within (0, 1) and a floor never exceeds the default width', () => {
+  test('the right fraction is a real share and a floor never exceeds the default width', () => {
+    expect(DEFAULT_RIGHT_PANEL_FRACTION).toBeGreaterThan(0);
+    expect(DEFAULT_RIGHT_PANEL_FRACTION).toBeLessThan(1);
     for (const type of RIGHT_PANEL_TYPES) {
-      expect(DEFAULT_RIGHT_PANEL_FRACTIONS[type]).toBeGreaterThan(0);
-      expect(DEFAULT_RIGHT_PANEL_FRACTIONS[type]).toBeLessThan(1);
       expect(MIN_RIGHT_PANEL_WIDTHS[type]).toBeLessThanOrEqual(DEFAULT_RIGHT_PANEL_WIDTHS[type]);
     }
   });
 
   test('spot values that the comments justify', () => {
-    expect(DEFAULT_RIGHT_PANEL_FRACTIONS.terminal).toBe(0.6);
-    expect(DEFAULT_RIGHT_PANEL_FRACTIONS.files).toBe(0.22);
+    expect(DEFAULT_RIGHT_PANEL_FRACTION).toBe(0.3);
     expect(DEFAULT_RIGHT_PANEL_WIDTHS.files).toBe(268);
     expect(DEFAULT_RIGHT_PANEL_WIDTHS.terminal).toBe(640);
     expect(MIN_RIGHT_PANEL_WIDTHS.files).toBe(200);

@@ -18,7 +18,7 @@
  * - layout.showRightPanel     boolean
  * - layout.showLeftPanel      boolean
  * - layout.userToggledEditor  boolean | null (null = follow whether a file is open)
- * - layout.panelWidths        PanelWidths (per-panel widths, seeded from app_settings.desktopLayoutSizes)
+ * - layout.panelWidths        PanelWidths (per-panel widths; a session that has never been resized has none, so panels open at their defaults)
  * - layout.openedFiles        editor file entries array
  * - layout.activeFileId       number | null
  * - editor.previewMode        Record<fileId, boolean>

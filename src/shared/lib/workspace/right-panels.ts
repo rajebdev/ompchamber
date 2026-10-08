@@ -31,42 +31,17 @@ export const RIGHT_PANEL_TYPES = [
 export type RightPanelType = (typeof RIGHT_PANEL_TYPES)[number];
 
 /**
- * Share of the group's available area a view takes the first time it is shown.
+ * Share of the group's available area the right panel opens at.
  *
- * A fraction rather than a pixel width is what lets a panel follow a window
- * resize instead of holding a number that was only right on the display it was
- * dragged on. Where OpenChamber ships the same surface its `defaultWidthFraction`
- * is reused verbatim; the rest are derived.
- *
- * - `files` is the file tree *alone*. OpenChamber's 3/5 `file` surface holds a
- *   tree **and** an editor column, so its fraction is not ours to borrow — their
- *   tree-only column is 200–480px, which is what this 0.22 approximates at a
- *   1440-class viewport.
- * - `search` matches `files`: both are single narrow columns of rows.
- * - `usage` has no OpenChamber counterpart; 0.48 keeps the pixel default it
- *   shipped with.
- * - `todo` has no OpenChamber counterpart either; 0.3 keeps its pixel default.
- * - `wiki` is a reader, not a column of rows: 0.45 is a page's comfortable
- *   measure on a 1440-class viewport, and it keeps the page list beside it.
- * - `context`, `git`, `terminal` and both browsers take OpenChamber's values.
+ * ONE default for every view, not a per-view table. The right panel is half of
+ * a COUPLED pair with the editor (`panel-widths.ts`): they share a combined
+ * budget and each is capped, so the editor's default and this one must sum to
+ * the pair's default (0.4 + 0.3 = 0.7). A per-view fraction would break that
+ * sum — a 0.6 terminal beside a 0.4 editor is 1.0 — so the views differ only by
+ * their floor (`MIN_RIGHT_PANEL_WIDTHS`) and their remembered width, which a
+ * drag still stores per view.
  */
-export const DEFAULT_RIGHT_PANEL_FRACTIONS: Record<RightPanelType, number> = {
-  context: 0.45,
-  files: 0.22,
-  search: 0.22,
-  git: 0.4,
-  // 80 columns at the terminal's 12px Fira Code (≈7.2px/char) need ≈600px.
-  terminal: 0.6,
-  'user-browser': 0.45,
-  browser: 0.45,
-  usage: 0.48,
-  // A todo list is one column of short rows — narrower than usage, wider than
-  // a file tree, because a task line is a sentence.
-  todo: 0.3,
-  wiki: 0.45,
-  // A plan is prose — the same reader as the wiki, so the same share.
-  plan: 0.45,
-};
+export const DEFAULT_RIGHT_PANEL_FRACTION = 0.3;
 
 /**
  * Width (px) a view opens at before the group's area has been measured. Kept at

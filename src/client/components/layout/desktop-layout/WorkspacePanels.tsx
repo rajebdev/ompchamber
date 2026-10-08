@@ -14,10 +14,13 @@ import {
   DEFAULT_EDITOR_WIDTHS,
   MIN_CHAT_PANEL_WIDTH,
   MIN_EDITOR_PANEL_WIDTH,
+  pairMaxSize,
+  panelFraction,
   resolvePanelWidth,
   type EditorWidthMode,
   type PanelWidths,
 } from '@/shared/lib/workspace/panel-widths';
+import { DEFAULT_RIGHT_PANEL_FRACTION } from '@/shared/lib/workspace/right-panels';
 
 const Editor = lazy(() => import('@/client/components/workspace/editor/index').then((m) => ({ default: m.Editor })));
 
@@ -107,12 +110,45 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
   // Separators present in this group, which also consume width.
   const handleCount = (showEditor ? 1 : 0) + (showRightPanel ? 1 : 0);
 
-  // The active view's own floor and open size, resolved once here rather than
-  // at each use, so the editor's sibling reservation and the right panel's own
-  // floor can never be computed from different values. A view that is switched
-  // off (or a plugin that has not loaded) has no entry, and the right panel
-  // falls back to the editor's own floor — it renders the notice, not a view.
+  // The active view's own floor, resolved once here rather than at each use, so
+  // the right panel's floor cannot be computed from different values. A view
+  // that is switched off (or a plugin that has not loaded) has no entry, and the
+  // right panel falls back to the editor's own floor — it renders the notice,
+  // not a view.
   const rightPanelMin = activePanel?.minWidth ?? MIN_EDITOR_PANEL_WIDTH;
+
+  // The editor and the right panel are a COUPLED pair (see `panel-widths.ts`):
+  // they share `PAIR_MAX_TOTAL_FRACTION` and each is capped by `PAIR_MAX_FRACTION`.
+  // The right panel is resolved first, so it reserves the editor's WANTED share
+  // (the editor has no result yet); the editor then reserves the right panel's
+  // ACTUAL width. That asymmetry is deliberate: an editor asking for more than
+  // its default makes the right panel give way first, and the pair still sums
+  // to the total.
+  const editorFraction = panelFraction(panelWidths[editorWidthMode], DEFAULT_EDITOR_FRACTIONS[editorWidthMode], available);
+  const editorReservePx = available != null && available > 0 ? Math.round(editorFraction * available) : 0;
+
+  // Resolve the RIGHT panel first, then the editor against the width it
+  // actually got. The px order is the other half of the contract: each panel's
+  // group budget is `available − chat floor − the sibling's reserved width −
+  // handles`, so reserving only a sibling's FLOOR (the previous shape) let the
+  // two declared widths sum past the group, and flexbox then shrank BOTH —
+  // measured at 1440 with both open: the editor asked for 507 and rendered 477,
+  // the right panel asked for 245 and rendered 230. The right panel is resolved
+  // first because it is the smaller, view-specific slot: it keeps its own width
+  // and the editor absorbs the remainder.
+  const rightWidth = resolvePanelWidth({
+    stored: panelWidths.right?.[activeRightPanel],
+    defaultFraction: activePanel?.defaultFraction ?? DEFAULT_RIGHT_PANEL_FRACTION,
+    defaultPx: activePanel?.defaultWidth ?? MIN_EDITOR_PANEL_WIDTH,
+    available,
+    min: rightPanelMin,
+    // The pair cap: the right panel may not exceed `total − the editor's wanted share`.
+    pairReservePx: showEditor ? editorReservePx : 0,
+    // The editor renders before the right panel and has not been resolved yet,
+    // so only its floor can be reserved here.
+    siblingWidth: showEditor ? MIN_EDITOR_PANEL_WIDTH : 0,
+    handleCount,
+  });
 
   const editorWidth = resolvePanelWidth({
     stored: panelWidths[editorWidthMode],
@@ -120,23 +156,26 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
     defaultPx: DEFAULT_EDITOR_WIDTHS[editorWidthMode],
     available,
     min: MIN_EDITOR_PANEL_WIDTH,
-    // The right panel renders after the editor, so it absorbs the remainder.
-    // Reserving this view's own floor is enough: the editor's share is what
-    // the ceiling subtracts.
-    siblingMin: showRightPanel ? rightPanelMin : 0,
+    // The pair cap: the editor may not exceed `total − the right panel's width`.
+    pairReservePx: showRightPanel ? rightWidth : 0,
+    // The right panel is resolved above; reserve the width it actually took so
+    // the editor's group budget cannot push the pair past the group.
+    siblingWidth: showRightPanel ? rightWidth : 0,
     handleCount,
   });
 
-  const rightWidth = resolvePanelWidth({
-    stored: panelWidths.right?.[activeRightPanel],
-    defaultFraction: activePanel?.defaultFraction ?? DEFAULT_EDITOR_FRACTIONS[editorWidthMode],
-    defaultPx: activePanel?.defaultWidth ?? MIN_EDITOR_PANEL_WIDTH,
-    available,
-    min: rightPanelMin,
-    // The editor took its share first; only its floor is reserved here.
-    siblingMin: showEditor ? MIN_EDITOR_PANEL_WIDTH : 0,
-    handleCount,
-  });
+  /**
+   * Pair-aware maxima for a DRAG. `resolvePanelWidth` already caps the widths
+   * it hands to `defaultSize`, but a separator drag bypasses it — the resizer
+   * transfers pixels between two panels clamped only by their own `maxSize`.
+   * Without these, dragging the editor wide would push the pair past
+   * `PAIR_MAX_TOTAL_FRACTION`. Each panel's max is its own cap and the pair
+   * total minus the sibling's FLOOR (the sibling gives way down to its minimum
+   * during the drag), so the pair cannot exceed 0.7 by dragging either way.
+   * `undefined` before the group is measured (no cap yet).
+   */
+  const editorMaxSize = pairMaxSize({ available, siblingMin: rightPanelMin, siblingOpen: showRightPanel });
+  const rightMaxSize = pairMaxSize({ available, siblingMin: MIN_EDITOR_PANEL_WIDTH, siblingOpen: showEditor });
 
   /**
    * Widths of the fixed panels as they are right now, keyed by slot: the
@@ -182,7 +221,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
         </Panel>
 
         {showEditor && <ResizeHandle />}
-        <Panel panelRef={editorPanelRef} id="editor-panel" defaultSize={editorWidth} minSize={MIN_EDITOR_PANEL_WIDTH} collapsed={!showEditor}>
+        <Panel panelRef={editorPanelRef} id="editor-panel" defaultSize={editorWidth} minSize={MIN_EDITOR_PANEL_WIDTH} maxSize={editorMaxSize} collapsed={!showEditor}>
           <PanelSuspense>
             <Editor
               className="w-full h-full"
@@ -199,7 +238,7 @@ export function WorkspacePanels(props: WorkspacePanelsProps) {
         </Panel>
 
         {showRightPanel && <ResizeHandle />}
-        <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={rightWidth} minSize={rightPanelMin} collapsed={!showRightPanel}>
+        <Panel panelRef={rightPanelRef} id="right-panel" defaultSize={rightWidth} minSize={rightPanelMin} maxSize={rightMaxSize} collapsed={!showRightPanel}>
           <PanelSuspense>
             {/* ONE renderer for both kinds of panel. Each view stays MOUNTED
                 while another is on screen (hidden with CSS), so a tree's

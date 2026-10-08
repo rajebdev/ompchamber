@@ -18,9 +18,8 @@
  *   alongside as the fallback for the window before the area is measured and
  *   for blobs written before the fraction existed.
  *
- * Sizes persist as `app_settings.desktopLayoutSizes`.
+ * Sizes persist per session as `layout.panelWidths` in `session_ui_state`.
  */
-import type { RightPanelType } from '@/shared/lib/workspace/right-panels';
 import { isPanelId } from '@/shared/lib/workspace/panel-ids';
 
 /** The editor panel keeps a separate width while a diff tab is active. */
@@ -47,26 +46,40 @@ export interface PanelWidths {
    * Right panel, keyed by the activity-bar view it currently shows. A plugin
    * panel keys by its own `plugin:<id>/<panel>` string, so this is a plain
    * string map rather than the built-in union — the layout stores whichever id
-   * is active, and `normalizePanelWidths` keeps only entries whose value parses.
+   * is active, and `mergePanelWidths` keeps only entries whose id parses.
    */
   right?: Record<string, PanelWidth>;
 }
 
 /**
  * Fraction each editor mode opens at, and the px width used before the group's
- * area is known. The diff fraction matches OpenChamber's `diff` surface (3/5);
- * its px fallback stays wider than the source editor's because `SplitView`
- * states a 700px floor of its own, so anything below it scrolls sideways.
+ * area is known. 0.4 of the group leaves the chat column the majority of the
+ * workspace at every width; 0.6 read as too wide. The diff px fallback stays
+ * wider than the source editor's because `SplitView` states a 700px floor of
+ * its own, so anything below it scrolls sideways.
  */
 export const DEFAULT_EDITOR_FRACTIONS: Record<EditorWidthMode, number> = {
-  editor: 0.6,
-  diff: 0.6,
+  editor: 0.4,
+  diff: 0.4,
 };
 
 export const DEFAULT_EDITOR_WIDTHS: Record<EditorWidthMode, number> = {
   editor: 600,
   diff: 720,
 };
+
+/**
+ * The editor and the right panel share one budget.
+ *
+ * Their combined share of the group may not exceed `PAIR_MAX_TOTAL_FRACTION`,
+ * and neither panel may exceed `PAIR_MAX_FRACTION` on its own. The two are what
+ * make the pair interdependent: growing one past the default forces the other
+ * to give way, and neither can reach its own maximum while the other is open.
+ * The chat floor (`MIN_CHAT_PANEL_WIDTH`) is a THIRD, tighter cap on narrow
+ * groups — at a 1440-class viewport it is what binds, not the 0.7.
+ */
+export const PAIR_MAX_TOTAL_FRACTION = 0.7;
+export const PAIR_MAX_FRACTION = 0.6;
 
 /** Fallback for the sidebar, which has no fraction. */
 export const DEFAULT_LEFT_PANEL_WIDTH = 280;
@@ -92,6 +105,21 @@ export const HANDLE_WIDTH = 3;
 /** How much of a drag may re-apply the real width, in ms. */
 export const RESIZE_FOLLOW_INTERVAL_MS = 100;
 
+/**
+ * The fraction a slot WANTS: a remembered fraction, else a px value converted
+ * against the area, else the default.
+ *
+ * Exported because the coupled pair needs each other's wanted fraction before
+ * either is resolved — the pair caps are symmetric (`right` caps `editor` by
+ * its wanted share and vice versa), so a caller cannot wait for one result to
+ * compute the other's cap.
+ */
+export function panelFraction(stored: PanelWidth | undefined, defaultFraction: number, available: number | null): number {
+  if (stored?.fraction != null) return stored.fraction;
+  if (stored?.px != null && available != null && available > 0) return Math.min(1, stored.px / available);
+  return defaultFraction;
+}
+
 export interface ResolveWidthArgs {
   /** Remembered width for this slot, if the user ever resized it. */
   stored?: PanelWidth;
@@ -102,8 +130,28 @@ export interface ResolveWidthArgs {
   /** Measured area of the group, or null before the observer reports. */
   available: number | null;
   min: number;
-  /** Floors the other fixed panels in the same group must keep. */
-  siblingMin: number;
+  /**
+   * Pixels the OTHER panel in the coupled pair reserves, for the pair cap.
+   *
+   * The pair shares `PAIR_MAX_TOTAL_FRACTION`, so this panel's cap is
+   * `total × available − pairReservePx`. The value is asymmetric on purpose:
+   * the right panel reserves the editor's WANTED share (the editor is not
+   * resolved yet), and the editor reserves the right panel's ACTUAL width — so
+   * when the editor is asked for more than its default the right panel gives
+   * way first, and the pair still sums to the total. 0 when the sibling is
+   * closed or this panel is not part of the pair (the sidebar).
+   */
+  pairReservePx?: number;
+  /**
+   * Width the OTHER fixed panels in the same group reserve, in px.
+   *
+   * A sibling that has not been resolved yet contributes its floor; one that
+   * has contributes the width it actually got. The distinction is the whole
+   * point of the two-call order in `WorkspacePanels`: reserving only a
+   * sibling's FLOOR lets two declared widths sum past the group, and flexbox
+   * then shrinks BOTH panels instead of clamping the one that should give way.
+   */
+  siblingWidth: number;
   /** Separators in the group, which also consume width. */
   handleCount: number;
 }
@@ -111,23 +159,43 @@ export interface ResolveWidthArgs {
 /**
  * Resolve one panel's width in px.
  *
- * The ceiling is dynamic — `available − chat floor − the other panels' floors`
- * — rather than a fixed number, because a fixed one either wastes a large
- * monitor or eats the chat on a small one. Both the editor and the right panel
- * compete for the same budget, so whichever renders first takes its share and
- * the other gets what is left; the caller passes `siblingMin` to say which.
+ * The ceiling is dynamic — `available − chat floor − the siblings' reserved
+ * width − handles` — rather than a fixed number, because a fixed one either
+ * wastes a large monitor or eats the chat on a small one.
+ *
+ * The editor and the right panel share one budget, so the CALLER decides who
+ * gives way by the order it resolves them and by what it passes as
+ * `pairReservePx`/`siblingWidth`. Resolving the right panel first (reserving
+ * the editor's WANTED share) and then the editor against the right panel's
+ * real width keeps the two declared widths inside the group AND makes the
+ * right panel yield first when the editor is asked for more than its default;
+ * the reverse (each reserving only the other's floor) overflows and both get
+ * squeezed by flexbox. `pairReservePx` is the second, softer cap: the pair's
+ * combined share may not exceed `PAIR_MAX_TOTAL_FRACTION`.
  *
  * Without a measured area there is no budget to divide, so the stored or
  * default pixel width is used unchanged.
  */
 export function resolvePanelWidth(args: ResolveWidthArgs): number {
-  const { stored, defaultFraction, defaultPx, available, min, siblingMin, handleCount } = args;
+  const { stored, defaultFraction, defaultPx, available, min, pairReservePx = 0, siblingWidth, handleCount } = args;
 
   if (available === null || available <= 0) return Math.max(min, Math.round(stored?.px ?? defaultPx));
 
+  // The pair's cap on this panel, then the group's hard budget. Both are
+  // ceilings; `min` still wins over either, because a panel squeezed below its
+  // floor clips rather than collapsing. The pair cap is computed in PIXELS —
+  // `total × available − the sibling's reserved px` — and ROUNDED, because
+  // `0.7 × 4000` is `2799.9999…` in binary floating point and flooring it lands
+  // a pixel short of the intended share.
+  const ownCap = Math.round(PAIR_MAX_FRACTION * available);
+  const pairCap = Math.round(PAIR_MAX_TOTAL_FRACTION * available) - pairReservePx;
   const ceiling = Math.max(
     min,
-    Math.floor(available - MIN_CHAT_PANEL_WIDTH - siblingMin - handleCount * HANDLE_WIDTH),
+    Math.min(
+      ownCap,
+      pairCap,
+      Math.floor(available - MIN_CHAT_PANEL_WIDTH - siblingWidth - handleCount * HANDLE_WIDTH),
+    ),
   );
 
   // A remembered fraction wins. A px-only value is honoured as written — the
@@ -136,11 +204,39 @@ export function resolvePanelWidth(args: ResolveWidthArgs): number {
   // slot is dragged, which stores a fraction beside it. Reading rather than
   // rewriting the stored blob is also what keeps a session's own widths from
   // being clobbered by the global seed before that session's blob has loaded.
-  const fraction = stored?.fraction
-    ?? (stored?.px != null ? Math.min(1, stored.px / available) : defaultFraction);
-  const wanted = Math.round(fraction * available);
+  const wanted = Math.round(panelFraction(stored, defaultFraction, available) * available);
 
   return Math.min(Math.max(wanted, min), ceiling);
+}
+
+/**
+ * The `maxSize` one of the coupled pair may be DRAGGED to, in px.
+ *
+ * `resolvePanelWidth` caps the widths it hands to `defaultSize`, but a
+ * separator drag bypasses it: the resizer transfers pixels between two panels
+ * clamped only by their own `maxSize`. Without a pair-aware max, dragging the
+ * editor wide would push the pair past `PAIR_MAX_TOTAL_FRACTION`. Each panel's
+ * max is the smaller of its own cap (`PAIR_MAX_FRACTION`) and the pair total
+ * minus the sibling's FLOOR — the sibling gives way down to its minimum during
+ * the drag, so reserving its CURRENT width instead would pin this panel's max
+ * to the width it already has and freeze the separator (measured: both at
+ * their defaults, `editorMax` equalled the editor's own width and neither
+ * direction could move). `available` is null before the group is measured, in
+ * which case there is no cap (`undefined`).
+ */
+export function pairMaxSize(args: {
+  available: number | null;
+  /** The sibling's floor in px, or 0 when it is closed. */
+  siblingMin: number;
+  /** The sibling is open and therefore reserves its floor from the pair total. */
+  siblingOpen: boolean;
+}): number | undefined {
+  const { available, siblingMin, siblingOpen } = args;
+  if (available === null || available <= 0) return undefined;
+  const ownCap = Math.round(PAIR_MAX_FRACTION * available);
+  if (!siblingOpen) return ownCap;
+  const pairCap = Math.round(PAIR_MAX_TOTAL_FRACTION * available) - siblingMin;
+  return Math.max(0, Math.min(ownCap, pairCap));
 }
 
 /**
@@ -167,73 +263,6 @@ export function resolvePluginPanelWidths(panel: {
 export const MIN_PLUGIN_PANEL_WIDTH = 320;
 const DEFAULT_PLUGIN_PANEL_FRACTION = 0.4;
 const DEFAULT_PLUGIN_PANEL_WIDTH = 560;
-
-function panelWidth(value: unknown): PanelWidth | undefined {
-  if (typeof value === 'number') {
-    return Number.isFinite(value) && value > 0 ? { px: Math.round(value) } : undefined;
-  }
-  if (!value || typeof value !== 'object') return undefined;
-
-  const source = value as Record<string, unknown>;
-  const px = Number.isFinite(source.px) && (source.px as number) > 0 ? Math.round(source.px as number) : undefined;
-  const fraction = Number.isFinite(source.fraction) && (source.fraction as number) > 0 && (source.fraction as number) <= 1
-    ? (source.fraction as number)
-    : undefined;
-
-  if (px === undefined && fraction === undefined) return undefined;
-  return { ...(px !== undefined ? { px } : {}), ...(fraction !== undefined ? { fraction } : {}) };
-}
-
-function sidebarWidth(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.round(value) : undefined;
-}
-
-/**
- * Coerce a stored blob into the current shape.
- *
- * Three older shapes are accepted, because a user's layout must survive the
- * upgrade rather than silently reset:
- *
- * - a bare number is the px-only shape this app shipped before fractions;
- * - a single number under `right` is older still, holding one width shared by
- *   every view — it belongs to whichever view was open when it was written, so
- *   it seeds `legacyView` alone instead of being copied onto all eight;
- * - an unknown `right` key is dropped rather than trusted — but a plugin
- *   panel's `plugin:<id>/<panel>` key is a real view, so it is kept. Dropping
- *   it would reset a plugin panel's width on every reload, which reads as the
- *   drag not having taken.
- *
- * Nothing is converted to a fraction here: this function is pure and the
- * conversion needs the group's measured area. The layout performs it once the
- * area is known (see `usePanelWidths`).
- */
-export function normalizePanelWidths(raw: unknown, legacyView: RightPanelType): PanelWidths {
-  if (!raw || typeof raw !== 'object') return {};
-  const source = raw as Record<string, unknown>;
-
-  const widths: PanelWidths = {};
-  const left = sidebarWidth(source.left);
-  if (left !== undefined) widths.left = left;
-  for (const key of ['editor', 'diff'] as const) {
-    const value = panelWidth(source[key]);
-    if (value !== undefined) widths[key] = value;
-  }
-
-  const right: Record<string, PanelWidth> = {};
-  if (source.right && typeof source.right === 'object') {
-    for (const [view, value] of Object.entries(source.right as Record<string, unknown>)) {
-      if (!isPanelId(view)) continue;
-      const size = panelWidth(value);
-      if (size !== undefined) right[view] = size;
-    }
-  } else {
-    const legacy = panelWidth(source.right);
-    if (legacy !== undefined) right[legacyView] = legacy;
-  }
-  if (Object.keys(right).length > 0) widths.right = right;
-
-  return widths;
-}
 
 /**
  * Fold a freshly measured patch over the stored widths (one level deep for
