@@ -25,6 +25,24 @@
  */
 
 import type { ToolCallData } from '@/shared/types/chat';
+import {
+  countPhrase,
+  diffLabel,
+  excerptDiffCounts,
+  formatToolBytes,
+  formatToolMs,
+} from '@/shared/lib/chat/tool/labels';
+
+// `formatToolMs`/`formatToolBytes` are public helpers other surfaces import
+// from here; they live in `labels.ts` now, re-exported so no call site moved.
+export { formatToolBytes, formatToolMs };
+
+/** One colored segment inside a fact — a `+4` that must be green and a `−1`
+ *  that must be red, in a chip that is otherwise plain ink. */
+export interface ToolFactPart {
+  label: string;
+  tone: 'ok' | 'error';
+}
 
 /** One fact rendered as a chip. `kind` lets a caller pick an icon or reorder. */
 export interface ToolFact {
@@ -32,6 +50,14 @@ export interface ToolFact {
   label: string;
   /** Chip tone; `muted` is the default for informational facts. */
   tone?: 'ok' | 'warn' | 'error' | 'muted';
+  /**
+   * Colored segments that replace `label` in the chip. A diff is the case this
+   * exists for: `+4` and `−1` are two different claims and must not share one
+   * colour, while staying ONE chip so they cannot be separated by the chip
+   * overflow rule. `label` is still the plain-text form for the tooltip, the
+   * joined `line`, and anything that reads the fact as a string.
+   */
+  parts?: ToolFactPart[];
   /** Full text for the chip's tooltip when `label` is elided. */
   title?: string;
 }
@@ -68,47 +94,6 @@ function firstString(...values: unknown[]): string | undefined {
     if (found) return found;
   }
   return undefined;
-}
-
-/** `28ms` / `1.2s` / `2m 3s` — the scale a tool call actually lives on. */
-export function formatToolMs(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return '';
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`;
-  const totalSeconds = Math.floor(ms / 1000);
-  return `${Math.floor(totalSeconds / 60)}m ${totalSeconds % 60}s`;
-}
-
-/** `4.6 KB` / `2.0 MB` — byte sizes are shortened, never raw counts. */
-export function formatToolBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-/** Count the `+`/`-` rows of an omp excerpt diff (`-43|` / `+43|`). */
-function excerptDiffCounts(diff: string): { added: number; removed: number } | null {
-  let added = 0;
-  let removed = 0;
-  for (const line of diff.split(/\r?\n/)) {
-    if (line.startsWith('+')) added++;
-    else if (line.startsWith('-')) removed++;
-  }
-  return added + removed > 0 ? { added, removed } : null;
-}
-
-/** `+4 −1` with a real minus sign, so it cannot be read as a hyphen. */
-function diffLabel(added: number, removed: number): string {
-  const parts: string[] = [];
-  if (added > 0) parts.push(`+${added}`);
-  if (removed > 0) parts.push(`\u2212${removed}`);
-  return parts.join(' ');
-}
-
-/** `12 matches in 3 files` / `3 files` — one count phrase for both shapes.
- *  The plural is explicit: an `s` suffix would render `2 matchs`. */
-function countPhrase(count: number, singular: string, plural = `${singular}s`): string {
-  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 /** Elide a subject to a chip's width, keeping the full text for its tooltip. */
@@ -175,11 +160,13 @@ export function toolSummary(tool: ToolCallData): ToolSummary | null {
     if (diff) {
       const counts = excerptDiffCounts(diff);
       if (counts) {
-        facts.push({
-          kind: 'diff',
-          label: diffLabel(counts.added, counts.removed),
-          tone: counts.removed > counts.added ? 'warn' : 'ok',
-        });
+        // Additions green, deletions red, in ONE chip: two chips would let the
+        // overflow rule show `+43` and hide `−16`, which is worse than showing
+        // neither. No tone on the chip itself — the colour lives in the parts.
+        const parts: ToolFactPart[] = [];
+        if (counts.added > 0) parts.push({ label: `+${counts.added}`, tone: 'ok' });
+        if (counts.removed > 0) parts.push({ label: `\u2212${counts.removed}`, tone: 'error' });
+        facts.push({ kind: 'diff', label: diffLabel(counts.added, counts.removed), parts });
       }
     } else if (key === 'write') {
       // A write carries the whole file as its input, so its size IS the change.

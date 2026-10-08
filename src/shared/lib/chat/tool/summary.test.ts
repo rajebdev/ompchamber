@@ -100,6 +100,28 @@ describe('toolSummary — edit', () => {
     expect(summary?.line).toBe('+2 \u22121 · line 43');
   });
 
+  test('splits the change size into a green added part and a red removed part', () => {
+    // `+2` and `−1` are different claims and must not share one colour, but they
+    // stay ONE chip so the overflow rule cannot separate them.
+    const summary = toolSummary(tool({
+      type: 'edit',
+      details: { diff: EXCERPT, firstChangedLine: 43 },
+    }));
+    const diff = summary?.facts.find((fact) => fact.kind === 'diff');
+    expect(diff?.parts).toEqual([
+      { label: '+2', tone: 'ok' },
+      { label: '\u22121', tone: 'error' },
+    ]);
+    // The chip itself carries no tone: the colour is per-part, so a chip that
+    // is all-additions is not painted red and vice versa.
+    expect(diff?.tone).toBeUndefined();
+  });
+
+  test('omits the part for a side with no changes', () => {
+    const added = toolSummary(tool({ type: 'edit', details: { diff: '+1|new\n+2|more' } }));
+    expect(added?.facts.find((f) => f.kind === 'diff')?.parts).toEqual([{ label: '+2', tone: 'ok' }]);
+  });
+
   test('carries the language server verdict when omp sent one', () => {
     const summary = toolSummary(tool({
       type: 'edit',
