@@ -75,6 +75,15 @@ export function ProviderIcon({ icon, slug, name, size = 16, className = '' }: Pr
       viewBox={glyph.viewBox}
       width={size}
       height={size}
+      // The caller owns the ink, and it MUST be declared here. Most source
+      // marks (`anthropic`, `openai`, `deepseek`, …) are drawn with no paint
+      // attribute at all and rely on the SVG default, which is BLACK — so the
+      // mark stayed black on every theme and vanished against a dark canvas.
+      // `fill` is an inherited property, so declaring it on the root paints
+      // every descendant that does not set its own paint; the marks that DO
+      // carry their own attributes (`azure`'s `fill-opacity`, `synthetic`'s
+      // stroked outline, the baked `currentColor` paths) keep them.
+      fill="currentColor"
       className={`flex-shrink-0 ${className}`}
       aria-hidden="true"
       focusable="false"
