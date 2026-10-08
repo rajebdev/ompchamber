@@ -14,6 +14,8 @@ interface CommitRowProps {
   onToggleFile: (commitHash: string, file: GitCommitFile) => void;
   isExpandedFile: (commitHash: string, filePath: string) => boolean;
   isLoadingFile: (commitHash: string, filePath: string) => boolean;
+  isFullContextFile: (commitHash: string, filePath: string) => boolean;
+  onToggleContext: (commitHash: string, file: GitCommitFile) => void;
   fileDiffs: Record<string, string>;
   headerRef?: (el: HTMLDivElement | null) => void;
 }
@@ -27,6 +29,8 @@ export function CommitRow({
   onToggleFile,
   isExpandedFile,
   isLoadingFile,
+  isFullContextFile,
+  onToggleContext,
   fileDiffs,
   headerRef,
 }: CommitRowProps) {
@@ -200,6 +204,8 @@ export function CommitRow({
                         diffText={activeDiff}
                         isLoading={isLoading}
                         filePath={file.file}
+                        fullContext={isFullContextFile(commit.hash, file.file)}
+                        onToggleContext={() => onToggleContext(commit.hash, file)}
                       />
                     </div>
                   )}

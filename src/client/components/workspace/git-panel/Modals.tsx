@@ -4,7 +4,7 @@ import { AlertTriangle, GitMerge } from 'lucide-preact';
 
 export { GitCommitModal as GitOutputModal } from '@/client/components/workspace/git-panel/commit-modal';
 
-function ModalShell({ children, onClose, wide }: { children: ReactNode; onClose: () => void; wide?: boolean }) {
+function ModalShell({ children, onClose }: { children: ReactNode; onClose: () => void }) {
   return (
     <div
       className="fixed inset-0 z-50 bg-canvas/80 flex items-center justify-center p-4"
@@ -13,7 +13,7 @@ function ModalShell({ children, onClose, wide }: { children: ReactNode; onClose:
       aria-modal="true"
     >
       <div
-        className={`bg-paper border border-ink/20 rounded-lg shadow-xl flex flex-col overflow-hidden ${wide ? 'w-[min(94vw,680px)] max-h-[82vh]' : 'w-[min(94vw,420px)] max-h-[80vh]'}`}
+        className="bg-paper border border-ink/20 rounded-lg shadow-xl flex flex-col overflow-hidden w-[min(94vw,420px)] max-h-[80vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {children}

@@ -27,8 +27,28 @@ export function GitCommitModal({
 }: GitCommitModalProps) {
   if (!output) return null;
 
-  const initialGraphMode = output.title.toLowerCase().includes('graph');
-  const [isGraphMode, setIsGraphMode] = useState(initialGraphMode);
+  /**
+   * The mode belongs to the PAGE, not to the component's lifetime.
+   *
+   * The modal stays mounted across opens (`GitPanel` renders it always and this
+   * returns null while `output` is null), so a `useState` seeded from the first
+   * title survived into every later page: History once, then Graph, and the
+   * second request rendered History — wrong heading, no graph columns
+   * (verified: `HEADINGS: ["(null)","History",…,"History"]` for a
+   * `Commit History` → `Git Graph` sequence). Deriving it during render rather
+   * than in an effect is what keeps the first paint of the new page correct
+   * instead of showing the previous page's mode for a frame.
+   */
+  const [page, setPage] = useState(() => ({
+    title: output.title,
+    graph: output.title.toLowerCase().includes('graph'),
+  }));
+  if (page.title !== output.title) {
+    setPage({ title: output.title, graph: output.title.toLowerCase().includes('graph') });
+  }
+  const isGraphMode = page.graph;
+  const setIsGraphMode = (graph: boolean) => setPage((current) => ({ ...current, graph }));
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedHash, setSelectedHash] = useState<string>('');
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -50,7 +70,9 @@ export function GitCommitModal({
     fileDiffs,
     expandedFiles,
     loadingFiles,
+    fullContextFiles,
     handleToggleFile,
+    handleToggleContext,
     handleCommitAction,
   } = useCommitInteractions({
     onExecuteAction,
@@ -158,11 +180,9 @@ export function GitCommitModal({
   const paddingLeft = 16;
   const graphWidth = isGraphMode ? (maxLane + 1) * laneWidth + paddingLeft * 2 : 36;
 
-  const handleRefresh = async () => {
+  const handleRefresh = () => {
     setIsRefreshing(true);
-    if (onRefresh) {
-      await onRefresh();
-    }
+    onRefresh?.();
     setTimeout(() => setIsRefreshing(false), 600);
   };
 
@@ -234,6 +254,8 @@ export function GitCommitModal({
                     onToggleFile={handleToggleFile}
                     isExpandedFile={(h, f) => expandedFiles.has(`${h}:${f}`)}
                     isLoadingFile={(h, f) => loadingFiles.has(`${h}:${f}`)}
+                    isFullContextFile={(h, f) => fullContextFiles.has(`${h}:${f}`)}
+                    onToggleContext={handleToggleContext}
                     fileDiffs={fileDiffs}
                     headerRef={(el) => {
                       headerRefs.current[commit.hash] = el;

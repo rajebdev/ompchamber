@@ -9,7 +9,6 @@ interface GitTreeItemProps {
   isFolderOpen: (id: string) => boolean;
   toggleFolder: (id: string) => void;
   onAction: (actionType: string, file?: string) => void;
-  depth?: number;
   repo?: string;
   rootPath?: string;
 }
@@ -20,7 +19,6 @@ export function GitTreeItem({
   isFolderOpen,
   toggleFolder,
   onAction,
-  depth = 0,
   repo,
   rootPath,
 }: GitTreeItemProps) {
@@ -100,7 +98,6 @@ export function GitTreeItem({
                 isFolderOpen={isFolderOpen}
                 toggleFolder={toggleFolder}
                 onAction={onAction}
-                depth={depth + 1}
                 repo={repo}
                 rootPath={rootPath}
               />

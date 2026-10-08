@@ -290,7 +290,18 @@ export function GitPanel({ className = '', enabled = true, rootPath, refreshKey 
           // twice.
           if (r !== activeRepo) setActiveRepo(r);
         }}
-        onRefresh={() => loadRepo()}
+        onRefresh={() => {
+          // The list comes from the TOPIC, so refreshing it is what updates the
+          // change list; `loadRepo` only adds the ahead/behind count. It used
+          // to call `loadRepo` alone, and since `data = git.data ?? fetched`
+          // the topic's value won unconditionally — so a repository that
+          // changed on disk (a terminal `git add`, an editor save) stayed
+          // "No changes found." no matter how many times Refresh was pressed
+          // (verified in the browser). Both, because the toolbar's ↑↓ badge is
+          // the count only the HTTP read carries.
+          git.refresh();
+          loadRepo();
+        }}
         onRefreshRepos={refreshRepos}
       />
       

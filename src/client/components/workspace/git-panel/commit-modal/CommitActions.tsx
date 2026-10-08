@@ -3,15 +3,13 @@ import type { GitCommit } from '@/shared/types/git';
 interface CommitActionsProps {
   commit: GitCommit;
   onAction: (action: string, commit: GitCommit, extra?: any) => void;
-  isBusy?: boolean;
 }
 
-export function CommitActions({ commit, onAction, isBusy }: CommitActionsProps) {
+export function CommitActions({ commit, onAction }: CommitActionsProps) {
   return (
     <div className="flex flex-wrap items-center gap-1.5 pt-1.5 pb-2">
       <button
         type="button"
-        disabled={isBusy}
         onClick={(e) => {
           e.stopPropagation();
           onAction('checkout', commit);
@@ -23,7 +21,6 @@ export function CommitActions({ commit, onAction, isBusy }: CommitActionsProps) 
 
       <button
         type="button"
-        disabled={isBusy}
         onClick={(e) => {
           e.stopPropagation();
           onAction('create_branch_here', commit);
@@ -35,7 +32,6 @@ export function CommitActions({ commit, onAction, isBusy }: CommitActionsProps) 
 
       <button
         type="button"
-        disabled={isBusy}
         onClick={(e) => {
           e.stopPropagation();
           onAction('cherry_pick', commit);
@@ -47,7 +43,6 @@ export function CommitActions({ commit, onAction, isBusy }: CommitActionsProps) 
 
       <button
         type="button"
-        disabled={isBusy}
         onClick={(e) => {
           e.stopPropagation();
           onAction('revert', commit);
@@ -59,7 +54,6 @@ export function CommitActions({ commit, onAction, isBusy }: CommitActionsProps) 
 
       <button
         type="button"
-        disabled={isBusy}
         onClick={(e) => {
           e.stopPropagation();
           onAction('reset', commit);
@@ -71,7 +65,6 @@ export function CommitActions({ commit, onAction, isBusy }: CommitActionsProps) 
 
       <button
         type="button"
-        disabled={isBusy}
         onClick={(e) => {
           e.stopPropagation();
           onAction('merge', commit);
@@ -83,7 +76,6 @@ export function CommitActions({ commit, onAction, isBusy }: CommitActionsProps) 
 
       <button
         type="button"
-        disabled={isBusy}
         onClick={(e) => {
           e.stopPropagation();
           onAction('rebase', commit);

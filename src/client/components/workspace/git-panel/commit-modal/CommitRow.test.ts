@@ -66,6 +66,8 @@ async function mount(commitRow: GitCommit): Promise<HTMLElement> {
         onToggleFile: () => {},
         isExpandedFile: () => false,
         isLoadingFile: () => false,
+        isFullContextFile: () => false,
+        onToggleContext: () => {},
         fileDiffs: {},
       }),
       container

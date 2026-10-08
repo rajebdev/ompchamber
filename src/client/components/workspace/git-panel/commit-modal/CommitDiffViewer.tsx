@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'preact/hooks';
+import { useMemo } from 'preact/hooks';
 import { ChevronDown, ChevronUp } from 'lucide-preact';
 import { getLanguageFromPath } from '@/shared/lib/code/language';
 import { highlightLines } from '@/shared/lib/code/syntax-highlight';
@@ -11,14 +11,69 @@ interface DiffLineItem {
   newNum?: number;
 }
 
+/**
+ * A run of context lines hidden by the "Collapse context" toggle.
+ *
+ * It is a row of its own rather than a shorter slice so the reader can see that
+ * lines are missing and how many — a diff that silently drops its middle reads
+ * as a smaller change than it is.
+ */
+interface ElidedRow {
+  type: 'elided';
+  count: number;
+}
+
+/** Context lines kept at each end of a collapsed run. */
+const CONTEXT_KEEP = 3;
+
+/**
+ * Hide the middle of a long run of unchanged lines.
+ *
+ * Only the `context` rows are elided; a hunk header (`meta`) and every changed
+ * line stay, which is what makes the collapsed view a summary of the change
+ * rather than a truncated diff. Each kept row carries its ORIGINAL index, since
+ * the highlighted HTML is keyed to the full parse and a re-indexed row would
+ * paint a different line's tokens.
+ */
+function collapseContext(
+  rows: DiffLineItem[],
+): Array<{ row: DiffLineItem | ElidedRow; index: number }> {
+  const out: Array<{ row: DiffLineItem | ElidedRow; index: number }> = [];
+  for (let i = 0; i < rows.length; i += 1) {
+    if (rows[i].type !== 'context') {
+      out.push({ row: rows[i], index: i });
+      continue;
+    }
+    let end = i;
+    while (end < rows.length && rows[end].type === 'context') end += 1;
+    const run = end - i;
+    if (run > CONTEXT_KEEP * 2 + 1) {
+      for (let k = i; k < i + CONTEXT_KEEP; k += 1) out.push({ row: rows[k], index: k });
+      out.push({ row: { type: 'elided', count: run - CONTEXT_KEEP * 2 }, index: -1 });
+      for (let k = end - CONTEXT_KEEP; k < end; k += 1) out.push({ row: rows[k], index: k });
+    } else {
+      for (let k = i; k < end; k += 1) out.push({ row: rows[k], index: k });
+    }
+    i = end - 1;
+  }
+  return out;
+}
+
 interface CommitDiffViewerProps {
   diffText?: string;
   isLoading?: boolean;
   filePath?: string;
+  /**
+   * Whether the diff on hand was read with the whole file around the change.
+   * The toggle is CONTROLLED because expanding it is a re-read, not a client
+   * expansion: git's default patch carries three context lines, so there is
+   * nothing more in the payload to reveal.
+   */
+  fullContext?: boolean;
+  onToggleContext?: () => void;
 }
 
-export function CommitDiffViewer({ diffText, isLoading, filePath }: CommitDiffViewerProps) {
-  const [expandedAll, setExpandedAll] = useState(false);
+export function CommitDiffViewer({ diffText, isLoading, filePath, fullContext = false, onToggleContext }: CommitDiffViewerProps) {
   const syntaxReady = useSyntaxReady();
 
   const lines = useMemo(() => {
@@ -88,6 +143,13 @@ export function CommitDiffViewer({ diffText, isLoading, filePath }: CommitDiffVi
     return out;
   }, [lines, language, syntaxReady]);
 
+  // The toggle's label and the elision both follow the SERVER's answer, so the
+  // two cannot disagree about whether the whole file is on screen.
+  const rendered = useMemo(
+    () => (fullContext ? lines.map((row, index) => ({ row, index })) : collapseContext(lines)),
+    [lines, fullContext],
+  );
+
   if (isLoading) {
     return (
       <div className="my-2 p-4 rounded bg-canvas border border-ink/10 text-ink/40 font-mono text-xs flex items-center justify-center">
@@ -111,10 +173,13 @@ export function CommitDiffViewer({ diffText, isLoading, filePath }: CommitDiffVi
         <span className="font-semibold text-meta">Diff preview</span>
         <button
           type="button"
-          onClick={() => setExpandedAll(!expandedAll)}
-          className="hover:text-ink flex items-center gap-1 cursor-pointer transition-colors"
+          onClick={onToggleContext}
+          disabled={!onToggleContext}
+          className="hover:text-ink flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-default"
+          title={fullContext ? 'Show only the changed hunks' : 'Read the whole file around the change'}
+          aria-pressed={fullContext}
         >
-          {expandedAll ? (
+          {fullContext ? (
             <>
               <ChevronUp size={12} /> Collapse context
             </>
@@ -128,7 +193,21 @@ export function CommitDiffViewer({ diffText, isLoading, filePath }: CommitDiffVi
 
       <div className="overflow-x-auto max-h-72 select-text">
         <div className="w-max min-w-full divide-y divide-ink/[0.04]">
-          {lines.map((line, idx) => {
+          {rendered.map(({ row, index }, position) => {
+            if (row.type === 'elided') {
+              return (
+                <div
+                  key={`elided-${position}`}
+                  className="px-3 py-1 bg-canvas text-ink/40 text-[10px] text-center select-none"
+                  title={`${row.count} unchanged line(s) hidden`}
+                >
+                  ⋯ {row.count} unchanged line{row.count === 1 ? '' : 's'} hidden ⋯
+                </div>
+              );
+            }
+
+            const line = row;
+            const idx = index;
             if (line.type === 'meta') {
               return (
                 <div

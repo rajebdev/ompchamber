@@ -6,7 +6,6 @@ import type { GitChange } from '@/shared/types';
 interface GitFileItemProps {
   change: GitChange;
   isStaged: boolean;
-  viewMode?: 'flat' | 'tree';
   repo?: string;
   rootPath?: string;
   onAction: (actionType: string, file?: string) => void;

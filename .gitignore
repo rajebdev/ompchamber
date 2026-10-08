@@ -13,3 +13,6 @@ workspace.db
 *.sqlite
 .ompchamber/
 .playwright-mcp
+
+# Scratch git repositories written by the fs/git action tests.
+tmp-test-git-action/

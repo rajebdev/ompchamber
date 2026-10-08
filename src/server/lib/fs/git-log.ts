@@ -17,6 +17,15 @@ import { runShell, shellOk } from '@/server/lib/fs/shell';
 const HEADER_BODY_SEP = '\x1f';
 const COMMIT_RECORD_SEP = '\x1e';
 
+/**
+ * Context lines requested by "Expand all context".
+ *
+ * `git show`'s default is three, which is the whole patch a commit row can
+ * reveal — so the button had nothing to expand. `-U` takes any count, so this
+ * is a cap on the FILE, not on the change.
+ */
+const FULL_DIFF_CONTEXT = 1000000;
+
 export function parseGitLogOutput(stdout: string): GitCommit[] {
   const commits: GitCommit[] = [];
   const lines = stdout.split('\n');
@@ -189,8 +198,22 @@ async function hasNoCommits(targetDir: string): Promise<boolean> {
   return !shellOk(out);
 }
 
-export async function fetchFileDiff(targetDir: string, hash: string, file: string): Promise<string> {
+/**
+ * The patch for one file in one commit.
+ *
+ * `fullContext` asks git for the whole file around the change (`-U<large>`),
+ * which is what the modal's "Expand all context" needs: `git show`'s default is
+ * three lines of context, so the button's promise is unreachable from the
+ * default patch — there is simply no more context in the payload to reveal.
+ */
+export async function fetchFileDiff(
+  targetDir: string,
+  hash: string,
+  file: string,
+  fullContext: boolean = false,
+): Promise<string> {
   let cleanFile = file.replace(/^\.\//, '').trim();
+  const ctx = fullContext ? ` -U${FULL_DIFF_CONTEXT}` : '';
 
   // If the file in numstat was a rename (e.g. "path/{old.ts => new.ts}" or "old.ts => new.ts")
   if (cleanFile.includes(' => ')) {
@@ -202,11 +225,11 @@ export async function fetchFileDiff(targetDir: string, hash: string, file: strin
   }
 
   // 1. Try standard git show with pretty format patch
-  const showPatch = await runShell(`git show --pretty=format:"" --patch "${hash}" -- "${cleanFile}"`, { cwd: targetDir, timeout: 10000 });
+  const showPatch = await runShell(`git show --pretty=format:"" --patch${ctx} "${hash}" -- "${cleanFile}"`, { cwd: targetDir, timeout: 10000 });
   if (showPatch.stdout.trim()) return showPatch.stdout.trim();
 
   // 2. Try git diff-tree with root support
-  const diffTree = await runShell(`git diff-tree -r -p --root "${hash}" -- "${cleanFile}"`, { cwd: targetDir, timeout: 10000 });
+  const diffTree = await runShell(`git diff-tree -r -p --root${ctx} "${hash}" -- "${cleanFile}"`, { cwd: targetDir, timeout: 10000 });
   if (diffTree.stdout.trim()) return diffTree.stdout.trim();
 
   // 3. If it is an added file or root commit, show file content directly from git blob

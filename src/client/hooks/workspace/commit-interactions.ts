@@ -15,12 +15,54 @@ export function useCommitInteractions({
   const [fileDiffs, setFileDiffs] = useState<Record<string, string>>({});
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const [loadingFiles, setLoadingFiles] = useState<Set<string>>(new Set());
+  /**
+   * Files whose diff was re-read with the whole file around the change.
+   *
+   * "Expand all context" cannot be a client-side operation: git's default patch
+   * carries three context lines, so there is nothing more in the payload to
+   * reveal. The toggle re-asks the server for `-U<large>` instead.
+   */
+  const [fullContextFiles, setFullContextFiles] = useState<Set<string>>(new Set());
+
+  const loadDiff = useCallback(
+    async (commitHash: string, file: GitCommitFile, full: boolean) => {
+      const diffKey = `${commitHash}:${file.file}`;
+      setLoadingFiles((prev) => new Set(prev).add(diffKey));
+      try {
+        const formData = new FormData();
+        formData.set('actionType', 'commit_diff');
+        formData.set('hash', commitHash);
+        formData.set('file', file.file);
+        if (full) formData.set('full', '1');
+        if (rootPath) formData.set('root', rootPath);
+        if (activeRepo && activeRepo !== '.') formData.set('repo', activeRepo);
+
+        const res = await fetch('/api/fs/git', { method: 'POST', body: formData });
+        const json = await res.json();
+        if (json && typeof json.diff === 'string') {
+          setFileDiffs((prev) => ({ ...prev, [diffKey]: json.diff }));
+        } else if (json && json.error) {
+          setFileDiffs((prev) => ({ ...prev, [diffKey]: `// Error: ${json.error}` }));
+        }
+      } catch (err: unknown) {
+        console.error('Failed to load file diff:', err);
+        const reason = err instanceof Error ? err.message : 'Network error';
+        setFileDiffs((prev) => ({ ...prev, [diffKey]: `// Error loading diff: ${reason}` }));
+      } finally {
+        setLoadingFiles((prev) => {
+          const next = new Set(prev);
+          next.delete(diffKey);
+          return next;
+        });
+      }
+    },
+    [rootPath, activeRepo],
+  );
 
   const handleToggleFile = useCallback(
     async (commitHash: string, file: GitCommitFile) => {
       const diffKey = `${commitHash}:${file.file}`;
-      const wasExpanded = expandedFiles.has(diffKey);
-      const willExpand = !wasExpanded;
+      const willExpand = !expandedFiles.has(diffKey);
 
       setExpandedFiles((prev) => {
         const next = new Set(prev);
@@ -33,35 +75,26 @@ export function useCommitInteractions({
       });
 
       if (willExpand && fileDiffs[diffKey] === undefined && !file.diff) {
-        setLoadingFiles((prev) => new Set(prev).add(diffKey));
-        try {
-          const formData = new FormData();
-          formData.set('actionType', 'commit_diff');
-          formData.set('hash', commitHash);
-          formData.set('file', file.file);
-          if (rootPath) formData.set('root', rootPath);
-          if (activeRepo && activeRepo !== '.') formData.set('repo', activeRepo);
-
-          const res = await fetch('/api/fs/git', { method: 'POST', body: formData });
-          const json = await res.json();
-          if (json && typeof json.diff === 'string') {
-            setFileDiffs((prev) => ({ ...prev, [diffKey]: json.diff }));
-          } else if (json && json.error) {
-            setFileDiffs((prev) => ({ ...prev, [diffKey]: `// Error: ${json.error}` }));
-          }
-        } catch (err: any) {
-          console.error('Failed to load file diff:', err);
-          setFileDiffs((prev) => ({ ...prev, [diffKey]: `// Error loading diff: ${err?.message || 'Network error'}` }));
-        } finally {
-          setLoadingFiles((prev) => {
-            const next = new Set(prev);
-            next.delete(diffKey);
-            return next;
-          });
-        }
+        await loadDiff(commitHash, file, false);
       }
     },
-    [expandedFiles, fileDiffs, rootPath, activeRepo]
+    [expandedFiles, fileDiffs, loadDiff],
+  );
+
+  /** The viewer's "Expand all context" / "Collapse context" toggle. */
+  const handleToggleContext = useCallback(
+    async (commitHash: string, file: GitCommitFile) => {
+      const diffKey = `${commitHash}:${file.file}`;
+      const willExpand = !fullContextFiles.has(diffKey);
+      setFullContextFiles((prev) => {
+        const next = new Set(prev);
+        if (next.has(diffKey)) next.delete(diffKey);
+        else next.add(diffKey);
+        return next;
+      });
+      await loadDiff(commitHash, file, willExpand);
+    },
+    [fullContextFiles, loadDiff],
   );
 
   const handleCommitAction = useCallback(
@@ -69,11 +102,18 @@ export function useCommitInteractions({
       if (!onExecuteAction) return;
 
       if (action === 'checkout') {
+        // A commit row's "checkout" names a COMMIT, so the server detaches
+        // rather than trying to track a branch by that name.
         onExecuteAction('checkout', undefined, { branch: commit.hash });
       } else if (action === 'create_branch_here') {
         const name = window.prompt(`Create new branch at commit ${commit.shortHash}:`, `branch-${commit.shortHash}`);
         if (name?.trim()) {
-          onExecuteAction('create_branch', undefined, { branch: name.trim() });
+          // `create_branch_at`, not `create_branch`: this button creates a ref
+          // at the row's commit and leaves the working tree alone, where the
+          // toolbar's action creates and switches. Both the start point and the
+          // no-switch behavior were wrong before (verified in the browser: the
+          // branch landed on HEAD, then failed outright on a dirty tree).
+          onExecuteAction('create_branch_at', undefined, { branch: name.trim(), hash: commit.hash });
         }
       } else if (action === 'cherry_pick') {
         if (window.confirm(`Cherry-pick commit ${commit.shortHash} onto current branch?`)) {
@@ -105,7 +145,9 @@ export function useCommitInteractions({
     fileDiffs,
     expandedFiles,
     loadingFiles,
+    fullContextFiles,
     handleToggleFile,
+    handleToggleContext,
     handleCommitAction,
   };
 }
