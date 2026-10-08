@@ -80,12 +80,12 @@ export function ToolCallingSection({ tools, title, defaultExpanded = false }: To
               `truncate` a definite width to ellipsize against, and `title`
               keeps the full text reachable. */}
           <span
-            className="min-w-0 flex-1 truncate text-[9.5px] font-semibold uppercase tracking-[0.14em] text-ink/35"
+            className="truncate text-[9.5px] font-semibold uppercase tracking-[0.14em] text-ink/35"
             title={title}
           >
             {title}
           </span>
-          <span className="h-px w-6 shrink-0 bg-ink/8" />
+          <span className="h-px flex-1 bg-ink/8" />
           {showBulk && (
             <button
               type="button"
