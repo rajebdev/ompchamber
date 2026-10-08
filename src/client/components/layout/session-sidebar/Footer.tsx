@@ -7,12 +7,38 @@ interface SessionSidebarFooterProps {
   onUpdateClick?: () => void;
 }
 
+/**
+ * The sidebar's bottom strip.
+ *
+ * Settings and Info are real `<button>`s carrying an `aria-label`, not bare
+ * `<svg onClick>` glyphs. A clickable icon with no role and no name is
+ * unreachable by keyboard and invisible to assistive tech — the same rule the
+ * editor and diff toolbars already follow (AGENTS.md: "a bare `<svg onClick>`
+ * is unreachable by keyboard"). It is also what lets a browser spec address
+ * these controls by role and name instead of by their position in the DOM.
+ */
 export function SessionSidebarFooter({ onSettings, onInfo, updateAvailable, onUpdateClick }: SessionSidebarFooterProps) {
   return (
     <div className="h-10 px-3 border-t border-ink/10 flex items-center justify-between text-ink/60 shrink-0">
-      <div className="flex space-x-3">
-        <Settings size={16} className="hover:text-ink cursor-pointer" onClick={onSettings} />
-        <Info size={16} className="hover:text-ink cursor-pointer" onClick={onInfo} />
+      <div className="flex space-x-1">
+        <button
+          type="button"
+          onClick={onSettings}
+          title="Settings"
+          aria-label="Settings"
+          className="p-1 rounded hover:text-ink hover:bg-ink/5 cursor-pointer transition-colors"
+        >
+          <Settings size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={onInfo}
+          title="About OMPChamber"
+          aria-label="About OMPChamber"
+          className="p-1 rounded hover:text-ink hover:bg-ink/5 cursor-pointer transition-colors"
+        >
+          <Info size={16} />
+        </button>
       </div>
       {updateAvailable && (
         <button

@@ -199,6 +199,7 @@ export function ComposerToolbar({
             isMobile ? 'w-10 h-10 rounded-lg' : 'w-7 h-7'
           }`}
           title={isGenerating ? 'Queue follow-up message' : 'Send message'}
+          aria-label={isGenerating ? 'Queue follow-up message' : 'Send message'}
         >
           <Send size={isMobile ? 16 : 12} className="ml-px" />
         </button>
