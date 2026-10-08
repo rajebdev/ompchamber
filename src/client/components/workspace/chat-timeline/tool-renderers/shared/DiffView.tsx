@@ -64,10 +64,16 @@ interface DiffViewProps {
   text: string;
   /** File the diff belongs to — selects the grammar. */
   path?: string;
+  /**
+   * Height ceiling for the rows. The card's own default (`max-h-72`) bounds a
+   * diff inside a timeline card; the full-output reader passes `max-h-none` so
+   * the modal's body is the scroller instead of a 288px box inside it.
+   */
+  maxHeightClass?: string;
 }
 
 /** Diff untuk details.patch / details.diff dari toolResult. */
-export function DiffView({ text, path = '' }: DiffViewProps) {
+export function DiffView({ text, path = '', maxHeightClass = 'max-h-72' }: DiffViewProps) {
   const [split, setSplit] = useState(false);
   const [wordWrap, setWordWrap] = useState(true);
 
@@ -142,7 +148,7 @@ export function DiffView({ text, path = '' }: DiffViewProps) {
           A flex column with `min-h-0` gives the view the definite height it
           needs to resolve `h-full` (measured 288px), so the view scrolls its
           own content and this wrapper only bounds it. */}
-      <div className="flex max-h-72 min-h-0 flex-col overflow-hidden">
+      <div className={`flex ${maxHeightClass} min-h-0 flex-col overflow-hidden`}>
         {split ? (
           <SplitView rows={parsed.splitRows} language={language} wordWrap={wordWrap} />
         ) : (
