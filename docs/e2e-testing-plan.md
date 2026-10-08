@@ -181,14 +181,15 @@ Testids are added as part of a flow, never speculatively, and they are stable
 names (`session-item`, `chat-timeline`, `composer-input`) rather than
 implementation detail.
 
-**D8 — CI gates stay where they are; browser E2E is a separate, gated job.** The
-four existing gates (`lint`, unused-check, 350-line ceiling, build) and
-`bun test` keep running on every PR unchanged. Browser E2E is
-`.github/workflows/e2e.yml`: **label-gated** on PRs (`e2e`), nightly cron, and
-manual dispatch — bb's model, because a browser job is minutes not seconds.
-Linux (ubuntu-latest, Chromium) is the required leg; a macOS leg is opt-in,
-since the app is developed on darwin and one platform would otherwise hide a
-webkit/safari-only regression.
+**D8 — CI gates stay where they are; browser E2E is a separate job.** The four
+existing gates (`lint`, unused-check, 350-line ceiling, build) and `bun test`
+keep running on every PR unchanged. Browser E2E is
+`.github/workflows/e2e.yml`: on **every push to `main`**, on a PR only with the
+`e2e` label, plus nightly cron and manual dispatch. A browser job is minutes not
+seconds, so the label is the cheap-PR escape hatch — but `main` is a merge and
+gets the full run, the same as the other gates. Linux (ubuntu-latest, Chromium)
+is the required leg; a macOS leg is opt-in, since the app is developed on darwin
+and one platform would otherwise hide a webkit/safari-only regression.
 
 ## Architecture
 
@@ -291,7 +292,7 @@ tests/e2e/
 | P1 | `fake-omp.ts` + `chat.spec.ts` (real mode): send a prompt, watch the delta stream render, the run footer settle | a full turn renders from frames the chamber folded, with no model |
 | P2 | Sidebar, panels, settings, theme specs; the `data-testid` contract where roles are not enough | a session switch restores that session's layout; a theme switch repaints |
 | P3 | Mobile viewport spec (composer, drawers, key bar), editor spec, terminal spec | a phone viewport can send a message and open the terminal |
-| P4 | `e2e.yml` (label-gated + nightly), trace/screenshot artifacts uploaded on failure | the job is green on a clean runner and its artifacts are readable |
+| P4 | `e2e.yml` (push to `main` + label + nightly), trace/screenshot artifacts uploaded on failure | the job is green on a clean runner and its artifacts are readable |
 | P5 | Cross-browser legs (firefox/webkit) behind a label; a macOS leg | a webkit-only regression is caught before merge |
 
 Each phase lands green before the next starts, and P0/P1 are the ones worth
@@ -322,10 +323,12 @@ answers are recorded here so the plan and the code agree.
 ## Status
 
 **Shipped: P0–P4.** 23 specs across 7 files (20 desktop + 3 mobile), green
-repeatedly, plus the DB-isolation fix and its regression test. P5 (firefox /
-webkit / a macOS leg) has its projects declared in the config but no CI job:
-the legs are opt-in via `--project`, and turning them on is a follow-up that
-should wait for a measured need rather than being wired speculatively.
+repeatedly, plus the DB-isolation fix and its regression test. `e2e.yml` runs on
+every push to `main` like the other gates, on a pull request only when the `e2e`
+label is applied, and nightly. P5 (firefox / webkit / a macOS leg) has its
+projects declared in the config but no CI job: the legs are opt-in via
+`--project`, and turning them on is a follow-up that should wait for a measured
+need rather than being wired speculatively.
 
 P5 was attempted and is blocked on the environment, not on the layer: on this
 machine `bunx playwright install firefox` succeeds but every firefox spec fails

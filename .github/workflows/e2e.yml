@@ -5,17 +5,20 @@ name: E2E
 # cannot: a broken client bundle, a stream that never settles, a layout that
 # clips at a real panel width.
 #
-# GATED ON PURPOSE. A browser job is minutes, not seconds, so it runs on a pull
-# request only when the `e2e` label is applied, plus nightly on `main` and on
-# manual dispatch — the same shape get-bb/bb uses for its (much slower) mobile
-# run. The cheap Linux jobs in ci.yml still typecheck, lint and unit-test every
-# push; this job is where the assembled product is exercised.
+# Runs on every push to `main` like the other gates, plus a pull request only
+# when the `e2e` label is applied, plus nightly and manual dispatch. A push to
+# `main` is the merge of a reviewed PR, so the browser layer is verified there
+# even when the label was never applied — the label is the cheap-PR escape
+# hatch, not the only way in. The release job's own `[skip ci]` commits do not
+# re-trigger this (verified: the `chore(release)` commit carries no CI/E2E run).
 #
 # The specs run in `mock` mode (seeded demo data, no `omp` install) and `real`
 # mode (a scripted fake `omp` speaking omp's own RPC wire protocol — no model,
 # no network, no token spend). Chromium is the required leg; firefox/webkit are
 # opt-in via `--project` and are not run here yet.
 on:
+  push:
+    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
@@ -25,7 +28,7 @@ on:
 
 concurrency:
   group: e2e-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -35,9 +38,9 @@ jobs:
     name: Chromium specs
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Nightly and manual runs always go; a pull request only with the label.
-    # A fork PR has no label from us, which is also the right default — the job
-    # is not free.
+    # Push, nightly and manual runs always go; a pull request only with the
+    # label. A fork PR has no label from us, which is also the right default —
+    # the job is not free.
     if: >-
       github.event_name != 'pull_request'
       || contains(github.event.pull_request.labels.*.name, 'e2e')
