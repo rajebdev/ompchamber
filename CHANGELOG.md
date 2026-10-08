@@ -5,6 +5,13 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.9.1](https://github.com/rajebdev/ompchamber/compare/v4.9.0...v4.9.1) — 2026-10-08
+
+### Fixed
+
+* **db:** honor the DB path override in mock mode ([2e1fa62](https://github.com/rajebdev/ompchamber/commit/2e1fa623a87e0b60b640e06b3354c6167e2a8962))
+* **ui:** give the sidebar footer and composer Send an accessible name ([728b83f](https://github.com/rajebdev/ompchamber/commit/728b83f1cd2b1ef2010c7a262f2dca8527dc29a5))
+
 ## [4.9.0](https://github.com/rajebdev/ompchamber/compare/v4.8.0...v4.9.0) — 2026-10-08
 
 ### Added
