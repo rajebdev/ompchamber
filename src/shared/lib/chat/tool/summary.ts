@@ -25,6 +25,8 @@
  */
 
 import type { ToolCallData } from '@/shared/types/chat';
+import { procPathOf } from '@/shared/lib/omp/session/proc';
+import { bashServiceFacts, procFacts } from '@/shared/lib/chat/tool/proc-facts';
 import {
   countPhrase,
   diffLabel,
@@ -122,9 +124,17 @@ export function toolSummary(tool: ToolCallData): ToolSummary | null {
   const facts: ToolFact[] = [];
   const key = (tool.name || tool.type || '').toLowerCase();
   const isError = tool.status === 'error' || tool.isError === true;
+  // A `proc://` call rides the `read`/`write` transport, and neither panel's
+  // facts describe it: a `write` would report the stdin payload as a file's
+  // line count, a `read` the service log as a file size.
+  const isProc = key === 'hub' || key === 'proc' || procPathOf(tool) !== undefined;
 
   // ── bash / terminal ───────────────────────────────────────────────────────
   if (key === 'bash' || key === 'terminal' || key === 'run_command') {
+    // A `bash` that launches a named service answers with `details.service` —
+    // the same snapshot `proc://<id>` reports — and its identity leads the row:
+    // an exit code is not the story for a process that is meant to keep running.
+    facts.push(...bashServiceFacts(tool));
     const exitCode = asNumber(details.exitCode);
     if (exitCode !== undefined) {
       facts.push({ kind: 'exit', label: `exit ${exitCode}`, tone: exitCode === 0 ? 'ok' : 'error' });
@@ -155,7 +165,7 @@ export function toolSummary(tool: ToolCallData): ToolSummary | null {
   }
 
   // ── edit / write ──────────────────────────────────────────────────────────
-  if (key === 'edit' || key === 'write' || key === 'edit_file' || key === 'create_file') {
+  if (!isProc && (key === 'edit' || key === 'write' || key === 'edit_file' || key === 'create_file')) {
     const diff = firstString(details.diff, details.patch);
     if (diff) {
       const counts = excerptDiffCounts(diff);
@@ -190,7 +200,7 @@ export function toolSummary(tool: ToolCallData): ToolSummary | null {
   }
 
   // ── read ──────────────────────────────────────────────────────────────────
-  if (key === 'read' || key === 'read_file' || key === 'view_file' || key === 'read_file_content') {
+  if (!isProc && (key === 'read' || key === 'read_file' || key === 'view_file' || key === 'read_file_content')) {
     if (details.isDirectory === true) {
       const entryCount = asNumber(details.fileCount);
       facts.push({
@@ -266,17 +276,10 @@ export function toolSummary(tool: ToolCallData): ToolSummary | null {
     if (op) facts.push({ kind: 'note', label: op });
   }
 
-  // ── hub ───────────────────────────────────────────────────────────────────
-  if (key === 'hub') {
-    const items = [details.items, details.daemons, details.jobs]
-      .map(asArray)
-      .find((list) => list.length > 0) ?? [];
-    if (items.length > 0) {
-      facts.push({ kind: 'count', label: countPhrase(items.length, 'job') });
-      const running = items.filter((item) => asString(asRecord(item)?.status) === 'running').length;
-      if (running > 0) facts.push({ kind: 'note', label: `${running} running` });
-    }
-  }
+  // ── proc:// (and the legacy `hub` tool) ───────────────────────────────────
+  // The outcome a reader wants first is the PROCESS's, not the transport's:
+  // `stop · exited · ran 16m`, `stdin · ready · pid 22985`, `3 jobs · 1 running`.
+  if (isProc) facts.push(...procFacts(tool));
 
   // ── web_search ────────────────────────────────────────────────────────────
   if (key === 'web_search') {

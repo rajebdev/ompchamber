@@ -14,9 +14,20 @@
  * have to pull one in.
  */
 
-/** Map file extension to Shiki language id */
+/**
+ * Map a path to a Shiki language id.
+ *
+ * `text` is the answer for a path that names no language: an extensionless
+ * file (`src/bin/run`), an internal URL (`xd://eval/browser`, `skill://diagnose`,
+ * `omp://`), a web URL, or no path at all. It was `javascript`, which is a
+ * claim, not a default — a device-docs read was badged `JAVASCRIPT` and its
+ * prose was tokenized as code. `text` is a Shiki SPECIAL language (always
+ * loaded, no grammar fetched) and `highlightCode`/`highlightLines` emit it
+ * escaped and uncoloured, which is what omp's own reader does for the same
+ * input (`getLanguageFromPath('xd://…')` is `undefined` there).
+ */
 export function getLanguageFromPath(filePath?: string): string {
-  if (!filePath) return 'javascript';
+  if (!filePath) return 'text';
   const clean = filePath.split('?')[0].split('#')[0].replace(/:\d+(?:-\d+)?$/, '');
   const ext = clean.split('.').pop()?.toLowerCase();
   switch (ext) {
@@ -110,7 +121,7 @@ export function getLanguageFromPath(filePath?: string): string {
     case 'groovy':
     case 'gvy':
     case 'gradle': return 'groovy';
-    default: return 'javascript';
+    default: return 'text';
   }
 }
 

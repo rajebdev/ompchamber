@@ -20,6 +20,7 @@
  */
 
 import type { ToolCallData } from '@/shared/types/chat';
+import { procPathOf } from '@/shared/lib/omp/session/proc';
 
 /** Legacy chamber/MOCK alias → canonical omp tool name. */
 export const TOOL_ALIASES: Record<string, string> = {
@@ -48,7 +49,7 @@ export const TOOL_ALIASES: Record<string, string> = {
 export type ToolPanelKind =
   | 'read' | 'edit' | 'write' | 'bash' | 'eval' | 'grep' | 'search_fs'
   | 'todo' | 'task' | 'web_search' | 'lsp' | 'ast_edit'
-  | 'resolve' | 'reject' | 'hub' | 'github' | 'checkpoint'
+  | 'resolve' | 'reject' | 'proc' | 'github' | 'checkpoint'
   | 'security_scan' | 'debug' | 'manage_skill' | 'context_notes'
   | 'memory_edit' | 'goal' | 'ask' | 'think' | 'mcp';
 
@@ -58,7 +59,10 @@ const PANEL_KINDS: Record<string, ToolPanelKind> = {
   grep: 'grep', glob: 'grep', search_fs: 'search_fs',
   todo: 'todo', task: 'task', web_search: 'web_search',
   lsp: 'lsp', ast_edit: 'ast_edit', resolve: 'resolve', reject: 'reject',
-  hub: 'hub', github: 'github', checkpoint: 'checkpoint',
+  // The legacy `hub` tool is omp's own predecessor to `proc://` and carries
+  // the same `details` — one panel renders both, so a replayed transcript and
+  // a live call cannot draw the process table two different ways.
+  hub: 'proc', github: 'github', checkpoint: 'checkpoint',
   security_scan: 'security_scan', debug: 'debug', manage_skill: 'manage_skill',
   context_notes: 'context_notes', memory_edit: 'memory_edit', goal: 'goal',
   ask: 'ask', think: 'think',
@@ -106,14 +110,45 @@ export function xdDevice(tool: ToolCallData): string | undefined {
   return path.slice('xd://'.length).split(/[/?#\s]/)[0].toLowerCase() || undefined;
 }
 
+/** The `xd://` path a READ names, if any — the device's documentation URL.
+ *
+ * omp answers a read of `xd://` (the listing), `xd://<device>` and
+ * `xd://<device>/<topic>` with `xdevDocs`, and its own reader draws all three as
+ * an ordinary read — `xd://` has no read card there, unlike `proc://` and
+ * `cfg://`. Dispatching by device instead sent it to the device's panel:
+ * `read xd://lsp` drew the LSP diagnostics card and `read xd://mcp__…` the MCP
+ * argument/result card, both over a page of prose. The write transport is the
+ * opposite — `write xd://lsp` IS a call and must reach the device's panel.
+ *
+ * The FULL path is returned, not the device: `xd://eval/browser` is the browser
+ * topic of the `eval` device, and `xdDevice` would report only `eval`. */
+export function xdDocPath(tool: ToolCallData): string | undefined {
+  const raw = (tool.name || tool.type || '').toLowerCase();
+  if ((TOOL_ALIASES[raw] ?? raw) !== 'read') return undefined;
+  const input = inputRecord(tool);
+  const path = typeof input?.path === 'string' ? input.path : tool.target ?? '';
+  return path.startsWith('xd://') ? path : undefined;
+}
+
+/** True for a read of a `xd://` documentation URL. */
+export function isXdDocRead(tool: ToolCallData): boolean {
+  return xdDocPath(tool) !== undefined;
+}
+
 /**
  * The panel key for a tool call, or null when it has no specialized panel.
  *
- * Order is load-bearing: an omp virtual-device call names its panel through the
- * device (so `write xd://lsp` is an LSP panel, not a write panel), an MCP call
- * through its `mcp__` name, and only then does the tool's own name decide.
+ * Order is load-bearing: a `proc://` call names its panel through the URL — the
+ * transport is `read`/`write`, and those panels would draw a process as a file
+ * — then a `read xd://<device>` is the device's docs rather than a call, then an
+ * omp virtual-device call through its device (so `write xd://lsp` is an LSP
+ * panel), an MCP call through its `mcp__` name, and only then does the tool's
+ * own name decide.
  */
 export function toolPanelKind(tool: ToolCallData): ToolPanelKind | null {
+  if (procPathOf(tool)) return 'proc';
+  if (isXdDocRead(tool)) return 'read';
+
   const device = xdDevice(tool);
   if (device) {
     if (device.startsWith('mcp__')) return 'mcp';

@@ -48,6 +48,18 @@ describe('describeToolActivity', () => {
     expect(describeToolActivity({})).toBe('Working');
   });
 
+  test('a proc:// call names the operation, not the read/write transport', () => {
+    // `Reading proc://ompchamber-dev/kill` would describe a service stop as a
+    // file read — the URL is the only thing that names what happened.
+    expect(describeToolActivity({ name: 'write', args: { path: 'proc://ompchamber-dev/kill' } })).toBe(
+      'Stopping ompchamber-dev',
+    );
+    expect(describeToolActivity({ name: 'read', args: { path: 'proc://ompdev' } })).toBe('Reading process ompdev');
+    expect(describeToolActivity({ name: 'read', args: { path: 'proc://' } })).toBe('Listing processes');
+    expect(describeToolActivity({ name: 'write', args: { path: 'proc://svc' } })).toBe('Sending input to svc');
+    expect(describeToolActivity({ name: 'write', args: { path: 'proc://svc/mode' } })).toBe('Setting mode on svc');
+  });
+
   test('a stem with no subject is a complete phrase, never a dangling one', () => {
     expect(describeToolActivity({ name: 'write' })).toBe('Writing');
     expect(describeToolActivity({ name: 'edit' })).toBe('Editing');

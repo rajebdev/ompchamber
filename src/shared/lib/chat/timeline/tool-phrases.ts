@@ -38,6 +38,7 @@ export const TOOL_VERBS: Record<string, string> = {
   task: 'Delegating',
   todo: 'Updating plan',
   hub: 'Hub',
+  proc: 'Supervising',
   eval: 'Running code',
   lsp: 'Running LSP',
   debug: 'Debugging',
@@ -192,7 +193,10 @@ export function subjectFor(name: string, args: Record<string, unknown>): string 
     case 'task':
       return taskSubject(args);
     case 'hub':
-      return [pick(args, ['op']), pick(args, ['name'])].filter(Boolean).join(' ') || undefined;
+    case 'proc':
+      return [pick(args, ['op']), pick(args, ['name', 'id'])].filter(Boolean).join(' ') ||
+        pick(args, ['path'])?.replace(/^proc:\/\//, '') ||
+        undefined;
     case 'todo': {
       const op = pick(args, ['op']);
       // `·` (not `:`) — the caller joins with a space, so a leading colon would

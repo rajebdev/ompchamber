@@ -18,7 +18,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { toolPanelKind, xdDevice, type ToolPanelKind } from '@/client/components/workspace/chat-timeline/tool-renderers/registry';
+import { toolPanelKind, xdDevice, xdDocPath, type ToolPanelKind } from '@/client/components/workspace/chat-timeline/tool-renderers/registry';
 import type { ToolCallData } from '@/shared/types/chat';
 
 function tool(partial: Partial<ToolCallData> & Pick<ToolCallData, 'type'>): ToolCallData {
@@ -42,7 +42,7 @@ describe('toolPanelKind — canonical omp tools', () => {
     ast_edit: 'ast_edit',
     resolve: 'resolve',
     reject: 'reject',
-    hub: 'hub',
+    hub: 'proc',
     github: 'github',
     checkpoint: 'checkpoint',
     security_scan: 'security_scan',
@@ -109,6 +109,75 @@ describe('toolPanelKind — device and MCP calls', () => {
   test('classifies any mcp__ name as the MCP panel', () => {
     expect(toolPanelKind(tool({ type: 'custom', name: 'mcp__codegraph_explore' }))).toBe('mcp');
     expect(toolPanelKind(tool({ type: 'write', target: 'xd://mcp__codegraph_node' }))).toBe('mcp');
+  });
+
+  // `proc://` is read/write transport with a device URL, exactly like `xd://`,
+  // and it must win over the transport's own panel: `read proc://ompdev` drew
+  // the read panel (service log as file contents) and `write proc://x/kill`
+  // drew the edit panel (stdin payload as a written file).
+  test('names a proc:// call by the process, not the read/write transport', () => {
+    expect(toolPanelKind(tool({
+      type: 'read',
+      name: 'read',
+      target: 'proc://ompchamber-dev',
+      input: { path: 'proc://ompchamber-dev' },
+    }))).toBe('proc');
+    expect(toolPanelKind(tool({
+      type: 'write',
+      name: 'write',
+      target: 'proc://ompchamber-dev/kill',
+      input: { path: 'proc://ompchamber-dev/kill', content: null },
+    }))).toBe('proc');
+  });
+
+  test('reads the proc URL out of the input path when the target is gone', () => {
+    expect(toolPanelKind(tool({
+      type: 'read',
+      input: { path: 'proc://' },
+    }))).toBe('proc');
+  });
+
+  test('a plain file read is still the read panel', () => {
+    expect(toolPanelKind(tool({
+      type: 'read',
+      target: 'src/x.ts',
+      input: { path: 'src/x.ts' },
+    }))).toBe('read');
+  });
+
+  // `read xd://<device>` is the device's DOCUMENTATION (omp's `xdevDocs`), not a
+  // call — its own reader draws it as an ordinary read. Dispatching by device
+  // sent `read xd://lsp` to the LSP diagnostics card and
+  // `read xd://mcp__codegraph_explore` to the MCP argument card, both over a
+  // page of prose. The WRITE transport is the opposite and must keep reaching
+  // the device's panel.
+  test('a read of a device URL is the read panel, not the device panel', () => {
+    for (const path of ['xd://', 'xd://lsp', 'xd://eval/browser', 'xd://mcp__codegraph_explore', 'xd://propose']) {
+      expect(toolPanelKind(tool({ type: 'read', target: path, input: { path } }))).toBe('read');
+    }
+  });
+
+  test('a write to the same device URL still reaches the device panel', () => {
+    expect(toolPanelKind(tool({
+      type: 'write',
+      target: 'xd://lsp',
+      input: { path: 'xd://lsp', content: '{"action":"diagnostics"}' },
+    }))).toBe('lsp');
+    expect(toolPanelKind(tool({
+      type: 'write',
+      target: 'xd://mcp__codegraph_explore',
+      input: { path: 'xd://mcp__codegraph_explore', content: '{"query":"x"}' },
+    }))).toBe('mcp');
+  });
+
+  test('the doc-read predicate carries the FULL path, not just the device', () => {
+    // `xd://eval/browser` is the browser topic of the `eval` device; `xdDevice`
+    // reports only `eval`, which named the card wrong.
+    expect(xdDocPath(tool({ type: 'read', target: 'xd://eval/browser', input: { path: 'xd://eval/browser' } })))
+      .toBe('xd://eval/browser');
+    expect(xdDocPath(tool({ type: 'read', target: 'xd://', input: { path: 'xd://' } }))).toBe('xd://');
+    expect(xdDocPath(tool({ type: 'read', target: 'src/x.ts', input: { path: 'src/x.ts' } }))).toBeUndefined();
+    expect(xdDocPath(tool({ type: 'write', target: 'xd://lsp', input: { path: 'xd://lsp' } }))).toBeUndefined();
   });
 });
 

@@ -264,3 +264,4 @@ describe('toolSummary — fallback and empty', () => {
     expect(toolSummary(tool({ type: 'wait' }))).toBeNull();
   });
 });
+

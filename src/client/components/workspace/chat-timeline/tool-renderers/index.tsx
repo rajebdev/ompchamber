@@ -25,7 +25,7 @@ import { Checkpoint } from '@/client/components/workspace/chat-timeline/tool-ren
 import { Bash } from '@/client/components/workspace/chat-timeline/tool-renderers/panels/Bash';
 import { SearchTool } from '@/client/components/workspace/chat-timeline/tool-renderers/panels/SearchTool';
 import { SecurityScan } from '@/client/components/workspace/chat-timeline/tool-renderers/panels/SecurityScan';
-import { Hub } from '@/client/components/workspace/chat-timeline/tool-renderers/panels/Hub';
+import { Proc } from '@/client/components/workspace/chat-timeline/tool-renderers/panels/Proc';
 import { ContextNotes } from '@/client/components/workspace/chat-timeline/tool-renderers/panels/ContextNotes';
 import { Memory } from '@/client/components/workspace/chat-timeline/tool-renderers/panels/Memory';
 import { Debug } from '@/client/components/workspace/chat-timeline/tool-renderers/panels/Debug';
@@ -40,8 +40,9 @@ import { Read } from '@/client/components/workspace/chat-timeline/tool-renderers
 import { Edit } from '@/client/components/workspace/chat-timeline/tool-renderers/panels/Edit';
 import { Mcp } from '@/client/components/workspace/chat-timeline/tool-renderers/panels/Mcp';
 import { hashlineTargetPath } from '@/shared/lib/omp/session/hashline-patch';
+import { procPathOf } from '@/shared/lib/omp/session/proc';
 import { getToolInputPath } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/tool-input';
-import { toolPanelKind, type ToolPanelKind } from '@/client/components/workspace/chat-timeline/tool-renderers/registry';
+import { isXdDocRead, toolPanelKind, type ToolPanelKind } from '@/client/components/workspace/chat-timeline/tool-renderers/registry';
 
 /** One panel component per kind. A kind with no entry falls back to generic
  *  Input/Output rendering; the record is total so a missing one is a type error. */
@@ -62,7 +63,7 @@ const PANELS: Record<ToolPanelKind, (props: { tool: ToolCallData }) => ReactNode
   ast_edit: AstEdit,
   resolve: Resolve,
   reject: Resolve,
-  hub: Hub,
+  proc: Proc,
   github: Github,
   checkpoint: Checkpoint,
   security_scan: SecurityScan,
@@ -109,6 +110,13 @@ export function resolveTargetFile(tool: ToolCallData): string | undefined {
  * aliases folded. Used for icon selection and the header's title fallback.
  */
 export function resolveToolKey(tool: ToolCallData): string {
+  // A `proc://` call is `read`/`write` transport, so the URL is the only thing
+  // that names what it did — the tool key drives the glyph and the header.
+  if (procPathOf(tool)) return 'proc';
+  // `read xd://<device>` is the device's docs: the key is `read`, so the glyph
+  // and the header describe a read rather than the device it documents.
+  if (isXdDocRead(tool)) return 'read';
+
   const details = tool.details as Record<string, unknown> | undefined;
   const xdev = details?.xdev;
   if (xdev && typeof xdev === 'object') {
@@ -132,16 +140,17 @@ export function resolveToolKey(tool: ToolCallData): string {
   if (rawName && rawName !== 'tool' && rawName !== 'custom') return rawName;
 
   const titlePrefix = (tool.title || '').toLowerCase().split(/[\s—\-:]+/)[0]?.trim();
-  if (titlePrefix && TOOL_KEY_TITLES.has(titlePrefix)) return titlePrefix;
+  if (titlePrefix && TOOL_KEY_TITLES[titlePrefix]) return titlePrefix;
 
   return (tool.type || '').toLowerCase();
 }
 
 /** Title prefixes that name a tool when no `name` was sent (MOCK path). */
-const TOOL_KEY_TITLES: ReadonlySet<string> = new Set([
-  'grep', 'glob', 'read', 'write', 'edit', 'bash', 'terminal', 'run_command',
-  'todo', 'eval', 'hub', 'lsp', 'github', 'task', 'resolve', 'reject',
-]);
+const TOOL_KEY_TITLES: Record<string, true> = {
+  grep: true, glob: true, read: true, write: true, edit: true, bash: true,
+  terminal: true, run_command: true, todo: true, eval: true, hub: true,
+  proc: true, lsp: true, github: true, task: true, resolve: true, reject: true,
+};
 
 /**
  * Panel khusus per tool family — dirender di dalam body ToolCallCard.

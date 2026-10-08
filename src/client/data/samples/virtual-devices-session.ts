@@ -1,4 +1,5 @@
 import type { ChatMessageData } from '@/shared/types';
+import { internalUrlCalls } from '@/client/data/samples/virtual-devices-internal-url';
 
 export const SAMPLE_DEVICES_SESSION_ID = '03c286c1-e356-96c8-d7d8-72d2d8938e7b';
 
@@ -212,6 +213,7 @@ app/hooks/useSync.ts
           status: 'success',
           duration: '110ms',
           details: {
+            op: 'wait',
             jobs: [
               {
                 id: 'job-sec-audit',
@@ -233,6 +235,7 @@ app/hooks/useSync.ts
           },
           output: 'All 2 background jobs completed successfully with 0 vulnerabilities detected.',
         },
+        ...internalUrlCalls,
         {
           id: 'call_dev_resolve',
           type: 'custom',

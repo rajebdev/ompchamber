@@ -64,6 +64,7 @@ const ICON_BY_KEY: Record<string, ReactNode> = {
   resolve: <Check size={14} />,
   reject: <Check size={14} />,
   hub: <Server size={14} />,
+  proc: <Server size={14} />,
   ask: <HelpCircle size={14} />,
   think: <BrainCircuit size={14} />,
   security_scan: <Shield size={14} />,

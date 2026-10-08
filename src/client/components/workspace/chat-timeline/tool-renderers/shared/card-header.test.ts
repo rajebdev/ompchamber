@@ -92,6 +92,71 @@ describe('toolCardHeader — MCP calls', () => {
   });
 });
 
+describe('toolCardHeader — proc:// calls', () => {
+  test('a service stop names the op and the process, not the transport write', () => {
+    expect(header({
+      type: 'write',
+      target: 'proc://ompchamber-dev/kill',
+      input: { path: 'proc://ompchamber-dev/kill', content: null },
+      details: { proc: { action: 'stop', daemon: { name: 'ompchamber-dev', state: 'exited' } } },
+    })).toEqual({ title: 'Proc', subtitle: 'stop · ompchamber-dev' });
+  });
+
+  test('a status read names the op from the path', () => {
+    expect(header({
+      type: 'read',
+      target: 'proc://ompdev',
+      input: { path: 'proc://ompdev' },
+      details: { proc: { daemon: { name: 'ompdev', state: 'failed' } } },
+    })).toEqual({ title: 'Proc', subtitle: 'list · ompdev' });
+  });
+
+  test('a stdin write names the process it wrote to', () => {
+    expect(header({
+      type: 'write',
+      target: 'proc://ompchamber-dev',
+      input: { path: 'proc://ompchamber-dev', content: 'x' },
+      details: { proc: { action: 'stdin', daemon: { name: 'ompchamber-dev', state: 'ready' } } },
+    })).toEqual({ title: 'Proc', subtitle: 'stdin · ompchamber-dev' });
+  });
+
+  test('the bare listing names the operation and no process', () => {
+    expect(header({ type: 'read', target: 'proc://', input: { path: 'proc://' } }))
+      .toEqual({ title: 'Proc', subtitle: 'list' });
+  });
+
+  test('a plain file read keeps the Read title', () => {
+    expect(header({ type: 'read', target: 'src/x.ts', input: { path: 'src/x.ts' } }).title).toBe('Read');
+  });
+});
+
+describe('toolCardHeader — read xd:// docs', () => {
+  test('names the URL it read, which is the whole identity', () => {
+    expect(header({
+      type: 'read',
+      target: 'xd://eval/browser',
+      input: { path: 'xd://eval/browser' },
+    })).toEqual({ title: 'Read', subtitle: 'xd://eval/browser' });
+  });
+
+  test('keeps the topic, not just the device', () => {
+    // `xdDevice` reports `eval`; the card must name `xd://eval/browser`.
+    expect(header({ type: 'read', target: 'xd://eval/browser', input: { path: 'xd://eval/browser' } }).subtitle)
+      .toBe('xd://eval/browser');
+  });
+
+  test('names the bare listing too', () => {
+    expect(header({ type: 'read', target: 'xd://', input: { path: 'xd://' } }))
+      .toEqual({ title: 'Read', subtitle: 'xd://' });
+  });
+
+  test('a write to the same URL still names the device action, never the URL', () => {
+    const call = tool({ type: 'write', target: 'xd://lsp', title: 'write — xd://lsp' });
+    const resolved = toolCardSubtitle(call, toolCardHeader(call, resolveToolKey(call)));
+    expect(resolved).not.toBe('xd://lsp');
+  });
+});
+
 describe('toolCardHeader — generic', () => {
   test('splits a `name — subject` title', () => {
     expect(header({ type: 'bash', title: 'grep — export function ToolCallCard' }))

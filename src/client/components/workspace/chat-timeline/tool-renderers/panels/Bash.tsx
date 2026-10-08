@@ -1,6 +1,7 @@
 import { useMemo } from 'preact/hooks';
-import { Check, Clock, Terminal } from 'lucide-preact';
+import { Check, Clock, Server, Terminal } from 'lucide-preact';
 import type { ToolCallData } from '@/shared/types';
+import { bashServiceOf, daemonTone, procUptime } from '@/shared/lib/omp/session/proc';
 import { CopyButton } from '@/client/components/common/CopyButton';
 import { stripAnsiCodes } from '@/shared/lib/code/ansi';
 import { isCodeLike } from '@/shared/lib/code/language';
@@ -77,8 +78,67 @@ export function Bash({ tool }: { tool: ToolCallData }) {
   const syntaxReady = useSyntaxReady();
   const highlightedCommand = useMemo(() => (command ? highlightCode(command, 'bash') : ''), [command, syntaxReady]);
 
+  const service = bashServiceOf(tool);
+  const serviceTone = daemonTone(service?.state);
+  const serviceUptime = service ? procUptime(service) : undefined;
+
   return (
     <div className="space-y-2">
+      {/* A named service launch is not just a command: omp reports the
+          supervised process back in `details.service`, and `proc://<id>` reads
+          the same snapshot. Without this strip the only thing the card said
+          about a live dev server was its exit code. */}
+      {service && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-ink/8 bg-paper px-3 py-2 font-mono text-[10.5px]">
+          <span className="flex items-center gap-1.5 text-[9.5px] font-semibold uppercase tracking-wider text-ink/40">
+            <Server size={11} className="text-ink/40" />
+            Service
+          </span>
+          <span className="font-semibold text-ink">{service.name}</span>
+          <span
+            className={`inline-flex items-center gap-1.5 font-semibold ${
+              serviceTone === 'ok'
+                ? 'text-success'
+                : serviceTone === 'error'
+                  ? 'text-error'
+                  : serviceTone === 'warn'
+                    ? 'text-warning'
+                    : 'text-ink/50'
+            }`}
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                serviceTone === 'ok'
+                  ? 'bg-success'
+                  : serviceTone === 'error'
+                    ? 'bg-error'
+                    : serviceTone === 'warn'
+                      ? 'bg-warning animate-pulse'
+                      : 'bg-ink/35'
+              }`}
+            />
+            {service.state}
+          </span>
+          {service.pid !== undefined && (
+            <span className="text-ink/45">
+              pid <strong className="text-ink">{service.pid}</strong>
+            </span>
+          )}
+          {serviceUptime && (
+            <span className="text-ink/45">
+              {typeof service.exitedAt === 'number' ? 'ran' : 'up'}{' '}
+              <strong className="text-ink">{serviceUptime.label}</strong>
+            </span>
+          )}
+          {service.exitCode !== undefined && (
+            <span className={service.exitCode === 0 ? 'text-success' : 'text-error'}>exit {service.exitCode}</span>
+          )}
+          <span className="text-ink/35">
+            read <span className="font-semibold">proc://{service.name}</span>
+          </span>
+        </div>
+      )}
+
       {/* Terminal Command Window */}
       {command && (
         <div className="overflow-hidden rounded-lg border border-ink/10 bg-paper">

@@ -20,6 +20,8 @@
 import type { ToolCallData } from '@/shared/types/chat';
 import { toTitleCase } from '@/shared/lib/chat/title-case';
 import { parseAskQuestions } from '@/shared/lib/chat/ask-questions';
+import { procOpLabel, procPathOf, procViewOf } from '@/shared/lib/omp/session/proc';
+import { isXdDocRead, xdDocPath } from '@/client/components/workspace/chat-timeline/tool-renderers/registry';
 import { resolveTargetFile } from '@/client/components/workspace/chat-timeline/tool-renderers';
 import {
   evalInputTitle,
@@ -45,6 +47,29 @@ function subtitleFromTitle(title: string): { title: string; subtitle?: string } 
 }
 
 export function toolCardHeader(tool: ToolCallData, toolKey: string): ToolCardHeader {
+  // ── proc:// calls: the URL names the process and the operation ────────────
+  // The transport is `read`/`write`, so without this the card said "Write" for
+  // a service stop and "Read" for a job status. The op comes from the result
+  // when omp reports one (`stop`, `stdin`, `mode`, `cancel`) and from the path
+  // otherwise.
+  if (toolKey === 'proc' || procPathOf(tool)) {
+    const view = procViewOf(tool);
+    const id = view?.daemon?.name ?? view?.job?.id ?? view?.id ?? '';
+    const op = procOpLabel(view?.op ?? '');
+    return {
+      title: 'Proc',
+      subtitle: [op, id].filter(Boolean).join(' · ') || undefined,
+    };
+  }
+
+  // ── read xd://<device>: the URL IS the identity ───────────────────────────
+  // A device CALL's target is transport and is hidden (`toolCardSubtitle`), but
+  // this is the documentation OF that device — `xd://lsp` is what was read, and
+  // the card would otherwise be a bare "Read" with nothing naming it.
+  if (isXdDocRead(tool)) {
+    return { title: 'Read', subtitle: xdDocPath(tool) };
+  }
+
   // ── device calls: the device's own action names it ────────────────────────
   if (toolKey === 'lsp' || toolKey === 'ast_edit') {
     const xdev = xdevOf(tool);
@@ -113,7 +138,7 @@ export function toolCardHeader(tool: ToolCallData, toolKey: string): ToolCardHea
  * and a device call's target IS the URL.
  */
 export function toolCardSubtitle(tool: ToolCallData, header: ToolCardHeader): string | undefined {
-  if (header.subtitle && !header.subtitle.startsWith('xd://')) return header.subtitle;
+  if (header.subtitle && (!header.subtitle.startsWith('xd://') || isXdDocRead(tool))) return header.subtitle;
   const target = resolveTargetFile(tool);
   if (target && !target.startsWith('xd://')) return target;
   if (header.subtitle) return undefined;

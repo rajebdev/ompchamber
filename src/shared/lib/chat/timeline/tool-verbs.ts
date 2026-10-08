@@ -21,6 +21,7 @@
 
 import type { ToolCallData } from '@/shared/types';
 import { isRecord } from '@/shared/lib/util/guards';
+import { parseProcUrl, procRequestOp } from '@/shared/lib/omp/session/proc';
 import { DEVICE_VERBS, PHASE_VERBS, TOOL_ALIASES, TOOL_VERBS, asString, pick, subjectFor, truncate } from '@/shared/lib/chat/timeline/tool-phrases';
 
 export interface ToolActivity {
@@ -82,6 +83,25 @@ export function describeToolActivity(tool: ToolActivity): string {
   // The model's own one-liner (omp's `i` field, or the intent it resolved for
   // the execution event) is a better subject than anything derived here.
   const intent = asString(tool.intent) ?? pick(args, ['i']);
+
+  // A `proc://` call is `read`/`write` transport, so the URL — not the tool —
+  // names the operation: `Reading proc://ompchamber-dev` would describe a
+  // service stop as a file read.
+  const proc = parseProcUrl(asString(args.path));
+  if (proc) {
+    const action = procRequestOp(asString(args.path), rawName);
+    const verb =
+      action === 'kill'
+        ? 'Stopping'
+        : action === 'mode'
+          ? 'Setting mode on'
+          : action === 'stdin'
+            ? 'Sending input to'
+            : proc.id
+              ? 'Reading process'
+              : 'Listing processes';
+    return truncate(proc.id ? `${verb} ${proc.id}` : verb);
+  }
 
   const device = xdDeviceOf(args, tool);
   if (device) {

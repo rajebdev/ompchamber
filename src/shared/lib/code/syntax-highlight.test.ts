@@ -274,8 +274,20 @@ describe('getLanguageFromPath', () => {
     expect(getLanguageFromPath('src/a.ts?x=1#L4')).toBe('typescript');
   });
 
-  test('defaults to javascript when the path is missing', () => {
-    expect(getLanguageFromPath()).toBe('javascript');
+  test('answers `text` for a path that names no language', () => {
+    // `text` is a Shiki special language: always usable, no grammar fetched,
+    // emitted escaped and uncoloured. The old `javascript` claimed a language
+    // the input did not have — a `read xd://eval/browser` (a device doc) was
+    // badged JAVASCRIPT and its prose was tokenized as code.
+    expect(getLanguageFromPath()).toBe('text');
+    expect(getLanguageFromPath('src/bin/run')).toBe('text');
+  });
+
+  test('answers `text` for an internal or web URL', () => {
+    expect(getLanguageFromPath('xd://eval/browser')).toBe('text');
+    expect(getLanguageFromPath('skill://diagnose')).toBe('text');
+    expect(getLanguageFromPath('omp://')).toBe('text');
+    expect(getLanguageFromPath('http://localhost:3221/')).toBe('text');
   });
 
   test.each([

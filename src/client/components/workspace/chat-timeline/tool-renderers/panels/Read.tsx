@@ -5,8 +5,9 @@ import { highlightCode } from '@/shared/lib/code/syntax-highlight';
 import { useSyntaxReady } from '@/client/hooks/ui/syntax-ready';
 import { parseDirListing, parseNumberedCode } from '@/shared/lib/code/parser';
 import { getImageMimeType } from '@/shared/lib/fs/file-kind';
-import { buildFsRawUrl } from '@/shared/lib/fs/paths';
+import { buildFsRawUrl, isVirtualPath } from '@/shared/lib/fs/paths';
 import { toolImageSrc } from '@/shared/lib/omp/session/tool-images';
+import { MarkdownRenderer } from '@/client/components/common/MarkdownRenderer';
 import type { ToolCallData } from '@/shared/types/chat';
 import { MAX_OUTPUT_LINES, truncateTailLines } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/truncate';
 import { extractLineMeta } from '@/client/components/workspace/chat-timeline/tool-renderers/shared/read-line-meta';
@@ -27,6 +28,10 @@ export function Read({ tool, targetFilePath, output }: ReadPanelProps) {
   const inputPath = getToolInputPath(tool?.input);
   const filePath = targetFilePath || inputPath || tool?.target || '';
   const cleanFetchPath = filePath.split('?')[0].split('#')[0].replace(/:\d+(?:-\d+)?$/, '');
+  // A `proc://`/`xd://` path names no file: pointing `/api/fs/read` at it made
+  // the route refuse and the panel print `// Loaded file: proc://…` as if that
+  // were the file's contents.
+  const virtualPath = isVirtualPath(cleanFetchPath);
 
   // A `read` of an image answers with the picture itself, so the panel paints
   // the result's own bytes. Reconstructing the image from the tool call's PATH
@@ -54,7 +59,7 @@ export function Read({ tool, targetFilePath, output }: ReadPanelProps) {
   const imageUrl = resultImage?.src ?? (isPathImage ? buildFsRawUrl({ path: cleanFetchPath }) : null);
 
   useEffect(() => {
-    if (cleanFetchPath && !isImage && !output && lazyContent === null && !loadingFile) {
+    if (cleanFetchPath && !virtualPath && !isImage && !output && lazyContent === null && !loadingFile) {
       setLoadingFile(true);
       fetch(`/api/fs/read?path=${encodeURIComponent(cleanFetchPath)}`)
         .then((res) => res.json())
@@ -68,7 +73,7 @@ export function Read({ tool, targetFilePath, output }: ReadPanelProps) {
           setLoadingFile(false);
         });
     }
-  }, [cleanFetchPath, output, lazyContent, loadingFile, isImage]);
+  }, [cleanFetchPath, virtualPath, output, lazyContent, loadingFile, isImage]);
 
   const details = (tool?.details ?? {}) as Record<string, any>;
   const rawContent =
@@ -136,7 +141,13 @@ export function Read({ tool, targetFilePath, output }: ReadPanelProps) {
 
   const isDir = dirInfo.isDirectory;
   const lang = getLanguageFromPath(filePath);
-  const kindLabel = isDir ? 'Directory' : isImage ? 'Image' : lang;
+  // omp answers a `text/markdown` read with prose and draws it as prose
+  // (`details.contentType === 'text/markdown' ? md(text) : code`). The panel had
+  // no markdown branch, so `read skill://diagnose` rendered `# Diagnose ## Steps
+  // 1. Reproduce` as one code block — the whole point of the file (its headings,
+  // lists and links) came out as literal syntax.
+  const isMarkdown = details.contentType === 'text/markdown' && !isDir && !isImage;
+  const kindLabel = isDir ? 'Directory' : isImage ? 'Image' : isMarkdown ? 'Markdown' : lang;
 
   const visibleEntries = dirInfo.entries.slice(-MAX_OUTPUT_LINES);
   const skippedEntries = dirInfo.entries.length - visibleEntries.length;
@@ -222,6 +233,16 @@ export function Read({ tool, targetFilePath, output }: ReadPanelProps) {
               <span>{dirInfo.notice}</span>
             </div>
           )}
+        </div>
+      ) : isMarkdown ? (
+        /* omp draws a `text/markdown` read as the document it is: headings,
+           lists, links and code fences, not a code block of markdown syntax.
+           The source is `parsedCode.cleanCode`, not `rawContent`: omp prefixes
+           every row with its file line number (`1|# Diagnose`), and a markdown
+           parser reads that prefix as content — the heading came out as the
+           paragraph `1|# Diagnose`. */
+        <div className="max-h-80 overflow-auto rounded-lg border border-ink/8 bg-paper px-3.5 py-3 select-text">
+          <MarkdownRenderer content={parsedCode.cleanCode || displayContent} className="text-[12.5px] text-ink/85" />
         </div>
       ) : rawContent ? (
         /* Render Code Content with synchronized, straight line numbers and clean code */

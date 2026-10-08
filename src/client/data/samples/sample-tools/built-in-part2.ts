@@ -70,6 +70,26 @@ export const builtInToolsPart2: ToolCallData[] = [
 Ready log matched: http://localhost:3000`,
     status: 'success',
     duration: '997ms',
+    // The real `details` omp sends for a service launch — the panel reads the
+    // snapshot, not the prose, so a sample without it renders as a fallback.
+    details: {
+      op: 'start',
+      daemon: {
+        name: 'ompchamber',
+        id: 'ca665717-71fa-42c6-a749-8cecf4f37982',
+        state: 'ready',
+        pid: 43148,
+        createdAt: 1_791_433_388_035,
+        startedAt: 1_791_433_388_038,
+        readyAt: 1_791_433_388_270,
+        restartCount: 0,
+        outputBytes: 4500,
+        readyMatch: 'listening on',
+        persist: false,
+        detached: false,
+      },
+      timedOut: false,
+    },
   },
   {
     id: 'call_21_todo',
