@@ -165,6 +165,7 @@ export function MobileLayoutWrapper({ onDesktopToggle, appSettings = {} }: Mobil
 
   return (
     <div
+      data-testid="app-root"
       className="flex flex-col h-dvh w-screen overflow-hidden bg-canvas text-ink font-sans selection:bg-ink selection:text-canvas relative"
     >
       <div className={`flex-1 min-h-0 w-full ${currentScreen === 'main' ? 'block' : 'hidden'}`}>

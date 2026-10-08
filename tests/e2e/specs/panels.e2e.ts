@@ -1,0 +1,87 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
+ * The right panel: switching views, and the per-session layout surviving a reload.
+ *
+ * The activity bar's buttons carry `aria-label={panel.title}` — the same title
+ * the catalog declares — so the spec addresses a view by its name, which is
+ * what a reader sees. The panel body is located through the resizer's own
+ * `data-panel-id` (the layout's real identity), and the switch is proven by the
+ * VIEW's own content appearing (a placeholder unique to it), never by a class.
+ *
+ * The persistence half is the one a unit test cannot reach: the panel choice
+ * lives in `session_ui_state`, is posted on change and read back on load, and
+ * the bug this catches is a panel that resets to `files` because a pending
+ * session's state was never loaded.
+ */
+
+import { test, expect, openApp } from '../fixtures/app';
+import { seedWorkspace } from '../fixtures/seed';
+
+test.describe('right panel', () => {
+  test('switches the active view from the activity bar', async ({ harness, page }) => {
+    const server = await harness('real');
+    const workspace = await seedWorkspace(server, 'e2e-panels');
+    await openApp(page, `${server.baseURL}/?folderId=${workspace.id}`);
+
+    const rightPanel = page.locator('[data-panel-id="right-panel"]');
+    await expect(rightPanel).toBeVisible();
+
+    // Source Control's own content: the commit message box.
+    await page.getByRole('button', { name: 'Source Control' }).click();
+    await expect(page.getByPlaceholder(/commit message/i)).toBeVisible();
+
+    // Search's own content: its query field.
+    await page.getByRole('button', { name: 'Search' }).click();
+    await expect(rightPanel.getByPlaceholder('Search', { exact: true })).toBeVisible();
+    await expect(page.getByPlaceholder(/commit message/i)).toBeHidden();
+
+    workspace.dispose();
+  });
+
+  test('the chosen view survives a reload', async ({ harness, page }) => {
+    const server = await harness('real');
+    const workspace = await seedWorkspace(server, 'e2e-panels-persist');
+    const url = `${server.baseURL}/?folderId=${workspace.id}`;
+    await openApp(page, url);
+
+    // The panel choice is persisted under a 600ms debounce
+    // (`PERSIST_DEBOUNCE_MS`), so a reload issued right after the click races
+    // the write and lands on the previous layout. Wait for the write itself —
+    // a sleep would either be too short on a loaded runner or waste time on an
+    // idle one.
+    const persisted = page.waitForResponse(
+      (response) => response.request().method() === 'POST' && /\/api\/sessions\/.+\/state$/.test(new URL(response.url()).pathname),
+    );
+    await page.getByRole('button', { name: 'Source Control' }).click();
+    await expect(page.getByPlaceholder(/commit message/i)).toBeVisible();
+    await persisted;
+
+    await openApp(page, url);
+    await expect(page.getByPlaceholder(/commit message/i)).toBeVisible();
+
+    workspace.dispose();
+  });
+
+  test('collapsing and reopening the panel keeps the chosen view', async ({ harness, page }) => {
+    const server = await harness('real');
+    const workspace = await seedWorkspace(server, 'e2e-panels-toggle');
+    await openApp(page, `${server.baseURL}/?folderId=${workspace.id}`);
+
+    await page.getByRole('button', { name: 'Source Control' }).click();
+    await expect(page.getByPlaceholder(/commit message/i)).toBeVisible();
+
+    // The navbar's toggle collapses the panel; toggling back must return to the
+    // SAME view, not the default.
+    const toggle = page.getByRole('button', { name: /toggle right panel/i });
+    await toggle.click();
+    await expect(page.locator('[data-panel-id="right-panel"]')).toBeHidden();
+    await toggle.click();
+    await expect(page.getByPlaceholder(/commit message/i)).toBeVisible();
+
+    workspace.dispose();
+  });
+});

@@ -16,3 +16,10 @@ workspace.db
 
 # Scratch git repositories written by the fs/git action tests.
 tmp-test-git-action/
+
+# Playwright E2E artifacts (traces, screenshots, HTML report).
+test-results/
+playwright-report/
+
+# Scratch reproduction harnesses (not committed).
+tmp-repro/

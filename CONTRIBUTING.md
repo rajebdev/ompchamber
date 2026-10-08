@@ -17,7 +17,16 @@ bun run build          # scripts/build-client.ts -> dist/client (the production 
 bun run start          # NODE_ENV=production bun run src/server/index.ts
 bun run lint           # tsc --noEmit
 bun test               # bun test
+bun run typecheck:e2e  # tsc --noEmit -p tests/e2e
+bun run test:e2e       # Playwright browser specs (needs `bunx playwright install chromium` once)
 ```
+
+`bun run test:e2e` runs the browser layer in `tests/e2e/`: real server subprocess,
+real Chromium, real streaming. It is a separate runner from `bun test` on purpose
+(the specs need a per-file browser context and server), and the two own disjoint
+globs — `*.spec.ts` is Bun's, `*.e2e.ts` is Playwright's — so neither picks up the
+other's files. It is NOT part of the four gates below; `.github/workflows/e2e.yml`
+runs it on a pull request only when the `e2e` label is applied, plus nightly.
 
 The server is the only entry point. It imports `index.html`, so Bun bundles that page's script,
 styles and assets on demand in development (with HMR) and serves them from its own routing table —

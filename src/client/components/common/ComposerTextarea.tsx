@@ -114,6 +114,7 @@ export function ComposerTextarea({
     <div className="relative" ref={wrapperRef}>
       <textarea
         ref={setTextareaRef}
+        data-testid="composer-input"
         value={value}
         onChange={composer.handleChange}
         onCompositionStart={composer.handleCompositionStart}

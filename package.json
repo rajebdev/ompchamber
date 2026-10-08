@@ -49,6 +49,8 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "test": "bun test",
+    "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
+    "typecheck:e2e": "tsc --noEmit -p tests/e2e",
     "publish:plugins": "bash .github/scripts/publish-plugin-packages.sh packages/plugin-sdk packages/ui"
   },
   "dependencies": {
@@ -77,6 +79,7 @@
     "yaml": "^2.9.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@semantic-release/changelog": "^7.0.0",
     "@semantic-release/commit-analyzer": "^13.0.1",
     "@semantic-release/git": "^11.0.1",

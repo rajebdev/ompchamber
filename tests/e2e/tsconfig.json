@@ -1,0 +1,12 @@
+{
+  "//": "The E2E layer's own typecheck. Separate from the root tsconfig because these files run under PLAYWRIGHT (Node), not Bun: they need @types/node rather than bun-types, and the root program deliberately covers only src/ and packages/. `bunx tsc --noEmit -p tests/e2e` is the gate.",
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "noEmit": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  },
+  "include": ["./**/*.ts"]
+}

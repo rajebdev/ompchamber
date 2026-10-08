@@ -204,7 +204,10 @@ export function DesktopLayout({ sessionId, onSwitchToMobile, appSettings = {} }:
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-canvas text-ink font-sans selection:bg-ink selection:text-canvas">
+    <div
+      data-testid="app-root"
+      className="flex flex-col h-screen w-screen overflow-hidden bg-canvas text-ink font-sans selection:bg-ink selection:text-canvas"
+    >
 
       {/* Main Workspace: full-height left sidebar (resizable) + right stack */}
       <div className="flex flex-1 overflow-hidden">
