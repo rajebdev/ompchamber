@@ -5,6 +5,17 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.23.0](https://github.com/rajebdev/ompchamber/compare/v4.22.0...v4.23.0) — 2026-10-19
+
+### Added
+
+* **updates:** teach the update path the renamed package ([80b27bf](https://github.com/rajebdev/ompchamber/commit/80b27bf6c6ef83e73ba5f618a124efab8a1ec35d))
+
+### Fixed
+
+* **lifecycle:** keep the data-dir tests platform-neutral ([a52d6e9](https://github.com/rajebdev/ompchamber/commit/a52d6e9916bb4a8ff7be6778af3daaa56209b1c2))
+* **updates:** switch to the renamed package despite the version reset ([e187eac](https://github.com/rajebdev/ompchamber/commit/e187eac0e2e8d1d307f877dd61db2720f85f8061))
+
 ## [4.22.0](https://github.com/rajebdev/ompchamber/compare/v4.21.0...v4.22.0) — 2026-10-19
 
 ### Added
