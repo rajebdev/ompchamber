@@ -104,8 +104,13 @@ describe('copyAt', () => {
 describe('nodeModulesForBinDir', () => {
   test('the packages sit one layout step from the bin directory', () => {
     // `<BUN_INSTALL>/bin` → `<BUN_INSTALL>/install/global/node_modules`, the
-    // shape `detectInstallMethod` recognizes as a Bun global install.
-    expect(nodeModulesForBinDir('/home/u/.bun/bin')).toBe('/home/u/.bun/install/global/node_modules');
+    // shape `detectInstallMethod` recognizes as a Bun global install. Built
+    // with `join`, not written POSIX: `node:path` emits the PLATFORM separator,
+    // so a literal expectation fails on Windows with the same path spelled
+    // `\home\u\...` (measured on the Windows CI leg).
+    const installRoot = join(tmpdir(), 'ompchamber-bun-install');
+    expect(nodeModulesForBinDir(join(installRoot, 'bin')))
+      .toBe(join(installRoot, 'install', 'global', 'node_modules'));
   });
 });
 
