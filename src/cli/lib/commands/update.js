@@ -26,6 +26,20 @@ async function liveInstances(options) {
   return selectRestartTargets(await listLiveInstances(), Boolean(options?.all));
 }
 
+/**
+ * The context a replacement is spawned from.
+ *
+ * After a RENAME the installed package is not the one this command runs out of
+ * (`bun add -g @kabmo-labs/kabmo` leaves `ompchamber` untouched on disk), so
+ * restarting from `ctx.pkgRoot` relaunches the build the update just replaced —
+ * measured: the console came back as 4.23.1 after a successful move to 0.0.1.
+ * The installed copy's own root wins whenever the update reported one.
+ */
+export function restartCtx(ctx, installed) {
+  if (!installed || typeof installed.root !== 'string' || installed.root.length === 0) return ctx;
+  return { ...ctx, pkgRoot: installed.root, bin: installed.bin ?? ctx.bin };
+}
+
 async function restartInstances(options, ctx) {
   const restarted = [];
   const skipped = [];
@@ -103,7 +117,7 @@ export async function run(options, ctx) {
     // one JSON document.
     if (result.success && result.updated && shouldRestart) configure({ json: false, quiet: true });
     const { restarted, skipped, failed } = result.success && result.updated && shouldRestart
-      ? await restartInstances(options, ctx)
+      ? await restartInstances(options, restartCtx(ctx, result.installed))
       : { restarted: [], skipped: [], failed: [] };
     printJson({ ...result, restarted, skipped, failed });
     if (!result.success || failed.length > 0) process.exitCode = 1;
@@ -124,7 +138,7 @@ export async function run(options, ctx) {
     return;
   }
 
-  const { restarted, skipped, failed } = await restartInstances(options, ctx);
+  const { restarted, skipped, failed } = await restartInstances(options, restartCtx(ctx, result.installed));
   if (restarted.length === 0 && skipped.length === 0) {
     log('No running instance to restart.');
   }
