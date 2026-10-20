@@ -5,6 +5,12 @@ All notable changes to OMPChamber are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.23.1](https://github.com/rajebdev/ompchamber/compare/v4.23.0...v4.23.1) — 2026-10-20
+
+### Fixed
+
+* **updates:** resolve the renamed package by its scoped name ([bbece4c](https://github.com/rajebdev/ompchamber/commit/bbece4c6b6117235b38aa11b7f948a13f58011ba))
+
 ## [4.23.0](https://github.com/rajebdev/ompchamber/compare/v4.22.0...v4.23.0) — 2026-10-19
 
 ### Added
