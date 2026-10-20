@@ -99,23 +99,31 @@ describe('resolveUpdatePackage', () => {
     delete Bun.env.BUN_CONFIG_REGISTRY;
   });
 
-  test('asks the renamed package first and stops when it answers', async () => {
-    answers['https://registry.npmjs.org/kabmo/latest'] = '5.0.0';
+  test('asks the scoped package first and stops when it answers', async () => {
+    answers['https://registry.npmjs.org/@kabmo-labs%2fkabmo/latest'] = '1.0.0';
+    answers['https://registry.npmjs.org/kabmo/latest'] = '0.9.0';
     answers['https://registry.npmjs.org/ompchamber/latest'] = '4.23.0';
 
-    expect(await resolveUpdatePackage()).toEqual({ name: 'kabmo', latest: '5.0.0' });
-    // One request: the fallback is only for a name that is not published yet.
-    expect(urls).toEqual(['https://registry.npmjs.org/kabmo/latest']);
+    expect(await resolveUpdatePackage()).toEqual({ name: '@kabmo-labs/kabmo', latest: '1.0.0' });
+    // One request: the other spellings are only for a name that is not published.
+    expect(urls).toEqual(['https://registry.npmjs.org/@kabmo-labs%2fkabmo/latest']);
+  });
+
+  test('falls through to the bare name when only that one is published', async () => {
+    answers['https://registry.npmjs.org/kabmo/latest'] = '1.0.0';
+
+    expect(await resolveUpdatePackage()).toEqual({ name: 'kabmo', latest: '1.0.0' });
+    expect(urls).toHaveLength(2);
   });
 
   test('falls back to the legacy name while the rename has not been published', async () => {
     answers['https://registry.npmjs.org/ompchamber/latest'] = '4.23.0';
 
     expect(await resolveUpdatePackage()).toEqual({ name: 'ompchamber', latest: '4.23.0' });
-    expect(urls).toHaveLength(2);
+    expect(urls).toHaveLength(3);
   });
 
-  test('both absent names the new package with no version', async () => {
-    expect(await resolveUpdatePackage()).toEqual({ name: 'kabmo', latest: null });
+  test('both absent names the scoped package with no version', async () => {
+    expect(await resolveUpdatePackage()).toEqual({ name: '@kabmo-labs/kabmo', latest: null });
   });
 });

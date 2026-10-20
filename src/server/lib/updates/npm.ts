@@ -23,21 +23,39 @@ const DEFAULT_REGISTRY = 'https://registry.npmjs.org/';
 /** OMPChamber's package name before the rename — the fallback and the legacy install. */
 export const OMPCHAMBER_PACKAGE = 'ompchamber';
 
-/** The package the product ships as after the rename; asked FIRST. */
-export const KABMO_PACKAGE = 'kabmo';
+/**
+ * The package the product ships as after the rename, asked FIRST.
+ *
+ * Scoped because the bare name cannot be published: npm refused `kabmo` as too
+ * similar to an existing package. `@kabmo-labs/kabmo` is what the release
+ * pipeline publishes, so it is what the check must ask for.
+ */
+export const KABMO_PACKAGE = '@kabmo-labs/kabmo';
+
+/**
+ * Every name the renamed package may be published under, best first.
+ *
+ * The bare `kabmo` stays on the list because a bridge release that predates the
+ * scope (`ompchamber@4.23.0`) looks for exactly that name: if the bare package
+ * ever becomes available, both spellings resolve to the same product.
+ */
+export const RENAMED_PACKAGES: readonly string[] = [KABMO_PACKAGE, 'kabmo'];
 
 /**
  * Which package an update installs, and its newest published version.
  *
  * The product was renamed from `ompchamber` to `kabmo`, and an install that
- * predates the rename must still be able to move: the new name is asked first,
- * the old one is the fallback, and a bridge release published under the OLD
- * name is what teaches that install about the new one. Never throws; a registry
- * outage answers `latest: null` and the caller words that as a status note.
+ * predates the rename must still be able to move: the new names are asked
+ * first, the old one is the fallback, and a bridge release published under the
+ * OLD name is what teaches that install about the new one. Never throws; a
+ * registry outage answers `latest: null` and the caller words that as a status
+ * note.
  */
 export async function resolveUpdatePackage(): Promise<{ name: string; latest: string | null }> {
-  const renamed = await fetchNpmLatest(KABMO_PACKAGE);
-  if (renamed) return { name: KABMO_PACKAGE, latest: renamed };
+  for (const name of RENAMED_PACKAGES) {
+    const latest = await fetchNpmLatest(name);
+    if (latest) return { name, latest };
+  }
   const legacy = await fetchNpmLatest(OMPCHAMBER_PACKAGE);
   return { name: legacy ? OMPCHAMBER_PACKAGE : KABMO_PACKAGE, latest: legacy };
 }
@@ -64,13 +82,14 @@ export function npmRegistry(): string {
  * read. Never throws: the caller words a null as a status note, and a registry
  * outage must not become a 500 in the update check.
  *
- * Only the slash of a scoped name is escaped (`@scope%2fname`), which is what
+ * Every slash of a scoped name is escaped (`@scope%2fname`), which is what
  * omp's own registry client sends; the registry answers the fully-encoded
- * spelling (`%40scope%2Fname`) identically.
+ * spelling (`%40scope%2Fname`) identically. `replace` with a plain string
+ * escapes only the FIRST slash, which is wrong for any deeper name.
  */
 export async function fetchNpmLatest(pkg: string, tag = 'latest'): Promise<string | null> {
   try {
-    const response = await fetch(`${npmRegistry()}${pkg.replace('/', '%2f')}/${tag}`, {
+    const response = await fetch(`${npmRegistry()}${pkg.replaceAll('/', '%2f')}/${tag}`, {
       headers: { 'User-Agent': 'ompchamber' },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
