@@ -77,6 +77,19 @@ describe('README badge logos', () => {
     }
   });
 
+  test('the rename mark and its arrow are inert SVGs with one viewBox', () => {
+    // These two are README-only (not badge payloads), but they sit beside the
+    // marks above and are rendered by the same surface, so the same rule
+    // applies: inert geometry, one viewBox, no fixed pixel size.
+    for (const name of ['kabmo', 'arrow']) {
+      const svg = readFileSync(join(BRAND_DIR, `${name}.svg`), 'utf8').trim();
+      expect(svg.startsWith('<svg ')).toBe(true);
+      expect(svg.endsWith('</svg>')).toBe(true);
+      expect(svg.match(/viewBox=/g)).toHaveLength(1);
+      expect(svg).not.toMatch(/<script|href=|url\(/);
+    }
+  });
+
   test('the payload is percent-encoded, never raw', () => {
     // A raw `+` survives in the URL string but decodes to a space server-side,
     // which drops the logo. The README must carry no raw `+` inside a payload.

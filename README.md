@@ -1,13 +1,33 @@
 <p align="center">
   <img src="public/icon-512x512.png" alt="OMPChamber" width="140" height="140">
+  &nbsp;&nbsp;
+  <img src="docs/assets/brand/arrow.svg" alt="becomes" width="140" height="140">
+  &nbsp;&nbsp;
+  <img src="https://raw.githubusercontent.com/kabmo-labs/kabmo/main/public/icon-512x512.png" alt="Kabmo" width="140" height="140">
 </p>
 
-<h1 align="center">OMPChamber</h1>
+<h1 align="center">OMPChamber &rarr; Kabmo</h1>
 
 <p align="center">
   Browser console and diagnostic chamber for <a href="https://github.com/can1357/oh-my-pi">Oh-My-Pi</a> (<code>omp</code>) agent sessions.<br>
   Watch, steer and audit autonomous coding sessions from one paper-flat dashboard.
 </p>
+
+> [!IMPORTANT]
+> **This repository is archived.** OMPChamber was renamed to **Kabmo**, and development continues at
+> **[kabmo-labs/kabmo](https://github.com/kabmo-labs/kabmo)** — its README is
+> [github.com/kabmo-labs/kabmo#readme](https://github.com/kabmo-labs/kabmo#readme).
+>
+> Nothing here will receive further commits, issues or releases. The npm package moved too:
+> `ompchamber` is the pre-rename name, and its last release exists only to move an existing install
+> onto [`@kabmo-labs/kabmo`](https://www.npmjs.com/package/@kabmo-labs/kabmo).
+>
+> Already on `ompchamber`? Open **Settings &rarr; About &rarr; Update** (or run `ompchamber update`).
+> The rename counts as an update even though the version number goes *down*, and the install lands as
+> `@kabmo-labs/kabmo`. The restart then launches **the CLI of the copy that was just installed**, so
+> the console comes back as `kabmo`. On a build older than that restart fix the install is still
+> correct but the restart returns the old server; finish it by hand once with `ompchamber stop`, then
+> `kabmo serve`. Your data in `~/.ompchamber` is migrated to `~/.kabmo` on the first boot.
 
 <p align="center">
   <a href="https://www.npmjs.com/package/ompchamber"><img alt="npm version" src="https://img.shields.io/npm/v/ompchamber?logo=npm&logoColor=white&color=cb3837"></a>
@@ -118,7 +138,19 @@ all follow with no reload.
 
 ## Install
 
-OMPChamber is published to npm and runs on Bun, not Node:
+**New installs belong to [Kabmo](https://github.com/kabmo-labs/kabmo).** `ompchamber` is the
+pre-rename name and receives no new features; its last release exists only so an existing install can
+move itself across, which is why it is not what you install today.
+
+```bash
+bun add -g @kabmo-labs/kabmo     # puts the `kabmo` command on your PATH
+kabmo serve                      # start the server on :3000
+```
+
+> **Coming from `ompchamber`?** `ompchamber update` moves the install across — see the archived-repo
+> note at the top of this page for what it does and what to do on a build that predates the rename.
+
+Kabmo runs on Bun, not Node:
 
 > **Bun only** — the server imports `bun:sqlite` and `Bun.YAML`, neither of which Node can load.
 > Bun 1.4 or newer is required.
@@ -127,25 +159,20 @@ OMPChamber is published to npm and runs on Bun, not Node:
 > shells out to the `omp` binary, so `serve` refuses to start when it is not on `PATH` (or set via
 > `OMPCHAMBER_OMP_BIN`). `MOCK=true` is the only mode that runs without a real omp install.
 
-```bash
-bun add -g ompchamber     # puts the `ompchamber` command on your PATH
-ompchamber serve         # start the server on :3000
-```
-
 The published tarball carries the source, the CLI and the prebuilt client bundle, so there is no
-build step after install. `npm install -g ompchamber` works too — the `ompchamber` bin is a Bun
-script, so Bun still has to be on `PATH`.
+build step after install. `npm install -g @kabmo-labs/kabmo` works too — the bin is a Bun script, so
+Bun still has to be on `PATH`.
 
 ### From source
 
 ```bash
-git clone https://github.com/rajebdev/ompchamber.git
-cd ompchamber
+git clone https://github.com/kabmo-labs/kabmo.git
+cd kabmo
 bun install
 bun run build                        # dist/client — the only build artifact
 
 bun run start                        # NODE_ENV=production bun run src/server/index.ts
-bun link                             # then: ompchamber status
+bun link                             # then: kabmo status
 ```
 
 > Without `dist/client` the server answers `503` with the exact command to run — never a bare `500`.
@@ -158,10 +185,16 @@ ompchamber update                # install it, then restart a running instance
 ompchamber update --force        # reinstall even when already up to date
 ```
 
-A **bun global** install is refreshed with `bun add -g ompchamber@<version>`; a **git checkout** is
+A **bun global** install is refreshed with `bun add -g <package>@<version>`; a **git checkout** is
 fast-forwarded to the release tag and rebuilt. Uncommitted work is never merged over (the update asks
 you to commit or stash first), and an install owned by another package manager is left alone and told
 which command to run.
+
+**The package name is resolved from npm, not from the copy that is running.** A pre-rename install
+asks for `@kabmo-labs/kabmo` first and only falls back to `ompchamber`, so an `ompchamber update`
+installs the renamed package even though its version sorts *below* the name it replaced — a rename is
+an update by name, not by version. The restart that follows launches the CLI of the copy that was just
+installed, which is why the console comes back as `kabmo` rather than relaunching `ompchamber`.
 
 A server OMPChamber did not start is never restarted: `bun run dev`, `bun run start`, a manual
 `bun src/server/index.ts` and instances owned by a supervisor (systemd, pm2, a container) all record
@@ -171,7 +204,8 @@ serving that console, and reloads the page once the replacement answers on the s
 
 ## CLI
 
-`ompchamber [COMMAND] [OPTIONS]` — `serve` is the default command.
+`kabmo [COMMAND] [OPTIONS]` — `serve` is the default command. (The pre-rename `ompchamber`
+command is identical; it exists only to carry an existing install across.)
 
 | Command | Purpose |
 |---|---|

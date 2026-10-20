@@ -16,6 +16,8 @@ inlined in the README URL instead of referenced.
 | `elysia.svg` | Elysia | https://elysiajs.com/assets/elysia.svg | MIT, © SaltyAom |
 | `shiki.svg` | Shiki | https://shiki.style/logo.svg | MIT, © Pine Wu / Anthony Fu |
 | `ompchamber.svg` | version | derived from `public/icon.svg` | this project's own mark |
+| `kabmo.svg` | README header | `kabmo-labs/kabmo` `public/icon.svg` | this project's own mark |
+| `arrow.svg` | README header | — | drawn for this file |
 
 ## What was changed, and why
 
@@ -43,6 +45,17 @@ specks. GitHub renders badges at 2× on a retina screen, where the OMP letterfor
 are legible; at 1× the monogram is three ~4.6px letters and reads as texture —
 the honest limit of putting a wordmark on a 14px badge, and the reason the tile
 (two nested frames around the same tiny wordmark) was not used.
+
+## The rename pair
+
+`kabmo.svg` and `arrow.svg` are not badge payloads: they sit in the README header,
+one 140px mark either side of the arrow, to say the repository became Kabmo. The
+Kabmo tile is copied verbatim from the renamed repository's `public/icon.svg`
+(same 64-unit canvas, same three strokes), because a redrawn mark would be a
+second logo rather than the one the product ships. The arrow is drawn at
+**140×140** — not at the arrow's own ink box — so all three images occupy one
+row height: README images are baseline-aligned, and a short box hangs off the
+bottom of the line.
 
 ## Regenerating
 

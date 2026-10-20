@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 140" role="img" aria-label="becomes">
+  <title>becomes</title>
+  <!-- One 140×140 box so the arrow sits on the same line as the two 140px
+       marks beside it: images in a README are baseline-aligned, and a shorter
+       box would hang the arrow off the bottom of the row. The ink is a mid grey
+       that reads on both GitHub themes. -->
+  <g fill="none" stroke="#8b949e" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M32 70h72"/>
+    <path d="M86 48l22 22-22 22"/>
+  </g>
+</svg>
